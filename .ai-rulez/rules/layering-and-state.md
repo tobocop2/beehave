@@ -17,7 +17,7 @@ All code is under `internal/` (and the one `cmd/obee` root). A package imports i
 | Layer | Packages | Holds |
 |---|---|---|
 | 0 | `model`, `config` | Domain types and enums, the typed config. No upward imports. |
-| 1 | `store`, `forge`, `agent`, `host` | Adapters for `bd`, `gh`, agent CLIs and build hosts. Each wraps an external shape once. |
+| 1 | `store`, `forge`, `proc`, `agent`, `host` | Adapters for `bd`, `gh`, agent CLIs and build hosts. Each wraps an external shape once. |
 | 2 | `check`, `brief`, `claim`, `gate`, `ledger`, `merge`, `review`, `pool` | Round policy. Declares the small interfaces it needs from layer 1. |
 | 3 | `flow` | DBOS workflows and steps that call layer 2. |
 | 4 | `cli`, `tui` | Surfaces. Then `cmd/obee`. |

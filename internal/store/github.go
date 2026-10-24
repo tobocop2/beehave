@@ -52,18 +52,11 @@ type GithubStore struct {
 // NewGithubStore returns the store of repo, written owner/name.
 func NewGithubStore(repo string, run Runner) (*GithubStore, error) {
 	owner, name, found := strings.Cut(repo, "/")
-	if !found || !repoPart(owner) || !repoPart(name) {
+	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
 		return nil, refuse("REFUSE: REPO is not set to owner/name. Export it, or put it in round.env.")
 	}
 
 	return &GithubStore{repo: repo, owner: owner, name: name, run: run}, nil
-}
-
-// repoPart reports whether text is a non-empty run of letters, digits, dots, underscores and hyphens.
-func repoPart(text string) bool {
-	return text != "" && strings.IndexFunc(text, func(r rune) bool {
-		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-'
-	}) < 0
 }
 
 // OpenItems lists the open issues that are not epics. An issue with no P0 to P3 label has severity P?.
