@@ -2,59 +2,50 @@ package claim
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const (
-	attempts       = 4
-	argAssignee    = "--assignee"
-	argUpdate      = "update"
-	argStatus      = "--status"
-	argDescription = "--description"
-)
+const attempts = 4
 
-// Runner runs one outside command with the arguments and returns what it printed.
-type Runner interface {
-	Run(ctx context.Context, args []string) model.CommandResult
-}
-
-// Options holds what New needs. BD runs bd in the beads database and GH runs gh.
+// Options holds what New needs. Rows is the lease store of the project. Nonce returns the token of one take; it never repeats.
 type Options struct {
-	BD     Runner
-	GH     Runner
-	Prefix string
-	Repo   string
+	Rows   Rows
 	Lease  time.Duration
 	Settle time.Duration
 	Clock  func() time.Time
 	Sleep  func(time.Duration)
+	Nonce  func() string
 	Out    io.Writer
 	Warn   io.Writer
 }
 
-// Claims is the claim rows of one beads database. Prefix is the id prefix of that database and Repo is owner/name of the forge.
+// RandomNonce returns a new random text. A caller passes it as Options.Nonce.
+func RandomNonce() string {
+	return rand.Text()
+}
+
+// Claims is the claim rows of the lease store.
 type Claims struct {
-	bd     Runner
-	gh     Runner
-	prefix string
-	repo   string
+	rows   Rows
 	lease  int64
 	settle time.Duration
 	clock  func() time.Time
 	sleep  func(time.Duration)
+	nonce  func() string
 	out    io.Writer
 	warn   io.Writer
 }
 
-// New returns the claims of one beads database. It refuses a lease under one second and every missing dependency.
+// New returns the claims of the lease store. It refuses a lease under one second and every missing dependency.
 // A caller that has no setting takes model.DefaultClaimLease and model.DefaultClaimSettle.
 func New(options Options) (*Claims, error) {
 	if err := options.validate(); err != nil {
@@ -62,16 +53,15 @@ func New(options Options) (*Claims, error) {
 	}
 
 	return &Claims{
-		bd: options.BD, gh: options.GH, prefix: options.Prefix, repo: options.Repo,
-		lease: int64(options.Lease / time.Second), settle: options.Settle,
-		clock: options.Clock, sleep: options.Sleep, out: options.Out, warn: options.Warn,
+		rows: options.Rows, lease: int64(options.Lease / time.Second), settle: options.Settle,
+		clock: options.Clock, sleep: options.Sleep, nonce: options.Nonce, out: options.Out, warn: options.Warn,
 	}, nil
 }
 
 func (o Options) validate() error {
 	missing := map[string]bool{
-		"BD runner": o.BD == nil, "GH runner": o.GH == nil, "clock": o.Clock == nil, "sleep function": o.Sleep == nil,
-		"output writer": o.Out == nil, "warning writer": o.Warn == nil, "id prefix": o.Prefix == "",
+		"claim rows": o.Rows == nil, "clock": o.Clock == nil, "sleep function": o.Sleep == nil,
+		"nonce source": o.Nonce == nil, "output writer": o.Out == nil, "warning writer": o.Warn == nil,
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(missing)) {
@@ -96,47 +86,23 @@ func say(w io.Writer, line string) {
 	_, _ = fmt.Fprintln(w, line)
 }
 
-func (c *Claims) agentID(holder string) string {
-	return c.prefix + agentMiddle + holder
-}
-
-// Beat stamps the heartbeat of the owner's agent bead and creates the bead first. It returns a problem text, or "" when all went well.
+// Beat stamps the heartbeat of the owner. It returns a problem text, or "" when all went well.
 func (c *Claims) Beat(ctx context.Context, owner string) (string, error) {
 	holder, err := OwnerOf(owner)
 	if err != nil {
 		return "", err
 	}
 
-	agent := c.agentID(holder)
-
-	if problem, err := c.ensureAgent(ctx, agent, holder); problem != "" || err != nil {
-		return problem, err
-	}
-
-	done := c.bd.Run(ctx, []string{"agent", "heartbeat", agent})
-	if done.ExitCode == 0 {
-		return "", nil
-	}
-
-	return fmt.Sprintf("heartbeat for %s failed: %s", agent, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes)), nil
+	return c.beat(ctx, holder), nil
 }
 
-func (c *Claims) ensureAgent(ctx context.Context, agent, holder string) (string, error) {
-	shown, err := c.show(ctx, agent)
-	if err != nil || shown != nil {
-		return "", err
+// beat stamps the heartbeat of the holder. It returns a problem text, or "" when all went well.
+func (c *Claims) beat(ctx context.Context, holder string) string {
+	if err := c.rows.Beat(ctx, holder); err != nil {
+		return fmt.Sprintf("heartbeat for %s failed: %v", holder, err)
 	}
 
-	c.bd.Run(ctx, []string{
-		"create", "--id", agent, "--title", "lock owner " + holder, "--type", "agent", "--labels", "gt:agent",
-		"--silent", argDescription, "Liveness for the claim: last_activity is this owner's last heartbeat.",
-	})
-
-	if shown, err = c.show(ctx, agent); shown == nil {
-		return "could not create the agent bead " + agent, err
-	}
-
-	return "", err
+	return ""
 }
 
 // checked validates the owner token and the item and returns the holder name.
@@ -158,34 +124,16 @@ func (c *Claims) Release(ctx context.Context, owner, item string) error {
 		return err
 	}
 
-	rows, err := c.heldRows(ctx)
+	holders, err := c.holders(ctx, item)
 	if err != nil {
 		return err
 	}
 
-	mine, others := splitRows(rows, item, me)
-	if len(mine) == 0 {
-		return c.releaseNothing(item, me, uniqueSorted(others))
+	if !slices.Contains(holders, me) {
+		return c.releaseNothing(item, me, holders)
 	}
 
-	return c.closeRows(ctx, item, mine)
-}
-
-// splitRows returns the row ids the owner holds for the item and the names of the other holders.
-func splitRows(rows []heldRow, item, me string) ([]string, []string) {
-	var mine, others []string
-
-	for _, r := range rows {
-		switch {
-		case r.item != item:
-		case r.assignee == me:
-			mine = append(mine, r.rowID)
-		default:
-			others = append(others, r.assignee)
-		}
-	}
-
-	return mine, others
+	return c.free(ctx, me, item)
 }
 
 func (c *Claims) releaseNothing(item, me string, others []string) error {
@@ -198,27 +146,57 @@ func (c *Claims) releaseNothing(item, me string, others []string) error {
 	return nil
 }
 
-func (c *Claims) closeRows(ctx context.Context, item string, rowIDs []string) error {
-	for _, rowID := range rowIDs {
-		c.bd.Run(ctx, []string{argUpdate, rowID, argStatus, statusClosed, argAssignee, ""})
+// free clears the row of the owner and reads it back: a release that did not take effect is a refusal.
+// The row is cleared only while it is the take that was read, so a take made since stays.
+func (c *Claims) free(ctx context.Context, me, item string) error {
+	state, err := c.state(ctx, item)
+	if err != nil {
+		return err
+	}
 
-		shown, err := c.show(ctx, rowID)
-		if err != nil {
-			return err
-		}
+	if !state.Held || state.Holder != me {
+		return c.releaseNothing(item, me, heldBy(state))
+	}
 
-		if shown == nil {
-			return refuse("claim: release of #%s did not take effect on %s: the row is gone", item, rowID)
-		}
+	if err = c.freeRow(ctx, item, state); err != nil {
+		return err
+	}
 
-		if shown.Status != statusClosed || shown.Assignee != "" {
-			return refuse("claim: release of #%s did not take effect on %s: status %q, assignee %q", item, rowID, shown.Status, shown.Assignee)
-		}
+	return c.confirmFree(ctx, item)
+}
+
+// confirmFree reads the row back after a free.
+func (c *Claims) confirmFree(ctx context.Context, item string) error {
+	state, err := c.state(ctx, item)
+	if err != nil {
+		return err
+	}
+
+	if state.Held {
+		return refuse("claim: release of #%s did not take effect: still held by %q", item, state.Holder)
 	}
 
 	say(c.out, "released #"+item)
 
 	return nil
+}
+
+func heldBy(state model.RowState) []string {
+	if state.Held {
+		return []string{state.Holder}
+	}
+
+	return nil
+}
+
+// freeRow clears the row described by state. A row that changed hands since the read is a refusal with code 3.
+func (c *Claims) freeRow(ctx context.Context, item string, state model.RowState) error {
+	err := c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: state.Holder, Nonce: state.Nonce})
+	if errors.Is(err, model.ErrRowMoved) {
+		return held("REFUSED: #%s was claimed by another owner in the same window. Do not touch it.", item)
+	}
+
+	return fail(err)
 }
 
 // Take claims the item for the owner. Another live holder is a refusal with code 3.
@@ -228,20 +206,13 @@ func (c *Claims) Take(ctx context.Context, owner, item string) error {
 		return err
 	}
 
-	if err = c.beatOrWarn(ctx, owner); err != nil {
-		return err
-	}
+	c.beatOrWarn(ctx, me)
 
 	if done, err := c.prepare(ctx, me, item); done || err != nil {
 		return err
 	}
 
-	rowID := fmt.Sprintf("%s-lock-%s-%s", c.prefix, KindOf(item), item)
-	if err = c.ensureRow(ctx, rowID, item); err != nil {
-		return err
-	}
-
-	return c.claimRow(ctx, me, item, rowID)
+	return c.claimRow(ctx, me, item)
 }
 
 // prepare refuses a live holder and reopens expired rows. It reports true when the owner holds the item already.
@@ -260,13 +231,10 @@ func (c *Claims) prepare(ctx context.Context, me, item string) (bool, error) {
 	return false, c.clearExpired(ctx, me, item, holders)
 }
 
-func (c *Claims) beatOrWarn(ctx context.Context, owner string) error {
-	problem, err := c.Beat(ctx, owner)
-	if problem != "" {
+func (c *Claims) beatOrWarn(ctx context.Context, holder string) {
+	if problem := c.beat(ctx, holder); problem != "" {
 		say(c.warn, fmt.Sprintf("WARNING: %s. Other runs will read this owner's claims as expired after %s.", problem, Age(float64(c.lease))))
 	}
-
-	return err
 }
 
 // EnsureFree refuses when another owner holds the item. It writes nothing.
@@ -293,13 +261,10 @@ func (c *Claims) refuseLive(ctx context.Context, me, item string, holders []stri
 		return nil, nil, nil
 	}
 
-	seen, rows, err := c.liveness(ctx)
+	seen, live, err := c.liveHolders(ctx, item, others)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	leases := leasesOf(rows, item)
-	live := slices.DeleteFunc(slices.Clone(others), func(who string) bool { return c.expired(who, seen, leases) })
 
 	if len(live) > 0 {
 		return nil, nil, held("REFUSED: #%s is held by %s. Do not touch it.", item, strings.Join(live, ", "))
@@ -308,183 +273,143 @@ func (c *Claims) refuseLive(ctx context.Context, me, item string, holders []stri
 	return others, seen, nil
 }
 
-// liveness reads when each owner was last seen and every held row.
-func (c *Claims) liveness(ctx context.Context) (map[string]float64, []heldRow, error) {
+// liveHolders returns when each owner was last seen and the owners among others whose lease has not run out.
+func (c *Claims) liveHolders(ctx context.Context, item string, others []string) (map[string]float64, []string, error) {
 	seen, err := c.lastSeen(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := c.heldRows(ctx)
+	rows, err := c.held(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return seen, rows, err
+	leases := leasesOf(rows, item)
+
+	return seen, slices.DeleteFunc(slices.Clone(others), func(who string) bool { return c.expired(who, seen, leases) }), nil
 }
 
-// clearExpired refuses a live holder and reopens the rows of holders whose lease ran out.
+// clearExpired refuses a live holder and frees the row when its holder's lease ran out.
 func (c *Claims) clearExpired(ctx context.Context, me, item string, holders []string) error {
 	others, seen, err := c.refuseLive(ctx, me, item, holders)
 	if err != nil || len(others) == 0 {
 		return err
 	}
 
-	rows, err := c.heldRows(ctx)
+	rows, err := c.held(ctx)
 	if err != nil {
 		return err
 	}
 
-	leases := leasesOf(rows, item)
-
-	for _, r := range rows {
-		if err = c.reopenIfExpired(ctx, r, item, others, seen, leases); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return c.reopen(ctx, item, others, seen, leasesOf(rows, item))
 }
 
-func (c *Claims) reopenIfExpired(ctx context.Context, r heldRow, item string, others []string, seen map[string]float64, leases map[string]int64) error {
-	if r.item != item || !slices.Contains(others, r.assignee) {
-		return nil
-	}
-
-	return c.reopen(ctx, r, item, seen, leases)
-}
-
-// reopen clears the row only when the expired holder still holds it: a row claimed since the read is not expired.
-func (c *Claims) reopen(ctx context.Context, r heldRow, item string, seen map[string]float64, leases map[string]int64) error {
-	shown, err := c.showOrEmpty(ctx, r.rowID)
-	if err != nil || shown.Status != statusProgress || shown.Assignee != r.assignee {
+// reopen frees the row only when the expired holder still holds it: a row claimed since the read is not expired.
+func (c *Claims) reopen(ctx context.Context, item string, others []string, seen map[string]float64, leases map[string]int64) error {
+	state, err := c.state(ctx, item)
+	if err != nil || !state.Held || !slices.Contains(others, state.Holder) {
 		return err
 	}
 
-	c.bd.Run(ctx, []string{argUpdate, r.rowID, argStatus, statusOpen, argAssignee, ""})
+	if err = c.freeRow(ctx, item, state); err != nil {
+		return err
+	}
 
-	lease, found := leases[r.assignee]
+	lease, found := leases[state.Holder]
 	if !found {
 		lease = c.lease
 	}
 
-	say(c.out, fmt.Sprintf("reclaiming #%s from %s: last seen %s ago, lease %s", item, r.assignee, Age(seen[r.assignee]), Age(float64(lease))))
+	say(c.out, fmt.Sprintf("reclaiming #%s from %s: last seen %s ago, lease %s", item, state.Holder, Age(seen[state.Holder]), Age(float64(lease))))
 
 	return nil
 }
 
-func (c *Claims) itemTitle(ctx context.Context, item string) (string, error) {
-	if KindOf(item) == kindForge {
-		done := c.gh.Run(ctx, []string{"issue", "view", item, "--repo", c.repo, "--json", "title", "--jq", ".title"})
-		if done.ExitCode != 0 {
-			return "", nil
-		}
+func (c *Claims) claimRow(ctx context.Context, me, item string) error {
+	row := model.ClaimRow{Item: item, Holder: me, Lease: c.lease, Nonce: c.nonce()}
 
-		return strings.TrimSpace(done.Stdout), nil
-	}
-
-	shown, err := c.showOrEmpty(ctx, item)
-
-	return shown.Title, err
-}
-
-func (c *Claims) ensureRow(ctx context.Context, rowID, item string) error {
-	shown, err := c.show(ctx, rowID)
-	if err != nil {
-		return err
-	}
-
-	if shown == nil {
-		if shown, err = c.createRow(ctx, rowID, item); err != nil {
-			return err
-		}
-	}
-
-	if shown.Status != statusProgress && shown.Assignee != "" {
-		// Not in_progress, so it holds nothing, but a stale assignee refuses every claim.
-		c.bd.Run(ctx, []string{argUpdate, rowID, argAssignee, ""})
-	}
-
-	return nil
-}
-
-func (c *Claims) createRow(ctx context.Context, rowID, item string) (*row, error) {
-	title, err := c.itemTitle(ctx, item)
-	if err != nil {
-		return nil, err
-	}
-
-	rowTitle := strings.TrimRight(fmt.Sprintf("%s%s-%s %s", rowTitlePrefix, KindOf(item), item, firstRunes(title, maxTitleRunes)), " \t\r\n")
-
-	c.bd.Run(ctx, []string{
-		"create", "--id", rowID, "--title", rowTitle, "--type", "task", "--priority", "3",
-		"--silent", argDescription, c.description(item),
-	})
-
-	shown, err := c.show(ctx, rowID)
-	if err == nil && shown == nil {
-		err = refuse("claim: could not create the claim row %s", rowID)
-	}
-
-	return shown, err
-}
-
-func (c *Claims) description(item string) string {
-	return fmt.Sprintf("Claim for %s. Held while in_progress; the assignee holds it. lease=%s", item, strconv.FormatInt(c.lease, 10))
-}
-
-func (c *Claims) claimRow(ctx context.Context, me, item, rowID string) error {
 	for range attempts {
-		c.bd.Run(ctx, []string{argUpdate, rowID, "--claim", argAssignee, me})
-
-		settled, shown, err := c.settleRow(ctx, me, rowID)
-		if err != nil {
+		done, err := c.tryOnce(ctx, row)
+		if done || err != nil {
 			return err
 		}
-
-		if settled {
-			return c.finishTake(ctx, me, item, rowID)
-		}
-
-		if shown.Assignee != "" && shown.Assignee != me {
-			return held("REFUSED: #%s was claimed by %s in the same window.", item, shown.Assignee)
-		}
-		// Unassigned: a concurrent create reset the row between the claim and the read.
 	}
 
 	return refuse("claim: could not settle ownership of #%s after %d attempts; check `obee claim who %s`", item, attempts, item)
 }
 
+// tryOnce makes one attempt to hold the row. It reports true when the owner holds the row.
+// A row that is unassigned after the attempt was reset by a concurrent write, so the caller tries again.
+func (c *Claims) tryOnce(ctx context.Context, row model.ClaimRow) (bool, error) {
+	if err := c.rows.TryHold(ctx, row); err != nil {
+		return false, fail(err)
+	}
+
+	settled, state, err := c.settleRow(ctx, row)
+	if err != nil {
+		return false, err
+	}
+
+	if settled {
+		return true, c.finishTake(ctx, row)
+	}
+
+	if state.Holder != "" && state.Holder != row.Holder {
+		return false, held("REFUSED: #%s was claimed by %s in the same window.", row.Item, state.Holder)
+	}
+
+	return false, nil
+}
+
 // settleRow reads the row back, waits, and reads it again. It reports whether the row is still ours.
-func (c *Claims) settleRow(ctx context.Context, me, rowID string) (bool, row, error) {
-	shown, err := c.showOrEmpty(ctx, rowID)
-	if err != nil || !isMine(shown, me) {
-		return false, shown, err
+func (c *Claims) settleRow(ctx context.Context, row model.ClaimRow) (bool, model.RowState, error) {
+	state, err := c.state(ctx, row.Item)
+	if err != nil || !isMine(state, row) {
+		return false, state, err
 	}
 
 	c.sleep(c.settle)
 
-	shown, err = c.showOrEmpty(ctx, rowID)
+	state, err = c.state(ctx, row.Item)
 
-	return err == nil && isMine(shown, me), shown, err
+	return err == nil && isMine(state, row), state, err
 }
 
-func isMine(r row, me string) bool {
-	return r.Status == statusProgress && r.Assignee == me
+// isMine reports whether the row state is the take of row. bd 1.3.2 stores the token of every take in the assignee,
+// so a row with no token, or another token, is not the take of row.
+func isMine(state model.RowState, row model.ClaimRow) bool {
+	return state.Held && state.Holder == row.Holder && state.Nonce == row.Nonce
 }
 
-// finishTake gives the row back when a second holder appeared after ours settled, and stores the lease otherwise.
-func (c *Claims) finishTake(ctx context.Context, me, item, rowID string) error {
-	holders, err := c.holders(ctx, item)
+// finishTake stores the lease in the row the owner holds, then reads the row back: a take that another owner replaced is a refusal.
+func (c *Claims) finishTake(ctx context.Context, row model.ClaimRow) error {
+	if err := c.rows.StoreLease(ctx, row); err != nil {
+		return c.lostOrFailed(err, row)
+	}
+
+	state, err := c.state(ctx, row.Item)
 	if err != nil {
 		return err
 	}
 
-	if late := slices.DeleteFunc(slices.Clone(holders), func(who string) bool { return who == me }); len(late) > 0 {
-		c.bd.Run(ctx, []string{argUpdate, rowID, argStatus, statusClosed, argAssignee, ""})
-
-		return held("REFUSED: #%s is also held by %s; yielded.", item, strings.Join(late, ", "))
+	if !isMine(state, row) {
+		return lostWindow(row)
 	}
 
-	c.bd.Run(ctx, []string{argUpdate, rowID, argDescription, c.description(item)})
-	say(c.out, fmt.Sprintf("TAKEN #%s by %s", item, me))
+	say(c.out, fmt.Sprintf("TAKEN #%s by %s", row.Item, row.Holder))
 
 	return nil
+}
+
+func (c *Claims) lostOrFailed(err error, row model.ClaimRow) error {
+	if errors.Is(err, model.ErrRowMoved) {
+		return lostWindow(row)
+	}
+
+	return fail(err)
+}
+
+func lostWindow(row model.ClaimRow) error {
+	return held("REFUSED: #%s was claimed by another owner in the same window.", row.Item)
 }

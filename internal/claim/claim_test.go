@@ -3,10 +3,6 @@ package claim_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"slices"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,18 +15,6 @@ import (
 
 func ctx() context.Context {
 	return context.Background()
-}
-
-func TestKindOf(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]string{
-		"2021": "gh", "0": "gh", "proj-a1b.2": "bd", "a-b": "bd", "A_1-x_y.z-9": "bd",
-		"": "", "abc": "", "-x": "", "a-": "", "12a": "", "a b-c": "", "a-b c": "", "a/b-c": "", "٣": "", "_a-b": "", "a.b-c": "", "é-b": "",
-	}
-	for item, want := range tests {
-		assert.Equal(t, want, claim.KindOf(item), item)
-	}
 }
 
 func TestItemOf(t *testing.T) {
@@ -69,393 +53,229 @@ func TestAge(t *testing.T) {
 	}
 }
 
-func TestTake_MakesTheAgentBeadAndTheRowAndClaimsIt(t *testing.T) {
+func TestTake_BeatsHoldsAndStoresTheLease(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.gh.result = model.CommandResult{Stdout: "Parser drops the last row\n"}
 	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
 
 	assert.Equal(t, "TAKEN #5 by session-A\n", h.said())
-	assert.Equal(t, progress, h.bd.rows[rowGH5]["status"])
-	assert.Equal(t, sessionA, h.bd.rows[rowGH5]["assignee"])
-	assert.Equal(t, "lock:gh-5 Parser drops the last row", h.bd.rows[rowGH5]["title"])
-	assert.Equal(t, "2026-10-01T00:00:00Z", h.bd.rows["p-agent-session-A"]["last_activity"])
+	assert.Equal(t, model.ClaimRow{Item: "5", Holder: sessionA, Lease: lease, Nonce: "take-1"}, h.rows.rows["5"])
+	assert.Equal(t, time.Unix(nowUnix, 0), h.rows.seen[sessionA])
 	assert.Equal(t, []time.Duration{500 * time.Millisecond}, h.slept)
-	assert.Equal(t, [][]string{{"issue", "view", "5", "--repo", "owner/name", "--json", "title", "--jq", ".title"}}, h.gh.calls)
-	assert.Contains(t, h.bd.rows[rowGH5]["description"], "lease="+strconv.Itoa(lease))
-}
-
-func TestTake_ABeadsItemGetsABdRowTitledFromTheItem(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.add("p-9.1", fields{"title": "child task"})
-	require.NoError(t, h.claims.Take(ctx(), "A", "p-9.1"))
-
-	assert.Equal(t, "lock:bd-p-9.1 child task", h.bd.rows["p-lock-bd-p-9.1"]["title"])
-	assert.Equal(t, sessionA, h.bd.rows["p-lock-bd-p-9.1"]["assignee"])
-	assert.Empty(t, h.gh.calls)
-}
-
-func TestTake_TheRowTitleHolds70CharactersAndNoTrailingBlank(t *testing.T) {
-	t.Parallel()
-
-	long := newHarness(t)
-	long.gh.result = model.CommandResult{Stdout: strings.Repeat("x", 69) + " yyyy\n"}
-	require.NoError(t, long.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "lock:gh-5 "+strings.Repeat("x", 69), long.bd.rows[rowGH5]["title"])
-
-	failed := newHarness(t)
-	failed.gh.result = model.CommandResult{ExitCode: 1, Stdout: "ignored"}
-	require.NoError(t, failed.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "lock:gh-5", failed.bd.rows[rowGH5]["title"])
-}
-
-func TestTake_ABeadsItemThatBdCannotShowGivesABareRowTitle(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	require.NoError(t, h.claims.Take(ctx(), "A", "p-404"))
-	assert.Equal(t, "lock:bd-p-404", h.bd.rows["p-lock-bd-p-404"]["title"])
-
-	h.bd.add("p-7", fields{"title": nil})
-	require.NoError(t, h.claims.Take(ctx(), "B", "p-7"))
-	assert.Equal(t, "lock:bd-p-7", h.bd.rows["p-lock-bd-p-7"]["title"])
+	assert.Equal(t, 1, h.rows.calls["StoreLease"])
 }
 
 func TestTake_OfAnItemYouHoldChangesNothing(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.hold("5", sessionA, "")
+	h.hold("5", sessionA, lease, 0)
 	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
+
 	assert.Equal(t, "#5 already held by you\n", h.said())
-	assert.Zero(t, h.bd.count("update"))
+	assert.Zero(t, h.rows.calls["TryHold"])
 }
 
 func TestTake_RefusesALiveHolderWithCodeThree(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.seen(sessionB, 10)
+	h.hold("5", sessionB, lease, 60)
 
 	err := h.claims.Take(ctx(), "A", "5")
 	require.EqualError(t, err, "REFUSED: #5 is held by session-B. Do not touch it.")
 	assert.Equal(t, claim.CodeHeld, h.code(err))
-	assert.Zero(t, h.bd.count("update"))
+	assert.Zero(t, h.rows.calls["TryHold"])
 }
 
 func TestEnsureFree(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.seen(sessionB, 10)
-
-	err := h.claims.EnsureFree(ctx(), "A", "5")
-	require.EqualError(t, err, "REFUSED: #5 is held by session-B. Do not touch it.")
-	assert.Equal(t, claim.CodeHeld, h.code(err))
-	assert.Zero(t, h.bd.count("update"))
-
-	for name, setup := range map[string]func(*harness){
-		"unowned": func(*harness) {},
-		"own":     func(h *harness) { h.hold("5", sessionA, ""); h.seen(sessionA, 10) },
-		"expired": func(h *harness) { h.hold("5", sessionB, ""); h.seen(sessionB, lease+1) },
-	} {
-		free := newHarness(t)
-		setup(free)
-		require.NoError(t, free.claims.EnsureFree(ctx(), "A", "5"), name)
-		assert.Zero(t, free.bd.count("update"), name)
+	tests := map[string]struct {
+		holder string
+		ago    int64
+		want   string
+	}{
+		"free":            {},
+		"mine":            {holder: sessionA, ago: 0},
+		"live_other":      {holder: sessionB, ago: 5, want: "REFUSED: #5 is held by session-B. Do not touch it."},
+		"expired_other":   {holder: sessionB, ago: lease + 1},
+		"never_beat_held": {holder: sessionB, ago: -1, want: "REFUSED: #5 is held by session-B. Do not touch it."},
 	}
-}
 
-func TestEnsureFree_FailsClosedAndChecksNames(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-	require.Error(t, h.claims.EnsureFree(ctx(), "A", "5"))
-
-	require.ErrorContains(t, h.claims.EnsureFree(ctx(), "a-b", "5"), "owner token")
-	require.ErrorContains(t, h.claims.EnsureFree(ctx(), "A", "x y"), "neither a forge number")
-
-	other := newHarness(t)
-	other.hold("5", sessionB, "")
-	other.seen(sessionB, 10)
-	other.bd.hooks = append(other.bd.hooks, func(args []string) {
-		if args[0] == "list" && slices.Contains(args, "--type") {
-			other.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-		}
-	})
-	require.Error(t, other.claims.EnsureFree(ctx(), "A", "5"))
-
-	late := newHarness(t)
-	late.hold("5", sessionB, "")
-	late.seen(sessionB, 10)
-
-	calls := 0
-	late.bd.hooks = append(late.bd.hooks, func(args []string) {
-		if args[0] == "list" {
-			calls++
-			if calls == 3 {
-				late.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-			}
-		}
-	})
-	require.Error(t, late.claims.EnsureFree(ctx(), "A", "5"))
-}
-
-func TestTake_AHolderWithNoAgentBeadOrNoStampNeverExpires(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	require.ErrorContains(t, h.claims.Take(ctx(), "A", "5"), "held by session-B")
-	h.seen(sessionB, -1)
-	require.ErrorContains(t, h.claims.Take(ctx(), "A", "5"), "held by session-B")
-}
-
-func TestTake_TheLeaseExpiresOneSecondPastItAndNotOnIt(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.seen(sessionB, lease)
-	require.ErrorContains(t, h.claims.Take(ctx(), "A", "5"), "held by session-B")
-
-	h.hold("6", sessionB, "")
-	h.seen(sessionB, lease+1)
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "reclaiming #5 from session-B: last seen 2h00m ago, lease 2h00m\nTAKEN #5 by session-A\n", h.said())
-	assert.Equal(t, progress, h.bd.rows["p-lock-gh-6"]["status"])
-}
-
-func TestTake_AReaderExpiresAHoldByTheLeaseTheHolderStored(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	id := h.hold("5", sessionB, "")
-	h.bd.rows[id]["description"] = "Claim for 5. lease=1209600"
-	h.seen(sessionB, 3*3600)
-
-	who, err := h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-B", who)
-	require.ErrorContains(t, h.claims.Take(ctx(), "A", "5"), "held by session-B")
-
-	h.seen(sessionB, 1209600+1)
-
-	who, err = h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Contains(t, who, "LEASE EXPIRED")
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.True(t, strings.HasPrefix(h.said(), "reclaiming #5 from session-B: last seen 336h00m ago, lease 336h00m"))
-}
-
-func TestWho_ARowWithAnUnreadableLeaseNeverExpires(t *testing.T) {
-	t.Parallel()
-
-	texts := []string{"lease=abc", "lease=-5", "lease=0", "lease=", "lease=1e9", "lease=12x", "lease= 9999999", "lease=" + strings.Repeat("9", 5000), "lease=" + strings.Repeat("1", 13), "lease=000"}
-	for _, text := range texts {
+	for name, tt := range tests {
 		h := newHarness(t)
-		id := h.hold("5", sessionB, "")
-		h.bd.rows[id]["description"] = "Claim for 5. " + text
-		h.seen(sessionB, 10*lease)
-
-		who, err := h.claims.Who(ctx(), "5")
-		require.NoError(t, err)
-		assert.Equal(t, "#5 held by session-B (lease unreadable: clear the row by hand)", who, text)
-		require.ErrorContains(t, h.claims.Take(ctx(), "A", "5"), "held by session-B", text)
-	}
-}
-
-func TestWho_LeaseReading(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]string{
-		"twelve_digits_are_readable":    "Claim. lease=" + strings.Repeat("9", 12),
-		"the_word_must_start_at_a_gap":  "Claim. xlease=1 lease=" + strings.Repeat("9", 12),
-		"a_lease_at_the_start":          "lease=" + strings.Repeat("9", 12) + " trailing words",
-		"a_lease_after_an_underscore":   "a_lease=1 lease=" + strings.Repeat("9", 12),
-		"a_lease_followed_by_more_text": "Claim. lease=" + strings.Repeat("9", 12) + "\nmore",
-	}
-	for name, description := range tests {
-		h := newHarness(t)
-		id := h.hold("5", sessionB, "")
-		h.bd.rows[id]["description"] = description
-		h.seen(sessionB, 10*lease)
-
-		who, err := h.claims.Who(ctx(), "5")
-		require.NoError(t, err, name)
-		assert.Equal(t, "#5 held by session-B", who, name)
-	}
-}
-
-func TestWho_ARowWithNoStoredLeaseUsesTheReadersLease(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.seen(sessionB, lease+1)
-
-	who, err := h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-B (LEASE EXPIRED: last seen 2h00m ago; `take` reclaims it)", who)
-}
-
-func TestTake_AnExpiredRowIsReopenedOnlyWhenTheHolderStillHoldsIt(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.seen(sessionB, lease+60)
-
-	done := false
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if !done && args[0] == "show" && args[1] == rowGH5 && h.bd.rows[rowGH5]["assignee"] == sessionB {
-			h.bd.rows[rowGH5]["assignee"] = "session-C"
-			done = true
+		if tt.holder != "" {
+			h.hold("5", tt.holder, model.LeaseNone, tt.ago)
 		}
-	})
+
+		err := h.claims.EnsureFree(ctx(), "A", "5")
+		if tt.want == "" {
+			require.NoError(t, err, name)
+		} else {
+			require.EqualError(t, err, tt.want, name)
+		}
+
+		assert.Zero(t, h.rows.calls["TryHold"]+h.rows.calls["Free"], name)
+	}
+}
+
+func TestExpiry(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		stored  int64
+		ago     int64
+		expired bool
+	}{
+		"on_the_lease":            {stored: model.LeaseNone, ago: lease, expired: false},
+		"one_second_past":         {stored: model.LeaseNone, ago: lease + 1, expired: true},
+		"stored_lease_is_used":    {stored: 100, ago: 101, expired: true},
+		"stored_lease_not_past":   {stored: 100, ago: 100, expired: false},
+		"stored_longer_than_ours": {stored: 100_000, ago: lease + 1, expired: false},
+		"unreadable_never":        {stored: model.LeaseUnreadable, ago: 1_000_000, expired: false},
+		"no_beat_never":           {stored: model.LeaseNone, ago: -1, expired: false},
+	}
+
+	for name, tt := range tests {
+		h := newHarness(t)
+		h.hold("5", sessionB, tt.stored, tt.ago)
+
+		err := h.claims.Take(ctx(), "A", "5")
+		if tt.expired {
+			require.NoError(t, err, name)
+			assert.Equal(t, sessionA, h.rows.rows["5"].Holder, name)
+			assert.Contains(t, h.said(), "reclaiming #5 from session-B", name)
+		} else {
+			assert.Equal(t, claim.CodeHeld, h.code(err), name)
+		}
+	}
+}
+
+func TestTake_TheReclaimMessageNamesTheLeaseTheHolderStored(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionB, 100, 7260)
+	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
+	assert.Contains(t, h.said(), "reclaiming #5 from session-B: last seen 2h01m ago, lease 0h01m\n")
+
+	h = newHarness(t)
+	h.hold("5", sessionB, model.LeaseNone, lease+60)
+	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
+	assert.Contains(t, h.said(), "lease 2h00m\n")
+}
+
+func TestTake_AnExpiredRowIsFreedOnlyWhenTheHolderStillHoldsIt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionB, model.LeaseNone, lease+1)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "Row" && h.rows.calls["Row"] == 1 {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionC}
+		}
+	}
 
 	err := h.claims.Take(ctx(), "A", "5")
-	assert.Equal(t, claim.CodeHeld, h.code(err))
+	require.EqualError(t, err, "REFUSED: #5 was claimed by session-C in the same window.")
+	assert.Zero(t, h.rows.calls["Free"])
 	assert.NotContains(t, h.said(), "reclaiming")
-	assert.Equal(t, "session-C", h.bd.rows[rowGH5]["assignee"])
 }
 
-func TestTake_ARowForItem99IsNotTakenForTheRowOfItem999999(t *testing.T) {
+func TestTake_ARowThatIsGoneBeforeTheReclaimIsClaimedWithoutAFree(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.hold("999999", sessionB, "")
-	h.seen(sessionB, 10)
-	require.NoError(t, h.claims.Take(ctx(), "A", "99"))
-	assert.Equal(t, sessionA, h.bd.rows["p-lock-gh-99"]["assignee"])
-	assert.Equal(t, sessionB, h.bd.rows["p-lock-gh-999999"]["assignee"])
-}
-
-func TestTake_AClosedRowWithAStaleAssigneeIsClearedBeforeTheClaim(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.add(rowGH5, fields{"title": "lock:gh-5", "status": "closed", "assignee": sessionB})
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, sessionA, h.bd.rows[rowGH5]["assignee"])
-	assert.True(t, h.bd.called("update", rowGH5, "--assignee", ""))
-}
-
-func TestTake_AnOpenRowWithNoAssigneeIsClaimedWithoutAClearingUpdate(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.add(rowGH5, fields{"title": "lock:gh-5"})
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.False(t, h.bd.called("update", rowGH5, "--assignee", ""))
-	assert.Equal(t, 1, h.bd.count("create"))
-}
-
-func TestTake_ARowThatCannotBeCreatedIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.fail["create"] = model.CommandResult{ExitCode: 1}
-
-	err := h.claims.Take(ctx(), "A", "5")
-	require.EqualError(t, err, "claim: could not create the claim row p-lock-gh-5")
-	assert.Equal(t, claim.CodeRefused, h.code(err))
-}
-
-func TestTake_AConcurrentCreateThatResetsTheRowMakesTheTakeClaimAgain(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	reset := false
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if !reset && args[0] == "show" && args[1] == rowGH5 && h.bd.rows[rowGH5] != nil && h.bd.rows[rowGH5]["assignee"] == sessionA {
-			reset = true
-			h.bd.rows[rowGH5]["status"], h.bd.rows[rowGH5]["assignee"] = "open", ""
-		}
-	})
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "TAKEN #5 by session-A\n", h.said())
-	assert.GreaterOrEqual(t, h.bd.count("update"), 2)
-}
-
-func TestTake_ARowThatKeepsResettingStopsAfterFourAttempts(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if args[0] == "show" && args[1] == rowGH5 && h.bd.rows[rowGH5] != nil {
-			h.bd.rows[rowGH5]["status"], h.bd.rows[rowGH5]["assignee"] = "open", ""
-		}
-	})
-
-	err := h.claims.Take(ctx(), "A", "5")
-	require.EqualError(t, err, "claim: could not settle ownership of #5 after 4 attempts; check `obee claim who 5`")
-	assert.Equal(t, claim.CodeRefused, h.code(err))
-
-	claims := 0
-
-	for _, call := range h.bd.calls {
-		if slices.Contains(call, "--claim") {
-			claims++
+	h.hold("5", sessionB, model.LeaseNone, lease+1)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "Row" && h.rows.calls["Row"] == 1 {
+			delete(h.rows.rows, "5")
 		}
 	}
 
-	assert.Equal(t, 4, claims)
+	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
+	assert.Zero(t, h.rows.calls["Free"])
 }
 
 func TestTake_AClaimThatLostTheRaceNamesTheWinner(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if slices.Contains(args, "--claim") && h.bd.rows[rowGH5]["assignee"] == nil {
-			h.bd.rows[rowGH5]["status"], h.bd.rows[rowGH5]["assignee"] = progress, sessionB
+	h.rows.onCall = func(method string, _ int) {
+		if method == "TryHold" {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionB}
 		}
-	})
+	}
 
 	err := h.claims.Take(ctx(), "A", "5")
 	require.EqualError(t, err, "REFUSED: #5 was claimed by session-B in the same window.")
 	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.Zero(t, h.rows.calls["StoreLease"])
+}
+
+func TestTake_ARowOfTheSameHolderWithoutATokenIsNotTheTake(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "TryHold" {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionA}
+		}
+	}
+
+	err := h.claims.Take(ctx(), "A", "5")
+	require.Error(t, err, "a row with no token was not written by this take")
+	assert.Equal(t, claim.CodeRefused, h.code(err))
+	assert.Zero(t, h.rows.calls["StoreLease"])
 }
 
 func TestTake_ARowTakenOverDuringTheSettlePauseIsRefused(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.sleep = func(time.Duration) { h.bd.rows[rowGH5]["assignee"] = sessionB }
+	h.rows.onCall = func(method string, call int) {
+		if method == "Row" && call == 2 {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionB}
+		}
+	}
 
 	err := h.claims.Take(ctx(), "A", "5")
-	require.ErrorContains(t, err, "was claimed by session-B in the same window")
 	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.Len(t, h.slept, 1)
 }
 
-func TestTake_AFindOfASecondHolderAfterSettlingYields(t *testing.T) {
+func TestTake_AClaimThatDidNotLandIsTriedAgain(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.sleep = func(time.Duration) { h.hold("5", sessionB, "-twin") }
+	h.rows.deaf = 1
+
+	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
+	assert.Equal(t, 2, h.rows.calls["TryHold"])
+}
+
+func TestTake_AClaimThatNeverLandsStopsAfterFourAttempts(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.rows.deaf = 99
 
 	err := h.claims.Take(ctx(), "A", "5")
-	require.EqualError(t, err, "REFUSED: #5 is also held by session-B; yielded.")
-	assert.Equal(t, claim.CodeHeld, h.code(err))
-	assert.Equal(t, "closed", h.bd.rows[rowGH5]["status"])
-	assert.Empty(t, h.bd.rows[rowGH5]["assignee"])
-	assert.Empty(t, h.said())
+	require.ErrorContains(t, err, "could not settle ownership of #5 after 4 attempts; check `obee claim who 5`")
+	assert.Equal(t, claim.CodeRefused, h.code(err))
+	assert.Equal(t, 4, h.rows.calls["TryHold"])
 }
 
 func TestTake_AFailedHeartbeatWarnsAndTheTakeGoesOn(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.bd.heartbeatFails = true
+	h.rows.fail["Beat"] = errBoom
+
 	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "WARNING: heartbeat for p-agent-session-A failed: heartbeat refused. Other runs will read this owner's claims as expired after 2h00m.\n", h.warn.String())
+	assert.Equal(t, "WARNING: heartbeat for session-A failed: boom. Other runs will read this owner's claims as expired after 2h00m.\n", h.warn.String())
 	assert.Equal(t, "TAKEN #5 by session-A\n", h.said())
 }
 
@@ -463,394 +283,183 @@ func TestBeat(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.bd.fail["create"] = model.CommandResult{ExitCode: 1}
-
 	problem, err := h.claims.Beat(ctx(), "A")
 	require.NoError(t, err)
-	assert.Equal(t, "could not create the agent bead p-agent-session-A", problem)
+	assert.Empty(t, problem)
 
-	ok := newHarness(t)
-	for range 2 {
-		problem, err = ok.claims.Beat(ctx(), "A")
-		require.NoError(t, err)
-		assert.Empty(t, problem)
+	h.rows.fail["Beat"] = errBoom
+	problem, err = h.claims.Beat(ctx(), "A")
+	require.NoError(t, err)
+	assert.Equal(t, "heartbeat for session-A failed: boom", problem)
+
+	_, err = h.claims.Beat(ctx(), "a b")
+	assert.ErrorContains(t, err, "is not an owner token")
+}
+
+func TestWho(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		stored int64
+		ago    int64
+		want   string
+	}{
+		"live":       {stored: model.LeaseNone, ago: 10, want: "#5 held by session-B"},
+		"expired":    {stored: model.LeaseNone, ago: lease + 60, want: "#5 held by session-B (LEASE EXPIRED: last seen 2h01m ago; `take` reclaims it)"},
+		"unreadable": {stored: model.LeaseUnreadable, ago: 10, want: "#5 held by session-B (lease unreadable: clear the row by hand)"},
+		"own_lease":  {stored: 5, ago: 10, want: "#5 held by session-B (LEASE EXPIRED: last seen 0h00m ago; `take` reclaims it)"},
 	}
 
-	assert.Equal(t, 1, ok.bd.count("create"))
-	assert.Equal(t, 2, ok.bd.count("agent"))
-	assert.True(t, ok.bd.called("create", "--id", "p-agent-session-A", "--title", "lock owner session-A", "--type", "agent", "--labels", "gt:agent", "--silent",
-		"--description", "Liveness for the claim: last_activity is this owner's last heartbeat."))
-
-	_, err = ok.claims.Beat(ctx(), "a-b")
-	assert.ErrorContains(t, err, "owner token")
-}
-
-func TestBeat_AShowThatPrintsSomethingElseIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.fail["show"] = model.CommandResult{Stdout: "not json"}
-
-	_, err := h.claims.Beat(ctx(), "A")
-	require.ErrorContains(t, err, "claim: cannot parse `bd show p-agent-session-A` (")
-	require.ErrorContains(t, err, "); refusing to answer")
-
-	err = h.claims.Take(ctx(), "A", "5")
-	require.ErrorContains(t, err, "claim: cannot parse `bd show p-agent-session-A`")
-
-	h.bd.fail["show"] = model.CommandResult{Stdout: "[not json"}
-	_, err = h.claims.Beat(ctx(), "A")
-	require.ErrorContains(t, err, "cannot parse `bd show")
-
-	h.bd.add("p-agent-session-A", fields{"issue_type": agentKind})
-	h.bd.fail["show"] = model.CommandResult{Stdout: `{"id":"p-agent-session-A"}`}
-	_, err = h.claims.Beat(ctx(), "A")
-	require.NoError(t, err)
-}
-
-func TestBeat_ACreatedBeadThatCannotBeShownReportsTheShowError(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	shows := 0
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if args[0] == "show" {
-			shows++
-			if shows == 2 {
-				h.bd.fail["show"] = model.CommandResult{Stdout: "garbage"}
-			}
-		}
-	})
-
-	_, err := h.claims.Beat(ctx(), "A")
-	assert.ErrorContains(t, err, "cannot parse")
-}
-
-func TestWho_SaysUnownedOneHolderOrMany(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	who, err := h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 unowned", who)
-
-	h.hold("5", sessionA, "")
-	who, err = h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-A", who)
-
-	h.hold("5", sessionB, "-twin")
-	h.hold("5", sessionA, "-again")
-	who, err = h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-A, session-B (MORE THAN ONE HOLDER: resolve by hand)", who)
-}
-
-func TestWho_IgnoresRowsThatAreNotClaimsOrNotHeld(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.add("x1", fields{"title": "lock:gh-5 t", "status": "open", "assignee": sessionA})
-	h.bd.add("x2", fields{"title": "plain work", "status": progress, "assignee": sessionA})
-	h.bd.add("x3", fields{"title": "lock:gh-abc t", "status": progress, "assignee": sessionA})
-	h.bd.add("x4", fields{"title": "lock:bd-5 t", "status": progress, "assignee": sessionA})
-	h.bd.add("x5", fields{"title": "lock:gh-p-1 t", "status": progress, "assignee": sessionA})
-	h.bd.add("x6", fields{"title": nil, "status": progress, "assignee": sessionA})
-	h.bd.rows["x7"] = fields{"title": "lock:gh-5 t", "status": progress, "id": "", "assignee": "session-Z"}
-	h.bd.order = append(h.bd.order, "x7")
-	h.bd.add("x8", fields{"title": "lock:gh-5 t", "status": progress})
-
-	who, err := h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by ", who)
-}
-
-func TestWho_IgnoresAnInProgressRowWithALockTitleOfNoKind(t *testing.T) {
-	t.Parallel()
-
-	for _, title := range []string{"lock:x", "lock:", "lock:x t", "lock: t", "lock:ghx t"} {
+	for name, tt := range tests {
 		h := newHarness(t)
-		h.bd.add("x1", fields{"title": title, "status": progress, "assignee": sessionA})
+		h.hold("5", sessionB, tt.stored, tt.ago)
 
-		who, err := h.claims.Who(ctx(), "5")
-		require.NoError(t, err)
-		assert.Equal(t, "#5 unowned", who, title)
+		got, err := h.claims.Who(ctx(), "5")
+		require.NoError(t, err, name)
+		assert.Equal(t, tt.want, got, name)
 	}
 }
 
-func TestWho_RefusesAnItemThatIsNeitherKind(t *testing.T) {
-	t.Parallel()
-
-	_, err := newHarness(t).claims.Who(ctx(), "x y")
-	assert.ErrorContains(t, err, "neither a forge number nor a beads id")
-}
-
-func TestWho_AListThatCannotBeReadIsNoAnswer(t *testing.T) {
+func TestWho_SaysUnownedOrManyHolders(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.bd.fail["list"] = model.CommandResult{ExitCode: 1, Stderr: strings.Repeat("boom ", 100)}
-
-	_, err := h.claims.Who(ctx(), "5")
-	require.Error(t, err)
-	assert.True(t, strings.HasPrefix(err.Error(), "claim: cannot read the held rows from `bd list` (rc=1)"), err.Error())
-	assert.Len(t, strings.SplitN(err.Error(), "answer. ", 2)[1], 200)
-
-	for name, stdout := range map[string]string{"object": `{"id":"x"}`, "null": "null", "rows_that_are_not_objects": "[1]"} {
-		h.bd.fail["list"] = model.CommandResult{Stdout: stdout}
-		_, err = h.claims.Who(ctx(), "5")
-		assert.ErrorContains(t, err, "refusing to answer", name)
-	}
-}
-
-func TestWho_AFullPageIsNoAnswerAndOneUnderIsRead(t *testing.T) {
-	t.Parallel()
-
-	page := make([]fields, 5000)
-	for i := range page {
-		page[i] = fields{"id": "r" + strconv.Itoa(i), "title": "x", "status": progress}
-	}
-
-	h := newHarness(t)
-	h.bd.fail["list"] = model.CommandResult{Stdout: h.bd.json(page)}
-
-	_, err := h.claims.Who(ctx(), "5")
-	require.ErrorContains(t, err, "claim: the held rows returned 5000 rows, the list may be cut off; refusing")
-
-	h.bd.fail["list"] = model.CommandResult{Stdout: h.bd.json(page[1:])}
-
-	who, err := h.claims.Who(ctx(), "5")
+	got, err := h.claims.Who(ctx(), "5")
 	require.NoError(t, err)
-	assert.Equal(t, "#5 unowned", who)
-}
+	assert.Equal(t, "#5 unowned", got)
 
-func TestWho_AgentBeadsOfOtherOwnersOrWithoutAStampAreNotRead(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.bd.add("other-agent-session-B", fields{"issue_type": agentKind, "last_activity": "2000-01-01T00:00:00Z"})
-	h.bd.add("p-agent-session-B", fields{"issue_type": agentKind, "last_activity": "not a time"})
-
-	who, err := h.claims.Who(ctx(), "5")
+	h.hold("5", sessionB, model.LeaseNone, 0)
+	h.rows.extra = []model.ClaimRow{{Item: "5", Holder: sessionC}, {Item: "6", Holder: sessionA}, {Item: "5", Holder: sessionC}}
+	got, err = h.claims.Who(ctx(), "5")
 	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-B", who)
-
-	h.bd.rows["p-agent-session-B"]["last_activity"] = ""
-	who, err = h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 held by session-B", who)
+	assert.Equal(t, "#5 held by session-B, session-C (MORE THAN ONE HOLDER: resolve by hand)", got)
 }
 
-func TestWho_AnAgentListThatFailsIsNoAnswer(t *testing.T) {
+func TestRelease(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.hold("5", sessionA, "")
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if args[0] == "list" && slices.Contains(args, "--type") {
-			h.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-		}
-	})
-
-	_, err := h.claims.Who(ctx(), "5")
-	assert.ErrorContains(t, err, "the agent beads")
-}
-
-func TestRelease_ClosesTheRowAndClearsTheAssignee(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionA, "")
+	h.hold("5", sessionA, lease, 0)
 	require.NoError(t, h.claims.Release(ctx(), "A", "5"))
-	assert.Equal(t, "closed", h.bd.rows[rowGH5]["status"])
-	assert.Empty(t, h.bd.rows[rowGH5]["assignee"])
 	assert.Equal(t, "released #5\n", h.said())
+	assert.Empty(t, h.rows.rows)
 
-	who, err := h.claims.Who(ctx(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, "#5 unowned", who)
-}
-
-func TestRelease_OfAnItemNobodyHoldsSaysSo(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
+	h = newHarness(t)
 	require.NoError(t, h.claims.Release(ctx(), "A", "5"))
 	assert.Equal(t, "#5 was not locked\n", h.said())
-}
+	assert.Zero(t, h.rows.calls["Free"])
 
-func TestRelease_OfAnotherOwnersHoldRefusesWithCodeThree(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.hold("5", sessionB, "")
-	h.hold("5", "session-C", "-twin")
-	h.hold("5", sessionB, "-again")
-
+	h.hold("5", sessionB, lease, 0)
 	err := h.claims.Release(ctx(), "A", "5")
-	require.EqualError(t, err, "REFUSED: #5 is held by session-B, session-C, not session-A")
+	require.EqualError(t, err, "REFUSED: #5 is held by session-B, not session-A")
 	assert.Equal(t, claim.CodeHeld, h.code(err))
-	assert.Equal(t, progress, h.bd.rows[rowGH5]["status"])
+	assert.Contains(t, h.rows.rows, "5")
 }
 
 func TestRelease_ThatDidNotTakeEffectIsARefusal(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.hold("5", sessionA, "")
-	h.bd.fail["update"] = model.CommandResult{}
+	h.hold("5", sessionA, lease, 0)
+	h.rows.freeKeeps = true
 
 	err := h.claims.Release(ctx(), "A", "5")
-	require.EqualError(t, err, `claim: release of #5 did not take effect on p-lock-gh-5: status "in_progress", assignee "session-A"`)
+	require.EqualError(t, err, `claim: release of #5 did not take effect: still held by "session-A"`)
 	assert.Equal(t, claim.CodeRefused, h.code(err))
-
-	closed := newHarness(t)
-	closed.hold("5", sessionA, "")
-	closed.bd.fail["update"] = model.CommandResult{}
-	closed.bd.hooks = append(closed.bd.hooks, func(args []string) {
-		if args[0] == "update" {
-			closed.bd.rows[rowGH5]["status"], closed.bd.rows[rowGH5]["assignee"] = "closed", sessionB
-		}
-	})
-	assert.ErrorContains(t, closed.claims.Release(ctx(), "A", "5"), `status "closed", assignee "session-B"`)
+	assert.Empty(t, h.said())
 }
 
-func TestRelease_WhoseRowVanishedIsARefusal(t *testing.T) {
+func TestEveryReadAndWriteThatFailsIsARefusalThatKeepsItsCause(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	h.hold("5", sessionA, "")
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if args[0] == "update" {
-			delete(h.bd.rows, rowGH5)
+	steps := map[string]func(h *harness) error{
+		"take":         func(h *harness) error { return h.claims.Take(ctx(), "A", "5") },
+		"release":      func(h *harness) error { return h.claims.Release(ctx(), "A", "5") },
+		"ensure_free":  func(h *harness) error { return h.claims.EnsureFree(ctx(), "A", "5") },
+		"who":          func(h *harness) error { _, err := h.claims.Who(ctx(), "5"); return err },
+		"take_expired": func(h *harness) error { return h.claims.Take(ctx(), "A", "5") },
+	}
+	tests := []struct{ step, method string }{
+		{"take", "HeldRows"},
+		{"take", "Row"},
+		{"take", "TryHold"},
+		{"take", "StoreLease"},
+		{"release", "HeldRows"},
+		{"release", "Free"},
+		{"release", "Row"},
+		{"ensure_free", "HeldRows"},
+		{"ensure_free", "LastSeen"},
+		{"who", "HeldRows"},
+		{"who", "LastSeen"},
+		{"take_expired", "Free"},
+		{"take_expired", "LastSeen"},
+		{"take_expired", "Row"},
+	}
+
+	for _, tt := range tests {
+		h := newHarness(t)
+		if tt.step == "take_expired" || tt.step == "ensure_free" || tt.step == "who" {
+			h.hold("5", sessionB, model.LeaseNone, lease+1)
 		}
-	})
-	assert.ErrorContains(t, h.claims.Release(ctx(), "A", "5"), "did not take effect on p-lock-gh-5: the row is gone")
-}
 
-func TestRelease_ClosesEveryRowTheOwnerHoldsForTheItem(t *testing.T) {
-	t.Parallel()
+		if tt.step == "release" {
+			h.hold("5", sessionA, lease, 0)
+		}
 
-	h := newHarness(t)
-	h.hold("5", sessionA, "")
-	h.hold("5", sessionA, "-twin")
-	require.NoError(t, h.claims.Release(ctx(), "A", "5"))
-	assert.Equal(t, "released #5\n", h.said())
+		h.rows.fail[tt.method] = errBoom
+		err := steps[tt.step](h)
 
-	for _, r := range h.bd.rows {
-		assert.Equal(t, "closed", r["status"])
+		require.ErrorIs(t, err, errBoom, tt.step+" "+tt.method)
+		assert.Equal(t, claim.CodeRefused, h.code(err), tt.step+" "+tt.method)
 	}
 }
 
-func TestRelease_RefusesBadNamesAndUnreadableRows(t *testing.T) {
+func TestAHeldRowsReadFailsAfterTheFirstReadIsStillARefusal(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	require.ErrorContains(t, h.claims.Release(ctx(), "a-b", "5"), "owner token")
-	require.ErrorContains(t, h.claims.Release(ctx(), "A", "x y"), "neither a forge number")
-
-	h.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-	require.ErrorContains(t, h.claims.Release(ctx(), "A", "5"), "refusing to answer")
-
-	broken := newHarness(t)
-	broken.hold("5", sessionA, "")
-	broken.bd.hooks = append(broken.bd.hooks, func(args []string) {
-		if args[0] == "update" {
-			broken.bd.fail["show"] = model.CommandResult{Stdout: "garbage"}
+	h.hold("5", sessionB, model.LeaseNone, lease+1)
+	h.rows.onCall = func(method string, call int) {
+		if method == "HeldRows" && call == 3 {
+			h.rows.fail["HeldRows"] = errBoom
 		}
-	})
-	require.ErrorContains(t, broken.claims.Release(ctx(), "A", "5"), "cannot parse")
-}
-
-func TestTake_RefusesBadNamesAndUnreadableState(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	require.ErrorContains(t, h.claims.Take(ctx(), "a-b", "5"), "owner token")
-	require.ErrorContains(t, h.claims.Take(ctx(), "A", "x y"), "neither a forge number")
-
-	listFails := newHarness(t)
-	listFails.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-	require.ErrorContains(t, listFails.claims.Take(ctx(), "A", "5"), "refusing to answer")
-
-	// Each stage of a take reads the rows; make the nth list call fail to reach each read.
-	for stage := 2; stage <= 5; stage++ {
-		staged := newHarness(t)
-		staged.hold("5", sessionB, "")
-		staged.seen(sessionB, lease+60)
-
-		calls := 0
-		staged.bd.hooks = append(staged.bd.hooks, func(args []string) {
-			if args[0] == "list" {
-				calls++
-				if calls == stage {
-					staged.bd.fail["list"] = model.CommandResult{Stdout: "garbage"}
-				}
-			}
-		})
-		require.ErrorContains(t, staged.claims.Take(ctx(), "A", "5"), "refusing to answer", stage)
 	}
+
+	err := h.claims.Take(ctx(), "A", "5")
+	require.ErrorIs(t, err, errBoom)
 }
 
-func TestTake_RefusesWhenARowReadFailsMidway(t *testing.T) {
+func TestARefusalFromTheTrackerKeepsItsCode(t *testing.T) {
 	t.Parallel()
 
-	for stage := 2; stage <= 6; stage++ {
-		staged := newHarness(t)
-		staged.hold("5", sessionB, "")
-		staged.seen(sessionB, lease+60)
+	h := newHarness(t)
+	h.rows.fail["HeldRows"] = &claim.Error{Code: claim.CodeHeld, Message: "held"}
 
-		calls := 0
-		staged.bd.hooks = append(staged.bd.hooks, func(args []string) {
-			if args[0] == "show" {
-				calls++
-				if calls == stage {
-					staged.bd.fail["show"] = model.CommandResult{Stdout: "garbage"}
-				}
-			}
-		})
+	assert.Equal(t, claim.CodeHeld, h.code(h.claims.Take(ctx(), "A", "5")))
+}
 
-		err := staged.claims.Take(ctx(), "A", "5")
-		require.ErrorContains(t, err, "cannot parse `bd show", stage)
+func TestBadNamesAreRefusedBeforeAnyRowIsRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	for _, err := range []error{
+		h.claims.Take(ctx(), "a b", "5"), h.claims.Take(ctx(), "A", "x y"), h.claims.Release(ctx(), "", "5"),
+		h.claims.Release(ctx(), "A", "x y"), h.claims.EnsureFree(ctx(), "a b", "5"), h.claims.EnsureFree(ctx(), "A", "x y"),
+	} {
+		assert.Equal(t, claim.CodeRefused, h.code(err))
 	}
-}
 
-func TestTake_AWarningGoesToTheWarnWriterAndTheClaimToTheOutWriter(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.heartbeatFails = true
-	h.bd.fail["agent"] = model.CommandResult{ExitCode: 1, Stderr: "no heartbeat"}
-	require.NoError(t, h.claims.Take(ctx(), "A", "5"))
-	assert.Equal(t, "TAKEN #5 by session-A\n", h.said())
-	assert.True(t, strings.HasPrefix(h.warn.String(), "WARNING: heartbeat for p-agent-session-A failed: no heartbeat."))
-}
-
-func TestTake_ABeadsItemWhoseShowIsUnreadableIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.bd.add("p-7", fields{"title": "work"})
-
-	shows := 0
-	h.bd.hooks = append(h.bd.hooks, func(args []string) {
-		if args[0] == "show" {
-			shows++
-			if shows == 4 {
-				h.bd.fail["show"] = model.CommandResult{Stdout: "garbage"}
-			}
-		}
-	})
-	assert.ErrorContains(t, h.claims.Take(ctx(), "A", "p-7"), "cannot parse `bd show p-7`")
+	_, err := h.claims.Who(ctx(), "x y")
+	assert.Equal(t, claim.CodeRefused, h.code(err))
+	assert.Empty(t, h.rows.calls)
 }
 
 func TestNew_RefusesWhatWouldLetASecondRunTakeALiveHold(t *testing.T) {
 	t.Parallel()
 
 	good := claim.Options{
-		BD: newFakeBd(t), GH: &fakeGh{}, Prefix: "p", Repo: "owner/name", Lease: model.DefaultClaimLease, Settle: model.DefaultClaimSettle,
-		Clock: time.Now, Sleep: time.Sleep, Out: &bytes.Buffer{}, Warn: &bytes.Buffer{},
+		Rows: newFakeRows(), Lease: model.DefaultClaimLease, Settle: model.DefaultClaimSettle,
+		Clock: time.Now, Sleep: time.Sleep, Nonce: claim.RandomNonce, Out: &bytes.Buffer{}, Warn: &bytes.Buffer{},
 	}
 	tests := map[string]struct {
 		change func(*claim.Options)
@@ -859,13 +468,12 @@ func TestNew_RefusesWhatWouldLetASecondRunTakeALiveHold(t *testing.T) {
 		"zero_lease":      {func(o *claim.Options) { o.Lease = 0 }, "the lease must be at least 1s, got 0s"},
 		"sub_second":      {func(o *claim.Options) { o.Lease = 999 * time.Millisecond }, "the lease must be at least 1s"},
 		"negative_settle": {func(o *claim.Options) { o.Settle = -time.Second }, "the settle pause must not be negative"},
-		"no_bd":           {func(o *claim.Options) { o.BD = nil }, "the BD runner is required"},
-		"no_gh":           {func(o *claim.Options) { o.GH = nil }, "the GH runner is required"},
+		"no_rows":         {func(o *claim.Options) { o.Rows = nil }, "the claim rows is required"},
 		"no_clock":        {func(o *claim.Options) { o.Clock = nil }, "the clock is required"},
 		"no_sleep":        {func(o *claim.Options) { o.Sleep = nil }, "the sleep function is required"},
+		"no_nonce":        {func(o *claim.Options) { o.Nonce = nil }, "the nonce source is required"},
 		"no_out":          {func(o *claim.Options) { o.Out = nil }, "the output writer is required"},
 		"no_warn":         {func(o *claim.Options) { o.Warn = nil }, "the warning writer is required"},
-		"no_prefix":       {func(o *claim.Options) { o.Prefix = "" }, "the id prefix is required"},
 	}
 
 	for name, tt := range tests {
@@ -894,22 +502,157 @@ func TestDefaults_AreTwoHoursAndTwoSeconds(t *testing.T) {
 	assert.Equal(t, 2*time.Second, model.DefaultClaimSettle)
 }
 
-func TestListRefusals_KeepTheirCause(t *testing.T) {
+func TestError_UnwrapsItsCause(t *testing.T) {
+	t.Parallel()
+
+	failure := &claim.Error{Code: claim.CodeRefused, Message: "m", Err: errBoom}
+	assert.ErrorIs(t, failure, errBoom)
+}
+
+func TestEnsureFree_ASecondHeldRowsReadThatFailsIsARefusal(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.bd.fail["list"] = model.CommandResult{Stdout: "null"}
+	h.hold("5", sessionB, model.LeaseNone, 5)
+	h.rows.onCall = func(method string, call int) {
+		if method == "HeldRows" && call == 2 {
+			h.rows.fail["HeldRows"] = errBoom
+		}
+	}
 
-	_, err := h.claims.Who(ctx(), "5")
-	require.ErrorIs(t, err, model.ErrNullAnswer)
+	require.ErrorIs(t, h.claims.EnsureFree(ctx(), "A", "5"), errBoom)
+}
 
-	h.bd.fail["list"] = model.CommandResult{Stdout: "nope"}
-	_, err = h.claims.Who(ctx(), "5")
+func TestRandomNonce_IsNewEachTime(t *testing.T) {
+	t.Parallel()
 
-	var syntax *json.SyntaxError
-	require.ErrorAs(t, err, &syntax)
+	first, second := claim.RandomNonce(), claim.RandomNonce()
 
-	h.bd.fail["show"] = model.CommandResult{Stdout: "nope"}
-	_, err = h.claims.Beat(ctx(), "A")
-	require.ErrorAs(t, err, &syntax)
+	assert.NotEmpty(t, first)
+	assert.NotEqual(t, first, second)
+}
+
+func TestRelease_OfARowThatChangedHandsAfterTheReadIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionA, lease, 0)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "Free" {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionA, Nonce: "newer"}
+		}
+	}
+
+	err := h.claims.Release(ctx(), "A", "5")
+
+	require.EqualError(t, err, "REFUSED: #5 was claimed by another owner in the same window. Do not touch it.")
+	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.Equal(t, "newer", h.rows.rows["5"].Nonce)
+}
+
+func TestRelease_ARowReadThatFailsAfterTheFreeIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionA, lease, 0)
+	h.rows.onCall = func(method string, call int) {
+		if method == "Row" && call == 2 {
+			h.rows.fail["Row"] = errBoom
+		}
+	}
+
+	err := h.claims.Release(ctx(), "A", "5")
+
+	require.ErrorIs(t, err, errBoom)
+	assert.Empty(t, h.said())
+}
+
+func TestTake_AStoreLeaseThatFindsAnotherTakeIsRefusedWithCodeThree(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.rows.fail["StoreLease"] = model.ErrRowMoved
+
+	err := h.claims.Take(ctx(), "A", "5")
+
+	require.EqualError(t, err, "REFUSED: #5 was claimed by another owner in the same window.")
+	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.NotContains(t, h.said(), "TAKEN")
+}
+
+func TestTake_ARowThatChangedHandsAfterTheLeaseWasStoredIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "StoreLease" {
+			h.rows.onCall = func(next string, _ int) {
+				if next == "Row" {
+					h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionA, Nonce: "newer"}
+				}
+			}
+		}
+	}
+
+	err := h.claims.Take(ctx(), "A", "5")
+
+	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.NotContains(t, h.said(), "TAKEN")
+}
+
+func TestTake_ARowReadThatFailsAfterTheLeaseWasStoredIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "StoreLease" {
+			h.rows.fail["Row"] = errBoom
+		}
+	}
+
+	err := h.claims.Take(ctx(), "A", "5")
+
+	require.ErrorIs(t, err, errBoom)
+	assert.Equal(t, claim.CodeRefused, h.code(err))
+}
+
+func TestTake_AReclaimWhoseFreeFindsAnotherTakeIsRefusedWithCodeThree(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionB, model.LeaseNone, lease+1)
+	h.rows.fail["Free"] = model.ErrRowMoved
+
+	err := h.claims.Take(ctx(), "A", "5")
+
+	assert.Equal(t, claim.CodeHeld, h.code(err))
+	assert.NotContains(t, h.said(), "reclaiming")
+}
+
+func TestRelease_OfARowThatChangedHandsBeforeTheFreeReadIsRefusedOrAlreadyFree(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionA, lease, 0)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "Row" {
+			h.rows.rows["5"] = model.ClaimRow{Item: "5", Holder: sessionB}
+		}
+	}
+
+	err := h.claims.Release(ctx(), "A", "5")
+
+	require.EqualError(t, err, "REFUSED: #5 is held by session-B, not session-A")
+	assert.Zero(t, h.rows.calls["Free"])
+
+	h = newHarness(t)
+	h.hold("5", sessionA, lease, 0)
+	h.rows.onCall = func(method string, _ int) {
+		if method == "Row" {
+			delete(h.rows.rows, "5")
+		}
+	}
+
+	require.NoError(t, h.claims.Release(ctx(), "A", "5"))
+	assert.Equal(t, "#5 was not locked\n", h.said())
 }

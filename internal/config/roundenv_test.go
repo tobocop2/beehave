@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 )
 
-const envFileText = "REPO=file/repo\nISSUE_STORE=github\nBASE=development\nQUOTED=\"quoted-value\"\n"
+const envFileText = "REPO=file/repo\nBASE=development\nQUOTED=\"quoted-value\"\n"
 
 func loadWith(t *testing.T, extra map[string]string) config.Round {
 	t.Helper()
@@ -38,12 +38,12 @@ func TestLoadRound_Precedence(t *testing.T) {
 	}{
 		{
 			name: "file_fills_every_key_when_nothing_is_exported",
-			want: map[string]string{"REPO": "file/repo", "ISSUE_STORE": "github", "BASE": "development", "QUOTED": "quoted-value"},
+			want: map[string]string{"REPO": "file/repo", "BASE": "development", "QUOTED": "quoted-value"},
 		},
 		{
 			name:  "environment_wins_for_several_keys",
-			extra: map[string]string{"REPO": "caller/wins", "ISSUE_STORE": "notastore", "BASE": "other"},
-			want:  map[string]string{"REPO": "caller/wins", "ISSUE_STORE": "notastore", "BASE": "other", "QUOTED": "quoted-value"},
+			extra: map[string]string{"REPO": "caller/wins", "BASE": "other"},
+			want:  map[string]string{"REPO": "caller/wins", "BASE": "other", "QUOTED": "quoted-value"},
 		},
 		{
 			name:  "exported_empty_value_is_kept_not_refilled",

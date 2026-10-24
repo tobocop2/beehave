@@ -2,7 +2,6 @@ package store
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -45,40 +44,11 @@ func refuse(format string, args ...any) *Error {
 	return &Error{Code: CodeRefused, Message: fmt.Sprintf(format, args...)}
 }
 
-// CreateRequest holds the arguments of Create. Kind, Parent and Assignee are optional.
-type CreateRequest struct {
-	Title          string
-	BodyFile       string
-	Severity       model.Severity
-	Kind           string
-	Parent         string
-	Assignee       string
-	AllowDuplicate bool
-}
-
-// Validate refuses a request without a title, a non-empty body file or a severity from P0 to P3.
-func (r CreateRequest) Validate() error {
-	if r.Title == "" {
-		return refuse("REFUSE: create needs --title")
-	}
-
-	if !nonEmptyFile(r.BodyFile) {
-		return refuse("REFUSE: create needs --body-file with the finding and its reproduction")
-	}
-
-	if _, err := model.ParseSeverity(string(r.Severity)); err != nil {
-		return refuse("REFUSE: create needs --severity P0, P1, P2 or P3, got '%s'", r.Severity)
+// validated refuses an invalid request with code 2.
+func validated(request model.CreateRequest) error {
+	if err := request.Validate(); err != nil {
+		return &Error{Code: CodeRefused, Message: "REFUSE: " + err.Error(), Err: err}
 	}
 
 	return nil
-}
-
-func nonEmptyFile(path string) bool {
-	if path == "" {
-		return false
-	}
-
-	info, err := os.Stat(path)
-
-	return err == nil && info.Size() > 0
 }

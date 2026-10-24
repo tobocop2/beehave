@@ -3,9 +3,9 @@ package claim_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,281 +16,169 @@ import (
 )
 
 const (
-	lease     = 7200
-	progress  = "in_progress"
-	nowUnix   = 1_900_000_000
-	rowGH5    = "p-lock-gh-5"
-	sessionA  = "session-A"
-	sessionB  = "session-B"
-	agentKind = "agent"
+	lease    = 7200
+	nowUnix  = 1_900_000_000
+	sessionA = "session-A"
+	sessionB = "session-B"
+	sessionC = "session-C"
 )
 
-type fields = map[string]any
+var errBoom = errors.New("boom")
 
-// fakeBd keeps rows in memory and answers the bd commands the claim code uses. It copies the behaviors the claim code is written around:
-// a refused --claim exits 0, the claim tests the assignee, create --id on an existing row resets it, and show resolves a partial id by prefix.
-type fakeBd struct {
-	t              *testing.T
-	rows           map[string]fields
-	order          []string
-	calls          [][]string
-	hooks          []func(args []string)
-	fail           map[string]model.CommandResult
-	heartbeatFails bool
+// fakeRows keeps one claim row for each item in memory. It follows the model.ClaimRows rules:
+// TryHold sets the holder only when none is set, and Free removes the row.
+type fakeRows struct {
+	rows      map[string]model.ClaimRow
+	extra     []model.ClaimRow
+	seen      map[string]time.Time
+	fail      map[string]error
+	deaf      int
+	freeKeeps bool
+	calls     map[string]int
+	onCall    func(method string, call int)
 }
 
-func newFakeBd(t *testing.T) *fakeBd {
-	t.Helper()
-
-	return &fakeBd{t: t, rows: map[string]fields{}, fail: map[string]model.CommandResult{}}
+func newFakeRows() *fakeRows {
+	return &fakeRows{rows: map[string]model.ClaimRow{}, seen: map[string]time.Time{}, fail: map[string]error{}, calls: map[string]int{}}
 }
 
-func (b *fakeBd) add(id string, extra fields) fields {
-	row := fields{"id": id, "status": "open", "title": id}
-	for key, value := range extra {
-		row[key] = value
+// enter counts a call, runs the hook and returns the planned failure.
+func (f *fakeRows) enter(method string) error {
+	f.calls[method]++
+
+	if f.onCall != nil {
+		f.onCall(method, f.calls[method])
 	}
 
-	if _, found := b.rows[id]; !found {
-		b.order = append(b.order, id)
-	}
-
-	b.rows[id] = row
-
-	return row
+	return f.fail[method]
 }
 
-func (b *fakeBd) Run(_ context.Context, args []string) model.CommandResult {
-	b.calls = append(b.calls, slices.Clone(args))
-
-	for _, hook := range slices.Clone(b.hooks) {
-		hook(args)
+func (f *fakeRows) HeldRows(context.Context) ([]model.ClaimRow, error) {
+	if err := f.enter("HeldRows"); err != nil {
+		return nil, err
 	}
 
-	if planned, found := b.fail[args[0]]; found {
-		return planned
+	held := slices.Clone(f.extra)
+	for _, row := range f.rows {
+		held = append(held, row)
 	}
 
-	switch args[0] {
-	case "list":
-		return b.list(args[1:])
-	case "show":
-		return b.show(args[1])
-	case "create":
-		return b.create(args[1:])
-	case "update":
-		return b.update(args[1:])
-	case "agent":
-		return b.heartbeat(args[2])
-	}
-
-	return model.CommandResult{ExitCode: 1, Stderr: "fake bd: no answer planned"}
+	return held, nil
 }
 
-func (b *fakeBd) count(command string) int {
-	n := 0
-
-	for _, call := range b.calls {
-		if call[0] == command {
-			n++
-		}
+func (f *fakeRows) LastSeen(context.Context) (map[string]time.Time, error) {
+	if err := f.enter("LastSeen"); err != nil {
+		return nil, err
 	}
 
-	return n
+	return f.seen, nil
 }
 
-func (b *fakeBd) called(args ...string) bool {
-	return slices.ContainsFunc(b.calls, func(call []string) bool { return slices.Equal(call, args) })
-}
-
-func (b *fakeBd) list(rest []string) model.CommandResult {
-	rows := []fields{}
-
-	for _, id := range b.order {
-		row, kept := b.rows[id], true
-
-		for i, word := range rest {
-			if status, found := strings.CutPrefix(word, "--status="); found {
-				kept = kept && row["status"] == status
-			}
-
-			if word == "--type" {
-				kept = kept && row["issue_type"] == rest[i+1]
-			}
-		}
-
-		if kept {
-			rows = append(rows, row)
-		}
+func (f *fakeRows) Beat(_ context.Context, holder string) error {
+	if err := f.enter("Beat"); err != nil {
+		return err
 	}
 
-	return model.CommandResult{Stdout: b.json(rows)}
+	f.seen[holder] = time.Unix(nowUnix, 0)
+
+	return nil
 }
 
-func (b *fakeBd) show(wanted string) model.CommandResult {
-	row, found := b.rows[wanted]
-	if !found {
-		var near []fields
-
-		for _, id := range b.order {
-			if strings.HasPrefix(id, wanted) {
-				near = append(near, b.rows[id])
-			}
-		}
-
-		if len(near) != 1 {
-			return model.CommandResult{ExitCode: 1, Stderr: "no issue found matching " + wanted}
-		}
-
-		row = near[0]
+func (f *fakeRows) Row(_ context.Context, item string) (model.RowState, error) {
+	if err := f.enter("Row"); err != nil {
+		return model.RowState{}, err
 	}
 
-	return model.CommandResult{Stdout: b.json([]fields{row})}
+	row, found := f.rows[item]
+
+	return model.RowState{Exists: found, Held: found, Holder: row.Holder, Nonce: row.Nonce}, nil
 }
 
-func options(rest []string, from int) map[string]string {
-	found := map[string]string{}
-
-	for i := from; i < len(rest)-1; i++ {
-		if strings.HasPrefix(rest[i], "--") {
-			found[rest[i]] = rest[i+1]
-		}
+func (f *fakeRows) TryHold(_ context.Context, row model.ClaimRow) error {
+	if err := f.enter("TryHold"); err != nil {
+		return err
 	}
 
-	return found
-}
+	if f.deaf > 0 {
+		f.deaf--
 
-func (b *fakeBd) create(rest []string) model.CommandResult {
-	opts := options(rest, 0)
-	kind := opts["--type"]
-
-	if kind == "" {
-		kind = "task"
+		return nil
 	}
 
-	b.add(opts["--id"], fields{"title": opts["--title"], "issue_type": kind, "last_activity": nil})
-
-	return model.CommandResult{Stdout: opts["--id"]}
-}
-
-func (b *fakeBd) update(rest []string) model.CommandResult {
-	row, found := b.rows[rest[0]]
-	if !found {
-		return model.CommandResult{ExitCode: 1, Stderr: "no such row"}
+	if _, held := f.rows[row.Item]; !held {
+		f.rows[row.Item] = row
 	}
 
-	opts := options(rest, 1)
+	return nil
+}
 
-	if slices.Contains(rest, "--claim") {
-		if assignee := textOf(row["assignee"]); assignee != "" {
-			return model.CommandResult{Stderr: "Error claiming: already claimed by " + assignee}
-		}
-
-		row["status"] = progress
+func (f *fakeRows) StoreLease(_ context.Context, row model.ClaimRow) error {
+	if err := f.enter("StoreLease"); err != nil {
+		return err
 	}
 
-	for flag, key := range map[string]string{"--status": "status", "--assignee": "assignee", "--description": "description"} {
-		if value, set := opts[flag]; set {
-			row[key] = value
-		}
+	f.rows[row.Item] = row
+
+	return nil
+}
+
+func (f *fakeRows) Free(_ context.Context, row model.ClaimRow) error {
+	if err := f.enter("Free"); err != nil {
+		return err
 	}
 
-	return model.CommandResult{}
-}
-
-func (b *fakeBd) heartbeat(id string) model.CommandResult {
-	if b.heartbeatFails {
-		return model.CommandResult{ExitCode: 1, Stderr: "heartbeat refused"}
+	if current, found := f.rows[row.Item]; found && (current.Holder != row.Holder || current.Nonce != row.Nonce) {
+		return model.ErrRowMoved
 	}
 
-	b.rows[id]["last_activity"] = "2026-10-01T00:00:00Z"
+	if !f.freeKeeps {
+		delete(f.rows, row.Item)
+	}
 
-	return model.CommandResult{}
-}
-
-func (b *fakeBd) json(value any) string {
-	b.t.Helper()
-
-	data, err := json.Marshal(value)
-	require.NoError(b.t, err)
-
-	return string(data)
-}
-
-type fakeGh struct {
-	result model.CommandResult
-	calls  [][]string
-}
-
-func (g *fakeGh) Run(_ context.Context, args []string) model.CommandResult {
-	g.calls = append(g.calls, slices.Clone(args))
-
-	return g.result
+	return nil
 }
 
 type harness struct {
 	t      *testing.T
-	bd     *fakeBd
-	gh     *fakeGh
+	rows   *fakeRows
 	out    bytes.Buffer
 	warn   bytes.Buffer
 	slept  []time.Duration
 	claims *claim.Claims
-	sleep  func(time.Duration)
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
-	h := &harness{t: t, bd: newFakeBd(t), gh: &fakeGh{}}
-	h.sleep = func(d time.Duration) { h.slept = append(h.slept, d) }
-	h.build()
-
-	return h
-}
-
-func (h *harness) build() {
+	h := &harness{t: t, rows: newFakeRows()}
+	takes := 0
 	claims, err := claim.New(claim.Options{
-		BD: h.bd, GH: h.gh, Prefix: "p", Repo: "owner/name",
-		Lease: lease * time.Second, Settle: 500 * time.Millisecond,
+		Rows: h.rows, Lease: lease * time.Second, Settle: 500 * time.Millisecond,
 		Clock: func() time.Time { return time.Unix(nowUnix, 0) },
-		Sleep: func(d time.Duration) { h.sleep(d) },
+		Sleep: func(d time.Duration) { h.slept = append(h.slept, d) },
+		Nonce: func() string { takes++; return fmt.Sprintf("take-%d", takes) },
 		Out:   &h.out, Warn: &h.warn,
 	})
-	require.NoError(h.t, err)
+	require.NoError(t, err)
 
 	h.claims = claims
+
+	return h
 }
 
 func (h *harness) said() string {
 	return h.out.String()
 }
 
-func (h *harness) hold(item, who, suffix string) string {
+// hold makes who the holder of item with a stored lease, last seen secondsAgo seconds before now. A negative value leaves who without a beat.
+func (h *harness) hold(item, who string, storedLease, secondsAgo int64) {
 	h.t.Helper()
 
-	return h.holdKind(item, who, "gh", suffix)
-}
+	h.rows.rows[item] = model.ClaimRow{Item: item, Holder: who, Lease: storedLease}
 
-func (h *harness) holdKind(item, who, kind, suffix string) string {
-	h.t.Helper()
-
-	id := "p-lock-" + kind + "-" + item + suffix
-	h.bd.add(id, fields{"title": "lock:" + kind + "-" + item + " t", "status": progress, "assignee": who})
-
-	return id
-}
-
-// seen adds the agent bead of who, last stamped secondsAgo seconds before now. A negative value leaves it unstamped.
-func (h *harness) seen(who string, secondsAgo int64) {
-	h.t.Helper()
-
-	var stamp any
 	if secondsAgo >= 0 {
-		stamp = time.Unix(nowUnix-secondsAgo, 0).UTC().Format(time.RFC3339)
+		h.rows.seen[who] = time.Unix(nowUnix-secondsAgo, 0)
 	}
-
-	h.bd.add("p-agent-"+who, fields{"issue_type": agentKind, "last_activity": stamp})
 }
 
 func (h *harness) code(err error) int {
@@ -300,12 +188,4 @@ func (h *harness) code(err error) int {
 	require.ErrorAs(h.t, err, &failure)
 
 	return failure.Code
-}
-
-func textOf(value any) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-
-	return ""
 }

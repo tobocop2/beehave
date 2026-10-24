@@ -1,0 +1,235 @@
+package storetest_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/store/storetest"
+)
+
+func run(runner storetest.Runner, args ...string) model.CommandResult {
+	return runner.Run(context.Background(), args)
+}
+
+func TestBd_ListFiltersByStatusAndType(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "issue_type": "task"})
+	bd.Add("p-2", storetest.Fields{"issue_type": "agent"})
+	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "issue_type": "task", "title": "again"})
+
+	var rows []map[string]any
+
+	require.NoError(t, json.Unmarshal([]byte(run(bd, "list").Stdout), &rows))
+	assert.Len(t, rows, 2)
+
+	require.NoError(t, json.Unmarshal([]byte(run(bd, "list", "--status="+storetest.Progress).Stdout), &rows))
+	assert.Len(t, rows, 1)
+
+	require.NoError(t, json.Unmarshal([]byte(run(bd, "list", "--type", "agent").Stdout), &rows))
+	assert.Equal(t, "p-2", rows[0]["id"])
+	assert.Equal(t, 3, bd.Count("list"))
+	assert.True(t, bd.Called("list", "--type", "agent"))
+	assert.False(t, bd.Called("list", "--type"))
+}
+
+func TestBd_ShowResolvesAPartialIdAndPrintsTheTextOfTheVersion(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-lock-gh-5", nil)
+	bd.Add("p-lock-gh-6", nil)
+
+	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-5").ExitCode)
+	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-5", "--json").ExitCode)
+
+	ambiguous := run(bd, "show", "p-lock")
+	assert.Equal(t, 1, ambiguous.ExitCode)
+	assert.Equal(t, `Error fetching p-lock: no issue found matching "p-lock"`, ambiguous.Stderr)
+
+	bd.V1 = true
+	assert.Equal(t, "Issue p-x not found\nHint: check the id", run(bd, "show", "p-x").Stderr)
+
+	bd.Add("p-lock-gh-7-extra", nil)
+	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-7").ExitCode, "one row starts with the id")
+}
+
+func TestBd_CreateAndUpdate(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	assert.Equal(t, "p-1", run(bd, "create", "--id", "p-1", "--title", "t", "--description", "d").Stdout)
+	assert.Equal(t, "task", bd.Rows["p-1"]["issue_type"])
+	run(bd, "create", "--id", "p-2", "--type", "agent")
+	assert.Equal(t, "agent", bd.Rows["p-2"]["issue_type"])
+
+	missing := run(bd, "update", "p-9", "--status", "closed")
+	assert.Equal(t, 1, missing.ExitCode)
+	assert.Equal(t, `Error resolving p-9: no issue found matching "p-9"`, missing.Stderr)
+
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--description", "new", "--status", "closed").ExitCode)
+	assert.Equal(t, "new", bd.Rows["p-1"]["description"])
+	assert.Equal(t, "closed", bd.Rows["p-1"]["status"])
+}
+
+func TestBd_ClaimFollowsBd132(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", nil)
+
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--assignee", "a").ExitCode)
+	assert.Equal(t, storetest.Progress, bd.Rows["p-1"]["status"])
+	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
+
+	lost := run(bd, "update", "p-1", "--claim", "--assignee", "b")
+	assert.Equal(t, 1, lost.ExitCode, "bd 1.3.2 exits 1 on a refused claim")
+	assert.Contains(t, lost.Stderr, "issue already claimed by a")
+	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
+
+	bd.Add("p-2", storetest.Fields{"assignee": "old"})
+	assigned := run(bd, "update", "p-2", "--claim", "--assignee", "b")
+	assert.Equal(t, 1, assigned.ExitCode)
+	assert.Contains(t, assigned.Stderr, `issue already claimed: already assigned to "old"`)
+
+	bd.Add("p-3", storetest.Fields{"status": "closed"})
+	closed := run(bd, "update", "p-3", "--claim", "--assignee", "b")
+	assert.Equal(t, 1, closed.ExitCode)
+	assert.Contains(t, closed.Stderr, "issue not claimable: status closed")
+	assert.Equal(t, "closed", bd.Rows["p-3"]["status"], "a claim keeps the status filter")
+}
+
+func TestBd_UnclaimReopensTheRowOnlyForTheNamedAssignee(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a#1"})
+
+	mismatch := run(bd, "unclaim", "p-1", "--if-assignee", "a#2")
+	assert.Equal(t, 1, mismatch.ExitCode, "bd 1.3.2 exits 1 on a release mismatch")
+	assert.Contains(t, mismatch.Stderr, `assignee mismatch: p-1 is held by "a#1", expected "a#2"`)
+	assert.Equal(t, "a#1", bd.Rows["p-1"]["assignee"])
+
+	assert.Equal(t, 0, run(bd, "unclaim", "p-1", "--if-assignee", "a#1").ExitCode)
+	assert.Equal(t, "open", bd.Rows["p-1"]["status"])
+	assert.Empty(t, bd.Rows["p-1"]["assignee"])
+
+	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "a#1").Stderr, "assignee mismatch")
+
+	bd.Rows["p-1"]["status"] = "closed"
+	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "").Stderr, "cannot unclaim closed issue")
+	assert.Equal(t, 1, run(bd, "unclaim", "p-9", "--if-assignee", "a").ExitCode)
+
+	bd.NoGuard = true
+	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "a").Stderr, "unknown flag")
+}
+
+func TestBd_GuardWritesNothingWhenTheAssigneeDiffers(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", storetest.Fields{"assignee": "a"})
+
+	mismatch := run(bd, "update", "p-1", "--if-assignee", "b", "--assignee", "")
+	assert.Equal(t, 13, mismatch.ExitCode)
+	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
+
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--if-assignee", "a", "--assignee", "").ExitCode)
+	assert.Empty(t, bd.Rows["p-1"]["assignee"])
+
+	bd.Rows["p-1"]["status"] = "closed"
+	status := run(bd, "update", "p-1", "--if-assignee", "", "--if-status", "in_progress", "--assignee", "x")
+	assert.Equal(t, 13, status.ExitCode)
+	assert.Contains(t, status.Stderr, "status mismatch")
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--if-status", "closed", "--assignee", "x").ExitCode)
+	assert.Equal(t, "x", bd.Rows["p-1"]["assignee"])
+
+	bd.NoGuard = true
+	unknown := run(bd, "update", "p-1", "--if-assignee", "", "--assignee", "x")
+	assert.Equal(t, 1, unknown.ExitCode)
+	assert.Contains(t, unknown.Stderr, "unknown flag")
+}
+
+func TestBd_HeartbeatHooksAndPlannedFailures(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-agent-a", nil)
+
+	var seen []string
+
+	bd.Hooks = append(bd.Hooks, func(args []string) { seen = append(seen, args[0]) })
+
+	assert.Equal(t, 0, run(bd, "agent", "heartbeat", "p-agent-a").ExitCode)
+	assert.Equal(t, time.Unix(storetest.Now, 0).UTC().Format(time.RFC3339), bd.Rows["p-agent-a"]["last_activity"])
+
+	bd.HeartbeatFails = true
+	assert.Equal(t, "heartbeat refused", run(bd, "agent", "heartbeat", "p-agent-a").Stderr)
+
+	bd.Fail["show"] = model.CommandResult{ExitCode: 7}
+	assert.Equal(t, 7, run(bd, "show", "p-agent-a").ExitCode)
+
+	assert.Equal(t, "fake bd: no answer planned", run(bd, "frobnicate").Stderr)
+	assert.Equal(t, []string{"agent", "agent", "show", "frobnicate"}, seen)
+}
+
+func TestOptionsReadsFlagPairs(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, map[string]string{"--a": "1", "--b": "--c"}, storetest.Options([]string{"x", "--a", "1", "--b", "--c"}, 1))
+	assert.Empty(t, storetest.Options([]string{"x"}, 0))
+}
+
+func TestJSON_EncodesAValueAndNamesOneItCannotEncode(t *testing.T) {
+	t.Parallel()
+
+	assert.JSONEq(t, `{"a":1}`, storetest.JSON(map[string]int{"a": 1}))
+	assert.Contains(t, storetest.JSON(make(chan int)), "storetest: json: unsupported type")
+}
+
+func TestHookFiresOnceBeforeTheFirstMatchingCommand(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	fired := 0
+	hook := &storetest.Hook{Inner: bd, When: func(args []string) bool { return args[0] == "list" }, Fire: func() { fired++ }}
+
+	run(hook, "show", "p-1")
+	assert.Zero(t, fired)
+
+	run(hook, "list")
+	run(hook, "list")
+	assert.Equal(t, 1, fired)
+	assert.Len(t, bd.Calls, 3)
+}
+
+func TestReadsFailsReadsAndNotWritesWhileDown(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", nil)
+	reads := &storetest.Reads{Inner: bd}
+
+	assert.Equal(t, 0, run(reads, "show", "p-1").ExitCode)
+	reads.Down = true
+	assert.Equal(t, 1, run(reads, "list").ExitCode)
+	assert.Equal(t, 1, run(reads, "show", "p-1").ExitCode)
+	assert.Equal(t, 0, run(reads, "update", "p-1", "--status", "open").ExitCode)
+}
+
+func TestBd_VersionAnswersTheVersionOfTheFake(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	assert.Equal(t, "bd version 1.3.2 (dev)\n", run(bd, "--version").Stdout)
+
+	bd.Version = "0.56.1"
+	assert.Equal(t, "bd version 0.56.1 (dev)\n", run(bd, "--version").Stdout)
+}
