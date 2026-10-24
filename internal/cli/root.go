@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -23,10 +24,12 @@ const (
 // BuildInfo describes the running binary.
 type BuildInfo struct {
 	Version string
+	// Adapters builds the tracker, the forge and the lease store of a project and returns why it cannot. A nil value skips the check.
+	Adapters func(context.Context, model.Project) error
 }
 
-// NewRootCommand builds the command tree. env is the process environment, read once by the caller.
-func NewRootCommand(info BuildInfo, env map[string]string, stdout, stderr io.Writer) *cobra.Command {
+// NewRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
+func NewRootCommand(ctx context.Context, info BuildInfo, env map[string]string, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           commandName,
 		Short:         shortHelp,
@@ -38,7 +41,7 @@ func NewRootCommand(info BuildInfo, env map[string]string, stdout, stderr io.Wri
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(env))
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters))
 
 	return root
 }
@@ -52,7 +55,7 @@ func Execute(ctx context.Context, args []string, info BuildInfo, env map[string]
 		return exitError
 	}
 
-	root := NewRootCommand(info, env, stdout, stderr)
+	root := NewRootCommand(ctx, info, env, stdout, stderr)
 	root.SetArgs(args)
 
 	if err := root.ExecuteContext(ctx); err != nil {

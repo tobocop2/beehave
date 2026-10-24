@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/cli"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 func writeConfig(t *testing.T, dir, name, content string) {
@@ -35,7 +37,7 @@ func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.toml", "[[runner]]\nname = \"a\"\nagent = \"claude\"\n")
-	writeConfig(t, dir, "projects/p.toml", "repo = \"o/n\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+	writeConfig(t, dir, "projects/p.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
@@ -44,13 +46,60 @@ func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 	require.Empty(t, stderr)
 }
 
+func runWithAdapters(t *testing.T, adapters func(context.Context, model.Project) error, dir string) (int, string) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+
+	code := cli.Execute(context.Background(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Version: "x", Adapters: adapters},
+		map[string]string{}, &stdout, &stderr)
+
+	return code, stderr.String()
+}
+
+func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	text := "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
+	writeConfig(t, dir, "projects/a.toml", text)
+	writeConfig(t, dir, "projects/b.toml", text)
+
+	var built []string
+
+	code, stderr := runWithAdapters(t, func(_ context.Context, project model.Project) error {
+		built = append(built, project.Name)
+		if project.Name == "b" {
+			return errors.New("no gh on the path")
+		}
+
+		return nil
+	}, dir)
+
+	require.Equal(t, 2, code)
+	require.Equal(t, []string{"a", "b"}, built)
+	require.Equal(t, filepath.Join(dir, "projects", "b.toml")+": no gh on the path\n", stderr)
+}
+
+func TestCheckConfig_RefusesAProjectWithoutABeadsPrefixWhateverItsTracker(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/p.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 2, code)
+	require.Contains(t, stderr, "`beads_prefix` must be a non-empty string")
+}
+
 func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.toml", "bogus = 1\n")
-	writeConfig(t, dir, "projects/a.toml", "repo = \"justname\"\nbase_branch = \"main\"\ngate = \"g\"\n")
-	writeConfig(t, dir, "projects/b.toml", "repo = \"o/n\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/a.toml", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/b.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 

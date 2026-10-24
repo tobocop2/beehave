@@ -59,7 +59,7 @@ type openTitle struct {
 	title string
 }
 
-func refuseDuplicate(request CreateRequest, open []openTitle) error {
+func refuseDuplicate(request model.CreateRequest, open []openTitle) error {
 	if request.AllowDuplicate {
 		return nil
 	}

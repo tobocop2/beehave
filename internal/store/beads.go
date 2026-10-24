@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
-	bdPage     = 5000
-	lockPrefix = "lock:"
-	epicType   = "epic"
-	taskType   = "task"
+	maxStderrRunes = 200
+	bdPage         = 5000
+	lockPrefix     = "lock:"
+	epicType       = "epic"
+	taskType       = "task"
 )
 
 // BeadsType is an item type beads knows. Any other kind a caller files becomes a label on a task.
@@ -43,16 +45,27 @@ type bdRow struct {
 	Priority    *int    `json:"priority"`
 	Assignee    string  `json:"assignee"`
 	Description *string `json:"description"`
+	Status      string  `json:"status"`
+
+	LastActivity string `json:"last_activity"`
 }
 
-// BeadsStore is the open items of one beads database, read through bd.
+// BeadsStore is one beads database, read and written through bd. It implements model.Tracker.
 type BeadsStore struct {
-	run Runner
+	run    Runner
+	prefix string
+
+	mu      sync.Mutex
+	guarded bool
 }
 
-// NewBeadsStore returns a store that runs bd through run.
-func NewBeadsStore(run Runner) *BeadsStore {
-	return &BeadsStore{run: run}
+// NewBeadsStore returns a store that runs bd through run. prefix is the id prefix of the beads database; claim rows are named from it.
+func NewBeadsStore(run Runner, prefix string) (*BeadsStore, error) {
+	if prefix == "" {
+		return nil, refuse("store: the beads id prefix is required")
+	}
+
+	return &BeadsStore{run: run, prefix: prefix}, nil
 }
 
 // OpenItems lists the items bd ready names. Epics and claim rows are not work.
@@ -163,7 +176,7 @@ func (s *BeadsStore) addChildren(ctx context.Context, parents map[string]string,
 
 // Containers lists the ids of the open epics.
 func (s *BeadsStore) Containers(ctx context.Context) ([]string, error) {
-	rows, err := s.list(ctx, []string{argList, "--status=open", "--type", epicType}, "the containers list", "store: cannot read beads containers; refusing")
+	rows, err := s.list(ctx, []string{argList, "--status=open", argType, epicType}, "the containers list", "store: cannot read beads containers; refusing")
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +287,8 @@ func (s *BeadsStore) Close(ctx context.Context, item, reason string) error {
 }
 
 // Create files an item and returns its id. The duplicate check reads every item that is not closed.
-func (s *BeadsStore) Create(ctx context.Context, request CreateRequest) (string, error) {
-	if err := request.Validate(); err != nil {
+func (s *BeadsStore) Create(ctx context.Context, request model.CreateRequest) (string, error) {
+	if err := validated(request); err != nil {
 		return "", err
 	}
 
@@ -291,7 +304,7 @@ func (s *BeadsStore) Create(ctx context.Context, request CreateRequest) (string,
 	return s.file(ctx, request)
 }
 
-func (s *BeadsStore) file(ctx context.Context, request CreateRequest) (string, error) {
+func (s *BeadsStore) file(ctx context.Context, request model.CreateRequest) (string, error) {
 	done := s.run.Run(ctx, createArgs(request))
 	if done.ExitCode != 0 {
 		return "", refuse("store: bd create returned no id")
@@ -341,14 +354,14 @@ func readableCreated(id string) (string, error) {
 	return id, nil
 }
 
-func createArgs(request CreateRequest) []string {
+func createArgs(request model.CreateRequest) []string {
 	kind, label := request.Kind, ""
 	if !BeadsType(kind).known() {
 		kind, label = taskType, request.Kind
 	}
 
 	args := []string{
-		"create", request.Title, "-t", kind, "-p", strings.TrimPrefix(string(request.Severity), "P"),
+		argCreate, request.Title, "-t", kind, "-p", strings.TrimPrefix(string(request.Severity), "P"),
 		"--body-file", request.BodyFile, argJSON,
 	}
 
@@ -381,4 +394,13 @@ func (s *BeadsStore) list(ctx context.Context, command []string, what, failure s
 	}
 
 	return decodeRows[bdRow]("bd "+command[0], done.Stdout, bdPage, what)
+}
+
+func firstRunes(text string, limit int) string {
+	runes := []rune(text)
+	if len(runes) > limit {
+		runes = runes[:limit]
+	}
+
+	return string(runes)
 }

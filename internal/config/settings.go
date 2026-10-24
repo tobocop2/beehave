@@ -10,7 +10,6 @@ import (
 const (
 	holdLabel        = "hold"
 	noIntegrationPR  = "none"
-	defaultStore     = "github"
 	defaultFactor    = "2"
 	defaultJobsDir   = "/home/jobs"
 	defaultHours     = 1.0
@@ -66,9 +65,6 @@ func (s Settings) BoxSSH() string { return s.env["BOX_SSH"] }
 
 // MutationStepRE returns MUTATION_STEP_RE, or "" when unset.
 func (s Settings) MutationStepRE() string { return s.env["MUTATION_STEP_RE"] }
-
-// IssueStore returns ISSUE_STORE, or "github" when unset or empty.
-func (s Settings) IssueStore() string { return s.orDefault("ISSUE_STORE", defaultStore) }
 
 // JobsDir returns JOBS_DIR, or "/home/jobs" when unset or empty.
 func (s Settings) JobsDir() string { return s.orDefault("JOBS_DIR", defaultJobsDir) }

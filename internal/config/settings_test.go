@@ -27,7 +27,6 @@ func TestSettings_Defaults(t *testing.T) {
 	prs, err := s.IntegrationPRs()
 	require.NoError(t, err)
 
-	require.Equal(t, "github", s.IssueStore())
 	require.InDelta(t, 1.0, hours, 0)
 	require.InDelta(t, 1.0, grace, 0)
 	require.Equal(t, "2", factor)
@@ -44,7 +43,7 @@ func TestSettings_EmptyValueTakesTheDefault(t *testing.T) {
 	t.Parallel()
 
 	s := config.NewSettings(map[string]string{
-		"ISSUE_STORE": "", "IDLE_HOURS": "", "DISK_FLOOR_GB": "", "JOBS_DIR": "", "REPO": "", "GATE_LOAD_FACTOR": "",
+		"IDLE_HOURS": "", "DISK_FLOOR_GB": "", "JOBS_DIR": "", "REPO": "", "GATE_LOAD_FACTOR": "",
 	})
 	hours, err := s.IdleHours()
 	require.NoError(t, err)
@@ -53,7 +52,6 @@ func TestSettings_EmptyValueTakesTheDefault(t *testing.T) {
 	factor, err := s.GateLoadFactor()
 	require.NoError(t, err)
 
-	require.Equal(t, "github", s.IssueStore())
 	require.InDelta(t, 1.0, hours, 0)
 	require.Equal(t, 60, floor)
 	require.Equal(t, "/home/jobs", s.JobsDir())
@@ -66,7 +64,7 @@ func TestSettings_EveryKeyIsRead(t *testing.T) {
 
 	s := config.NewSettings(map[string]string{
 		"REPO": "o/n", "DEFAULT_BRANCH": "main", "ROUND_PREFIX": "round/", "BASE": "stage",
-		"INTEGRATION_BRANCH": "stage-b", "ROUND": "r3", "ISSUE_STORE": "beads", "ME_LOGIN": "me",
+		"INTEGRATION_BRANCH": "stage-b", "ROUND": "r3", "ME_LOGIN": "me",
 		"ME_EMAIL": "me@example.com", "IDLE_HOURS": "0.5", "GRACE_HOURS": "2", "INTEGRATION_PR": "7",
 		"INTEGRATION_PRS": "7,5,3", "FLOOR_PRS_STAGING": "1", "FLOOR_PRS_DEV": "2", "FLOOR_PRS_OPEN": "3",
 		"FLOOR_PRS_BASE": "4", "LANE_CAP": "6", "ROUND_EPIC": "e-1", "ROUND_ITEMS": "#a-1, b-2 c-3",
@@ -74,8 +72,8 @@ func TestSettings_EveryKeyIsRead(t *testing.T) {
 		"MUTATION_STEP_RE": "mut.*",
 	})
 
-	require.Equal(t, []string{"o/n", "main", "round/", "stage", "stage-b", "r3", "beads"},
-		[]string{s.Repo(), s.DefaultBranch(), s.RoundPrefix(), s.Base(), s.IntegrationBranch(), s.RoundName(), s.IssueStore()})
+	require.Equal(t, []string{"o/n", "main", "round/", "stage", "stage-b", "r3"},
+		[]string{s.Repo(), s.DefaultBranch(), s.RoundPrefix(), s.Base(), s.IntegrationBranch(), s.RoundName()})
 	require.Equal(t, []string{"me", "me@example.com", "e-1", "ssh box", "/srv/jobs", "mut.*"},
 		[]string{s.MeLogin(), s.MeEmail(), s.RoundEpic(), s.BoxSSH(), s.JobsDir(), s.MutationStepRE()})
 	require.Equal(t, []string{"a-1", "b-2", "c-3"}, s.RoundItems())
@@ -195,7 +193,6 @@ func TestSettings_ABadKeyBlocksOnlyItsReaders(t *testing.T) {
 	floor, err := s.DiskFloorGB()
 	require.NoError(t, err)
 	require.Equal(t, 60, floor)
-	require.Equal(t, "github", s.IssueStore())
 
 	_, _, err = s.LaneCap()
 	require.Error(t, err)
