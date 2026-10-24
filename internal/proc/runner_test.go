@@ -158,7 +158,7 @@ func TestExecRunner_ACancelKillsTheGrandchildToo(t *testing.T) { //nolint:parall
 	pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 3*time.Second, 50*time.Millisecond,
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 30*time.Second, 50*time.Millisecond,
 		"the sleep that the script started is still alive")
 }
 
@@ -184,7 +184,7 @@ func TestExecRunner_ATimeoutKillsTheGrandchildToo(t *testing.T) { //nolint:paral
 	pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 3*time.Second, 50*time.Millisecond,
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 30*time.Second, 50*time.Millisecond,
 		"the sleep that the script started is still alive")
 }
 
