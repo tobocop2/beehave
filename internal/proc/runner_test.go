@@ -1,4 +1,4 @@
-package store_test
+package proc_test
 
 import (
 	"context"
@@ -14,7 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 const fakeScript = `#!/bin/sh
@@ -22,6 +23,8 @@ case "$1" in
 out) echo "out:$2"; echo "err" >&2 ;;
 fail) exit 7 ;;
 half) printf partial >&2; exec sleep 5 ;;
+line) printf 'partial\n' >&2; exec sleep 5 ;;
+crlf) printf 'a\r\nb' ; printf 'e\r\n' >&2; exit 3 ;;
 grand) sleep 30 & echo $! > "$2"; wait ;;
 slow) exec sleep 5 ;;
 dir) pwd ;;
@@ -41,7 +44,7 @@ func fakeOnPath(t *testing.T, name, script string) string {
 
 func TestExecRunner_ReturnsOutputAndExitCode(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "bd", fakeScript)
-	run := store.ExecRunner{Binary: "bd"}
+	run := proc.ExecRunner{Binary: "bd"}
 
 	done := run.Run(context.Background(), []string{"out", "x"})
 	assert.Equal(t, 0, done.ExitCode)
@@ -56,14 +59,14 @@ func TestExecRunner_RunsInTheFolderItIsGiven(t *testing.T) { //nolint:parallelte
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 
-	done := store.ExecRunner{Binary: "bd", Dir: dir}.Run(context.Background(), []string{"dir"})
+	done := proc.ExecRunner{Binary: "bd", Dir: dir}.Run(context.Background(), []string{"dir"})
 	assert.Equal(t, dir+"\n", done.Stdout)
 }
 
 func TestExecRunner_ATimeoutReadsAsExitCode124(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "bd", fakeScript)
 
-	done := store.ExecRunner{Binary: "bd", Timeout: 100 * time.Millisecond}.Run(context.Background(), []string{"slow"})
+	done := proc.ExecRunner{Binary: "bd", Timeout: 100 * time.Millisecond}.Run(context.Background(), []string{"slow"})
 	assert.Equal(t, 124, done.ExitCode)
 	assert.Equal(t, "bd: timed out", done.Stderr)
 }
@@ -71,7 +74,7 @@ func TestExecRunner_ATimeoutReadsAsExitCode124(t *testing.T) { //nolint:parallel
 func TestExecRunner_AMissingBinaryReadsAsExitCode127(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "other", fakeScript)
 
-	done := store.ExecRunner{Binary: "bd"}.Run(context.Background(), []string{"out"})
+	done := proc.ExecRunner{Binary: "bd"}.Run(context.Background(), []string{"out"})
 	assert.Equal(t, 127, done.ExitCode)
 	assert.Equal(t, "bd: command not found", done.Stderr)
 }
@@ -79,7 +82,7 @@ func TestExecRunner_AMissingBinaryReadsAsExitCode127(t *testing.T) { //nolint:pa
 func TestExecRunner_ABinaryThatCannotStartReadsAsExitCode127(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "bd", "#!/nonexistent/interpreter\n")
 
-	done := store.ExecRunner{Binary: "bd"}.Run(context.Background(), []string{"out"})
+	done := proc.ExecRunner{Binary: "bd"}.Run(context.Background(), []string{"out"})
 	assert.Equal(t, 127, done.ExitCode)
 	assert.Contains(t, done.Stderr, "bd: ")
 }
@@ -87,9 +90,9 @@ func TestExecRunner_ABinaryThatCannotStartReadsAsExitCode127(t *testing.T) { //n
 func TestNewExecRunner_StopsACallAfterTheDefaultTimeout(t *testing.T) {
 	t.Parallel()
 
-	run := store.NewExecRunner("bd", "/some/dir")
-	assert.Equal(t, store.ExecRunner{Binary: "bd", Dir: "/some/dir", Timeout: 120 * time.Second}, run)
-	assert.Equal(t, 120*time.Second, store.DefaultTimeout)
+	run := proc.NewExecRunner("bd", "/some/dir")
+	assert.Equal(t, proc.ExecRunner{Binary: "bd", Dir: "/some/dir", Timeout: 120 * time.Second}, run)
+	assert.Equal(t, 120*time.Second, proc.DefaultTimeout)
 }
 
 func TestExecRunner_ACancelBeforeTheCallReadsAsExitCode130(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -98,7 +101,7 @@ func TestExecRunner_ACancelBeforeTheCallReadsAsExitCode130(t *testing.T) { //nol
 	stopped, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	done := store.ExecRunner{Binary: "bd"}.Run(stopped, []string{"out"})
+	done := proc.ExecRunner{Binary: "bd"}.Run(stopped, []string{"out"})
 	assert.Equal(t, 130, done.ExitCode)
 	assert.Equal(t, "bd: cancelled", done.Stderr) //nolint:misspell // the note text is the contract
 
@@ -106,7 +109,7 @@ func TestExecRunner_ACancelBeforeTheCallReadsAsExitCode130(t *testing.T) { //nol
 	defer stop()
 	<-expired.Done()
 
-	assert.Equal(t, 124, store.ExecRunner{Binary: "bd"}.Run(expired, []string{"out"}).ExitCode)
+	assert.Equal(t, 124, proc.ExecRunner{Binary: "bd"}.Run(expired, []string{"out"}).ExitCode)
 }
 
 func TestExecRunner_ACancelDuringTheCallReadsAsExitCode130(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -115,7 +118,7 @@ func TestExecRunner_ACancelDuringTheCallReadsAsExitCode130(t *testing.T) { //nol
 	stopped, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(150*time.Millisecond, cancel)
 
-	done := store.ExecRunner{Binary: "bd"}.Run(stopped, []string{"slow"})
+	done := proc.ExecRunner{Binary: "bd"}.Run(stopped, []string{"slow"})
 	assert.Equal(t, 130, done.ExitCode)
 	assert.Equal(t, "bd: cancelled", done.Stderr) //nolint:misspell // the note text is the contract
 }
@@ -123,7 +126,7 @@ func TestExecRunner_ACancelDuringTheCallReadsAsExitCode130(t *testing.T) { //nol
 func TestExecRunner_ATimeoutNoteStartsOnItsOwnLine(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "bd", fakeScript)
 
-	done := store.ExecRunner{Binary: "bd", Timeout: time.Second}.Run(context.Background(), []string{"half"})
+	done := proc.ExecRunner{Binary: "bd", Timeout: time.Second}.Run(context.Background(), []string{"half"})
 	assert.Equal(t, 124, done.ExitCode)
 	assert.Equal(t, "partial\nbd: timed out", done.Stderr)
 }
@@ -146,7 +149,7 @@ func TestExecRunner_ACancelKillsTheGrandchildToo(t *testing.T) { //nolint:parall
 		}
 	}()
 
-	done := store.ExecRunner{Binary: "bd", Timeout: time.Minute}.Run(running, []string{"grand", pidFile})
+	done := proc.ExecRunner{Binary: "bd", Timeout: time.Minute}.Run(running, []string{"grand", pidFile})
 	assert.Equal(t, 130, done.ExitCode)
 
 	text, err := os.ReadFile(pidFile) //nolint:gosec // a path the test made
@@ -157,4 +160,37 @@ func TestExecRunner_ACancelKillsTheGrandchildToo(t *testing.T) { //nolint:parall
 
 	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 3*time.Second, 50*time.Millisecond,
 		"the sleep that the script started is still alive")
+}
+
+func TestExecRunner_ATimeoutNoteAfterAFinishedLineAddsNoBlankLine(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	fakeOnPath(t, "bd", fakeScript)
+
+	done := proc.ExecRunner{Binary: "bd", Timeout: time.Second}.Run(context.Background(), []string{"line"})
+	assert.Equal(t, 124, done.ExitCode)
+	assert.Equal(t, "partial\nbd: timed out", done.Stderr)
+}
+
+func TestExecRunner_ATimeoutKillsTheGrandchildToo(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	fakeOnPath(t, "bd", fakeScript)
+
+	pidFile := filepath.Join(t.TempDir(), "pid")
+
+	done := proc.ExecRunner{Binary: "bd", Timeout: 700 * time.Millisecond}.Run(context.Background(), []string{"grand", pidFile})
+	assert.Equal(t, 124, done.ExitCode)
+
+	text, err := os.ReadFile(pidFile) //nolint:gosec // a path the test made
+	require.NoError(t, err)
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 3*time.Second, 50*time.Millisecond,
+		"the sleep that the script started is still alive")
+}
+
+func TestExecRunner_ReturnsBothStreamsWithoutLineEndingTranslation(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	fakeOnPath(t, "gh", fakeScript)
+
+	done := proc.ExecRunner{Binary: "gh"}.Run(context.Background(), []string{"crlf"})
+	assert.Equal(t, model.CommandResult{ExitCode: 3, Stdout: "a\r\nb", Stderr: "e\r\n"}, done)
 }
