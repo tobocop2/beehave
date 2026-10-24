@@ -1,0 +1,254 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - errorlint
+    - gosec
+    - misspell
+    - nakedret
+    - gocritic
+    - goconst
+    - mnd
+    - cyclop
+    - gocognit
+    - funlen
+    - nestif
+    - exhaustive
+    - gochecknoglobals
+    - gochecknoinits
+    - forbidigo
+    - depguard
+    - sloglint
+    - noctx
+    - contextcheck
+    - ireturn
+    - interfacebloat
+    - nolintlint
+    - testifylint
+    - thelper
+    - tparallel
+    - paralleltest
+    - perfsprint
+  settings:
+    cyclop:
+      max-complexity: 10
+    gocognit:
+      min-complexity: 15
+    funlen:
+      lines: 20
+      statements: 15
+      ignore-comments: true
+    nestif:
+      min-complexity: 4
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    exhaustive:
+      default-signifies-exhaustive: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 0
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    sloglint:
+      no-global: all
+      context: scope
+    revive:
+      confidence: 0.8
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: package-comments
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+    forbidigo:
+      forbid:
+        - pattern: ^os\.(Getenv|LookupEnv|Environ)$
+          msg: read the environment in internal/config only
+        - pattern: ^fmt\.(Print|Printf|Println)$
+          msg: write to an io.Writer; fmt.Print is for internal/cli only
+        - pattern: ^reflect\.
+          msg: do not reflect on owned types
+        - pattern: ^slog\.(Default|SetDefault)$
+          msg: pass a *slog.Logger in
+        - pattern: ^os\.Exit$
+          msg: return an error; os.Exit is for cmd/obee and internal/cli only
+        - pattern: ^panic$
+          msg: return an error; panic is for cmd/obee and internal/cli only
+        - pattern: ^os\.(Stdout|Stderr)$
+          msg: write to an io.Writer you receive; os.Stdout and os.Stderr are for cmd/obee and internal/cli only
+    depguard:
+      rules:
+        no-testify-in-production:
+          files: ["!$test"]
+          deny:
+            - pkg: github.com/stretchr/testify
+              desc: testify is for tests only
+        no-dbos-enterprise:
+          files: ["$all"]
+          deny:
+            - pkg: go.dbos.dev/dbos-enterprise-go
+              desc: the enterprise module opens an outgoing connection; never import it
+        dbos-only-in-flow:
+          files: ["!**/internal/flow/**"]
+          deny:
+            - pkg: github.com/dbos-inc/dbos-transact-golang
+              desc: only internal/flow imports DBOS
+        layer-0:
+          list-mode: lax
+          files:
+            - "**/internal/model/**"
+            - "**/internal/config/**"
+          deny:
+            - pkg: github.com/tobocop2/obee/internal
+              desc: a package imports its own layer and lower layers only (docs/architecture.md)
+          allow:
+            - github.com/tobocop2/obee/internal/model
+            - github.com/tobocop2/obee/internal/config
+        layer-1:
+          list-mode: lax
+          files:
+            - "**/internal/store/**"
+            - "**/internal/forge/**"
+            - "**/internal/agent/**"
+            - "**/internal/host/**"
+          deny:
+            - pkg: github.com/tobocop2/obee/internal
+              desc: a package imports its own layer and lower layers only (docs/architecture.md)
+          allow:
+            - github.com/tobocop2/obee/internal/model
+            - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/store
+            - github.com/tobocop2/obee/internal/forge
+            - github.com/tobocop2/obee/internal/agent
+            - github.com/tobocop2/obee/internal/host
+        layer-2:
+          list-mode: lax
+          files:
+            - "**/internal/check/**"
+            - "**/internal/brief/**"
+            - "**/internal/claim/**"
+            - "**/internal/gate/**"
+            - "**/internal/ledger/**"
+            - "**/internal/merge/**"
+            - "**/internal/review/**"
+            - "**/internal/pool/**"
+          deny:
+            - pkg: github.com/tobocop2/obee/internal
+              desc: a package imports its own layer and lower layers only (docs/architecture.md)
+          allow:
+            - github.com/tobocop2/obee/internal/model
+            - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/check
+            - github.com/tobocop2/obee/internal/brief
+            - github.com/tobocop2/obee/internal/claim
+            - github.com/tobocop2/obee/internal/gate
+            - github.com/tobocop2/obee/internal/ledger
+            - github.com/tobocop2/obee/internal/merge
+            - github.com/tobocop2/obee/internal/review
+            - github.com/tobocop2/obee/internal/pool
+        layer-3:
+          list-mode: lax
+          files:
+            - "**/internal/flow/**"
+          deny:
+            - pkg: github.com/tobocop2/obee/internal
+              desc: a package imports its own layer and lower layers only (docs/architecture.md)
+          allow:
+            - github.com/tobocop2/obee/internal/model
+            - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/store
+            - github.com/tobocop2/obee/internal/forge
+            - github.com/tobocop2/obee/internal/agent
+            - github.com/tobocop2/obee/internal/host
+            - github.com/tobocop2/obee/internal/check
+            - github.com/tobocop2/obee/internal/brief
+            - github.com/tobocop2/obee/internal/claim
+            - github.com/tobocop2/obee/internal/gate
+            - github.com/tobocop2/obee/internal/ledger
+            - github.com/tobocop2/obee/internal/merge
+            - github.com/tobocop2/obee/internal/review
+            - github.com/tobocop2/obee/internal/pool
+            - github.com/tobocop2/obee/internal/flow
+        unlisted-package:
+          list-mode: lax
+          files:
+            - "!**/cmd/obee/**"
+            - "!**/internal/model/**"
+            - "!**/internal/config/**"
+            - "!**/internal/store/**"
+            - "!**/internal/forge/**"
+            - "!**/internal/agent/**"
+            - "!**/internal/host/**"
+            - "!**/internal/check/**"
+            - "!**/internal/brief/**"
+            - "!**/internal/claim/**"
+            - "!**/internal/gate/**"
+            - "!**/internal/ledger/**"
+            - "!**/internal/merge/**"
+            - "!**/internal/review/**"
+            - "!**/internal/pool/**"
+            - "!**/internal/flow/**"
+            - "!**/internal/cli/**"
+            - "!**/internal/tui/**"
+          deny:
+            - pkg: github.com/tobocop2/obee/internal
+              desc: add this package to a layer in .golangci.yml before it imports internal code
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: internal/config/
+        linters:
+          - forbidigo
+        text: os\.(Getenv|LookupEnv|Environ)
+      - path: (internal/cli/|cmd/obee/)
+        linters:
+          - forbidigo
+        text: fmt\.|os\.Exit|os\.Std|panic
+      - path: _test\.go
+        linters:
+          - funlen
+          - mnd
+          - goconst
+          - gochecknoglobals
+          - ireturn
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/tobocop2/obee

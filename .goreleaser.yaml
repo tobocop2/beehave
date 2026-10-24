@@ -1,0 +1,33 @@
+version: 2
+
+project_name: obee
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: obee
+    main: ./cmd/obee
+    binary: obee
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+archives:
+  - id: obee
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+# Publishing (GitHub release, Homebrew tap) is added in the release PR.
+release:
+  disable: true

@@ -1,0 +1,21 @@
+dist/
+.DS_Store
+
+# BEGIN ai-rulez (DO NOT EDIT - managed by ai-rulez)
+.ai-rulez/.generated-manifest.json
+.ai-rulez/.generated-manifest.local.json
+.ai-rulez/local/
+.claude/agents/
+.claude/skills/
+.codex/agents/
+.codex/config.toml
+.opencode/agents/
+.opencode/commands/
+AGENTS.md
+CLAUDE.md
+opencode.json
+# END ai-rulez
+
+# Go
+bin/
+coverage.out
