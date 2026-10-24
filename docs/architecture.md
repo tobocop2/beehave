@@ -27,7 +27,7 @@ flowchart TD
         pool
     end
     subgraph L1[Layer 1: adapters]
-        store["store (bd CLI)"]
+        store["store (bd and gh CLIs)"]
         forge["forge (gh CLI)"]
         agent["agent (claude, opencode, pi)"]
         host["host (build host scripts)"]
@@ -52,6 +52,12 @@ Layer 2 packages declare the small interfaces they need (for example `merge` dec
 ## Composition root
 
 `cmd/obee/main.go` builds the config, the logger, the adapters, the policy packages and the `flow` engine once, and passes them down as constructor arguments. There is no package-level state, no lazy getter and no reset function. A test builds the same graph with fakes.
+
+## Store and claim
+
+`store` has two concrete backends: beads through `bd --json` and GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. A caller picks the backend, so there is no dispatch by name.
+
+`claim` keeps the claim rows in beads. It declares its own runner interface for `bd` and `gh` and does not import `store`. Both packages share the command result type in `model`.
 
 ## Configuration
 
