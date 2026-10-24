@@ -3,10 +3,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"github.com/tobocop2/obee/internal/config"
 )
 
 const (
@@ -22,8 +25,8 @@ type BuildInfo struct {
 	Version string
 }
 
-// NewRootCommand builds the command tree. It reads no global state.
-func NewRootCommand(info BuildInfo, stdout, stderr io.Writer) *cobra.Command {
+// NewRootCommand builds the command tree. env is the process environment, read once by the caller.
+func NewRootCommand(info BuildInfo, env map[string]string, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           commandName,
 		Short:         shortHelp,
@@ -35,19 +38,31 @@ func NewRootCommand(info BuildInfo, stdout, stderr io.Writer) *cobra.Command {
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
+	root.AddCommand(newCheckCommand(env))
+
 	return root
 }
 
 // Execute runs the command line and returns the process exit code.
-func Execute(ctx context.Context, args []string, info BuildInfo, stdout, stderr io.Writer) int {
-	root := NewRootCommand(info, stdout, stderr)
-	root.SetArgs(args)
-
-	if err := root.ExecuteContext(ctx); err != nil {
+func Execute(ctx context.Context, args []string, info BuildInfo, env map[string]string, stdout, stderr io.Writer) int {
+	if err := config.RefuseDBOSVariables(env); err != nil {
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", commandName, err)
 
 		return exitError
+	}
+
+	root := NewRootCommand(info, env, stdout, stderr)
+	root.SetArgs(args)
+
+	if err := root.ExecuteContext(ctx); err != nil {
+		var exit *ExitError
+		if !errors.As(err, &exit) {
+			// A failed write to stderr has no recovery.
+			_, _ = fmt.Fprintf(stderr, "%s: %v\n", commandName, err)
+		}
+
+		return exitCode(err)
 	}
 
 	return exitOK
