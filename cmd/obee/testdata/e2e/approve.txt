@@ -1,0 +1,20 @@
+# The first review approves: one plan, one implement, one review, no fix round.
+exec obee run 7
+stdout 'item 7 finished after 0 fix rounds'
+
+exec obee status
+stdout '^item-7-r1\tdone$'
+
+grep -count=1 '^plan 0 true a ' calls.log
+grep -count=1 '^implement 0 true a ' calls.log
+grep -count=1 '^review 0 true a ' calls.log
+! grep '^implement [1-9]' calls.log
+
+cmp events.log expected-events.log
+
+-- verdicts --
+approve
+-- expected-events.log --
+claim 7
+ready 7
+release 7

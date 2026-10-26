@@ -38,6 +38,11 @@ func (r redactor) redact(text string) string {
 	return tokenShape.ReplaceAllString(r.replacer.Replace(text), redacted)
 }
 
+// Redactor returns a function that removes the given secrets and any token shaped like an Anthropic key from text. It builds the replacer once.
+func Redactor(secrets ...string) func(string) string {
+	return newRedactor(secrets...).redact
+}
+
 // redactWriter passes whole lines through a redactor. A line past the limit is dropped, so a secret never splits across two writes.
 type redactWriter struct {
 	out      io.Writer

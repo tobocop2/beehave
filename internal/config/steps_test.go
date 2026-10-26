@@ -120,6 +120,41 @@ func TestLoadFolder_ABadStepTableIsRefused(t *testing.T) {
 	}
 }
 
+func TestLoadFolder_FreshRunnerBelongsToImplementAndMustBeDefined(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		table string
+		want  string
+	}{
+		{"accepts_a_defined_runner", "[steps.implement]\nfresh_runner = \"a\"\n", ""},
+		{"refuses_an_unknown_runner", "[steps.implement]\nfresh_runner = \"ghost\"\n", "names fresh_runner `ghost`"},
+		{"refuses_a_step_that_never_has_a_fix_round", "[steps.review]\nfresh_runner = \"a\"\n", "only implement takes fresh_runner"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeFile(t, dir+"/runners.toml", goodRunner)
+			writeFile(t, dir+"/projects/p.toml", goodProject+test.table)
+
+			cfg, problems := config.LoadFolder(dir, nil)
+			if test.want == "" {
+				require.Empty(t, problems)
+				require.Equal(t, "a", cfg.Projects["p"].Steps[model.StepImplement].FreshRunner)
+
+				return
+			}
+
+			require.Len(t, problems, 1)
+			require.ErrorContains(t, problems[0], test.want)
+		})
+	}
+}
+
 func TestLoadFolder_AStepRunnerMustBeDefined(t *testing.T) {
 	t.Parallel()
 

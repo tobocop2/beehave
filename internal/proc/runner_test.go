@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -193,4 +194,78 @@ func TestExecRunner_ReturnsBothStreamsWithoutLineEndingTranslation(t *testing.T)
 
 	done := proc.ExecRunner{Binary: "gh"}.Run(context.Background(), []string{"crlf"})
 	assert.Equal(t, model.CommandResult{ExitCode: 3, Stdout: "a\r\nb", Stderr: "e\r\n"}, done)
+}
+
+func TestLookPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tool"), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plain"), []byte("text"), 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "folder"), 0o700))
+
+	working, err := os.Getwd()
+	require.NoError(t, err)
+
+	relative, err := filepath.Rel(working, dir)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name, binary, path string
+		found              bool
+	}{
+		{"finds_an_executable", "tool", "/nonexistent::" + dir, true},
+		{"skips_a_file_without_execute_bits", "plain", dir, false},
+		{"skips_a_folder", "folder", dir, false},
+		{"empty_path_reads_the_process_path_that_has_no_tool", "tool", "", false},
+		{"skips_a_relative_folder", "tool", relative, false},
+		{"skips_the_current_folder", "tool", ".", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := proc.LookPath(tt.binary, tt.path)
+			if tt.found {
+				require.NoError(t, err)
+				assert.Equal(t, filepath.Join(dir, tt.binary), got)
+
+				return
+			}
+
+			require.ErrorIs(t, err, exec.ErrNotFound)
+		})
+	}
+}
+
+func TestLookPath_AnEmptyPathReadsTheProcessPath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tool"), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test script must be executable
+	t.Setenv("PATH", dir)
+
+	got, err := proc.LookPath("tool", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "tool"), got)
+}
+
+func TestStartTime_ReadsALiveProcessAndRefusesAMissingOne(t *testing.T) {
+	t.Parallel()
+
+	started, err := proc.StartTime(t.Context(), os.Getpid())
+	require.NoError(t, err)
+	assert.NotEmpty(t, started)
+
+	_, err = proc.StartTime(t.Context(), 1<<22)
+	require.ErrorIs(t, err, proc.ErrNoProcess)
+}
+
+func TestKillGroupID_KillsTheGroupOfAStartedCommand(t *testing.T) {
+	t.Parallel()
+
+	cmd := proc.GroupCommand(t.Context(), "sleep", []string{"60"}, t.TempDir())
+	require.NoError(t, cmd.Start())
+
+	require.NoError(t, proc.KillGroupID(cmd.Process.Pid))
+	require.Error(t, cmd.Wait())
 }

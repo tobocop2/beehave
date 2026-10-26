@@ -1,0 +1,20 @@
+# Cancel stops a run while its agent works. status shows the run as cancelled.
+! exec obee run 7 &
+waitfile started
+
+exec obee cancel 7
+wait
+
+exec obee status
+stdout '^item-7-r1\tcancelled$'
+
+# A second cancel has nothing to stop.
+! exec obee cancel 7
+stderr 'nothing to cancel'
+
+! grep '^implement' calls.log
+
+-- hang --
+plan
+-- verdicts --
+approve

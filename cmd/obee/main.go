@@ -22,7 +22,7 @@ func main() {
 	syscall.Umask(privateUmask)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Adapters: newAdapters(proc.NewExecRunner("bd", "")).check}, config.ProcessEnv(), os.Stdout, os.Stderr)
+	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Adapters: newAdapters(proc.NewExecRunner("bd", "")).check, Flow: flowFactory()}, config.ProcessEnv(), os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }

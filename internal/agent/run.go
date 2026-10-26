@@ -33,6 +33,7 @@ var (
 )
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
+// OnStart, when set, receives the pid of the agent process as soon as it runs.
 type Spec struct {
 	Runner      model.Runner
 	Dir         string
@@ -42,6 +43,7 @@ type Spec struct {
 	Timeout     time.Duration
 	IdleTimeout time.Duration
 	Log         io.Writer
+	OnStart     func(pid int)
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -106,10 +108,12 @@ func withTotalTimeout(ctx context.Context, limit time.Duration) (context.Context
 }
 
 func execute(ctx context.Context, spec Spec, p profile, idle *idleTimer) Result {
-	cmd := proc.GroupCommand(ctx, p.binary, p.args, spec.Dir)
-	if cmd.Err != nil {
+	binary, err := proc.LookPath(p.binary, spec.Env["PATH"])
+	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.binary + " is not installed. Install it and put it on PATH."}
 	}
+
+	cmd := proc.GroupCommand(ctx, binary, p.args, spec.Dir)
 
 	cmd.Env = buildEnv(spec.Env, p, spec.Runner.ConfigDir, spec.Token)
 	cmd.Stdin = strings.NewReader(spec.Prompt)
@@ -119,13 +123,32 @@ func execute(ctx context.Context, spec Spec, p profile, idle *idleTimer) Result 
 
 	idle.start()
 
-	runErr := cmd.Run()
+	runErr := startAndWait(cmd, spec.OnStart)
+
+	killLeftovers(cmd)
+
+	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
+}
+
+// killLeftovers kills the group of a command that started.
+func killLeftovers(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		// The group may hold no member now; the start-time guard against a reused group id comes later.
 		_ = proc.KillGroup(cmd) //nolint:errcheck // ESRCH means nothing was left to kill
 	}
+}
 
-	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
+// startAndWait starts the command, gives its pid to onStart when that is set, and waits for it to end.
+func startAndWait(cmd *exec.Cmd, onStart func(pid int)) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	if onStart != nil {
+		onStart(cmd.Process.Pid)
+	}
+
+	return cmd.Wait()
 }
 
 // newStreams returns the redacting writers for stdout (to the log) and stderr (to a tail buffer).
