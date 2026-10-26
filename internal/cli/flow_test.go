@@ -349,9 +349,9 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 
 	rig := newRig(t)
 	rig.steering.infos = []flow.RunInfo{
-		{ID: "item-1-r1", State: flow.RunDone},
-		{ID: "item-2-r1", State: flow.RunRunning, Question: "pick\n  option a or b"},
-		{ID: "item-3-r1", State: flow.RunRunning, Version: "v1", Stranded: true},
+		{ID: "item-1-r1", State: "done"},
+		{ID: "item-2-r1", State: "running", Question: "pick\n  option a or b"},
+		{ID: "item-3-r1", State: "running", Version: "v1", Stranded: true},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")

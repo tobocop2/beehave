@@ -10,8 +10,8 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
-// ErrClaimLost is returned when the tracker refuses to renew the claim of a run.
-var ErrClaimLost = errors.New("the claim on the item is lost")
+// errClaimLost is returned when the tracker refuses to renew the claim of a run.
+var errClaimLost = errors.New("the claim on the item is lost")
 
 // claimHold is one claim a run holds. lost is the reason the last renewal failed, or empty.
 type claimHold struct {
@@ -111,11 +111,11 @@ func (e *Engine) beatOne(row claimHold) (string, error) {
 	return e.deps.Beats.Beat(ctx, row.project, row.owner)
 }
 
-// claimCheck returns ErrClaimLost, with the reason, when the claim of the run in ctx failed its last renewal.
+// claimCheck returns errClaimLost, with the reason, when the claim of the run in ctx failed its last renewal.
 // DBOS stores the error of the run, so the reason passes through the redactor.
 func (e *Engine) claimCheck(ctx dbos.Context, item string) error {
 	if reason := e.holds.lostReason(ctx); reason != "" {
-		return fmt.Errorf("%w: item %s: %s. Run obee run %s again to claim it", ErrClaimLost, item, e.redact(reason), item)
+		return fmt.Errorf("%w: item %s: %s. Run obee run %s again to claim it", errClaimLost, item, e.redact(reason), item)
 	}
 
 	return nil

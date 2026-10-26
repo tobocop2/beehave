@@ -68,7 +68,7 @@ func newRepos(t *testing.T) repos {
 func removeTreeOf(t *testing.T, dir string, limit time.Duration) (string, error) {
 	t.Helper()
 
-	engine := &Engine{deps: Deps{Trees: fakeTrees{dir: dir}, Clock: Clock{Release: limit}}}
+	engine := &Engine{deps: Deps{Trees: fakeTrees{dir: dir}, Clock: clock{Release: limit}}}
 
 	return engine.removeTree(t.Context(), testProject, testItem)
 }

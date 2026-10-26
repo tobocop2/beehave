@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	// RoundEnvName is the file name of the round settings file.
-	RoundEnvName = "round.env"
+	// roundEnvName is the file name of the round settings file.
+	roundEnvName = "round.env"
 
 	roundEnvVariable = "ROUND_ENV"
 	scratchpadVar    = "SCRATCHPAD"
@@ -129,18 +129,18 @@ func FindRoundEnv(env map[string]string, beside string) string {
 		}
 	}
 
-	return RoundEnvName
+	return roundEnvName
 }
 
 func searchPaths(env map[string]string, beside string) []string {
 	var candidates []string
 	if beside != "" {
 		candidates = append(candidates,
-			filepath.Join(beside, RoundEnvName), filepath.Join(filepath.Dir(beside), RoundEnvName))
+			filepath.Join(beside, roundEnvName), filepath.Join(filepath.Dir(beside), roundEnvName))
 	}
 
 	if scratch := env[scratchpadVar]; scratch != "" {
-		candidates = append(candidates, filepath.Join(scratch, RoundEnvName))
+		candidates = append(candidates, filepath.Join(scratch, roundEnvName))
 	}
 
 	return candidates

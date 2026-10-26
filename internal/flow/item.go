@@ -147,7 +147,7 @@ func (e *Engine) work(ctx dbos.Context, in ItemInput, login string) (ItemResult,
 	return e.fixLoop(ctx, loopState{item: in.Item, project: in.Project, login: login})
 }
 
-// fixLoop reviews and fixes until the review approves. Round policy lives in NextRound.
+// fixLoop reviews and fixes until the review approves. Round policy lives in nextRound.
 func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) {
 	for {
 		review, err := e.review(ctx, state)
@@ -155,8 +155,8 @@ func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) 
 			return ItemResult{}, err
 		}
 
-		action := NextRound(state.fixed, review.Verdict)
-		if action == ActionStop {
+		action := nextRound(state.fixed, review.Verdict)
+		if action == actionStop {
 			ready := func(c context.Context, project, item string) error { return e.markReady(c, project, item, review.Head) }
 
 			return ItemResult{Item: state.item, FixRounds: state.fixed}, e.lifecycle(ctx, model.StepReady, ready, state.project, state.item)
@@ -171,14 +171,14 @@ func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) 
 }
 
 // advance runs the fix round that the round policy chose. It first waits for the owner when the policy asks for it.
-func (e *Engine) advance(ctx dbos.Context, state *loopState, action Action) error {
-	if action == ActionWaitOwner {
+func (e *Engine) advance(ctx dbos.Context, state *loopState, action roundAction) error {
+	if action == actionWaitOwner {
 		answer, err := e.waitOwner(ctx, state.item, state.findings)
 		if err != nil {
 			return err
 		}
 
-		state.answer, action = answer, ActionResume
+		state.answer, action = answer, actionResume
 	}
 
 	return e.fix(ctx, state, action)
@@ -233,15 +233,15 @@ func (e *Engine) readVerdict(ctx dbos.Context, state loopState) (Review, error) 
 }
 
 // fix runs one fix round: an implement phase that reads the findings and the last answer of the owner.
-func (e *Engine) fix(ctx dbos.Context, state *loopState, action Action) error {
+func (e *Engine) fix(ctx dbos.Context, state *loopState, action roundAction) error {
 	state.fixed++
 	input := PhaseInput{
 		Item: state.item, Project: state.project, Step: model.StepImplement, Round: state.fixed, Login: state.login,
-		Fresh: action == ActionFresh, Findings: state.findings, Answer: state.answer,
+		Fresh: action == actionFresh, Findings: state.findings, Answer: state.answer,
 	}
 	state.answer = ""
 
-	if action == ActionFresh {
+	if action == actionFresh {
 		fresh, err := runStep(e, ctx, "fresh-login", func(c context.Context) (string, error) {
 			return e.deps.Logins.PickFresh(c, state.project, state.item)
 		})

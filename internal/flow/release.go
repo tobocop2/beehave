@@ -23,8 +23,8 @@ const treeStepName = "worktree"
 // remoteName is the remote that holds the branch of an item.
 const remoteName = "origin"
 
-// Trees finds the worktree of an item. An empty path means the item has none.
-type Trees interface {
+// trees finds the worktree of an item. An empty path means the item has none.
+type trees interface {
 	Path(ctx context.Context, project, item string) (string, error)
 }
 
@@ -44,9 +44,9 @@ func (e *Engine) removeTree(ctx context.Context, project, item string) (string, 
 // ReleaseDeps holds what gives an item back outside its workflow: the worktree and the claim.
 // The engine uses it for a canceled run, and the client for a run that no engine executes.
 type ReleaseDeps struct {
-	Lifecycle Lifecycle
-	Trees     Trees
-	Clock     Clock
+	Lifecycle lifecycle
+	Trees     trees
+	Clock     clock
 }
 
 func (d ReleaseDeps) removeTree(ctx context.Context, project, item string) (string, error) {

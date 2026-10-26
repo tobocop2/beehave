@@ -38,7 +38,7 @@ func TestRun_RefusesAnItemWithoutAProject(t *testing.T) {
 
 	_, err := engine.Run(testItem, "")
 
-	require.ErrorIs(t, err, ErrNoProject)
+	require.ErrorIs(t, err, errNoProject)
 }
 
 func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testing.T) {
@@ -54,7 +54,7 @@ func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testin
 
 	_, err := engine.Run(testItem, "other")
 
-	require.ErrorIs(t, err, ErrProjectConflict)
+	require.ErrorIs(t, err, errProjectConflict)
 	require.ErrorContains(t, err, "project p")
 	require.ErrorContains(t, err, "other")
 	require.ErrorContains(t, err, "obee cancel 12")
@@ -119,7 +119,7 @@ func TestRun_AFailedRenewalStopsTheRunBeforeItsNextAgentStepAndSaysWhy(t *testin
 
 			outcome := <-done
 
-			require.ErrorIs(t, outcome.err, ErrClaimLost)
+			require.ErrorIs(t, outcome.err, errClaimLost)
 			require.ErrorContains(t, outcome.err, test.reason)
 			assert.Len(t, harness.agents.seen(), before)
 			assert.Contains(t, harness.life.seen(), "release:12")

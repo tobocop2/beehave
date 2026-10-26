@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -103,9 +104,12 @@ func (f e2eFiles) Read(_ context.Context, _, _ string, round int) (flow.Review, 
 		return flow.Review{}, err
 	}
 
-	verdict, err := flow.ParseVerdict(strings.TrimSpace(string(text)))
+	verdict := flow.Verdict(strings.TrimSpace(string(text)))
+	if verdict != flow.VerdictApprove && verdict != flow.VerdictChanges {
+		return flow.Review{}, fmt.Errorf("unknown verdict %q", verdict)
+	}
 
-	return flow.Review{Verdict: verdict, Findings: "findings of review " + strconv.Itoa(round)}, err
+	return flow.Review{Verdict: verdict, Findings: "findings of review " + strconv.Itoa(round)}, nil
 }
 
 func (f e2eFiles) event(name, item string) error {

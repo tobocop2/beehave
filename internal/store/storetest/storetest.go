@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/store"
 )
 
 // Progress is the status of a held claim row. Now is the unix time every fake beat carries.
@@ -335,15 +336,10 @@ func text(value any) string {
 	return ""
 }
 
-// Runner is a command line. It has the shape of store.Runner.
-type Runner interface {
-	Run(ctx context.Context, args []string) model.CommandResult
-}
-
-// Hook wraps a Runner and calls Fire once, just before the first command that When accepts.
+// Hook wraps a store.Runner and calls Fire once, just before the first command that When accepts.
 // It plays a second claimer that acts between the read of the first claimer and its write.
 type Hook struct {
-	Inner Runner
+	Inner store.Runner
 	When  func(args []string) bool
 	Fire  func()
 
@@ -360,9 +356,9 @@ func (h *Hook) Run(ctx context.Context, args []string) model.CommandResult {
 	return h.Inner.Run(ctx, args)
 }
 
-// Reads wraps a Runner and fails the bd commands that list or show rows while Down is set. Writes still run.
+// Reads wraps a store.Runner and fails the bd commands that list or show rows while Down is set. Writes still run.
 type Reads struct {
-	Inner Runner
+	Inner store.Runner
 	Down  bool
 }
 

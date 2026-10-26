@@ -102,7 +102,7 @@ func TestShutdown_AnInterruptLeavesTheRunOpenAndTheNextRunContinuesIt(t *testing
 	infos, err := client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunRunning, infos[0].State, "the interrupted run is open, not canceled")
+	assert.Equal(t, runRunning, infos[0].State, "the interrupted run is open, not canceled")
 	assert.Equal(t, 0, countOf(harness.life.seen(), "release"))
 
 	next := harness.engine(t)
@@ -113,7 +113,7 @@ func TestShutdown_AnInterruptLeavesTheRunOpenAndTheNextRunContinuesIt(t *testing
 	infos, err = client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1, "the next run continues the open run")
-	assert.Equal(t, RunDone, infos[0].State)
+	assert.Equal(t, runDone, infos[0].State)
 	assert.Equal(t, 1, countOf(harness.life.seen(), "claim"))
 	assert.Equal(t, 1, countOf(harness.life.seen(), "release"))
 }

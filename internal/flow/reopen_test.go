@@ -44,7 +44,7 @@ func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *te
 	infos, err = client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunDone, infos[0].State)
+	assert.Equal(t, runDone, infos[0].State)
 	assert.Equal(t, []model.Step{model.StepPlan, model.StepPlan, model.StepImplement, model.StepReview}, stepsOf(harness.agents.seen()),
 		"the plan agent runs again after its failure and the finished steps do not")
 }
@@ -64,7 +64,7 @@ func TestResume_AFailedRunWithNoFailedStepReplaysFromTheEndOfItsHistory(t *testi
 	client := harness.client(t, testVersion)
 
 	_, err = engine.Run(testItem, testProject)
-	require.ErrorIs(t, err, ErrEmptyLogin)
+	require.ErrorIs(t, err, errEmptyLogin)
 
 	require.NoError(t, client.Resume(testItem))
 }

@@ -10,10 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/store/storetest"
 )
 
-func run(runner storetest.Runner, args ...string) model.CommandResult {
+func run(runner store.Runner, args ...string) model.CommandResult {
 	return runner.Run(context.Background(), args)
 }
 

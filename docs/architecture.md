@@ -159,7 +159,7 @@ The transcript reader walks each JSON line of a Claude Code file. A Skill call c
 
 ## Shell rules and the job check
 
-`check` reads shell text with the `mvdan.cc/sh/v3` parser and walks the tree, so quotes, heredocs, pipes, subshells and functions need no hand-written tokenizer. `Scan` fills the `agent.Scanner` seam. It finds bulk staging, a delete that needs approval (a path that is not a literal absolute path, or any delete inside an `ssh`, `gcloud compute ssh` or wrapper command), and delete text in `echo`, `printf` or a heredoc. A command that sets `GIT_INDEX_FILE` to a value stages into a private index and passes.
+`check` reads shell text with the `mvdan.cc/sh/v3` parser and walks the tree, so quotes, heredocs, pipes, subshells and functions need no hand-written tokenizer. `Scan` fills the scan seam of `agent.CheckTranscript`. It finds bulk staging, a delete that needs approval (a path that is not a literal absolute path, or any delete inside an `ssh`, `gcloud compute ssh` or wrapper command), and delete text in `echo`, `printf` or a heredoc. A command that sets `GIT_INDEX_FILE` to a value stages into a private index and passes.
 
 The package imports the parser and its `expand` package, never `interp`. `make deps` checks every package of the module and `depguard` denies `interp`. `expand` resolves a variable that holds a host wrapper. A name it does not know stays as `$name` text, so the literal path rule still sees it. Command substitutions, backticks and process substitutions are read as commands. `busybox` is a wrapper.
 
@@ -200,11 +200,9 @@ Phases run on the queue `agents`. The partition key of a phase is the login, and
 
 `run` refuses an item with an empty login before it claims the item or stores a run. The message names the runner setting to change.
 
-`Order` sorts items for the queue. Items with a pull request in review come first, then work under a container, then the rest. Inside a rank the order is severity, then item id. `ClosedItems` reads the closing keywords of a pull request body.
-
 ### Fix rounds
 
-`NextRound` is one pure function of the number of fix rounds so far and the verdict:
+The round policy is one pure function of the number of fix rounds so far and the verdict:
 
 | Fix rounds so far | Verdict asks for changes |
 |---|---|

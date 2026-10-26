@@ -187,7 +187,7 @@ func (b blockingAgents) Run(ctx context.Context, request AgentRequest) (agent.Re
 	return agent.Result{Outcome: agent.OutcomeExited}, nil
 }
 
-func newProcEngine(t *testing.T, agents Agents) *Engine {
+func newProcEngine(t *testing.T, agents agents) *Engine {
 	t.Helper()
 
 	return &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard)}
