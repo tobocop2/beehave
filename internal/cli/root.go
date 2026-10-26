@@ -26,6 +26,8 @@ type BuildInfo struct {
 	Version string
 	// Adapters builds the tracker, the forge and the lease store of a project and returns why it cannot. A nil value skips the check.
 	Adapters func(context.Context, model.Project) error
+	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
+	Flow Flow
 }
 
 // NewRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
@@ -42,6 +44,7 @@ func NewRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
 	root.AddCommand(newCheckCommand(ctx, env, info.Adapters))
+	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow}.add(root)
 
 	return root
 }

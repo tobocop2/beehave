@@ -1,0 +1,27 @@
+# Two reviews ask for changes. Each fix round resumes the agent session. The third review approves.
+exec obee run 7
+stdout 'item 7 finished after 2 fix rounds'
+
+exec obee status
+stdout '^item-7-r1\tdone$'
+
+grep -count=1 '^plan 0 true a ' calls.log
+grep -count=1 '^implement 0 true a ' calls.log
+grep -count=1 '^implement 1 false a ' calls.log
+grep -count=1 '^implement 2 false a ' calls.log
+grep -count=3 '^review ' calls.log
+! grep '^implement 3' calls.log
+
+grep 'findings=findings of review 0' briefs/implement-1.txt
+grep 'findings=findings of review 1' briefs/implement-2.txt
+
+cmp events.log expected-events.log
+
+-- verdicts --
+changes
+changes
+approve
+-- expected-events.log --
+claim 7
+ready 7
+release 7

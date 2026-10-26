@@ -15,10 +15,10 @@ DBOS Transact Go stores workflow state in SQLite. Set it up as follows. Pin the 
 ## Enforced now
 
 - `depguard` denies `go.dbos.dev/dbos-enterprise-go` everywhere. It denies `github.com/dbos-inc/dbos-transact-golang` outside `internal/flow`.
-- `make deps` runs `go list -deps ./...` and fails if the list has `go.dbos.dev`, `mvdan.cc/sh/v3/interp`, `github.com/spf13/viper`, `net/http` or `crypto/tls`. cobra is allowed: it is the CLI framework, and its core imports neither `net/http` nor `crypto/tls`. The DBOS security report names cobra as a dependency to avoid; this rule keeps the part of that rule that closes the network and drops the rest.
+- `make deps` runs `go list -deps ./...` and fails if the list has `go.dbos.dev`, `mvdan.cc/sh/v3/interp`, `github.com/spf13/viper`, or `net/http`. `crypto/tls` is allowed because DBOS links it through its Postgres driver. The ban on it gives way to a test: `TestRun_OpensNoNetworkSocket` runs the engine over fakes and fails if the process holds an inet socket. cobra is allowed: it is the CLI framework, and its core imports neither `net/http` nor `crypto/tls`. The DBOS security report names cobra as a dependency to avoid; this rule keeps the part of that rule that closes the network and drops the rest.
 - `make vuln` runs `govulncheck`. A reachable finding fails the gate. `go.mod` pins `toolchain go1.27.3` or later for the standard-library fixes.
 
-## Process rules (each waits for a test in the PR that adds `internal/flow`)
+## Process rules (`internal/flow` now exists; each rule names the test that holds it)
 
 - Set `umask 077` and create the state folder with `os.MkdirAll(stateDir, 0o700)` before `dbos.NewContext`. A test checks the modes of `dbos.db`, `-wal` and `-shm`.
 - Pass an absolute `sqlite:` URL inside that folder. Leave `ConductorURL` and `ConductorAPIKey` empty, so DBOS makes no outgoing connection. Register no schedule. Use the default JSON serializer.
@@ -29,5 +29,5 @@ DBOS Transact Go stores workflow state in SQLite. Set it up as follows. Pin the 
 ## Secrets (prose only until a test can check them)
 
 - Never pass or return a secret through a workflow input, a step output, an event, a message or an error text. A secret stays in the process that reads it from the environment or the keychain.
-- Pass the DBOS logger a `*slog.Logger` that writes to a 0600 file at level INFO or higher and redacts step errors. Wrap each step error with a scrubbed message before it returns to DBOS. A test feeds a step error that holds a token and checks the log file.
-- Delete finished workflows with `DeleteWorkflows`. The pause window is the retention.
+- Pass the DBOS logger a `*slog.Logger` that writes to a 0600 file at level INFO or higher and redacts step errors. Pass each step error through the one redactor before it returns to DBOS, because DBOS stores its text. A test feeds a step error that holds a token and checks the log file, the stored step error and the stored workflow error.
+- Delete finished workflows that are older than 7 days with `DeleteWorkflows`. Failed and cancelled runs stay.

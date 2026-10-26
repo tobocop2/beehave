@@ -33,9 +33,9 @@ lint: lint-version  ## Lint the Go code
 vet:
 	go vet ./...
 
-# No package of the module may link DBOS Conductor, the enterprise module, viper, net/http, crypto/tls or the shell interpreter.
+# No package of the module may link DBOS Conductor, the enterprise module, viper, net/http or the shell interpreter. crypto/tls is allowed: DBOS links it through its Postgres driver, and TestRun_OpensNoNetworkSocket proves obee opens no connection.
 deps:  ## Fail if the binary links a forbidden dependency
-	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|net/http$$|crypto/tls$$|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
+	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|net/http$$|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
 
 vuln:  ## Fail on a known vulnerability the code can reach
 	GOTELEMETRY=off govulncheck ./...

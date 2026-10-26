@@ -76,6 +76,16 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 	assert.NotContains(t, env, "/other/login")
 }
 
+func TestRunner_FindsTheBinaryOnTheSpecPathNotTheParentPath(t *testing.T) {
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	t.Setenv("PATH", "/bin:/usr/bin")
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited}, got)
+	assert.Equal(t, "do the step", record(t, f.records, "stdin"))
+}
+
 func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "secret")
 
@@ -85,6 +95,20 @@ func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:
 	assert.Equal(t, "err [redacted]\n", got.Stderr)
 	assert.Equal(t, "token is [redacted] and [redacted] here\n", f.log.String())
 	assert.NotContains(t, got.Stderr, token)
+}
+
+func TestRunner_ReportsThePidOfTheAgentToOnStartBeforeItEnds(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "fail")
+
+	var pids []int
+
+	f.spec.OnStart = func(pid int) { pids = append(pids, pid) }
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	require.Len(t, pids, 1)
+	assert.Positive(t, pids[0])
 }
 
 func TestRunner_ReportsTheExitCodeAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -335,6 +359,17 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 
 		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 		assert.Contains(t, got.Note, "claude is not installed")
+	})
+
+	t.Run("binary_only_on_the_parent_path", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "claude", model.AgentClaude, "")
+		f.spec.Env["PATH"] = "/bin:/usr/bin"
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.Contains(t, got.Note, "claude is not installed")
+		assert.NoFileExists(t, filepath.Join(f.records, "args"))
 	})
 
 	t.Run("binary_cannot_start", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH

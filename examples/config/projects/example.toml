@@ -24,3 +24,4 @@ build_host = "local"       # "local", or the name of a SkyPilot cluster (not a S
 # runner = "claude-a"
 # skills = ["test-driven-development"]
 # idle_timeout = "45m"
+# fresh_runner = "claude-b"  # implement only: the runner of the fresh agent in fix round 4 (default: the same runner)

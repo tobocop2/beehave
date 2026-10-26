@@ -1,0 +1,160 @@
+package flow
+
+import (
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/agent"
+)
+
+func TestStateOf_MapsEveryStoreStatusToARunState(t *testing.T) {
+	t.Parallel()
+
+	tests := map[dbos.WorkflowStatusType]RunState{
+		dbos.WorkflowStatusPending:                     RunRunning,
+		dbos.WorkflowStatusEnqueued:                    RunQueued,
+		dbos.WorkflowStatusDelayed:                     RunQueued,
+		dbos.WorkflowStatusSuccess:                     RunDone,
+		dbos.WorkflowStatusError:                       RunFailed,
+		dbos.WorkflowStatusMaxRecoveryAttemptsExceeded: RunFailed,
+		dbos.WorkflowStatusCancelled:                   RunCancelled,
+		"SOMETHING_NEW":                                RunRunning,
+	}
+
+	for status, want := range tests {
+		assert.Equal(t, want, stateOf(status), status)
+	}
+}
+
+func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	require.ErrorIs(t, client.Answer("not an id", "x"), ErrBadItem)
+	require.ErrorIs(t, client.Cancel("not an id"), ErrBadItem)
+	require.ErrorIs(t, client.Resume("not an id"), ErrBadItem)
+	require.ErrorIs(t, client.Answer(testItem, ""), ErrEmptyAnswer)
+	require.ErrorIs(t, client.Answer(testItem, "x"), ErrNoRun)
+	require.ErrorContains(t, client.Cancel(testItem), "start item 12 with obee run 12")
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, client.Answer(testItem, "x"), ErrWrongState)
+	require.ErrorIs(t, client.Cancel(testItem), ErrWrongState)
+	require.ErrorIs(t, client.Resume(testItem), ErrWrongState)
+	require.ErrorContains(t, client.Resume(testItem), "only a cancelled or failed run resumes") //nolint:misspell // user-facing state word
+}
+
+func TestClient_StatusListsARunThatAsksNoQuestion(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.agents.gate = make(chan struct{})
+	release := sync.OnceFunc(func() { close(harness.agents.gate) })
+	t.Cleanup(release)
+
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+	eventually(t, func() bool { return harness.agents.running() == 1 })
+
+	infos, err := client.Status()
+	require.NoError(t, err, "a run in its agent step has no question and is not an error")
+	require.Len(t, infos, 1)
+	assert.Equal(t, RunRunning, infos[0].State)
+	assert.Empty(t, infos[0].Question)
+
+	release()
+	require.NoError(t, (<-done).err)
+}
+
+func TestRunCancelled_SpellsTheWordOfTheAgentOutcome(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, string(agent.OutcomeCancelled), string(RunCancelled))
+}
+
+func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.verdicts.reviews = changes(6)
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+
+	infos, err := client.Status()
+	require.NoError(t, err)
+	assert.Equal(t, "fix the thing", infos[0].Question, "status shows the question of a paused run")
+
+	require.NoError(t, client.Cancel(testItem))
+
+	infos, err = client.Status()
+	require.NoError(t, err)
+	assert.Equal(t, RunCancelled, infos[0].State)
+
+	other := harness.client(t, "v2")
+	require.ErrorIs(t, other.Resume(testItem), ErrStranded)
+
+	// The tick of the running copy sees the cancel and wakes the owner wait.
+	harness.tick(t)
+
+	select {
+	case outcome := <-done:
+		require.Error(t, outcome.err)
+	case <-time.After(eventTimeout):
+		t.Fatal("the run kept waiting for the owner after another process canceled it")
+	}
+
+	require.NoError(t, client.Resume(testItem))
+	require.NoError(t, client.Answer(testItem, "go on"))
+	eventually(t, func() bool {
+		rows, statusErr := client.Status()
+
+		return statusErr == nil && rows[0].State == RunDone
+	})
+}
+
+func TestLatestRun_SkipsRunsWhoseNameEndsInNoAttemptNumber(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem}, dbos.WithWorkflowID("item-12-rx"))
+	require.NoError(t, err)
+	_, err = handle.GetResult()
+	require.NoError(t, err)
+
+	_, found, err := latestRun(engine.ctx, testItem)
+
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+func TestClient_StatusReportsAStoreThatIsGone(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	client, err := OpenClient(t.Context(), harness.opts, ReleaseDeps{})
+	require.NoError(t, err)
+	require.NoError(t, client.Close())
+
+	_, err = client.Status()
+	require.ErrorContains(t, err, "list the runs")
+
+	_, _, err = latestRun(client.flow, testItem)
+	require.ErrorContains(t, err, "list the runs of item 12")
+}

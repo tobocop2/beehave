@@ -5,12 +5,16 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 )
+
+const executableBits os.FileMode = 0o111
 
 // Exit codes a shell reports for a command that cannot start, one that ran too long and one that was canceled.
 const (
@@ -60,9 +64,30 @@ func GroupCommand(ctx context.Context, binary string, args []string, dir string)
 	return cmd
 }
 
+// LookPath returns the executable that binary names in the colon-separated folders of path.
+// An empty path means the process PATH. A folder that is not an absolute path is skipped: the command would run from its own working folder.
+func LookPath(binary, path string) (string, error) {
+	if path == "" {
+		return exec.LookPath(binary)
+	}
+
+	for _, dir := range filepath.SplitList(path) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+
+		found := filepath.Join(dir, binary)
+		if info, err := os.Stat(found); err == nil && !info.IsDir() && info.Mode().Perm()&executableBits != 0 {
+			return found, nil
+		}
+	}
+
+	return "", exec.ErrNotFound
+}
+
 // KillGroup sends SIGKILL to the process group of a started command. It fails with ESRCH when no member is left.
 func KillGroup(cmd *exec.Cmd) error {
-	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	return KillGroupID(cmd.Process.Pid)
 }
 
 func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandResult {
