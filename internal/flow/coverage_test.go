@@ -144,8 +144,8 @@ func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
 func TestClock_TheZeroValueAddsNoResultOption(t *testing.T) {
 	t.Parallel()
 
-	assert.Nil(t, Clock{}.resultOptions())
-	assert.Len(t, Clock{Poll: tickEvery}.resultOptions(), 1)
+	assert.Nil(t, clock{}.resultOptions())
+	assert.Len(t, clock{Poll: tickEvery}.resultOptions(), 1)
 }
 
 func TestLaunch_ReportsAnAgentProcessFileItCannotRead(t *testing.T) {
@@ -208,7 +208,7 @@ func TestRun_RefusesAnOpenRunOfAnotherVersionAndNamesIt(t *testing.T) {
 
 	_, err := engine.Run(foreignItem, testProject)
 
-	require.ErrorIs(t, err, ErrStranded)
+	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, staleVersion)
 }
 

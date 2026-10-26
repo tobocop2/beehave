@@ -10,52 +10,52 @@ type Account struct {
 	Login string `json:"login"`
 }
 
-// ChangedFile is one file a pull request changes.
-type ChangedFile struct {
+// changedFile is one file a pull request changes.
+type changedFile struct {
 	Path string `json:"path"`
 }
 
-// Label is a label on a pull request.
-type Label struct {
+// label is a label on a pull request.
+type label struct {
 	Name string `json:"name"`
 }
 
-// CommitAuthor is one author of a commit.
-type CommitAuthor struct {
+// commitAuthor is one author of a commit.
+type commitAuthor struct {
 	Email string `json:"email"`
 	Login string `json:"login"`
 }
 
-// Commit is one commit of a pull request, as gh pr view prints it.
-type Commit struct {
+// commit is one commit of a pull request, as gh pr view prints it.
+type commit struct {
 	Oid             string         `json:"oid"`
 	MessageHeadline string         `json:"messageHeadline"`
 	MessageBody     string         `json:"messageBody"`
 	CommittedDate   string         `json:"committedDate"`
-	Authors         []CommitAuthor `json:"authors"`
+	Authors         []commitAuthor `json:"authors"`
 }
 
-// ReviewRequest is a reviewer asked for a review: a user (Login) or a team (Name).
-type ReviewRequest struct {
+// reviewRequest is a reviewer asked for a review: a user (Login) or a team (Name).
+type reviewRequest struct {
 	Login string `json:"login"`
 	Name  string `json:"name"`
 }
 
-// Repository is the repository a pull request branch lives in.
-type Repository struct {
+// repository is the repository a pull request branch lives in.
+type repository struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-// PullComment is a conversation comment as gh pr view prints it. Nil CreatedAt means gh sent null.
-type PullComment struct {
+// pullComment is a conversation comment as gh pr view prints it. Nil CreatedAt means gh sent null.
+type pullComment struct {
 	Author    Account `json:"author"`
 	Body      string  `json:"body"`
 	CreatedAt *string `json:"createdAt"`
 }
 
-// PullReview is a review as gh pr view prints it. Nil SubmittedAt means gh sent null, as for a draft review.
-type PullReview struct {
+// pullReview is a review as gh pr view prints it. Nil SubmittedAt means gh sent null, as for a draft review.
+type pullReview struct {
 	Author      Account     `json:"author"`
 	Body        string      `json:"body"`
 	State       ReviewState `json:"state"`
@@ -76,15 +76,15 @@ type PullRequest struct {
 	HeadRefOid     *string         `json:"headRefOid"`
 	MergedAt       *string         `json:"mergedAt"`
 	UpdatedAt      string          `json:"updatedAt"`
-	HeadRepository *Repository     `json:"headRepository"`
+	HeadRepository *repository     `json:"headRepository"`
 	Author         Account         `json:"author"`
 	Assignees      []Account       `json:"assignees"`
-	Labels         []Label         `json:"labels"`
-	Files          []ChangedFile   `json:"files"`
-	Commits        []Commit        `json:"commits"`
-	Comments       []PullComment   `json:"comments"`
-	Reviews        []PullReview    `json:"reviews"`
-	ReviewRequests []ReviewRequest `json:"reviewRequests"`
+	Labels         []label         `json:"labels"`
+	Files          []changedFile   `json:"files"`
+	Commits        []commit        `json:"commits"`
+	Comments       []pullComment   `json:"comments"`
+	Reviews        []pullReview    `json:"reviews"`
+	ReviewRequests []reviewRequest `json:"reviewRequests"`
 }
 
 // ReviewState is the state gh reports for a review.
@@ -131,8 +131,8 @@ type ReviewThread struct {
 	First *ThreadComment
 }
 
-// ThreadCommentWidth is how many characters of the first comment a thread summary shows.
-const ThreadCommentWidth = 80
+// threadCommentWidth is how many characters of the first comment a thread summary shows.
+const threadCommentWidth = 80
 
 const nullWord = "null"
 
@@ -163,11 +163,11 @@ func firstRunes(text *string) string {
 
 	runes := []rune(*text)
 
-	return string(runes[:min(len(runes), ThreadCommentWidth)])
+	return string(runes[:min(len(runes), threadCommentWidth)])
 }
 
-// ShaWidth is how many characters of a commit id a change request shows.
-const ShaWidth = 9
+// shaWidth is how many characters of a commit id a change request shows.
+const shaWidth = 9
 
 // ChangeRequest is a change request that still stands.
 type ChangeRequest struct {
@@ -177,7 +177,7 @@ type ChangeRequest struct {
 
 // String returns `<login>@<first 9 characters of the commit id>`.
 func (c ChangeRequest) String() string {
-	return c.Login + "@" + string([]rune(c.Commit)[:min(len([]rune(c.Commit)), ShaWidth)])
+	return c.Login + "@" + string([]rune(c.Commit)[:min(len([]rune(c.Commit)), shaWidth)])
 }
 
 // JoinChangeRequests lists change requests separated by commas.
@@ -193,14 +193,8 @@ func JoinChangeRequests(requests []ChangeRequest) string {
 // CheckBucket is how gh judges one check.
 type CheckBucket string
 
-// The check buckets gh reports.
-const (
-	CheckPass     CheckBucket = "pass"
-	CheckFail     CheckBucket = "fail"
-	CheckPending  CheckBucket = "pending"
-	CheckSkipping CheckBucket = "skipping"
-	CheckCancel   CheckBucket = "cancel"
-)
+// CheckPass is the bucket of a check that passed. gh also reports fail, pending, skipping and cancel; the decoder keeps them as text.
+const CheckPass CheckBucket = "pass"
 
 // Check is one check of a pull request.
 type Check struct {

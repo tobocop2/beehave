@@ -18,8 +18,8 @@ type Pool struct {
 	SevenDayMax float64
 }
 
-// Agents holds the limits on agent processes.
-type Agents struct {
+// agents holds the limits on agent processes.
+type agents struct {
 	// MaxConcurrent is the global limit on agent processes. A laptop wants 2, a build host more.
 	MaxConcurrent int
 }
@@ -46,10 +46,10 @@ type rawRunnersFile struct {
 	Runner []rawRunner `toml:"runner"`
 }
 
-func loadRunnersFile(path string) (Agents, Pool, []model.Runner, error) {
+func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 	var raw rawRunnersFile
 	if err := decodeFile(path, &raw, runnersTop+"; [agents]: "+agentsKeys+"; [pool]: "+poolKeys+"; [[runner]]: "+runnerKeys); err != nil {
-		return Agents{}, Pool{}, nil, err
+		return agents{}, Pool{}, nil, err
 	}
 
 	runners, err := buildRunners(path, raw.Runner)
@@ -57,9 +57,9 @@ func loadRunnersFile(path string) (Agents, Pool, []model.Runner, error) {
 	return buildAgents(raw.Agents), buildPool(raw.Pool), runners, err
 }
 
-func buildAgents(raw *rawAgents) Agents {
+func buildAgents(raw *rawAgents) agents {
 	if raw != nil && raw.MaxConcurrent != nil {
-		return Agents{MaxConcurrent: *raw.MaxConcurrent}
+		return agents{MaxConcurrent: *raw.MaxConcurrent}
 	}
 
 	return DefaultConfig().Agents

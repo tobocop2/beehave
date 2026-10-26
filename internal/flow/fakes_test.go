@@ -394,7 +394,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) deps() Deps {
 	return Deps{
 		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats,
-		Clock: Clock{Tick: h.ticks, Poll: storePoll},
+		Clock: clock{Tick: h.ticks, Poll: storePoll},
 	}
 }
 
@@ -426,7 +426,7 @@ func (h *harness) client(t *testing.T, version string) *Client {
 	opts := h.opts
 	opts.Version = version
 
-	client, err := OpenClient(t.Context(), opts, ReleaseDeps{Lifecycle: h.life, Trees: h.trees, Clock: Clock{Release: time.Second}})
+	client, err := OpenClient(t.Context(), opts, ReleaseDeps{Lifecycle: h.life, Trees: h.trees, Clock: clock{Release: time.Second}})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 

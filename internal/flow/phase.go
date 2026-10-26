@@ -84,7 +84,7 @@ func (e *Engine) endGroups(owner string) {
 // It refuses to start when the last renewal of the claim failed.
 func (e *Engine) runPhase(ctx dbos.Context, in PhaseInput) error {
 	if in.Login == "" {
-		return ErrEmptyLogin
+		return errEmptyLogin
 	}
 
 	if err := e.claimCheck(ctx, in.Item); err != nil {

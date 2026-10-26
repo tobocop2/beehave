@@ -51,7 +51,7 @@ func (c *Client) reopenChild(id string) (bool, error) {
 		return false, err
 	}
 
-	if stateOf(row.Status) != RunFailed {
+	if stateOf(row.Status) != runFailed {
 		return false, nil
 	}
 

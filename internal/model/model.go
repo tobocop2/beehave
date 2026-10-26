@@ -19,20 +19,20 @@ const (
 // ErrUnknownAgent is returned when text names no known agent.
 var ErrUnknownAgent = errors.New("unknown agent")
 
-// Agents lists every agent in the order the messages show them.
-func Agents() []Agent {
+// agents lists every agent in the order the messages show them.
+func agents() []Agent {
 	return []Agent{AgentClaude, AgentOpenCode}
 }
 
 // ParseAgent returns the agent that text names.
 func ParseAgent(text string) (Agent, error) {
-	for _, agent := range Agents() {
+	for _, agent := range agents() {
 		if string(agent) == text {
 			return agent, nil
 		}
 	}
 
-	return "", fmt.Errorf("%w %q: use one of %s", ErrUnknownAgent, text, joinNames(Agents()))
+	return "", fmt.Errorf("%w %q: use one of %s", ErrUnknownAgent, text, joinNames(agents()))
 }
 
 // Runner is one agent login. It holds no token: Keychain names the entry that does.

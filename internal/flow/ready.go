@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// ErrNotReady is returned by the ready step when the forge shows a reason to hold the pull request back.
-var ErrNotReady = errors.New("the pull request is not ready")
+// errNotReady is returned by the ready step when the forge shows a reason to hold the pull request back.
+var errNotReady = errors.New("the pull request is not ready")
 
 // PullState is what the ready step reads from the forge about the pull request of an item.
 type PullState struct {
@@ -20,8 +20,8 @@ type PullState struct {
 	Head string
 }
 
-// Forge reads the pull request of an item. A failed read is an error, never an empty state.
-type Forge interface {
+// forge reads the pull request of an item. A failed read is an error, never an empty state.
+type forge interface {
 	Pull(ctx context.Context, project, item string) (PullState, error)
 }
 
@@ -57,7 +57,7 @@ func (e *Engine) markReady(ctx context.Context, project, item, reviewed string) 
 	}
 
 	if reasons := state.reasons(reviewed); len(reasons) > 0 {
-		return fmt.Errorf("%w: pull request %d: %s", ErrNotReady, state.Number, strings.Join(reasons, ", "))
+		return fmt.Errorf("%w: pull request %d: %s", errNotReady, state.Number, strings.Join(reasons, ", "))
 	}
 
 	return e.deps.Lifecycle.Ready(ctx, project, item)

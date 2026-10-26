@@ -170,7 +170,7 @@ func TestRun_StartsAnotherAttemptAfterTheRunEnded(t *testing.T) {
 	var ids []string
 	for _, info := range infos {
 		ids = append(ids, info.ID)
-		assert.Equal(t, RunDone, info.State)
+		assert.Equal(t, runDone, info.State)
 	}
 
 	assert.ElementsMatch(t, []string{"item-12-r1", "item-12-r2"}, ids)
@@ -385,14 +385,14 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	infos, err := other.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: RunRunning, Version: testVersion, Stranded: true, Question: "fix the thing"}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runRunning, Version: testVersion, Stranded: true, Question: "fix the thing"}, infos[0])
 
 	infos, err = same.Status()
 	require.NoError(t, err)
 	assert.False(t, infos[0].Stranded)
 
-	require.ErrorIs(t, other.Answer(testItem, "go"), ErrStranded)
-	require.ErrorIs(t, other.Cancel(testItem), ErrStranded)
+	require.ErrorIs(t, other.Answer(testItem, "go"), errStranded)
+	require.ErrorIs(t, other.Cancel(testItem), errStranded)
 	require.ErrorContains(t, other.Answer(testItem, "go"), "Start version v1 to finish it")
 
 	require.NoError(t, same.Answer(testItem, "go"))
