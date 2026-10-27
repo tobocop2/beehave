@@ -24,8 +24,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool · brief · preflight · review · scope · takeover<br/>lane policy"]
-        later["merge"]:::planned
+        policy["gate · ledger · pool · brief · preflight · review · scope · takeover · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -44,6 +43,7 @@ flowchart TD
     subgraph L0["Layer 0: foundation"]
         config["config<br/>settings and state folder"]
         model["model<br/>types, enums, contracts"]
+        filelock["filelock<br/>flock locks"]
     end
 
     main --> cli
@@ -81,6 +81,8 @@ flowchart TD
     flow --> config
     flow --> proc
     flow --> model
+    flow --> filelock
+    policy --> filelock
 
     tui -.-> flow
     flow -.-> claim
@@ -94,6 +96,8 @@ flowchart TD
 ```
 
 Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
+
+`filelock` is the one place that calls `flock`. It gives an exclusive lock that waits, an exclusive lock that fails at once when the file is held, and a shared lock. `ledger` and `flow` use it and import no other lock code.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `check/transcript` takes the transcript readers and the shell scanner as function values, so it imports neither `agent` nor `check/shell`. `cmd/obee` passes the methods of the agent adapter. The `Call` type lives in `model`, which both sides import.
 
@@ -168,7 +172,7 @@ The claim rules: a holder is live while the end of its lease is after the clock.
 
 ## Forge and the command runner
 
-`forge` holds the `Forge` contract. Its backend `forge/github` runs `gh` and has one decoder for each payload shape. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
+`forge` holds the `Forge` contract. Its backend `forge/github` runs `gh` and has one decoder for each payload shape. The writes are `PostComment`, `SetDraft`, `MergePR`, `CreateBranch`, `SetBase` and `SetBody`. `MergePR` runs `gh pr merge --merge --match-head-commit` and refuses a pin that is not a full commit id before `gh` runs. `TokenScopes` reads `gh auth status --active`. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
 
 Seven methods read the conversation and move the pull request. `Comments` and `ReviewComments` return the conversation comments and the inline comments, all pages joined. `Search` returns the numbers of the open issues or pull requests that involve a user and changed since a date, and refuses an answer that fills its limit. `DefaultBranch` returns the default branch and refuses a repository that names none. `BranchRef` returns the tip of a branch; a branch that does not exist gives `found` false and no error, and every other failed read is an error. `PostComment` adds a comment, and `SetDraft` converts a pull request to a draft or marks it ready. `forgetest` runs each method in its conformance suite, and the suite checks that every method fails on a failed command.
 
@@ -292,6 +296,32 @@ The take mode refuses in this order: no notice, a notice younger than the grace 
 
 `takeover` never calls `time.Now`. The caller puts the time in the `Context`, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal, and a pull request with no timestamp at all is unreadable, not idle. A token stands alone as a word when no Unicode letter, digit or underscore touches it, so `KEEPER`, `KEEP_ALL` and `KEEPé` do not say `KEEP`. The text of the notice is Markdown in `takeover/text`, read through one `embed` variable. `takeover` imports `model` and `check`.
 
+## Merge
+
+`merge` merges one reviewed pull request into the round base, pinned to the commit that a reviewer gated. `Run` takes a `Request` and returns a `Result` with a `Stop` and the lines to show. The stops are a closed set with a `Code`: 0 done, 2 refused, 3 no workflow scope and 4 own work.
+
+### Own work is never merged
+
+obee never merges its own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, or any author of any commit, has a login or address equal to the owner login, the owner address or the login of a runner in `runners.toml`, the stop is `OwnWork`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
+
+No flag lifts this rule. `AllowOrphans`, `AllowNoChecks` and `AllowReady` do not reach it, and `auto_merge` covers only the pull request of a contributor. A missing owner login or address is a refusal, because the rule cannot tell whose work it is. The scopes of the token and every later read run after guard 0, so a refused pull request has had no write.
+
+The commit list of the first read can be cut by the forge. Guard 0 also reads the forge's own count of commits with `PullCounts`. A count that is larger than the list read, or that cannot be read, is an `OwnWork` refusal that says the list is incomplete. The workflow scope guard applies the same rule to changed files: a file list that is absent, or shorter than the forge's count, is a refusal.
+
+### Order of the guards
+
+The guards refuse in this order: the round settings, a gated commit id that is not 40 characters, the state, the base, the head, the mergeable flag, children, checks, the workflow scope, change requests, open threads, AI attribution, commits with no linked account and the draft rule. The first read asks for every field in one call. The merge then reads the head once more, and reads the stack of the pull request. A pull request in a native stack is refused, because it merges through the asynchronous merge, which obee does not run. The merge call pins the head on the forge side. A merge call that fails is a refusal with code 2, and the result keeps the text of the forge.
+
+A child is an open pull request whose base is the branch of the pull request. A merge orphans it, unless it is in the same native stack, which GitHub retargets. That child is a note. `AllowOrphans` lets the merge go on and says that this is a stated decision. A list of 1000 pull requests is refused as cut off. A check that skipped is not a pass: with no pass the merge refuses unless `AllowNoChecks` is set.
+
+### Edit of the shared body
+
+`EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `filelock` on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
+
+### Merge step of the item
+
+When the build has a merger, the item merges after the ready step, pinned to the head that the gate and the review read. A merge that is done, or that is refused as own work, goes on to the ready watch, which ends when the owner merges. Any other refusal ends the item with the lines of the merge. A build with no merger has no merge step.
+
 ## Brief
 
 `brief` writes the text that a lane reads before it starts. A brief has two parts. The first part is fixed rules: the skeleton, the rules of the kind, the context cap, the standing blocks and the rules file of the project. The second part is the lines of the item: the title, the model, the read-first list and the names of the lane. Two briefs of one kind share every byte up to the first line of the item, so a prompt cache reads the rules once. A test pins this prefix.
@@ -325,7 +355,7 @@ An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at th
 3. Run the plan phase and the implement phase.
 4. Run the gate, run the review phase, and read the verdict. If the verdict file is missing, run the review phase one more time. Repeat with a fix round until the verdict approves.
 5. Read the forge, then mark the pull request ready. The gate, the review and the ready step must see the same head commit: a push after the review stops the item.
-6. Watch the ready pull request until it merges. A change request or a conflict sets it to draft and ends the item.
+6. Merge the ready pull request when the build has a merger. Then watch it until it merges. A change request or a conflict sets it to draft and ends the item.
 7. Release the worktree, then release the claim.
 
 Each agent phase (plan, implement, review, fix) is a child workflow named `phase`. It writes the brief, then starts the agent. Both are steps. The agent is a subprocess (`claude -p`) in its own process group, with a total and an idle timeout. A phase that does not exit with code 0 stops the item with an error that names the step.

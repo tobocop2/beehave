@@ -193,8 +193,12 @@ func JoinChangeRequests(requests []ChangeRequest) string {
 // CheckBucket is how gh judges one check.
 type CheckBucket string
 
-// CheckPass is the bucket of a check that passed. gh also reports fail, pending, skipping and cancel; the decoder keeps them as text.
-const CheckPass CheckBucket = "pass"
+// The buckets a merge tells apart: a check that passed, one still running and one that skipped. gh also reports fail and cancel; the decoder keeps every bucket as text.
+const (
+	CheckPass     CheckBucket = "pass"
+	CheckPending  CheckBucket = "pending"
+	CheckSkipping CheckBucket = "skipping"
+)
 
 // Check is one check of a pull request.
 type Check struct {

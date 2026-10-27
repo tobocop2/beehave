@@ -25,6 +25,7 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.Plan(forgetest.SevenBody, "pr", "view", "7", "-R")
 		run.Plan(toJSON(t, fields{"title": forgetest.SevenTitle}), "pr", "view", "7", "--repo")
 		run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
+		run.Plan(toJSON(t, fields{"commits": forgetest.SevenCommits, "changed_files": forgetest.SevenFiles}), "api", "repos/owner/name/pulls/7")
 		run.Plan(toJSON(t, []fields{{"name": forgetest.SevenCheck, "bucket": "pass"}}), "pr", "checks")
 
 		run.Plan(toJSON(t, []any{[]fields{{"body": forgetest.SevenComment}}}), "api", "--paginate", "--slurp", "repos/owner/name/issues/7/comments")
@@ -39,6 +40,10 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.Plan("[]", "api", "repos/owner/name/check-runs/9/annotations")
 		run.Plan("", "pr", "comment")
 		run.Plan("", "pr", "ready")
+		run.Plan("", "pr", "merge")
+		run.Plan("", "pr", "edit")
+		run.Plan("", "api", "-X", "POST", "repos/owner/name/git/refs")
+		run.Plan("github.com\n  - Token scopes: '"+forgetest.ScopeRepo+"', '"+forgetest.ScopeWorkflow+"'\n", "auth", "status")
 
 		return newForge(t, repo, run)
 	})

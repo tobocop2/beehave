@@ -29,6 +29,9 @@ const (
 	SevenBody     = "Closes #5"
 	SevenTitle    = "Add the adapters"
 	SevenCheck    = "build"
+	// SevenCommits and SevenFiles are the counts the fake serves for pull request 7.
+	SevenCommits = 2
+	SevenFiles   = 3
 )
 
 // What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
@@ -40,6 +43,9 @@ const (
 	SevenBranch   = "feature"
 	SevenTip      = "0123456789abcdef0123456789abcdef01234567"
 	GoneBranch    = "gone"
+	NewBranch     = "next"
+	ScopeRepo     = "repo"
+	ScopeWorkflow = "workflow"
 	SearchSince   = "2026-01-01"
 	SearchUser    = "alice"
 	// SevenRun is the link of a check run that the fake serves with no annotation.
@@ -124,9 +130,20 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 	checkStanding(c, target)
 }
 
+// checkCounts runs the read of the forge's own counts.
+func checkCounts(c check, target forge.Forge) {
+	c.r.Helper()
+
+	commits, files, err := target.PullCounts(context.Background(), Seven)
+	c.noError(err, "PullCounts")
+	c.equal([]int{commits, files}, []int{SevenCommits, SevenFiles}, "counts")
+}
+
 // checkStanding runs the batched read of our pull requests, the title of an item and the annotations of a check run.
 func checkStanding(c check, target forge.Forge) {
 	c.r.Helper()
+
+	checkCounts(c, target)
 
 	ctx := context.Background()
 
@@ -172,6 +189,10 @@ func checkWrites(c check, target forge.Forge) {
 	c.noError(target.PostComment(ctx, Seven, "hello"), "PostComment")
 	c.noError(target.SetDraft(ctx, Seven, true), "SetDraft to draft")
 	c.noError(target.SetDraft(ctx, Seven, false), "SetDraft to ready")
+	c.noError(target.MergePR(ctx, Seven, SevenTip), "MergePR")
+	c.noError(target.CreateBranch(ctx, NewBranch, SevenTip), "CreateBranch")
+	c.noError(target.SetBase(ctx, Seven, NewBranch), "SetBase")
+	c.noError(target.SetBody(ctx, Seven, "new body"), "SetBody")
 }
 
 func checkBranches(c check, target forge.Forge) {
@@ -190,6 +211,10 @@ func checkBranches(c check, target forge.Forge) {
 	tip, found, err = target.BranchRef(ctx, GoneBranch)
 	c.noError(err, "BranchRef of a missing branch")
 	c.equal([]any{tip, found}, []any{"", false}, "missing branch")
+
+	scopes, err := target.TokenScopes(ctx)
+	c.noError(err, "TokenScopes")
+	c.equal(scopes, []string{ScopeRepo, ScopeWorkflow}, "token scopes")
 }
 
 func checkLists(c check, target forge.Forge) {
@@ -218,6 +243,7 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 			_, err := target.PRList(ctx, pageSize, "--json", "number")
 			return err
 		}},
+		{"PullCounts", func(ctx context.Context) error { _, _, err := target.PullCounts(ctx, Seven); return err }},
 		{"PRChecks", func(ctx context.Context) error { _, err := target.PRChecks(ctx, Seven); return err }},
 		{"OpenChangeRequests", func(ctx context.Context) error { _, err := target.OpenChangeRequests(ctx, Seven); return err }},
 		{"UnresolvedThreads", func(ctx context.Context) error { _, err := target.UnresolvedThreads(ctx, Seven); return err }},
@@ -225,6 +251,7 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 		{"ExistingReview", func(ctx context.Context) error { _, err := target.ExistingReview(ctx, Seven); return err }},
 	})
 	checkNewFail(r, target)
+	checkMergeFail(r, target)
 	checkStandingFail(r, target)
 }
 
@@ -258,6 +285,19 @@ func checkNewFail(r Reporter, target forge.Forge) {
 		{"BranchRef", func(ctx context.Context) error { _, _, err := target.BranchRef(ctx, SevenBranch); return err }},
 		{"PostComment", func(ctx context.Context) error { return target.PostComment(ctx, Seven, "hello") }},
 		{"SetDraft", func(ctx context.Context) error { return target.SetDraft(ctx, Seven, true) }},
+	})
+}
+
+// checkMergeFail runs the merge, the branch and pull request edits and the scope read on a forge whose commands all fail.
+func checkMergeFail(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
+		{"MergePR", func(ctx context.Context) error { return target.MergePR(ctx, Seven, SevenTip) }},
+		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
+		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
+		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
+		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
 	})
 }
 
