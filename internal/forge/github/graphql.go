@@ -115,7 +115,7 @@ func fullPage[N any](nodes []N, total int, base, list, more string) error {
 	}
 
 	if total > len(nodes) {
-		return forge.Refuse("%s", more)
+		return &forge.Error{Code: forge.CodeRefused, Message: more, Err: model.ErrMorePages}
 	}
 
 	return nil

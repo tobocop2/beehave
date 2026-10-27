@@ -24,8 +24,8 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool · brief<br/>lane policy"]
-        later["merge · review"]:::planned
+        policy["gate · ledger · pool · brief · preflight · review<br/>lane policy"]
+        later["merge"]:::planned
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -170,6 +170,8 @@ The claim rules: a holder is live while the end of its lease is after the clock.
 
 `forge` holds the `Forge` contract. Its backend `forge/github` runs `gh` and has one decoder for each payload shape. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
 
+Seven methods read the conversation and move the pull request. `Comments` and `ReviewComments` return the conversation comments and the inline comments, all pages joined. `Search` returns the numbers of the open issues or pull requests that involve a user and changed since a date, and refuses an answer that fills its limit. `DefaultBranch` returns the default branch and refuses a repository that names none. `BranchRef` returns the tip of a branch; a branch that does not exist gives `found` false and no error, and every other failed read is an error. `PostComment` adds a comment, and `SetDraft` converts a pull request to a draft or marks it ready. `forgetest` runs each method in its conformance suite, and the suite checks that every method fails on a failed command.
+
 `proc` holds the one command runner, the `Runner` interface, and `proc/proctest` holds the scripted fake of it. `model.Decode` is the one JSON decoder for command answers. `store` and `forge` share them. The runner starts each command in its own process group with a timeout, and reports exit code 124 for a deadline, 127 for a missing command and 130 for a cancel.
 
 ## Build host
@@ -257,6 +259,22 @@ The window types `Window`, `Usage` and `Reading` live in `model`, because the re
 `obee doctor` checks that the machine can run obee and prints one line for each check: `ok` or `FAIL` with the fix. It exits 1 when any check fails. The checks are a table of a name and a function that returns an error, the fix, or nil. They run in this order: the config folder loads, `bd` and `gh` are on the path, the bd version is new enough, then for each runner its `config_dir` exists and its token is readable when it has a Keychain entry. The bd version check runs only when `bd` is on the path. A version error with no text is still a failure.
 
 The doctor command lives in `cli`. `BuildInfo.Doctor` holds two function values that `cmd/obee` fills: the Keychain reader, which runs `security` and never returns the token, and the bd version check of the beads adapter. Both are required: the command refuses a `Doctor` with a nil value and runs no check. A call of `security` stops after 10 seconds. `cli` does not import a backend.
+
+## Preflight
+
+`preflight` asks whether the pull request a caller is about to act on is still the one it was briefed against. It reads the pull request once and its head branch once, through a two-method `Reader` that the forge fills, and returns a `Result`.
+
+`Stop` is a closed set with a `Code`: 0 unchanged, 2 refused, 3 merged, 4 closed, 5 head moved, 6 base changed, 7 branch gone, 8 draft and 9 held. `Check` tests them in this order: merged, closed, branch gone, hold, draft, head, base. A merged pull request still shows a head that looks fine, so the state comes first. A hold outranks a draft. The expected head must be a full 40-character SHA; any other length is refused and never compared.
+
+A failed read, or a pull request with no state, draft flag, head branch or label list, is a `ReadError`. A null would pass as an open and ready pull request. Only a missing branch counts as branch gone: the ref read answers HTTP 404 and a second read of the repository succeeds, because a missing repository gives the same 404; any other failed read of the branch is a `ReadError`. Each stop carries lines that name the problem and the recovery.
+
+## Review poll
+
+`review` answers one question for a reviewer: what needs me now? It declares the small interfaces it reads (`Reader`, `Own`, `Stacks`), and the forge fills them. It imports only `model`.
+
+`Poll` returns one `Row` for each thing that needs an answer. A pull request that others ask us to review, that we reviewed, or that has other activity, is read once and gets a kind from our last verdict: `NEW`, `CURRENT`, `WAITING`, `FOLLOW-UP` or `RE-REVIEW`. A `CURRENT` or `WAITING` pull request with a reply after our verdict is `REPLIED`. A comment, a dismissed review and a draft review are not a verdict. A review request on a `CURRENT` pull request makes it `RE-REVIEW`. The poll also lists `REPLY` rows (an issue or pull request where others spoke after us), `CI-RED` and `CI-NOT-RUN` rows for our ready pull requests with a failed check, and `OWN` rows for our pull requests with a fresh review, an open thread or a standing change request. A search that fills its limit is an error, because the list may be cut off.
+
+`Sweep` lists our open pull requests with their change requests, open threads and base branch. A base branch that is not the integration branch gets a flag. The sweep and the `OWN` rows read the forge once, through `OwnPulls`. A pull request with a list longer than one page is read again with the per-pull-request reads, so the batched answer and the single reads give the same rows. A list that the single read also refuses for length prints `?` in the sweep and `unknown` in the poll. A failed read stops the poll with an `UnreadError` that names the read and its cause. A page of unknown rows would hide the cause.
 
 ## Brief
 

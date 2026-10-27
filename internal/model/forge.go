@@ -204,6 +204,24 @@ type Check struct {
 	Link     string      `json:"link"`
 }
 
+// SearchKind is what a search looks for: issues or pull requests.
+type SearchKind string
+
+// The kinds a search takes. The values are the gh search subcommands.
+const (
+	SearchIssues SearchKind = "issues"
+	SearchPulls  SearchKind = "prs"
+)
+
+// SearchRequest asks for the open items of one kind that involve a user and changed on or after Since.
+// Since is an ISO date or time. A search that returns Limit rows may be cut off and is refused.
+type SearchRequest struct {
+	Kind     SearchKind
+	Involves string
+	Since    string
+	Limit    int
+}
+
 // OrNull returns text, or the word null when text is empty, as jq prints a missing value.
 func OrNull(text string) string {
 	if text == "" {
