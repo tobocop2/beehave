@@ -34,7 +34,9 @@ var (
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
 // OnStart, when set, receives the pid of the agent process as soon as it runs.
+// A nil Adapter means the agent of the runner has no adapter, and the run does not start.
 type Spec struct {
+	Adapter     Adapter
 	Runner      model.Runner
 	Dir         string
 	Prompt      string
@@ -85,15 +87,16 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	return execute(ctx, spec, p, idle)
 }
 
-func prepare(spec Spec) (profile, string) {
-	p, known := profileOf(spec.Runner.Agent)
-	if !known {
-		return p, fmt.Sprintf("agent %q cannot be started yet. Set the runner to agent claude.", spec.Runner.Agent)
+func prepare(spec Spec) (Profile, string) {
+	if spec.Adapter == nil {
+		return Profile{}, fmt.Sprintf("agent %q cannot be started yet. Set the runner to agent claude.", spec.Runner.Agent)
 	}
+
+	p := spec.Adapter.Profile()
 
 	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {
 		return p, fmt.Sprintf("the config_dir %q of runner %s is not a folder, so %s is not started. Log in to the runner first.",
-			spec.Runner.ConfigDir, spec.Runner.Name, p.binary)
+			spec.Runner.ConfigDir, spec.Runner.Name, p.Binary)
 	}
 
 	return p, ""
@@ -107,13 +110,13 @@ func withTotalTimeout(ctx context.Context, limit time.Duration) (context.Context
 	return context.WithTimeoutCause(ctx, limit, errTotalTimeout)
 }
 
-func execute(ctx context.Context, spec Spec, p profile, idle *idleTimer) Result {
-	binary, err := proc.LookPath(p.binary, spec.Env["PATH"])
+func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result {
+	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
-		return Result{Outcome: OutcomeNotStarted, Note: p.binary + " is not installed. Install it and put it on PATH."}
+		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
-	cmd := proc.GroupCommand(ctx, binary, p.args, spec.Dir)
+	cmd := proc.GroupCommand(ctx, binary, p.Args, spec.Dir)
 
 	cmd.Env = buildEnv(spec.Env, p, spec.Runner.ConfigDir, spec.Token)
 	cmd.Stdin = strings.NewReader(spec.Prompt)

@@ -72,7 +72,10 @@ func TestBuildEnv_KeepsOnlyTheAllowlistTheLoginAndTheToken(t *testing.T) {
 	t.Parallel()
 
 	base := map[string]string{"PATH": "/bin", "LC_CTYPE": "UTF-8", "AWS_SECRET_ACCESS_KEY": "x", "CLAUDE_CONFIG_DIR": "/old"}
-	p, _ := profileOf("claude")
+	p := Profile{ //nolint:gosec // the token variable name, not a credential
+		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
+		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
+	}
 
 	got := buildEnv(base, p, "/login", "tok")
 

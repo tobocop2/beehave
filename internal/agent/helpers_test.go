@@ -49,17 +49,3 @@ func record(t *testing.T, dir, name string) string {
 
 	return strings.TrimSpace(string(raw))
 }
-
-// lines joins transcript lines with a newline after each.
-func lines(parts ...string) string {
-	return strings.Join(parts, "\n") + "\n"
-}
-
-func writeFile(t *testing.T, content string) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "lane.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
-
-	return path
-}

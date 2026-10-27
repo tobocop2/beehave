@@ -6,14 +6,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/obee/internal/store/beads/beadstest"
 )
 
 func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(storetest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t))
 
 	for _, name := range model.Trackers() {
 		assert.Contains(t, table.trackers, name)
@@ -27,10 +28,19 @@ func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T
 	assert.Len(t, table.forges, len(model.Forges()))
 }
 
+func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+
+	assert.Equal(t, claude.New(), table.agent(model.AgentClaude))
+	assert.Nil(t, table.agent(model.AgentOpenCode))
+}
+
 func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(storetest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t))
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, BeadsPrefix: "p"}
 
 	tracker, err := table.tracker(project)
@@ -50,7 +60,7 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(storetest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t))
 
 	_, err := table.tracker(model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
@@ -74,7 +84,7 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(storetest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t))
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
 	require.NoError(t, table.check(t.Context(), good))
 
@@ -91,7 +101,7 @@ func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *tes
 func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
 

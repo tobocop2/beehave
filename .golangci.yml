@@ -123,11 +123,85 @@ linters:
           deny:
             - pkg: mvdan.cc/sh/v3/interp
               desc: obee parses shell text and never runs it
+        check-children:
+          files: ["**/internal/check/papers/**", "**/internal/check/transcript/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/check/shell
+              desc: only check/gate imports check/shell
+            - pkg: github.com/tobocop2/obee/internal/check/gate
+              desc: only cmd/obee imports check/gate
+        check-siblings:
+          files: ["**/internal/check/shell/**", "**/internal/check/gate/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/check/papers
+              desc: check/shell and check/gate never import check/papers
+            - pkg: github.com/tobocop2/obee/internal/check/transcript
+              desc: check/shell and check/gate never import check/transcript
+        test-packages-in-tests-only:
+          files: ["!$test"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/agent/agenttest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/forge/forgetest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/store/storetest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/store/beads/beadstest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/proc/proctest
+              desc: a conformance suite or fake is for tests only
         dbos-only-in-flow:
           files: ["!**/internal/flow/**"]
           deny:
             - pkg: github.com/dbos-inc/dbos-transact-golang
               desc: only internal/flow imports DBOS
+        backends-only-in-main:
+          files: ["!$test", "!**/cmd/obee/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: only cmd/obee imports a backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: only cmd/obee imports a backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: only cmd/obee imports a backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: only cmd/obee imports a backend
+        no-backend-to-backend-store-beads:
+          files: ["**/internal/store/beads/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: a backend never imports another backend
+        no-backend-to-backend-store-github:
+          files: ["**/internal/store/github/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: a backend never imports another backend
+        no-backend-to-backend-forge-github:
+          files: ["**/internal/forge/github/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: a backend never imports another backend
+        no-backend-to-backend-agent-claude:
+          files: ["**/internal/agent/claude/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: a backend never imports another backend
         layer-0:
           list-mode: lax
           files:
@@ -161,7 +235,11 @@ linters:
         layer-2:
           list-mode: lax
           files:
-            - "**/internal/check/**"
+            - "**/internal/check/*.go"
+            - "**/internal/check/shell/**"
+            - "**/internal/check/papers/**"
+            - "**/internal/check/gate/**"
+            - "**/internal/check/transcript/**"
             - "**/internal/brief/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"

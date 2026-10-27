@@ -13,8 +13,8 @@ const (
 	tab   = '\t'
 )
 
-// decode reads one JSON payload from a command into T. A payload of another shape is a refusal that names the command.
-func decode[T any](command, text string) (T, error) { //nolint:ireturn // the decoder returns the caller's own type
+// Decode reads one JSON payload from a command into T. A payload of another shape is a refusal that names the command.
+func Decode[T any](command, text string) (T, error) { //nolint:ireturn // the decoder returns the caller's own type
 	out, err := model.Decode[T](command, text)
 	if err != nil {
 		return out, refuseDecode(command, err)
@@ -33,15 +33,15 @@ func refuseDecode(command string, err error) *Error {
 	return unreadable(command, err)
 }
 
-// decodeRows reads a JSON list and refuses a list of limit rows or more, which may be cut off.
-func decodeRows[T any](command, text string, limit int, what string) ([]T, error) {
-	rows, err := decode[[]T](command, text)
+// DecodeRows reads a JSON list and refuses a list of limit rows or more, which may be cut off.
+func DecodeRows[T any](command, text string, limit int, what string) ([]T, error) {
+	rows, err := Decode[[]T](command, text)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(rows) >= limit {
-		return nil, refuse("store: %s returned %d rows, the list may be cut off; refusing", what, limit)
+		return nil, Refuse("store: %s returned %d rows, the list may be cut off; refusing", what, limit)
 	}
 
 	return rows, nil
@@ -54,22 +54,24 @@ func normalTitle(title string) string {
 	return strings.Join(words, string(blank))
 }
 
-type openTitle struct {
-	id    string
-	title string
+// OpenTitle is the id and the title of one open item.
+type OpenTitle struct {
+	ID    string
+	Title string
 }
 
-func refuseDuplicate(request model.CreateRequest, open []openTitle) error {
+// RefuseDuplicate refuses a request whose title matches an open item, unless the request allows a duplicate.
+func RefuseDuplicate(request model.CreateRequest, open []OpenTitle) error {
 	if request.AllowDuplicate {
 		return nil
 	}
 
 	wanted := normalTitle(request.Title)
 	for _, other := range open {
-		if normalTitle(other.title) == wanted {
+		if normalTitle(other.Title) == wanted {
 			return &Error{
 				Code:    CodeDuplicate,
-				Message: fmt.Sprintf("REFUSED: %s is open with the same title. Comment there, or pass --allow-duplicate.", other.id),
+				Message: fmt.Sprintf("REFUSED: %s is open with the same title. Comment there, or pass --allow-duplicate.", other.ID),
 			}
 		}
 	}
@@ -77,18 +79,11 @@ func refuseDuplicate(request model.CreateRequest, open []openTitle) error {
 	return nil
 }
 
-func readableTitle(title *string) (string, error) {
+// ReadableTitle returns the title, or a refusal when the answer has none.
+func ReadableTitle(title *string) (string, error) {
 	if title == nil {
-		return "", refuse("store: an item has no readable title; refusing")
+		return "", Refuse("store: an item has no readable title; refusing")
 	}
 
 	return *title, nil
-}
-
-func readableID(id string) (string, error) {
-	if id == "" {
-		return "", refuse("store: an item has no readable id; refusing")
-	}
-
-	return id, nil
 }

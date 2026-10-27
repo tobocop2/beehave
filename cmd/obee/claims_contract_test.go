@@ -18,11 +18,11 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/obee/internal/store/beads"
+	"github.com/tobocop2/obee/internal/store/beads/beadstest"
 )
 
-// This file is the contract test of the claim policy over the claim store. The scenarios run against the fake bd of storetest, which keeps
+// This file is the contract test of the claim policy over the claim store. The scenarios run against the fake bd of beadstest, which keeps
 // the fake honest, and against a real bd 1.3.2 with a private dolt server, which keeps the policy honest. The real run needs OBEE_BD_132,
 // the path of a bd 1.3.2 binary, and `dolt` on PATH. Without the variable the real run is skipped. The scenarios of the claim store alone
 // are in internal/store, which may not import claim.
@@ -35,9 +35,9 @@ const (
 // policyBackend is one bd the scenarios run against.
 // now is the clock the policy compares leases with. state reads what the tracker keeps for some rows, so a test can show that a call wrote nothing.
 type policyBackend struct {
-	run    store.Runner
+	run    proc.Runner
 	prefix string
-	beads  *store.BeadsStore
+	beads  *beads.Store
 	expire func(t *testing.T, rowID string)
 	now    func() time.Time
 	state  func(t *testing.T, rowIDs ...string) string
@@ -46,17 +46,17 @@ type policyBackend struct {
 func fakePolicyBackend(t *testing.T) policyBackend {
 	t.Helper()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 
-	expire := func(_ *testing.T, rowID string) { bd.Rows[rowID]["lease_expires_at"] = storetest.At(storetest.Now - 1) }
-	now := func() time.Time { return time.Unix(storetest.Now, 0) }
+	expire := func(_ *testing.T, rowID string) { bd.Rows[rowID]["lease_expires_at"] = beadstest.At(beadstest.Now - 1) }
+	now := func() time.Time { return time.Unix(beadstest.Now, 0) }
 	state := func(_ *testing.T, rowIDs ...string) string {
-		kept := map[string]storetest.Fields{}
+		kept := map[string]beadstest.Fields{}
 		for _, id := range rowIDs {
 			kept[id] = bd.Rows[id]
 		}
 
-		return storetest.JSON(kept)
+		return beadstest.JSON(kept)
 	}
 
 	return policyBackend{run: bd, prefix: "p", beads: beadsOver(t, bd), expire: expire, now: now, state: state}
@@ -73,24 +73,24 @@ func realPolicyBackend(t *testing.T) policyBackend {
 	}
 
 	root := t.TempDir()
-	port := storetest.StartDolt(t, root, "dolt")
+	port := beadstest.StartDolt(t, root, "dolt")
 	database := filepath.Join(root, "db")
 	require.NoError(t, os.Mkdir(database, 0o750))
 
 	inner := proc.NewExecRunner("env", database)
-	run := storetest.EnvRunner{Inner: inner, Env: storetest.BeadsEnv(root, port), Binary: binary}
+	run := beadstest.EnvRunner{Inner: inner, Env: beadstest.BeadsEnv(root, port), Binary: binary}
 
 	for _, step := range [][]string{{"git", "init", "-q"}, {binary, "init", "--prefix", realPrefix, "--server", "--external", "--server-port", strconv.Itoa(port)}} {
-		done := storetest.EnvRunner{Inner: inner, Env: run.Env, Binary: step[0]}.Run(t.Context(), step[1:])
+		done := beadstest.EnvRunner{Inner: inner, Env: run.Env, Binary: step[0]}.Run(t.Context(), step[1:])
 		require.Zero(t, done.ExitCode, "%v: %s", step, done.Stderr)
 	}
 
-	require.NoError(t, store.RequireBd(t.Context(), run))
+	require.NoError(t, beads.RequireBd(t.Context(), run))
 
-	beads, err := store.NewBeadsStore(run, realPrefix)
+	beads, err := beads.New(run, realPrefix)
 	require.NoError(t, err)
 
-	name := storetest.DatabaseName(t, database)
+	name := beadstest.DatabaseName(t, database)
 	sql := func(t *testing.T, query string) string {
 		t.Helper()
 
@@ -159,7 +159,7 @@ func hold(item, holder string) model.ClaimRow {
 
 // recorder passes every command to inner and keeps the command words.
 type recorder struct {
-	inner store.Runner
+	inner proc.Runner
 	mu    sync.Mutex
 	words []string
 }
@@ -185,7 +185,7 @@ var policyScenarios = map[string]func(*testing.T, policyBackend){
 
 // heartbeatSpy passes every command to inner. On a heartbeat it first runs before, then fails the rows in failing as a tracker that cannot be reached does.
 type heartbeatSpy struct {
-	inner   store.Runner
+	inner   proc.Runner
 	before  func(rowID string)
 	failing map[string]bool
 }
@@ -241,7 +241,7 @@ func scenarioBeatAfterLateTake(t *testing.T, b policyBackend) {
 		})
 	}}
 
-	beads, err := store.NewBeadsStore(spy, b.prefix)
+	beads, err := beads.New(spy, b.prefix)
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)
@@ -262,7 +262,7 @@ func scenarioBeatErrorRenewsTheRest(t *testing.T, b policyBackend) {
 
 	before := b.leaseOf(t, "66")
 
-	beads, err := store.NewBeadsStore(heartbeatSpy{inner: b.run, failing: map[string]bool{b.rowOf("65"): true}}, b.prefix)
+	beads, err := beads.New(heartbeatSpy{inner: b.run, failing: map[string]bool{b.rowOf("65"): true}}, b.prefix)
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)
@@ -403,7 +403,7 @@ func scenarioInspectionWritesNothing(t *testing.T, b policyBackend) {
 	before := b.state(t, rows...)
 
 	spy := &recorder{inner: b.run}
-	beads, err := store.NewBeadsStore(spy, b.prefix)
+	beads, err := beads.New(spy, b.prefix)
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)
