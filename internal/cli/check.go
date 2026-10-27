@@ -29,12 +29,13 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, deps CheckDeps) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
 	check.AddCommand(newCheckConfigCommand(ctx, env, adapters))
+	check.AddCommand(commandsOf(ctx, env, checkSpecs(deps))...)
 
 	return check
 }

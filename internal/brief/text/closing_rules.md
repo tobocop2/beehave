@@ -7,7 +7,7 @@ discarded. That file is the record and it is read.
 **Write it with Bash, not the Write tool** (the harness refuses it for report files): `cat > <report file> <<'EOF'` ... `EOF`.
 If Bash cannot write it either, put the whole report in your final message and say so.
 
-**The report carries four tables, and `obee check report --head <sha> <report>` must pass on it.** Its
+**The report carries four tables, and `obee check report <report> --head <sha>` must pass on it.** Its
 header states the format. A report that fails goes back to you unread.
 
 - `## Claims`: every claim in the title, body, commit messages, changelog entry, new comments, assertion

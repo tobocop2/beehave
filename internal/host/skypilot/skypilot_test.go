@@ -240,6 +240,52 @@ func TestStatus_AcceptsThePrefixedStatusAndAnEmptyList(t *testing.T) {
 	assert.Equal(t, model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: 94371840 * 1024, Readable: true}}, got)
 }
 
+func TestClusterID_IsTheLaunchTimeOfTheNamedCluster(t *testing.T) {
+	t.Parallel()
+
+	h, sky, _ := newScripted(t)
+	sky.Plan(`[{"name": "other", "status": "UP", "launched_at": 7}, {"name": "lane-host", "status": "UP", "launched_at": 1700000000}]`, "status")
+
+	id, err := h.ClusterID(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "1700000000", id)
+}
+
+func TestClusterID_RefusesWhatItCannotName(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"cluster absent":        `[{"name": "other", "status": "UP", "launched_at": 7}]`,
+		"no launch time":        `[{"name": "lane-host", "status": "UP"}]`,
+		"cluster is not up":     `[{"name": "lane-host", "status": "INIT", "launched_at": 7}]`,
+		"not a list":            "Cluster(s) not found",
+		"launch time not whole": `[{"name": "lane-host", "status": "UP", "launched_at": 1.5}]`,
+	}
+
+	for name, answer := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h, sky, _ := newScripted(t)
+			sky.Plan(answer, "status")
+
+			_, err := h.ClusterID(context.Background())
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestClusterID_ReportsAFailedStatusCall(t *testing.T) {
+	t.Parallel()
+
+	h, sky, _ := newScripted(t)
+	sky.PlanFail("boom", "status")
+
+	_, err := h.ClusterID(context.Background())
+	require.Error(t, err)
+}
+
 func TestStatus_RefusesWhatTheHostPrintsThatItDoesNotRecognise(t *testing.T) {
 	t.Parallel()
 

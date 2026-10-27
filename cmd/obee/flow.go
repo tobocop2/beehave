@@ -18,10 +18,6 @@ var errUnknownProject = errors.New("the config has no project of this name")
 // notBuilt stands in for each collaborator of the workflow that a later milestone adds. Each call names the missing step.
 type notBuilt struct{}
 
-func (notBuilt) Write(context.Context, flow.BriefRequest) (string, error) {
-	return "", flow.ErrNotBuilt
-}
-
 func (notBuilt) Run(context.Context, flow.AgentRequest) (agent.Result, error) {
 	return agent.Result{}, flow.ErrNotBuilt
 }
@@ -128,6 +124,6 @@ func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow
 	pending := notBuilt{}
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Briefs: pending, Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Watch: pending, Trees: pending, Beats: pending,
+		Briefs: newBriefs(config.ProcessEnv()), Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Watch: pending, Trees: pending, Beats: pending,
 	})
 }

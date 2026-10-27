@@ -144,6 +144,16 @@ func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	return h.readings(ctx)
 }
 
+// ClusterID is the launch time of the cluster, as `sky status` reports it. A cluster that is not up, or has no launch time, is an error.
+func (h *Host) ClusterID(ctx context.Context) (string, error) {
+	out, err := run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
+	if err != nil {
+		return "", err
+	}
+
+	return parseClusterID(out, h.cluster)
+}
+
 // readings asks the head node of a cluster that is up whether Slurm drains and how much disk is free.
 func (h *Host) readings(ctx context.Context) (model.HostStatus, error) {
 	draining, err := h.draining(ctx)
@@ -326,6 +336,11 @@ func (h *Host) bankWork(ctx context.Context) error {
 	}
 
 	return host.BankAll(ctx, remoteRunner{h: h, binary: "git"}, remoteRunner{h: h, binary: "find"}, root, h.config.PrivateRemote)
+}
+
+// Teardown banks the work of the head node and deletes the cluster. See host.Teardown.
+func (h *Host) Teardown(ctx context.Context) error {
+	return host.Teardown(ctx, h, remoteRunner{h: h, binary: "git"}, remoteRunner{h: h, binary: "find"}, h.config.PrivateRemote)
 }
 
 // remoteRunner is the command line of a binary on the head node.

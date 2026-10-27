@@ -30,6 +30,10 @@ type BuildInfo struct {
 	Doctor Doctor
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
 	Flow Flow
+	// Check reads what the check commands need outside the process.
+	Check CheckDeps
+	// Host opens the build host of a project for the host commands. A nil Open leaves them out.
+	Host HostDeps
 }
 
 // newRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
@@ -44,11 +48,23 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
-
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters), newDoctorCommand(ctx, env, info.Doctor))
-	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow}.add(root)
+	addCommands(ctx, root, info, env)
 
 	return root
+}
+
+// addCommands adds the commands of every group to the root.
+func addCommands(ctx context.Context, root *cobra.Command, info BuildInfo, env map[string]string) {
+	root.AddCommand(
+		newCheckCommand(ctx, env, info.Adapters, info.Check), newDoctorCommand(ctx, env, info.Doctor),
+		group("brief", "Write and size the brief of a lane", commandsOf(ctx, env, briefSpecs())),
+		group("ledger", "Read and write the ledger of lanes", commandsOf(ctx, env, ledgerSpecs(info.Check))),
+	)
+	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow}.add(root)
+
+	if specs := hostSpecs(info.Host); len(specs) > 0 {
+		root.AddCommand(group("host", "Run jobs on the build host of a project", commandsOf(ctx, env, specs)))
+	}
 }
 
 // Execute runs the command line and returns the process exit code.

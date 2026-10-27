@@ -10,7 +10,7 @@
   result yourself. The same holds for every job on a profile whose build host is the local machine.
 - **Before a longer job, read your context size.** Near the cap, submit nothing: write the handoff with the
   job script's path and `Job not read because: <reason>`; the orchestrator submits it. Under the cap, hand
-  the wait over: write the job script on the build host in one call, its last lines `echo "<MARKER> rc=$?"` and `rm -rf` of each jobs-directory tree it makes (or `TREE-KEEP <tree>: <reuser>`);
+  the wait over: write the job script on the build host in one call, its last line `echo "<MARKER> rc=$?"`;
   submit it in a second call with `obee host submit`; end your turn with exactly
   `launched: <log>, marker <MARKER>`, the line that `submit` prints. The orchestrator resumes you with the
   log tail.

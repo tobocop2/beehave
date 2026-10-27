@@ -45,8 +45,41 @@ const (
 
 // clusterRecord is one element of the answer of `sky status -o json`.
 type clusterRecord struct {
-	Name   *string `json:"name"`
-	Status *string `json:"status"`
+	Name       *string      `json:"name"`
+	Status     *string      `json:"status"`
+	LaunchedAt *json.Number `json:"launched_at"`
+}
+
+// parseClusterID reads the launch time of the named cluster from the answer of `sky status -o json`. A new cluster with the same name has a new launch time.
+// It is an error when the cluster is absent, is not up, or has no launch time that is a whole number.
+func parseClusterID(out, cluster string) (string, error) {
+	records, err := decodeClusters(out)
+	if err != nil {
+		return "", err
+	}
+
+	at := slices.IndexFunc(records, func(r clusterRecord) bool { return *r.Name == cluster })
+	if at < 0 {
+		return "", fmt.Errorf("%w: cluster %s is not in the list", errClusterUp, cluster)
+	}
+
+	if _, err = parseCluster(out, cluster); err != nil {
+		return "", err
+	}
+
+	return launchTime(records[at], cluster)
+}
+
+func launchTime(record clusterRecord, cluster string) (string, error) {
+	if record.LaunchedAt == nil {
+		return "", fmt.Errorf("%w: cluster %s has no launch time", errClusterList, cluster)
+	}
+
+	if _, err := strconv.ParseInt(record.LaunchedAt.String(), 10, 64); err != nil {
+		return "", fmt.Errorf("%w: launch time %q", errClusterList, record.LaunchedAt.String())
+	}
+
+	return record.LaunchedAt.String(), nil
 }
 
 // parseCluster reads the answer of `sky status -r -o json`. It returns false when the cluster is not in the list, and an error when the answer is not a list of records or the cluster is not up.

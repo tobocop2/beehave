@@ -1,7 +1,6 @@
 **The gate steps come from the round's gate list. You do not choose them.** `[SCRATCHPAD]/gate-steps.md`
-holds every step as a name and a command, derived from CI at round start; `obee check job --list
-[SCRATCHPAD]/gate-steps.md` prints it. Your job script runs each step and prints `STEP_RESULT name=<name> rc=<n>`.
-Before the launch, `obee check job --lane <lane> --script <host path> <script> [SCRATCHPAD]/gate-steps.md` must pass.
+holds every step as a name and a command, derived from CI at round start. Your job script runs each step and prints `STEP_RESULT name=<name> rc=<n>`.
+Before the launch, `obee check job --script <script> --list [SCRATCHPAD]/gate-steps.md` must pass.
 **A step you leave out prints `GATE-SKIP <name>: <reason>`, and the final marker says**
 `<MARKER> rc=<n> gate=partial:<count>` (`gate=full` when every step ran). Never report a partial gate as green:
 name the steps that did not run, in the report and in the handoff.

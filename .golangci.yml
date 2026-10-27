@@ -41,7 +41,12 @@ linters:
     - tparallel
     - paralleltest
     - perfsprint
+    - exhaustruct_v5
   settings:
+    exhaustruct_v5:
+      explicit-mode: true
+      enforce-patterns:
+        - .*internal/brief\.Lane$
     cyclop:
       max-complexity: 10
     gocognit:
@@ -364,6 +369,7 @@ linters:
         text: fmt\.|os\.Exit|os\.Std|panic
       - path: _test\.go
         linters:
+          - exhaustruct_v5
           - funlen
           - mnd
           - goconst

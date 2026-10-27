@@ -340,6 +340,19 @@ The rules file of the project comes from the config path. `LoadRules` refuses a 
 
 `Check` and `Size` read a filled brief. The required reading is the brief plus the files under its read-first list, and the limit is 160,000 bytes. `Check` warns about a file above 8,000 bytes, a chain of briefs and an acceptance script with no expected behavior. It refuses a reading above the limit. `Size` lists every file the brief names, follows the briefs that those files name, counts each file once and never refuses for size. The limit, the file warning and the cap are constants, not settings.
 
+## Commands
+
+The command tree in `internal/cli` calls the packages above. `cmd/obee` fills the reads of each command (`CheckDeps`, `HostDeps`), so a command that reads nothing from outside needs no adapter.
+
+| Command | What it does |
+|---|---|
+| `check papers`, `scope`, `transcript`, `skills`, `job`, `authors`, `report`, `handoff` | Run one check of the lane papers, the scope, a transcript, a job script or a report. |
+| `brief new`, `check`, `size` | Write the brief of a lane and add its ledger row, or size a filled brief. |
+| `ledger add`, `count`, `rounds`, `prior`, `closes` | Write and read the rows of the ledger. |
+| `host up`, `submit`, `clean` | Start the build host of a project and mark it, queue a job on it, or bank its work and stop the host. Only `host up` marks a cluster, and `host clean` stops only a marked cluster. A cluster that is up already gets no marker. |
+
+Exit codes follow one rule. A refusal, a stopped brief or a failed read exits 2. A check that runs and finds a defect exits 1, and a command with its own code returns it as an `ExitError`. A command that succeeds exits 0.
+
 ## Configuration
 
 In the config folder, `runners.toml` holds `[agents]` (`max_concurrent`, the global limit on agent processes), `[pool]` and the `[[runner]]` logins. `projects/<name>.toml` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`), a `[host]` table for a project with a build host, and an optional `[steps.<step>]` table that overrides the defaults of the default workflow. The step names are the typed constants in `model`. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
