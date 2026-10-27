@@ -300,6 +300,10 @@ The take mode refuses in this order: no notice, a notice younger than the grace 
 
 `merge` merges one reviewed pull request into the round base, pinned to the commit that a reviewer gated. `Run` takes a `Request` and returns a `Result` with a `Stop` and the lines to show. The stops are a closed set with a `Code`: 0 done, 2 refused, 3 no workflow scope and 4 own work.
 
+`merge/roundcut` cuts the next round after the integration pull request merges: it refuses unless that pull request is merged, makes or resumes the new base only at the trunk tip, moves every open pull request on the old base to it, and never deletes the old branch. A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The forge interface has no call that deletes a branch.
+
+`merge/audit` reads the merges of a range through git, with `-z` path lists, and returns `[]Line`. `Authored` lists the paths of a merge that differ from every parent, as resolved or authored, with a mark on sensitive paths. `Present` lists the lines a merge added that the tip lost, and the files deleted at the tip. A range that git cannot read is an error, never a clean report. A checkout that cannot be entered is a `NoWorktree` error with code 9.
+
 ### Own work is never merged
 
 obee never merges its own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, or any author of any commit, has a login or address equal to the owner login, the owner address or the login of a runner in `runners.toml`, the stop is `OwnWork`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
