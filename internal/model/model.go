@@ -53,6 +53,7 @@ type Project struct {
 	BaseBranch  string
 	Gate        string
 	BuildHost   string
+	Host        *HostConfig
 }
 
 func joinNames[T ~string](items []T) string {
