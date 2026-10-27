@@ -23,7 +23,7 @@ const (
 	poolKeys    = "five_hour_max, seven_day_max"
 	agentsKeys  = "max_concurrent"
 	runnersTop  = "agents, pool, runner"
-	projectKeys = "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, steps"
+	projectKeys = "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, host, steps"
 )
 
 // The value goes into an ssh command, so a cluster name is a letter, then letters, digits, hyphens.
