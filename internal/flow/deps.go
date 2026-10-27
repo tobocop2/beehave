@@ -112,6 +112,7 @@ type beats interface {
 // Wall replaces the wall reading of that clock: when it is nil, the wall reading is the one that Now returns.
 // After replaces the timer that ends the trust in a claim: it starts f once d has passed, and the function it returns stops the timer.
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
+// Watch replaces the time of the durable sleep between two reads of a ready pull request.
 type clock struct {
 	Tick      <-chan time.Time
 	Poll      time.Duration
@@ -123,6 +124,7 @@ type clock struct {
 	Wall      func() time.Time
 	After     func(d time.Duration, f func()) (stop func())
 	Grace     time.Duration
+	Watch     time.Duration
 }
 
 // now reads the clock of the process. The reading carries the monotonic clock, so a difference of two readings counts the time that the machine ran.
@@ -179,6 +181,7 @@ type Deps struct {
 	Logins    logins
 	Lifecycle lifecycle
 	Forge     forge
+	Watch     watcher
 	Trees     trees
 	Beats     beats
 }

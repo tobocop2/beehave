@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,8 @@ type RunInfo struct {
 	Stranded bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
 	Question string
+	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
+	SentBack string
 }
 
 // questionReadLimit is how long status waits for an event that the run has not set.
@@ -95,7 +98,7 @@ func (c *Client) Close() error {
 
 // Status lists every run of every item, oldest first.
 func (c *Client) Status() ([]RunInfo, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName))
+	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("list the runs: %w", err)
 	}
@@ -122,17 +125,46 @@ func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
 		Stranded: open && row.ApplicationVersion != c.version,
 	}
 
-	if open {
-		question, err := dbos.GetEvent[string](c.flow, row.ID, questionKey, questionReadLimit)
-		// A run that sets no question yet is not an error: the read times out.
-		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-			return RunInfo{}, fmt.Errorf("read the question of %s: %w", row.ID, err)
-		}
+	var err error
 
-		info.Question = question
+	switch {
+	case open:
+		info.Question, err = c.questionOf(row.ID)
+	case info.State == runDone:
+		info.SentBack, err = sentBackOf(row)
+	}
+
+	if err != nil {
+		return RunInfo{}, err
 	}
 
 	return info, nil
+}
+
+// questionOf reads the question an open run asks the owner.
+func (c *Client) questionOf(id string) (string, error) {
+	question, err := dbos.GetEvent[string](c.flow, id, questionKey, questionReadLimit)
+	// A run that sets no question yet is not an error: the read times out.
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return "", fmt.Errorf("read the question of %s: %w", id, err)
+	}
+
+	return question, nil
+}
+
+// sentBackOf reads the reason in the result of a finished run. A run with no result has none.
+func sentBackOf(row dbos.WorkflowStatus) (string, error) {
+	if row.Output == nil {
+		return "", nil
+	}
+
+	var result ItemResult
+	// ListWorkflows returns the stored JSON of the output as a string.
+	if err := json.Unmarshal([]byte(fmt.Sprint(row.Output)), &result); err != nil {
+		return "", fmt.Errorf("read the result of %s: %w", row.ID, err)
+	}
+
+	return result.SentBack, nil
 }
 
 func stateOf(status dbos.WorkflowStatusType) runState {
