@@ -24,7 +24,8 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["brief · gate · ledger<br/>merge · review · pool"]:::planned
+        policy["gate · ledger · pool<br/>lane policy"]
+        later["brief · merge · review"]:::planned
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -85,6 +86,9 @@ flowchart TD
     flow -.-> claim
     flow -.-> check
     flow -.-> policy
+    flow -.-> later
+    policy --> model
+    policy --> config
 
     classDef planned stroke-dasharray: 5 5,color:#888
 ```
@@ -219,6 +223,40 @@ The package `check` holds only `Refusal`. Each child keeps its own copy of the s
 The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step, with a `Derived from:` line that ends in a commit. A row with the command `see <file>` is an unstated step: the job passes when it prints `name=<step>`. Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts. A command here is a simple command with its redirects, a pipeline or list (`&&`, `||`, `;`, `|`), a subshell, a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`) with its keyword, or one line of a here-document. A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job. A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip. Words join on blank and tab only, so a no-break space does not join them. A comment at the end of a line is not a command. The skip reason and the fixed-status message print the text of the command, not of its whole line. The rows and sections are read as text with `splitRow`; the job is read with the parser of `shell.ParseUnits`, and the `let` rule parses its arithmetic text with the same parser. A `GATE-SKIP <step>: <reason>` line declares a skip. It needs a reason, a step of the list, a `command -v` check when the reason names a missing tool, and a final marker with `gate=partial`.
 
 The exit marker rule finds a print command (`echo`, `printf`, a here-document or a here-string, also inside a shell string argument) that prints `rc=` followed by a literal number. A variable counts as a literal when one assignment sets it, to a number, and nothing else can change it: no arithmetic, `read`, `for`, `printf -v`, `eval` or sourced file. The caller passes the function that reads sourced files. A file that cannot be read, or a path that only the shell can resolve, makes every variable unknown.
+
+## Ledger
+
+`ledger` keeps one row for each lane of each pull request. The rows are a TSV file in the state folder. A second file records the issues that the first review of a key closes. Both files have mode 0600.
+
+`Add` holds an exclusive lock for the whole call. The lock file is `<ledger>.lock`, and the `Rows` interface carries it as `Hold`, so a fake needs no file. Every read takes the same lock as a shared lock (`Share`), so a read never sees part of a write. `Add` records a lane once: a key that has a row for the lane is left as it is. A request with no time is refused. The first review of a key also reads the closing keywords of the pull request body and records the issue numbers. `Add` writes the lane row first. It then writes the closes file by `Publish`: a temp file beside it, renamed over it. If the publish fails, a retry finds the lane row and no closes, so it records the closes and returns them. The body comes from the `Body` function of the request. The closing-keyword pattern spells each letter in both cases, because Go case folding maps the long s to `s`.
+
+A fix lane is a fix, a rework or a relay. Only a fix lane writes the mechanism, model and round columns. The empty columns at the end of a row are left off. `Rounds` counts the fix and rework rows on one mechanism since the last design row. `Since` returns whole days from the latest row of a kind. A row whose time is not a UTC stamp is refused.
+
+`ledger` imports `model` and `check`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
+
+## Gate
+
+`gate` runs the gate command of a project, on this machine or on its build host, and says whether the tree passed. It takes three function values: the shell, the reader of the tree and the finder of the build host. `proc.RunShell` is the shell. It returns both streams in order, and 128 plus the signal number for a process that a signal ends. It keeps the last `model.ReportLimit` bytes of the output, so a command that prints without end does not grow memory.
+
+A tree with uncommitted changes is refused. A head or tree that changes during the run is refused as well, because the gate must judge the commit that obee sends on. A host job in any state except succeeded or failed gives `ErrNoVerdict`; it never counts as a pass. A gate on a build host sends one command line that makes the host judge the sent commit: a fresh folder under the login folder that an `EXIT` trap removes without a change to the exit status, a clone of the repository from the `CloneURL` of the request, a detached checkout of the head, a check that the checkout is that head, and then the gate command. Every word is shell-quoted. A clone or checkout that fails, as it does for a head that is not pushed, is a failed gate and never a pass. A host request without a `CloneURL` is refused. No caller builds a gate request yet; milestone 12 fills `CloneURL` from the forge of the project. A request with a `Resume` job id reads that job again and submits none. It must carry `ResumeHead`, the head that the job was submitted with, or it is refused, and `Result.Head` is that head. `Submitted` receives the id of a new job as soon as the host accepts it.
+
+## Runner pool
+
+`pool` picks the runner of an agent that has room. A runner has room when both windows are under their caps from `config.Pool`. The pick is the lowest seven-day use, then the lowest five-hour use, then the first runner in config order. A runner whose usage is unknown is never picked. When runners exist and none has room, `Select` returns `NoneQualifiesError`, and the command that called it maps the error to exit 3. The run does not move to another agent.
+
+A reset time prints with its offset and, when it has a fraction, six digits of it (`05:00:00.500000+00:00`).
+
+`pool` reads no usage. It takes a `Reader` function value and reads all runners at the same time, so the whole read takes one timeout. A reader that panics gives an unknown reading and leaves the others.
+
+The window types `Window`, `Usage` and `Reading` live in `model`, because the reader is a layer 1 package and layer 1 cannot import `pool`. A `Reading` holds usage or a reason, and its zero value is unknown.
+
+`agent/claude` has the reader. It starts the CLI with stream-json in the folder `/`, sends one `get_usage` request and stops at its answer. The CLI gets the allowlisted variables and the login of the runner only (`agent.LoginEnv`), never a token. The read has three limits: 30 seconds from the context, 4 MB of output, and one process group that dies at the end. A CLI that cannot start, that exits without an answer or whose reply has no usable window gives an unknown reading with the reason. A reply with a utilization outside 0 to 100 is unknown. A reply line that is not valid JSON, such as one with `NaN`, is skipped.
+
+## Doctor
+
+`obee doctor` checks that the machine can run obee and prints one line for each check: `ok` or `FAIL` with the fix. It exits 1 when any check fails. The checks are a table of a name and a function that returns an error, the fix, or nil. They run in this order: the config folder loads, `bd` and `gh` are on the path, the bd version is new enough, then for each runner its `config_dir` exists and its token is readable when it has a Keychain entry. The bd version check runs only when `bd` is on the path. A version error with no text is still a failure.
+
+The doctor command lives in `cli`. `BuildInfo.Doctor` holds two function values that `cmd/obee` fills: the Keychain reader, which runs `security` and never returns the token, and the bd version check of the beads adapter. Both are required: the command refuses a `Doctor` with a nil value and runs no check. A call of `security` stops after 10 seconds. `cli` does not import a backend.
 
 ## Configuration
 
