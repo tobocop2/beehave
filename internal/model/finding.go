@@ -9,6 +9,8 @@ const (
 	FindingRemoteDelete FindingKind = "remote-delete"
 	FindingDeleteText   FindingKind = "delete-text"
 	FindingLocalDelete  FindingKind = "local-delete"
+	FindingUnparsed     FindingKind = "unparsed"
+	FindingOpaque       FindingKind = "opaque-command"
 )
 
 // Finding is one forbidden command found in a shell command, with the text that matched.
