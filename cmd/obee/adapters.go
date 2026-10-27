@@ -11,14 +11,14 @@ import (
 )
 
 // adapters is the one place that maps an adapter name to its constructor. No other package dispatches on a name.
-// The lease store is not a choice: the claim rows live in beads whatever tracker the project uses, so it has no table.
+// The claim store is not a choice: the claim rows live in beads whatever tracker the project uses, so it has no table.
 type adapters struct {
 	trackers map[model.TrackerName]func(model.Project) (model.Tracker, error)
 	forges   map[model.ForgeName]func(model.Project) (model.Forge, error)
 	bd       store.Runner
 }
 
-// newAdapters returns the table. bd is the command line of beads, for the beads tracker and the lease store.
+// newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
 func newAdapters(bd store.Runner) adapters {
 	return adapters{
 		trackers: map[model.TrackerName]func(model.Project) (model.Tracker, error){
@@ -79,13 +79,13 @@ func (a adapters) forge(project model.Project) (model.Forge, error) { //nolint:i
 	return build(project)
 }
 
-// leases builds the lease store of the project. It is beads, so the project must name its beads prefix.
+// leases builds the claim store of the project. It is beads, so the project must name its beads prefix.
 func (a adapters) leases(project model.Project) (*store.BeadsStore, error) {
 	return store.NewBeadsStore(a.bd, project.BeadsPrefix)
 }
 
-// check builds the tracker, the forge and the lease store of the project and reports why it cannot.
-// The lease store needs a bd that has the guards of bd update, so check also refuses an older bd.
+// check builds the tracker, the forge and the claim store of the project and reports why it cannot.
+// The claim store needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
 // `obee check config` calls it for each project.
 func (a adapters) check(ctx context.Context, project model.Project) error {
 	if _, err := a.tracker(project); err != nil {

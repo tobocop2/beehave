@@ -20,6 +20,8 @@ import (
 const (
 	groupWait = 5 * time.Second
 	groupPoll = 10 * time.Millisecond
+	// groupStay is longer than the time a SIGKILL needs to land and be reaped, so a kill sent by the code under test is seen inside the window.
+	groupStay = 500 * time.Millisecond
 )
 
 // startSleeper starts a real sleep in its own process group and reaps it when it dies.
@@ -44,6 +46,21 @@ func requireDies(t *testing.T, pid int) {
 	t.Helper()
 
 	require.Eventually(t, func() bool { return !alive(pid) }, groupWait, groupPoll, "process %d is still alive", pid)
+}
+
+// requireStayAlive fails when any of the processes dies inside the window groupStay.
+func requireStayAlive(t *testing.T, msg string, pids ...int) {
+	t.Helper()
+
+	require.Never(t, func() bool {
+		for _, pid := range pids {
+			if !alive(pid) {
+				return true
+			}
+		}
+
+		return false
+	}, groupStay, groupPoll, msg)
 }
 
 func newGroups(t *testing.T) *groups {
@@ -166,14 +183,14 @@ func TestGroups_KillAllKillsEveryRecordedGroup(t *testing.T) {
 	requireDies(t, second)
 }
 
-// blockingAgents starts a real sleeper, reports it, and returns only when the test lets it.
+// blockingAgents starts a real sleeper under the context of the request, as the runner of the agent does, reports it, and returns only when the test lets it.
 type blockingAgents struct {
 	pid     chan int
 	proceed chan struct{}
 }
 
 func (b blockingAgents) Run(ctx context.Context, request AgentRequest) (agent.Result, error) {
-	cmd := proc.GroupCommand(context.WithoutCancel(ctx), "sleep", []string{"60"}, "")
+	cmd := proc.GroupCommand(ctx, "sleep", []string{"60"}, "")
 	if err := cmd.Start(); err != nil {
 		return agent.Result{}, err
 	}
@@ -187,10 +204,26 @@ func (b blockingAgents) Run(ctx context.Context, request AgentRequest) (agent.Re
 	return agent.Result{Outcome: agent.OutcomeExited}, nil
 }
 
+// procRun is the run that holds a trusted claim in an engine from newProcEngine: the phases of these tests belong to it.
+const procRun = "run-proc"
+
 func newProcEngine(t *testing.T, agents agents) *Engine {
 	t.Helper()
 
-	return &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard)}
+	engine := &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard)}
+	engine.holds.add(procRun, claimHold{renewed: time.Now()})
+
+	return engine
+}
+
+// runAgentOf waits for the claim of the run of the phase, then runs the agent of the phase under it, as the phase does.
+func runAgentOf(ctx context.Context, engine *Engine, in PhaseInput) (PhaseOutput, error) {
+	claim, err := engine.awaitClaim(ctx, in)
+	if err != nil {
+		return PhaseOutput{}, err
+	}
+
+	return engine.runAgent(ctx, claim, in, "")
 }
 
 func TestRunAgent_AGroupDiesWhenThePhaseIsCancelled(t *testing.T) {
@@ -203,7 +236,7 @@ func TestRunAgent_AGroupDiesWhenThePhaseIsCancelled(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.runAgent(ctx, PhaseInput{Item: testItem, Step: "implement"}, "")
+		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
 		done <- err
 	}()
 
@@ -226,7 +259,7 @@ func TestRunAgent_AGroupDiesWhenThePhaseTimesOut(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.runAgent(ctx, PhaseInput{Item: testItem, Step: "implement"}, "")
+		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
 		done <- err
 	}()
 
@@ -235,7 +268,7 @@ func TestRunAgent_AGroupDiesWhenThePhaseTimesOut(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
-func TestRunAgent_AGroupDiesWhenThePhaseEndsAndTheFileIsEmpty(t *testing.T) {
+func TestRunAgent_APhaseThatEndsEmptiesTheFileAndTheEndOfItsContextKillsTheGroup(t *testing.T) {
 	t.Parallel()
 
 	agents := blockingAgents{pid: make(chan int, 1), proceed: make(chan struct{})}
@@ -243,9 +276,10 @@ func TestRunAgent_AGroupDiesWhenThePhaseEndsAndTheFileIsEmpty(t *testing.T) {
 
 	engine := newProcEngine(t, agents)
 
-	_, err := engine.runAgent(t.Context(), PhaseInput{Item: testItem, Step: "implement"}, "")
+	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
 
 	require.NoError(t, err)
+
 	requireDies(t, <-agents.pid)
 
 	data, err := os.ReadFile(engine.procs.path)
@@ -262,7 +296,7 @@ func TestRunAgent_LogsAnAgentThatCannotBeRecorded(t *testing.T) {
 		return agent.Result{Outcome: agent.OutcomeExited}, nil
 	}))
 
-	_, err := engine.runAgent(t.Context(), PhaseInput{Item: testItem, Step: "implement"}, "")
+	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
 
 	require.NoError(t, err)
 }
@@ -282,17 +316,82 @@ func (f agentFunc) Run(ctx context.Context, request AgentRequest) (agent.Result,
 	return f(ctx, request)
 }
 
-func TestGroups_ReleaseKillsOnlyTheGroupsOfItsOwner(t *testing.T) {
+func TestRunAgent_ALostClaimKillsTheGroupWhileTheRunStaysOpen(t *testing.T) {
+	t.Parallel()
+
+	agents := blockingAgents{pid: make(chan int, 1), proceed: make(chan struct{})}
+	engine := newProcEngine(t, agents)
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+		done <- err
+	}()
+
+	pid := <-agents.pid
+
+	// The run is not dropped and the phase does not end: only the loss ends the context of the claim.
+	engine.holds.fail(procRun, "the claim is lost")
+	requireDies(t, pid)
+
+	close(agents.proceed)
+	require.NoError(t, <-done)
+}
+
+func TestHolds_AddEndsTheContextOfTheRowItReplaces(t *testing.T) {
+	t.Parallel()
+
+	var h holds
+
+	h.add("run", claimHold{})
+
+	first := h.rows["run"].ctx
+
+	h.add("run", claimHold{})
+
+	require.Error(t, first.Err(), "the first context is done")
+	require.NoError(t, h.rows["run"].ctx.Err(), "the new row keeps a live context")
+}
+
+// runsOf returns the run of each row.
+func runsOf(rows []groupRow) []string {
+	runs := make([]string, 0, len(rows))
+
+	for _, row := range rows {
+		runs = append(runs, row.run)
+	}
+
+	return runs
+}
+
+// withoutStart returns the rows with the start time of each leader cleared, so a test compares the group and the run.
+func withoutStart(rows []groupRow) []groupRow {
+	out := make([]groupRow, 0, len(rows))
+
+	for _, row := range rows {
+		row.started = ""
+		out = append(out, row)
+	}
+
+	return out
+}
+
+func TestGroups_ReleaseForgetsEveryGroupOfTheRunAndKillsNone(t *testing.T) {
 	t.Parallel()
 
 	g := newGroups(t)
-	mine, other := startSleeper(t), startSleeper(t)
-	require.NoError(t, g.add(t.Context(), "mine", mine))
-	require.NoError(t, g.add(t.Context(), "other", other))
+	first, second := startSleeper(t), startSleeper(t)
+	longer, other := startSleeper(t), startSleeper(t)
 
-	require.NoError(t, g.release("mine"))
+	for run, pid := range map[string]int{"item-12-r1": first, "item-12-r10": longer, "item-13-r1": other} {
+		require.NoError(t, g.add(t.Context(), run, pid))
+	}
 
-	requireDies(t, mine)
-	assert.True(t, alive(other))
-	assert.Len(t, g.rows, 1)
+	require.NoError(t, g.add(t.Context(), "item-12-r1", second))
+
+	require.NoError(t, g.release("item-12-r1"))
+
+	requireStayAlive(t, "a release kills no group", first, second, longer, other)
+	assert.ElementsMatch(t, []groupRow{{pgid: longer, run: "item-12-r10"}, {pgid: other, run: "item-13-r1"}}, withoutStart(g.rows), "run r10 is not run r1")
 }

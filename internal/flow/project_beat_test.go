@@ -83,18 +83,16 @@ func TestTick_RenewsTheClaimOfARunThatWaitsForTheOwner(t *testing.T) {
 	assert.Empty(t, engine.holds.snapshot())
 }
 
-func TestRun_AFailedRenewalStopsTheRunBeforeItsNextAgentStepAndSaysWhy(t *testing.T) {
+func TestRun_ALostClaimEndsTheRunThatWaitsForTheOwnerAndSaysWhy(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
 		text   string
-		err    error
 		reason string
 	}{
-		{"the_tracker_answers_with_a_refusal", "claim taken by another owner", nil, "claim taken by another owner"},
-		{"the_tracker_cannot_be_reached", "", errFake, errFake.Error()},
-		{"the_refusal_holds_a_secret", "tracker refused " + testSecret, nil, "tracker refused [redacted]"},
+		{"the_tracker_answers_with_a_refusal", "claim taken by another owner", "claim taken by another owner"},
+		{"the_refusal_holds_a_secret", "tracker refused " + testSecret, "tracker refused [redacted]"},
 	}
 
 	for _, test := range tests {
@@ -104,25 +102,22 @@ func TestRun_AFailedRenewalStopsTheRunBeforeItsNextAgentStepAndSaysWhy(t *testin
 			harness := newHarness(t)
 			harness.verdicts.reviews = changes(6)
 			engine := harness.engine(t)
-			client := harness.client(t, testVersion)
 
 			done := runInBackground(engine, testItem)
 			eventually(t, func() bool { return harness.verdicts.count() == 6 })
 
-			harness.beats.fail(testOwner+testItem, test.text, test.err)
-			harness.tick(t)
-			require.Empty(t, engine.holds.snapshot())
-
 			before := len(harness.agents.seen())
 
-			require.NoError(t, client.Answer(testItem, "go"))
+			harness.beats.fail(testOwner+testItem, test.text, nil)
+			harness.tick(t)
+			require.Empty(t, engine.holds.snapshot())
 
 			outcome := <-done
 
 			require.ErrorIs(t, outcome.err, errClaimLost)
 			require.ErrorContains(t, outcome.err, test.reason)
-			assert.Len(t, harness.agents.seen(), before)
-			assert.Contains(t, harness.life.seen(), "release:12")
+			assert.Len(t, harness.agents.seen(), before, "no agent step started after the loss")
+			assert.Zero(t, countOf(harness.life.seen(), "release"), "the claim is not ours to release")
 		})
 	}
 }

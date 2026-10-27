@@ -47,7 +47,7 @@ type bdRow struct {
 	Description *string `json:"description"`
 	Status      string  `json:"status"`
 
-	LastActivity string `json:"last_activity"`
+	LeaseExpiresAt string `json:"lease_expires_at"`
 }
 
 // BeadsStore is one beads database, read and written through bd. It implements model.Tracker.

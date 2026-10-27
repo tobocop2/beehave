@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -59,11 +60,11 @@ func TestHolds_ACallOutsideAWorkflowHoldsAndTracksNothing(t *testing.T) {
 
 	engine := idleEngine(t, newHarness(t))
 
-	forget := engine.holds.hold(engine.ctx, testProject, testOwner)
+	id, forget := engine.holds.hold(engine.ctx, testProject, testOwner)
 	forget()
 
+	assert.Empty(t, id)
 	assert.Empty(t, engine.holds.snapshot())
-	assert.Empty(t, engine.holds.lostReason(engine.ctx))
 
 	var runCtx dbos.Context
 
@@ -82,16 +83,219 @@ func TestHolds_FailKeepsTheReasonAndASnapshotDropsTheLostClaim(t *testing.T) {
 
 	var held holds
 
-	held.mu.Lock()
-	held.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner}}
-	held.mu.Unlock()
+	held.add("run-1", claimHold{project: testProject, owner: testOwner, renewed: time.Unix(100, 0)})
+	held.add("run-3", claimHold{renewed: time.Unix(100, 0)})
+
+	claim, _, _ := held.distrust("run-1", clock{Now: func() time.Time { return time.Unix(100, 0) }})
+	require.NoError(t, claim.Err(), "a claim that is trusted has a live context")
 
 	held.fail("run-1", "the tracker said no")
 	held.fail("run-2", "no such run")
 
-	assert.Empty(t, held.snapshot())
+	require.ErrorIs(t, claim.Err(), context.Canceled, "a loss ends the context of the claim")
+	assert.Len(t, held.snapshot(), 1)
 	assert.Equal(t, "the tracker said no", held.rows["run-1"].lost)
 	assert.NotContains(t, held.rows, "run-2")
+}
+
+func TestHolds_DropEndsTheContextOfTheClaimAndForgetsIt(t *testing.T) {
+	t.Parallel()
+
+	var held holds
+
+	held.add("run-1", claimHold{renewed: time.Unix(100, 0)})
+
+	claim, _, _ := held.distrust("run-1", clock{Now: func() time.Time { return time.Unix(100, 0) }})
+
+	held.drop("run-1")
+	held.drop("run-2")
+
+	require.ErrorIs(t, claim.Err(), context.Canceled, "the end of the run ends the agents of the run")
+	assert.Empty(t, held.rows)
+}
+
+func TestHolds_DistrustNamesWhyARunHoldsNoTrustedClaim(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1_000_000, 0)
+
+	cases := map[string]struct {
+		row    claimHold
+		find   string
+		reason string
+		early  bool
+	}{
+		"no row for the run":     {find: "other-run", reason: "holds no claim on the item", early: true},
+		"a lost claim":           {row: claimHold{renewed: now, lost: "the tracker said no"}, reason: "the tracker said no"},
+		"no good renewal yet":    {row: claimHold{}, reason: "no renewal of the claim has worked yet", early: true},
+		"a renewal at the limit": {row: claimHold{renewed: now.Add(-trustLimit)}, reason: "its lease can end"},
+		"a fresh renewal":        {row: claimHold{renewed: now.Add(-trustLimit + time.Second)}},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var held holds
+
+			held.add("run-1", tc.row)
+
+			claim, reason, early := held.distrust(cmp.Or(tc.find, "run-1"), clock{Now: func() time.Time { return now }})
+
+			assert.Contains(t, reason, tc.reason)
+			assert.Equal(t, tc.early, early)
+			assert.Equal(t, tc.reason == "", claim != nil, "a trusted claim comes with its context, and nothing else does")
+		})
+	}
+}
+
+func TestHolds_ASnapshotSkipsAClaimThatHasNoFirstTrustYet(t *testing.T) {
+	t.Parallel()
+
+	var held holds
+
+	held.mu.Lock()
+	held.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner}}
+	held.mu.Unlock()
+
+	assert.Empty(t, held.snapshot())
+}
+
+func TestHolds_RenewMovesTheStartOfTheTrustOfTheNamedRunOnlyAndSwapsItsTimer(t *testing.T) {
+	t.Parallel()
+
+	var held holds
+
+	start := time.Unix(100, 0)
+	stopped := 0
+
+	held.mu.Lock()
+	held.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner, failure: "old", stop: func() { stopped++ }}, "run-3": {lost: "gone"}}
+	held.mu.Unlock()
+
+	assert.True(t, held.renew("run-1", start, func() {}))
+	assert.False(t, held.renew("run-2", start, func() {}))
+	assert.False(t, held.renew("run-3", start, func() {}), "a lost claim is not renewed")
+
+	assert.Equal(t, start, held.rows["run-1"].renewed)
+	assert.Empty(t, held.rows["run-1"].failure, "a good renewal forgets the earlier failure")
+	assert.NotContains(t, held.rows, "run-2")
+	assert.Equal(t, 1, stopped, "the timer of the earlier renewal stops")
+}
+
+func TestHolds_ExpiredNamesTheClaimOnlyForTheStampThatArmedTheTimer(t *testing.T) {
+	t.Parallel()
+
+	var held holds
+
+	start := time.Unix(100, 0)
+
+	held.mu.Lock()
+	held.rows = map[string]claimHold{"run-1": {renewed: start}, "run-2": {renewed: start, lost: "gone"}}
+	held.mu.Unlock()
+
+	_, expired := held.expired("run-1", start)
+	assert.True(t, expired)
+
+	_, expired = held.expired("run-1", start.Add(time.Second))
+	assert.False(t, expired, "a later renewal makes the timer void")
+
+	_, expired = held.expired("run-2", start)
+	assert.False(t, expired)
+
+	_, expired = held.expired("run-3", start)
+	assert.False(t, expired)
+}
+
+func TestHolds_NoteKeepsTheFailureOfTheNamedRunOnly(t *testing.T) {
+	t.Parallel()
+
+	var held holds
+
+	held.mu.Lock()
+	held.rows = map[string]claimHold{"run-1": {}}
+	held.mu.Unlock()
+
+	held.note("run-1", "down")
+	held.note("run-2", "down")
+
+	assert.Equal(t, "down", held.rows["run-1"].failure)
+	assert.NotContains(t, held.rows, "run-2")
+}
+
+func TestClock_AgeCountsTheLargerOfTheMonotonicAndTheWallTime(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+
+	cases := map[string]struct {
+		monotonic time.Duration
+		wall      time.Duration
+		want      time.Duration
+	}{
+		"a sleep moves the wall reading and not the monotonic reading": {wall: time.Minute, want: time.Minute},
+		"a wall clock that stands still while the machine runs":        {monotonic: time.Minute, want: time.Minute},
+		"a wall clock set back while the machine runs":                 {monotonic: time.Minute, wall: -time.Hour, want: time.Minute},
+		"both readings move": {monotonic: time.Minute, wall: 2 * time.Minute, want: 2 * time.Minute},
+		"no time passes":     {},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			clk := clock{
+				Now:  func() time.Time { return start.Add(tc.monotonic) },
+				Wall: func() time.Time { return start.Round(0).Add(tc.wall) },
+			}
+
+			assert.Equal(t, tc.want, clk.age(start))
+		})
+	}
+}
+
+func TestClock_TheWallReadingOfAClockWithoutOneIsTheWallPartOfNow(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	clk := clock{Now: func() time.Time { return start.Add(time.Minute) }}
+
+	assert.Zero(t, clk.wall().Round(0).Compare(start.Round(0).Add(time.Minute)))
+	assert.Equal(t, time.Minute, clk.age(start))
+}
+
+func TestClock_TheClockOfTheProcessCarriesAMonotonicReading(t *testing.T) {
+	t.Parallel()
+
+	assert.Contains(t, clock{}.now().String(), "m=", "a clock without the monotonic reading overstates the trust")
+}
+
+func TestClock_AfterStartsTheFunctionAndItsStopFunctionCancelsIt(t *testing.T) {
+	t.Parallel()
+
+	fired := make(chan struct{})
+
+	clock{}.after(time.Millisecond, func() { close(fired) })
+	<-fired
+
+	stop := clock{}.after(time.Hour, func() { t.Error("a stopped timer fires") })
+	stop()
+}
+
+func TestCancels_StopCancelsTheRunAndKeepsItListed(t *testing.T) {
+	t.Parallel()
+
+	var runs cancels
+
+	stopped := 0
+
+	runs.add("run-1", openRun{id: "run-1", cancel: func() { stopped++ }, in: ItemInput{Item: testItem}})
+
+	runs.stop("run-1")
+	runs.stop("run-2")
+
+	assert.Equal(t, 1, stopped, "this process does not execute run-2")
+	assert.Equal(t, []string{"run-1"}, runs.ids())
 }
 
 func TestTick_TheRealTickerRenewsAHeldClaim(t *testing.T) {
@@ -103,7 +307,7 @@ func TestTick_TheRealTickerRenewsAHeldClaim(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	engine.holds.mu.Lock()
-	engine.holds.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner + testItem}}
+	engine.holds.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner + testItem, renewed: time.Now()}}
 	engine.holds.mu.Unlock()
 
 	stop := make(chan struct{})
@@ -137,8 +341,17 @@ func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
 	_, err = engine.Run(testItem, testProject)
 	require.ErrorContains(t, err, "list the runs of item 12")
 
+	// Outside a workflow the run id is empty: hold a trusted claim under it, so the guard on the phase start passes.
+	engine.holds.add("", claimHold{renewed: time.Now()})
+
 	err = engine.runPhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Step: model.StepPlan, Login: testLogin})
 	require.ErrorContains(t, err, "queue the plan of item 12")
+
+	_, err = engine.runOpen(testItem)
+	require.ErrorContains(t, err, "read run 12")
+
+	_, err = engine.awaitClaim(t.Context(), PhaseInput{Run: "run-gone", Item: testItem})
+	require.ErrorContains(t, err, "read run run-gone")
 }
 
 func TestClock_TheZeroValueAddsNoResultOption(t *testing.T) {

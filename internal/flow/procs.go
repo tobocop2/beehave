@@ -20,11 +20,11 @@ const (
 	rowSeparator = "\t"
 )
 
-// groupRow is one agent process group: its id, the start time of its leader and the phase that owns it.
+// groupRow is one agent process group: its id, the start time of its leader and the id of the run that owns it.
 type groupRow struct {
 	pgid    int
 	started string
-	owner   string
+	run     string
 }
 
 // groups records the process group of each running agent in a file in the state folder.
@@ -35,8 +35,8 @@ type groups struct {
 	rows []groupRow
 }
 
-// add records the group of an agent that started with the given pid. An agent that already ended leaves no row.
-func (g *groups) add(ctx context.Context, owner string, pid int) error {
+// add records the group of an agent of a run that started with the given pid. An agent that already ended leaves no row.
+func (g *groups) add(ctx context.Context, run string, pid int) error {
 	started, err := proc.StartTime(ctx, pid)
 	if err != nil {
 		return fmt.Errorf("read the start time of agent process %d: %w", pid, err)
@@ -45,36 +45,23 @@ func (g *groups) add(ctx context.Context, owner string, pid int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	g.rows = append(g.rows, groupRow{pgid: pid, started: started, owner: owner})
+	g.rows = append(g.rows, groupRow{pgid: pid, started: started, run: run})
 
 	return g.write()
 }
 
-// release kills every group of the owner and forgets it. A group with no member left is not an error.
-func (g *groups) release(owner string) error {
-	return g.releaseWhere(func(row groupRow) bool { return row.owner == owner })
-}
-
-// releaseItem kills every group of every phase of the item and forgets them. Owners read item/step/round.
-func (g *groups) releaseItem(item string) error {
-	return g.releaseWhere(func(row groupRow) bool { return strings.HasPrefix(row.owner, item+"/") })
-}
-
-func (g *groups) releaseWhere(match func(groupRow) bool) error {
+// release forgets every group of the run and kills none: the end of the claim context kills a live agent, and the runner kills the leftovers of one that exited.
+// The file rows are crash cleanup only. It never reads an item: two runs of one item own different groups.
+func (g *groups) release(run string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	kept := g.rows[:0]
 
 	for _, row := range g.rows {
-		if match(row) {
-			// ESRCH means the group has no member left.
-			_ = proc.KillGroupID(row.pgid) //nolint:errcheck // nothing is left to kill
-
-			continue
+		if row.run != run {
+			kept = append(kept, row)
 		}
-
-		kept = append(kept, row)
 	}
 
 	g.rows = kept

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,7 +13,6 @@ import (
 
 const (
 	statusProgress = "in_progress"
-	agentMiddle    = "-agent-"
 	maxTitleRunes  = 70
 	noIssueText    = "no issue found matching"
 	noIssuesText   = "no issues found matching"
@@ -25,10 +25,10 @@ const (
 	textNotClaimable = "issue not claimable"
 	textMismatch     = "assignee mismatch"
 	textClosed       = "cannot unclaim closed issue"
+	argActor         = "--actor"
 	argClaim         = "--claim"
 	argUnclaim       = "unclaim"
 	statusOpen       = "open"
-	tokenSeparator   = "#"
 	argIfAssignee    = "--if-assignee"
 	argIfStatus      = "--if-status"
 	argStatus        = "--status"
@@ -38,12 +38,21 @@ const (
 	argType          = "--type"
 	argTitle         = "--title"
 	argCreate        = "create"
-	typeAgent        = "agent"
+	argID            = "--id"
 	rowsHeldLabel    = "the held rows"
-	rowsAgentsLabel  = "the agent beads"
+	claimNote        = "Claim row. Held while in_progress; the assignee holds it and bd keeps its lease."
 )
 
-// HeldRows returns every in_progress claim row.
+// reclaimed is the answer of bd reclaim --json: the rows whose lease ended and that went back to open.
+type reclaimed struct {
+	Reclaimed []reclaimedRow `json:"reclaimed"`
+}
+
+type reclaimedRow struct {
+	ID string `json:"id"`
+}
+
+// HeldRows returns every in_progress claim row with the end of its lease. A row with no lease has the zero LeaseEnds.
 func (s *BeadsStore) HeldRows(ctx context.Context) ([]model.ClaimRow, error) {
 	rows, err := s.list(ctx, []string{"list", "--status=" + statusProgress}, rowsHeldLabel, "store: cannot read "+rowsHeldLabel+"; refusing to answer")
 	if err != nil {
@@ -53,35 +62,43 @@ func (s *BeadsStore) HeldRows(ctx context.Context) ([]model.ClaimRow, error) {
 	var held []model.ClaimRow
 
 	for _, r := range rows {
-		if item, ok := claimedItem(derefText(r.Title)); ok && r.ID != "" {
-			holder, nonce := splitAssignee(r.Assignee)
-			held = append(held, model.ClaimRow{Item: item, Holder: holder, Lease: model.StoredLease(derefText(r.Description)), Nonce: nonce})
+		row, ok, err := claimRowOf(r)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			held = append(held, row)
 		}
 	}
 
 	return held, nil
 }
 
-// assigneeOf returns the assignee text of a take: the holder, then a token that never repeats.
-// A guard on this text fails for any later take, even a later take by the same holder.
-func assigneeOf(row model.ClaimRow) string {
-	if row.Nonce == "" {
-		return row.Holder
+// claimRowOf reads a claim row from a bd row. It reports false for a row that is no claim row.
+func claimRowOf(r bdRow) (model.ClaimRow, bool, error) {
+	item, ok := claimedItem(derefText(r.Title))
+	if !ok || r.ID == "" {
+		return model.ClaimRow{}, false, nil
 	}
 
-	return row.Holder + tokenSeparator + row.Nonce
+	ends, err := leaseEnd(r)
+
+	return model.ClaimRow{Item: item, Holder: r.Assignee, LeaseEnds: ends}, err == nil, err
 }
 
-// splitAssignee returns the holder and the token of an assignee text. The holder is the name people see.
-func splitAssignee(assignee string) (string, string) {
-	holder, nonce, _ := strings.Cut(assignee, tokenSeparator)
+// leaseEnd reads lease_expires_at of a row. A row with no lease has none, and a text that is no time is a refusal.
+func leaseEnd(r bdRow) (time.Time, error) {
+	if r.LeaseExpiresAt == "" {
+		return time.Time{}, nil
+	}
 
-	return holder, nonce
-}
+	ends, err := time.Parse(time.RFC3339Nano, r.LeaseExpiresAt)
+	if err != nil {
+		return time.Time{}, refuse("store: the lease end %q of %s is not a time; refusing to answer", r.LeaseExpiresAt, r.ID)
+	}
 
-// guardOf returns the guard arguments that hold while the row is an in_progress take of row.
-func guardOf(row model.ClaimRow) []string {
-	return []string{argIfAssignee, assigneeOf(row), argIfStatus, statusProgress}
+	return ends, nil
 }
 
 // claimedItem returns the item a claim row title names, or false when the title is not a claim row of a known kind.
@@ -96,65 +113,48 @@ func claimedItem(title string) (string, bool) {
 	return item, model.ItemKind(item) == kind
 }
 
-// LastSeen returns when each owner with an agent bead last beat.
-func (s *BeadsStore) LastSeen(ctx context.Context) (map[string]time.Time, error) {
-	rows, err := s.list(ctx, []string{"list", argType, typeAgent}, rowsAgentsLabel, "store: cannot read "+rowsAgentsLabel+"; refusing to answer")
-	if err != nil {
-		return nil, err
-	}
-
-	prefix := s.prefix + agentMiddle
-	seen := map[string]time.Time{}
-
-	for _, r := range rows {
-		stamp, err := time.Parse(time.RFC3339Nano, r.LastActivity)
-		if strings.HasPrefix(r.ID, prefix) && err == nil {
-			seen[strings.TrimPrefix(r.ID, prefix)] = stamp
-		}
-	}
-
-	return seen, nil
-}
-
-// Beat stamps the heartbeat of the holder's agent bead and creates the bead first.
+// Beat renews the lease of every claim row the holder holds with bd heartbeat. A holder with no row has lost its claim.
 func (s *BeadsStore) Beat(ctx context.Context, holder string) error {
-	agent := s.prefix + agentMiddle + holder
-
-	if err := s.ensureAgent(ctx, agent, holder); err != nil {
+	if err := s.requireGuards(ctx); err != nil {
 		return err
 	}
 
-	if done := s.run.Run(ctx, []string{"agent", "heartbeat", agent}); done.ExitCode != 0 {
-		return refuse("store: heartbeat for %s failed: %s", agent, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes))
-	}
-
-	return nil
-}
-
-func (s *BeadsStore) ensureAgent(ctx context.Context, agent, holder string) error {
-	shown, err := s.showRow(ctx, agent)
-	if err != nil || shown != nil {
+	rows, err := s.HeldRows(ctx)
+	if err != nil {
 		return err
 	}
 
-	s.run.Run(ctx, []string{
-		argCreate, "--id", agent, argTitle, "lock owner " + holder, argType, typeAgent, "--labels", "gt:agent",
-		"--silent", argDescription, "Liveness for the claim: last_activity is this owner's last heartbeat.",
-	})
+	mine := slices.DeleteFunc(rows, func(row model.ClaimRow) bool { return row.Holder != holder })
+	if len(mine) == 0 {
+		return fmt.Errorf("store: %s holds no claim row: %w", holder, model.ErrNoClaim)
+	}
 
-	if shown, err = s.showRow(ctx, agent); shown == nil {
-		return firstError(err, refuse("store: could not create the agent bead %s", agent))
+	return s.heartbeatAll(ctx, mine, holder)
+}
+
+// heartbeatAll renews every row, so one bad row does not starve the others toward their lease end. It joins the errors.
+func (s *BeadsStore) heartbeatAll(ctx context.Context, rows []model.ClaimRow, holder string) error {
+	var errs []error
+
+	for _, row := range rows {
+		errs = append(errs, s.heartbeat(ctx, s.rowID(row.Item), holder))
+	}
+
+	return errors.Join(errs...)
+}
+
+// heartbeat renews the lease of one row. A row that another holder took since the list is no claim of this holder: bd refuses with the text of a lost take.
+func (s *BeadsStore) heartbeat(ctx context.Context, rowID, holder string) error {
+	done := s.run.Run(ctx, []string{"heartbeat", rowID, argActor, holder})
+	if refusedWith(done, textClaimed) {
+		return fmt.Errorf("store: %s no longer holds %s, which another holder took: %w", holder, rowID, model.ErrNoClaim)
+	}
+
+	if done.ExitCode != 0 {
+		return refuse("store: heartbeat for %s failed: %s", rowID, stderrText(done))
 	}
 
 	return nil
-}
-
-func firstError(first, second error) error {
-	if first != nil {
-		return first
-	}
-
-	return second
 }
 
 func (s *BeadsStore) rowID(item string) string {
@@ -169,7 +169,7 @@ func (s *BeadsStore) showRow(ctx context.Context, rowID string) (*bdRow, error) 
 			return nil, nil //nolint:nilnil // a missing row is an answer, not an error
 		}
 
-		return nil, refuse("store: cannot read the row %s: %s", rowID, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes))
+		return nil, refuse("store: cannot read the row %s: %s", rowID, stderrText(done))
 	}
 
 	shown, err := decodeShown(rowID, done.Stdout)
@@ -194,21 +194,10 @@ func isMissing(stderr, id string) bool {
 	return strings.Contains(text, noIssueText) || strings.Contains(text, noIssuesText) || strings.Contains(text, "issue "+strings.ToLower(id)+" not found")
 }
 
-// Row reads the claim row of the item.
-func (s *BeadsStore) Row(ctx context.Context, item string) (model.RowState, error) {
-	shown, err := s.showRow(ctx, s.rowID(item))
-	if err != nil || shown == nil {
-		return model.RowState{}, err
-	}
-
-	holder, nonce := splitAssignee(shown.Assignee)
-
-	return model.RowState{Exists: true, Held: shown.Status == statusProgress, Holder: holder, Nonce: nonce}, nil
-}
-
-// TryHold makes the row if it is missing, clears a stale holder, and claims the row with bd's atomic claim.
-// The assignee of the take is the holder and a token that never repeats. The clear is guarded by the assignee and status that were read,
-// so it cannot wipe a claim made since. bd does not take a guard and --claim together, so a caller reads Row after TryHold to learn the winner.
+// TryHold makes the row if it is missing, clears a stale holder, and claims the row with bd's atomic claim as the holder.
+// bd grants the lease to its actor (issueops/claim.go:197-203), so the holder is the actor and the assignee: a take that also passes
+// --assignee deletes the lease (cmd/bd/update.go:494). The clear is guarded by the assignee and status that were read, so it cannot wipe a claim made since.
+// A caller reads HeldRows after TryHold to learn the winner.
 func (s *BeadsStore) TryHold(ctx context.Context, row model.ClaimRow) error {
 	if err := s.requireGuards(ctx); err != nil {
 		return err
@@ -225,7 +214,7 @@ func (s *BeadsStore) TryHold(ctx context.Context, row model.ClaimRow) error {
 		return err
 	}
 
-	return s.claim(ctx, rowID, row)
+	return s.claim(ctx, rowID, row.Holder)
 }
 
 // ensureRow shows the claim row and makes it when it is missing.
@@ -238,15 +227,20 @@ func (s *BeadsStore) ensureRow(ctx context.Context, rowID string, row model.Clai
 	return s.createRow(ctx, rowID, row)
 }
 
-// claim runs bd update --claim. bd takes only an open row, and a refused take exits 1 with the text of a lost take, so
-// that exit is no error: the caller reads the row to learn the winner. Any other failure is an error.
-func (s *BeadsStore) claim(ctx context.Context, rowID string, row model.ClaimRow) error {
-	done := s.run.Run(ctx, []string{argUpdate, rowID, argClaim, argAssignee, assigneeOf(row)})
+// claim runs bd update --claim as the holder. bd takes only an open row, and a refused take exits 1 with the text of a lost take, so
+// that exit is no error: the caller reads the rows to learn the winner. Any other failure is an error.
+func (s *BeadsStore) claim(ctx context.Context, rowID, holder string) error {
+	done := s.run.Run(ctx, []string{argUpdate, rowID, argClaim, argActor, holder})
 	if done.ExitCode == 0 || refusedWith(done, textClaimed, textNotClaimable) {
 		return nil
 	}
 
-	return refuse("store: cannot claim the row %s: %s", rowID, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes))
+	return refuse("store: cannot claim the row %s: %s", rowID, stderrText(done))
+}
+
+// stderrText is the stderr of a failed bd call, trimmed and cut for an error message.
+func stderrText(done model.CommandResult) string {
+	return firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes)
 }
 
 // refusedWith reports a bd refusal: exit 1 with one of the sentinel texts. Any other exit 1 is an error.
@@ -274,7 +268,7 @@ func (s *BeadsStore) updateIf(ctx context.Context, rowID string, guard []string,
 	}
 
 	if done.ExitCode != 0 {
-		return false, refuse("store: cannot update the row %s (the guards need bd 1.3.2 or newer): %s", rowID, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes))
+		return false, refuse("store: cannot update the row %s (the guards need bd 1.3.2 or newer): %s", rowID, stderrText(done))
 	}
 
 	return true, nil
@@ -284,7 +278,7 @@ func (s *BeadsStore) createRow(ctx context.Context, rowID string, row model.Clai
 	title := s.itemTitle(ctx, row.Item)
 	rowTitle := strings.TrimRight(fmt.Sprintf("%s%s-%s %s", lockPrefix, model.ItemKind(row.Item), row.Item, firstRunes(title, maxTitleRunes)), " \t\r\n")
 
-	s.run.Run(ctx, []string{argCreate, "--id", rowID, argTitle, rowTitle, argType, "task", "--priority", "3", "--silent", argDescription, claimNote(row)})
+	s.run.Run(ctx, []string{argCreate, argID, rowID, argTitle, rowTitle, argType, "task", "--priority", "3", "--silent", argDescription, claimNote})
 
 	shown, err := s.showRow(ctx, rowID)
 	if err == nil && shown == nil {
@@ -308,48 +302,52 @@ func (s *BeadsStore) itemTitle(ctx context.Context, item string) string {
 	return derefText(shown.Title)
 }
 
-func claimNote(row model.ClaimRow) string {
-	return fmt.Sprintf("Claim for %s. Held while in_progress; the assignee holds it. %s", row.Item, model.LeaseText(row.Lease))
-}
-
-// StoreLease writes the lease into the row description, only while the row is still the in_progress take of row.
-func (s *BeadsStore) StoreLease(ctx context.Context, row model.ClaimRow) error {
+// Reclaim runs bd reclaim for the row of the item with no grace window, so it frees the row only when the lease of its holder ended.
+// It reports whether the row went back to open. The scope --id keeps it from freeing any other row (cmd/bd/reclaim.go:161).
+func (s *BeadsStore) Reclaim(ctx context.Context, item string) (bool, error) {
 	if err := s.requireGuards(ctx); err != nil {
-		return err
+		return false, err
 	}
 
-	matched, err := s.updateIf(ctx, s.rowID(row.Item), guardOf(row), argDescription, claimNote(row))
-	if err != nil || matched {
-		return err
+	rowID := s.rowID(item)
+
+	done := s.run.Run(ctx, []string{"reclaim", "--id", rowID, "--older-than", "0s", argJSON})
+	if done.ExitCode != 0 {
+		return false, refuse("store: cannot reclaim the row %s: %s", rowID, stderrText(done))
 	}
 
-	return fmt.Errorf("store: the claim row of #%s is not the take of %s any more: %w", row.Item, row.Holder, model.ErrRowMoved)
+	freed, err := decode[reclaimed]("bd reclaim", done.Stdout)
+	if err != nil {
+		return false, err
+	}
+
+	return slices.ContainsFunc(freed.Reclaimed, func(r reclaimedRow) bool { return r.ID == rowID }), nil
 }
 
-// Free gives the row back as open and clears its holder, only while the row is still the take of row. It runs bd unclaim,
-// which reopens the row so the next take can claim it. A mismatch writes nothing. The row is then free, or held by another take, which is ErrRowMoved.
+// Free gives the row back as open and clears its holder, only while the holder still holds the row. It runs bd unclaim,
+// which reopens the row so the next take can claim it. A mismatch writes nothing. The row is then free, or held by another holder, which is ErrRowMoved.
 func (s *BeadsStore) Free(ctx context.Context, row model.ClaimRow) error {
 	if err := s.requireGuards(ctx); err != nil {
 		return err
 	}
 
-	if released, err := s.release(ctx, row); err != nil || released {
-		return err
-	}
-
-	state, err := s.Row(ctx, row.Item)
-	if err != nil || !state.Held {
-		return err
-	}
-
-	return fmt.Errorf("store: the claim row of #%s is held by %s now: %w", row.Item, state.Holder, model.ErrRowMoved)
-}
-
-// release runs bd unclaim for the take. It reports false when the row was not released: it is held by another take, or it holds nothing.
-func (s *BeadsStore) release(ctx context.Context, row model.ClaimRow) (bool, error) {
 	rowID := s.rowID(row.Item)
 
-	done := s.run.Run(ctx, []string{argUnclaim, rowID, argIfAssignee, assigneeOf(row)})
+	if released, err := s.release(ctx, rowID, row.Holder); err != nil || released {
+		return err
+	}
+
+	shown, err := s.showRow(ctx, rowID)
+	if err != nil || shown == nil || shown.Status != statusProgress {
+		return err
+	}
+
+	return fmt.Errorf("store: the claim row of #%s is held by %s now: %w", row.Item, shown.Assignee, model.ErrRowMoved)
+}
+
+// release runs bd unclaim for the holder. It reports false when the row was not released: it is held by another holder, or it holds nothing.
+func (s *BeadsStore) release(ctx context.Context, rowID, holder string) (bool, error) {
+	done := s.run.Run(ctx, []string{argUnclaim, rowID, argIfAssignee, holder, argActor, holder})
 	if done.ExitCode == 0 {
 		return true, nil
 	}
@@ -358,7 +356,7 @@ func (s *BeadsStore) release(ctx context.Context, row model.ClaimRow) (bool, err
 		return false, nil
 	}
 
-	return false, s.missingIsFree(ctx, rowID, refuse("store: cannot release the row %s: %s", rowID, firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes)))
+	return false, s.missingIsFree(ctx, rowID, refuse("store: cannot release the row %s: %s", rowID, stderrText(done)))
 }
 
 // missingIsFree turns a failed update of a row that does not exist into success: nothing is held.

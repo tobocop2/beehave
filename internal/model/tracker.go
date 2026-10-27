@@ -8,12 +8,6 @@ import (
 	"time"
 )
 
-// Stored lease values of a ClaimRow that are not a number of seconds.
-const (
-	LeaseNone       = 0
-	LeaseUnreadable = -1
-)
-
 // CreateRequest holds the arguments of Tracker.Create. Kind, Parent and Assignee are optional.
 type CreateRequest struct {
 	Title          string
@@ -59,44 +53,6 @@ func nonEmptyFile(path string) bool {
 	info, err := os.Stat(path)
 
 	return err == nil && info.Size() > 0
-}
-
-// ClaimRow is one claim: Holder holds Item and stored Lease seconds with it, or LeaseNone, or LeaseUnreadable.
-// Nonce names one take and never repeats. The store keeps it with the holder, so a guard on the row fails for a later take of the same holder.
-type ClaimRow struct {
-	Item   string
-	Holder string
-	Lease  int64
-	Nonce  string
-}
-
-// RowState is what the lease store holds for one item's claim row. Nonce is "" for a row that was written without one.
-type RowState struct {
-	Exists bool
-	Held   bool
-	Holder string
-	Nonce  string
-}
-
-// ErrRowMoved is returned by ClaimRows.StoreLease and ClaimRows.Free when the row no longer belongs to the take the caller read.
-var ErrRowMoved = errors.New("the claim row changed hands")
-
-// ClaimRows stores the claim rows of the project. The lease store keeps one row for each item.
-// Only beads fills it, whatever tracker the project uses, because beads has the atomic operations a lease needs.
-//
-// A method that cannot read or write its backend returns an error and never a guess: a failed read is no answer.
-// TryHold sets the holder only when no holder is set. It returns nil when it lost, so a caller reads Row to learn the winner.
-// StoreLease and Free change the row only while it still belongs to row.Holder and row.Nonce.
-// A row of another holder or another take stays as it is, and the call returns ErrRowMoved. Free on a missing row is not an error.
-// A holder with no recorded beat is absent from LastSeen.
-type ClaimRows interface {
-	HeldRows(ctx context.Context) ([]ClaimRow, error)
-	LastSeen(ctx context.Context) (map[string]time.Time, error)
-	Beat(ctx context.Context, holder string) error
-	Row(ctx context.Context, item string) (RowState, error)
-	TryHold(ctx context.Context, row ClaimRow) error
-	StoreLease(ctx context.Context, row ClaimRow) error
-	Free(ctx context.Context, row ClaimRow) error
 }
 
 // Tracker is an issue tracker: work items and their parents. beads and GitHub Issues implement it. The claim rows are not part of it.

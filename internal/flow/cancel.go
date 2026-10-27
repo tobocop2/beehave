@@ -70,6 +70,16 @@ func (c *cancels) endedIDs() []string {
 	return ids
 }
 
+// stop calls the cancel function of the run and keeps it listed: a tick drops it after it ended. A run that this process does not execute is left alone.
+func (c *cancels) stop(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if open, found := c.runs[id]; found {
+		open.cancel()
+	}
+}
+
 // forget drops the runs in ids.
 func (c *cancels) forget(ids []string) {
 	c.mu.Lock()
@@ -190,12 +200,9 @@ func (e *Engine) giveBackWhenEnded(open openRun, stop <-chan struct{}) {
 	}
 }
 
-// giveBack kills the agent groups of a canceled item, removes its worktree and releases its claim with the token the run holds now.
+// giveBack forgets the agent groups of a canceled run, removes its worktree and releases its claim with the token the run holds now.
 func (e *Engine) giveBack(ctx context.Context, open openRun) {
-	if err := e.procs.releaseItem(open.in.Item); err != nil {
-		e.logger.WarnContext(ctx, "cannot update the agent process file", "error", err)
-	}
-
+	e.endGroups(open.id)
 	e.giveBackClaim(ctx, open)
 }
 

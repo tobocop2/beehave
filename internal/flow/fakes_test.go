@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 const (
@@ -38,12 +39,27 @@ type fakeAgents struct {
 	perLogin map[string]int
 	maxLogin int
 	gate     chan struct{}
+	pid      int
 	result   func(AgentRequest) agent.Result
 	err      error
 }
 
-// Run holds each agent in flight until the test closes gate, when gate is set.
+// Run holds each agent in flight until the test closes gate, when gate is set. It reports pid as the process of the agent, when pid is set.
+// Like the command of the real runner, it starts nothing under a context that is done, and it kills the group of its process when the context ends.
 func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: err.Error()}, err
+	}
+
+	if a.pid != 0 {
+		request.Started(a.pid)
+
+		// The kill is never stopped: a stop that wins the race against the start of the function would leave the group alive, as no release kills it now.
+		// It stands in for the end of the agent: the real runner kills the group when the context ends (the cancel function of the command) and again
+		// after every wait, so a phase end that leaves no group is proved here through the context only.
+		context.AfterFunc(ctx, func() { _ = proc.KillGroupID(a.pid) }) //nolint:errcheck // ESRCH means the group has no member left
+	}
+
 	a.mu.Lock()
 	a.requests = append(a.requests, request)
 	a.inFlight++
@@ -211,6 +227,8 @@ type fakeLifecycle struct {
 	released []string
 	// failErr replaces errFake as the error of a failing step.
 	failErr error
+	// onClaim, when set, runs at the start of each Claim: a test uses it to move the clock during the take.
+	onClaim func()
 	// hang makes Release wait for its context to end, and expired counts the releases that the context ended.
 	hang    bool
 	expired int
@@ -256,6 +274,10 @@ func (l *fakeLifecycle) expiries() int {
 
 // Claim returns testOwner+item for the first take of an item and a numbered token for each later take.
 func (l *fakeLifecycle) Claim(_ context.Context, project, item string) (string, error) {
+	if l.onClaim != nil {
+		l.onClaim()
+	}
+
 	err := l.step("claim", project, item)
 
 	l.mu.Lock()
@@ -310,25 +332,39 @@ func (l *fakeLifecycle) projectsSeen() []string {
 }
 
 // fakeBeats is the fake tracker: it records each renewal and fails the owner named in failFor, with failure text or an error.
+// onBeat, when set, runs in each renewal before it answers: a test uses it to move the clock during the call.
 type fakeBeats struct {
 	mu      sync.Mutex
 	calls   []string
 	failFor string
 	text    string
 	err     error
+	onBeat  func()
 }
 
 func (b *fakeBeats) Beat(_ context.Context, project, owner string) (string, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	b.calls = append(b.calls, project+"/"+owner)
+	hook, failing, text, err := b.onBeat, owner == b.failFor, b.text, b.err
+	b.mu.Unlock()
 
-	if owner == b.failFor {
-		return b.text, b.err
+	if hook != nil {
+		hook()
+	}
+
+	if failing {
+		return text, err
 	}
 
 	return "", nil
+}
+
+// hook sets the function that runs in each renewal.
+func (b *fakeBeats) hook(f func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.onBeat = f
 }
 
 // fail makes every later renewal for owner fail with text or err.
