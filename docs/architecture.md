@@ -24,8 +24,8 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool<br/>lane policy"]
-        later["brief · merge · review"]:::planned
+        policy["gate · ledger · pool · brief<br/>lane policy"]
+        later["merge · review"]:::planned
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -257,6 +257,20 @@ The window types `Window`, `Usage` and `Reading` live in `model`, because the re
 `obee doctor` checks that the machine can run obee and prints one line for each check: `ok` or `FAIL` with the fix. It exits 1 when any check fails. The checks are a table of a name and a function that returns an error, the fix, or nil. They run in this order: the config folder loads, `bd` and `gh` are on the path, the bd version is new enough, then for each runner its `config_dir` exists and its token is readable when it has a Keychain entry. The bd version check runs only when `bd` is on the path. A version error with no text is still a failure.
 
 The doctor command lives in `cli`. `BuildInfo.Doctor` holds two function values that `cmd/obee` fills: the Keychain reader, which runs `security` and never returns the token, and the bd version check of the beads adapter. Both are required: the command refuses a `Doctor` with a nil value and runs no check. A call of `security` stops after 10 seconds. `cli` does not import a backend.
+
+## Brief
+
+`brief` writes the text that a lane reads before it starts. A brief has two parts. The first part is fixed rules: the skeleton, the rules of the kind, the context cap, the standing blocks and the rules file of the project. The second part is the lines of the item: the title, the model, the read-first list and the names of the lane. Two briefs of one kind share every byte up to the first line of the item, so a prompt cache reads the rules once. A test pins this prefix.
+
+The fixed text is 19 Markdown files in `brief/text`, read through one `embed` variable. The text names `obee` commands only. A kind of brief, a standing block, a tier row and a lane kind are named types with parsers. The kinds are impl, rev, design and papers.
+
+The rules file of the project comes from the config path. `LoadRules` refuses a file with no preflight section or with no CI section that holds a `- Run:` line and a `- Base:` line. `Lean` cuts the file for one kind: it drops a `<!--why` block and keeps a section tagged `<!-- for: ... -->` for the named kinds only. The cut is a small struct with one method for each marker, and a bad marker is a refusal with the file and the line. The `- Take:` line under the standing heading names the blocks that the project takes: build-host, compiled and union. A file with no such line takes all of them.
+
+`Admit` runs the gates before a brief is written, and a brief that a gate holds back writes no row. An impl lane needs its acceptance slots, and a script needs its result at the base. A fix or rework lane names one mechanism, and a pull request with two patch rounds on that mechanism and no design lane since gets a design lane next. A lane of new behavior needs a design lane in the ledger. A lane that follows an earlier fix lane of the same key needs a handoff that passes, and a handoff with two regressions sends the next brief to a design lane. The handoff check is a `HandoffCheck` function value that `cmd/obee` fills, so `brief` does not import `check/papers`. A gate that holds a brief back returns `Stopped`, with the lines for the orchestrator. Any other refusal is a `check.Refusal`.
+
+`Generate` loads the rules, takes the model, reads the slots, admits the lane, sizes the read-first list, emits the text, fills the slots and checks the size. Only then does it add the row of the lane to the ledger. The ledger is the `Book` interface: `Count`, `Rounds`, `Prior` and `Add`. A review of a pull request writes a review row, and the first review also records the issues that the pull request closes.
+
+`Check` and `Size` read a filled brief. The required reading is the brief plus the files under its read-first list, and the limit is 160,000 bytes. `Check` warns about a file above 8,000 bytes, a chain of briefs and an acceptance script with no expected behavior. It refuses a reading above the limit. `Size` lists every file the brief names, follows the briefs that those files name, counts each file once and never refuses for size. The limit, the file warning and the cap are constants, not settings.
 
 ## Configuration
 
