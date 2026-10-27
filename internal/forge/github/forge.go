@@ -143,6 +143,33 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 	return view, nil
 }
 
+// countsAnswer is the answer of the pull request read of the REST API. A nil count means the API sent null or no field.
+type countsAnswer struct {
+	Commits      *int `json:"commits"`
+	ChangedFiles *int `json:"changed_files"`
+}
+
+// PullCounts returns the forge's own count of the commits and the changed files of a pull request. A count that is not sent is an error.
+func (f *Forge) PullCounts(ctx context.Context, pr int) (commits, files int, err error) {
+	base := fmt.Sprintf("cannot read the counts of pull request %d", pr)
+
+	done := f.run.Run(ctx, []string{argAPI, "repos/" + f.repo + "/pulls/" + strconv.Itoa(pr)})
+	if done.ExitCode != 0 {
+		return 0, 0, forge.Refuse("%s", base)
+	}
+
+	answer, err := model.Decode[countsAnswer](cmdAPI, done.Stdout)
+	if err != nil {
+		return 0, 0, forge.Refusal(base, err)
+	}
+
+	if answer.Commits == nil || answer.ChangedFiles == nil {
+		return 0, 0, forge.Refuse("%s: the answer has no count", base)
+	}
+
+	return *answer.Commits, *answer.ChangedFiles, nil
+}
+
 // PRList runs gh pr list with the limit and the arguments, which must name --json. An answer that fills the limit may be cut off and is refused.
 func (f *Forge) PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error) {
 	shown := strings.Join(args, " ")

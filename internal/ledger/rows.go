@@ -5,7 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"syscall"
+
+	"github.com/tobocop2/obee/internal/filelock"
 )
 
 const (
@@ -97,40 +98,23 @@ func (t Table) Publish(text string) error {
 
 // Hold runs the function under an exclusive lock that the system drops when the process ends.
 func (t Table) Hold(run func() error) error {
-	return t.locked(syscall.LOCK_EX, run)
+	return t.locked(filelock.Exclusive, run)
 }
 
 // Share runs the function under a shared lock: other sharers run with it, and a holder does not.
 func (t Table) Share(run func() error) error {
-	return t.locked(syscall.LOCK_SH, run)
+	return t.locked(filelock.Shared, run)
 }
 
-func (t Table) locked(how int, run func() error) error {
+func (t Table) locked(take func(path string) (*filelock.Lock, error), run func() error) error {
 	lockPath := t.path + lockSuffix
 
-	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, fileMode) //nolint:gosec // the path is the ledger file the caller named, plus a fixed suffix
+	held, err := take(lockPath)
 	if err != nil {
 		return fail("lock", lockPath, err)
 	}
 
-	return errors.Join(withLock(file, how, run), file.Close())
-}
-
-func withLock(file *os.File, how int, run func() error) error {
-	if err := fail("lock", file.Name(), flock(file, how)); err != nil {
-		return err
-	}
-
-	return run()
-}
-
-// flock takes a lock of the kind how and retries a call that a signal cut short.
-func flock(file *os.File, how int) error {
-	for {
-		if err := syscall.Flock(int(file.Fd()), how); !errors.Is(err, syscall.EINTR) {
-			return err
-		}
-	}
+	return errors.Join(run(), held.Release())
 }
 
 // fail returns a refusal that names the file and the cause, or nil for a nil error.
