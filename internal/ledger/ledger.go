@@ -41,7 +41,10 @@ const (
 // colIssue is the issue number column of a row in the closes file.
 const colIssue = 1
 
-var tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+var (
+	tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	issuePattern = regexp.MustCompile(`^[0-9]+$`)
+)
 
 // Kind is what a lane does.
 type Kind string
@@ -54,13 +57,15 @@ const (
 	KindReview Kind = "review"
 	KindDesign Kind = "design"
 	KindPapers Kind = "papers"
+	// KindOwnerAdd is the approval of the owner to keep one more issue in a pull request. Its Lane is the issue number.
+	KindOwnerAdd Kind = "owner-add"
 )
 
-const kindList = "fix, rework, relay, review, design or papers"
+const kindList = "fix, rework, relay, review, design, papers or owner-add"
 
 // Kinds lists every kind of lane.
 func Kinds() []Kind {
-	return []Kind{KindFix, KindRework, KindRelay, KindReview, KindDesign, KindPapers}
+	return []Kind{KindFix, KindRework, KindRelay, KindReview, KindDesign, KindPapers, KindOwnerAdd}
 }
 
 // ParseKind returns the kind that text names.
@@ -79,6 +84,7 @@ func (k Kind) fixLane() bool {
 }
 
 // Request is one lane to record. Mechanism, Model and Round belong to a fix lane and are ignored for another kind.
+// Words belongs to an owner-add row, which names the issue in Lane and the words of the owner in Words.
 // Body returns the pull request body; the first review of a key reads it for the issues it closes.
 type Request struct {
 	Key       string
@@ -87,6 +93,7 @@ type Request struct {
 	Mechanism string
 	Model     string
 	Round     int
+	Words     string
 	At        time.Time
 	Body      func() (string, error)
 }
@@ -147,6 +154,15 @@ func (r Request) check() error {
 		return err
 	}
 
+	if err := r.checkLane(); err != nil {
+		return err
+	}
+
+	return r.checkColumns()
+}
+
+// checkLane checks the lane name and the kind. The lane of an owner-add row is an issue number with the words of the owner.
+func (r Request) checkLane() error {
 	if r.Lane == "" || r.Kind == "" {
 		return refuse("name the lane and its kind.")
 	}
@@ -159,7 +175,28 @@ func (r Request) check() error {
 		return err
 	}
 
-	return r.checkColumns()
+	if r.Kind == KindOwnerAdd {
+		return r.checkApproval()
+	}
+
+	return nil
+}
+
+// checkApproval checks the owner-add row: the lane is an issue number, and the words fit on one line.
+func (r Request) checkApproval() error {
+	if !issuePattern.MatchString(r.Lane) {
+		return refuse("the issue '%s' is not a number. Use digits only.", r.Lane)
+	}
+
+	if r.Words == "" {
+		return refuse("name the words of the owner for issue %s.", r.Lane)
+	}
+
+	if strings.ContainsAny(r.Words, "\t\r\n") {
+		return refuse("the words of the owner hold a tab or a line break. Write them on one line.")
+	}
+
+	return nil
 }
 
 func (r Request) checkColumns() error {
@@ -195,6 +232,10 @@ func mechanismOK(mechanism string) error {
 // line is the row of the request. Only a fix lane writes the lane columns, and the empty ones at the end are left out.
 func (r Request) line() string {
 	cells := []string{r.Key, r.Lane, string(r.Kind), r.At.UTC().Format(stampLayout)}
+
+	if r.Kind == KindOwnerAdd {
+		cells = append(cells, r.Words)
+	}
 
 	if r.Kind.fixLane() {
 		round := ""
@@ -300,7 +341,7 @@ func (r Request) closing() ([]string, error) {
 
 	text, err := r.Body()
 
-	return closingNumbers(text), err
+	return ClosingNumbers(text), err
 }
 
 func closesText(key string, numbers []string) string {
@@ -442,6 +483,21 @@ func (l *Ledger) closesOf(key string) ([]string, error) {
 	for _, row := range rows {
 		if col(row, colKey) == key {
 			issues = append(issues, col(row, colIssue))
+		}
+	}
+
+	return issues, err
+}
+
+// OwnerAdds returns the issues the owner approved for key.
+func (l *Ledger) OwnerAdds(key string) ([]string, error) {
+	rows, err := l.keyRows(key)
+
+	var issues []string
+
+	for _, row := range rows {
+		if col(row, colKey) == key && Kind(col(row, colKind)) == KindOwnerAdd {
+			issues = append(issues, col(row, colLane))
 		}
 	}
 

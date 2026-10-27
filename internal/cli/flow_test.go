@@ -25,6 +25,7 @@ const (
 
 type fakeRunner struct {
 	launchErr, runErr error
+	sentBack          string
 	block             chan struct{}
 	mu                sync.Mutex
 	items             []string
@@ -42,7 +43,7 @@ func (r *fakeRunner) Run(item, project string) (flow.ItemResult, error) {
 		<-r.block
 	}
 
-	return flow.ItemResult{Item: item, FixRounds: 2}, r.runErr
+	return flow.ItemResult{Item: item, FixRounds: 2, SentBack: r.sentBack}, r.runErr
 }
 
 // Shutdown releases a blocked Run, as a real engine shutdown ends the run it holds.
@@ -149,6 +150,18 @@ func (rig *flowRig) execute(ctx context.Context, args ...string) (int, string, s
 	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Version: "v9", Flow: rig.factory()}, rig.env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
+}
+
+func TestRun_ASentBackItemSaysItWentBackToDraft(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.runner.sentBack = "a review asks for changes"
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 went back to draft: a review asks for changes\n", stdout)
 }
 
 func TestRun_TakesTheItemToTheEndAndPassesTheSettingsOfTheConfig(t *testing.T) {
@@ -352,13 +365,15 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-1-r1", State: "done"},
 		{ID: "item-2-r1", State: "running", Question: "pick\n  option a or b"},
 		{ID: "item-3-r1", State: "running", Version: "v1", Stranded: true},
+		{ID: "item-4-r1", State: "done", SentBack: "a review asks\nfor changes"},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "item-1-r1\tdone\nitem-2-r1\trunning\tpaused: pick option a or b\n"+
-		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n", stdout)
+		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
+		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 const (
@@ -398,9 +399,11 @@ type harness struct {
 	logins   fakeLogins
 	life     *fakeLifecycle
 	forge    *fakeForge
+	watch    *fakeWatch
 	trees    *fakeTrees
 	beats    *fakeBeats
 	ticks    chan time.Time
+	sleep    time.Duration
 	opts     Options
 }
 
@@ -414,7 +417,8 @@ func newHarness(t *testing.T) *harness {
 		verdicts: &fakeVerdicts{reviews: []Review{{Verdict: VerdictApprove}}},
 		logins:   fakeLogins{login: testLogin},
 		life:     &fakeLifecycle{failing: map[string]bool{}},
-		forge:    &fakeForge{state: PullState{Number: testPull}},
+		forge:    &fakeForge{state: review.Standing{Number: testPull}},
+		watch:    &fakeWatch{outcomes: []review.Outcome{{Kind: review.Merged}}},
 		trees:    &fakeTrees{},
 		beats:    &fakeBeats{},
 		ticks:    make(chan time.Time),
@@ -429,8 +433,8 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	return Deps{
-		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats,
-		Clock: clock{Tick: h.ticks, Poll: storePoll},
+		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats,
+		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
 }
 
@@ -496,18 +500,69 @@ type runOutcome struct {
 // fakeForge answers every read with state, or fails with err. It records the items it was asked about.
 type fakeForge struct {
 	mu    sync.Mutex
-	state PullState
+	state review.Standing
 	err   error
 	asked []string
+	// failFrom, when above zero, makes the read of that number and every later read fail with errFake.
+	failFrom int
 }
 
-func (f *fakeForge) Pull(_ context.Context, _, item string) (PullState, error) {
+func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.asked = append(f.asked, item)
 
+	if f.failFrom > 0 && len(f.asked) >= f.failFrom {
+		return review.Standing{}, errFake
+	}
+
 	return f.state, f.err
+}
+
+// fakeWatch answers each read with the next of outcomes and then repeats the last. A non-nil err fails every read.
+// It records the pull requests it read and the draft calls.
+type fakeWatch struct {
+	mu       sync.Mutex
+	outcomes []review.Outcome
+	err      error
+	errs     []error // the error of read n, the last one repeats; it replaces err
+	draftErr error
+	reads    []int
+	drafts   []int
+}
+
+func (f *fakeWatch) Watch(_ context.Context, pr int) (review.Outcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.reads = append(f.reads, pr)
+
+	next := f.outcomes[min(len(f.reads), len(f.outcomes))-1]
+
+	if len(f.errs) > 0 {
+		return next, f.errs[min(len(f.reads), len(f.errs))-1]
+	}
+
+	return next, f.err
+}
+
+func (f *fakeWatch) SetDraft(_ context.Context, pr int, draft bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if draft {
+		f.drafts = append(f.drafts, pr)
+	}
+
+	return f.draftErr
+}
+
+func (f *fakeWatch) seen() (reads, drafts []int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]int(nil), f.reads...), append([]int(nil), f.drafts...)
 }
 
 // fakeTrees answers every lookup with dir, or fails with err.

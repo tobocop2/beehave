@@ -10,9 +10,9 @@ import (
 // closesPattern finds a closing keyword and an issue number. It spells each letter in both cases, because a case-folding match also takes the long s.
 var closesPattern = regexp.MustCompile(`(?:[Cc][Ll][Oo][Ss][Ee][SsDd]?|[Ff][Ii][Xx](?:[Ee][SsDd])?|[Rr][Ee][Ss][Oo][Ll][Vv][Ee][SsDd]?):? +#([0-9]+)`)
 
-// closingNumbers returns the issue numbers a pull request body closes, each once, in numeric order.
+// ClosingNumbers returns the issue numbers a pull request body closes, each once, in numeric order.
 // Of two spellings of one number, such as 12 and 012, the first one stays.
-func closingNumbers(body string) []string {
+func ClosingNumbers(body string) []string {
 	spelling := map[string]string{}
 
 	for _, match := range closesPattern.FindAllStringSubmatch(body, -1) {

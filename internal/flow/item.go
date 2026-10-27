@@ -25,9 +25,11 @@ type ItemInput struct {
 }
 
 // ItemResult is what a finished item workflow reports. FixRounds counts the fix rounds the review asked for.
+// SentBack holds the reason when the watch returned the pull request to draft. The run is finished, and the next run of the item starts a new attempt.
 type ItemResult struct {
 	Item      string `json:"item"`
 	FixRounds int    `json:"fix_rounds"`
+	SentBack  string `json:"sent_back,omitempty"`
 }
 
 // loopState is the part of an item the fix loop carries from one round to the next.
@@ -226,9 +228,9 @@ func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) 
 
 		action := nextRound(state.fixed, review.Verdict)
 		if action == actionStop {
-			ready := func(c context.Context, project, item string) error { return e.markReady(c, project, item, review.Head) }
+			sentBack, err := e.readyAndWatch(ctx, state, review.Head)
 
-			return ItemResult{Item: state.item, FixRounds: state.fixed}, e.lifecycle(ctx, model.StepReady, ready, state.project, state.item)
+			return ItemResult{Item: state.item, FixRounds: state.fixed, SentBack: sentBack}, err
 		}
 
 		state.findings = review.Findings
@@ -237,6 +239,18 @@ func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) 
 			return ItemResult{}, err
 		}
 	}
+}
+
+// readyAndWatch marks the pull request ready after an approved review and then watches it until it merges or goes back to draft.
+// It returns the reason when the pull request went back to draft.
+func (e *Engine) readyAndWatch(ctx dbos.Context, state loopState, reviewed string) (string, error) {
+	ready := func(c context.Context, project, item string) error { return e.markReady(c, project, item, reviewed) }
+
+	if err := e.lifecycle(ctx, model.StepReady, ready, state.project, state.item); err != nil {
+		return "", err
+	}
+
+	return e.watchReady(ctx, state.project, state.item)
 }
 
 // advance runs the fix round that the round policy chose. It first waits for the owner when the policy asks for it.

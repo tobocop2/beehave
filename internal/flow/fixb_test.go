@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
@@ -333,7 +334,7 @@ func TestRun_TheReadyStepRefusesAPullRequestThatMovedAfterTheReview(t *testing.T
 			harness := newHarness(t)
 			harness.gate.results = []GateResult{{Passed: true, Head: "aaa"}}
 			harness.verdicts.reviews = []Review{{Verdict: VerdictApprove, Head: "aaa"}}
-			harness.forge.state = PullState{Number: testPull, Head: test.head}
+			harness.forge.state = review.Standing{Number: testPull, Head: test.head}
 			engine := harness.engine(t)
 
 			_, err := engine.Run(testItem, testProject)
