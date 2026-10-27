@@ -28,8 +28,9 @@ func (r *recorder) Errorf(format string, args ...any) {
 
 // memForge serves pull request 7. wrong changes the body; down fails every call.
 type memForge struct {
-	wrong bool
-	down  bool
+	wrong     bool
+	down      bool
+	wrongGone bool
 }
 
 func (m memForge) fail() error {
@@ -78,6 +79,52 @@ func (m memForge) ExistingReview(context.Context, int) ([]string, error) { retur
 
 func (m memForge) Overlap(context.Context, model.OverlapRequest) (model.Overlap, error) {
 	return model.Overlap{}, m.fail()
+}
+
+func (m memForge) Comments(context.Context, int) ([]model.Comment, error) {
+	return []model.Comment{{Body: forgetest.SevenComment}}, m.fail()
+}
+
+func (m memForge) ReviewComments(context.Context, int) ([]model.Comment, error) {
+	return []model.Comment{{Body: forgetest.SevenInline}}, m.fail()
+}
+
+func (m memForge) Search(context.Context, model.SearchRequest) ([]int, error) {
+	return []int{forgetest.Seven}, m.fail()
+}
+
+func (m memForge) DefaultBranch(context.Context) (string, error) {
+	return forgetest.DefaultBranch, m.fail()
+}
+
+func (m memForge) BranchRef(_ context.Context, branch string) (string, bool, error) {
+	if branch == forgetest.SevenBranch {
+		return forgetest.SevenTip, true, m.fail()
+	}
+
+	return "", m.wrongGone, m.fail()
+}
+
+func (m memForge) Title(context.Context, int) (string, error) {
+	return forgetest.SevenTitle, m.fail()
+}
+
+func (m memForge) OwnPulls(context.Context, string) ([]model.OwnPull, error) {
+	return []model.OwnPull{{Number: forgetest.Seven}}, m.fail()
+}
+
+func (m memForge) CheckNotStarted(context.Context, string) (bool, error) { return false, m.fail() }
+
+func (m memForge) PostComment(context.Context, int, string) error { return m.fail() }
+
+func (m memForge) SetDraft(context.Context, int, bool) error { return m.fail() }
+
+func TestCheckForgeReads_ReportsAMissingBranchThatReadsAsPresent(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckForgeReads(r, memForge{wrongGone: true})
+	assert.Contains(t, r.failures, "missing branch: got [ true], want [ false]")
 }
 
 func TestCheckForgeReads_FailsAForgeThatReturnsAWrongBody(t *testing.T) {

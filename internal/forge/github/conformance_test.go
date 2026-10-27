@@ -27,6 +27,19 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
 		run.Plan(toJSON(t, []fields{{"name": forgetest.SevenCheck, "bucket": "pass"}}), "pr", "checks")
 
+		run.Plan(toJSON(t, []any{[]fields{{"body": forgetest.SevenComment}}}), "api", "--paginate", "--slurp", "repos/owner/name/issues/7/comments")
+		run.Plan(toJSON(t, []any{[]fields{{"body": forgetest.SevenInline}}}), "api", "--paginate", "--slurp", "repos/owner/name/pulls/7/comments")
+		run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "search", "prs")
+		run.Plan(toJSON(t, fields{"defaultBranchRef": fields{"name": forgetest.DefaultBranch}}), "repo", "view")
+		run.Plan(toJSON(t, fields{"object": fields{"sha": forgetest.SevenTip}}), "api", "repos/owner/name/git/ref/heads/"+forgetest.SevenBranch)
+		run.PlanFail(realNotFound, "api", "repos/owner/name/git/ref/heads/"+forgetest.GoneBranch)
+		run.Plan("owner/name\n", "api", "repos/owner/name", "--jq", ".full_name")
+		run.Plan(forgetest.SevenTitle+"\n", "issue", "view", "7")
+		run.PlanContaining(toJSON(t, fields{"data": fields{"search": fields{"issueCount": 1, "nodes": []fields{{"number": forgetest.Seven}}}}}), "search(query")
+		run.Plan("[]", "api", "repos/owner/name/check-runs/9/annotations")
+		run.Plan("", "pr", "comment")
+		run.Plan("", "pr", "ready")
+
 		return newForge(t, repo, run)
 	})
 }
