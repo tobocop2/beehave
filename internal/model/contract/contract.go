@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -17,8 +16,6 @@ const (
 	item     = "5"
 	holderA  = "session-a"
 	holderB  = "session-b"
-	lease    = 7200
-	renewed  = 3600
 	bodyMode = 0o600
 	pageSize = 10
 )
@@ -114,9 +111,9 @@ func CheckClaimRows(r Reporter, rows model.ClaimRows) {
 	c := check{r: r, rows: rows}
 	c.emptyTracker()
 	c.holdRules()
-	c.leaseRules()
-	c.freeRules()
 	c.beatRules()
+	c.reclaimRules()
+	c.freeRules()
 }
 
 func (c check) held() []model.ClaimRow {
@@ -128,56 +125,37 @@ func (c check) held() []model.ClaimRow {
 	return held
 }
 
-func (c check) row() model.RowState {
+// holders returns the holders of the item, in the order HeldRows lists them.
+func (c check) holders() []string {
 	c.r.Helper()
 
-	state, err := c.rows.Row(context.Background(), item)
-	c.noError(err, "Row")
+	var names []string
 
-	return state
+	for _, row := range c.held() {
+		if row.Item == item {
+			names = append(names, row.Holder)
+		}
+	}
+
+	return names
 }
 
 func (c check) emptyTracker() {
 	c.r.Helper()
 
 	c.equal(len(c.held()), 0, "held rows of an empty tracker")
-	c.equal(c.row(), model.RowState{}, "state of a missing row")
 }
 
 func (c check) holdRules() {
 	c.r.Helper()
 
 	ctx := context.Background()
-	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderA, Lease: lease}), "TryHold of a free row")
-	c.equal(c.row(), model.RowState{Exists: true, Held: true, Holder: holderA}, "state after TryHold")
+	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderA}), "TryHold of a free row")
+	c.equal(c.holders(), []string{holderA}, "holders after TryHold")
+	c.equal(c.held()[0].LeaseEnds.IsZero(), false, "a take carries the end of its lease")
 
-	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderB, Lease: lease}), "TryHold of a held row")
-	c.equal(c.row().Holder, holderA, "a second TryHold leaves the first holder")
-	c.equal(c.held(), []model.ClaimRow{{Item: item, Holder: holderA, Lease: lease}}, "held rows")
-}
-
-func (c check) leaseRules() {
-	c.r.Helper()
-
-	c.noError(c.rows.StoreLease(context.Background(), model.ClaimRow{Item: item, Holder: holderA, Lease: renewed}), "StoreLease")
-	c.equal(c.held(), []model.ClaimRow{{Item: item, Holder: holderA, Lease: renewed}}, "held rows after StoreLease")
-}
-
-func (c check) freeRules() {
-	c.r.Helper()
-
-	ctx := context.Background()
-	c.noError(c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA}), "Free")
-	c.noError(c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA}), "Free of a free row")
-	c.equal(c.row().Held, false, "a freed row is not held")
-	c.equal(len(c.held()), 0, "held rows after Free")
-
-	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderB, Lease: lease}), "TryHold of a freed row")
-	c.equal(c.row().Holder, holderB, "a freed row can be held by another")
-
-	moved := c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA})
-	c.equal(errors.Is(moved, model.ErrRowMoved), true, "Free of a row that another holder holds returns ErrRowMoved")
-	c.equal(c.row().Holder, holderB, "Free of another holder's row leaves it")
+	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderB}), "TryHold of a held row")
+	c.equal(c.holders(), []string{holderA}, "a second TryHold leaves the first holder")
 }
 
 func (c check) beatRules() {
@@ -186,11 +164,32 @@ func (c check) beatRules() {
 	ctx := context.Background()
 	c.noError(c.rows.Beat(ctx, holderA), "Beat")
 	c.noError(c.rows.Beat(ctx, holderA), "Beat again")
+	c.equal(errors.Is(c.rows.Beat(ctx, holderB), model.ErrNoClaim), true, "Beat of a holder with no row returns ErrNoClaim")
+}
 
-	seen, err := c.rows.LastSeen(ctx)
-	c.noError(err, "LastSeen")
-	c.equal(seen[holderA].After(time.Time{}), true, "the beat of the holder has a time")
-	c.equal(seen[holderB].IsZero(), true, "a holder that never beat is absent")
+func (c check) reclaimRules() {
+	c.r.Helper()
+
+	freed, err := c.rows.Reclaim(context.Background(), item)
+	c.noError(err, "Reclaim of a live lease")
+	c.equal(freed, false, "Reclaim leaves a row whose lease has not ended")
+	c.equal(c.holders(), []string{holderA}, "holders after Reclaim of a live lease")
+}
+
+func (c check) freeRules() {
+	c.r.Helper()
+
+	ctx := context.Background()
+	c.noError(c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA}), "Free")
+	c.noError(c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA}), "Free of a free row")
+	c.equal(len(c.held()), 0, "held rows after Free")
+
+	c.noError(c.rows.TryHold(ctx, model.ClaimRow{Item: item, Holder: holderB}), "TryHold of a freed row")
+	c.equal(c.holders(), []string{holderB}, "a freed row can be held by another")
+
+	moved := c.rows.Free(ctx, model.ClaimRow{Item: item, Holder: holderA})
+	c.equal(errors.Is(moved, model.ErrRowMoved), true, "Free of a row that another holder holds returns ErrRowMoved")
+	c.equal(c.holders(), []string{holderB}, "Free of another holder's row leaves it")
 }
 
 // call is one method of a contract with its arguments filled in.
@@ -237,15 +236,13 @@ func CheckClaimRowsFail(r Reporter, rows model.ClaimRows) {
 }
 
 func rowCalls(rows model.ClaimRows) []call {
-	hold := model.ClaimRow{Item: item, Holder: holderA, Lease: lease}
+	hold := model.ClaimRow{Item: item, Holder: holderA}
 
 	return []call{
 		{"HeldRows", func(ctx context.Context) error { _, err := rows.HeldRows(ctx); return err }},
-		{"LastSeen", func(ctx context.Context) error { _, err := rows.LastSeen(ctx); return err }},
 		{"Beat", func(ctx context.Context) error { return rows.Beat(ctx, holderA) }},
-		{"Row", func(ctx context.Context) error { _, err := rows.Row(ctx, item); return err }},
 		{"TryHold", func(ctx context.Context) error { return rows.TryHold(ctx, hold) }},
-		{"StoreLease", func(ctx context.Context) error { return rows.StoreLease(ctx, hold) }},
+		{"Reclaim", func(ctx context.Context) error { _, err := rows.Reclaim(ctx, item); return err }},
 		{"Free", func(ctx context.Context) error { return rows.Free(ctx, hold) }},
 	}
 }

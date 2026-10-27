@@ -10,114 +10,19 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 )
 
-const (
-	rowA  = "p-lock-gh-5"
-	oldA  = "session-a#TOKEN1"
-	tokA2 = "session-a#TOKEN2"
-)
-
-func TestBeadsFree_MissingRowIsFreeAndAnotherTakeStays(t *testing.T) {
-	t.Parallel()
-
-	bd := newFakeBd(t)
-	beads := beadsOver(t, bd)
-	require.NoError(t, beads.Free(bg(), model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1"}), "a missing row is free")
-
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": progress, "assignee": "session-b#X"})
-	require.ErrorIs(t, beads.Free(bg(), model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1"}), model.ErrRowMoved)
-	assert.Equal(t, "session-b#X", bd.Rows[rowA]["assignee"])
-
-	bd.Fail["unclaim"] = model.CommandResult{ExitCode: 1, Stderr: "locked"}
-	require.ErrorContains(t, beads.Free(bg(), model.ClaimRow{Item: "5", Holder: "session-b", Nonce: "X"}), "locked")
-
-	bd.Fail["show"] = model.CommandResult{ExitCode: 1, Stderr: "disk error"}
-	require.ErrorContains(t, beads.Free(bg(), model.ClaimRow{Item: "5", Holder: "session-b", Nonce: "X"}), "disk error")
-}
-
-func TestBeadsFree_OfARowThatWasFreedMeanwhileIsFree(t *testing.T) {
-	t.Parallel()
-
-	bd := newFakeBd(t)
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": "closed"})
-
-	require.NoError(t, beadsOver(t, bd).Free(bg(), model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1"}))
-}
-
-func TestBeadsStoreLease_RefusesATakeThatChangedHands(t *testing.T) {
-	t.Parallel()
-
-	bd := newFakeBd(t)
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": progress, "assignee": tokA2, "description": "lease=99"})
-
-	err := beadsOver(t, bd).StoreLease(bg(), model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1", Lease: 60})
-
-	require.ErrorIs(t, err, model.ErrRowMoved)
-	assert.Equal(t, "lease=99", bd.Rows[rowA]["description"])
-}
-
-func TestBeadsGuards_NameTheTakeAndTheStatus(t *testing.T) {
-	t.Parallel()
-
-	bd := newFakeBd(t)
-	beads := beadsOver(t, bd)
-	row := model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1", Lease: 60}
-	require.NoError(t, beads.TryHold(bg(), row))
-	require.NoError(t, beads.StoreLease(bg(), row))
-	require.NoError(t, beads.Free(bg(), row))
-
-	assert.True(t, bd.Called("update", rowA, "--claim", "--assignee", oldA))
-	assert.True(t, bd.Called("update", rowA, "--if-assignee", oldA, "--if-status", progress, "--description",
-		"Claim for 5. Held while in_progress; the assignee holds it. lease=60"))
-	assert.True(t, bd.Called("unclaim", rowA, "--if-assignee", oldA))
-}
-
-func TestBeadsRows_ShowTheHolderWithoutTheToken(t *testing.T) {
-	t.Parallel()
-
-	bd := newFakeBd(t)
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": progress, "assignee": oldA, "description": "lease=60"})
-	beads := beadsOver(t, bd)
-
-	state, err := beads.Row(bg(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, model.RowState{Exists: true, Held: true, Holder: "session-a", Nonce: "TOKEN1"}, state)
-
-	held, err := beads.HeldRows(bg())
-	require.NoError(t, err)
-	assert.Equal(t, []model.ClaimRow{{Item: "5", Holder: "session-a", Lease: 60, Nonce: "TOKEN1"}}, held)
-}
-
-func TestBeadsMissingRowText_BothVersionsOfBdAreRecognised(t *testing.T) {
-	t.Parallel()
-
-	for name, v1 := range map[string]bool{"v0.56.1": false, "v1.3.2": true} {
-		bd := newFakeBd(t)
-		bd.V1 = v1
-
-		state, err := beadsOver(t, bd).Row(bg(), "5")
-
-		require.NoError(t, err, name)
-		assert.Equal(t, model.RowState{}, state, name)
-	}
-
-	bd := newFakeBd(t)
-	bd.Fail["show"] = model.CommandResult{ExitCode: 1, Stderr: "no issues found matching the provided IDs"}
-	state, err := beadsOver(t, bd).Row(bg(), "5")
-	require.NoError(t, err)
-	assert.Equal(t, model.RowState{}, state)
-}
+const rowA = "p-lock-gh-5"
 
 func TestBeadsTryHold_ABdWithoutTheGuardsIsARefusalAndNothingIsCleared(t *testing.T) {
 	t.Parallel()
 
 	bd := newFakeBd(t)
 	bd.NoGuard = true
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": "closed", "assignee": "session-old#Z"})
+	bd.Add(rowA, fields{"title": "lock:gh-5", "status": "closed", "assignee": "session-old"})
 
-	err := beadsOver(t, bd).TryHold(bg(), model.ClaimRow{Item: "5", Holder: "session-b", Nonce: "T"})
+	err := beadsOver(t, bd).TryHold(bg(), model.ClaimRow{Item: "5", Holder: "session-b"})
 
 	require.ErrorContains(t, err, "the guards need bd 1.3.2 or newer")
-	assert.Equal(t, "session-old#Z", bd.Rows[rowA]["assignee"])
+	assert.Equal(t, "session-old", bd.Rows[rowA]["assignee"])
 }
 
 func TestRequireBd(t *testing.T) {
@@ -155,25 +60,26 @@ func TestRequireBd(t *testing.T) {
 	}
 }
 
-func TestBeadsLeaseWrites_RefuseAnOldBdBeforeTheyWrite(t *testing.T) {
+func TestBeadsClaimWrites_RefuseAnOldBdBeforeTheyWrite(t *testing.T) {
 	t.Parallel()
 
 	bd := newFakeBd(t)
 	bd.Version = "0.56.1"
-	bd.Add(rowA, fields{"title": "lock:gh-5", "status": progress, "assignee": oldA})
+	bd.Add(rowA, fields{"title": "lock:gh-5", "status": progress, "assignee": "session-a"})
 	beads := beadsOver(t, bd)
-	row := model.ClaimRow{Item: "5", Holder: "session-a", Nonce: "TOKEN1", Lease: 60}
+	row := model.ClaimRow{Item: "5", Holder: "session-a"}
+	_, reclaimErr := beads.Reclaim(bg(), "5")
 
-	for name, err := range map[string]error{"take": beads.TryHold(bg(), row), "lease": beads.StoreLease(bg(), row), "release": beads.Free(bg(), row)} {
+	for name, err := range map[string]error{"take": beads.TryHold(bg(), row), "beat": beads.Beat(bg(), "session-a"), "reclaim": reclaimErr, "release": beads.Free(bg(), row)} {
 		require.ErrorContains(t, err, "obee needs bd 1.3.2 or newer for claims; found 0.56.1", name)
 	}
 
-	assert.Equal(t, 0, bd.Count("update")+bd.Count("unclaim")+bd.Count("create"), "an old bd is never written to")
+	assert.Equal(t, 0, bd.Count("update")+bd.Count("unclaim")+bd.Count("create")+bd.Count("heartbeat")+bd.Count("reclaim"), "an old bd is never written to")
 
 	bd.Version = "1.3.2"
-	require.NoError(t, beads.StoreLease(bg(), row), "the gate asks again after a refusal")
+	require.NoError(t, beads.Beat(bg(), "session-a"), "the gate asks again after a refusal")
 
 	count := bd.Count("--version")
-	require.NoError(t, beads.StoreLease(bg(), row))
+	require.NoError(t, beads.Beat(bg(), "session-a"))
 	assert.Equal(t, count, bd.Count("--version"), "a bd that passed is not asked again")
 }

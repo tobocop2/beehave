@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,22 +85,24 @@ func TestBd_ClaimFollowsBd132(t *testing.T) {
 	bd := storetest.NewBd(t)
 	bd.Add("p-1", nil)
 
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--assignee", "a").ExitCode)
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--actor", "a").ExitCode)
 	assert.Equal(t, storetest.Progress, bd.Rows["p-1"]["status"])
 	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
+	assert.Equal(t, storetest.At(storetest.Now+storetest.LeaseSeconds), bd.Rows["p-1"]["lease_expires_at"], "the claim grants the lease to the actor")
+	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--actor", "a").ExitCode, "a claim by the holder changes nothing")
 
-	lost := run(bd, "update", "p-1", "--claim", "--assignee", "b")
+	lost := run(bd, "update", "p-1", "--claim", "--actor", "b")
 	assert.Equal(t, 1, lost.ExitCode, "bd 1.3.2 exits 1 on a refused claim")
 	assert.Contains(t, lost.Stderr, "issue already claimed by a")
 	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
 
 	bd.Add("p-2", storetest.Fields{"assignee": "old"})
-	assigned := run(bd, "update", "p-2", "--claim", "--assignee", "b")
+	assigned := run(bd, "update", "p-2", "--claim", "--actor", "b")
 	assert.Equal(t, 1, assigned.ExitCode)
 	assert.Contains(t, assigned.Stderr, `issue already claimed: already assigned to "old"`)
 
 	bd.Add("p-3", storetest.Fields{"status": "closed"})
-	closed := run(bd, "update", "p-3", "--claim", "--assignee", "b")
+	closed := run(bd, "update", "p-3", "--claim", "--actor", "b")
 	assert.Equal(t, 1, closed.ExitCode)
 	assert.Contains(t, closed.Stderr, "issue not claimable: status closed")
 	assert.Equal(t, "closed", bd.Rows["p-3"]["status"], "a claim keeps the status filter")
@@ -158,27 +159,77 @@ func TestBd_GuardWritesNothingWhenTheAssigneeDiffers(t *testing.T) {
 	assert.Contains(t, unknown.Stderr, "unknown flag")
 }
 
-func TestBd_HeartbeatHooksAndPlannedFailures(t *testing.T) {
+func TestBd_HeartbeatRenewsTheLeaseOfTheHolderOnly(t *testing.T) {
 	t.Parallel()
 
 	bd := storetest.NewBd(t)
-	bd.Add("p-agent-a", nil)
+	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a", "lease_expires_at": storetest.At(storetest.Now - 10)})
+
+	other := run(bd, "heartbeat", "p-1", "--actor", "b")
+	assert.Equal(t, 1, other.ExitCode)
+	assert.Contains(t, other.Stderr, "issue already claimed by a")
+	assert.Equal(t, storetest.At(storetest.Now-10), bd.Rows["p-1"]["lease_expires_at"])
+
+	assert.Equal(t, 0, run(bd, "heartbeat", "p-1", "--actor", "a").ExitCode)
+	assert.Equal(t, storetest.At(storetest.Now+storetest.LeaseSeconds), bd.Rows["p-1"]["lease_expires_at"], "a late heartbeat revives the lease before bd reclaim runs")
+
+	gone := run(bd, "heartbeat", "p-9", "--actor", "a")
+	assert.Equal(t, 1, gone.ExitCode)
+	assert.Equal(t, `Error: resolving p-9: no issue found matching "p-9"`, gone.Stderr)
+
+	bd.Add("p-2", storetest.Fields{"status": "open"})
+
+	open := run(bd, "heartbeat", "p-2", "--actor", "a")
+	assert.Equal(t, 1, open.ExitCode)
+	assert.Equal(t, "Error: heartbeat p-2: issue not claimable: p-2 status open", open.Stderr)
+}
+
+func TestBd_ReclaimFreesOnlyRowsWhoseLeaseEnded(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a", "lease_expires_at": storetest.At(storetest.Now - 1)})
+	bd.Add("p-2", storetest.Fields{"status": storetest.Progress, "assignee": "b", "lease_expires_at": storetest.At(storetest.Now - 1)})
+	bd.Add("p-3", storetest.Fields{"status": storetest.Progress, "assignee": "c", "lease_expires_at": storetest.At(storetest.Now + 5)})
+	bd.Add("p-4", storetest.Fields{"status": storetest.Progress, "assignee": "d"})
+
+	var answer struct {
+		Count     int `json:"count"`
+		Reclaimed []struct {
+			ID    string `json:"id"`
+			Owner string `json:"previous_owner"`
+		} `json:"reclaimed"`
+	}
+
+	scoped := run(bd, "reclaim", "--id", "p-1", "--older-than", "0s", "--json")
+	require.NoError(t, json.Unmarshal([]byte(scoped.Stdout), &answer))
+	assert.Equal(t, 1, answer.Count)
+	assert.Equal(t, "p-1", answer.Reclaimed[0].ID)
+	assert.Equal(t, "a", answer.Reclaimed[0].Owner)
+	assert.Equal(t, "open", bd.Rows["p-1"]["status"])
+	assert.Equal(t, storetest.Progress, bd.Rows["p-2"]["status"], "--id scopes the reclaim")
+
+	run(bd, "reclaim", "--older-than", "0s", "--json")
+	assert.Equal(t, "open", bd.Rows["p-2"]["status"])
+	assert.Equal(t, storetest.Progress, bd.Rows["p-3"]["status"], "a live lease stays")
+	assert.Equal(t, storetest.Progress, bd.Rows["p-4"]["status"], "a row with no lease is never reclaimed")
+}
+
+func TestBd_HooksAndPlannedFailures(t *testing.T) {
+	t.Parallel()
+
+	bd := storetest.NewBd(t)
+	bd.Add("p-1", nil)
 
 	var seen []string
 
 	bd.Hooks = append(bd.Hooks, func(args []string) { seen = append(seen, args[0]) })
 
-	assert.Equal(t, 0, run(bd, "agent", "heartbeat", "p-agent-a").ExitCode)
-	assert.Equal(t, time.Unix(storetest.Now, 0).UTC().Format(time.RFC3339), bd.Rows["p-agent-a"]["last_activity"])
-
-	bd.HeartbeatFails = true
-	assert.Equal(t, "heartbeat refused", run(bd, "agent", "heartbeat", "p-agent-a").Stderr)
-
 	bd.Fail["show"] = model.CommandResult{ExitCode: 7}
-	assert.Equal(t, 7, run(bd, "show", "p-agent-a").ExitCode)
+	assert.Equal(t, 7, run(bd, "show", "p-1").ExitCode)
 
 	assert.Equal(t, "fake bd: no answer planned", run(bd, "frobnicate").Stderr)
-	assert.Equal(t, []string{"agent", "agent", "show", "frobnicate"}, seen)
+	assert.Equal(t, []string{"show", "frobnicate"}, seen)
 }
 
 func TestOptionsReadsFlagPairs(t *testing.T) {

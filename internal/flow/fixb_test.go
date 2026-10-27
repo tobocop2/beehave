@@ -409,28 +409,41 @@ func TestTick_AClaimRenewalThatHangsEndsAtItsOwnTimeout(t *testing.T) {
 	release := sync.OnceFunc(func() { close(harness.agents.gate) })
 	t.Cleanup(release)
 
+	clk := &leaseClock{now: time.Unix(1_000_000, 0)}
+
 	engine := launchedWith(t, harness, func(deps *Deps) {
 		deps.Beats = hangingBeats{}
 		deps.Clock.Beat = 20 * time.Millisecond
+		clk.install(&deps.Clock)
 	})
 
 	done := runInBackground(engine, testItem)
 	eventually(t, func() bool { return harness.agents.running() == 1 })
 
-	ticked := make(chan struct{})
+	clk.advance(trustLimit - time.Second)
 
-	go func() {
-		harness.tick(t)
-		close(ticked)
-	}()
+	tickEnds := func() {
+		ticked := make(chan struct{})
 
-	select {
-	case <-ticked:
-	case <-time.After(eventTimeout):
-		t.Fatal("one hanging renewal stalled the tick")
+		go func() {
+			harness.tick(t)
+			close(ticked)
+		}()
+
+		select {
+		case <-ticked:
+		case <-time.After(eventTimeout):
+			t.Fatal("one hanging renewal stalled the tick")
+		}
 	}
 
-	assert.Empty(t, engine.holds.snapshot(), "the claim whose renewal timed out is marked lost")
+	tickEnds()
+	assert.NotEmpty(t, engine.holds.snapshot(), "a renewal that timed out before the deadline is tried again")
+
+	clk.advance(time.Second)
+	tickEnds()
+
+	assert.Empty(t, engine.holds.snapshot(), "the claim whose renewals timed out until the deadline is marked lost")
 
 	release()
 

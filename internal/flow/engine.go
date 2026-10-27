@@ -38,6 +38,7 @@ const (
 	ownerWaitLimit   = 7 * 24 * time.Hour
 	retention        = 7 * 24 * time.Hour
 	beatLimit        = 30 * time.Second
+	claimLease       = 5 * time.Minute
 	minMaxConcurrent = 1
 )
 

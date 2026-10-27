@@ -2,15 +2,12 @@ package store_test
 
 import (
 	"context"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,21 +16,17 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/obee/internal/store/storetest"
 )
 
-// This file is the contract test of the lease store. The same scenarios run against the fake bd of storetest, which keeps the
+// This file is the contract test of the claim store. The same scenarios run against the fake bd of storetest, which keeps the
 // fake honest, and against a real bd 1.3.2 with a private dolt server, which keeps the code honest. The real run needs
 // OBEE_BD_132, the path of a bd 1.3.2 binary, and `dolt` on PATH. Without the variable the real run is skipped.
 
 const (
 	binaryVariable = "OBEE_BD_132"
 	realPrefix     = "ct"
-	serverWait     = 30 * time.Second
-	leaseSeconds   = 60
 )
-
-// liveServerPorts are the ports of a server that the owner may run. No test may use them.
-var liveServerPorts = []int{0, 3306, 3307}
 
 // leaseBackend is one bd the scenarios run against.
 type leaseBackend struct {
@@ -41,6 +34,7 @@ type leaseBackend struct {
 	prefix string
 	beads  *store.BeadsStore
 	real   bool
+	expire func(t *testing.T, rowID string)
 }
 
 func fakeBackend(t *testing.T) leaseBackend {
@@ -48,7 +42,9 @@ func fakeBackend(t *testing.T) leaseBackend {
 
 	bd := newFakeBd(t)
 
-	return leaseBackend{run: bd, prefix: "p", beads: beadsOver(t, bd)}
+	expire := func(_ *testing.T, rowID string) { bd.Rows[rowID]["lease_expires_at"] = storetest.At(storetest.Now - 1) }
+
+	return leaseBackend{run: bd, prefix: "p", beads: beadsOver(t, bd), expire: expire}
 }
 
 // realBackend starts a private dolt server and a beads database on it. It skips when OBEE_BD_132 is not set.
@@ -62,13 +58,13 @@ func realBackend(t *testing.T) leaseBackend {
 	}
 
 	root := t.TempDir()
-	port := startDolt(t, root)
+	port := storetest.StartDolt(t, root, "dolt")
 	database := filepath.Join(root, "db")
 	require.NoError(t, os.Mkdir(database, 0o750))
 
-	run := envRunner{inner: proc.NewExecRunner("env", database), env: beadsEnv(root, port), binary: binary}
+	run := storetest.EnvRunner{Inner: proc.NewExecRunner("env", database), Env: storetest.BeadsEnv(root, port), Binary: binary}
 	for _, step := range [][]string{{"git", "init", "-q"}, {binary, "init", "--prefix", realPrefix, "--server", "--external", "--server-port", strconv.Itoa(port)}} {
-		done := envRunner{inner: run.inner, env: run.env, binary: step[0]}.Run(t.Context(), step[1:])
+		done := storetest.EnvRunner{Inner: run.Inner, Env: run.Env, Binary: step[0]}.Run(t.Context(), step[1:])
 		require.Zero(t, done.ExitCode, "%v: %s", step, done.Stderr)
 	}
 
@@ -78,79 +74,16 @@ func realBackend(t *testing.T) leaseBackend {
 	beads, err := store.NewBeadsStore(run, realPrefix)
 	require.NoError(t, err)
 
-	return leaseBackend{run: run, prefix: realPrefix, beads: beads, real: true}
-}
+	name := storetest.DatabaseName(t, database)
+	expire := func(t *testing.T, rowID string) {
+		t.Helper()
 
-// beadsEnv keeps the real bd away from every database but the private one.
-func beadsEnv(root string, port int) []string {
-	return []string{
-		"BEADS_DIR=", "BEADS_DB=", "BEADS_DOLT_SERVER_HOST=", "BEADS_DOLT_SHARED_SERVER=",
-		"BEADS_DOLT_SERVER_PORT=" + strconv.Itoa(port), "BD_ACTOR=contract-test", "DOLT_ROOT_PATH=" + filepath.Join(root, "dolt-home"),
+		query := "UPDATE leases SET lease_expires_at = NOW() - INTERVAL 1 MINUTE WHERE issue_id = '" + rowID + "'"
+		done := run.Inner.Run(t.Context(), []string{"dolt", "--host", "127.0.0.1", "--port", strconv.Itoa(port), "--no-tls", "-u", "root", "-p", "", "--use-db", name, "sql", "-q", query})
+		require.Zero(t, done.ExitCode, done.Stderr)
 	}
-}
 
-// envRunner runs a binary under env(1) with the given variables set.
-type envRunner struct {
-	inner  proc.ExecRunner
-	env    []string
-	binary string
-}
-
-func (r envRunner) Run(ctx context.Context, args []string) model.CommandResult {
-	return r.inner.Run(ctx, slices.Concat(r.env, []string{r.binary}, args))
-}
-
-// startDolt runs a dolt server on a free port that is not a live port and stops it when the test ends.
-func startDolt(t *testing.T, root string) int {
-	t.Helper()
-
-	port := freePort(t)
-	require.NotContains(t, liveServerPorts, port, "a test may never use the live server")
-
-	home := filepath.Join(root, "dolt-home")
-	data := filepath.Join(root, "server")
-	require.NoError(t, os.Mkdir(home, 0o750))
-	require.NoError(t, os.Mkdir(data, 0o750))
-
-	args := []string{"DOLT_ROOT_PATH=" + home, "dolt", "sql-server", "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
-	cmd := proc.GroupCommand(t.Context(), "env", args, data)
-	require.NoError(t, cmd.Err)
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() {
-		assert.NoError(t, proc.KillGroup(cmd))
-		assert.Error(t, cmd.Wait(), "a killed server does not exit cleanly")
-	})
-
-	waitForServer(t, port)
-
-	return port
-}
-
-func freePort(t *testing.T) int {
-	t.Helper()
-
-	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-
-	defer func() { require.NoError(t, listener.Close()) }()
-
-	addr, ok := listener.Addr().(*net.TCPAddr)
-	require.True(t, ok)
-
-	return addr.Port
-}
-
-func waitForServer(t *testing.T, port int) {
-	t.Helper()
-
-	require.Eventually(t, func() bool {
-		conn, err := (&net.Dialer{Timeout: time.Second}).DialContext(t.Context(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-		if err != nil {
-			return false
-		}
-
-		return conn.Close() == nil
-	}, serverWait, 250*time.Millisecond, "the private dolt server did not start")
+	return leaseBackend{run: run, prefix: realPrefix, beads: beads, real: true, expire: expire}
 }
 
 func rowOf(b leaseBackend, item string) string { return b.prefix + "-lock-gh-" + item }
@@ -169,32 +102,50 @@ func (b leaseBackend) plant(t *testing.T, item string, update ...string) {
 	}
 }
 
-func take(item, holder, nonce string) model.ClaimRow {
-	return model.ClaimRow{Item: item, Holder: holder, Nonce: nonce, Lease: leaseSeconds}
+func hold(item, holder string) model.ClaimRow {
+	return model.ClaimRow{Item: item, Holder: holder}
 }
 
-func (b leaseBackend) holder(t *testing.T, item string) model.RowState {
+// rowFor returns the held row of the item, or false when no holder holds it.
+func (b leaseBackend) rowFor(t *testing.T, item string) (model.ClaimRow, bool) {
 	t.Helper()
 
-	state, err := b.beads.Row(t.Context(), item)
+	held, err := b.beads.HeldRows(t.Context())
 	require.NoError(t, err)
 
-	return state
+	i := slices.IndexFunc(held, func(row model.ClaimRow) bool { return row.Item == item })
+	if i < 0 {
+		return model.ClaimRow{}, false
+	}
+
+	return held[i], true
+}
+
+func (b leaseBackend) holder(t *testing.T, item string) string {
+	t.Helper()
+
+	row, _ := b.rowFor(t, item)
+
+	return row.Holder
 }
 
 // leaseScenarios lists the scenarios. Each one uses its own item, so one database serves them all.
 var leaseScenarios = map[string]func(*testing.T, leaseBackend){
-	"a take shows its holder and token apart":                 scenarioTake,
+	"a take shows its holder and the end of its lease":        scenarioTake,
 	"a second take is refused and changes nothing":            scenarioLostTake,
-	"a lease is stored only by the take that holds the row":   scenarioStoreLease,
+	"a beat renews the lease of the holder only":              scenarioBeat,
 	"a release reopens the row so the next take can claim it": scenarioReleaseThenTake,
-	"a release by another take changes nothing":               scenarioReleaseByStranger,
-	"a stale guard of a released take fails after a retake":   scenarioRetake,
+	"a release by another holder changes nothing":             scenarioReleaseByStranger,
 	"a row left closed with an assignee is claimable again":   scenarioStaleClosed,
 	"a row left open with an assignee is claimable again":     scenarioStaleOpen,
 	"a release of a missing row is a release":                 scenarioMissing,
 	"a take with the old bd is refused before it writes":      scenarioOldBd,
-	"a heartbeat-free take of two holders keeps one holder":   scenarioHeldRows,
+	"a take of two holders keeps one holder per item":         scenarioHeldRows,
+	"a reclaim leaves a live lease":                           scenarioReclaimLive,
+	"a reclaim frees an ended lease and the next take wins":   scenarioReclaimEnded,
+	"a late beat revives an ended lease before the reclaim":   scenarioLateBeat,
+	"a row held with no lease is never reclaimed":             scenarioNoLease,
+	"a heartbeat bd refuses prints the text the fake prints":  scenarioHeartbeatTexts,
 }
 
 type backendKind struct {
@@ -242,89 +193,83 @@ func TestLeaseContract(t *testing.T) {
 func scenarioTake(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("11", "session-a", "TOKENA")))
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("11", "session-a")))
 
-	state := b.holder(t, "11")
-	assert.Equal(t, model.RowState{Exists: true, Held: true, Holder: "session-a", Nonce: "TOKENA"}, state)
+	row, held := b.rowFor(t, "11")
+	assert.True(t, held)
+	assert.Equal(t, "session-a", row.Holder)
+	assert.False(t, row.LeaseEnds.IsZero(), "bd grants the lease to the actor of the claim")
 }
 
 func scenarioLostTake(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("12", "session-a", "TOKENA")))
-	require.NoError(t, b.beads.TryHold(t.Context(), take("12", "session-b", "TOKENB")), "a lost take is no error: the caller reads the row")
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("12", "session-a")))
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("12", "session-b")), "a lost take is no error: the caller reads the row")
 
-	assert.Equal(t, "TOKENA", b.holder(t, "12").Nonce)
-	assert.Equal(t, "session-a", b.holder(t, "12").Holder)
+	assert.Equal(t, "session-a", b.holder(t, "12"))
 }
 
-func scenarioStoreLease(t *testing.T, b leaseBackend) {
+func scenarioBeat(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("13", "session-a", "TOKENA")))
-	require.NoError(t, b.beads.StoreLease(t.Context(), take("13", "session-a", "TOKENA")))
-	require.ErrorIs(t, b.beads.StoreLease(t.Context(), take("13", "session-a", "OTHER")), model.ErrRowMoved)
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("13", "session-beat")))
+	b.expire(t, rowOf(b, "13"))
+	before, _ := b.rowFor(t, "13")
 
-	held, err := b.beads.HeldRows(t.Context())
-	require.NoError(t, err)
-	assert.Contains(t, held, model.ClaimRow{Item: "13", Holder: "session-a", Nonce: "TOKENA", Lease: leaseSeconds})
+	require.NoError(t, b.beads.Beat(t.Context(), "session-beat"))
+
+	after, _ := b.rowFor(t, "13")
+	assert.True(t, after.LeaseEnds.After(before.LeaseEnds), "the beat moves the end of the lease forward")
+	require.ErrorIs(t, b.beads.Beat(t.Context(), "session-nobody"), model.ErrNoClaim)
 }
 
 func scenarioReleaseThenTake(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("14", "session-a", "TOKENA")))
-	require.NoError(t, b.beads.Free(t.Context(), take("14", "session-a", "TOKENA")))
-	assert.False(t, b.holder(t, "14").Held)
-	require.NoError(t, b.beads.Free(t.Context(), take("14", "session-a", "TOKENA")), "a second release of a free row is no error")
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("14", "session-a")))
+	require.NoError(t, b.beads.Free(t.Context(), hold("14", "session-a")))
+	_, held := b.rowFor(t, "14")
+	assert.False(t, held)
+	require.NoError(t, b.beads.Free(t.Context(), hold("14", "session-a")), "a second release of a free row is no error")
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("14", "session-b", "TOKENB")))
-	assert.Equal(t, "session-b", b.holder(t, "14").Holder, "a release must leave the row claimable")
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("14", "session-b")))
+	assert.Equal(t, "session-b", b.holder(t, "14"), "a release must leave the row claimable")
 }
 
 func scenarioReleaseByStranger(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("15", "session-a", "TOKENA")))
-	require.ErrorIs(t, b.beads.Free(t.Context(), take("15", "session-b", "TOKENB")), model.ErrRowMoved)
-	assert.Equal(t, "session-a", b.holder(t, "15").Holder)
-}
-
-func scenarioRetake(t *testing.T, b leaseBackend) {
-	t.Helper()
-
-	require.NoError(t, b.beads.TryHold(t.Context(), take("16", "session-a", "TOKEN1")))
-	require.NoError(t, b.beads.Free(t.Context(), take("16", "session-a", "TOKEN1")))
-	require.NoError(t, b.beads.TryHold(t.Context(), take("16", "session-a", "TOKEN2")))
-
-	require.ErrorIs(t, b.beads.Free(t.Context(), take("16", "session-a", "TOKEN1")), model.ErrRowMoved, "the same holder with an old token")
-	require.ErrorIs(t, b.beads.StoreLease(t.Context(), take("16", "session-a", "TOKEN1")), model.ErrRowMoved)
-	assert.Equal(t, "TOKEN2", b.holder(t, "16").Nonce)
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("15", "session-a")))
+	require.ErrorIs(t, b.beads.Free(t.Context(), hold("15", "session-b")), model.ErrRowMoved)
+	assert.Equal(t, "session-a", b.holder(t, "15"))
 }
 
 func scenarioStaleClosed(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	b.plant(t, "17", "--assignee", "old#TOKEN", "--status", "closed")
+	b.plant(t, "17", "--assignee", "old", "--status", "closed")
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("17", "session-a", "TOKENA")))
-	assert.Equal(t, "session-a", b.holder(t, "17").Holder)
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("17", "session-a")))
+	assert.Equal(t, "session-a", b.holder(t, "17"))
 }
 
 func scenarioStaleOpen(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	b.plant(t, "18", "--assignee", "old#TOKEN")
+	b.plant(t, "18", "--assignee", "old")
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("18", "session-a", "TOKENA")))
-	assert.Equal(t, "session-a", b.holder(t, "18").Holder)
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("18", "session-a")))
+	assert.Equal(t, "session-a", b.holder(t, "18"))
 }
 
 func scenarioMissing(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.Free(t.Context(), take("19", "session-a", "TOKENA")))
-	assert.Equal(t, model.RowState{}, b.holder(t, "19"))
+	require.NoError(t, b.beads.Free(t.Context(), hold("19", "session-a")))
+
+	_, held := b.rowFor(t, "19")
+	assert.False(t, held)
 }
 
 func scenarioOldBd(t *testing.T, b leaseBackend) {
@@ -334,28 +279,72 @@ func scenarioOldBd(t *testing.T, b leaseBackend) {
 	beads, err := store.NewBeadsStore(old, b.prefix)
 	require.NoError(t, err)
 
-	require.ErrorContains(t, beads.TryHold(t.Context(), take("20", "session-a", "TOKENA")), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
+	require.ErrorContains(t, beads.TryHold(t.Context(), hold("20", "session-a")), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
 	assert.Equal(t, 1, old.calls, "only bd --version ran")
 }
 
 func scenarioHeldRows(t *testing.T, b leaseBackend) {
 	t.Helper()
 
-	require.NoError(t, b.beads.TryHold(t.Context(), take("21", "session-a", "TOKENA")))
-	require.NoError(t, b.beads.TryHold(t.Context(), take("22", "session-b", "TOKENB")))
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("21", "session-a")))
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("22", "session-b")))
 
-	held, err := b.beads.HeldRows(t.Context())
+	assert.Equal(t, "session-a", b.holder(t, "21"))
+	assert.Equal(t, "session-b", b.holder(t, "22"))
+}
+
+func scenarioReclaimLive(t *testing.T, b leaseBackend) {
+	t.Helper()
+
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("23", "session-a")))
+
+	freed, err := b.beads.Reclaim(t.Context(), "23")
 	require.NoError(t, err)
+	assert.False(t, freed)
+	assert.Equal(t, "session-a", b.holder(t, "23"))
+}
 
-	var holders []string
+func scenarioReclaimEnded(t *testing.T, b leaseBackend) {
+	t.Helper()
 
-	for _, row := range held {
-		if row.Item == "21" || row.Item == "22" {
-			holders = append(holders, row.Item+":"+row.Holder)
-		}
-	}
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("24", "session-a")))
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("25", "session-a")))
+	b.expire(t, rowOf(b, "24"))
+	b.expire(t, rowOf(b, "25"))
 
-	assert.ElementsMatch(t, []string{"21:session-a", "22:session-b"}, holders)
+	freed, err := b.beads.Reclaim(t.Context(), "24")
+	require.NoError(t, err)
+	assert.True(t, freed)
+	assert.Equal(t, "session-a", b.holder(t, "25"), "a reclaim is scoped to the row of its item")
+
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("24", "session-b")))
+	assert.Equal(t, "session-b", b.holder(t, "24"))
+}
+
+func scenarioLateBeat(t *testing.T, b leaseBackend) {
+	t.Helper()
+
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("26", "session-late")))
+	b.expire(t, rowOf(b, "26"))
+	require.NoError(t, b.beads.Beat(t.Context(), "session-late"))
+
+	freed, err := b.beads.Reclaim(t.Context(), "26")
+	require.NoError(t, err)
+	assert.False(t, freed, "expiry is enforced only by the reclaim, and a beat before it revives the lease")
+}
+
+func scenarioNoLease(t *testing.T, b leaseBackend) {
+	t.Helper()
+
+	b.plant(t, "27", "--assignee", "hand", "--status", "in_progress")
+
+	row, held := b.rowFor(t, "27")
+	assert.True(t, held)
+	assert.True(t, row.LeaseEnds.IsZero())
+
+	freed, err := b.beads.Reclaim(t.Context(), "27")
+	require.NoError(t, err)
+	assert.False(t, freed)
 }
 
 func scenarioRace(t *testing.T, b leaseBackend) {
@@ -371,7 +360,7 @@ func scenarioRace(t *testing.T, b leaseBackend) {
 		go func() {
 			defer wg.Done()
 
-			errs[i] = b.beads.TryHold(t.Context(), take("30", "session-"+who, "TOKEN"+strings.ToUpper(who)))
+			errs[i] = b.beads.TryHold(t.Context(), hold("30", "session-"+who))
 		}()
 	}
 
@@ -379,9 +368,31 @@ func scenarioRace(t *testing.T, b leaseBackend) {
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
 
-	state := b.holder(t, "30")
-	assert.True(t, state.Held)
-	assert.Equal(t, strings.ToUpper(strings.TrimPrefix(state.Holder, "session-")), strings.TrimPrefix(state.Nonce, "TOKEN"), "the token belongs to the holder")
+	assert.Contains(t, []string{"session-a", "session-b"}, b.holder(t, "30"))
+}
+
+func scenarioHeartbeatTexts(t *testing.T, b leaseBackend) {
+	t.Helper()
+
+	beat := func(item string) model.CommandResult {
+		return b.run.Run(t.Context(), []string{"heartbeat", rowOf(b, item), "--actor", "session-a"})
+	}
+
+	missing := beat("58")
+	assert.Equal(t, 1, missing.ExitCode)
+	assert.Contains(t, missing.Stderr, "resolving "+rowOf(b, "58")+": no issue found matching")
+
+	b.plant(t, "59")
+
+	open := beat("59")
+	assert.Equal(t, 1, open.ExitCode)
+	assert.Contains(t, open.Stderr, "heartbeat "+rowOf(b, "59")+": issue not claimable: "+rowOf(b, "59")+" status open")
+
+	require.NoError(t, b.beads.TryHold(t.Context(), hold("60", "session-b")))
+
+	other := beat("60")
+	assert.Equal(t, 1, other.ExitCode)
+	assert.Contains(t, other.Stderr, "issue already claimed by session-b")
 }
 
 // oldBd answers --version like bd 0.56.1 and counts the commands it gets.

@@ -4,6 +4,7 @@ package claim
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -63,9 +64,9 @@ func ItemOf(item string) (string, error) {
 	return item, nil
 }
 
-// Age shows seconds as hours and minutes, such as 2h05m.
-func Age(seconds float64) string {
-	whole := int(seconds)
+// age shows a duration as hours and minutes, such as 2h05m.
+func age(span time.Duration) string {
+	whole := int(span.Seconds())
 
 	return fmt.Sprintf("%dh%02dm", whole/secondsPerHour, whole%secondsPerHour/secondsPerMinute)
 }

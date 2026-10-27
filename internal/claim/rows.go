@@ -6,19 +6,16 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// Rows is what claim needs from the lease store. model.ClaimRows documents each method.
+// Rows is what claim needs from the claim store. model.ClaimRows documents each method.
 type Rows interface {
 	HeldRows(ctx context.Context) ([]model.ClaimRow, error)
-	LastSeen(ctx context.Context) (map[string]time.Time, error)
-	Beat(ctx context.Context, holder string) error
-	Row(ctx context.Context, item string) (model.RowState, error)
 	TryHold(ctx context.Context, row model.ClaimRow) error
-	StoreLease(ctx context.Context, row model.ClaimRow) error
+	Beat(ctx context.Context, holder string) error
+	Reclaim(ctx context.Context, item string) (bool, error)
 	Free(ctx context.Context, row model.ClaimRow) error
 }
 
@@ -40,12 +37,6 @@ func (c *Claims) held(ctx context.Context) ([]model.ClaimRow, error) {
 	rows, err := c.rows.HeldRows(ctx)
 
 	return rows, fail(err)
-}
-
-func (c *Claims) state(ctx context.Context, item string) (model.RowState, error) {
-	state, err := c.rows.Row(ctx, item)
-
-	return state, fail(err)
 }
 
 // holders returns the sorted owners that hold the item.
@@ -86,44 +77,22 @@ func uniqueSorted(names []string) []string {
 	return unique
 }
 
-// leasesOf returns the lease each holder stored in its claim row for the item.
-func leasesOf(rows []model.ClaimRow, item string) map[string]int64 {
-	leases := map[string]int64{}
+// live reports whether the lease of the row has not ended. A row with no lease never ends: bd reclaims only a row that has a lease.
+func (c *Claims) live(row model.ClaimRow) bool {
+	return row.LeaseEnds.IsZero() || row.LeaseEnds.After(c.clock())
+}
+
+// liveHolders returns the sorted holders of the item other than me whose lease has not ended.
+func (c *Claims) liveHolders(rows []model.ClaimRow, me, item string) []string {
+	var names []string
 
 	for _, r := range rows {
-		if r.Item == item && r.Lease != model.LeaseNone {
-			leases[r.Holder] = r.Lease
+		if r.Item == item && r.Holder != me && c.live(r) {
+			names = append(names, r.Holder)
 		}
 	}
 
-	return leases
-}
-
-// lastSeen returns the seconds since the last heartbeat of every owner that has one.
-func (c *Claims) lastSeen(ctx context.Context) (map[string]float64, error) {
-	stamps, err := c.rows.LastSeen(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-
-	now := c.clock()
-	seen := make(map[string]float64, len(stamps))
-
-	for holder, stamp := range stamps {
-		seen[holder] = now.Sub(stamp).Seconds()
-	}
-
-	return seen, nil
-}
-
-// expired reports whether the holder was last seen longer ago than its lease. An unreadable lease never expires.
-func (c *Claims) expired(holder string, seen map[string]float64, leases map[string]int64) bool {
-	lease, found := leases[holder]
-	if !found {
-		lease = c.lease
-	}
-
-	return lease != model.LeaseUnreadable && seen[holder] > float64(lease)
+	return uniqueSorted(names)
 }
 
 // Who returns one line: who holds the item, if anyone.
@@ -143,29 +112,23 @@ func (c *Claims) Who(ctx context.Context, item string) (string, error) {
 	case 0:
 		return fmt.Sprintf("#%s unowned", item), nil
 	case 1:
-		return c.whoHolds(ctx, item, names[0], leasesOf(rows, item))
+		return fmt.Sprintf("#%s held by %s", item, c.label(rows, item, names[0])), nil
 	default:
 		return fmt.Sprintf("#%s held by %s (MORE THAN ONE HOLDER: resolve by hand)", item, strings.Join(names, ", ")), nil
 	}
 }
 
-func (c *Claims) whoHolds(ctx context.Context, item, holder string, leases map[string]int64) (string, error) {
-	seen, err := c.lastSeen(ctx)
-	if err != nil {
-		return "", err
+// label names the holder, and says when its lease ended or that it has none.
+func (c *Claims) label(rows []model.ClaimRow, item, holder string) string {
+	i := slices.IndexFunc(rows, func(r model.ClaimRow) bool { return r.Item == item && r.Holder == holder })
+	row := rows[i]
+
+	switch {
+	case row.LeaseEnds.IsZero():
+		return holder + " (no lease: release it by hand)"
+	case !c.live(row):
+		return fmt.Sprintf("%s (LEASE ENDED %s ago; `take` reclaims it)", holder, age(c.clock().Sub(row.LeaseEnds)))
 	}
 
-	return fmt.Sprintf("#%s held by %s", item, c.label(holder, seen, leases)), nil
-}
-
-func (c *Claims) label(holder string, seen map[string]float64, leases map[string]int64) string {
-	if leases[holder] == model.LeaseUnreadable {
-		return holder + " (lease unreadable: clear the row by hand)"
-	}
-
-	if !c.expired(holder, seen, leases) {
-		return holder
-	}
-
-	return fmt.Sprintf("%s (LEASE EXPIRED: last seen %s ago; `take` reclaims it)", holder, Age(seen[holder]))
+	return holder
 }

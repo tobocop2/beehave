@@ -118,26 +118,6 @@ func TestShutdown_AnInterruptLeavesTheRunOpenAndTheNextRunContinuesIt(t *testing
 	assert.Equal(t, 1, countOf(harness.life.seen(), "release"))
 }
 
-func TestGroups_ReleaseItemKillsTheGroupsOfEveryPhaseOfThatItemOnly(t *testing.T) {
-	t.Parallel()
-
-	g := newGroups(t)
-	implement, review := startSleeper(t), startSleeper(t)
-	longer, another := startSleeper(t), startSleeper(t)
-
-	for owner, pid := range map[string]int{"12/implement/0": implement, "12/review/1": review, "120/plan/0": longer, "13/plan/0": another} {
-		require.NoError(t, g.add(t.Context(), owner, pid))
-	}
-
-	require.NoError(t, g.releaseItem(testItem))
-
-	requireDies(t, implement)
-	requireDies(t, review)
-	assert.True(t, alive(longer), "item 120 is not item 12")
-	assert.True(t, alive(another))
-	assert.Len(t, g.rows, 2)
-}
-
 func TestGiveBack_LogsAProcessFileAndAReleaseThatFail(t *testing.T) {
 	t.Parallel()
 
@@ -164,6 +144,23 @@ func TestGiveBack_AnOwnerThatCannotBeReadKeepsTheClaim(t *testing.T) {
 	engine.giveBack(t.Context(), openRun{id: "run-12", in: ItemInput{Item: testItem, Project: testProject}})
 
 	assert.Empty(t, life.seen(), "a claim with no readable token is not released with a guess")
+}
+
+func TestGiveBack_ForgetsTheAgentGroupsOfTheCanceledRunOnly(t *testing.T) {
+	t.Parallel()
+
+	engine := newProcEngine(t, nil)
+	engine.deps.Lifecycle = &fakeLifecycle{failing: map[string]bool{}}
+	engine.dir = t.TempDir()
+
+	mine, other := startSleeper(t), startSleeper(t)
+	require.NoError(t, engine.procs.add(t.Context(), "run-12", mine))
+	require.NoError(t, engine.procs.add(t.Context(), "run-13", other))
+
+	engine.giveBack(t.Context(), openRun{id: "run-12", in: ItemInput{Item: testItem, Project: testProject}})
+
+	assert.Equal(t, []string{"run-13"}, runsOf(engine.procs.rows), "the groups of the canceled run are forgotten, those of another run stay")
+	requireStayAlive(t, "the end of the claim context kills a live agent, not the give-back", mine, other)
 }
 
 func TestGiveBackWhenEnded_AStopOfTheTickEndsTheWait(t *testing.T) {

@@ -22,7 +22,7 @@ flowchart TD
     end
 
     subgraph L2["Layer 2: round policy"]
-        claim["claim<br/>lease policy"]
+        claim["claim<br/>claim policy"]
         check["check<br/>shell and job rules"]
         policy["brief · gate · ledger<br/>merge · review · pool"]:::planned
     end
@@ -82,9 +82,9 @@ Layer 2 packages declare the small interfaces they need and do not import layer 
 
 ## Adapters
 
-The tracker and the forge are adapters that a project selects. `model` declares three contracts. `Tracker` covers items and parents. `ClaimRows` covers the lease of each item. `Forge` covers pull requests, reviews, threads and checks. The lease store is not a choice: beads fills `ClaimRows` for every project. beads, GitHub Issues and GitHub are the first adapters. No adapter is a default: a project file names both with `tracker` and `forge`. Every project also sets `beads_prefix`, because its leases live in beads whatever its `tracker` is. `obee check config` refuses a project without one.
+The tracker and the forge are adapters that a project selects. `model` declares three contracts. `Tracker` covers items and parents. `ClaimRows` covers the claim of each item. `Forge` covers pull requests, reviews, threads and checks. The claim store is not a choice: beads fills `ClaimRows` for every project. beads, GitHub Issues and GitHub are the first adapters. No adapter is a default: a project file names both with `tracker` and `forge`. Every project also sets `beads_prefix`, because its leases live in beads whatever its `tracker` is. `obee check config` refuses a project without one.
 
-`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds the tracker, the forge and the lease store of each project, so a project that cannot build them is a problem. It also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
+`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds the tracker, the forge and the claim store of each project, so a project that cannot build them is a problem. It also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
 
 Each contract has an exported conformance suite in `internal/model/contract`, in the style of `testing/fstest.TestFS`. The suite runs against every adapter with a fake command line. It checks the claim row rules (for `ClaimRows`) and checks that every method returns an error when its command fails.
 
@@ -102,7 +102,7 @@ flowchart LR
     beads["store: beads<br/>bd --json"]
     ghissues["store: GitHub issues<br/>gh"]
     github["forge: GitHub<br/>gh"]
-    lease["store: beads lease rows<br/>bd 1.3.2 or newer"]
+    lease["store: beads claim rows<br/>bd 1.3.2 or newer"]
 
     project --> table
     table -- "tracker = beads" --> beads
@@ -122,26 +122,26 @@ flowchart LR
 
 `store` has two backends: beads through `bd --json` and GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads and writes issues only. It holds no lease.
 
-`claim` holds the lease policy and no command line: the settle read-back, the expiry test and the refusal of a live holder. It declares the small `Rows` interface it needs and does not import `store`. Beads holds one claim row for each item.
+`claim` holds the claim policy and no command line: the read of the winner, one reclaim of an ended lease and the refusal of a live holder. It declares the small `Rows` interface it needs and does not import `store`. Beads holds one claim row for each item.
 
-## Leases live in beads
+## Claims live in beads
 
-Leases live in beads for every project, whatever tracker the project uses, because beads is the store with a real compare-and-set. GitHub labels have no write that tests the old value, so a lease on a label needs a park-and-rename protocol and still has a window. beads has the atomic operations:
+Claims live in beads for every project, whatever tracker the project uses, because beads has native claim leases. GitHub labels have no write that tests the old value and no lease. obee keeps no lease of its own: bd grants, renews and ends the lease.
 
-- **Take.** A row is a task titled `lock:<kind>-<item>`. bd 1.3.2 claims only a row that is `open` and has no assignee. `bd update --claim --assignee <holder>#<token>` tests this in one write. A row left with a stale assignee or a closed status is reset to open first, guarded by the values that were read. A refused take exits 1 with the text `issue already claimed` or `issue not claimable`. The adapter reads that exit as a lost take, and `claim` reads the row to learn the winner. Any other exit 1 is an error.
-- **Token.** The assignee of a take is `<holder>#<token>`, and the token is a new random text for each take (`rand.Text()`). A guard on the assignee compares a value that never repeats, so a holder that releases and takes again cannot match the guard of a stale reader. This closes the same-holder ABA by construction. People never see the token: `Row`, `HeldRows` and every message show the holder only. A row with no token is not the take of any holder.
-- **Release.** `bd unclaim <row> --if-assignee <holder>#<token>` clears the assignee and sets the status back to open, so the next take can claim the row. A mismatch exits 1 with the text `assignee mismatch`, and `claim` refuses with code 3. A closed row holds nothing and counts as free.
-- **Change.** A store of the lease uses `bd update --if-assignee <holder>#<token> --if-status in_progress`. A mismatch writes nothing and exits 13. The adapter reads exit 13 as "the row moved".
-- **Heartbeat.** The heartbeat is `last_activity` of an agent bead.
-- **Version.** The guards and `bd unclaim --if-assignee` exist from bd 1.3.2. The lease store asks `bd --version` once before its first write and refuses an older bd before it writes anything. `obee check config` runs the same check.
+- **Row.** A forge number has no beads row, so each item gets a task titled `lock:<kind>-<item>`. A row left with a stale assignee or a closed status is reset to open first, guarded by the values that were read.
+- **Take.** `bd update <row> --claim --actor <holder>` claims an open row with no assignee in one write and grants the lease to the actor. The holder is the actor and the assignee. A refused take exits 1 with the text `issue already claimed` or `issue not claimable`. The adapter reads that exit as a lost take, and `claim` reads the row to learn the winner. Any other exit 1 is an error.
+- **Beat.** `bd heartbeat <row> --actor <holder>` renews the lease of each row of the holder. A row that fails does not stop the renewal of the other rows: the errors join. A holder with no row gets the text that the claim is gone. A row that another holder took after the list gets the same text, because bd refuses the heartbeat with `issue already claimed`. Any other failure is an error. The lease lasts 5 minutes, and bd has no flag to change it.
+- **Reclaim.** `bd reclaim --id <row> --older-than 0s` frees a row only when its lease ended. bd ends no lease by itself: a late beat before the reclaim revives the lease. A row set to `in_progress` by hand has no lease, and bd never reclaims it.
+- **Release.** `bd unclaim <row> --if-assignee <holder>` sets the status back to open and ends the lease. A mismatch exits 1 with the text `assignee mismatch`, and `claim` refuses with code 3. A closed row holds nothing and counts as free.
+- **Version.** The leases and the guards exist from bd 1.3.2. The claim store asks `bd --version` once before its first write and refuses an older bd before it writes anything. `obee check config` runs the same check.
 
-The package `store/storetest` holds the fake `bd` that the tests of `store` and `cmd/obee` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2.
+The lease table of bd is node-local: it is not committed to Dolt and not replicated. All the clients of one `dolt sql-server` see the same leases, and a second server has its own. Keep one server for each project.
 
-The contract test `TestLeaseContract` in `internal/store` runs the same scenarios against the fake and against a real bd 1.3.2 on a private dolt server. The real run is off by default. To run it, set `OBEE_BD_132` to the path of a bd 1.3.2 binary (check its checksum against the release file), put `dolt` on `PATH`, and run `go test ./internal/store -run TestLeaseContract`. The test starts its own dolt server on a free port, refuses ports 3306 and 3307, and stops the server at the end. `cmd/obee` runs `claim` over the real lease store, because only the composition root may import `store` and `claim` together.
+The package `store/storetest` holds the fake `bd` that the tests of `store` and `cmd/obee` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2. The same package holds the helpers that start and stop the private dolt server of the real-bd contract tests, so `internal/store` and `cmd/obee` share one copy.
 
-Planned upgrade: `bd update --if-revision` (beads#4682, not released) compares a revision of the whole row. The token then becomes unnecessary.
+The contract test `TestLeaseContract` in `internal/store` runs the same scenarios against the fake and against a real bd 1.3.2 on a private dolt server. The real run is off by default. To run it, set `OBEE_BD_132` to the path of a bd 1.3.2 binary (check its checksum against the release file), put `dolt` on `PATH`, and run `go test ./internal/store -run TestLeaseContract`. The test starts its own dolt server on a free port, refuses ports 3306 and 3307, and stops the server at the end. It ends a lease with `dolt sql` instead of a wait of 5 minutes. `cmd/obee` runs `claim` over the real claim store, because only the composition root may import `store` and `claim` together.
 
-The lease rules: a holder expires only when its last beat is older than the lease it stored. A holder with no beat or an unreadable lease never expires. A read that fails, does not parse or fills a page is an error, and `claim` turns it into a refusal. The lease store is not a distributed lock beyond what bd gives: the settle read-back in `claim` closes the window between two writers, and after it stores the lease, `claim` reads the row again and refuses when the row is no longer its take.
+The claim rules: a holder is live while the end of its lease is after the clock. The end comes from bd and the clock from obee, so a clock skew between the host of bd and the host of obee can make `EnsureFree` and `Who` disagree with `Take`. `EnsureFree` only prechecks, and `bd reclaim` decides. A holder with no lease never expires, because bd never reclaims it. A read that fails, does not parse or fills a page is an error, and `claim` turns it into a refusal. `Take` is bd's atomic claim. When another holder wins, `claim` runs one reclaim, then claims again, then refuses with code 3.
 
 ## Forge and the command runner
 
@@ -233,11 +233,27 @@ The pause sets the findings as the question of the run and waits for a durable r
 
 ### Claim beat
 
-A tick runs every 2 seconds in each running `obee run` process. Each tick reads only the runs that the process executes, then it renews each claim that the process holds. Each renewal has its own timeout of 30 seconds, so a hung tracker call delays no other claim. If a renewal fails or times out, the run records the reason and refuses to start its next phase. The error tells the owner to run `obee run <item>` again.
+A tick runs every 2 seconds in each running `obee run` process. Each tick reads only the runs that the process executes, then it renews each claim that the process holds. Each renewal has its own timeout of 30 seconds, and never more than the time left before the engine stops trusting the claim, so a hung tracker call delays no other claim.
+
+The lease lasts 5 minutes. The engine stops trusting a claim 2 seconds (one tick) before the lease can end: 4 minutes 58 seconds after the start of the last good renewal. For a claim that the run took, the start is the start of the take. A run that continues or resumes did not make the take, so it needs one good renewal before its first step. The engine counts the time on the monotonic clock and on the wall clock, and it uses the longer count. The monotonic clock stops while the machine sleeps, and the lease in the tracker does not. The engine never compares `lease_expires_at` with the clock, so the only error it can make is to stop early.
+
+Two things end the trust. At each good renewal the engine arms a timer for that time, and the timer fires whatever a renewal in flight does. Each tick also checks the time, because a timer cannot see a sleep of the machine: after a sleep, the trust ends at the first tick.
+
+A renewal that fails or times out does not lose the claim before that time. The next tick tries again, and a renewal that works moves the time forward. When the time passes, or at once when the tracker says that another holder has the row or that no claim row exists, the run records the reason and the engine cancels the run, and the claim ends its context.
+
+Each claim a run holds has one context, and every agent of that run starts under it. The context is the only way a lost claim stops an agent: it ends when the engine stops trusting the claim, and when the run ends. If the end comes before an agent starts, the start finds the context done and starts no process. If it comes after, the end of the context kills the process group of the agent. No check sits between the claim and the start, so no loss can fall between them. The context belongs to one run, so the loss of a run never touches the agent of another run of the same item.
+
+A phase asks, by the id of the run that queued it, whether that run holds a trusted claim now: not lost, not past the time on either clock, and with one good renewal when the run did not make the take. The claim of another run on the same item does not count. The phase asks before it writes its brief, and the brief is keyed by the run id, so the brief of a lost run never replaces the brief of a new run. A phase that `obee resume` reopened waits for its run to take the claim again: it waits while the run is open, and for 3 seconds when the run is not open yet. A phase whose run ended stops after those 3 seconds. So no second `obee run` can reclaim the item while the first run still works on it. The run ends with an error that names the reason. It does not release a claim it lost.
+
+A process that leaves its agent's process group is out of reach of this kill. The agent group is the unit that dies.
+
+If the first renewal of a run that continues or resumes fails, the run tries it again every 2 seconds until one works, the tracker says the claim is gone, or the time of trust has passed.
+
+After a loss by time, the old session still holds the row until its lease ends. `obee resume <item>` refuses with code 3 until then, which is up to 5 minutes. Run it again after that time.
 
 ### Process control
 
-Each agent process group is a row in the file `agents.pgid` in the state folder (mode 0600). A row holds the group ID and the start time of its leader. A group dies when its phase ends, times out or is canceled, and when `obee run` shuts down.
+Each agent process group is a row in the file `agents.pgid` in the state folder (mode 0600). A row holds the group ID and the start time of its leader. A group dies when its phase ends, times out or is canceled, when its run loses the claim, and when `obee run` shuts down. The file does not carry the kill of a lost claim: the context of the claim does. The file serves the end of a phase, the cancel of a run, and the next start after a crash.
 
 DBOS does not kill child processes, so a crash leaves them. At the next start, `obee run` kills each recorded group whose start time still matches the live process. A reused process ID has a different start time, and the check leaves it alone.
 
@@ -257,7 +273,7 @@ Each run pins the build version that started it. `obee status` lists every run w
 
 `obee cancel <item>` cancels the open run and the phases it started. The release of the worktree and the claim runs outside the cancelled workflow. If an engine runs, it does the release on its next tick, after the agent groups of the run are dead. If no engine runs, `obee cancel` does the release itself.
 
-`obee resume <item>` first takes a fresh claim on the item, because the release of the old run gave the old claim back. If the claim is held, `resume` refuses and names the holder. A cancelled run that left its claim gives it back at the next `obee run`, so run that first and then `resume` again. The run then uses the fresh claim for its beat and its release. The token of the fresh claim is in `owners/<run id>` in the state folder, and the file ends with the run: a release that works, or the deletion of the run by the retention, removes it. A run whose claim step never finished takes no claim at `resume`: the step claims when the run continues. No engine renews the fresh claim between `obee resume` and the next `obee run`, so run the item soon after the resume. `resume` reopens the cancelled or the failed run. Then `obee run <item>` continues it from the last finished step. After a crash, or after Ctrl-C of `obee run`, the run stays open, and `obee run <item>` continues it without `resume`.
+`obee resume <item>` first takes a fresh claim on the item, because the release of the old run gave the old claim back. If the claim is held, `resume` refuses and names the holder. A cancelled run that left its claim gives it back at the next `obee run`, so run that first and then `resume` again. The run then uses the fresh claim for its beat and its release. The token of the fresh claim is in `owners/<run id>` in the state folder, and the file ends with the run: a release that works, or the deletion of the run by the retention, removes it. A run whose claim step never finished takes no claim at `resume`: the step claims when the run continues. No engine renews the fresh claim between `obee resume` and the next `obee run`, so run the item within 5 minutes after the resume. When the lease of the fresh claim ends, any other `obee run` can take the item. `resume` reopens the cancelled or the failed run. Then `obee run <item>` continues it from the last finished step. After a crash, or after Ctrl-C of `obee run`, the run stays open, and `obee run <item>` continues it without `resume`.
 
 `obee run <item>` starts a new run only after a finished or a cancelled run. If the last run failed, `obee run` refuses, names the step that failed, and tells the owner to run `obee resume <item>`.
 
@@ -282,8 +298,8 @@ sequenceDiagram
     participant G as gh (forge)
     participant O as owner
 
-    F->>C: take the lease for the item
-    C->>B: bd update --claim --assignee holder#token
+    F->>C: take the claim for the item
+    C->>B: bd update --claim --actor holder
     B-->>C: claimed, or refused with the winner
     F->>A: run the plan step with the brief
     A-->>F: plan
@@ -303,8 +319,8 @@ sequenceDiagram
     end
     F->>G: read the pull request, then mark it ready
     F->>F: remove the worktree if it is clean and on a remote tip
-    F->>C: release the lease
-    C->>B: bd unclaim --if-assignee holder#token
+    F->>C: release the claim
+    C->>B: bd unclaim --if-assignee holder
 ```
 
 ## DBOS and secrets

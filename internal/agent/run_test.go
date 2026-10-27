@@ -281,6 +281,45 @@ func TestRunner_ACancelBeforeTheStartReadsAsCancelled(t *testing.T) { //nolint:p
 	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
 }
 
+// The cancel kills the group at once, through the cancel function of the command. The wait delay of the command (one second) and the sweep after the wait
+// would also end the group, but later: the child must be gone well before the wait delay.
+func TestRunner_ACancelInsideOnStartKillsTheGroupBeforeTheWaitDelay(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	started := 0
+	goneAfter := make(chan time.Duration, 1)
+	f.spec.OnStart = func(pid int) {
+		started = pid
+
+		for !fileExists(filepath.Join(f.records, "grandchild")) {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		child, err := strconv.Atoi(record(t, f.records, "grandchild"))
+		require.NoError(t, err)
+
+		at := time.Now()
+
+		cancel()
+
+		go func() {
+			for !errors.Is(syscall.Kill(child, 0), syscall.ESRCH) {
+				time.Sleep(5 * time.Millisecond)
+			}
+
+			goneAfter <- time.Since(at)
+		}()
+	}
+
+	got := agent.Runner{}.Run(ctx, f.spec)
+
+	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
+	require.NotZero(t, started, "the agent started before the cancel")
+	assert.Less(t, <-goneAfter, 500*time.Millisecond, "the child of the agent dies with the cancel, not with the wait delay")
+	assertGone(t, f.records)
+}
+
 func TestRunner_ADeadlineOnTheCallerContextReadsAsTimedOut(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "silent")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)

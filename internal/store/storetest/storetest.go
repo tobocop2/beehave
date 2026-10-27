@@ -14,10 +14,12 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 )
 
-// Progress is the status of a held claim row. Now is the unix time every fake beat carries.
+// Progress is the status of a held claim row. Now is the unix time of the fake. LeaseSeconds is the lease bd 1.3.2 grants on a claim
+// and on a heartbeat (internal/storage/issueops/lease.go:26).
 const (
-	Progress = "in_progress"
-	Now      = 1_900_000_000
+	Progress     = "in_progress"
+	Now          = 1_900_000_000
+	LeaseSeconds = 300
 
 	guardExit = 13
 
@@ -25,25 +27,30 @@ const (
 	cmdCreate  = "create"
 	statusOpen = "open"
 	keyDesc    = "description"
+	keyLease   = "lease_expires_at"
+	keyHolder  = "assignee"
+	flagActor  = "--actor"
+	actorName  = "tester"
 )
 
 // Fields is one row of the fake bd.
 type Fields = map[string]any
 
 // Bd keeps rows in memory and answers the bd commands the claim code uses. It follows bd 1.3.2: --claim takes only an open row
-// without an assignee, and a refused --claim exits 1 with the text of a lost take; bd unclaim --if-assignee reopens the row;
-// create --id on an existing row resets it; show resolves a partial id by prefix. The contract test in storetest/bdreal runs the same scenarios against a real bd.
+// without an assignee, grants the lease to the actor and sets the actor as the assignee (a claim that also sets --assignee, or any update of
+// the status or the assignee, ends the lease); a refused --claim exits 1 with the text of a lost take; bd heartbeat renews the lease of the
+// holder; bd reclaim frees the rows whose lease ended; bd unclaim --if-assignee reopens the row;
+// create --id on an existing row resets it; show resolves a partial id by prefix. The contract test in store runs the same scenarios against a real bd.
 // A missing row prints what bd prints: v0.56.1 `Error fetching <id>: no issue found matching "<id>"` (cmd/bd/show.go:105, internal/utils/id_parser.go:140),
 // v1.3.2 `Issue <id> not found` (cmd/bd/show.go:136). V1 picks the second text. NoGuard plays a bd that lacks --if-assignee and --if-status. Version is the answer of --version.
 type Bd struct {
-	Rows           map[string]Fields
-	Calls          [][]string
-	Hooks          []func(args []string)
-	Fail           map[string]model.CommandResult
-	HeartbeatFails bool
-	V1             bool
-	NoGuard        bool
-	Version        string
+	Rows    map[string]Fields
+	Calls   [][]string
+	Hooks   []func(args []string)
+	Fail    map[string]model.CommandResult
+	V1      bool
+	NoGuard bool
+	Version string
 
 	order []string
 }
@@ -96,8 +103,10 @@ func (b *Bd) answer(args []string) model.CommandResult {
 		return b.show(args[1])
 	case cmdCreate, "update", "unclaim":
 		return b.write(args)
-	case "agent":
-		return b.heartbeat(args[2])
+	case "heartbeat":
+		return b.heartbeat(args[1:])
+	case "reclaim":
+		return b.reclaim(args[1:])
 	}
 
 	return model.CommandResult{ExitCode: 1, Stderr: "fake bd: no answer planned"}
@@ -211,7 +220,7 @@ func (b *Bd) create(rest []string) model.CommandResult {
 		kind = "task"
 	}
 
-	b.Add(opts["--id"], Fields{"title": opts["--title"], "issue_type": kind, "last_activity": nil, keyDesc: opts["--description"]})
+	b.Add(opts["--id"], Fields{"title": opts["--title"], "issue_type": kind, keyDesc: opts["--description"]})
 
 	return model.CommandResult{Stdout: opts["--id"]}
 }
@@ -224,32 +233,55 @@ func (b *Bd) update(rest []string) model.CommandResult {
 
 	opts := Options(rest, 1)
 
-	if refused := cmp.Or(b.guard(row, opts), claimRow(rest[0], row, slices.Contains(rest, "--claim"))); refused != nil {
+	claim := claimRow(rest[0], row, actorOf(opts), slices.Contains(rest, "--claim"))
+	if refused := cmp.Or(b.guard(row, opts), claim); refused != nil {
 		return *refused
 	}
 
-	for flag, key := range map[string]string{"--status": "status", "--assignee": "assignee", "--description": keyDesc} {
-		if value, set := opts[flag]; set {
-			row[key] = value
-		}
-	}
+	apply(row, opts)
 
 	return model.CommandResult{}
 }
 
-// claimRow plays --claim like bd 1.3.2: it takes an open row without an assignee, and exits 1 with the text of a lost take otherwise.
+// apply writes the fields that bd update sets. A change of the status or the assignee ends the lease.
+func apply(row Fields, opts map[string]string) {
+	for flag, key := range map[string]string{"--status": "status", "--assignee": keyHolder, "--description": keyDesc} {
+		if value, set := opts[flag]; set {
+			row[key] = value
+
+			if key != keyDesc {
+				delete(row, keyLease)
+			}
+		}
+	}
+}
+
+// actorOf returns the actor of a command: the --actor flag, or the default actor of the fake.
+func actorOf(opts map[string]string) string {
+	return cmp.Or(opts[flagActor], actorName)
+}
+
+// At returns a lease end as bd prints it, for a unix time.
+func At(unix int64) string {
+	return time.Unix(unix, 0).UTC().Format(time.RFC3339)
+}
+
+// claimRow plays --claim like bd 1.3.2: it takes an open row without an assignee for the actor and grants the lease, and exits 1 with the text of a lost take otherwise.
+// A claim by the actor that holds the row already is a success that changes nothing (internal/storage/issueops/claim.go:150-157).
 // The texts start with the sentinels of internal/storage/issueops/errors.go (:12 and :17) in the bd source.
-func claimRow(id string, row Fields, claiming bool) *model.CommandResult {
+func claimRow(id string, row Fields, actor string, claiming bool) *model.CommandResult {
 	if !claiming {
 		return nil
 	}
 
-	assignee, status := text(row["assignee"]), text(row["status"])
+	assignee, status := text(row[keyHolder]), text(row["status"])
 
 	switch {
 	case status == statusOpen && assignee == "":
-		row["status"] = Progress
+		row["status"], row[keyHolder], row[keyLease] = Progress, actor, At(Now+LeaseSeconds)
 
+		return nil
+	case status == Progress && assignee == actor:
 		return nil
 	case status == statusOpen:
 		return refusal(id, "issue already claimed: already assigned to \""+assignee+"\"")
@@ -283,7 +315,8 @@ func (b *Bd) unclaim(rest []string) model.CommandResult {
 		return model.CommandResult{ExitCode: 1, Stderr: "Error unclaiming " + rest[0] + ": assignee mismatch: " + rest[0] + " is held by \"" + text(row["assignee"]) + "\", expected \"" + holder + "\""}
 	}
 
-	row["status"], row["assignee"] = statusOpen, ""
+	row["status"], row[keyHolder] = statusOpen, ""
+	delete(row, keyLease)
 
 	return model.CommandResult{}
 }
@@ -308,14 +341,46 @@ func (b *Bd) guard(row Fields, opts map[string]string) *model.CommandResult {
 	return nil
 }
 
-func (b *Bd) heartbeat(id string) model.CommandResult {
-	if b.HeartbeatFails {
-		return model.CommandResult{ExitCode: 1, Stderr: "heartbeat refused"}
+// heartbeat plays bd heartbeat <id>: it renews the lease of the actor that holds the row, and refuses any other actor
+// (cmd/bd/heartbeat.go:71, internal/storage/issueops/lease.go:380-407). A holder whose lease ended and was not reclaimed gets the lease back.
+func (b *Bd) heartbeat(rest []string) model.CommandResult {
+	row, found := b.Rows[rest[0]]
+	if !found {
+		return model.CommandResult{ExitCode: 1, Stderr: b.missing("Error: resolving", rest[0])}
 	}
 
-	b.Rows[id]["last_activity"] = time.Unix(Now, 0).UTC().Format(time.RFC3339)
+	if status := text(row["status"]); status != Progress {
+		return model.CommandResult{ExitCode: 1, Stderr: "Error: heartbeat " + rest[0] + ": issue not claimable: " + rest[0] + " status " + status}
+	}
+
+	if holder := text(row[keyHolder]); holder != actorOf(Options(rest, 1)) {
+		return model.CommandResult{ExitCode: 1, Stderr: "Error: heartbeat " + rest[0] + ": issue already claimed by " + holder}
+	}
+
+	row[keyLease] = At(Now + LeaseSeconds)
 
 	return model.CommandResult{}
+}
+
+// reclaim plays bd reclaim --id <id> --older-than 0s --json (cmd/bd/reclaim.go:107): every in_progress row whose lease ended goes back to open.
+func (b *Bd) reclaim(rest []string) model.CommandResult {
+	only := Options(rest, 0)["--id"]
+	freed := []Fields{}
+
+	for _, id := range b.order {
+		row := b.Rows[id]
+		ends, err := time.Parse(time.RFC3339, text(row[keyLease]))
+
+		if (only != "" && only != id) || text(row["status"]) != Progress || err != nil || !ends.Before(time.Unix(Now, 0)) {
+			continue
+		}
+
+		freed = append(freed, Fields{"id": id, "previous_owner": text(row[keyHolder])})
+		row["status"], row[keyHolder] = statusOpen, ""
+		delete(row, keyLease)
+	}
+
+	return model.CommandResult{Stdout: JSON(Fields{"count": len(freed), "reclaimed": freed, "scoped": only != ""})}
 }
 
 // JSON encodes a value. A value that cannot be encoded gives the error text, which no reader of a fake can parse, so the test fails.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
@@ -43,22 +44,86 @@ type loopState struct {
 // The workflow is not queued, so the wait for the owner holds no agent slot.
 func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 	return e.track(parent, in, func(ctx dbos.Context) (ItemResult, error) {
-		login, owner, err := e.begin(ctx, in)
+		login, owner, took, err := e.begin(ctx, in)
 		if err != nil {
 			return ItemResult{}, err
 		}
 
-		stopBeat := e.holds.hold(ctx, in.Project, owner)
-		result, workErr := e.work(ctx, in, login)
-		stopBeat()
+		result, workErr := e.workHolding(ctx, in, login, claimTake{owner: owner, took: took})
 
-		// A run whose context ended is canceled or interrupted. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next obee run.
+		// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next obee run.
+		// A run that lost its claim has nothing to release.
 		if ctx.Err() != nil {
 			return result, workErr
 		}
 
 		return result, errors.Join(workErr, e.finish(ctx, in, owner))
 	})
+}
+
+// claimTake is the claim of a run: its owner token, and when the take began. took is zero when this run did not make the take:
+// a continued or resumed run replays the claim step, so the age of the lease is not known.
+type claimTake struct {
+	owner string
+	took  time.Time
+}
+
+// workHolding runs the work of an item while the tick renews its claim. A run that lost the claim returns errClaimLost, with the reason, in place of the error of its work.
+func (e *Engine) workHolding(ctx dbos.Context, in ItemInput, login string, taken claimTake) (ItemResult, error) {
+	id, forget := e.holds.hold(ctx, in.Project, taken.owner)
+	defer forget()
+
+	if err := e.firstTrust(ctx, id, in, taken); err != nil {
+		return ItemResult{}, err
+	}
+
+	result, err := e.work(ctx, in, login)
+	if lost := e.claimCheck(id, in.Item); lost != nil {
+		return result, lost
+	}
+
+	return result, err
+}
+
+// firstTrust starts the trust in a claim. A take that this run made is trusted from the start of the take. A take of unknown age
+// needs one good renewal before the first agent starts.
+func (e *Engine) firstTrust(ctx context.Context, id string, in ItemInput, taken claimTake) error {
+	if !taken.took.IsZero() {
+		e.trust(id, taken.took)
+
+		return nil
+	}
+
+	if err := e.firstRenewal(ctx, id, in, taken.owner); err != nil {
+		return err
+	}
+
+	return e.claimCheck(id, in.Item)
+}
+
+// firstRenewal renews a claim of unknown age until a renewal works or the tracker says the claim is gone, as the tick does, so one busy tracker call
+// does not end a run that took a fresh claim. It gives up when a limit of trust has passed since the first try: the lease of that take can have ended.
+func (e *Engine) firstRenewal(ctx context.Context, id string, in ItemInput, owner string) error {
+	first := e.deps.Clock.now()
+
+	for {
+		start := e.deps.Clock.now()
+
+		text, err := e.beatOne(ctx, claimHold{project: in.Project, owner: owner}, trustLimit-e.deps.Clock.age(first))
+		if err == nil || text != "" {
+			e.settle(id, start, text, err)
+
+			return nil
+		}
+
+		if e.deps.Clock.age(first) >= trustLimit {
+			return fmt.Errorf("renew the claim of item %s before the first agent starts: %w", in.Item, err)
+		}
+
+		if err := pause(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
+			return err
+		}
+	}
 }
 
 // finish releases an item. The token file of the run ends with a release that worked: a later run that reuses the run id must not read a dead token.
@@ -96,32 +161,36 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 }
 
 // begin picks the login of an item and claims the item. Each is a step.
-func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, err error) {
+func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
 	login, err = runStep(e, ctx, "login", func(c context.Context) (string, error) {
 		return e.deps.Logins.Pick(c, in.Project, in.Item)
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("pick the login of item %s: %w", in.Item, err)
+		return "", "", time.Time{}, fmt.Errorf("pick the login of item %s: %w", in.Item, err)
 	}
 
-	owner, err = e.claim(ctx, in)
+	owner, took, err = e.claim(ctx, in)
 
-	return login, owner, err
+	return login, owner, took, err
 }
 
-// claim takes the claim of an item and returns its owner token. A resumed run replays this step with the token of the old claim,
-// so the token that obee resume saved for the run wins.
-func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, error) {
+// claim takes the claim of an item and returns its owner token and the time the take began. A resumed run replays this step with the token of the old claim,
+// so the token that obee resume saved for the run wins. A replayed step makes no take, so its time is zero.
+func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error) {
+	var took time.Time
+
 	recorded, err := runStep(e, ctx, string(model.StepClaim), func(c context.Context) (string, error) {
+		took = e.deps.Clock.now()
+
 		return e.deps.Lifecycle.Claim(c, in.Project, in.Item)
 	})
 	if err != nil {
-		return "", fmt.Errorf("%s of item %s: %w", model.StepClaim, in.Item, err)
+		return "", time.Time{}, fmt.Errorf("%s of item %s: %w", model.StepClaim, in.Item, err)
 	}
 
 	saved, err := savedOwner(e.dir, workflowID(ctx))
 
-	return cmp.Or(saved, recorded), err
+	return cmp.Or(saved, recorded), took, err
 }
 
 // lifecycle runs one step around the work of an item. The ready and release steps of the lifecycle plug in here.

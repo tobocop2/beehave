@@ -10,8 +10,9 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// PhaseInput describes one agent phase of an item. Findings and Answer feed the brief.
+// PhaseInput describes one agent phase of an item. Findings and Answer feed the brief. Run is the id of the run that queued the phase.
 type PhaseInput struct {
+	Run      string     `json:"run"`
 	Item     string     `json:"item"`
 	Project  string     `json:"project"`
 	Step     model.Step `json:"step"`
@@ -29,30 +30,39 @@ type PhaseOutput struct {
 	Note     string        `json:"note"`
 }
 
-// phase writes the brief, then runs the agent. Both are steps, so a restart skips the work that finished.
+// phase waits for the claim of its run, writes the brief, then runs the agent. The brief and the agent are steps, so a restart skips the work that finished.
+// A phase starts no agent unless the run that queued it holds a trusted claim now, whatever context the phase runs under:
+// the child workflow of a phase outlives the run that queued it, and a later run of the same item holds another claim.
 func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
+	claim, err := e.awaitClaim(ctx, in)
+	if err != nil {
+		return PhaseOutput{}, err
+	}
+
 	brief, err := runStep(e, ctx, "brief", func(c context.Context) (string, error) {
-		return e.deps.Briefs.Write(c, BriefRequest{Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Findings: in.Findings, Answer: in.Answer})
+		return e.deps.Briefs.Write(c, BriefRequest{Run: in.Run, Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Findings: in.Findings, Answer: in.Answer})
 	})
 	if err != nil {
 		return PhaseOutput{}, fmt.Errorf("write the brief for the %s of item %s: %w", in.Step, in.Item, err)
 	}
 
 	return runStep(e, ctx, string(in.Step), func(c context.Context) (PhaseOutput, error) {
-		return e.runAgent(c, in, brief)
+		return e.runAgent(c, claim, in, brief)
 	})
 }
 
-// runAgent starts the agent of one phase and waits for it. The group of the agent dies when the phase is canceled, times out or ends.
-func (e *Engine) runAgent(ctx context.Context, in PhaseInput, brief string) (PhaseOutput, error) {
-	owner := fmt.Sprintf("%s/%s/%d", in.Item, in.Step, in.Round)
-	stop := context.AfterFunc(ctx, func() { e.endGroups(owner) })
+// runAgent starts the agent of one phase under the context of the claim of its run, and waits for it. The agent dies with its process group when
+// the claim ends, or when the phase is canceled, times out or ends. A loss of the claim either comes first, and the start finds its context done,
+// or comes after, and the end of the context kills the group: no lock and no list of groups to kill on a loss.
+func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput, brief string) (PhaseOutput, error) {
+	agentCtx, cancel := context.WithCancelCause(claim)
+	defer cancel(nil)
 
-	defer e.endGroups(owner)
-	defer stop()
+	defer context.AfterFunc(ctx, func() { cancel(context.Cause(ctx)) })()
+	defer e.endGroups(in.Run)
 
-	result, err := e.deps.Agents.Run(ctx, AgentRequest{
-		Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Login: in.Login, Fresh: in.Fresh, Brief: brief, Started: e.recordGroup(ctx, in.Item, owner),
+	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
+		Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Login: in.Login, Fresh: in.Fresh, Brief: brief, Started: e.recordGroup(ctx, in),
 	})
 
 	out := PhaseOutput{Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note}
@@ -64,30 +74,32 @@ func (e *Engine) runAgent(ctx context.Context, in PhaseInput, brief string) (Pha
 	return out, phaseEnd(in, out)
 }
 
-// recordGroup returns the function that writes the process group of an agent to the process file. A failed write is logged.
-func (e *Engine) recordGroup(ctx context.Context, item, owner string) func(pid int) {
+// recordGroup returns the function that writes the process group of an agent to the process file, under the id of the run. A failed write is logged.
+// The file serves the next start of obee run: the next worker kills the groups that a crash left.
+func (e *Engine) recordGroup(ctx context.Context, in PhaseInput) func(pid int) {
 	return func(pid int) {
-		if err := e.procs.add(ctx, owner, pid); err != nil {
-			e.logger.WarnContext(ctx, "cannot record the agent process", "item", item, "error", err)
+		if err := e.procs.add(ctx, in.Run, pid); err != nil {
+			e.logger.WarnContext(ctx, "cannot record the agent process", "item", in.Item, "error", err)
 		}
 	}
 }
 
-// endGroups kills the agent groups of one phase and forgets them.
-func (e *Engine) endGroups(owner string) {
-	if err := e.procs.release(owner); err != nil {
+// endGroups forgets the agent groups of one run in the process file.
+func (e *Engine) endGroups(run string) {
+	if err := e.procs.release(run); err != nil {
 		e.logger.Warn("cannot update the agent process file", "error", err)
 	}
 }
 
 // runPhase runs a phase as a child workflow on the agents queue, keyed by the login, and waits for it.
-// It refuses to start when the last renewal of the claim failed.
 func (e *Engine) runPhase(ctx dbos.Context, in PhaseInput) error {
 	if in.Login == "" {
 		return errEmptyLogin
 	}
 
-	if err := e.claimCheck(ctx, in.Item); err != nil {
+	in.Run = workflowID(ctx)
+
+	if err := e.claimCheck(in.Run, in.Item); err != nil {
 		return err
 	}
 

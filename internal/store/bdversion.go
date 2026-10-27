@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// minBd is the oldest bd that has the guards the claim rows need: bd update --if-assignee and --if-status, with exit code 13 for a mismatch.
+// minBd is the oldest bd that has what the claim rows need: the leases with bd heartbeat and bd reclaim, and the guards bd update --if-assignee and --if-status with exit code 13 for a mismatch.
 const minBd = "1.3.2"
 
 var bdVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?`)
