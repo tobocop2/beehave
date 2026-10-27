@@ -169,8 +169,9 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 	env := map[string]string{"PATH": a.path}
 
 	return agent.Runner{}.Run(ctx, agent.Spec{
-		Runner: model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir},
-		Dir:    a.dir, Prompt: prompt, Env: env, Log: io.Discard, OnStart: request.Started,
+		Adapter: newAdapters(nil).agent(model.AgentClaude),
+		Runner:  model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir},
+		Dir:     a.dir, Prompt: prompt, Env: env, Log: io.Discard, OnStart: request.Started,
 	}), nil
 }
 

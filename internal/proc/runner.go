@@ -26,6 +26,11 @@ const (
 // DefaultTimeout is the longest one call of a bd or gh command may run.
 const DefaultTimeout = 120 * time.Second
 
+// Runner runs one outside command with the arguments and returns what it printed.
+type Runner interface {
+	Run(ctx context.Context, args []string) model.CommandResult
+}
+
 // ExecRunner runs a binary found on PATH. A zero Timeout means no limit.
 type ExecRunner struct {
 	Binary  string

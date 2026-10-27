@@ -22,6 +22,7 @@ All code is under `internal/` (and the one `cmd/obee` root). A package imports i
 | 3 | `flow` | DBOS workflows and steps that call layer 2. |
 | 4 | `cli`, `tui` | Surfaces. Then `cmd/obee`. |
 
+- One contract, one parent package, one package per implementation: `store/beads`, `store/github`, `forge/github`, `agent/claude`. The parent holds the interface, its errors and its conformance suite (`storetest`, `forgetest`, `agenttest`) and imports no implementation. An implementation never imports another one. Only `cmd/obee` imports implementations and holds the name-to-constructor table.
 - Put a domain type in the lowest layer that uses it. Move it down, never up.
 - An effect that crosses layers goes through a function value or an interface the higher layer passes in.
 - No re-export shims or alias types when you move a symbol. Update every importer in the same commit.

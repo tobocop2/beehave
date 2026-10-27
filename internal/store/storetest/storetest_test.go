@@ -2,286 +2,271 @@ package storetest_test
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/store/storetest"
 )
 
-func run(runner store.Runner, args ...string) model.CommandResult {
-	return runner.Run(context.Background(), args)
+var errDown = errors.New("down")
+
+// recorder is a Reporter that keeps the failures instead of failing the test.
+type recorder struct {
+	failures []string
 }
 
-func TestBd_ListFiltersByStatusAndType(t *testing.T) {
-	t.Parallel()
+func (*recorder) Helper() {}
 
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "issue_type": "task"})
-	bd.Add("p-2", storetest.Fields{"issue_type": "agent"})
-	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "issue_type": "task", "title": "again"})
-
-	var rows []map[string]any
-
-	require.NoError(t, json.Unmarshal([]byte(run(bd, "list").Stdout), &rows))
-	assert.Len(t, rows, 2)
-
-	require.NoError(t, json.Unmarshal([]byte(run(bd, "list", "--status="+storetest.Progress).Stdout), &rows))
-	assert.Len(t, rows, 1)
-
-	require.NoError(t, json.Unmarshal([]byte(run(bd, "list", "--type", "agent").Stdout), &rows))
-	assert.Equal(t, "p-2", rows[0]["id"])
-	assert.Equal(t, 3, bd.Count("list"))
-	assert.True(t, bd.Called("list", "--type", "agent"))
-	assert.False(t, bd.Called("list", "--type"))
+func (r *recorder) Errorf(format string, args ...any) {
+	r.failures = append(r.failures, fmt.Sprintf(format, args...))
 }
 
-func TestBd_ShowResolvesAPartialIdAndPrintsTheTextOfTheVersion(t *testing.T) {
-	t.Parallel()
+// memTracker is a correct in-memory tracker. Flaws switch on one wrong behavior each.
+type memTracker struct {
+	store.Tracker
 
-	bd := storetest.NewBd(t)
-	bd.Add("p-lock-gh-5", nil)
-	bd.Add("p-lock-gh-6", nil)
-
-	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-5").ExitCode)
-	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-5", "--json").ExitCode)
-
-	ambiguous := run(bd, "show", "p-lock")
-	assert.Equal(t, 1, ambiguous.ExitCode)
-	assert.Equal(t, `Error fetching p-lock: no issue found matching "p-lock"`, ambiguous.Stderr)
-
-	bd.V1 = true
-	assert.Equal(t, "Issue p-x not found\nHint: check the id", run(bd, "show", "p-x").Stderr)
-
-	bd.Add("p-lock-gh-7-extra", nil)
-	assert.Equal(t, 0, run(bd, "show", "p-lock-gh-7").ExitCode, "one row starts with the id")
+	rows        map[string]model.ClaimRow
+	down        bool
+	overwrite   bool
+	keepFree    bool
+	freeAny     bool
+	beatAny     bool
+	reclaimLive bool
+	noLease     bool
 }
 
-func TestBd_CreateAndUpdate(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	assert.Equal(t, "p-1", run(bd, "create", "--id", "p-1", "--title", "t", "--description", "d").Stdout)
-	assert.Equal(t, "task", bd.Rows["p-1"]["issue_type"])
-	run(bd, "create", "--id", "p-2", "--type", "agent")
-	assert.Equal(t, "agent", bd.Rows["p-2"]["issue_type"])
-
-	missing := run(bd, "update", "p-9", "--status", "closed")
-	assert.Equal(t, 1, missing.ExitCode)
-	assert.Equal(t, `Error resolving p-9: no issue found matching "p-9"`, missing.Stderr)
-
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--description", "new", "--status", "closed").ExitCode)
-	assert.Equal(t, "new", bd.Rows["p-1"]["description"])
-	assert.Equal(t, "closed", bd.Rows["p-1"]["status"])
+func newMem() *memTracker {
+	return &memTracker{rows: map[string]model.ClaimRow{}}
 }
 
-func TestBd_ClaimFollowsBd132(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", nil)
-
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--actor", "a").ExitCode)
-	assert.Equal(t, storetest.Progress, bd.Rows["p-1"]["status"])
-	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
-	assert.Equal(t, storetest.At(storetest.Now+storetest.LeaseSeconds), bd.Rows["p-1"]["lease_expires_at"], "the claim grants the lease to the actor")
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--claim", "--actor", "a").ExitCode, "a claim by the holder changes nothing")
-
-	lost := run(bd, "update", "p-1", "--claim", "--actor", "b")
-	assert.Equal(t, 1, lost.ExitCode, "bd 1.3.2 exits 1 on a refused claim")
-	assert.Contains(t, lost.Stderr, "issue already claimed by a")
-	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
-
-	bd.Add("p-2", storetest.Fields{"assignee": "old"})
-	assigned := run(bd, "update", "p-2", "--claim", "--actor", "b")
-	assert.Equal(t, 1, assigned.ExitCode)
-	assert.Contains(t, assigned.Stderr, `issue already claimed: already assigned to "old"`)
-
-	bd.Add("p-3", storetest.Fields{"status": "closed"})
-	closed := run(bd, "update", "p-3", "--claim", "--actor", "b")
-	assert.Equal(t, 1, closed.ExitCode)
-	assert.Contains(t, closed.Stderr, "issue not claimable: status closed")
-	assert.Equal(t, "closed", bd.Rows["p-3"]["status"], "a claim keeps the status filter")
-}
-
-func TestBd_UnclaimReopensTheRowOnlyForTheNamedAssignee(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a#1"})
-
-	mismatch := run(bd, "unclaim", "p-1", "--if-assignee", "a#2")
-	assert.Equal(t, 1, mismatch.ExitCode, "bd 1.3.2 exits 1 on a release mismatch")
-	assert.Contains(t, mismatch.Stderr, `assignee mismatch: p-1 is held by "a#1", expected "a#2"`)
-	assert.Equal(t, "a#1", bd.Rows["p-1"]["assignee"])
-
-	assert.Equal(t, 0, run(bd, "unclaim", "p-1", "--if-assignee", "a#1").ExitCode)
-	assert.Equal(t, "open", bd.Rows["p-1"]["status"])
-	assert.Empty(t, bd.Rows["p-1"]["assignee"])
-
-	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "a#1").Stderr, "assignee mismatch")
-
-	bd.Rows["p-1"]["status"] = "closed"
-	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "").Stderr, "cannot unclaim closed issue")
-	assert.Equal(t, 1, run(bd, "unclaim", "p-9", "--if-assignee", "a").ExitCode)
-
-	bd.NoGuard = true
-	assert.Contains(t, run(bd, "unclaim", "p-1", "--if-assignee", "a").Stderr, "unknown flag")
-}
-
-func TestBd_GuardWritesNothingWhenTheAssigneeDiffers(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", storetest.Fields{"assignee": "a"})
-
-	mismatch := run(bd, "update", "p-1", "--if-assignee", "b", "--assignee", "")
-	assert.Equal(t, 13, mismatch.ExitCode)
-	assert.Equal(t, "a", bd.Rows["p-1"]["assignee"])
-
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--if-assignee", "a", "--assignee", "").ExitCode)
-	assert.Empty(t, bd.Rows["p-1"]["assignee"])
-
-	bd.Rows["p-1"]["status"] = "closed"
-	status := run(bd, "update", "p-1", "--if-assignee", "", "--if-status", "in_progress", "--assignee", "x")
-	assert.Equal(t, 13, status.ExitCode)
-	assert.Contains(t, status.Stderr, "status mismatch")
-	assert.Equal(t, 0, run(bd, "update", "p-1", "--if-status", "closed", "--assignee", "x").ExitCode)
-	assert.Equal(t, "x", bd.Rows["p-1"]["assignee"])
-
-	bd.NoGuard = true
-	unknown := run(bd, "update", "p-1", "--if-assignee", "", "--assignee", "x")
-	assert.Equal(t, 1, unknown.ExitCode)
-	assert.Contains(t, unknown.Stderr, "unknown flag")
-}
-
-func TestBd_HeartbeatRenewsTheLeaseOfTheHolderOnly(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a", "lease_expires_at": storetest.At(storetest.Now - 10)})
-
-	other := run(bd, "heartbeat", "p-1", "--actor", "b")
-	assert.Equal(t, 1, other.ExitCode)
-	assert.Contains(t, other.Stderr, "issue already claimed by a")
-	assert.Equal(t, storetest.At(storetest.Now-10), bd.Rows["p-1"]["lease_expires_at"])
-
-	assert.Equal(t, 0, run(bd, "heartbeat", "p-1", "--actor", "a").ExitCode)
-	assert.Equal(t, storetest.At(storetest.Now+storetest.LeaseSeconds), bd.Rows["p-1"]["lease_expires_at"], "a late heartbeat revives the lease before bd reclaim runs")
-
-	gone := run(bd, "heartbeat", "p-9", "--actor", "a")
-	assert.Equal(t, 1, gone.ExitCode)
-	assert.Equal(t, `Error: resolving p-9: no issue found matching "p-9"`, gone.Stderr)
-
-	bd.Add("p-2", storetest.Fields{"status": "open"})
-
-	open := run(bd, "heartbeat", "p-2", "--actor", "a")
-	assert.Equal(t, 1, open.ExitCode)
-	assert.Equal(t, "Error: heartbeat p-2: issue not claimable: p-2 status open", open.Stderr)
-}
-
-func TestBd_ReclaimFreesOnlyRowsWhoseLeaseEnded(t *testing.T) {
-	t.Parallel()
-
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", storetest.Fields{"status": storetest.Progress, "assignee": "a", "lease_expires_at": storetest.At(storetest.Now - 1)})
-	bd.Add("p-2", storetest.Fields{"status": storetest.Progress, "assignee": "b", "lease_expires_at": storetest.At(storetest.Now - 1)})
-	bd.Add("p-3", storetest.Fields{"status": storetest.Progress, "assignee": "c", "lease_expires_at": storetest.At(storetest.Now + 5)})
-	bd.Add("p-4", storetest.Fields{"status": storetest.Progress, "assignee": "d"})
-
-	var answer struct {
-		Count     int `json:"count"`
-		Reclaimed []struct {
-			ID    string `json:"id"`
-			Owner string `json:"previous_owner"`
-		} `json:"reclaimed"`
+func (m *memTracker) err() error {
+	if m.down {
+		return errDown
 	}
 
-	scoped := run(bd, "reclaim", "--id", "p-1", "--older-than", "0s", "--json")
-	require.NoError(t, json.Unmarshal([]byte(scoped.Stdout), &answer))
-	assert.Equal(t, 1, answer.Count)
-	assert.Equal(t, "p-1", answer.Reclaimed[0].ID)
-	assert.Equal(t, "a", answer.Reclaimed[0].Owner)
-	assert.Equal(t, "open", bd.Rows["p-1"]["status"])
-	assert.Equal(t, storetest.Progress, bd.Rows["p-2"]["status"], "--id scopes the reclaim")
-
-	run(bd, "reclaim", "--older-than", "0s", "--json")
-	assert.Equal(t, "open", bd.Rows["p-2"]["status"])
-	assert.Equal(t, storetest.Progress, bd.Rows["p-3"]["status"], "a live lease stays")
-	assert.Equal(t, storetest.Progress, bd.Rows["p-4"]["status"], "a row with no lease is never reclaimed")
+	return nil
 }
 
-func TestBd_HooksAndPlannedFailures(t *testing.T) {
-	t.Parallel()
+func (m *memTracker) HeldRows(context.Context) ([]model.ClaimRow, error) {
+	var rows []model.ClaimRow
+	for _, row := range m.rows {
+		rows = append(rows, row)
+	}
 
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", nil)
-
-	var seen []string
-
-	bd.Hooks = append(bd.Hooks, func(args []string) { seen = append(seen, args[0]) })
-
-	bd.Fail["show"] = model.CommandResult{ExitCode: 7}
-	assert.Equal(t, 7, run(bd, "show", "p-1").ExitCode)
-
-	assert.Equal(t, "fake bd: no answer planned", run(bd, "frobnicate").Stderr)
-	assert.Equal(t, []string{"show", "frobnicate"}, seen)
+	return rows, m.err()
 }
 
-func TestOptionsReadsFlagPairs(t *testing.T) {
-	t.Parallel()
+func (m *memTracker) Beat(_ context.Context, holder string) error {
+	for _, row := range m.rows {
+		if row.Holder == holder {
+			return m.err()
+		}
+	}
 
-	assert.Equal(t, map[string]string{"--a": "1", "--b": "--c"}, storetest.Options([]string{"x", "--a", "1", "--b", "--c"}, 1))
-	assert.Empty(t, storetest.Options([]string{"x"}, 0))
+	if m.beatAny {
+		return m.err()
+	}
+
+	return errors.Join(model.ErrNoClaim, m.err())
 }
 
-func TestJSON_EncodesAValueAndNamesOneItCannotEncode(t *testing.T) {
-	t.Parallel()
+func (m *memTracker) TryHold(_ context.Context, row model.ClaimRow) error {
+	if _, held := m.rows[row.Item]; !held || m.overwrite {
+		row.LeaseEnds = time.Unix(100, 0)
+		if m.noLease {
+			row.LeaseEnds = time.Time{}
+		}
 
-	assert.JSONEq(t, `{"a":1}`, storetest.JSON(map[string]int{"a": 1}))
-	assert.Contains(t, storetest.JSON(make(chan int)), "storetest: json: unsupported type")
+		m.rows[row.Item] = row
+	}
+
+	return m.err()
 }
 
-func TestHookFiresOnceBeforeTheFirstMatchingCommand(t *testing.T) {
-	t.Parallel()
+func (m *memTracker) Reclaim(_ context.Context, item string) (bool, error) {
+	if _, found := m.rows[item]; found && m.reclaimLive {
+		delete(m.rows, item)
 
-	bd := storetest.NewBd(t)
-	fired := 0
-	hook := &storetest.Hook{Inner: bd, When: func(args []string) bool { return args[0] == "list" }, Fire: func() { fired++ }}
+		return true, m.err()
+	}
 
-	run(hook, "show", "p-1")
-	assert.Zero(t, fired)
-
-	run(hook, "list")
-	run(hook, "list")
-	assert.Equal(t, 1, fired)
-	assert.Len(t, bd.Calls, 3)
+	return false, m.err()
 }
 
-func TestReadsFailsReadsAndNotWritesWhileDown(t *testing.T) {
-	t.Parallel()
+func (m *memTracker) Free(_ context.Context, row model.ClaimRow) error {
+	current, found := m.rows[row.Item]
+	if found && current.Holder != row.Holder && !m.freeAny {
+		return model.ErrRowMoved
+	}
 
-	bd := storetest.NewBd(t)
-	bd.Add("p-1", nil)
-	reads := &storetest.Reads{Inner: bd}
+	if !m.keepFree {
+		delete(m.rows, row.Item)
+	}
 
-	assert.Equal(t, 0, run(reads, "show", "p-1").ExitCode)
-	reads.Down = true
-	assert.Equal(t, 1, run(reads, "list").ExitCode)
-	assert.Equal(t, 1, run(reads, "show", "p-1").ExitCode)
-	assert.Equal(t, 0, run(reads, "update", "p-1", "--status", "open").ExitCode)
+	return m.err()
 }
 
-func TestBd_VersionAnswersTheVersionOfTheFake(t *testing.T) {
+func (m *memTracker) OpenItems(context.Context) ([]model.Item, error) { return nil, m.err() }
+
+func (m *memTracker) Containers(context.Context) ([]string, error) { return nil, m.err() }
+
+func (m *memTracker) Children(context.Context, string) ([]string, error) { return nil, m.err() }
+
+func (m *memTracker) Show(context.Context, string) (string, error) { return "", m.err() }
+
+func (m *memTracker) Close(context.Context, string, string) error { return m.err() }
+
+func (m *memTracker) Create(context.Context, model.CreateRequest) (string, error) { return "", m.err() }
+
+func TestCheckClaimRows_AcceptsACorrectTracker(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
-	assert.Equal(t, "bd version 1.3.2 (dev)\n", run(bd, "--version").Stdout)
+	r := &recorder{}
+	storetest.CheckClaimRows(r, newMem())
+	assert.Empty(t, r.failures)
+}
 
-	bd.Version = "0.56.1"
-	assert.Equal(t, "bd version 0.56.1 (dev)\n", run(bd, "--version").Stdout)
+func TestCheckClaimRows_FailsATrackerThatLetsASecondHolderOverwrite(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.overwrite = true
+
+	r := &recorder{}
+	storetest.CheckClaimRows(r, mem)
+	assert.Contains(t, r.failures, "a second TryHold leaves the first holder: got [session-b], want [session-a]")
+}
+
+func TestCheckClaimRows_FailsATrackerWhoseFreeKeepsTheRow(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.keepFree = true
+
+	r := &recorder{}
+	storetest.CheckClaimRows(r, mem)
+	assert.NotEmpty(t, r.failures)
+}
+
+func TestCheckClaimRows_FailsATrackerWhoseFreeClearsAnotherHoldersRow(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.freeAny = true
+
+	r := &recorder{}
+	storetest.CheckClaimRows(r, mem)
+	assert.Contains(t, r.failures, "Free of a row that another holder holds returns ErrRowMoved: got false, want true")
+}
+
+func TestCheckClaimRows_FailsATrackerThatBreaksTheLeaseRules(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		flaw func(*memTracker)
+		want string
+	}{
+		"beat_any":     {func(m *memTracker) { m.beatAny = true }, "Beat of a holder with no row returns ErrNoClaim: got false, want true"},
+		"reclaim_live": {func(m *memTracker) { m.reclaimLive = true }, "Reclaim leaves a row whose lease has not ended: got true, want false"},
+		"no_lease":     {func(m *memTracker) { m.noLease = true }, "a take carries the end of its lease: got true, want false"},
+	}
+
+	for name, tt := range tests {
+		mem := newMem()
+		tt.flaw(mem)
+
+		r := &recorder{}
+		storetest.CheckClaimRows(r, mem)
+		assert.Contains(t, r.failures, tt.want, name)
+	}
+}
+
+func TestCheckClaimRows_ReportsAnErrorOfATracker(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.down = true
+
+	r := &recorder{}
+	storetest.CheckClaimRows(r, mem)
+	assert.Contains(t, r.failures, "HeldRows: unexpected error: down")
+}
+
+func TestCheckTrackerFails_AcceptsATrackerThatErrorsEverywhere(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.down = true
+
+	r := &recorder{}
+	storetest.CheckTrackerFails(r, mem, filepath.Join(t.TempDir(), "body.md"))
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckTrackerFails_FailsATrackerThatAnswersAfterAFailure(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckTrackerFails(r, newMem(), filepath.Join(t.TempDir(), "body.md"))
+	assert.Contains(t, r.failures, "Close: want an error from a failed command, got none")
+}
+
+func TestCheckTrackerFails_ReportsABodyFileThatCannotBeWritten(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckTrackerFails(r, newMem(), filepath.Join(t.TempDir(), "missing", "body.md"))
+	assert.NotEmpty(t, r.failures)
+}
+
+func TestCheckClaimRowsFail_AcceptsRowsThatErrorEverywhere(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.down = true
+
+	r := &recorder{}
+	storetest.CheckClaimRowsFail(r, mem)
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckClaimRowsFail_FailsRowsThatAnswerAfterAFailure(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckClaimRowsFail(r, newMem())
+	assert.Contains(t, r.failures, "Free: want an error from a failed command, got none")
+}
+
+func TestTestTracker_RunsTheSuiteOnAFactory(t *testing.T) {
+	t.Parallel()
+
+	storetest.TestTracker(t, func(t *testing.T, broken bool) store.Tracker {
+		t.Helper()
+
+		mem := newMem()
+		mem.down = broken
+
+		return mem
+	})
+}
+
+func TestTestClaimRows_RunsTheSuiteOnAFactory(t *testing.T) {
+	t.Parallel()
+
+	storetest.TestClaimRows(t, func(t *testing.T, broken bool) store.ClaimRows {
+		t.Helper()
+
+		mem := newMem()
+		mem.down = broken
+
+		return mem
+	})
 }

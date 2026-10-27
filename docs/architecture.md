@@ -23,14 +23,18 @@ flowchart TD
 
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
-        check["check<br/>shell and job rules"]
+        check["check<br/>shell · papers · gate · transcript"]
         policy["brief · gate · ledger<br/>merge · review · pool"]:::planned
     end
 
     subgraph L1["Layer 1: adapters"]
         store["store<br/>bd and gh issues"]
         forge["forge<br/>gh pull requests"]
-        agent["agent<br/>agent CLI and transcript"]
+        agent["agent<br/>agent CLI contract and runner"]
+        claude["agent/claude<br/>Claude Code adapter"]
+        beads["store/beads<br/>bd adapter"]
+        ghissues["store/github<br/>gh issues adapter"]
+        ghforge["forge/github<br/>gh adapter"]
         proc["proc<br/>command runner"]
         host["host<br/>build host scripts"]:::planned
     end
@@ -48,6 +52,14 @@ flowchart TD
     cli --> config
     forge --> proc
     agent --> proc
+    claude --> agent
+    main --> claude
+    main --> beads
+    main --> ghissues
+    main --> ghforge
+    beads --> store
+    ghissues --> store
+    ghforge --> forge
     config --> model
     proc --> model
     store --> model
@@ -74,7 +86,7 @@ flowchart TD
 
 Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
 
-Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `check` fills the scanner seam of `agent` as a function value, so neither package imports the other.
+Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `check/transcript` takes the transcript readers and the shell scanner as function values, so it imports neither `agent` nor `check/shell`. `cmd/obee` passes the methods of the agent adapter. The `Call` type lives in `model`, which both sides import.
 
 ## Composition root
 
@@ -82,27 +94,27 @@ Layer 2 packages declare the small interfaces they need and do not import layer 
 
 ## Adapters
 
-The tracker and the forge are adapters that a project selects. `model` declares three contracts. `Tracker` covers items and parents. `ClaimRows` covers the claim of each item. `Forge` covers pull requests, reviews, threads and checks. The claim store is not a choice: beads fills `ClaimRows` for every project. beads, GitHub Issues and GitHub are the first adapters. No adapter is a default: a project file names both with `tracker` and `forge`. Every project also sets `beads_prefix`, because its leases live in beads whatever its `tracker` is. `obee check config` refuses a project without one.
+The tracker and the forge are adapters that a project selects. The package `store` declares two contracts and the package `forge` declares one. `store.Tracker` covers items and parents. `store.ClaimRows` covers the claim of each item. `forge.Forge` covers pull requests, reviews, threads and checks. The claim store is not a choice: beads fills `ClaimRows` for every project. beads, GitHub Issues and GitHub are the first adapters. No adapter is a default: a project file names both with `tracker` and `forge`. Every project also sets `beads_prefix`, because its leases live in beads whatever its `tracker` is. `obee check config` refuses a project without one.
 
 `model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds the tracker, the forge and the claim store of each project, so a project that cannot build them is a problem. It also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
 
-Each contract has an exported conformance suite in `internal/model/contract`, in the style of `testing/fstest.TestFS`. The suite runs against every adapter with a fake command line. It checks the claim row rules (for `ClaimRows`) and checks that every method returns an error when its command fails.
+Each contract has an exported conformance suite, in `internal/store/storetest`, `internal/forge/forgetest` and `internal/agent/agenttest`, in the style of `testing/fstest.TestFS`. The suite runs against every adapter with a fake command line. It checks the claim row rules (for `ClaimRows`) and checks that every method returns an error when its command fails.
 
 ```mermaid
 flowchart LR
     project["projects/&lt;name&gt;.toml<br/>tracker = …<br/>forge = …<br/>beads_prefix = …"]
     table["cmd/obee/adapters.go<br/>name → constructor"]
 
-    subgraph contracts["Contracts in model"]
+    subgraph contracts["Contracts in store and forge"]
         Tracker
         Forge
         ClaimRows
     end
 
-    beads["store: beads<br/>bd --json"]
-    ghissues["store: GitHub issues<br/>gh"]
-    github["forge: GitHub<br/>gh"]
-    lease["store: beads claim rows<br/>bd 1.3.2 or newer"]
+    beads["store/beads<br/>bd --json"]
+    ghissues["store/github<br/>gh issues"]
+    github["forge/github<br/>gh"]
+    lease["store/beads claim rows<br/>bd 1.3.2 or newer"]
 
     project --> table
     table -- "tracker = beads" --> beads
@@ -115,12 +127,12 @@ flowchart LR
     github --> Forge
     lease --> ClaimRows
 
-    suite["model/contract<br/>conformance suite"] -. "runs against every adapter" .-> contracts
+    suite["storetest and forgetest<br/>conformance suites"] -. "runs against every adapter" .-> contracts
 ```
 
 ## Store and claim
 
-`store` has two backends: beads through `bd --json` and GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads and writes issues only. It holds no lease.
+`store` holds the `Tracker` and `ClaimRows` contracts and the decode helpers. It has two backends: `store/beads` through `bd --json` and `store/github` for GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads and writes issues only. It holds no lease.
 
 `claim` holds the claim policy and no command line: the read of the winner, one reclaim of an ended lease and the refusal of a live holder. It declares the small `Rows` interface it needs and does not import `store`. Beads holds one claim row for each item.
 
@@ -137,29 +149,31 @@ Claims live in beads for every project, whatever tracker the project uses, becau
 
 The lease table of bd is node-local: it is not committed to Dolt and not replicated. All the clients of one `dolt sql-server` see the same leases, and a second server has its own. Keep one server for each project.
 
-The package `store/storetest` holds the fake `bd` that the tests of `store` and `cmd/obee` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2. The same package holds the helpers that start and stop the private dolt server of the real-bd contract tests, so `internal/store` and `cmd/obee` share one copy.
+Backends copy small helpers, such as `derefText` and the argument constants, rather than share them through the parent. A shared helper would add an export that only backends use.
 
-The contract test `TestLeaseContract` in `internal/store` runs the same scenarios against the fake and against a real bd 1.3.2 on a private dolt server. The real run is off by default. To run it, set `OBEE_BD_132` to the path of a bd 1.3.2 binary (check its checksum against the release file), put `dolt` on `PATH`, and run `go test ./internal/store -run TestLeaseContract`. The test starts its own dolt server on a free port, refuses ports 3306 and 3307, and stops the server at the end. It ends a lease with `dolt sql` instead of a wait of 5 minutes. `cmd/obee` runs `claim` over the real claim store, because only the composition root may import `store` and `claim` together.
+The package `store/beads/beadstest` holds the fake `bd` that the tests of `store/beads` and `cmd/obee` share, as `net/http/httptest` holds a fake server. The fake follows bd 1.3.2. The same package holds the helpers that start and stop the private dolt server of the real-bd contract tests, so `internal/store/beads` and `cmd/obee` share one copy.
+
+The contract test `TestLeaseContract` in `internal/store/beads` runs the same scenarios against the fake and against a real bd 1.3.2 on a private dolt server. The real run is off by default. To run it, set `OBEE_BD_132` to the path of a bd 1.3.2 binary (check its checksum against the release file), put `dolt` on `PATH`, and run `go test ./internal/store/beads -run TestLeaseContract`. The test starts its own dolt server on a free port, refuses ports 3306 and 3307, and stops the server at the end. It ends a lease with `dolt sql` instead of a wait of 5 minutes. `cmd/obee` runs `claim` over the real claim store, because only the composition root may import `store` and `claim` together.
 
 The claim rules: a holder is live while the end of its lease is after the clock. The end comes from bd and the clock from obee, so a clock skew between the host of bd and the host of obee can make `EnsureFree` and `Who` disagree with `Take`. `EnsureFree` only prechecks, and `bd reclaim` decides. A holder with no lease never expires, because bd never reclaims it. A read that fails, does not parse or fills a page is an error, and `claim` turns it into a refusal. `Take` is bd's atomic claim. When another holder wins, `claim` runs one reclaim, then claims again, then refuses with code 3.
 
 ## Forge and the command runner
 
-`forge` runs `gh` and has one decoder for each payload shape. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
+`forge` holds the `Forge` contract. Its backend `forge/github` runs `gh` and has one decoder for each payload shape. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
 
-`proc` holds the one command runner. `model.Decode` is the one JSON decoder for command answers. `store` and `forge` share them. The runner starts each command in its own process group with a timeout, and reports exit code 124 for a deadline, 127 for a missing command and 130 for a cancel.
+`proc` holds the one command runner, the `Runner` interface, and `proc/proctest` holds the scripted fake of it. `model.Decode` is the one JSON decoder for command answers. `store` and `forge` share them. The runner starts each command in its own process group with a timeout, and reports exit code 124 for a deadline, 127 for a missing command and 130 for a cancel.
 
 ## Agent runs
 
-`agent` starts one CLI per step from a profile (binary, fixed arguments, login variables) chosen by a switch on the agent name. Claude is the only profile; other agents return later. The prompt goes on stdin, so it never shows in a process list. The CLI gets an allowlisted environment: the path, home, locale, proxy and certificate variables, the login folder variables of its runner and the token if one is passed. No other variable of the caller reaches it. A run does not start when the login folder is missing, because the CLI would create an empty profile there.
+`agent` holds the runner and the `Adapter` contract. An adapter supplies the profile of one CLI (binary, fixed arguments, login variables) and reads its transcript. `agent/claude` is the only adapter; other agents return later as their own packages. `cmd/obee` holds the table that maps an agent name to the constructor of its adapter, and puts the adapter in the `Spec` of each run. A run with no adapter does not start. The conformance suite is `agent/agenttest`: it starts a fake CLI and checks the profile and the transcript readers of an adapter. Every new adapter calls it from its tests. The prompt goes on stdin, so it never shows in a process list. The CLI gets an allowlisted environment: the path, home, locale, proxy and certificate variables, the login folder variables of its runner and the token if one is passed. No other variable of the caller reaches it. A run does not start when the login folder is missing, because the CLI would create an empty profile there.
 
 The CLI runs in its own process group through `proc`. A total timeout, an idle timeout (reset by each write on stdout or stderr) or a cancel of the context kills the group, and the group is killed again when the CLI exits, so no child outlives the step. Stdout is the transcript. A line writer redacts each line (the token value and anything shaped like an `sk-ant-` key) before it reaches the log, and drops a line longer than 16 MiB instead of splitting a secret across two writes. Stderr keeps a redacted tail of 4 KiB for the result.
 
-The transcript reader walks each JSON line of a Claude Code file. A Skill call counts once, in a `tool_use` block of an assistant line. A Bash call counts at any depth. The transcript check takes the shell scanner as a function value; the shell rules live in `check`. A line ends at LF, CRLF or a lone CR. A file with no JSON object line is refused, so an empty or cut-off transcript never passes a check.
+The transcript reader of `agent/claude` walks each JSON line of a Claude Code file. A Skill call counts once, in a `tool_use` block of an assistant line. A Bash call counts at any depth. The transcript check in `check/transcript` takes the shell scanner as a function value; the shell rules live in `check/shell`. A line ends at LF, CRLF or a lone CR. A file with no JSON object line is refused, so an empty or cut-off transcript never passes a check.
 
 ## Shell rules and the job check
 
-`check` reads shell text with the `mvdan.cc/sh/v3` parser and walks the tree, so quotes, heredocs, pipes, subshells and functions need no hand-written tokenizer. `Scan` fills the scan seam of `agent.CheckTranscript`. It finds bulk staging, a delete that needs approval (a path that is not a literal absolute path, or any delete inside an `ssh`, `gcloud compute ssh` or wrapper command), and delete text in `echo`, `printf` or a heredoc. A command that sets `GIT_INDEX_FILE` to a value stages into a private index and passes.
+`check/shell` reads shell text with the `mvdan.cc/sh/v3` parser and walks the tree, so quotes, heredocs, pipes, subshells and functions need no hand-written tokenizer. `Scan` fills the scan seam of `transcript.Bash`. It finds bulk staging, a delete that needs approval (a path that is not a literal absolute path, or any delete inside an `ssh`, `gcloud compute ssh` or wrapper command), and delete text in `echo`, `printf` or a heredoc. A command that sets `GIT_INDEX_FILE` to a value stages into a private index and passes.
 
 The package imports the parser and its `expand` package, never `interp`. `make deps` checks every package of the module and `depguard` denies `interp`. `expand` resolves a variable that holds a host wrapper. A name it does not know stays as `$name` text, so the literal path rule still sees it. Command substitutions, backticks and process substitutions are read as commands. `busybox` is a wrapper.
 
@@ -173,15 +187,15 @@ Two caps bound the work of the variable lookup. A value longer than 4096 bytes i
 
 ## Lane papers
 
-`check` also reads the papers a lane leaves. Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped. `Report` and `Authors` cannot refuse; `Authors` returns the exit code, because its two refusals (2 and 3) differ.
+The package `check` holds only `Refusal`. Each child keeps its own copy of the small text helpers it uses. `check/papers`, `check/gate` and `check/transcript` read the papers a lane leaves. `check/gate` imports `check/shell`; `check/papers` and `check/transcript` never import `check/shell` or `check/gate`, and `check/shell` and `check/gate` never import `check/papers` or `check/transcript`. `depguard` enforces this. `check/papers` reads the context of a lane through `transcript.LaneContext`. Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped. `Report` and `Authors` cannot refuse; `Authors` returns the exit code, because its two refusals (2 and 3) differ.
 
 - The lane report has four sections (Claims, Hunks, Inputs, Siblings), each a table with a fixed column count. A section with nothing to list has one `none: <reason>` row. A claim names the head commit it was verified at, and the report says that no background command is left.
 - The handoff file of a lane that stops early states the regressions so far and the lane context. A handoff written between a launch and its read is refused.
 - The burn record reads the transcript of the orchestrator. It counts the main thread calls for each hour and the token count of each lane notice. A token count prints as the transcript wrote it, whole or fractional. The lane cap comes from an argument, then `LANE_CONTEXT_CAP`, then 150000; an empty argument is refused, and a cap above the integer range is the largest cap. A project folder that starts with a dot holds no transcript. With no `HOME` and no `CLAUDE_CONFIG_DIR`, the transcript path is refused. A text that is not UTF-8 gets one replacement mark for each cut multi-byte sequence and one for each other bad byte. A transcript line whose `message` or `usage` is not an object is skipped, and so is a line with `NaN` or `Infinity`. A transcript key matches by exact case.
-- The papers check lists the source paths that a revision range changes. A range that starts with `-` is refused, so git never reads it as an option. A lane of proof and papers changes none. The globs match as `fnmatch` does: a malformed `[` is a plain `[`, `^` is a plain `^`, `!` negates, and `*` crosses `/`. `check` declares its own `runner` interface for git, so layer 2 does not import `forge`.
+- The papers check lists the source paths that a revision range changes. A range that starts with `-` is refused, so git never reads it as an option. A lane of proof and papers changes none. The globs match as `fnmatch` does: a malformed `[` is a plain `[`, `^` is a plain `^`, `!` negates, and `*` crosses `/`. `check/papers` declares its own `runner` interface for git, so layer 2 does not import `forge`.
 - The author check compares the address of a commit with the address of the account. A login with no linked account and a foreign address is refused as well.
 
-The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step, with a `Derived from:` line that ends in a commit. A row with the command `see <file>` is an unstated step: the job passes when it prints `name=<step>`. Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts. A command here is a simple command with its redirects, a pipeline or list (`&&`, `||`, `;`, `|`), a subshell, a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`) with its keyword, or one line of a here-document. A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job. A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip. Words join on blank and tab only, so a no-break space does not join them. A comment at the end of a line is not a command. The skip reason and the fixed-status message print the text of the command, not of its whole line. The rows and sections are read as text with `splitRow`; the job is read with the parser of `parseUnits`, and the `let` rule parses its arithmetic text with the same parser. A `GATE-SKIP <step>: <reason>` line declares a skip. It needs a reason, a step of the list, a `command -v` check when the reason names a missing tool, and a final marker with `gate=partial`.
+The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step, with a `Derived from:` line that ends in a commit. A row with the command `see <file>` is an unstated step: the job passes when it prints `name=<step>`. Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts. A command here is a simple command with its redirects, a pipeline or list (`&&`, `||`, `;`, `|`), a subshell, a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`) with its keyword, or one line of a here-document. A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job. A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip. Words join on blank and tab only, so a no-break space does not join them. A comment at the end of a line is not a command. The skip reason and the fixed-status message print the text of the command, not of its whole line. The rows and sections are read as text with `splitRow`; the job is read with the parser of `shell.ParseUnits`, and the `let` rule parses its arithmetic text with the same parser. A `GATE-SKIP <step>: <reason>` line declares a skip. It needs a reason, a step of the list, a `command -v` check when the reason names a missing tool, and a final marker with `gate=partial`.
 
 The exit marker rule finds a print command (`echo`, `printf`, a here-document or a here-string, also inside a shell string argument) that prints `rc=` followed by a literal number. A variable counts as a literal when one assignment sets it, to a number, and nothing else can change it: no arithmetic, `read`, `for`, `printf -v`, `eval` or sourced file. The caller passes the function that reads sourced files. A file that cannot be read, or a path that only the shell can resolve, makes every variable unknown.
 

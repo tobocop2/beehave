@@ -4,45 +4,54 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/forge"
+	forgegithub "github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/obee/internal/store/beads"
+	storegithub "github.com/tobocop2/obee/internal/store/github"
 )
 
 // adapters is the one place that maps an adapter name to its constructor. No other package dispatches on a name.
 // The claim store is not a choice: the claim rows live in beads whatever tracker the project uses, so it has no table.
 type adapters struct {
-	trackers map[model.TrackerName]func(model.Project) (model.Tracker, error)
-	forges   map[model.ForgeName]func(model.Project) (model.Forge, error)
-	bd       store.Runner
+	trackers map[model.TrackerName]func(model.Project) (store.Tracker, error)
+	forges   map[model.ForgeName]func(model.Project) (forge.Forge, error)
+	agents   map[model.Agent]func() agent.Adapter
+	bd       proc.Runner
 }
 
 // newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
-func newAdapters(bd store.Runner) adapters {
+func newAdapters(bd proc.Runner) adapters {
 	return adapters{
-		trackers: map[model.TrackerName]func(model.Project) (model.Tracker, error){
-			model.TrackerBeads:  func(project model.Project) (model.Tracker, error) { return newBeads(bd, project) },
+		trackers: map[model.TrackerName]func(model.Project) (store.Tracker, error){
+			model.TrackerBeads:  func(project model.Project) (store.Tracker, error) { return newBeads(bd, project) },
 			model.TrackerGithub: newIssues,
 		},
-		forges: map[model.ForgeName]func(model.Project) (model.Forge, error){
+		forges: map[model.ForgeName]func(model.Project) (forge.Forge, error){
 			model.ForgeGithub: newGithubForge,
+		},
+		agents: map[model.Agent]func() agent.Adapter{
+			model.AgentClaude: func() agent.Adapter { return claude.New() },
 		},
 		bd: bd,
 	}
 }
 
-func newBeads(bd store.Runner, project model.Project) (model.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
-	beads, err := store.NewBeadsStore(bd, project.BeadsPrefix)
+func newBeads(bd proc.Runner, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	tracker, err := beads.New(bd, project.BeadsPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	return beads, nil
+	return tracker, nil
 }
 
-func newIssues(project model.Project) (model.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
-	issues, err := store.NewGithubStore(project.Repo, proc.NewExecRunner("gh", ""))
+func newIssues(project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	issues, err := storegithub.New(project.Repo, proc.NewExecRunner("gh", ""))
 	if err != nil {
 		return nil, err
 	}
@@ -50,17 +59,17 @@ func newIssues(project model.Project) (model.Tracker, error) { //nolint:ireturn 
 	return issues, nil
 }
 
-func newGithubForge(project model.Project) (model.Forge, error) { //nolint:ireturn // the table stores constructors of the contract
-	github, err := forge.NewExec(project.Repo)
+func newGithubForge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table stores constructors of the contract
+	gh, err := forgegithub.NewExec(project.Repo)
 	if err != nil {
 		return nil, err
 	}
 
-	return github, nil
+	return gh, nil
 }
 
 // tracker builds the tracker the project names.
-func (a adapters) tracker(project model.Project) (model.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
+func (a adapters) tracker(project model.Project) (store.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
 	build, found := a.trackers[project.Tracker]
 	if !found {
 		return nil, fmt.Errorf("project %s: no tracker adapter named %q", project.Name, project.Tracker)
@@ -70,7 +79,7 @@ func (a adapters) tracker(project model.Project) (model.Tracker, error) { //noli
 }
 
 // forge builds the forge the project names.
-func (a adapters) forge(project model.Project) (model.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
+func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
 	build, found := a.forges[project.Forge]
 	if !found {
 		return nil, fmt.Errorf("project %s: no forge adapter named %q", project.Name, project.Forge)
@@ -79,9 +88,19 @@ func (a adapters) forge(project model.Project) (model.Forge, error) { //nolint:i
 	return build(project)
 }
 
+// agent builds the adapter of the agent. It returns nil for an agent that has no adapter yet, and a run with no adapter does not start.
+func (a adapters) agent(name model.Agent) agent.Adapter { //nolint:ireturn // the table builds whichever adapter the runner names
+	build, found := a.agents[name]
+	if !found {
+		return nil
+	}
+
+	return build()
+}
+
 // leases builds the claim store of the project. It is beads, so the project must name its beads prefix.
-func (a adapters) leases(project model.Project) (*store.BeadsStore, error) {
-	return store.NewBeadsStore(a.bd, project.BeadsPrefix)
+func (a adapters) leases(project model.Project) (*beads.Store, error) {
+	return beads.New(a.bd, project.BeadsPrefix)
 }
 
 // check builds the tracker, the forge and the claim store of the project and reports why it cannot.
@@ -100,5 +119,5 @@ func (a adapters) check(ctx context.Context, project model.Project) error {
 		return err
 	}
 
-	return store.RequireBd(ctx, a.bd)
+	return beads.RequireBd(ctx, a.bd)
 }

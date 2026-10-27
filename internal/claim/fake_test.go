@@ -25,7 +25,7 @@ const (
 
 var errBoom = errors.New("boom")
 
-// fakeRows keeps one claim row for each item in memory. It follows the model.ClaimRows rules: TryHold grants the lease and
+// fakeRows keeps one claim row for each item in memory. It follows the store.ClaimRows rules: TryHold grants the lease and
 // sets the holder only when none is set, Reclaim frees a row whose lease ended, and Free removes the row of the holder.
 type fakeRows struct {
 	rows   map[string]model.ClaimRow

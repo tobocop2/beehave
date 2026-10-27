@@ -33,15 +33,15 @@ func allowed(base map[string]string) map[string]string {
 }
 
 // buildEnv returns the NAME=value list for an agent: the allowlisted names of base, the login folder and the token.
-func buildEnv(base map[string]string, p profile, dir, token string) []string {
+func buildEnv(base map[string]string, p Profile, dir, token string) []string {
 	env := allowed(base)
 
-	for _, name := range p.configVars {
+	for _, name := range p.ConfigVars {
 		env[name] = dir
 	}
 
-	if token != "" && p.tokenVar != "" {
-		env[p.tokenVar] = token
+	if token != "" && p.TokenVar != "" {
+		env[p.TokenVar] = token
 	}
 
 	list := make([]string, 0, len(env))

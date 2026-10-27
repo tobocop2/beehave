@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// Rows is what claim needs from the claim store. model.ClaimRows documents each method.
+// Rows is what claim needs from the claim store. store.ClaimRows documents each method.
 type Rows interface {
 	HeldRows(ctx context.Context) ([]model.ClaimRow, error)
 	TryHold(ctx context.Context, row model.ClaimRow) error
