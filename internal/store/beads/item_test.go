@@ -50,6 +50,8 @@ func TestBeadsItem_Refuses(t *testing.T) {
 		want  string
 	}{
 		{name: "show_fails", setup: func(r *proctest.Scripted) { r.PlanFail("x", "show") }, want: "REFUSE: cannot read item p-1 in beads"},
+		{name: "empty_list", setup: func(r *proctest.Scripted) { r.Plan("[]", "show") }, want: "beads returned nothing for p-1"},
+		{name: "list_not_rows", setup: func(r *proctest.Scripted) { r.Plan("[1]", "show") }, want: "cannot read the answer of `bd show`"},
 		{name: "empty_answer", setup: func(r *proctest.Scripted) { r.Plan("", "show") }, want: "cannot read the answer of `bd show`"},
 		{name: "no_title", setup: func(r *proctest.Scripted) { r.Plan(`{"id":"p-1"}`, "show") }, want: "no readable title"},
 		{name: "no_id", setup: func(r *proctest.Scripted) { r.Plan(`{"title":"T"}`, "show") }, want: "no readable id"},

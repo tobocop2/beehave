@@ -3,7 +3,6 @@ package beads
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +17,6 @@ const (
 	bdPage         = 5000
 	lockPrefix     = "lock:"
 	epicType       = "epic"
-	taskType       = "task"
 	argJSON        = "--json"
 	argList        = "list"
 	holdLabel      = "hold"
@@ -39,26 +37,6 @@ func derefText(text *string) string {
 	}
 
 	return *text
-}
-
-// beadsType is an item type beads knows. Any other kind a caller files becomes a label on a task.
-type beadsType string
-
-// The item types beads accepts for create.
-const (
-	beadsBug     beadsType = "bug"
-	beadsTask    beadsType = "task"
-	beadsFeature beadsType = "feature"
-	beadsChore   beadsType = "chore"
-)
-
-func (t beadsType) known() bool {
-	switch t {
-	case beadsBug, beadsTask, beadsFeature, beadsChore:
-		return true
-	}
-
-	return false
 }
 
 type bdRow struct {
@@ -168,7 +146,7 @@ func beadsSeverity(priority *int) model.Severity {
 }
 
 func (s *Store) parents(ctx context.Context) (map[string]string, error) {
-	containers, err := s.Containers(ctx)
+	containers, err := s.containers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +164,7 @@ func (s *Store) parents(ctx context.Context) (map[string]string, error) {
 
 // addChildren records the container as the parent of each child that has none yet.
 func (s *Store) addChildren(ctx context.Context, parents map[string]string, container string) error {
-	children, err := s.children(ctx, container, "; refusing to list work")
+	children, err := s.children(ctx, container)
 
 	for _, child := range children {
 		if _, seen := parents[child]; !seen {
@@ -197,8 +175,8 @@ func (s *Store) addChildren(ctx context.Context, parents map[string]string, cont
 	return err
 }
 
-// Containers lists the ids of the open epics.
-func (s *Store) Containers(ctx context.Context) ([]string, error) {
+// containers lists the ids of the open epics.
+func (s *Store) containers(ctx context.Context) ([]string, error) {
 	rows, err := s.list(ctx, []string{argList, "--status=open", argType, epicType}, "the containers list", "store: cannot read beads containers; refusing")
 	if err != nil {
 		return nil, err
@@ -207,15 +185,10 @@ func (s *Store) Containers(ctx context.Context) ([]string, error) {
 	return ids(rows)
 }
 
-// Children lists the ids of the open children of one epic.
-func (s *Store) Children(ctx context.Context, container string) ([]string, error) {
-	return s.children(ctx, container, "; refusing")
-}
-
-func (s *Store) children(ctx context.Context, container, tail string) ([]string, error) {
+func (s *Store) children(ctx context.Context, container string) ([]string, error) {
 	done := s.run.Run(ctx, []string{"children", container, argJSON})
 	if done.ExitCode != 0 {
-		return nil, store.Refuse("store: cannot read the children of %s%s", container, tail)
+		return nil, store.Refuse("store: cannot read the children of %s; refusing to list work", container)
 	}
 
 	rows, err := store.Decode[[]bdRow]("bd children", done.Stdout)
@@ -239,21 +212,6 @@ func ids(rows []bdRow) ([]string, error) {
 	}
 
 	return out, nil
-}
-
-// Show returns the title, description and comments of an item.
-func (s *Store) Show(ctx context.Context, item string) (string, error) {
-	row, err := s.shown(ctx, item)
-	if err != nil {
-		return "", err
-	}
-
-	head, err := row.heading()
-	if err != nil {
-		return "", err
-	}
-
-	return s.withComments(ctx, item, head)
 }
 
 // shown runs bd show for an item and decodes its row.
@@ -289,26 +247,6 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 	return map[string]string{"id": id, "title": title, "body": derefText(row.Description)}, nil
 }
 
-func (s *Store) withComments(ctx context.Context, item, head string) (string, error) {
-	comments := s.run.Run(ctx, []string{"comments", item})
-	if comments.ExitCode != 0 {
-		return "", store.Refuse("REFUSE: cannot read the comments of %s in beads", item)
-	}
-
-	return head + comments.Stdout, nil
-}
-
-func (r bdRow) heading() (string, error) {
-	title, err := store.ReadableTitle(r.Title)
-	if err != nil {
-		return "", err
-	}
-
-	id, err := readableID(r.ID)
-
-	return fmt.Sprintf("# %s %s\n\n%s\n", id, title, derefText(r.Description)), err
-}
-
 // decodeShown reads the row of bd show, which prints one object or a list of one.
 func decodeShown(item, text string) (bdRow, error) {
 	if !strings.HasPrefix(strings.TrimSpace(text), "[") {
@@ -325,114 +263,6 @@ func decodeShown(item, text string) (bdRow, error) {
 	}
 
 	return rows[0], nil
-}
-
-// Close closes an item with a reason. A rejected close is an error with code 1.
-func (s *Store) Close(ctx context.Context, item, reason string) error {
-	done := s.run.Run(ctx, []string{"close", item, "--reason", reason})
-	if done.ExitCode != 0 {
-		return &store.Error{Code: store.CodeCloseFailed, Message: fmt.Sprintf("store: cannot close %s: %s", item, strings.TrimSpace(done.Stderr))}
-	}
-
-	return nil
-}
-
-// Create files an item and returns its id. The duplicate check reads every item that is not closed.
-func (s *Store) Create(ctx context.Context, request model.CreateRequest) (string, error) {
-	if err := store.CheckCreate(request); err != nil {
-		return "", err
-	}
-
-	titles, err := s.openTitles(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	if err = store.RefuseDuplicate(request, titles); err != nil {
-		return "", err
-	}
-
-	return s.file(ctx, request)
-}
-
-func (s *Store) file(ctx context.Context, request model.CreateRequest) (string, error) {
-	done := s.run.Run(ctx, createArgs(request))
-	if done.ExitCode != 0 {
-		return "", store.Refuse("store: bd create returned no id")
-	}
-
-	made, err := store.Decode[bdRow]("bd create", done.Stdout)
-	if err != nil {
-		return "", err
-	}
-
-	return readableCreated(made.ID)
-}
-
-func (s *Store) openTitles(ctx context.Context) ([]store.OpenTitle, error) {
-	rows, err := s.list(ctx, []string{argList}, "the duplicate check", "store: cannot read beads for the duplicate check; refusing to file")
-	if err != nil {
-		return nil, err
-	}
-
-	titles := make([]store.OpenTitle, len(rows))
-
-	for i, row := range rows {
-		if titles[i], err = row.openTitle(); err != nil {
-			return nil, err
-		}
-	}
-
-	return titles, nil
-}
-
-func (r bdRow) openTitle() (store.OpenTitle, error) {
-	title, err := store.ReadableTitle(r.Title)
-	if err != nil {
-		return store.OpenTitle{}, err
-	}
-
-	id, err := readableID(r.ID)
-
-	return store.OpenTitle{ID: id, Title: title}, err
-}
-
-func readableCreated(id string) (string, error) {
-	if id == "" {
-		return "", store.Refuse("store: bd create returned no id")
-	}
-
-	return id, nil
-}
-
-func createArgs(request model.CreateRequest) []string {
-	kind, label := request.Kind, ""
-	if !beadsType(kind).known() {
-		kind, label = taskType, request.Kind
-	}
-
-	args := []string{
-		argCreate, request.Title, "-t", kind, "-p", strings.TrimPrefix(string(request.Severity), "P"),
-		"--body-file", request.BodyFile, argJSON,
-	}
-
-	return appendOptional(args, optional{"--labels", label}, optional{"--parent", request.Parent}, optional{"--assignee", request.Assignee})
-}
-
-type optional struct {
-	flag  string
-	value string
-}
-
-// appendOptional adds each flag whose value is not empty.
-func appendOptional(args []string, flags ...optional) []string {
-	for _, f := range flags {
-		if f.value != "" {
-			args = append(args, f.flag, f.value)
-		}
-	}
-
-	return args
 }
 
 // list reads one page of a beads list. A full page may be cut off, so it is a refusal.
