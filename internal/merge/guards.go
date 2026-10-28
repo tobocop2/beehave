@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// settings refuses a round with no repository, base or round name.
+// settings refuses a merge with no repository or base.
 func (a *attempt) settings() *refusal {
 	for _, key := range []struct{ name, value string }{
-		{"repository", a.req.Repo}, {"base branch", a.req.Base}, {"round name", a.req.Round},
+		{"repository", a.req.Repo}, {"base branch", a.req.Base},
 	} {
 		if key.value == "" {
 			return refuse("REFUSE: the " + key.name + " of the merge is not set.")

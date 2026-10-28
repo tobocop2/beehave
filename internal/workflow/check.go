@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"text/template"
@@ -509,21 +510,194 @@ func (c *checker) cycle(chain []*site, entry *site) {
 	c.add(entry.step.Pos(), fmt.Sprintf("cycle `%s`. Remove one of the references.", strings.Join(names, " -> ")))
 }
 
-// merges refuses a merge step that sets `merge = true` as a literal. A computed value is refused when the step runs.
+// merges checks the settings of each merge step. A setting that an expression computes is checked when the step runs.
 func (c *checker) merges() {
 	for _, s := range c.sites {
 		step, ok := s.step.(*Merge)
-		if !ok || step.Merge == nil {
+		if !ok {
 			continue
 		}
 
-		if value, diags := step.Merge.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True() {
-			c.add(step.Merge.Range(), "merging is not built yet: the settings of the merge step come in R1. Remove `merge = true`, and the owner merges the pull request.")
+		c.mergeNeeds(step)
+		c.hold(step.Hold)
+		c.forbidText(step.ForbidText)
+		c.own(step.Own)
+		c.choice(step.Children, "children", []string{"refuse", "retarget"})
+	}
+}
+
+// mergeNeeds refuses a step that sets `merge = true` as a literal and has no `repo`, `base` or `own`.
+func (c *checker) mergeNeeds(step *Merge) {
+	if !mergesLiterally(step) {
+		return
+	}
+
+	for _, setting := range []struct {
+		name string
+		expr hcl.Expression
+	}{{"repo", step.Repo}, {"base", step.Base}, {"own", step.Own}} {
+		if unset(setting.expr) {
+			c.add(step.Pos(), fmt.Sprintf("the merge step sets `merge = true` and has no `%s`. Add `%s`.", setting.name, setting.name))
 		}
 	}
 }
 
-// arguments checks the arguments of each step that no reference check covers: prompt files, forbidden kinds and the merge flag.
+// mergesLiterally is true when the step sets `merge = true` as a literal.
+func mergesLiterally(step *Merge) bool {
+	value, diags := step.Merge.Value(nil)
+
+	return !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True()
+}
+
+// hold refuses a label with a comma, because the forge call joins labels with commas.
+func (c *checker) hold(expr hcl.Expression) {
+	if label, literal := literalString(expr); literal && strings.Contains(label, ",") {
+		c.add(expr.Range(), fmt.Sprintf("hold `%s` has a comma, and the forge joins labels with commas. Name one label.", label))
+	}
+}
+
+// forbidText checks `forbid_text`: a list, and each plain string in it a non-empty RE2 pattern.
+func (c *checker) forbidText(expr hcl.Expression) {
+	items, diags := hcl.ExprList(expr)
+	if diags.HasErrors() {
+		if value, err := expr.Value(nil); !err.HasErrors() && !value.IsNull() {
+			c.add(expr.Range(), "forbid_text must be a list of patterns. Write forbid_text = [\"noreply@anthropic\"].")
+		}
+
+		return
+	}
+
+	for _, item := range items {
+		if pattern, literal := literalString(item); literal {
+			c.pattern(item.Range(), pattern)
+		} else if notString(item) {
+			c.add(item.Range(), "forbid_text must hold strings only. Write each item as a string pattern.")
+		}
+	}
+}
+
+// notString is true when the expression is a literal that is not a string and not null.
+func notString(expr hcl.Expression) bool {
+	value, diags := expr.Value(nil)
+
+	return !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() != cty.String
+}
+
+// own checks `own`: an object with the keys `logins` and `emails`, each a list of strings, and not both empty.
+// A value that an expression computes is checked when the step runs.
+func (c *checker) own(expr hcl.Expression) {
+	if unset(expr) {
+		return
+	}
+
+	pairs, diags := hcl.ExprMap(expr)
+	if diags.HasErrors() {
+		if value, err := expr.Value(nil); !err.HasErrors() {
+			c.add(expr.Range(), fmt.Sprintf("own is %s. Write own = { logins = [\"name\"], emails = [\"name@example.org\"] }.", describe(value)))
+		}
+
+		return
+	}
+
+	sizes, typo := c.ownPairs(pairs)
+
+	// A typo already names the key it should be, so the key it replaced is not reported again.
+	if !typo {
+		c.ownComplete(expr, sizes)
+	}
+}
+
+// ownKeys returns the keys of `own`.
+func ownKeys() []string { return []string{"logins", "emails"} }
+
+// ownPairs checks each key of `own` and returns the length of the list under each known key. It says whether a key is unknown.
+func (c *checker) ownPairs(pairs []hcl.KeyValuePair) (map[string]int, bool) {
+	sizes := map[string]int{}
+	typo := false
+
+	for _, pair := range pairs {
+		key, literal := literalString(pair.Key)
+
+		switch {
+		case !literal: // A computed key is read when the step runs.
+		case slices.Contains(ownKeys(), key):
+			sizes[key] = c.identities(key, pair.Value)
+		default:
+			c.add(pair.Key.Range(), fmt.Sprintf("own has the unknown key `%s`.%s", key, hint(key, ownKeys())))
+
+			typo = true
+		}
+	}
+
+	return sizes, typo
+}
+
+// ownComplete refuses an `own` that lacks a key, or has two empty lists.
+func (c *checker) ownComplete(expr hcl.Expression, sizes map[string]int) {
+	empty := 0
+
+	for _, key := range ownKeys() {
+		size, ok := sizes[key]
+		if !ok {
+			c.add(expr.Range(), fmt.Sprintf("own has no `%s`. Add `%s = [...]`.", key, key))
+		}
+
+		if ok && size == 0 {
+			empty++
+		}
+	}
+
+	if empty == len(ownKeys()) {
+		c.add(expr.Range(), "own has two empty lists, so it names nobody. Add a login and an address.")
+	}
+}
+
+// identities checks the list under one key of `own` and returns its length, or -1 when an expression computes the list.
+func (c *checker) identities(key string, expr hcl.Expression) int {
+	items, diags := hcl.ExprList(expr)
+	if diags.HasErrors() {
+		if value, err := expr.Value(nil); !err.HasErrors() && !value.IsNull() {
+			c.add(expr.Range(), fmt.Sprintf("`%s` of own must be a list of strings. Write %s = [\"name\"].", key, key))
+		}
+
+		return -1
+	}
+
+	for _, item := range items {
+		if notString(item) {
+			c.add(item.Range(), fmt.Sprintf("`%s` of own must hold strings only.", key))
+		}
+	}
+
+	return len(items)
+}
+
+// describe names the type of a literal value for a message.
+func describe(value cty.Value) string {
+	return "a " + value.Type().FriendlyName() + ", not an object"
+}
+
+// pattern refuses a `forbid_text` pattern that is empty or not RE2.
+func (c *checker) pattern(at hcl.Range, pattern string) {
+	if pattern == "" {
+		c.add(at, "forbid_text has an empty pattern, which matches every line. Remove it or write a pattern.")
+
+		return
+	}
+
+	if _, err := regexp.Compile(pattern); err != nil {
+		c.add(at, fmt.Sprintf("forbid_text has the pattern `%s`, which is not valid RE2: %v. Fix the pattern.", pattern, err))
+	}
+}
+
+// choice checks that a plain string setting is one of valid.
+func (c *checker) choice(expr hcl.Expression, name string, valid []string) {
+	if value, literal := literalString(expr); literal && !slices.Contains(valid, value) {
+		c.add(expr.Range(), fmt.Sprintf("%s has the unknown value `%s`.%s", name, value, hint(value, valid)))
+	}
+}
+
+// arguments checks the arguments of each step that no reference check covers: prompt files, forbidden kinds and the merge settings.
 func (c *checker) arguments() {
 	c.prompts()
 	c.forbids()

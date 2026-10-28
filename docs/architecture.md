@@ -306,7 +306,7 @@ A new issue passes only when the ledger holds an `owner-add` row for the key and
 
 ## Merge
 
-`merge` merges one reviewed pull request into the round base, pinned to the commit that a reviewer gated. `Run` takes a `Request` and returns a `Result` with a `Stop` and the lines to show. The stops are a closed set with a `Code`: 0 done, 2 refused, 3 no workflow scope and 4 own work.
+`merge` merges one reviewed pull request into the base, pinned to the commit that a reviewer gated. `Run` takes a `Request` and returns a `Result` with a `Stop` and the lines to show. The stops are a closed set with a `Code`: 0 done, 2 refused, 3 no workflow scope and 4 own work.
 
 The round cut and the merge audit are not part of the engine. They live in `examples/remediation/tools/` and run through the `remedy` binary, see the next section.
 
@@ -346,7 +346,7 @@ The commit list of the first read can be cut by the forge. Guard 0 also reads th
 
 ### Order of the guards
 
-The guards refuse in this order: the repository, the base branch and the round name of the merge request, a gated commit id that is not 40 characters, the state, the base, the head, the mergeable flag, children, checks, the workflow scope, change requests, open threads, AI attribution, commits with no linked account and the draft rule. The first read asks for every field in one call. The merge then reads the head once more, and reads the stack of the pull request. A pull request in a native stack is refused, because it merges through the asynchronous merge, which obee does not run. The merge call pins the head on the forge side. A merge call that fails is a refusal with code 2, and the result keeps the text of the forge.
+The guards refuse in this order: the repository and the base branch of the merge request, a gated commit id that is not 40 characters, the state, the base, the head, the mergeable flag, children, checks, the workflow scope, change requests, open threads, AI attribution, commits with no linked account and the draft rule. The first read asks for every field in one call. The merge then reads the head once more, and reads the stack of the pull request. A pull request in a native stack is refused, because it merges through the asynchronous merge, which obee does not run. The merge call pins the head on the forge side. A merge call that fails is a refusal with code 2, and the result keeps the text of the forge.
 
 A child is an open pull request whose base is the branch of the pull request. A merge orphans it, unless it is in the same native stack, which GitHub retargets. That child is a note. `AllowOrphans` lets the merge go on and says that this is a stated decision. A list of 1000 pull requests is refused as cut off. A check that skipped is not a pass: with no pass the merge refuses unless `AllowNoChecks` is set.
 
@@ -371,6 +371,12 @@ One HCL file is one workflow. A `workflow "<name>"` block holds `method_version`
 A step reads another step with `<kind>.<name>.<output>`. It reads the work item with `item.<field>`, the environment with `env.<NAME>`, and the round with `loop.round` or `loop.<name>.exhausted`. A step that was skipped has null outputs.
 
 Inside a loop, `loop.previous.<kind>.<name>.<output>` reads the output that a step of the same loop recorded in the round before. In round 1 it is null, and so is a step that a `when` skipped in the round before. The step may be the reading step itself or a later step, because the round before has run. The check refuses the read outside a loop, for a step of another loop, and as the value of `resume_from`. `==` with null gives false and `!=` with null gives true, so `loop.previous.agent.fix.violations == ""` is false in round 1 and `!= ""` is true. A bare condition on null, or a string template that holds null, is an error. This holds in `when`, `until` and `inputs`. The values come from the recorded steps, so a replay reads the same values.
+
+A `merge` step has these settings besides `head`, `merge` and `when`: `repo`, `base`, `hold`, `own`, `approved`, `forbid_text` and `children`. `repo` and `base` name the repository and the branch. `base` is the integration branch, never the default branch. `hold` is a label: a pull request with that label is never merged. `own` is `{ logins = [...], emails = [...] }`, the identities of the owner and of the runners. `forbid_text` is a list of RE2 patterns for the lines of the pull request body and of each commit message. `children` is `refuse` (the default) or `retarget`. A file keeps no login or address: it reads them with `env.<NAME>`.
+
+`own` and `approved` work together. Nobody merges their own work, and our pull requests merge only on a verdict that another step gave. A pull request of an `own` identity merges only when `approved` is true. `approved` is an expression, such as `agent.review.verdict == "approve"`. If `approved` is not set, the step refuses our own pull requests. A pull request of any other author does not depend on `approved`. A standing changes-requested review of another person blocks the merge in every case. The review step must not be the step that wrote the code. `obee check workflow` does not check this, because the step graph does not say which step wrote the head.
+
+`obee check workflow` refuses `merge = true` with no `repo`, `base` or `own`, and an `own` that is not an object with `logins` and `emails`, each a list of strings, or that has an unknown key or two empty lists. It refuses a `hold` with a comma, a `forbid_text` item that is not a string, is empty or is not RE2, and an unknown `children` value. It reads a value that an expression computes only when the step runs. The step still refuses `merge = true` when it runs, because this build has no merger.
 
 `resume_from` names an agent with `agent.<name>`. A step name is unique in the whole file, across all kinds.
 

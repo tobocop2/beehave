@@ -151,20 +151,42 @@ func (*Loop) Kind() Kind { return KindLoop }
 func (l *Loop) arguments() []argument { return []argument{{expr: l.Until}} }
 
 // Merge marks the pull request ready and then waits for the owner to merge it or send it back.
-// Head pins the commit. When Merge is true, the step merges at that commit itself.
+// Head pins the commit. When Merge is true, the step merges at that commit itself, and needs Repo, Base and Own.
+// Hold is the label of a pull request that is never merged. Own lists the logins and addresses of the owner.
+// ForbidText lists RE2 patterns that no line of the pull request body or of a commit message may match.
+// Approved is true when a step other than the one that wrote the code accepted the head: a pull request of an own identity merges only then.
+// Children is "refuse" (the default) or "retarget".
 type Merge struct {
 	Header
 
-	Head  hcl.Expression `hcl:"head"`
-	Merge hcl.Expression `hcl:"merge,optional"`
-	When  hcl.Expression `hcl:"when,optional"`
+	Head       hcl.Expression `hcl:"head"`
+	Merge      hcl.Expression `hcl:"merge,optional"`
+	Repo       hcl.Expression `hcl:"repo,optional"`
+	Base       hcl.Expression `hcl:"base,optional"`
+	Hold       hcl.Expression `hcl:"hold,optional"`
+	Own        hcl.Expression `hcl:"own,optional"`
+	ForbidText hcl.Expression `hcl:"forbid_text,optional"`
+	Approved   hcl.Expression `hcl:"approved,optional"`
+	Children   hcl.Expression `hcl:"children,optional"`
+	When       hcl.Expression `hcl:"when,optional"`
 }
 
 // Kind returns KindMerge.
 func (*Merge) Kind() Kind { return KindMerge }
 
 func (m *Merge) arguments() []argument {
-	return []argument{{expr: m.Head}, {expr: m.Merge}, {expr: m.When}}
+	return []argument{
+		{expr: m.Head},
+		{expr: m.Merge},
+		{expr: m.Repo},
+		{expr: m.Base},
+		{expr: m.Hold},
+		{expr: m.Own},
+		{expr: m.ForbidText},
+		{expr: m.Approved},
+		{expr: m.Children},
+		{expr: m.When},
+	}
 }
 
 // Wait stops the workflow until a person answers.

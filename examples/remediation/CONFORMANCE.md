@@ -55,8 +55,8 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-C-12 | The lock coordinates our sessions only; its state stays out of the forge | file | gap | - | - | S1-C-12, S1-C-13 |
 | S1-C-14 | A second run needs its own build host | core | gap | - | - | S1-C-14 |
 | S1-C-15 | Per-letter lane and queue files; the stop guard checks the watcher | drop | n/a | - | - | S1-C-15, S1-C-16, S1-C-17, S1-C-22 |
-| S1-C-18 | Re-read the base tip twice before a merge when another session can merge | core | gap | - | - | S1-C-18 |
-| S1-C-19 | Merge or retarget PRs based on the head branch first | core | gap | - | - | S1-C-19 |
+| S1-C-18 | Re-read the base tip twice before a merge when another session can merge | core | gap | settings base of workflow.hcl merge ship | - | S1-C-18 |
+| S1-C-19 | Merge or retarget PRs based on the head branch first | core | gap | settings children of workflow.hcl merge ship | - | S1-C-19 |
 | S1-C-20 | Hand over between orchestrator sessions with a parked row | drop | n/a | - | - | S1-C-20, S1-C-21 |
 | SC-01 | Take over an idle foreign PR after notice, grace and idle hours | core | gap | tools/remedy take | TestTake_TakeAfterTheGracePeriodPasses | - |
 | S1-L-01 | Name the model in every dispatch; a step without a model is a defect | file | expressed | workflow.hcl workflow remediation | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-01, S1-L-02, S1-L-03, S1-L-04 |
@@ -157,7 +157,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-P-16 | Estimated tokens per file and in total | core | gap | tools/remedy size | TestSize_PrintsTheTokenTableAndPassesASmallReading | S1-P-16 |
 | S1-R-01 | Review your own work: a fresh reviewer that did not write the code | core | expressed | workflow.hcl agent review | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-01, S1-R-02, S1-R-04, S1-R-62, S1-M-13 |
 | S1-R-05 | Findings on our own PR go to the author lane | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-05, S1-R-06, S1-F-15 |
-| S1-R-07 | Read every review and inline comment before ready and before merge | core | gap | - | - | S1-R-07, S1-M-04, S1-M-10, S1-M-11 |
+| S1-R-07 | Read every review and inline comment before ready and before merge | core | gap | settings repo of workflow.hcl merge ship | - | S1-R-07, S1-M-04, S1-M-10, S1-M-11 |
 | S1-R-08 | Review at a pinned SHA | core | expressed | workflow.hcl agent review | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-08, S1-M-07 |
 | S1-R-09 | An implementer must call the review skill before it reports | skill | expressed | workflow.hcl agent implement | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-09, S1-R-10, S1-R-12, S1-R-16 |
 | S1-R-17 | A verdict blocks when the change caused the defect or lost data | skill | gap | - | - | S1-R-17, S1-R-19, S1-R-20, S1-R-21, S1-R-23, S1-R-25, S1-R-29, S1-R-37, S1-R-39, S1-R-56 |
@@ -169,23 +169,23 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-R-60 | A reviewer report ends with blocking, should-fix and non-blocking | core | gap | - | - | S1-R-60 |
 | S1-R-63 | A derived verdict ledger: last review, SHA reviewed, still-head flag | core | gap | - | - | S1-R-63, S1-R-64, S1-R-65, S1-R-66, S1-D-05 |
 | S1-R-67 | Modes: take-over, audit of merged work, queue mode | file | gap | - | - | S1-R-67, S1-R-68, S1-R-69, S1-O-06, S1-X-14 |
-| S1-M-01 | Ready means done, reviewed, with no changes requested | core | gap | - | - | S1-M-01, S1-M-02, S1-M-03, S1-M-22 |
-| S1-M-05 | A ready PR is watched until it merges; read its state before each action | core | gap | - | - | S1-M-05, S1-W-14, S1-X-22 |
-| S1-M-06 | A merge gate of six conditions, including a verdict from another lane | core | gap | - | - | S1-M-06, S1-M-17 |
-| S1-M-08 | No AI attribution in commits or PR body | core | gap | - | - | S1-M-08, S1-S-12, S1-O-05 |
-| S1-M-12 | Never dismiss a maintainer's review to unblock a merge | core | gap | - | - | S1-M-12, S1-S-22 |
-| S1-M-13 | Nobody merges their own work; our PRs merge after another lane accepts | core | gap | - | - | S1-M-13, S1-M-14, S1-X-13 |
+| S1-M-01 | Ready means done, reviewed, with no changes requested | core | gap | settings repo, base of workflow.hcl merge ship | - | S1-M-01, S1-M-02, S1-M-03, S1-M-22 |
+| S1-M-05 | A ready PR is watched until it merges; read its state before each action | core | gap | settings repo of workflow.hcl merge ship | - | S1-M-05, S1-W-14, S1-X-22 |
+| S1-M-06 | A merge gate of six conditions, including a verdict from another lane | core | gap | settings own, approved of workflow.hcl merge ship | - | S1-M-06, S1-M-17 |
+| S1-M-08 | No AI attribution in commits or PR body | core | gap | settings forbid_text of workflow.hcl merge ship | - | S1-M-08, S1-S-12, S1-O-05 |
+| S1-M-12 | Never dismiss a maintainer's review to unblock a merge | core | gap | the default: a guard of the merge refuses a standing review | - | S1-M-12, S1-S-22 |
+| S1-M-13 | Nobody merges their own work; our PRs merge after another lane accepts | core | gap | settings own, approved of workflow.hcl merge ship | - | S1-M-13, S1-M-14, S1-X-13 |
 | S1-M-15 | Merge the proven union in stacking order and gate once; bisect a red batch | core | gap | - | - | S1-M-15, S1-M-16 |
-| S1-M-18 | Do not use the merge queue of GitHub | file | gap | - | - | S1-M-18 |
-| S1-M-19 | After a merge, assert the head is an ancestor of the default branch | core | gap | - | - | S1-M-19 |
+| S1-M-18 | Do not use the merge queue of GitHub | file | gap | settings repo, base of workflow.hcl merge ship | - | S1-M-18 |
+| S1-M-19 | After a merge, assert the head is an ancestor of the default branch | core | gap | settings base of workflow.hcl merge ship | - | S1-M-19 |
 | S1-M-20 | After a merge, add the integration row and recount heading and title | core | gap | - | - | S1-M-20, S1-M-21, S1-I-02, S1-I-03, S1-I-04, S1-D-07, S1-F-17 |
 | S1-M-23 | Open a draft PR at the first checkpoint; push every later commit | core | gap | - | - | S1-M-23, S1-M-24, S1-F-09 |
 | S1-M-25 | A bundle is banked when it is off the box and verified | core | gap | - | - | S1-M-25, S1-X-20 |
 | S1-M-26 | A reported SHA is not a reachable SHA; verify the branch | core | gap | - | - | S1-M-26 |
 | S1-M-27 | A dependent PR goes into a native stack | core | gap | - | - | S1-M-27, S1-M-28, S1-M-29, S1-M-30 |
-| S1-M-31 | Held items are not merged | core | gap | - | - | S1-M-31 |
-| S1-M-32 | One integration branch per repository; every PR targets it | file | gap | - | - | S1-M-32, S1-I-01, S1-I-09, S1-D-16, S1-O-01 |
-| S1-M-33 | A maintainer's approval makes a PR safe to merge | file | gap | - | - | S1-M-33, S1-X-16 |
+| S1-M-31 | Held items are not merged | core | gap | settings hold of workflow.hcl merge ship | - | S1-M-31 |
+| S1-M-32 | One integration branch per repository; every PR targets it | file | gap | settings base of workflow.hcl merge ship | - | S1-M-32, S1-I-01, S1-I-09, S1-D-16, S1-O-01 |
+| S1-M-33 | Struck 2026-10-28: the skill has no rule that a maintainer's approval makes a PR safe to merge | drop | n/a | - | - | S1-M-33, S1-X-16 |
 | S1-M-34 | No no-verify, stash, config writes or force-push of a shared branch | core | gap | - | - | S1-M-34, S1-S-15, S1-S-21 |
 | S1-M-35 | Do not edit a branch a merge depends on; file a surviving finding first | skill | gap | - | - | S1-M-35, S1-M-36, S1-M-38 |
 | S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | tools/remedy authors | TestAuthors_ACommitOfOursUnderAnotherAddressIsExitCodeOne | S1-M-37, S1-S-11, S1-L-94 |
@@ -240,7 +240,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | SC-03 | Cut the next round only after the previous integration PR merged | core | gap | tools/remedy cut | TestCut_MergedPullRequestMovesTheRoundAndPasses | - |
 | SC-04 | For each merge in a range, show which lines the tip still has | core | gap | tools/remedy audit | TestAudit_PresentWithAMergeThatLeftTheBranchIsADefect | - |
 | SC-05 | Green baseline and mutation arms with a hardcoded path | drop | n/a | - | - | - |
-| SC-06 | Merge helpers: all checks green, our commits carry our email, orphan list | core | gap | - | - | - |
+| SC-06 | Merge helpers: all checks green, our commits carry our email, orphan list | core | gap | settings own, children of workflow.hcl merge ship | - | - |
 | SC-07 | Pinned asynchronous merge for a stacked PR with polling | core | gap | - | - | - |
 | SC-08 | Stop in fixed order: merged, closed, branch gone, hold, draft, head moved | core | gap | tools/remedy cut | TestCut_PullRequestThatIsNotMergedIsARefusal | - |
 | SC-09 | Add a closing row, recount heading and title, assert the count changed | core | gap | - | - | - |

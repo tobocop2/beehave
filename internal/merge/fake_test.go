@@ -233,7 +233,7 @@ func (w *world) SetBody(_ context.Context, number int, body string) error {
 func request() merge.Request {
 	return merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
-		Repo: "owner/name", Base: "main", Round: "r1", OwnerLogin: me, OwnerEmail: meMail,
+		Repo: "owner/name", Base: "main", OwnerLogin: me, OwnerEmail: meMail,
 	}
 }
 

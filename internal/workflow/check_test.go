@@ -1,6 +1,7 @@
 package workflow_test
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -811,27 +812,260 @@ command "after" {
 	assert.Empty(t, found)
 }
 
-func TestCheckRefusesALiteralMergeTrueUntilMergingIsBuilt(t *testing.T) {
+// mergeSettings is a merge step with every setting that `merge = true` needs. A test replaces one line of it.
+const mergeSettings = `workflow "w" {}
+merge "ship" {
+  head  = "abc"
+  merge = true
+  repo  = "owner/name"
+  base  = "main"
+  own   = { logins = [env.OWNER_LOGIN], emails = [env.OWNER_EMAIL] }
+}
+`
+
+func TestCheckPassesAMergeStepWithEverySetting(t *testing.T) {
 	t.Parallel()
 
+	found, unparsed := check(t, `workflow "w" {}
+merge "ship" {
+  head        = "abc"
+  merge       = true
+  repo        = env.REPO
+  base        = "main"
+  hold        = "hold"
+  own         = { logins = [env.OWNER_LOGIN], emails = [env.OWNER_EMAIL] }
+  forbid_text = ["noreply@anthropic", "Generated with \\[Claude"]
+  approved    = env.APPROVED
+  children    = "retarget"
+}
+`)
+
+	assert.Empty(t, found)
+	assert.False(t, unparsed)
+}
+
+func TestCheckReadsTheApprovedSettingOfAMergeStepFromAnotherStep(t *testing.T) {
+	t.Parallel()
+
+	found, unparsed := check(t, `workflow "w" {}
+agent "review" {
+  prompt  = "prompts/fix.md"
+  outputs = ["verdict"]
+}
+merge "ship" {
+  head     = "abc"
+  approved = agent.review.verdict == "approve"
+}
+`)
+
+	assert.Empty(t, found)
+	assert.False(t, unparsed)
+
 	d := oneProblem(t, `workflow "w" {}
+merge "ship" {
+  head     = "abc"
+  approved = agent.nope.verdict == "approve"
+}
+`)
+
+	assert.Contains(t, d.Text, "nope")
+}
+
+func TestCheckRefusesTheThirdPartySettingThatNoLongerExists(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  third_party = \"refuse\"\n}\n")
+
+	assert.Contains(t, d.Text, "third_party")
+	assert.Equal(t, 8, d.Line)
+}
+
+// ownLine is the line of `own` in mergeSettings.
+const (
+	ownLine = "  own   = { logins = [env.OWNER_LOGIN], emails = [env.OWNER_EMAIL] }\n"
+	ownAt   = 7
+)
+
+func TestCheckRefusesAnOwnThatIsNotAnObjectOfLoginsAndEmails(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct{ own, text string }{
+		"a string":          {`"tobias"`, "object"},
+		"a list":            {`["tobias"]`, "object"},
+		"a typo key":        {`{ login = ["a"], emails = ["b"] }`, "`login`"},
+		"an extra key":      {`{ logins = ["a"], emails = ["b"], names = [] }`, "`names`"},
+		"no emails":         {`{ logins = ["a"] }`, "`emails`"},
+		"no logins":         {`{ emails = ["a"] }`, "`logins`"},
+		"a string list":     {`{ logins = "a", emails = ["b"] }`, "`logins`"},
+		"a number item":     {`{ logins = [1], emails = ["b"] }`, "`logins`"},
+		"a nested list":     {`{ logins = ["a"], emails = [["b"]] }`, "`emails`"},
+		"two empty lists":   {`{ logins = [], emails = [] }`, "empty"},
+		"a computed key":    {`{ (env.K) = ["a"], emails = ["b"] }`, "`logins`"},
+		"a bool for emails": {`{ logins = ["a"], emails = true }`, "`emails`"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			text := strings.Replace(mergeSettings, ownLine, "  own   = "+tc.own+"\n", 1)
+			d := oneProblem(t, text)
+
+			assert.Contains(t, d.Text, tc.text)
+			assert.Equal(t, ownAt, d.Line)
+		})
+	}
+}
+
+func TestCheckPointsAnOwnProblemAtTheValueThatIsWrong(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, strings.Replace(mergeSettings, ownLine, "  own   = { logins = [\"a\", 2], emails = [\"b\"] }\n", 1))
+
+	assert.Equal(t, ownAt, d.Line)
+	assert.Equal(t, 28, d.Col, "the problem sits on the item")
+}
+
+func TestCheckReadsAnOwnThatAnExpressionComputesAtRunTime(t *testing.T) {
+	t.Parallel()
+
+	for _, own := range []string{"env.OWN", `{ logins = env.L, emails = [env.E] }`, `{ logins = ["a"], emails = ["b"] }`} {
+		found, _ := check(t, strings.Replace(mergeSettings, ownLine, "  own   = "+own+"\n", 1))
+
+		assert.Empty(t, found, own)
+	}
+}
+
+func TestCheckPassesAMergeTrueStepWithTheMinimumSettings(t *testing.T) {
+	t.Parallel()
+
+	found, unparsed := check(t, mergeSettings)
+
+	assert.Empty(t, found)
+	assert.False(t, unparsed)
+}
+
+func TestCheckRefusesALiteralMergeTrueWithASettingAbsent(t *testing.T) {
+	t.Parallel()
+
+	for _, setting := range []string{"repo", "base", "own"} {
+		t.Run(setting, func(t *testing.T) {
+			t.Parallel()
+
+			text := strings.Replace(mergeSettings, "  "+setting+" ", "  # "+setting+" ", 1)
+			d := oneProblem(t, text)
+
+			assert.Contains(t, d.Text, "`"+setting+"`")
+			assert.Equal(t, 2, d.Line, "the problem sits on the merge block header")
+		})
+	}
+}
+
+func TestCheckRefusesAMergeTrueStepWithNoSettingAndNamesEach(t *testing.T) {
+	t.Parallel()
+
+	found, _ := check(t, `workflow "w" {}
 merge "ship" {
   head  = "abc"
   merge = true
 }
 `)
 
-	assert.Contains(t, d.Text, "merging is not built yet")
-	assert.Contains(t, d.Text, "R1")
+	require.Len(t, found, 3, "%v", found)
+}
 
-	computed, _ := check(t, `workflow "w" {}
+func TestCheckLeavesAMergeStepThatDoesNotMergeWithoutSettings(t *testing.T) {
+	t.Parallel()
+
+	for _, merge := range []string{"merge = false", "merge = env.GO", ""} {
+		found, _ := check(t, "workflow \"w\" {}\nmerge \"ship\" {\n  head = \"abc\"\n  "+merge+"\n}\n")
+
+		assert.Empty(t, found, merge)
+	}
+}
+
+func TestCheckRefusesAHoldLabelWithAComma(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  hold = \"hold,wip\"\n}\n")
+
+	assert.Contains(t, d.Text, "comma")
+	assert.Equal(t, 8, d.Line)
+	assert.Equal(t, 10, d.Col)
+}
+
+func TestCheckRefusesAForbidTextItemThatIsEmptyOrNotAPattern(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{"empty": `""`, "unclosed": `"a(b"`}
+	for name, item := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  forbid_text = [\"ok\", "+item+"]\n}\n")
+
+			assert.Contains(t, d.Text, "forbid_text")
+			assert.Equal(t, 8, d.Line)
+			assert.Equal(t, 24, d.Col, "the problem sits on the item")
+		})
+	}
+}
+
+func TestCheckRefusesAForbidTextItemThatIsNotAString(t *testing.T) {
+	t.Parallel()
+
+	for name, item := range map[string]string{"a number": "7", "a list": `["a"]`, "a bool": "true"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  forbid_text = [\"ok\", "+item+"]\n}\n")
+
+			assert.Contains(t, d.Text, "forbid_text")
+			assert.Contains(t, d.Text, "string")
+			assert.Equal(t, 8, d.Line)
+			assert.Equal(t, 24, d.Col, "the problem sits on the item")
+		})
+	}
+}
+
+func TestCheckRefusesAForbidTextThatIsNotAList(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  forbid_text = \"abc\"\n}\n")
+
+	assert.Contains(t, d.Text, "list")
+	assert.Equal(t, 8, d.Line)
+}
+
+func TestCheckRefusesAnUnknownChildrenValue(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  children = \"always\"\n}\n")
+
+	assert.Contains(t, d.Text, "`always`")
+	assert.Contains(t, d.Text, "Use one of")
+	assert.Equal(t, 8, d.Line)
+}
+
+func TestCheckReadsAMergeSettingThatAnExpressionComputesAtRunTime(t *testing.T) {
+	t.Parallel()
+
+	found, _ := check(t, mergeSettings[:len(mergeSettings)-2]+"  hold = env.HOLD\n  forbid_text = [env.PATTERN]\n  children = env.KIND\n}\n")
+
+	assert.Empty(t, found)
+}
+
+func TestCheckRefusesAnUnknownEnvNameInAMergeSetting(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, `workflow "w" {}
 merge "ship" {
-  head  = "abc"
-  merge = env.GO
+  head = "abc"
+  repo = nope.REPO
 }
 `)
 
-	assert.Empty(t, computed, "a computed value is refused by the step, not by the check")
+	assert.Contains(t, d.Text, "nope")
 }
 
 func TestCheckRejectsAnUnknownMergeOutputAndAnUnknownMergeArgument(t *testing.T) {
