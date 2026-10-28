@@ -369,7 +369,11 @@ In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, t
 
 One HCL file is one workflow. A `workflow "<name>"` block holds `method_version` and `require_model`. The step blocks are `agent`, `command`, `gate`, `loop`, `merge` and `wait`. Steps run in file order, and a `loop` holds its own steps. The schema names the arguments and the built-in outputs of each block. A method value, such as a prompt or a model name, is a value in the file and never a Go constant.
 
-A step reads another step with `<kind>.<name>.<output>`. It reads the work item with `item.<field>`, the environment with `env.<NAME>`, and the round with `loop.round` or `loop.<name>.exhausted`. A step that was skipped has null outputs. `resume_from` names an agent with `agent.<name>`. A step name is unique in the whole file, across all kinds.
+A step reads another step with `<kind>.<name>.<output>`. It reads the work item with `item.<field>`, the environment with `env.<NAME>`, and the round with `loop.round` or `loop.<name>.exhausted`. A step that was skipped has null outputs.
+
+Inside a loop, `loop.previous.<kind>.<name>.<output>` reads the output that a step of the same loop recorded in the round before. In round 1 it is null, and so is a step that a `when` skipped in the round before. The step may be the reading step itself or a later step, because the round before has run. The check refuses the read outside a loop, for a step of another loop, and as the value of `resume_from`. `==` with null gives false and `!=` with null gives true, so `loop.previous.agent.fix.violations == ""` is false in round 1 and `!= ""` is true. A bare condition on null, or a string template that holds null, is an error. This holds in `when`, `until` and `inputs`. The values come from the recorded steps, so a replay reads the same values.
+
+`resume_from` names an agent with `agent.<name>`. A step name is unique in the whole file, across all kinds.
 
 `until` of a loop is checked right after the last step it names. It can read any step in the body of the loop, which the walk visits after the loop itself.
 
@@ -413,6 +417,8 @@ Phases run on the queue `agents`. The partition key of a phase is the login, and
 ### Fix rounds
 
 The workflow file sets the fix rounds. `examples/remediation/workflow.hcl` holds one `loop` with `max = 6`. A round is one review and one fix. The loop starts with a review, so five fix rounds need six reviews: the sixth review reads the fifth fix. The `fix` step has a `when` of `loop.round <= 5`, so the sixth pass never fixes.
+
+The loop also gates on the violations of the lane runs. The latest violations are `agent.implement.violations` in round 1, and after that `loop.previous.agent.fix.violations`. The review reads them. The `fix` step runs when they are not empty, even if the review approves, and it gets them ahead of the review text as findings. The loop does not end while they are not empty. A hit in any lane run so forces one more fix round and one more review of it. If the violations are still not empty at round 6, the loop is exhausted and the owner rules.
 
 | Round | The `fix` agent |
 |---|---|

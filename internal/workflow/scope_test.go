@@ -217,6 +217,33 @@ func TestScopeBoolPassesTheErrorOfTheValue(t *testing.T) {
 	require.ErrorContains(t, err, "has not run yet")
 }
 
+// A skipped step gives null. The language says: null == "" is false, null != "" is true, and a
+// bare condition on null is an error. when, until and inputs read the same Value and Bool.
+func TestScopeComparesNullWithEqualsAsFalseAndWithNotEqualsAsTrue(t *testing.T) {
+	t.Parallel()
+
+	scope, steps := newScope(t)
+	scope.Skip(steps["fix"])
+
+	for text, want := range map[string]bool{
+		`agent.fix.verdict == ""`:   false,
+		`agent.fix.verdict != ""`:   true,
+		`agent.fix.verdict == null`: true,
+		`agent.fix.verdict != null`: false,
+	} {
+		got, err := scope.Bool(expression(t, text), 0)
+		require.NoError(t, err, text)
+		assert.Equal(t, want, got, text)
+
+		value, err := scope.Value(expression(t, text), 0)
+		require.NoError(t, err, text)
+		assert.Equal(t, cty.BoolVal(want), value, text)
+	}
+
+	_, err := scope.Bool(expression(t, `agent.fix.verdict`), 0)
+	require.Error(t, err, "a bare condition on null is an error")
+}
+
 func TestOutputsDeclareOneListForEachKind(t *testing.T) {
 	t.Parallel()
 

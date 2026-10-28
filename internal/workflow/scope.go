@@ -77,6 +77,9 @@ type Scope struct {
 	item map[string]string
 	env  map[string]string
 	ran  map[Kind]map[string]cty.Value
+
+	// previous holds the outputs that the steps of the loop around the expression recorded in the round before. It is nil outside a loop.
+	previous map[Kind]map[string]cty.Value
 }
 
 // NewScope returns a scope with an item and an environment and no step that ran.
@@ -86,6 +89,45 @@ func NewScope(item, env map[string]string) *Scope {
 
 // Record stores the outputs of a step that ran. An output that values does not hold is a typed null.
 func (s *Scope) Record(step Step, values map[string]cty.Value) {
+	put(s.ran, step, object(step, values))
+}
+
+// Skip stores a step that did not run because its `when` was false. All its outputs are typed nulls.
+func (s *Scope) Skip(step Step) { s.Record(step, nil) }
+
+// EnterLoop starts a loop. Until the first round ends, `loop.previous` holds a typed null for each output of each step of the body.
+// It returns the function that leaves the loop and gives back the `loop.previous` of the loop around it.
+func (s *Scope) EnterLoop(loop *Loop) (leave func()) {
+	outer := s.previous
+	s.previous = map[Kind]map[string]cty.Value{}
+
+	for _, step := range loop.Steps {
+		put(s.previous, step, object(step, nil))
+	}
+
+	return func() { s.previous = outer }
+}
+
+// EndRound records the outputs that the steps of the body of loop hold at the end of a round. The next round reads them as `loop.previous`.
+// It runs after a round that did not end the loop, so every step of the body has run in that round, or was skipped.
+func (s *Scope) EndRound(loop *Loop) {
+	s.previous = map[Kind]map[string]cty.Value{}
+
+	for _, step := range loop.Steps {
+		put(s.previous, step, s.ran[step.Kind()][step.Label()])
+	}
+}
+
+func put(into map[Kind]map[string]cty.Value, step Step, value cty.Value) {
+	if into[step.Kind()] == nil {
+		into[step.Kind()] = map[string]cty.Value{}
+	}
+
+	into[step.Kind()][step.Label()] = value
+}
+
+// object returns the outputs of a step as one value. An output that values does not hold is a typed null.
+func object(step Step, values map[string]cty.Value) cty.Value {
 	declared, _ := stepOutputs(step)
 	attrs := maps.Clone(values)
 
@@ -99,15 +141,8 @@ func (s *Scope) Record(step Step, values map[string]cty.Value) {
 		}
 	}
 
-	if s.ran[step.Kind()] == nil {
-		s.ran[step.Kind()] = map[string]cty.Value{}
-	}
-
-	s.ran[step.Kind()][step.Label()] = cty.ObjectVal(attrs)
+	return cty.ObjectVal(attrs)
 }
-
-// Skip stores a step that did not run because its `when` was false. All its outputs are typed nulls.
-func (s *Scope) Skip(step Step) { s.Record(step, nil) }
 
 // Context returns the names an expression may read. round is the round of the loop around the
 // expression, counted from 1, or 0 outside a loop. The context holds no function.
@@ -117,18 +152,37 @@ func (s *Scope) Context(round int) *hcl.EvalContext {
 		rootEnv:  texts(s.env),
 	}
 
-	for _, kind := range []Kind{KindAgent, KindCommand, KindGate, KindMerge, KindWait} {
+	for _, kind := range stepKinds() {
 		vars[string(kind)] = cty.ObjectVal(valuesOr(s.ran[kind]))
 	}
 
+	vars[string(KindLoop)] = s.loops(round)
+
+	return &hcl.EvalContext{Variables: vars}
+}
+
+// loops returns the value of `loop`: the loops that ran, `round` inside a loop and `previous` inside a loop.
+func (s *Scope) loops(round int) cty.Value {
 	loops := valuesOr(s.ran[KindLoop])
 	if round > 0 {
 		loops[roundName] = cty.NumberIntVal(int64(round))
 	}
 
-	vars[string(KindLoop)] = cty.ObjectVal(loops)
+	if s.previous != nil {
+		loops[previousName] = previousValue(s.previous)
+	}
 
-	return &hcl.EvalContext{Variables: vars}
+	return cty.ObjectVal(loops)
+}
+
+// previousValue returns the object that `loop.previous` reads: the outputs of each step, by kind and name.
+func previousValue(previous map[Kind]map[string]cty.Value) cty.Value {
+	kinds := map[string]cty.Value{}
+	for kind, steps := range previous {
+		kinds[string(kind)] = cty.ObjectVal(steps)
+	}
+
+	return cty.ObjectVal(kinds)
 }
 
 func texts(m map[string]string) cty.Value {
@@ -181,16 +235,16 @@ func (s *Scope) notRun(expr hcl.Expression) error {
 	return nil
 }
 
-// stepReference returns the kind and the name that a traversal points at. It reports false for a root that is not a step or a loop, and for loop.round.
+// stepReference returns the kind and the name that a traversal points at. It reports false for a root that is not a step or a loop, and for loop.round and loop.previous.
 func stepReference(tr hcl.Traversal) (Kind, string, bool) {
 	kind := Kind(tr.RootName())
-	if kind != KindAgent && kind != KindCommand && kind != KindGate && kind != KindMerge && kind != KindWait && kind != KindLoop {
+	if !isStepKind(kind) {
 		return "", "", false
 	}
 
 	name, named := attribute(tr, 1)
 
-	return kind, name, named && (kind != KindLoop || name != roundName)
+	return kind, name, named && (kind != KindLoop || (name != roundName && name != previousName))
 }
 
 // Bool evaluates a condition. A value that is null or is not a bool is an error.

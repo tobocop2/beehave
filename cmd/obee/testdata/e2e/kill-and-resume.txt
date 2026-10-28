@@ -17,13 +17,15 @@ stdout '^item-7-r1\tdone\tmerge: merged$'
 
 grep -count=1 '^plan ' calls.log
 grep -count=2 '^implement ' calls.log
-grep -count=1 '^review ' calls.log
+grep -count=2 '^review ' calls.log
+grep -count=1 '^fix ' calls.log
 
 cmp events.log expected-events.log
 
 -- hang --
 implement
 -- verdicts --
+approve
 approve
 -- expected-events.log --
 claim 7

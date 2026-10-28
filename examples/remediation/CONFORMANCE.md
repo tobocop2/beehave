@@ -144,7 +144,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-G-44 | Each profile states its gate command and the commands never run here | file | gap | - | - | S1-G-44, S1-G-45, S1-PS-03, S1-PS-14 |
 | S1-G-48 | Route a gate red the lane did not cause before a merge | core | gap | - | - | S1-G-48, S1-R-49 |
 | S1-P-04 | A reviewer builds its own tables and does not fix, commit or push | core | gap | - | - | S1-P-04, S1-R-59 |
-| S1-P-05 | Run the transcript check before accepting a report | core | gap | forbid_commands on workflow.hcl agent implement; the example shows the implement violations to the review, and the gate on violations is a gap until a loop can read the previous round | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-P-05 |
+| S1-P-05 | Run the transcript check before accepting a report | core | proven | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run, read with loop.previous, forces a fix round and keeps the loop open | TestScripts | S1-P-05 |
 | S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | tools/remedy handoff | TestHandoff_ALaunchedJobThatNobodyReadIsExitCodeOneAndNamesTheCap | S1-P-06 |
 | S1-P-07 | Report length limits per item and per batch | core | gap | - | - | S1-P-07, S1-P-08 |
 | S1-P-09 | Dump issue and PR threads into files and name them in the brief | core | gap | - | - | S1-P-09 |
@@ -209,9 +209,9 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-X-15 | Check the forge head against the worktree head before each dispatch | core | gap | - | - | S1-X-15 |
 | S1-X-18 | After an interrupted action, ask the provider what exists | core | gap | - | - | S1-X-18, S1-X-23, S1-X-21 |
 | S1-X-19 | Resume a lane after a stop; refuse an over-cap resume | core | gap | - | - | S1-X-19 |
-| S1-S-01 | No delete from shell variables; no bulk staging; no remote delete | core | proven | forbid_commands on workflow.hcl agent implement; the example shows the implement violations to the review, and the gate on violations is a gap until a loop can read the previous round | TestScripts | S1-S-01, S1-S-02, S1-S-03, S1-S-05, S1-S-06, S1-S-07, S1-S-16 |
-| S1-S-04 | Never pass a script string to a shell | core | gap | forbid_commands on workflow.hcl agent implement; the example shows the implement violations to the review, and the gate on violations is a gap until a loop can read the previous round | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-04 |
-| S1-S-08 | A call-time hook refuses bulk staging, deletes and unparseable quoting | core | gap | forbid_commands on workflow.hcl agent implement; the example shows the implement violations to the review, and the gate on violations is a gap until a loop can read the previous round | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-08 |
+| S1-S-01 | No delete from shell variables; no bulk staging; no remote delete | core | proven | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run forces a fix round | TestScripts | S1-S-01, S1-S-02, S1-S-03, S1-S-05, S1-S-06, S1-S-07, S1-S-16 |
+| S1-S-04 | Never pass a script string to a shell | core | expressed | workflow.hcl agent implement | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-04 |
+| S1-S-08 | A call-time hook refuses bulk staging, deletes and unparseable quoting | core | gap | forbid_commands on workflow.hcl agent implement records a hit after the run and forces a fix round; no hook refuses a call at call time | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-08 |
 | S1-S-09 | No startup-hook files or search-path overrides in a lane | core | gap | - | - | S1-S-09 |
 | S1-S-10 | A many-process probe runs under a process cap | core | gap | - | - | S1-S-10, S1-S-23 |
 | S1-S-13 | Tell the lane that its config's attribution instruction does not apply | skill | gap | - | - | S1-S-13 |

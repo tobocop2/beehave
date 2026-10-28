@@ -18,15 +18,20 @@ agent "implement" {
   require_skills = ["blast-radius-review"]
 
   # A command of these kinds in the transcript is recorded in agent.implement.violations. The step does not fail.
-  # The review sees only the implement violations, because a loop cannot yet read the previous round, so the gate on violations is a gap.
+  # The loop below reads the violations of the latest run of a lane: a hit sends the run back to a fix round.
   forbid_commands = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
   inputs          = { item = { id = item.id, title = item.title, body = item.body }, plan = agent.plan.text }
 }
 
 # A round is one fix and one review of it. The loop starts with a review, so five fix rounds need six passes: the sixth reviews the fifth fix.
+# The violations of the latest lane run are agent.implement.violations in round 1 and, after that, the violations of the fix of the round before:
+#   loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations
+# Call this expression L. It appears five times below: in until, in the review inputs, in the when of fix and twice in the findings of fix. Each copy must match L exactly.
+# The language has no local value, so a change to L needs an edit of every copy. A follow-up item records L once.
+# The review reads them. A round with violations does not end the loop, and its fix gets them as findings ahead of the review text.
 loop "review_fix" {
   max   = 6
-  until = gate.check.passed && agent.review.verdict == "approve"
+  until = gate.check.passed && agent.review.verdict == "approve" && (loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations) == ""
 
   # The gate command is the one of the project.
   gate "check" {}
@@ -41,7 +46,7 @@ loop "review_fix" {
 
     # A review that writes no verdict file is asked once more.
     output_tries = 2
-    inputs       = { item = { id = item.id, title = item.title, body = item.body }, violations = agent.implement.violations }
+    inputs       = { item = { id = item.id, title = item.title, body = item.body }, violations = loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations }
   }
 
   # Rounds 1 to 3 resume the implementer. Rounds 4 and 5 start fresh, one tier up.
@@ -49,11 +54,17 @@ loop "review_fix" {
     prompt      = "prompts/fix.md"
     model       = loop.round <= 3 ? "sonnet" : "opus"
     resume_from = loop.round <= 3 ? agent.implement : null
-    when        = loop.round <= 5 && !(gate.check.passed && agent.review.verdict == "approve")
+    when        = loop.round <= 5 && !(gate.check.passed && agent.review.verdict == "approve" && (loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations) == "")
 
-    # The fix violations are recorded and the review does not read them yet, because a loop cannot yet read the previous round.
+    # The violations of this fix are recorded. The review of the next round reads them as loop.previous.agent.fix.violations.
     forbid_commands = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
-    inputs          = { item = { id = item.id, title = item.title, body = item.body }, findings = gate.check.passed ? agent.review.text : gate.check.report, round = loop.round }
+    inputs = {
+      item  = { id = item.id, title = item.title, body = item.body }
+      round = loop.round
+
+      # The violations come first, one for each line, then the review text or the gate report.
+      findings = (loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations) == "" ? (gate.check.passed ? agent.review.text : gate.check.report) : "${loop.round == 1 ? agent.implement.violations : loop.previous.agent.fix.violations}\n\n${gate.check.passed ? agent.review.text : gate.check.report}"
+    }
   }
 }
 

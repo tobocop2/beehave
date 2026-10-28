@@ -494,25 +494,42 @@ func (w *walker) record(step workflow.Step, result stepResult) error {
 
 // loop runs the body up to Max rounds. Until is checked right after the last step it names.
 func (w *walker) loop(loop *workflow.Loop, outer rounds) error {
+	leave := w.scope.EnterLoop(loop)
+	exhausted, err := w.rounds(loop, outer)
+
+	leave()
+
+	if err != nil {
+		return err
+	}
+
+	w.scope.Record(loop, map[string]cty.Value{"exhausted": cty.BoolVal(exhausted)})
+
+	return nil
+}
+
+// rounds runs the rounds of a loop and reports whether the last round ended without until holding.
+// After each round that did not end the loop, the next round reads its outputs as `loop.previous`.
+func (w *walker) rounds(loop *workflow.Loop, outer rounds) (bool, error) {
 	last := lastNamed(loop)
 	exhausted := false
 
 	for round := 1; round <= loop.Max; round++ {
 		stopped, err := w.round(loop, last, outer.in(round))
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if stopped {
 			break
 		}
 
+		w.scope.EndRound(loop)
+
 		exhausted = round == loop.Max
 	}
 
-	w.scope.Record(loop, map[string]cty.Value{"exhausted": cty.BoolVal(exhausted)})
-
-	return nil
+	return exhausted, nil
 }
 
 // round runs one round of a loop and reports whether until held.

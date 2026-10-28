@@ -164,6 +164,6 @@ thing not to redo; and these lines:
 
 This is round {{ .round }}. When the round is above 3, earlier agents already tried once in each round before this one, and you start fresh with only the findings below.
 
-The findings to fix:
+The findings to fix. A line that starts with a kind and a command, such as `bulk-staging: git add -A`, is a command that the workflow forbids and that the latest run used. Do not use it again:
 
 {{ .findings }}

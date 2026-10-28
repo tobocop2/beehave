@@ -20,6 +20,11 @@ const (
 	KindWait    Kind = "wait"
 )
 
+// stepKinds returns the kinds of a step that records outputs. A loop records only `exhausted`.
+func stepKinds() []Kind {
+	return []Kind{KindAgent, KindCommand, KindGate, KindMerge, KindWait}
+}
+
 // Step is one step block. Loop holds more steps.
 type Step interface {
 	Kind() Kind

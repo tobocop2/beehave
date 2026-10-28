@@ -21,10 +21,16 @@ const (
 	rootItem = "item"
 	rootEnv  = "env"
 
-	roundName = "round"
+	roundName    = "round"
+	previousName = "previous"
+	previousRoot = "loop.previous."
 
 	// attrOutput is the place of the output name in a reference such as agent.<name>.<output>.
 	attrOutput = 2
+	// The places of the parts of loop.previous.<kind>.<name>.<output>.
+	attrPreviousKind   = 2
+	attrPreviousName   = 3
+	attrPreviousOutput = 4
 	// nearSlack is the edit distance that a short name may be from its nearest valid name.
 	nearSlack = 2
 )
@@ -67,6 +73,24 @@ type site struct {
 // inLoop reports whether `loop.round` has a meaning for the step. The condition of a loop is inside it.
 func (s *site) inLoop() bool {
 	return len(s.ancestors) > 0 || s.step.Kind() == KindLoop
+}
+
+// container returns the name of the closest loop around the step, or "" for a step outside every loop. A step name is unique in the file.
+func (s *site) container() string {
+	if len(s.ancestors) == 0 {
+		return ""
+	}
+
+	return s.ancestors[len(s.ancestors)-1].Label()
+}
+
+// home returns the name of the loop that `loop.previous` reads for the step: the loop itself for its condition, the closest loop around it otherwise.
+func (s *site) home() string {
+	if s.step.Kind() == KindLoop {
+		return s.step.Label()
+	}
+
+	return s.container()
 }
 
 func (s *site) depend(on *site) {
@@ -119,14 +143,14 @@ func (c *checker) resolve(from *site, tr hcl.Traversal, whole bool) {
 	root := tr.RootName()
 	name, named := attribute(tr, 1)
 
-	switch Kind(root) {
-	case KindAgent, KindCommand, KindGate, KindMerge, KindWait:
+	switch {
+	case slices.Contains(stepKinds(), Kind(root)):
 		if named {
 			c.step(from, tr, Kind(root), name, whole)
 		} else {
 			c.add(tr.SourceRange(), fmt.Sprintf("`%s` needs a step name. Write `%s.<name>.<output>`.", root, root))
 		}
-	case KindLoop:
+	case Kind(root) == KindLoop:
 		c.loop(from, tr, name, named, whole)
 	default:
 		c.plain(tr.SourceRange(), root, name, named)
@@ -175,13 +199,59 @@ func (c *checker) loop(from *site, tr hcl.Traversal, next string, named, whole b
 
 	switch {
 	case !named:
-		c.add(at, "`loop` needs `round` or a loop name. Write `loop.round` or `loop.<name>.exhausted`.")
+		c.add(at, "`loop` needs `round`, `previous` or a loop name. Write `loop.round`, `loop.previous.<kind>.<name>.<output>` or `loop.<name>.exhausted`.")
 	case next == roundName && from.inLoop():
 	case next == roundName:
 		c.add(at, "`loop.round` is used outside a loop. Put the step in a `loop` block.")
+	case next == previousName:
+		c.previous(from, tr, whole)
 	default:
 		c.step(from, tr, KindLoop, next, whole)
 	}
+}
+
+// previous checks loop.previous.<kind>.<name>.<output>, the output that a step of the loop around the reference recorded in the round before.
+// The read follows no order, and it is no dependency: the round before has run. So the step may be the reference itself or a later step, and no cycle follows.
+func (c *checker) previous(from *site, tr hcl.Traversal, whole bool) {
+	at := tr.SourceRange()
+	kindName, _ := attribute(tr, attrPreviousKind)
+	name, named := attribute(tr, attrPreviousName)
+	kind := Kind(kindName)
+
+	switch {
+	case !from.inLoop():
+		c.add(at, "`loop.previous` is used outside a loop. Put the step in a `loop` block.")
+	case whole:
+		c.add(at, "`resume_from` names an agent of this round. Write `agent.<name>`; `loop.previous` is no agent.")
+	case !named || !isStepKind(kind):
+		c.add(at, "`loop.previous` needs a step. Write `loop.previous.<kind>.<name>.<output>`.")
+	default:
+		c.previousStep(from, tr, kind, name)
+	}
+}
+
+func (c *checker) previousStep(from *site, tr hcl.Traversal, kind Kind, name string) {
+	at := tr.SourceRange()
+
+	target := c.byName[name]
+	if target == nil || target.step.Kind() != kind {
+		c.unknown(at, kind, name)
+
+		return
+	}
+
+	if target.container() != from.home() {
+		c.add(at, fmt.Sprintf("`loop.previous` reads a step of the same loop, and `%s.%s` is not in this loop. Name a step of this loop.", kind, name))
+
+		return
+	}
+
+	c.output(tr, target, attrPreviousOutput)
+}
+
+// isStepKind reports whether kind names a step that has outputs.
+func isStepKind(kind Kind) bool {
+	return kind == KindLoop || slices.Contains(stepKinds(), kind)
 }
 
 // step checks a reference to the step name of kind, and its output. When whole is true the
@@ -203,7 +273,7 @@ func (c *checker) step(from *site, tr hcl.Traversal, kind Kind, name string, who
 	}
 
 	if _, named := attribute(tr, attrOutput); !whole || named {
-		c.output(tr, target)
+		c.output(tr, target, attrOutput)
 	}
 }
 
@@ -245,14 +315,20 @@ func (c *checker) unknownStep(at hcl.Range, kind Kind, name string) {
 	c.add(at, text+hint(name, valid))
 }
 
-func (c *checker) output(tr hcl.Traversal, target *site) {
+// output checks the output name that a reference holds at place.
+func (c *checker) output(tr hcl.Traversal, target *site, place int) {
 	kind, name := target.step.Kind(), target.step.Label()
 
-	output, named := attribute(tr, attrOutput)
+	output, named := attribute(tr, place)
 	valid, open := outputs(target.step)
 
 	if !named {
-		c.add(tr.SourceRange(), fmt.Sprintf("`%s.%s` must name an output. Write `%s.%s.<output>`.%s", kind, name, kind, name, hint("", valid)))
+		reference := fmt.Sprintf("%s.%s", kind, name)
+		if place == attrPreviousOutput {
+			reference = previousRoot + reference
+		}
+
+		c.add(tr.SourceRange(), fmt.Sprintf("`%s` must name an output. Write `%s.<output>`.%s", reference, reference, hint("", valid)))
 
 		return
 	}
