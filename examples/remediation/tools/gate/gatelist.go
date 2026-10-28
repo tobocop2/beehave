@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/job"
 	"github.com/tobocop2/obee/internal/check"
 	"github.com/tobocop2/obee/internal/check/shell"
 
@@ -17,8 +18,8 @@ const (
 	gateColumns = 2
 	newline     = "\n"
 	blanks      = " \t"
-	skipMark    = shell.SkipMark
-	failPrefix  = shell.FailPrefix
+	skipMark    = job.SkipMark
+	failPrefix  = job.FailPrefix
 )
 
 var (
@@ -620,10 +621,10 @@ func skipLines(list *gateList, script *gateScript, listPath string) []string {
 	return lines
 }
 
-// Job compares a job script with the gate list. A gate list that cannot be read is a refusal that keeps the defects found in the job first. The caller adds the lines of JobScript.
+// Job compares a job script with the gate list. A gate list that cannot be read is a refusal that keeps the defects found in the job first. The caller adds the lines of job.Script.
 // The script and the list are Go strings. A byte that is not UTF-8 stays as it is in a line; the caller converts the lines it prints.
-func Job(script, listText, listPath, jobDir string, source shell.SourceReader) (Result, error) {
-	units, _ := shell.ParseUnits(script) // JobScript reports the lines that do not parse
+func Job(script, listText, listPath, jobDir string, source job.SourceReader) (Result, error) {
+	units, _ := shell.ParseUnits(script) // job.Script reports the lines that do not parse
 	read := readGateScript(units)
 	list := readGateList(listText, listPath)
 
@@ -638,7 +639,7 @@ func Job(script, listText, listPath, jobDir string, source shell.SourceReader) (
 
 	steps, run, unstated := stepLines(list, read)
 	result := Result{steps: len(list.steps), run: run, skips: len(read.skipNames), unstated: unstated}
-	result.Lines = append(append(append(fails, steps...), shell.FixedStatusLines(units, jobDir, source)...), skipLines(list, read, listPath)...)
+	result.Lines = append(append(append(fails, steps...), job.FixedStatusLines(units, jobDir, source)...), skipLines(list, read, listPath)...)
 
 	return result, nil
 }

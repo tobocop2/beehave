@@ -23,7 +23,7 @@ func isWrapperWord(word string) bool {
 
 		parts := strings.Split(strings.ToLower(match[1]), "_")
 
-		return slices.Contains([]string{sshName, "box"}, parts[len(parts)-1])
+		return slices.Contains([]string{SSHName, "box"}, parts[len(parts)-1])
 	}
 
 	base := strings.ToLower(path.Base(word))
@@ -32,14 +32,14 @@ func isWrapperWord(word string) bool {
 	}
 
 	return slices.ContainsFunc(nameParts.Split(strings.TrimSuffix(base, ".sh"), -1), func(part string) bool {
-		return part == sshName || part == "box"
+		return part == SSHName || part == "box"
 	})
 }
 
 // holdsWrapper reports whether a word of the text is a host wrapper, ssh itself or a known wrapper function.
 func holdsWrapper(text string, funcs map[string]bool) bool {
 	return slices.ContainsFunc(wordToken.FindAllString(text, -1), func(token string) bool {
-		return isWrapperWord(token) || path.Base(token) == sshName || funcs[token]
+		return isWrapperWord(token) || path.Base(token) == SSHName || funcs[token]
 	})
 }
 
@@ -86,7 +86,7 @@ func gcloudValueFlag(flag string) bool {
 // gcloudRemote returns the remote command text of a gcloud ssh command.
 func gcloudRemote(words []string) (string, bool) {
 	rest := words[1:]
-	if !slices.Contains(gcloudPositionals(rest), sshName) {
+	if !slices.Contains(gcloudPositionals(rest), SSHName) {
 		return "", false
 	}
 
@@ -142,7 +142,7 @@ func remoteOf(words []string, funcs map[string]bool) (string, bool) {
 	switch {
 	case base == "gcloud":
 		return gcloudRemote(words)
-	case base == sshName:
+	case base == SSHName:
 		return sshRemote(words), true
 	case isWrapperWord(words[0]) || funcs[base]:
 		k := 1

@@ -71,7 +71,7 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.hcl reads it.
 func commands() []command {
-	return slices.Concat(roundCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands())
+	return slices.Concat(roundCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
 }
 
 // ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.

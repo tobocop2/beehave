@@ -52,7 +52,7 @@ func TestScanTranscriptCases(t *testing.T) {
 	}
 }
 
-func TestScanAndJobScriptReadEveryCutOfACaseWithoutPanicking(t *testing.T) {
+func TestScanReadsEveryCutOfACaseWithoutPanicking(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range transcriptCases() {
@@ -60,7 +60,6 @@ func TestScanAndJobScriptReadEveryCutOfACaseWithoutPanicking(t *testing.T) {
 			assert.NotPanics(t, func() {
 				shell.Scan(tc.command[:end])
 				shell.Scan(tc.command[end:])
-				shell.JobScript(tc.command[:end])
 			}, "%q cut at %d", tc.command, end)
 		}
 	}
@@ -172,12 +171,6 @@ func FuzzScan(f *testing.F) {
 	seedFuzz(f)
 
 	f.Fuzz(func(_ *testing.T, text string) { shell.Scan(text) })
-}
-
-func FuzzJobScript(f *testing.F) {
-	seedFuzz(f)
-
-	f.Fuzz(func(_ *testing.T, text string) { shell.JobScript(text) })
 }
 
 func TestScanKeepsAVariableCommandWordThatHidesNoRule(t *testing.T) {

@@ -1,4 +1,4 @@
-package shell
+package job
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
+
+	"github.com/tobocop2/obee/internal/check/shell"
 )
 
 const (
@@ -47,14 +49,14 @@ type assigns struct {
 	seen              map[string]bool
 	jobDir            string
 	read              SourceReader
-	words             *scanner
+	words             *shell.Reader
 }
 
 func newAssigns(jobDir string, read SourceReader) *assigns {
-	return &assigns{assigned: map[string]int{}, literal: map[string]int{}, seen: map[string]bool{}, jobDir: jobDir, read: read, words: newScanner()}
+	return &assigns{assigned: map[string]int{}, literal: map[string]int{}, seen: map[string]bool{}, jobDir: jobDir, read: read, words: shell.NewReader()}
 }
 
-func (a *assigns) scan(units []Unit) {
+func (a *assigns) scan(units []shell.Unit) {
 	for _, u := range units {
 		syntax.Walk(u.File, func(node syntax.Node) bool {
 			a.visit(u, node)
@@ -64,7 +66,7 @@ func (a *assigns) scan(units []Unit) {
 	}
 }
 
-func (a *assigns) visit(u Unit, node syntax.Node) {
+func (a *assigns) visit(u shell.Unit, node syntax.Node) {
 	switch typed := node.(type) {
 	case *syntax.Assign:
 		a.assign(u, typed)
@@ -122,7 +124,7 @@ func arithName(expr syntax.ArithmExpr) string {
 	return name
 }
 
-func (a *assigns) assign(u Unit, assign *syntax.Assign) {
+func (a *assigns) assign(u shell.Unit, assign *syntax.Assign) {
 	if assign.Naked || assign.Name == nil {
 		return
 	}
@@ -130,20 +132,20 @@ func (a *assigns) assign(u Unit, assign *syntax.Assign) {
 	name := assign.Name.Value
 	a.assigned[name]++
 
-	if !assign.Append && assign.Value != nil && isNumber(a.words.literal(u, assign.Value)) {
+	if !assign.Append && assign.Value != nil && isNumber(a.words.Literal(u, assign.Value)) {
 		a.literal[name]++
 	}
 }
 
 // let reads the quoted expressions of `let "R += 1"`, which the parser keeps as words.
-func (a *assigns) let(u Unit, clause *syntax.LetClause) {
+func (a *assigns) let(u shell.Unit, clause *syntax.LetClause) {
 	for _, expr := range clause.Exprs {
 		word, ok := expr.(*syntax.Word)
 		if !ok {
 			continue
 		}
 
-		parsed, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Arithmetic(strings.NewReader(a.words.literal(u, word)))
+		parsed, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Arithmetic(strings.NewReader(a.words.Literal(u, word)))
 		if err != nil {
 			continue
 		}
@@ -156,7 +158,7 @@ func (a *assigns) let(u Unit, clause *syntax.LetClause) {
 	}
 }
 
-func (a *assigns) call(u Unit, call *syntax.CallExpr) {
+func (a *assigns) call(u shell.Unit, call *syntax.CallExpr) {
 	if len(call.Args) == 0 {
 		return
 	}
@@ -172,17 +174,17 @@ func (a *assigns) call(u Unit, call *syntax.CallExpr) {
 		}
 	case "source", ".":
 		if len(call.Args) > 1 {
-			a.sourceFile(strings.NewReplacer(`"`, "", "'", "").Replace(SrcOf(u.Src, call.Args[1])))
+			a.sourceFile(strings.NewReplacer(`"`, "", "'", "").Replace(shell.SrcOf(u.Src, call.Args[1])))
 		}
-	case "eval":
+	case shell.CmdEval:
 		a.eval(strings.Join(args[1:], " "))
 	}
 }
 
-func (a *assigns) literals(u Unit, words []*syntax.Word) []string {
+func (a *assigns) literals(u shell.Unit, words []*syntax.Word) []string {
 	out := make([]string, len(words))
 	for i, word := range words {
-		out[i] = a.words.literal(u, word)
+		out[i] = a.words.Literal(u, word)
 	}
 
 	return out
@@ -204,7 +206,7 @@ func (a *assigns) eval(body string) {
 		return
 	}
 
-	units, _ := ParseUnits(body)
+	units, _ := shell.ParseUnits(body)
 	a.scan(units)
 }
 
@@ -236,7 +238,7 @@ func (a *assigns) scanFile(file string) bool {
 
 	for _, candidate := range candidates {
 		if text, ok := a.read(candidate); ok {
-			units, _ := ParseUnits(text)
+			units, _ := shell.ParseUnits(text)
 			a.scan(units)
 
 			return true
@@ -340,7 +342,7 @@ func (a *assigns) fixedStatus(line string) string {
 		rest = rest[found[1]:]
 
 		token := rest
-		if token != "" && strings.IndexByte(quoteCharacters, token[0]) >= 0 {
+		if token != "" && strings.IndexByte(shell.QuoteCharacters, token[0]) >= 0 {
 			token = token[1:]
 		}
 
@@ -353,10 +355,10 @@ func (a *assigns) fixedStatus(line string) string {
 // printed collects the text of the commands that print, the here-documents and the here-strings of a job.
 type printed struct {
 	lines []string
-	words *scanner
+	words *shell.Reader
 }
 
-func (p *printed) collect(units []Unit) {
+func (p *printed) collect(units []shell.Unit) {
 	for _, u := range units {
 		syntax.Walk(u.File, func(node syntax.Node) bool {
 			switch typed := node.(type) {
@@ -372,56 +374,56 @@ func (p *printed) collect(units []Unit) {
 }
 
 // call keeps a print command. The text argument of any other command is read as shell, as `ssh host 'echo ...'` needs.
-func (p *printed) call(u Unit, call *syntax.CallExpr) {
+func (p *printed) call(u shell.Unit, call *syntax.CallExpr) {
 	if len(call.Args) == 0 {
 		return
 	}
 
-	if name := p.words.literal(u, call.Args[0]); name == cmdEcho || name == cmdPrintf {
-		p.lines = append(p.lines, flatText(SrcOf(u.Src, call)))
+	if name := p.words.Literal(u, call.Args[0]); name == cmdEcho || name == cmdPrintf {
+		p.lines = append(p.lines, flatText(shell.SrcOf(u.Src, call)))
 
 		return
 	}
 
 	for _, arg := range call.Args[1:] {
-		if text := p.words.literal(u, arg); strings.ContainsAny(text, blanks) {
-			units, _ := ParseUnits(text)
+		if text := p.words.Literal(u, arg); strings.ContainsAny(text, blanks) {
+			units, _ := shell.ParseUnits(text)
 			p.collect(units)
 		}
 	}
 }
 
-func (p *printed) redirects(u Unit, stmt *syntax.Stmt) {
+func (p *printed) redirects(u shell.Unit, stmt *syntax.Stmt) {
 	for _, redirect := range stmt.Redirs {
 		switch {
 		case redirect.Op == syntax.WordHdoc:
-			p.lines = append(p.lines, flatText(SrcOf(u.Src, redirect.Word)))
+			p.lines = append(p.lines, flatText(shell.SrcOf(u.Src, redirect.Word)))
 		case redirect.Hdoc != nil && runsShell(u, stmt):
-			units, _ := ParseUnits(SrcOf(u.Src, redirect.Hdoc))
+			units, _ := shell.ParseUnits(shell.SrcOf(u.Src, redirect.Hdoc))
 			p.collect(units)
 		case redirect.Hdoc != nil:
-			p.lines = append(p.lines, strings.Split(SrcOf(u.Src, redirect.Hdoc), newline)...)
+			p.lines = append(p.lines, strings.Split(shell.SrcOf(u.Src, redirect.Hdoc), shell.Newline)...)
 		}
 	}
 }
 
-func runsShell(u Unit, stmt *syntax.Stmt) bool {
+func runsShell(u shell.Unit, stmt *syntax.Stmt) bool {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Args) == 0 {
 		return false
 	}
 
-	name := path.Base(SrcOf(u.Src, call.Args[0]))
+	name := path.Base(shell.SrcOf(u.Src, call.Args[0]))
 
-	return isShell(name) || name == "ssh"
+	return shell.IsShell(name) || name == shell.SSHName
 }
 
 // FixedStatusLines returns the FAIL lines for a marker that prints a literal exit status.
-func FixedStatusLines(units []Unit, jobDir string, read SourceReader) []string {
+func FixedStatusLines(units []shell.Unit, jobDir string, read SourceReader) []string {
 	counts := newAssigns(jobDir, read)
 	counts.scan(units)
 
-	prints := &printed{words: newScanner()}
+	prints := &printed{words: shell.NewReader()}
 	prints.collect(units)
 
 	var lines []string

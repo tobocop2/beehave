@@ -349,7 +349,7 @@ func (s *scanner) scanWords(cmd *command, remote bool) {
 	name := path.Base(cmd.head[0])
 
 	switch {
-	case name == cmdEval && len(cmd.head) > 1:
+	case name == CmdEval && len(cmd.head) > 1:
 		s.scan(strings.Join(cmd.head[1:], " "), remote)
 	case name == "echo" || name == "printf":
 		s.contentDeletes(strings.Join(cmd.head[1:], " "))
@@ -392,7 +392,7 @@ func (s *scanner) scanDeletes(head []string, remote bool) {
 
 // contentDeletes adds a delete-text finding for each command of text that deletes: text a command writes or prints.
 func (s *scanner) contentDeletes(text string) {
-	for _, cmd := range s.commands(strings.ReplaceAll(text, `\n`, newline), false) {
+	for _, cmd := range s.commands(strings.ReplaceAll(text, `\n`, Newline), false) {
 		if deleteHit(cmd.head) {
 			s.add(model.FindingDeleteText, cmd.head)
 		}
@@ -429,7 +429,7 @@ func (s *scanner) scanRemote(cmd *command, remoteText string) {
 	}
 
 	if prev := cmd.prev; prev != nil && len(prev.head) > 0 && (path.Base(prev.head[0]) == "echo" || path.Base(prev.head[0]) == "printf") {
-		s.scan(strings.ReplaceAll(strings.Join(prev.head[1:], " "), `\n`, newline), true)
+		s.scan(strings.ReplaceAll(strings.Join(prev.head[1:], " "), `\n`, Newline), true)
 	}
 }
 
@@ -487,7 +487,7 @@ func (s *scanner) noteCall(u Unit, call *syntax.CallExpr, bodies *[][2]string) {
 	if len(call.Args) > 1 && SrcOf(u.Src, call.Args[0]) == "alias" {
 		name, value, found := strings.Cut(SrcOf(u.Src, call.Args[1]), "=")
 		if found && aliasName.MatchString(name) {
-			*bodies = append(*bodies, [2]string{name, strings.Trim(value, quoteCharacters)})
+			*bodies = append(*bodies, [2]string{name, strings.Trim(value, QuoteCharacters)})
 		}
 	}
 }

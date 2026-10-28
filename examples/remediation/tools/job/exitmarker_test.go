@@ -1,4 +1,4 @@
-package shell_test
+package job_test
 
 import (
 	"strings"

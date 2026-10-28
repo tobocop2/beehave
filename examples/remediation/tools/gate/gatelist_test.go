@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/gate"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/check/gate"
 )
 
 const (
