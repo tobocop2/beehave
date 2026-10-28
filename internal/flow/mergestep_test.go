@@ -30,6 +30,19 @@ func TestMergeStep_AWorkflowThatDoesNotSetMergeMarksReadyAndLeavesTheMergeToTheO
 	assert.Empty(t, result.SentBack)
 }
 
+func TestMergeStep_AnEnvNameThatTheEnvironmentLacksFailsTheStepAndNamesTheVariable(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.opts.Env = map[string]string{}
+
+	_, err := walkText(t, h, "workflow \"w\" {}\nmerge \"ship\" {\n  head = env.OWNER_LOGIN\n}\n")
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "OWNER_LOGIN")
+	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
+}
+
 func TestMergeStep_MergeTrueMergesAtThePinnedHead(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +87,7 @@ func TestMergeStep_MergeTrueInABuildWithoutAMergerRefusesAndNeverMarksReady(t *t
 	_, err := walkText(t, h, shipFlow("  merge = true\n"))
 
 	require.ErrorIs(t, err, errMergeNotBuilt)
-	require.ErrorContains(t, err, "R1")
+	require.ErrorContains(t, err, "not built yet")
 	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
 	assert.Empty(t, h.watch.reads)
 }

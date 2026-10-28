@@ -114,12 +114,12 @@ func TestRun_TheBeforeLineEscapesATabAndPrintsANull(t *testing.T) {
 	assert.Equal(t, "before: A\\tB\\n\\r\\\\\tfalse\tmain\t"+sha+"\t", result.Lines[0])
 }
 
-func TestRun_ReadsTheRepositoryBaseRoundAndOwnerFromTheRequest(t *testing.T) {
+func TestRun_ReadsTheRepositoryBaseAndOwnerFromTheRequest(t *testing.T) {
 	t.Parallel()
 
 	req := merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
-		Repo: "owner/name", Base: "main", Round: "r1", OwnerLogin: me, OwnerEmail: meMail,
+		Repo: "owner/name", Base: "main", OwnerLogin: me, OwnerEmail: meMail,
 	}
 	w := newWorld(t)
 	result := w.run(req)
@@ -139,13 +139,12 @@ func TestRun_TheBaseOfTheRequestIsTheBaseTheGuardExpects(t *testing.T) {
 	assert.Equal(t, "REFUSE: base is main, expected develop", last(result))
 }
 
-func TestRun_AMissingRoundSettingRefuses(t *testing.T) {
+func TestRun_AMissingSettingRefuses(t *testing.T) {
 	t.Parallel()
 
 	blanks := map[string]func(*merge.Request){
 		"base branch": func(r *merge.Request) { r.Base = "" },
 		"repository":  func(r *merge.Request) { r.Repo = "" },
-		"round name":  func(r *merge.Request) { r.Round = "" },
 	}
 	for name, blank := range blanks {
 		t.Run(name, func(t *testing.T) {

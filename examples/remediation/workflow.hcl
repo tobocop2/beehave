@@ -84,7 +84,20 @@ agent "settle" {
 
 # An approved head is marked ready and then left to the owner: this step does not set `merge`, so it never merges.
 # If the loop is exhausted, the run ends at `settle` and this step does not run. The owner then marks the pull request ready by hand.
+#
+# The settings for a merge are present, so the step can set `merge = true` once the merger exists. The repository, the base and the
+# owner identity come from the environment (`env.REPO`, `env.BASE`, `env.OWNER_LOGIN`, `env.OWNER_EMAIL`), so the file holds no login or address.
+# `base` is the integration branch of the repository, never the default branch.
+# `approved` is the verdict of the review step, which is not the step that wrote the code. Our own pull requests merge only when it is true.
+# `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
 merge "ship" {
-  head = gate.check.head
-  when = !loop.review_fix.exhausted
+  head        = gate.check.head
+  repo        = env.REPO
+  base        = env.BASE
+  hold        = "hold"
+  own         = { logins = [env.OWNER_LOGIN], emails = [env.OWNER_EMAIL] }
+  approved    = agent.review.verdict == "approve"
+  forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"]
+  children    = "retarget"
+  when        = !loop.review_fix.exhausted
 }

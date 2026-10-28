@@ -1,4 +1,4 @@
-// Package merge merges one reviewed pull request into the round base, pinned to the commit that a reviewer gated.
+// Package merge merges one reviewed pull request into the base, pinned to the commit that a reviewer gated.
 // Every guard refuses before the merge call. A pull request of ours is never merged: the first guard refuses it.
 package merge
 
@@ -79,7 +79,7 @@ type Forge interface {
 }
 
 // Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.hcl.
-// Repo, Base and Round name the repository, the base and the round. OwnerLogin and OwnerEmail are the login and address of the owner.
+// Repo and Base name the repository and the base. OwnerLogin and OwnerEmail are the login and address of the owner.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
@@ -87,7 +87,6 @@ type Request struct {
 	Gated         string
 	Repo          string
 	Base          string
-	Round         string
 	OwnerLogin    string
 	OwnerEmail    string
 	Runners       []string
