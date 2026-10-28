@@ -170,6 +170,31 @@ func TestProjectGate_AHostGateChecksOutTheHeadItReportsAndRunsNothingHere(t *tes
 	}
 }
 
+func TestProjectGate_TheCloneURLIsTheSourceOfTheProjectAndTheForgeIsNotAsked(t *testing.T) {
+	t.Parallel()
+
+	projects := clusterProject()
+	found := projects["p"]
+	found.Source = "https://example.test/shop.git"
+	projects["p"] = found
+
+	hosted := &fakeHost{state: model.JobSucceeded}
+	gate := projectGate{
+		projects: projects,
+		programs: programs{
+			trees: treeAt("/tree"),
+			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
+			hosts: func(string) (host.Host, error) { return hosted, nil },
+		},
+		forge: func(model.Project) (forge.Forge, error) { return nil, errFake },
+	}
+
+	_, err := gate.Run(t.Context(), "p", "1")
+
+	require.NoError(t, err)
+	assert.Contains(t, hosted.spec.Command, "git clone -- https://example.test/shop.git tree")
+}
+
 func TestProjectGate_AHostThatCannotRunTheJobEndsTheGateWithAnError(t *testing.T) {
 	t.Parallel()
 

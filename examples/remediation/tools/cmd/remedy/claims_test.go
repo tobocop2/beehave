@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,27 +48,71 @@ func TestOpenClaims_RepositoryThatNoProjectOwnsIsRefused(t *testing.T) {
 func TestClaimsOf_ProjectWithNoBeadsPrefixIsRefused(t *testing.T) {
 	t.Parallel()
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), model.Project{Claims: model.ClaimsBeads})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), nil, model.Project{Claims: model.ClaimsBeads})
 
 	require.Error(t, err)
 	assert.Nil(t, claims)
 	assert.Contains(t, err.Error(), "beads id prefix")
 }
 
-func TestClaimsOf_LocalClaimsAreRefusedAsNotBuiltYet(t *testing.T) {
+func stateAt(dir string) func() (string, error) {
+	return func() (string, error) { return dir, nil }
+}
+
+func TestClaimsOf_LocalClaimsAreTheLocalDbOfTheStateFolder(t *testing.T) {
 	t.Parallel()
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), model.Project{Name: "p", Claims: model.ClaimsLocal, BeadsPrefix: "p"})
+	state := t.TempDir()
+
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(state), model.Project{Name: "p", Claims: model.ClaimsLocal})
+
+	require.NoError(t, err)
+	require.NoError(t, claims.Take(t.Context(), "ownerone", "fix-login"))
+	assert.FileExists(t, filepath.Join(state, "local.db"))
+}
+
+func TestClaimsOf_LocalClaimsInAStateFolderThatCannotBeResolvedAreRefused(t *testing.T) {
+	t.Parallel()
+
+	failing := func() (string, error) { return "", errors.New("no home folder") }
+
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), failing, model.Project{Name: "p", Claims: model.ClaimsLocal})
+
+	require.ErrorContains(t, err, "no home folder")
+	assert.Nil(t, claims)
+}
+
+func TestClaimsOf_LocalClaimsInAStateFolderThatCannotBeOpenedAreRefused(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(filepath.Join(file, "state")), model.Project{Name: "p", Claims: model.ClaimsLocal})
 
 	require.Error(t, err)
 	assert.Nil(t, claims)
-	assert.Contains(t, err.Error(), "the local claim store is not built yet")
+}
+
+func TestOpenClaims_OpensTheLocalClaimsOfALocalProjectInTheStateFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), treeFolderMode))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.hcl"), []byte("source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"), 0o600))
+	state := filepath.Join(t.TempDir(), "state")
+
+	claims, err := openClaims(map[string]string{"OBEE_CONFIG": dir, "OBEE_STATE_DIR": state}, proctest.Always(model.CommandResult{}))("/srv/repo")
+
+	require.NoError(t, err)
+	require.NoError(t, claims.Take(t.Context(), "ownerone", "fix-login"))
+	assert.FileExists(t, filepath.Join(state, "local.db"))
 }
 
 func TestClaimsOf_UnknownClaimStoreIsRefused(t *testing.T) {
 	t.Parallel()
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), model.Project{Name: "p", Claims: "nope"})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), nil, model.Project{Name: "p", Claims: "nope"})
 
 	require.Error(t, err)
 	assert.Nil(t, claims)

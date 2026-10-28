@@ -56,12 +56,11 @@ type logins interface {
 	Pick(ctx context.Context, project, item string) (string, error)
 }
 
-// lifecycle holds the steps around the work of one item. Claim runs first, Ready after an approved review and the Forge reads are clean, and Release last, on every exit.
+// lifecycle holds the claim of one item. Claim runs first and Release last, on every exit.
 // Claim returns the owner token of the claim. The engine renews that claim through Beats until Release runs, and Release gets the same token.
 // A resumed run takes a fresh claim, so its token differs from the one of the claim step it replays.
 type lifecycle interface {
 	Claim(ctx context.Context, project, item string) (string, error)
-	Ready(ctx context.Context, project, item string) error
 	Release(ctx context.Context, project, item, owner string) error
 }
 

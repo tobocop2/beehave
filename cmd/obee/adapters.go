@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"slices"
 	"time"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/obee/internal/claim"
+	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/forge"
 	forgegithub "github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/host"
@@ -16,28 +20,45 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/store/beads"
 	storegithub "github.com/tobocop2/obee/internal/store/github"
+	"github.com/tobocop2/obee/internal/store/local"
 )
 
 // adapters is the one place that maps an adapter name to its constructor. No other package dispatches on a name.
-// The claim store has no table: only beads is built, and a project that names the local tracker or the local claim store is refused until the local adapters exist.
+// The claim store has no table: leases picks beads or the local store by the claims name of the project.
+// state returns the state folder, which holds local.db. A build that needs no local store may pass nil.
 type adapters struct {
-	trackers map[model.TrackerName]func(model.Project) (store.Tracker, error)
+	trackers map[model.TrackerName]trackerBuilder
 	forges   map[model.ForgeName]func(model.Project) (forge.Forge, error)
 	agents   map[model.Agent]func() agent.Adapter
 	hosts    map[model.HostProvider]func(model.Project) (host.Host, error)
 	bd       proc.Runner
+	state    func() (string, error)
+}
+
+// claimStore is the claim rows of one project and the way to end its use. closer is nil for a store that holds no file.
+type claimStore struct {
+	claim.Rows
+
+	closer io.Closer
+}
+
+// Close ends the use of the store.
+func (c claimStore) Close() error {
+	if c.closer == nil {
+		return nil
+	}
+
+	return c.closer.Close()
 }
 
 // skyTimeout is the longest one sky call may run. A launch creates a machine, which takes minutes.
 const skyTimeout = 30 * time.Minute
 
 // newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
-func newAdapters(bd proc.Runner) adapters {
+// state returns the state folder, for the local tracker and the local claim store.
+func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
 	return adapters{
-		trackers: map[model.TrackerName]func(model.Project) (store.Tracker, error){
-			model.TrackerBeads:  func(project model.Project) (store.Tracker, error) { return newBeads(bd, project) },
-			model.TrackerGithub: newIssues,
-		},
+		trackers: newTrackers(bd, state),
 		forges: map[model.ForgeName]func(model.Project) (forge.Forge, error){
 			model.ForgeGithub: newGithubForge,
 		},
@@ -47,8 +68,40 @@ func newAdapters(bd proc.Runner) adapters {
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,
 		},
-		bd: bd,
+		bd:    bd,
+		state: state,
 	}
+}
+
+// trackerBuilder builds the tracker of a project. The context is for the adapter that opens a file.
+type trackerBuilder func(context.Context, model.Project) (store.Tracker, error)
+
+// newTrackers returns the constructor of each tracker.
+func newTrackers(bd proc.Runner, state func() (string, error)) map[model.TrackerName]trackerBuilder {
+	return map[model.TrackerName]trackerBuilder{
+		model.TrackerLocal: func(ctx context.Context, project model.Project) (store.Tracker, error) {
+			opened, err := openLocal(ctx, state, project)
+			if err != nil {
+				return nil, err
+			}
+
+			return opened, nil
+		},
+		model.TrackerBeads: func(_ context.Context, project model.Project) (store.Tracker, error) {
+			return newBeads(bd, project)
+		},
+		model.TrackerGithub: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(project) },
+	}
+}
+
+// openLocal opens local.db in the state folder for the project.
+func openLocal(ctx context.Context, state func() (string, error), project model.Project) (*local.Store, error) {
+	dir, err := state()
+	if err != nil {
+		return nil, err
+	}
+
+	return local.Open(ctx, dir, project.Name, time.Now)
 }
 
 func newSkyPilotHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
@@ -90,23 +143,19 @@ func newGithubForge(project model.Project) (forge.Forge, error) { //nolint:iretu
 }
 
 // tracker builds the tracker the project names.
-func (a adapters) tracker(project model.Project) (store.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
-	if project.Tracker == model.TrackerLocal {
-		return nil, fmt.Errorf("project %s: the local tracker is not built yet; set tracker = \"beads\" or \"github\" in the project file", project.Name)
-	}
-
+func (a adapters) tracker(ctx context.Context, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
 	build, found := a.trackers[project.Tracker]
 	if !found {
 		return nil, fmt.Errorf("project %s: no tracker adapter named %q", project.Name, project.Tracker)
 	}
 
-	return build(project)
+	return build(ctx, project)
 }
 
-// forge builds the forge the project names.
+// forge builds the forge the project names. A project with no forge gets an error that matches forge.ErrNoForge.
 func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
 	if project.Forge == "" {
-		return nil, fmt.Errorf("project %s: no forge; set forge = \"github\" in the project file", project.Name)
+		return nil, fmt.Errorf("project %s: %w; set forge = \"github\" in the project file", project.Name, forge.ErrNoForge)
 	}
 
 	build, found := a.forges[project.Forge]
@@ -141,46 +190,93 @@ func (a adapters) agent(name model.Agent) agent.Adapter { //nolint:ireturn // th
 	return build()
 }
 
-// leases builds the claim store of the project. Only beads is built, so the project must name its beads prefix.
-func (a adapters) leases(project model.Project) (*beads.Store, error) {
+// leases opens the claim store the project names: the beads rows, or the claim rows of local.db. The caller closes it.
+func (a adapters) leases(ctx context.Context, project model.Project) (claimStore, error) {
 	switch project.Claims {
 	case model.ClaimsBeads:
-		return beads.New(a.bd, project.BeadsPrefix)
+		rows, err := beads.New(a.bd, project.BeadsPrefix)
+		if err != nil {
+			return claimStore{}, err
+		}
+
+		return claimStore{Rows: rows}, nil
 	case model.ClaimsLocal:
-		return nil, fmt.Errorf("project %s: the local claim store is not built yet; set claims = \"beads\" in the project file", project.Name)
+		rows, err := openLocal(ctx, a.state, project)
+		if err != nil {
+			return claimStore{}, err
+		}
+
+		return claimStore{Rows: rows, closer: rows}, nil
 	default:
-		return nil, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+		return claimStore{}, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
+}
+
+// itemOpener returns what the command line calls to open the item list of a project with the local tracker. The caller closes the list.
+func (a adapters) itemOpener() cli.ItemOpener {
+	return func(ctx context.Context, project model.Project) (cli.ItemStore, error) {
+		opened, err := openLocal(ctx, a.state, project)
+		if err != nil {
+			return nil, err
+		}
+
+		return opened, nil
 	}
 }
 
 // itemFields returns the item fields that the tracker and the forge of the project declare, the tracker first. A project with no forge has the fields of its tracker only.
-func (a adapters) itemFields(_ context.Context, project model.Project) ([]string, error) {
-	tracker, err := a.tracker(project)
+// The local tracker declares its fields without opening local.db, so a check leaves the state folder alone.
+func (a adapters) itemFields(ctx context.Context, project model.Project) ([]string, error) {
+	fields, err := a.trackerFields(ctx, project)
+	if err != nil || project.Forge == "" {
+		return fields, err
+	}
+
+	built, err := a.forge(project)
 	if err != nil {
 		return nil, err
 	}
 
-	if project.Forge == "" {
-		return tracker.ItemFields(), nil
-	}
-
-	forge, err := a.forge(project)
-	if err != nil {
-		return nil, err
-	}
-
-	return append(tracker.ItemFields(), forge.ItemFields()...), nil
+	return append(fields, built.ItemFields()...), nil
 }
 
-// check builds the tracker, the forge (when the project has one), the build host (when the project has one) and the claim store of the project and reports why it cannot.
-// The claim store needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
-// `obee check config` calls it for each project.
+// trackerFields returns the item fields that the tracker of the project declares. The local tracker needs no file for them.
+func (a adapters) trackerFields(ctx context.Context, project model.Project) ([]string, error) {
+	if project.Tracker == model.TrackerLocal {
+		return local.ItemFields(), nil
+	}
+
+	tracker, err := a.tracker(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+
+	return tracker.ItemFields(), nil
+}
+
+// checkClaims says why the claim store of the project cannot be built. It opens no file.
+func (a adapters) checkClaims(project model.Project) error {
+	switch project.Claims {
+	case model.ClaimsBeads:
+		_, err := beads.New(a.bd, project.BeadsPrefix)
+
+		return err
+	case model.ClaimsLocal:
+		return nil
+	default:
+		return fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
+}
+
+// check builds what the project names and reports why it cannot: the tracker, the forge, the build host and the claim store.
+// A local tracker and a local claim store open no file here. A project that names beads needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
+// A project that names no beads never calls bd. `obee check config` calls check for each project.
 func (a adapters) check(ctx context.Context, project model.Project) error {
 	if _, err := a.itemFields(ctx, project); err != nil {
 		return err
 	}
 
-	if _, err := a.leases(project); err != nil {
+	if err := a.checkClaims(project); err != nil {
 		return err
 	}
 
@@ -188,6 +284,10 @@ func (a adapters) check(ctx context.Context, project model.Project) error {
 		if _, err := a.host(project); err != nil {
 			return err
 		}
+	}
+
+	if !slices.Contains(project.Tools(), model.ToolBd) {
+		return nil
 	}
 
 	return beads.RequireBd(ctx, a.bd)

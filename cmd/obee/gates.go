@@ -61,18 +61,18 @@ func (g projectGate) request(ctx context.Context, project, item string) (gate.Re
 	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
 }
 
-// cloneURL returns the URL that a build host clones the repository of the project from. A project that builds here needs none.
+// cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none.
 func (g projectGate) cloneURL(project config.Project) (string, error) {
 	if project.BuildHost == config.LocalHost {
 		return "", nil
 	}
 
-	remote, err := g.forge(project.Project)
+	url, err := cloneSource(project.Project, g.forge)
 	if err != nil {
 		return "", fmt.Errorf("find the repository of project %s: %w", project.Name, err)
 	}
 
-	return remote.CloneURL(), nil
+	return url, nil
 }
 
 // shell runs the gate command in dir on this machine and returns its output and exit code.

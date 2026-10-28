@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/tobocop2/obee/internal/claim"
+	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/lease"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store/beads"
+	"github.com/tobocop2/obee/internal/store/local"
 )
 
 // openClaims opens the claim store of the project that owns the repository, from the obee config folder that env names.
@@ -19,12 +23,13 @@ func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim
 			return nil, err
 		}
 
-		return claimsOf(bd, project)
+		return claimsOf(bd, func() (string, error) { return config.StateDir(env) }, project)
 	}
 }
 
-// claimsOf builds the claims of a project. Only beads rows are built; the local claim store comes later.
-func claimsOf(bd proc.Runner, project model.Project) (*claim.Claims, error) {
+// claimsOf builds the claims of a project over the claim store that it names: the beads rows, or local.db in the state folder.
+// The local store stays open until the process ends, which is one command.
+func claimsOf(bd proc.Runner, state func() (string, error), project model.Project) (*claim.Claims, error) {
 	switch project.Claims {
 	case model.ClaimsBeads:
 		rows, err := beads.New(bd, project.BeadsPrefix)
@@ -34,8 +39,23 @@ func claimsOf(bd proc.Runner, project model.Project) (*claim.Claims, error) {
 
 		return lease.Open(rows)
 	case model.ClaimsLocal:
-		return nil, fmt.Errorf("project %s: the local claim store is not built yet; set claims = \"beads\" in the project file", project.Name)
+		return localClaims(state, project)
 	default:
 		return nil, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
 	}
+}
+
+// localClaims builds the claims over the rows of local.db in the state folder.
+func localClaims(state func() (string, error), project model.Project) (*claim.Claims, error) {
+	dir, err := state()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := local.Open(context.Background(), dir, project.Name, time.Now)
+	if err != nil {
+		return nil, err
+	}
+
+	return lease.Open(rows)
 }

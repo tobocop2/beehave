@@ -258,10 +258,6 @@ func (l *fakeLifecycle) Claim(_ context.Context, project, item string) (string, 
 	return fmt.Sprintf("%s%s#%d", testOwner, item, l.takes[item]), err
 }
 
-func (l *fakeLifecycle) Ready(_ context.Context, project, item string) error {
-	return l.step("ready", project, item)
-}
-
 func (l *fakeLifecycle) Release(ctx context.Context, project, item, owner string) error {
 	l.mu.Lock()
 	l.released = append(l.released, owner)
@@ -400,12 +396,14 @@ func newHarness(t *testing.T) *harness {
 	require.NoError(t, os.WriteFile(filepath.Join(folder, defaultFlowName), []byte(defaultFlow), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(folder, "prompts", "work.md"), []byte("Work on the item.\n"), 0o600))
 
+	life := &fakeLifecycle{failing: map[string]bool{}}
+
 	return &harness{
 		agents:   &fakeAgents{perLogin: map[string]int{}},
 		gate:     &fakeGate{results: []GateResult{{Passed: true}}},
 		logins:   fakeLogins{login: testLogin},
-		life:     &fakeLifecycle{failing: map[string]bool{}},
-		forge:    &fakeForge{state: review.Standing{Number: testPull}},
+		life:     life,
+		forge:    &fakeForge{life: life, state: review.Standing{Number: testPull}},
 		watch:    &fakeWatch{outcomes: []review.Outcome{{Kind: review.Merged}}},
 		trees:    &fakeTrees{dir: tree},
 		beats:    &fakeBeats{},
@@ -511,6 +509,7 @@ type runOutcome struct {
 // fakeForge answers every read with state, or fails with err. It records the items it was asked about.
 type fakeForge struct {
 	mu    sync.Mutex
+	life  *fakeLifecycle // the log that a Ready call goes to, in order with the claim and the release
 	state review.Standing
 	err   error
 	asked []string
@@ -529,6 +528,11 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 	}
 
 	return f.state, f.err
+}
+
+// Ready records the call in the log of the lifecycle fake, and fails when a test sets failing["ready"].
+func (f *fakeForge) Ready(_ context.Context, project, item string) error {
+	return f.life.step("ready", project, item)
 }
 
 // fakeWatch answers each read with the next of outcomes and then repeats the last. A non-nil err fails every read.

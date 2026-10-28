@@ -59,6 +59,28 @@ type Project struct {
 	Host        *HostConfig
 }
 
+// The programs that the adapters of a project start.
+const (
+	ToolGit = "git"
+	ToolBd  = "bd"
+	ToolGh  = "gh"
+)
+
+// Tools returns the programs that the project needs on the path: git always, bd for a beads tracker or beads claims, and gh for a GitHub tracker or forge.
+func (p Project) Tools() []string {
+	tools := []string{ToolGit}
+
+	if p.Tracker == TrackerBeads || p.Claims == ClaimsBeads {
+		tools = append(tools, ToolBd)
+	}
+
+	if p.Tracker == TrackerGithub || p.Forge == ForgeGithub {
+		tools = append(tools, ToolGh)
+	}
+
+	return tools
+}
+
 func joinNames[T ~string](items []T) string {
 	names := make([]string, len(items))
 	for i, item := range items {

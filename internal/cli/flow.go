@@ -59,6 +59,7 @@ type flowCommands struct {
 	version    string
 	factory    Flow
 	itemFields itemFieldsFunc
+	items      ItemOpener
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -102,11 +103,16 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 // itemArgs checks the item id before any state folder opens. The engine checks it again.
 func itemArgs(_ *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		return errors.New("give the item first: a forge number or a beads id")
+		return errors.New("give the item first: an item id such as 12 or fix-login")
 	}
 
-	if model.ItemKind(args[0]) == "" {
-		return fmt.Errorf("%w %q: use a forge number or a beads id", flow.ErrBadItem, args[0])
+	return itemID(args[0])
+}
+
+// itemID refuses an item id that the grammar of an item does not accept.
+func itemID(id string) error {
+	if model.ItemKind(id) == "" {
+		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", flow.ErrBadItem, id)
 	}
 
 	return nil
@@ -151,6 +157,10 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 
 	project, err := chooseProject(cfg, args[1:])
 	if err != nil {
+		return err
+	}
+
+	if err = f.knownItem(cfg.Projects[project].Project, args[0]); err != nil {
 		return err
 	}
 

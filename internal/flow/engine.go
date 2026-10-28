@@ -282,10 +282,10 @@ func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
 	return e.run(ItemInput{Item: item, Project: project, File: abs, Hash: hash})
 }
 
-// check refuses an item that is not a forge number or a beads id, and a missing project.
+// check refuses an item that is not an item id, and a missing project.
 func (in ItemInput) check() error {
 	if model.ItemKind(in.Item) == "" {
-		return fmt.Errorf("%w %q: use a forge number or a beads id", ErrBadItem, in.Item)
+		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
 	}
 
 	if in.Project == "" {

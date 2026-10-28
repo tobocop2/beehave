@@ -328,7 +328,7 @@ func TestCommands_RefuseABadItemBeforeOpeningAnything(t *testing.T) {
 			code, _, stderr := rig.execute(t.Context(), args...)
 
 			assert.Equal(t, 1, code)
-			assert.Contains(t, stderr, "use a forge number or a beads id")
+			assert.Contains(t, stderr, "use an item id such as 12 or fix-login")
 			assert.NotContains(t, stderr, "fake failure")
 		})
 	}

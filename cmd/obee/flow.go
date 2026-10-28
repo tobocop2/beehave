@@ -65,7 +65,7 @@ func flowFactory() cli.Flow {
 			return engine, nil
 		},
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
-			table := newAdapters(proc.NewExecRunner("bd", ""))
+			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
 
 			client, err := flow.OpenClient(ctx, opts, flow.ReleaseDeps{Lifecycle: newLife(cfg, table), Trees: newWorktrees(nil, opts, nil)})
 			if err != nil {
@@ -77,9 +77,14 @@ func flowFactory() cli.Flow {
 	}
 }
 
+// stateFolder returns the state folder of the options as the answer of a function, which is how the table of adapters asks for it.
+func stateFolder(dir string) func() (string, error) {
+	return func() (string, error) { return dir, nil }
+}
+
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	table := newAdapters(proc.NewExecRunner("bd", ""))
+	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table)
 	commands := newPrograms(cfg, trees, table)

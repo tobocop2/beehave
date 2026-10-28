@@ -113,9 +113,13 @@ Layer 2 packages declare the small interfaces they need and do not import layer 
 
 ## Adapters
 
-The tracker and the forge are adapters that a project selects. The package `store` declares two contracts and the package `forge` declares one. `store.Tracker` covers items and parents. `store.ClaimRows` covers the claim of each item. `forge.Forge` covers pull requests, reviews, threads and checks. A project file selects each adapter with a key: `tracker` (`local`, `beads` or `github`), `claims` (`local` or `beads`) and `forge` (`github`). Each key is optional. A missing `tracker` or `claims` means `local`. A missing `forge` means the project has no forge. `repo` is required when `tracker` or `forge` is `github`. `beads_prefix` is required when `tracker` or `claims` is `beads`. A project with no forge must set `source`, a git URL or an absolute path (a leading `~` expands). A path `source` needs `build_host = "local"`, because a remote host cannot read a path on this machine. `obee check config` refuses each of these cases at the position of the key. The local tracker and the local claim store are not built yet: `obee run` and `obee check config` refuse a project that names them, and say so.
+The tracker and the forge are adapters that a project selects. The package `store` declares two contracts and the package `forge` declares one. `store.Tracker` covers items and parents. `store.ClaimRows` covers the claim of each item. `forge.Forge` covers pull requests, reviews, threads and checks. A project file selects each adapter with a key: `tracker` (`local`, `beads` or `github`), `claims` (`local` or `beads`) and `forge` (`github`). Each key is optional. A missing `tracker` or `claims` means `local`. A missing `forge` means the project has no forge. `repo` is required when `tracker` or `forge` is `github`. `beads_prefix` is required when `tracker` or `claims` is `beads`. A project with no forge must set `source`, a git URL or an absolute path (a leading `~` expands). A path `source` needs `build_host = "local"`, because a remote host cannot read a path on this machine. `obee check config` refuses each of these cases at the position of the key.
 
-`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds the tracker, the forge and the claim store of each project, so a project that cannot build them is a problem. It also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
+The local tracker and the local claim store keep their rows in `local.db` in the state folder (`internal/store/local`). The state folder is where `OBEE_STATE_DIR` points. The file has mode 0600. The local claim store covers one state folder, on one machine: two machines need beads. `obee item add <project> <id> --title <title> --body-file <file>` files an open item. `obee item list <project>` shows the open items. Both refuse a project whose tracker is not `local`. `obee run <id>` refuses an id that the local project never added, and names the fix: `obee item add`.
+
+A project with no source of a clone gets it from the forge. A project with `source` clones from `source`, and never asks the forge. The gate of a build host reads the same URL. A project with no forge and no `source` gets the error "no forge" (`forge.ErrNoForge`) from every call that needs a forge.
+
+`model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds only what the project names. A local tracker and a local claim store open no file in that check. A project that names beads, for the tracker or the claims, also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". A project that names no beads never starts `bd`. No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
 
 Each contract has an exported conformance suite, in `internal/store/storetest`, `internal/forge/forgetest` and `internal/agent/agenttest`, in the style of `testing/fstest.TestFS`. The suite runs against every adapter with a fake command line. It checks the claim row rules (for `ClaimRows`) and checks that every method returns an error when its command fails.
 
@@ -134,30 +138,35 @@ flowchart LR
     ghissues["store/github<br/>gh issues"]
     github["forge/github<br/>gh"]
     lease["store/beads claim rows<br/>bd 1.3.2 or newer"]
+    localdb["store/local<br/>local.db in the state folder"]
 
     project --> table
     table -- "tracker = beads" --> beads
     table -- "tracker = github" --> ghissues
+    table -- "tracker = local" --> localdb
     table -- "forge = github" --> github
-    table -- "always" --> lease
+    table -- "claims = beads" --> lease
+    table -- "claims = local" --> localdb
 
     beads --> Tracker
     ghissues --> Tracker
+    localdb --> Tracker
     github --> Forge
     lease --> ClaimRows
+    localdb --> ClaimRows
 
     suite["storetest and forgetest<br/>conformance suites"] -. "runs against every adapter" .-> contracts
 ```
 
 ## Store and claim
 
-`store` holds the `Tracker` and `ClaimRows` contracts and the decode helpers. It has two backends: `store/beads` through `bd --json` and `store/github` for GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads issues only. It holds no lease.
+`store` holds the `Tracker` and `ClaimRows` contracts and the decode helpers. It has three backends: `store/beads` through `bd --json`, `store/github` for GitHub issues through `gh`, and `store/local` over SQLite, which starts no program. For the first two the CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads issues only. It holds no lease.
 
 `claim` holds the claim policy and no command line: the read of the winner, one reclaim of an ended lease and the refusal of a live holder. It declares the small `Rows` interface it needs and does not import `store`. Beads holds one claim row for each item.
 
-## Claims live in beads
+## Claims in beads
 
-Until the local claim store exists, claims live in beads (`claims = "beads"`), whatever tracker the project uses, because beads has native claim leases. GitHub labels have no write that tests the old value and no lease. obee keeps no lease of its own: bd grants, renews and ends the lease.
+A project with `claims = "beads"` keeps its claims in beads, whatever tracker the project uses, because beads has native claim leases and works across machines. GitHub labels have no write that tests the old value and no lease. For these projects bd grants, renews and ends the lease. A project with `claims = "local"` (the default) keeps its claim rows in `local.db` and needs no `bd`.
 
 - **Row.** A forge number has no beads row, so each item gets a task titled `lock:<kind>-<item>`. A row left with a stale assignee or a closed status is reset to open first, guarded by the values that were read.
 - **Take.** `bd update <row> --claim --actor <holder>` claims an open row with no assignee in one write and grants the lease to the actor. The holder is the actor and the assignee. A refused take exits 1 with the text `issue already claimed` or `issue not claimable`. The adapter reads that exit as a lost take, and `claim` reads the row to learn the winner. Any other exit 1 is an error.
@@ -276,7 +285,7 @@ The window types `Window`, `Usage` and `Reading` live in `model`, because the re
 
 ## Doctor
 
-`obee doctor` checks that the machine can run obee and prints one line for each check: `ok` or `FAIL` with the fix. It exits 1 when any check fails. The checks are a table of a name and a function that returns an error, the fix, or nil. They run in this order: the config folder loads, `bd` and `gh` are on the path, the bd version is new enough, then for each runner its `config_dir` exists and its token is readable when it has a Keychain entry. The bd version check runs only when `bd` is on the path. A version error with no text is still a failure.
+`obee doctor` checks that the machine can run obee and prints one line for each check: `ok` or `FAIL` with the fix. It exits 1 when any check fails. The checks are a table of a name and a function that returns an error, the fix, or nil. The programs come from the projects: `git` always, `bd` when a project names beads for the tracker or the claims, and `gh` when a project names GitHub for the tracker or the forge. They run in this order: the config folder loads, `git`, `bd` and `gh` are on the path, the bd version is new enough, then for each runner its `config_dir` exists and its token is readable when it has a Keychain entry. The bd version check runs only when `bd` is on the path. A version error with no text is still a failure.
 
 The doctor command lives in `cli`. `BuildInfo.Doctor` holds two function values that `cmd/obee` fills: the Keychain reader, which runs `security` and never returns the token, and the bd version check of the beads adapter. Both are required: the command refuses a `Doctor` with a nil value and runs no check. A call of `security` stops after 10 seconds. `cli` does not import a backend.
 

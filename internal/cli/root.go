@@ -28,6 +28,8 @@ type BuildInfo struct {
 	Adapters func(context.Context, model.Project) error
 	// ItemFields returns the item fields that the tracker and the forge of a project declare. A nil value leaves the common fields.
 	ItemFields func(context.Context, model.Project) ([]string, error)
+	// Items opens the item list of a project with the local tracker, for the item commands and the check of the run. A nil value leaves both out.
+	Items ItemOpener
 	// Doctor reads what the doctor command checks outside the process: the Keychain and the bd version.
 	Doctor Doctor
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
@@ -48,7 +50,9 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
 	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.ItemFields), newDoctorCommand(ctx, env, info.Doctor))
-	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, itemFields: info.ItemFields}.add(root)
+	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, itemFields: info.ItemFields, items: info.Items}
+	commands.add(root)
+	commands.addItems(root)
 
 	return root
 }

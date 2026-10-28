@@ -176,9 +176,78 @@ func leasesOver(t *testing.T, owner string) (leases, *beads.Store) {
 
 	return leases{
 		projects: map[string]config.Project{"p": {}},
-		rows:     func(model.Project) (*beads.Store, error) { return rows, nil },
+		rows:     func(context.Context, model.Project) (claimStore, error) { return claimStore{Rows: rows}, nil },
 		owner:    func() string { return owner },
 	}, rows
+}
+
+func TestLeases_TheLocalClaimStoreTakesRenewsAndReleasesAnItemAndEveryCallClosesTheStore(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, stateAt(t.TempDir()))
+	project := localProjectNamed("p")
+	l := leases{projects: map[string]config.Project{"p": {Project: project}}, rows: table.leases, owner: func() string { return "ownerone" }}
+
+	owner, err := l.Claim(t.Context(), "p", "fix-login")
+	require.NoError(t, err)
+
+	text, err := l.Beat(t.Context(), "p", owner)
+	require.NoError(t, err)
+	assert.Empty(t, text)
+
+	require.NoError(t, l.Release(t.Context(), "p", "fix-login", owner))
+
+	l.owner = func() string { return "ownertwo" }
+	_, err = l.Claim(t.Context(), "p", "fix-login")
+	require.NoError(t, err, "the released item is free to take again")
+}
+
+type closingRows struct {
+	claim.Rows
+
+	closed int
+	err    error
+}
+
+func (c *closingRows) Close() error {
+	c.closed++
+
+	return c.err
+}
+
+func TestLeases_ACallClosesTheStoreAndReportsAFailedClose(t *testing.T) {
+	t.Parallel()
+
+	l, rows := leasesOver(t, "ownerone")
+	closing := &closingRows{Rows: rows, err: errFake}
+	l.rows = func(context.Context, model.Project) (claimStore, error) {
+		return claimStore{Rows: closing, closer: closing}, nil
+	}
+
+	_, err := l.Claim(t.Context(), "p", "12")
+
+	require.ErrorIs(t, err, errFake)
+	assert.Equal(t, 1, closing.closed)
+
+	_, err = l.Beat(t.Context(), "p", "ownerone")
+	require.ErrorIs(t, err, errFake)
+
+	require.ErrorIs(t, l.Release(t.Context(), "p", "12", "ownerone"), errFake)
+	assert.Equal(t, 3, closing.closed)
+}
+
+func TestPulls_AProjectWithNoForgeGetsTheTypedNoForgeErrorFromEveryCall(t *testing.T) {
+	t.Parallel()
+
+	p := pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil).forge}
+	ctx := t.Context()
+
+	_, pullErr := p.Pull(ctx, "p", "bb-1")
+	_, watchErr := p.Watch(ctx, "p", 1)
+
+	for _, err := range []error{pullErr, watchErr, p.Ready(ctx, "p", "bb-1"), p.SetDraft(ctx, "p", 1, true)} {
+		require.ErrorIs(t, err, forge.ErrNoForge)
+	}
 }
 
 func TestLeases_ClaimTakesTheItemAndReleaseGivesItBack(t *testing.T) {
@@ -239,7 +308,7 @@ func TestLeases_AProjectTheConfigLacksIsAnErrorForEveryCall(t *testing.T) {
 func TestLeases_AClaimStoreThatCannotBeBuiltIsAnError(t *testing.T) {
 	t.Parallel()
 
-	l := leases{projects: map[string]config.Project{"p": {}}, rows: func(model.Project) (*beads.Store, error) { return nil, errFake }, owner: ownerToken}
+	l := leases{projects: map[string]config.Project{"p": {}}, rows: func(context.Context, model.Project) (claimStore, error) { return claimStore{}, errFake }, owner: ownerToken}
 
 	_, err := l.Claim(t.Context(), "p", "12")
 
@@ -259,7 +328,7 @@ func TestOwnerToken_IsAValidOwnerAndDiffersEachTime(t *testing.T) {
 func TestNewLife_BuildsTheLifecycleOverTheTableOfTheConfig(t *testing.T) {
 	t.Parallel()
 
-	life := newLife(config.Config{Projects: map[string]config.Project{"p": {}}}, newAdapters(nil))
+	life := newLife(config.Config{Projects: map[string]config.Project{"p": {}}}, newAdapters(nil, nil))
 
 	_, err := life.Pull(t.Context(), "zzz", "bb-1")
 	require.ErrorIs(t, err, errUnknownProject)

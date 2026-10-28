@@ -22,16 +22,18 @@ func main() {
 	syscall.Umask(privateUmask)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	env := config.ProcessEnv()
 	bd := proc.NewExecRunner("bd", "")
-	table := newAdapters(bd)
+	table := newAdapters(bd, func() (string, error) { return config.StateDir(env) })
 	info := cli.BuildInfo{
 		Version:    version,
 		Adapters:   table.check,
 		ItemFields: table.itemFields,
+		Items:      table.itemOpener(),
 		Doctor:     newDoctor(bd, newSecurityRunner()),
 		Flow:       flowFactory(),
 	}
-	code := cli.Execute(ctx, os.Args[1:], info, config.ProcessEnv(), os.Stdout, os.Stderr)
+	code := cli.Execute(ctx, os.Args[1:], info, env, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }
