@@ -112,7 +112,7 @@ func TestSweep_ABaseAndIntegrationBranchThatDifferRefuse(t *testing.T) {
 
 	_, err := review.Sweep(context.Background(), swept("main", nil), swept("main", nil),
 		review.Settings{Me: me, Base: "a", Integration: "b", IntegrationSet: true})
-	require.ErrorContains(t, err, "BASE")
+	require.ErrorContains(t, err, "the base branch (a) and the integration branch (b) differ")
 }
 
 func TestSweep_TheDefaultBranchIsLookedUpOnlyWhenNeeded(t *testing.T) {
@@ -144,10 +144,10 @@ func TestSweep_AnEmptyIntegrationBranchWarnsAndOneThatIsTheDefaultWarns(t *testi
 	t.Parallel()
 
 	got := sweepOf(t, swept("main", nil), review.Settings{IntegrationSet: true, DefaultBranch: "main"})
-	assert.Equal(t, []string{"WARNING: INTEGRATION_BRANCH is empty, so the integration-branch check is OFF. Unset it, or name the branch."}, got.Warnings)
+	assert.Equal(t, []string{"WARNING: the integration branch is empty, so the integration-branch check is OFF. Leave it unset, or name the branch."}, got.Warnings)
 
 	got = sweepOf(t, swept("main", nil), review.Settings{Integration: "main", IntegrationSet: true, DefaultBranch: "main"})
-	assert.Equal(t, []string{"WARNING: INTEGRATION_BRANCH is the default branch main, so the integration-branch check is OFF. Name a round branch."}, got.Warnings)
+	assert.Equal(t, []string{"WARNING: the integration branch is the default branch main, so the integration-branch check is OFF. Name a branch that is not the default branch."}, got.Warnings)
 }
 
 func TestSweep_AFailedReadIsAnUnreadError(t *testing.T) {

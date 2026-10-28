@@ -1,4 +1,4 @@
-// Package shell judges the shell commands of a lane and the scripts of a job against the round rules.
+// Package shell judges the shell commands of an agent and the scripts of a job against the rules for shell use.
 package shell
 
 import (

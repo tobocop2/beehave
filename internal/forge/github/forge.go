@@ -27,7 +27,6 @@ const (
 	cmdPRChecks    = "gh pr checks"
 	cmdPRView      = "gh pr view"
 	noChecksPrefix = "no checks reported on the "
-	roundEnvFile   = "round.env"
 )
 
 var (
@@ -48,7 +47,7 @@ type Forge struct {
 func New(repo string, run proc.Runner) (*Forge, error) {
 	owner, name, found := strings.Cut(repo, "/")
 	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
-		return nil, forge.Refuse("REPO is not set to owner/name. Export it, or put it in %s.", roundEnvFile)
+		return nil, forge.Refuse("The repository must be written owner/name.")
 	}
 
 	return &Forge{repo: repo, owner: owner, name: name, run: run}, nil
@@ -111,9 +110,9 @@ func integrationAgrees(base, integration string) error {
 		return nil
 	}
 
-	return forge.Refuse("BASE is %s and INTEGRATION_BRANCH is %s. BASE must equal INTEGRATION_BRANCH.\n"+
-		"        Both name the branch that pull requests target. Keep the branch that pull requests target, and set both to it in %s.\n"+
-		"        Or unset INTEGRATION_BRANCH to turn the check off.", base, integration, roundEnvFile)
+	return forge.Refuse("The base branch is %s and the integration branch is %s. They must be the same branch.\n"+
+		"        Both name the branch that pull requests target. Set both to that branch.\n"+
+		"        Or leave the integration branch empty to turn the check off.", base, integration)
 }
 
 // PRBody returns the description text of a pull request.

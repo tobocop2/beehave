@@ -20,9 +20,9 @@ func TestIntegrationAgrees(t *testing.T) {
 	err := integrationAgrees("main", "stage")
 	require.Error(t, err)
 	assert.Equal(t, []string{
-		"BASE is main and INTEGRATION_BRANCH is stage. BASE must equal INTEGRATION_BRANCH.",
-		"        Both name the branch that pull requests target. Keep the branch that pull requests target, and set both to it in round.env.",
-		"        Or unset INTEGRATION_BRANCH to turn the check off.",
+		"The base branch is main and the integration branch is stage. They must be the same branch.",
+		"        Both name the branch that pull requests target. Set both to that branch.",
+		"        Or leave the integration branch empty to turn the check off.",
 	}, strings.Split(err.Error(), "\n"))
 
 	var refused *forge.Error

@@ -174,7 +174,7 @@ func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 		{"closed_unmerged", closed, preflight.Request{PR: 1}, preflight.Closed, 4, []string{
 			"STOP: #1 is CLOSED and not merged. Somebody decided against it while you were working.",
 			"  Recovery: read the closing comment before anything else. A close is a decision, and",
-			"  reopening it is the maintainer's call, not the round's.",
+			"  reopening it is the maintainer's call, not the caller's.",
 		}},
 		{"branch_gone", gone, preflight.Request{PR: 1}, preflight.BranchGone, 7, []string{
 			"STOP: the head branch 'feature' no longer exists on the remote.",
@@ -191,7 +191,7 @@ func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 			"  without saying so on the pull request first.",
 		}},
 		{"head_moved", open(), preflight.Request{PR: 1, ExpectHead: other}, preflight.HeadMoved, 5, []string{
-			"STOP: the head moved. You were briefed against " + other + "; the head is now " + head + ".",
+			"STOP: the head moved. You expected " + other + "; the head is now " + head + ".",
 			"  Recovery: a review of the old SHA does not describe this one. Re-read the diff between",
 			"  them and review the delta, and re-run any gate whose result named the old SHA.",
 		}},

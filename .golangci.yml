@@ -271,7 +271,6 @@ linters:
         layer-2:
           list-mode: lax
           files:
-            - "**/internal/check/*.go"
             - "**/internal/check/shell/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
@@ -289,7 +288,7 @@ linters:
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/filelock
             - github.com/tobocop2/obee/internal/hclfile
-            - github.com/tobocop2/obee/internal/check
+            - github.com/tobocop2/obee/internal/check/shell
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
             - github.com/tobocop2/obee/internal/lease
@@ -314,7 +313,6 @@ linters:
             - github.com/tobocop2/obee/internal/proc
             - github.com/tobocop2/obee/internal/agent
             - github.com/tobocop2/obee/internal/host
-            - github.com/tobocop2/obee/internal/check
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
             - github.com/tobocop2/obee/internal/merge

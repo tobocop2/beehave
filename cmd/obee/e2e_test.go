@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // These tests run the obee commands as separate processes, as testscript does for any command line tool.
@@ -209,7 +210,7 @@ fi
 # The fake claude calls the skill that the example requires, so the session reports it.
 folder=$(pwd | sed 's/[^A-Za-z0-9]/-/g')
 mkdir -p "projects/$folder"
-echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"blast-radius-review"}}]}}' > "projects/$folder/s1.jsonl"
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}' > "projects/$folder/s1.jsonl"
 # The implementer stages everything, the command that the example forbids.
 if [ "$step" = implement ]; then
   echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
@@ -263,14 +264,62 @@ base_branch = "main"
 gate = "true"
 `
 
+// exampleSkill returns the one skill that an agent of examples/remediation/workflow.hcl requires.
+func exampleSkill() (string, error) {
+	flow, err := workflow.Load(os.DirFS(filepath.Join("..", "..", "examples", "remediation")), "workflow.hcl")
+	if err != nil {
+		return "", err
+	}
+
+	var skills []string
+
+	var evalErr error
+
+	flow.Walk(func(step workflow.Step, _ int) {
+		agent, ok := step.(*workflow.Agent)
+		if !ok {
+			return
+		}
+
+		value, diags := agent.RequireSkills.Value(nil)
+		if diags.HasErrors() {
+			evalErr = diags
+			return
+		}
+
+		if value.IsNull() {
+			return
+		}
+
+		for _, name := range value.AsValueSlice() {
+			skills = append(skills, name.AsString())
+		}
+	})
+
+	if evalErr != nil {
+		return "", evalErr
+	}
+
+	if len(skills) != 1 {
+		return "", fmt.Errorf("the example requires %d skills, want 1", len(skills))
+	}
+
+	return skills[0], nil
+}
+
 // e2eSetup writes the config folder and the fake claude into the work folder of a script.
 func e2eSetup(env *testscript.Env) error {
 	work := env.WorkDir
+	skill, err := exampleSkill()
+	if err != nil {
+		return err
+	}
+
 	files := map[string]struct {
 		text string
 		mode os.FileMode
 	}{
-		"bin/claude":               {e2eClaude, e2eScriptMode},
+		"bin/claude":               {strings.ReplaceAll(e2eClaude, "%SKILL%", skill), e2eScriptMode},
 		"config/runners.hcl":       {strings.ReplaceAll(e2eRunners, "%DIR%", work), e2eFileMode},
 		"config/projects/shop.hcl": {e2eProject, e2eFileMode},
 	}

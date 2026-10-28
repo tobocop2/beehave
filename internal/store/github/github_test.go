@@ -52,7 +52,7 @@ func TestNew_NeedsOwnerAndName(t *testing.T) {
 		_, err := github.New(repo, &proctest.Scripted{})
 		require.Error(t, err, repo)
 		assert.Equal(t, store.CodeRefused, codeOf(t, err))
-		assert.Contains(t, err.Error(), "REPO is not set to owner/name")
+		assert.Contains(t, err.Error(), "the repository must be written owner/name")
 	}
 }
 

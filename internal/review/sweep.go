@@ -47,7 +47,7 @@ type Sweeping struct {
 // Sweep lists our open pull requests with their change requests, open threads and base. One batched read serves every row.
 func Sweep(ctx context.Context, own Own, stacks Stacks, s Settings) (Sweeping, error) {
 	if s.Base != "" && s.Integration != "" && s.Base != s.Integration {
-		return Sweeping{}, unread(nil, "BASE (%s) and INTEGRATION_BRANCH (%s) differ. Set both to the same branch, or unset one.", s.Base, s.Integration)
+		return Sweeping{}, unread(nil, "the base branch (%s) and the integration branch (%s) differ. Set both to the same branch, or leave the integration branch empty.", s.Base, s.Integration)
 	}
 
 	s.DefaultBranch = defaultBranch(ctx, stacks, s)
@@ -120,9 +120,9 @@ func defaultBranch(ctx context.Context, stacks Stacks, s Settings) string {
 func warnings(s Settings) []string {
 	switch {
 	case s.IntegrationSet && s.Integration == "":
-		return []string{"WARNING: INTEGRATION_BRANCH is empty, so the integration-branch check is OFF. Unset it, or name the branch."}
+		return []string{"WARNING: the integration branch is empty, so the integration-branch check is OFF. Leave it unset, or name the branch."}
 	case s.IntegrationSet && s.Integration == s.DefaultBranch:
-		return []string{"WARNING: INTEGRATION_BRANCH is the default branch " + s.DefaultBranch + ", so the integration-branch check is OFF. Name a round branch."}
+		return []string{"WARNING: the integration branch is the default branch " + s.DefaultBranch + ", so the integration-branch check is OFF. Name a branch that is not the default branch."}
 	}
 
 	return nil

@@ -55,7 +55,7 @@ func transcriptCases() []shellCase {
 		{"git commit with a -t value of -a is clean", "clean", "", "git commit -t -a"},
 		{"git commit with a --author value of -a is clean", "clean", "", "git commit --author -a"},
 		{"git commit with a --file value of -a is clean", "clean", "", "git commit --file -a"},
-		{"git commit with a named path is clean", "clean", "", "git commit -m x src/a.py"},
+		{"git commit with a named path is clean", "clean", "", "git commit -m x src/a.txt"},
 		{"git commit with a redirect to a dot file is clean", "clean", "", "git commit -m x &>."},
 		{"git status is clean", "clean", "", "git status; ls"},
 		{"sudo before git add -A is a hit", "hit", "", "sudo git add -A"},

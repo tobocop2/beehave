@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
-	"github.com/tobocop2/obee/internal/check"
 )
 
 // CodeRefused is the exit code of a pull request that closes a new issue with no approval of the owner.

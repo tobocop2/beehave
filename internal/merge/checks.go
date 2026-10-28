@@ -163,6 +163,6 @@ func (a *attempt) requests() *refusal {
 		return nil
 	}
 
-	return refuse(fmt.Sprintf("REFUSE: changes requested and still standing (an approval or a dismissal lifts one, a comment does not): %s. Route the review to a fix lane.",
+	return refuse(fmt.Sprintf("REFUSE: changes requested and still standing (an approval or a dismissal lifts one, a comment does not): %s. Fix what the review asks for, or get the review dismissed.",
 		model.JoinChangeRequests(standing)))
 }

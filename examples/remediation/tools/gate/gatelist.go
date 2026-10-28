@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/job"
-	"github.com/tobocop2/obee/internal/check"
 	"github.com/tobocop2/obee/internal/check/shell"
 
 	"mvdan.cc/sh/v3/syntax"
