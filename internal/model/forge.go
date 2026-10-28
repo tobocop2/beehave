@@ -87,6 +87,13 @@ type PullRequest struct {
 	ReviewRequests []reviewRequest `json:"reviewRequests"`
 }
 
+// Committer is the committer of one commit of a pull request. A Login or an Email that the forge does not send is empty.
+// The commit list of gh pr view names no committer, so the REST API supplies this one.
+type Committer struct {
+	Login string
+	Email string
+}
+
 // ReviewState is the state gh reports for a review.
 type ReviewState string
 

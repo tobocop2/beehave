@@ -848,6 +848,10 @@ func TestCheckPassesAMergeStepWithEverySetting(t *testing.T) {
 	t.Parallel()
 
 	found, unparsed := check(t, `workflow "w" {}
+agent "review" {
+  prompt  = "prompts/fix.md"
+  outputs = ["verdict"]
+}
 merge "ship" {
   head        = "abc"
   merge       = true
@@ -856,7 +860,7 @@ merge "ship" {
   hold        = "hold"
   own         = { logins = [env.OWNER_LOGIN], emails = [env.OWNER_EMAIL] }
   forbid_text = ["noreply@anthropic", "Generated with \\[Claude"]
-  approved    = env.APPROVED
+  approved    = agent.review.verdict == "approve"
   children    = "retarget"
 }
 `)
@@ -1002,6 +1006,26 @@ func TestCheckLeavesAMergeStepThatDoesNotMergeWithoutSettings(t *testing.T) {
 		found, _ := check(t, "workflow \"w\" {}\nmerge \"ship\" {\n  head = \"abc\"\n  "+merge+"\n}\n")
 
 		assert.Empty(t, found, merge)
+	}
+}
+
+func TestCheckRefusesAnApprovedThatReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, literal := range []string{"true", "false", "1 == 1"} {
+		d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  approved = "+literal+"\n}\n")
+
+		assert.Contains(t, d.Text, "approved reads nothing", literal)
+	}
+}
+
+func TestCheckRefusesAnApprovedThatReadsNoAgentOutput(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []string{"env.OK", "env.OK == \"yes\"", "!env.HOLD"} {
+		d := oneProblem(t, mergeSettings[:len(mergeSettings)-2]+"  approved = "+source+"\n}\n")
+
+		assert.Contains(t, d.Text, "approved reads no agent output", source)
 	}
 }
 

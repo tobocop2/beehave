@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/lease"
+	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
@@ -358,6 +360,7 @@ const pullListLimit = 5
 type pulls struct {
 	projects map[string]config.Project
 	forge    func(model.Project) (forge.Forge, error)
+	runners  []string
 }
 
 // opened is the forge of one project.
@@ -382,6 +385,11 @@ func (p pulls) find(ctx context.Context, project, item string) (opened, int, err
 		return opened{}, 0, err
 	}
 
+	return p.numberOf(ctx, built, item)
+}
+
+// numberOf returns the forge and the number of the pull request of the item on that forge.
+func (p pulls) numberOf(ctx context.Context, built opened, item string) (opened, int, error) {
 	// The open pull request comes first. A merged one is found so that a resumed watch reads it.
 	for _, state := range []string{"open", "merged"} {
 		number, err := listed(ctx, built, item, state)
@@ -439,6 +447,75 @@ func (p pulls) Watch(ctx context.Context, project string, pr int) (review.Outcom
 	}
 
 	return review.Watch(ctx, built, pr)
+}
+
+// Merge merges the pull request of the item at head, through the guards of the merge package and the settings of the merge step.
+// The runners of the config count as own identities, next to the logins and addresses of the step. A pattern that is not RE2 is an error.
+func (p pulls) Merge(ctx context.Context, project, item, head string, settings flow.MergeSettings) (merge.Result, error) {
+	rules, err := compileForbidden(settings.ForbidText)
+	if err != nil {
+		return merge.Result{}, err
+	}
+
+	built, number, err := p.target(ctx, project, item, settings.Repo)
+
+	var wrong *repoError
+	if errors.As(err, &wrong) {
+		return merge.Result{Stop: merge.Refused, Lines: []string{wrong.Error()}}, nil
+	}
+
+	if err != nil {
+		return merge.Result{}, err
+	}
+
+	return merge.Run(ctx, built, p.request(number, head, settings, rules)), nil
+}
+
+// request is the merge request of one pull request: the settings of the step, and the runners of the config as own identities.
+func (p pulls) request(number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
+	return merge.Request{
+		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
+		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
+		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
+	}
+}
+
+// repoError says that a merge step names a repository other than the one of the project. Its text is the line to show.
+type repoError struct{ named, project, own string }
+
+func (e *repoError) Error() string {
+	return fmt.Sprintf("REFUSE: the merge step names the repository %s, and the project %s uses %s. Set `repo` to %s.", e.named, e.project, e.own, e.own)
+}
+
+// target returns the forge of the project and the number of the pull request of the item.
+// A repo that is not the repository of the project is a repoError, before any read of the forge. Case does not count.
+func (p pulls) target(ctx context.Context, project, item, repo string) (opened, int, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return opened{}, 0, err
+	}
+
+	if own := p.projects[project].Repo; !strings.EqualFold(repo, own) {
+		return opened{}, 0, &repoError{named: repo, project: project, own: own}
+	}
+
+	return p.numberOf(ctx, built, item)
+}
+
+// compileForbidden compiles the forbid_text patterns of a merge step.
+func compileForbidden(patterns []string) ([]*regexp.Regexp, error) {
+	rules := make([]*regexp.Regexp, len(patterns))
+
+	for i, pattern := range patterns {
+		rule, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("the forbid_text pattern %q is not valid: %w", pattern, err)
+		}
+
+		rules[i] = rule
+	}
+
+	return rules, nil
 }
 
 // SetDraft sets or clears the draft state of the pull request.

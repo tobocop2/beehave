@@ -95,7 +95,7 @@ func TestRun_TheFirstReadAsksOnceForEveryField(t *testing.T) {
 	w := newWorld(t)
 	w.run(request())
 
-	assert.Equal(t, "PRView 5 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,files,commits,body,author", w.calls[0])
+	assert.Equal(t, "PRView 5 state,isDraft,baseRefName,headRefName,headRefOid,mergeable,files,commits,body,author,labels", w.calls[0])
 }
 
 func TestRun_TheBeforeLineShowsTheStateWithTabs(t *testing.T) {
@@ -119,7 +119,7 @@ func TestRun_ReadsTheRepositoryBaseAndOwnerFromTheRequest(t *testing.T) {
 
 	req := merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
-		Repo: "owner/name", Base: "main", OwnerLogin: me, OwnerEmail: meMail,
+		Repo: "owner/name", Base: "main", OwnLogins: []string{me}, OwnEmails: []string{meMail},
 	}
 	w := newWorld(t)
 	result := w.run(req)
@@ -328,12 +328,12 @@ func TestRun_AFailedMergeCallRefusesWithTheForgeMessage(t *testing.T) {
 func TestRun_AnUnreadableTipAfterTheMergeStillSaysMerged(t *testing.T) {
 	t.Parallel()
 
-	for name, set := range map[string]func(*world){
-		"error":   func(w *world) { w.fails["BranchRef"] = true },
-		"missing": func(w *world) { w.tipFound = false },
+	for name, after := range map[string]tipRead{
+		"error":   {err: errDown},
+		"missing": {},
 	} {
 		w := newWorld(t)
-		set(w)
+		w.tipReads = []tipRead{{sha: tipSHA, found: true}, {sha: tipSHA, found: true}, after}
 		result := w.run(request())
 
 		assert.Equal(t, merge.Done, result.Stop, name)

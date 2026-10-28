@@ -544,6 +544,7 @@ func (c *checker) merges() {
 		c.hold(step.Hold)
 		c.forbidText(step.ForbidText)
 		c.own(step.Own)
+		c.approved(step.Approved)
 		c.choice(step.Children, "children", []string{"refuse", "retarget"})
 	}
 }
@@ -571,6 +572,25 @@ func mergesLiterally(step *Merge) bool {
 	return !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True()
 }
 
+// approved refuses a value that reads nothing, such as `approved = true`, and a value that reads no output of an agent step.
+// The verdict must come from an agent step, such as agent.review.verdict == "approve".
+func (c *checker) approved(expr hcl.Expression) {
+	if unset(expr) {
+		return
+	}
+
+	vars := expr.Variables()
+	if len(vars) == 0 {
+		c.add(expr.Range(), "approved reads nothing, so it approves every head. Read the verdict of another step, such as agent.review.verdict == \"approve\".")
+
+		return
+	}
+
+	if !slices.ContainsFunc(vars, func(v hcl.Traversal) bool { return v.RootName() == "agent" }) {
+		c.add(expr.Range(), "approved reads no agent output, so no reviewer decides it. Read the verdict of an agent step, such as agent.review.verdict == \"approve\".")
+	}
+}
+
 // hold refuses a label with a comma, because the forge call joins labels with commas.
 func (c *checker) hold(expr hcl.Expression) {
 	if label, literal := literalString(expr); literal && strings.Contains(label, ",") {
@@ -583,7 +603,7 @@ func (c *checker) forbidText(expr hcl.Expression) {
 	items, diags := hcl.ExprList(expr)
 	if diags.HasErrors() {
 		if value, err := expr.Value(nil); !err.HasErrors() && !value.IsNull() {
-			c.add(expr.Range(), "forbid_text must be a list of patterns. Write forbid_text = [\"noreply@anthropic\"].")
+			c.add(expr.Range(), "forbid_text must be a list of patterns. Write forbid_text = [\"(?i)do not merge\"].")
 		}
 
 		return

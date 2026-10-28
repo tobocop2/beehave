@@ -46,6 +46,21 @@ type world struct {
 	listed       []string
 	// counts is what the forge counts for the pull request. Nil means the count of the first read.
 	counts *counts
+	// tipReads are the answers of the next reads of the base tip, in order. When they are used up, the read gives tip.
+	tipReads []tipRead
+	// failBase names the pull requests whose move onto a new base fails.
+	failBase map[int]bool
+	// tipsOf are the branches whose tip was read.
+	tipsOf []string
+	// committers are the committers the forge reports. Nil means one unnamed committer for each commit.
+	committers []model.Committer
+}
+
+// tipRead is one answer of a read of a branch tip.
+type tipRead struct {
+	sha   string
+	found bool
+	err   error
 }
 
 // counts are the forge's own numbers of commits and changed files.
@@ -197,16 +212,49 @@ func (w *world) TokenScopes(context.Context) ([]string, error) {
 	return w.scopes, w.fail("TokenScopes")
 }
 
-func (w *world) BranchRef(context.Context, string) (string, bool, error) {
+func (w *world) BranchRef(_ context.Context, branch string) (string, bool, error) {
 	w.calls = append(w.calls, "BranchRef")
+	w.tipsOf = append(w.tipsOf, branch)
+
+	if len(w.tipReads) > 0 {
+		next := w.tipReads[0]
+		w.tipReads = w.tipReads[1:]
+
+		return next.sha, next.found, next.err
+	}
 
 	return w.tip, w.tipFound, w.fail("BranchRef")
+}
+
+// Committers returns the committers of the world, or one unnamed committer for each commit of the first read.
+func (w *world) Committers(context.Context, int) ([]model.Committer, error) {
+	w.calls = append(w.calls, "Committers")
+
+	if err := w.fail("Committers"); err != nil {
+		return nil, err
+	}
+
+	if w.committers != nil {
+		return w.committers, nil
+	}
+
+	return make([]model.Committer, len(w.first.Commits)), nil
 }
 
 func (w *world) SetDraft(_ context.Context, number int, draft bool) error {
 	w.writes = append(w.writes, fmt.Sprintf("SetDraft %d %t", number, draft))
 
 	return w.fail("SetDraft")
+}
+
+func (w *world) SetBase(_ context.Context, number int, base string) error {
+	w.writes = append(w.writes, fmt.Sprintf("SetBase %d %s", number, base))
+
+	if w.failBase[number] {
+		return fmt.Errorf("SetBase %d: %w", number, errDown)
+	}
+
+	return w.fail("SetBase")
 }
 
 func (w *world) MergePR(_ context.Context, number int, pin string) error {
@@ -230,10 +278,12 @@ func (w *world) SetBody(_ context.Context, number int, body string) error {
 	return nil
 }
 
+// request is a merge request of the default shape. Its forbidden text is the `forbid_text` of the remediation example, so the engine holds no pattern of its own.
 func request() merge.Request {
 	return merge.Request{
 		PR: pr, Gated: sha, Runners: []string{"bee-1"},
-		Repo: "owner/name", Base: "main", OwnerLogin: me, OwnerEmail: meMail,
+		Repo: "owner/name", Base: "main", OwnLogins: []string{me}, OwnEmails: []string{meMail},
+		ForbidText: compiled(examplePatterns()),
 	}
 }
 

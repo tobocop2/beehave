@@ -20,13 +20,20 @@ type fakeMerge struct {
 	result merge.Result
 	err    error
 	asked  []string
+	given  []MergeSettings
+	// over replaces result and err when set. A test sets it to run the real merge over a forge fake.
+	over func(ctx context.Context, head string, settings MergeSettings) (merge.Result, error)
 }
 
-func (f *fakeMerge) Merge(_ context.Context, project, item, head string) (merge.Result, error) {
+func (f *fakeMerge) Merge(ctx context.Context, project, item, head string, settings MergeSettings) (merge.Result, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	f.asked = append(f.asked, project+" "+item+" "+head)
+	f.given = append(f.given, settings)
+	f.mu.Unlock()
+
+	if f.over != nil {
+		return f.over(ctx, head, settings)
+	}
 
 	return f.result, f.err
 }

@@ -56,6 +56,18 @@ func (a *attempt) state() *refusal {
 	return nil
 }
 
+// held refuses a pull request that carries the hold label of the request. With no hold label, nothing is held.
+// Case does not count, as the forge treats label names.
+func (a *attempt) held() *refusal {
+	for _, label := range a.view.Labels {
+		if a.req.Hold != "" && strings.EqualFold(label.Name, a.req.Hold) {
+			return refuse(fmt.Sprintf("REFUSE: #%d has the label %s, so it is held. Remove the label to release it.", a.req.PR, a.req.Hold))
+		}
+	}
+
+	return nil
+}
+
 // tsvLine joins values with tabs. A tab, a newline or a backslash inside a value is escaped, so no value splits the line.
 func tsvLine(values ...string) string {
 	escape := strings.NewReplacer("\\", "\\\\", "\t", "\\t", "\n", "\\n", "\r", "\\r")

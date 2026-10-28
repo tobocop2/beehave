@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// conclude readies a draft the owner allowed, reads the head once more, then merges pinned to the gated head and shows the tip.
-// The head is read again because a push can land between the guards and the merge. The merge call pins the head on the forge side.
+// conclude readies a draft the owner allowed, reads the head and the base tip once more, moves the children, then merges pinned to the gated head and shows the tip.
+// The head and the tip are read again because a push can land between the guards and the merge. The merge call pins the head on the forge side.
+// The children move last: a pull request that any guard refuses leaves its children where they are.
 func (a *attempt) conclude() *refusal {
-	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack} {
+	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.retarget} {
 		if stop := step(); stop != nil {
 			return stop
 		}
@@ -23,7 +24,7 @@ func (a *attempt) conclude() *refusal {
 	return nil
 }
 
-// unmoved refuses a pull request whose head moved since the gate.
+// unmoved refuses a pull request whose head moved since the gate, and a base whose tip moved since the start of the run.
 func (a *attempt) unmoved() *refusal {
 	again, err := a.forge.PRView(a.ctx, a.req.PR, "headRefOid")
 	if err != nil {
@@ -34,7 +35,34 @@ func (a *attempt) unmoved() *refusal {
 		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", head))
 	}
 
+	tip, stop := a.baseTip()
+	if stop != nil {
+		return stop
+	}
+
+	if tip != a.tip {
+		return refuse(fmt.Sprintf("REFUSE: %s moved from %s to %s while preparing. Merge the new tip into the branch and gate it again.", a.req.Base, a.tip, tip))
+	}
+
 	return nil
+}
+
+// start reads the tip of the base. The run compares it with the tip right before the merge call.
+func (a *attempt) start() *refusal {
+	tip, stop := a.baseTip()
+	a.tip = tip
+
+	return stop
+}
+
+// baseTip reads the tip of the base. A base that cannot be read refuses: an unreadable guard is not a passing one.
+func (a *attempt) baseTip() (string, *refusal) {
+	tip, found, err := a.forge.BranchRef(a.ctx, a.req.Base)
+	if err != nil || !found {
+		return "", refuse(fmt.Sprintf("REFUSE: cannot read the tip of %s, so a move of the base cannot be ruled out", a.req.Base))
+	}
+
+	return tip, nil
 }
 
 // nativeStack refuses a pull request in a native stack, which merges through the asynchronous merge that obee does not run.
