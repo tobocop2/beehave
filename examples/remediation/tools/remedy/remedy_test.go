@@ -127,7 +127,7 @@ func TestExecute_UnknownCommandRefuses(t *testing.T) {
 func TestNames_AreTheCommandsOfTheTable(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"cut", "audit", "take"}, remedy.Names())
+	assert.Equal(t, []string{"cut", "audit", "take", "admit", "size"}, remedy.Names())
 }
 
 func TestCut_MergedPullRequestMovesTheRoundAndPasses(t *testing.T) {

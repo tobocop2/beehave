@@ -290,7 +290,6 @@ linters:
             - "**/internal/check/papers/**"
             - "**/internal/check/gate/**"
             - "**/internal/check/transcript/**"
-            - "**/internal/brief/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
             - "**/internal/lease/**"
@@ -310,7 +309,6 @@ linters:
             - github.com/tobocop2/obee/internal/filelock
             - github.com/tobocop2/obee/internal/hclfile
             - github.com/tobocop2/obee/internal/check
-            - github.com/tobocop2/obee/internal/brief
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
             - github.com/tobocop2/obee/internal/lease
@@ -338,7 +336,6 @@ linters:
             - github.com/tobocop2/obee/internal/agent
             - github.com/tobocop2/obee/internal/host
             - github.com/tobocop2/obee/internal/check
-            - github.com/tobocop2/obee/internal/brief
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
             - github.com/tobocop2/obee/internal/ledger
@@ -363,7 +360,6 @@ linters:
             - "!**/internal/agent/**"
             - "!**/internal/host/**"
             - "!**/internal/check/**"
-            - "!**/internal/brief/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
             - "!**/internal/lease/**"

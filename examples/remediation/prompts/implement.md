@@ -21,6 +21,9 @@ rather than the commits. A closed pull request is not a record of work that land
 **Re-derive every cited site at the tip you branch from.** Line numbers move.
 **Build-versus-buy search.** Before you write a new mechanism, search the project, its dependencies and the standard
 library for one that already does the job. Name what you found, or write that you found none.
+**The engine has claimed this item.** Claim nothing.
+**Name the tempting wrong fix and why it is wrong.** Prefer enabling an existing judgement over writing a rival one.
+**Read the files that the item names before you start, and no others.**
 
 ## Before you report: run the call-site arm on your OWN tests
 
@@ -74,6 +77,52 @@ assert the OTHER still comes from the base.
 (the model name, the number, the unit), and state the site count with a control phrase that returns zero.
 **Key every snapshot on the FULL PATH, never the basename**, and assert each restored file's blob
 individually against its recorded pre-mutation value, not as a set.
+
+## Shell commands, background jobs and the build host
+
+**Never pass a script string to a shell.** No `sh -c "..."`, `bash -c "..."` or `zsh -c "..."`, even without
+`rm`. Write the commands to a script file in the scratch directory and run the
+file, detached if it is long: `nohup sh <file> > <log> 2>&1 &`, with the done marker as the file's last line.
+A loop that needs POSIX word splitting goes in a `#!/bin/sh` file, because the interactive shell is zsh.
+**Put no delete in any command you run.** Write scripts with the Write tool, never `sed -i.bak`.
+**Never end your turn waiting on a job you started yourself** (`run_in_background`, `Monitor`, a trailing
+`&`). An idle lane is not woken when its own job finishes.
+**Before you end, stop each background command you started, by task id**: a live one wakes you later.
+Wait loops have a timeout. Test commands read `</dev/null`. Report no background commands left.
+**Before EVERY build, check `df` on the build host.** If the free space is under the floor that the rules of the
+project name, wait. A build that starts on a nearly full disk fails partway with void results.
+
+## Compiled code
+
+**A BINARY FIXTURE MUST BE ASSERTED INVALID UTF-8 *AND* ASSERTED TO TAKE THE REFUSAL IT WAS WRITTEN FOR.**
+Assert the bytes are what you think (`from_utf8` errors) and that the path you are testing actually rejects
+them; either assertion alone lets a fixture drift into proving nothing.
+**A restore is not green until something forces the rebuild.** `touch` after every restore,
+unconditionally, whatever the hash says, and re-run clean: a plain `cp` can land inside the same mtime
+second and cargo reuses the mutated test binary.
+Name targets `-p <crate> --test <name>` and **assert a NONZERO count**; a run that selects nothing exits 0.
+**Name the FEATURES beside the target, every time**: a module behind a conditional-compilation flag is invisible
+to a target that does not name the feature. Read the package's feature list and default first, and if the count
+is zero suspect the feature list before the code. The rules of the project list the packages that need one.
+**Read the package name out of its own manifest, never from the repository or the directory name.** A wrong
+package name answers rc=101 with no tests; piped through `tail`, the rc you read is `tail`'s zero.
+
+## Merging two branches
+
+**A union identity is not complete until you count what came from NEITHER side.** `result - development ==
+branch - base` and `result - branch == development - base` both hold for a rewrite that balances. Add
+the third: lines present in the result and absent from BOTH parents must be zero, with a control that
+counts lines absent from one parent alone.
+**THE LINE CHECKS ARE NOT THE GATE. The union gate is a BUILD at the merge tip.** Every line can come from one
+parent while the tree does not compile. Be most suspicious when a branch ADDS an implementor of a shared
+trait: the base cannot have updated a file it never had. When the branch CHANGES a trait's method
+signatures, enumerate that trait's implementors AT THE TIP and confirm every one is in the branch's diff.
+**The third check compares FILE CONTENT, never two added-line sets.** Intersecting the `+` lines of the two
+diffs matches `+}` and `+#[test]` by coincidence of text. Per changed file, the result's lines must be a
+subset of the union of the two parents' versions of that file; the control is the same count against one
+parent alone, which must be nonzero.
+Restore a mutated file from a snapshot and **assert the blob**; `git checkout -- <file>` resets to HEAD and
+silently discards other uncommitted edits.
 
 ## Project rules
 

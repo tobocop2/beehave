@@ -9,6 +9,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/brief"
 	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
 	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/proc"
@@ -36,12 +37,14 @@ type Claims interface {
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
 // Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
 // Claims opens the claim store of the project that owns the repository. A step opens it only when it reads the claim, after the guards that need no store.
+// Book opens the lane ledger in a state folder.
 type Deps struct {
 	Git    proc.Runner
 	Dir    string
 	Forge  func(repo string) (Forge, error)
 	Now    func() time.Time
 	Claims func(repo string) (Claims, error)
+	Book   func(dir string) brief.Book
 }
 
 // streams are the two outputs of a run.
@@ -59,6 +62,29 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.hcl reads it.
 func commands() []command {
+	return append(roundCommands(), briefCommands()...)
+}
+
+// briefCommands are the subcommands that judge a lane and its brief before the lane starts.
+func briefCommands() []command {
+	return []command{
+		{
+			name:    "admit",
+			usage:   admitSyntax,
+			summary: "check that the ledger lets a lane of this kind start: acceptance lines, design lane, patch rounds and the handoff of the lane before",
+			run:     admitCommand,
+		},
+		{
+			name:    "size",
+			usage:   sizeSyntax,
+			summary: "size the reading of a brief in tokens, warn about big files and refuse a reading above the budget",
+			run:     sizeCommand,
+		},
+	}
+}
+
+// roundCommands are the subcommands that cut a round, audit merges and decide a takeover.
+func roundCommands() []command {
 	return []command{
 		{
 			name:    "cut",

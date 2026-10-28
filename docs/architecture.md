@@ -24,7 +24,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool · brief · preflight · review · scope · merge<br/>lane policy"]
+        policy["gate · ledger · pool · preflight · review · scope · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -313,6 +313,12 @@ Each subcommand follows the exit codes of obee: 0 for a pass, 1 for a defect fou
 
 `remedy take` never writes a claim. A claim lapses after 5 minutes unless something renews it, and the tool exits at once. The run of the item in the engine takes the claim and renews it. `--apply` and `--take` read the claim store of the project that owns the origin repository, from the obee config folder, through `internal/lease`, the same code that `obee run` uses. The store opens only when the claim must be read, after every guard and rule that needs no store, so a store that does not open never hides a refusal. `--apply` refuses when another owner holds the pull request, before it posts. `--take` refuses the same way. When every check passes, `--take` prints one line: the pull request may be taken now, and the run of the item holds the claim. It never prints TAKEN. A store that does not open is exit code 2. `--item` names the tracker item that the run claims. The claim read checks that item, never the pull request number. `--apply` and `--take` refuse with exit code 2 when `--item` is missing. The dry step needs no item. The engine gives each run a random owner token and no login maps to an owner, so the read asks as the fixed owner `remedy`, which never holds a claim. Any live claim on the item is another owner's. So run `remedy take` before a run claims the item: inside the item's own run, it sees the run's claim and always refuses. The forge of the tools has no call that assigns a pull request, so the take does not co-assign it.
 
+The prompts of the example hold the text that a lane reads: `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
+
+`remedy admit <kind> ...` runs the gates before a lane starts. An impl lane needs its acceptance slots, and a script needs its result at the base. A fix or rework lane names one mechanism, and a pull request with two patch rounds on that mechanism and no design lane since gets a design lane next. A lane of new behavior needs a design lane in the ledger. A lane that follows an earlier fix lane of the same key needs a handoff that passes, and a handoff with two regressions sends the next brief to a design lane. A pass is exit code 0, a gate that holds the brief back is exit code 1 with the lines for the orchestrator, and any other refusal is exit code 2.
+
+`remedy size <brief> [--cap n]` reads a filled brief. The required reading is the brief plus the files under its read-first list, and the limit is 160,000 bytes. The command warns about a file above 8,000 bytes, a chain of briefs and an acceptance script with no expected behavior, and that is exit code 1. It refuses a reading above the limit with exit code 2. It lists every file the brief names, follows the briefs that those files name and counts each file once. The limit and the file warning are constants, not settings.
+
 `takeover` never calls `time.Now`. `remedy` puts the time in the context, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal, and a pull request with no timestamp at all is unreadable, not idle. A token stands alone as a word when no Unicode letter, digit or underscore touches it, so `KEEPER`, `KEEP_ALL` and `KEEPé` do not say `KEEP`. The text of the notice is Markdown in `takeover/text`, read through one `embed` variable.
 
 `depguard` keeps the engine free of the tools: no file under `internal/` or `cmd/obee/` imports `examples/`. The rule has no exception, test files included. The `testscript` scripts of `remedy` are a test in `examples/remediation/tools/cmd/remedy`. A test in `examples/remediation/tools/remedy` loads `workflow.hcl` and fails when a `remedy` command in it names a subcommand that is not in the table.
@@ -338,20 +344,6 @@ A child is an open pull request whose base is the branch of the pull request. A 
 ### Merge step of the item
 
 When the build has a merger, the item merges after the ready step, pinned to the head that the gate and the review read. A merge that is done, or that is refused as own work, goes on to the ready watch, which ends when the owner merges. Any other refusal ends the item with the lines of the merge. A build with no merger has no merge step.
-
-## Brief
-
-`brief` writes the text that a lane reads before it starts. A brief has two parts. The first part is fixed rules: the skeleton, the rules of the kind, the context cap, the standing blocks and the rules file of the project. The second part is the lines of the item: the title, the model, the read-first list and the names of the lane. Two briefs of one kind share every byte up to the first line of the item, so a prompt cache reads the rules once. A test pins this prefix.
-
-The fixed text is 19 Markdown files in `brief/text`, read through one `embed` variable. The text names `obee` commands only. A kind of brief, a standing block, a tier row and a lane kind are named types with parsers. The kinds are impl, rev, design and papers.
-
-The rules file of the project comes from the config path. `LoadRules` refuses a file with no preflight section or with no CI section that holds a `- Run:` line and a `- Base:` line. `Lean` cuts the file for one kind: it drops a `<!--why` block and keeps a section tagged `<!-- for: ... -->` for the named kinds only. The cut is a small struct with one method for each marker, and a bad marker is a refusal with the file and the line. The `- Take:` line under the standing heading names the blocks that the project takes: build-host, compiled and union. A file with no such line takes all of them.
-
-`Admit` runs the gates before a brief is written, and a brief that a gate holds back writes no row. An impl lane needs its acceptance slots, and a script needs its result at the base. A fix or rework lane names one mechanism, and a pull request with two patch rounds on that mechanism and no design lane since gets a design lane next. A lane of new behavior needs a design lane in the ledger. A lane that follows an earlier fix lane of the same key needs a handoff that passes, and a handoff with two regressions sends the next brief to a design lane. The handoff check is a `HandoffCheck` function value that `cmd/obee` fills, so `brief` does not import `check/papers`. A gate that holds a brief back returns `Stopped`, with the lines for the orchestrator. Any other refusal is a `check.Refusal`.
-
-`Generate` loads the rules, takes the model, reads the slots, admits the lane, sizes the read-first list, emits the text, fills the slots and checks the size. Only then does it add the row of the lane to the ledger. The ledger is the `Book` interface: `Count`, `Rounds`, `Prior` and `Add`. A review of a pull request writes a review row, and the first review also records the issues that the pull request closes.
-
-`Check` and `Size` read a filled brief. The required reading is the brief plus the files under its read-first list, and the limit is 160,000 bytes. `Check` warns about a file above 8,000 bytes, a chain of briefs and an acceptance script with no expected behavior. It refuses a reading above the limit. `Size` lists every file the brief names, follows the briefs that those files name, counts each file once and never refuses for size. The limit, the file warning and the cap are constants, not settings.
 
 ## Configuration
 
@@ -431,7 +423,7 @@ A renewal that fails or times out does not lose the claim before that time. The 
 
 Each claim a run holds has one context, and every agent of that run starts under it. The context is the only way a lost claim stops an agent: it ends when the engine stops trusting the claim, and when the run ends. If the end comes before an agent starts, the start finds the context done and starts no process. If it comes after, the end of the context kills the process group of the agent. No check sits between the claim and the start, so no loss can fall between them. The context belongs to one run, so the loss of a run never touches the agent of another run of the same item.
 
-A phase asks, by the id of the run that queued it, whether that run holds a trusted claim now: not lost, not past the time on either clock, and with one good renewal when the run did not make the take. The claim of another run on the same item does not count. The phase asks before it writes its brief, and the brief is keyed by the run id, so the brief of a lost run never replaces the brief of a new run. A phase that `obee resume` reopened waits for its run to take the claim again: it waits while the run is open, and for 3 seconds when the run is not open yet. A phase whose run ended stops after those 3 seconds. So no second `obee run` can reclaim the item while the first run still works on it. The run ends with an error that names the reason. It does not release a claim it lost.
+A phase asks, by the id of the run that queued it, whether that run holds a trusted claim now: not lost, not past the time on either clock, and with one good renewal when the run did not make the take. The claim of another run on the same item does not count. The phase asks before it renders its prompt, and the prompt is keyed by the run id, so the prompt of a lost run never replaces the prompt of a new run. A phase that `obee resume` reopened waits for its run to take the claim again: it waits while the run is open, and for 3 seconds when the run is not open yet. A phase whose run ended stops after those 3 seconds. So no second `obee run` can reclaim the item while the first run still works on it. The run ends with an error that names the reason. It does not release a claim it lost.
 
 A process that leaves its agent's process group is out of reach of this kill. The agent group is the unit that dies.
 
