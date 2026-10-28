@@ -23,17 +23,22 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	env := config.ProcessEnv()
+	code := cli.Execute(ctx, os.Args[1:], buildInfo(env, version, flowFactory()), env, os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
+}
+
+// buildInfo wires the adapters, the doctor and the item list to the command line, with the flow given.
+func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildInfo {
 	bd := proc.NewExecRunner("bd", "")
 	table := newAdapters(bd, func() (string, error) { return config.StateDir(env) })
-	info := cli.BuildInfo{
+
+	return cli.BuildInfo{
 		Version:      version,
 		Adapters:     table.check,
 		Capabilities: table.capabilities,
 		Items:        table.itemOpener(),
 		Doctor:       newDoctor(bd, newSecurityRunner()),
-		Flow:         flowFactory(),
+		Flow:         flow,
 	}
-	code := cli.Execute(ctx, os.Args[1:], info, env, os.Stdout, os.Stderr)
-	stop()
-	os.Exit(code)
 }

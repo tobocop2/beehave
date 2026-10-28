@@ -1,0 +1,31 @@
+# A project with no forge refuses a workflow with a merge step, at the position of the step, and the run starts nothing.
+isolate
+
+subst config/projects/local.hcl
+
+exitcode 1 obeereal check workflow --project local flow/merge.hcl
+stderr 'merge\.hcl:3:1: step `merge\.ship` needs a forge, and project `local` has none\. Set `forge = "github"` in the project file, or remove the step\.'
+
+exec obeereal item add local ship-it --title 'Ship it' --body-file body.txt
+
+exitcode 1 obeereal run ship-it local --workflow flow/merge.hcl
+stderr 'merge\.hcl:3:1: step `merge\.ship` needs a forge'
+
+# The refusal comes before the claim: no claim row, no run, and no folder of the engine.
+noclaims local
+! exists state/dbos.db
+! exists state/engine.lock
+
+-- body.txt --
+Ship the change.
+-- config/projects/local.hcl --
+source      = "@WORK@/origin"
+base_branch = "main"
+gate        = "true"
+-- flow/merge.hcl --
+workflow "w" {}
+gate "check" {}
+merge "ship" {
+  head  = gate.check.head
+  merge = false
+}

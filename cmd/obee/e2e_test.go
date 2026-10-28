@@ -38,7 +38,7 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	testscript.Main(m, map[string]func(){"obee": e2eObee})
+	testscript.Main(m, map[string]func(){"obee": e2eObee, "obeereal": e2eReal})
 }
 
 // e2eObee is the obee command of the scripts. It matches main, with the fake collaborators.
@@ -434,6 +434,10 @@ func TestScripts(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir:   "testdata/e2e",
 		Setup: e2eSetup,
-		Cmds:  map[string]func(*testscript.TestScript, bool, []string){"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus},
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus,
+			"example": cmdExample, "subst": cmdSubst, "isolate": cmdIsolate, "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
+			"replace": cmdReplace,
+		},
 	})
 }

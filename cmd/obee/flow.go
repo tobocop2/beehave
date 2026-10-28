@@ -29,7 +29,12 @@ type logins struct {
 
 // newLogins reads the projects of the config. The pool pick reads the usage of each claude runner.
 func newLogins(cfg config.Config, opts flow.Options) logins {
-	return logins{projects: cfg.Projects, pool: poolPick(cfg, claude.UsageReader{Base: opts.Env}.Read)}
+	return loginsReading(cfg, claude.UsageReader{Base: opts.Env}.Read)
+}
+
+// loginsReading is newLogins with the reader of the usage given. A test of the whole command gives a reader that needs no login.
+func loginsReading(cfg config.Config, read pool.Reader) logins {
+	return logins{projects: cfg.Projects, pool: poolPick(cfg, read)}
 }
 
 // poolPick returns the name of the claude runner that read finds under both usage caps.
@@ -55,9 +60,14 @@ func (l logins) Pick(ctx context.Context, project, _ string) (string, error) {
 
 // flowFactory builds the engine and the client of the commands. version is the build version.
 func flowFactory() cli.Flow {
+	return flowFactoryFrom(newEngine)
+}
+
+// flowFactoryFrom is flowFactory with the builder of the engine given. A test of the whole command builds the real engine with a reader of the usage that needs no login.
+func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*flow.Engine, error)) cli.Flow {
 	return cli.Flow{
 		Engine: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Runner, error) {
-			engine, err := newEngine(ctx, cfg, opts)
+			engine, err := build(ctx, cfg, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -84,13 +94,18 @@ func stateFolder(dir string) func() (string, error) {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
+	return newEngineReading(ctx, cfg, opts, claude.UsageReader{Base: opts.Env}.Read)
+}
+
+// newEngineReading builds the engine with the reader of the usage that the pool pick uses.
+func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader) (*flow.Engine, error) {
 	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table)
 	commands := newPrograms(cfg, trees, table)
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: newLogins(cfg, opts), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
+		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: loginsReading(cfg, read), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 	})
 }
