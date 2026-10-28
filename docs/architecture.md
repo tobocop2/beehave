@@ -307,9 +307,19 @@ The take mode refuses in this order: no notice, a notice younger than the grace 
 
 `merge` merges one reviewed pull request into the round base, pinned to the commit that a reviewer gated. `Run` takes a `Request` and returns a `Result` with a `Stop` and the lines to show. The stops are a closed set with a `Code`: 0 done, 2 refused, 3 no workflow scope and 4 own work.
 
-`merge/roundcut` cuts the next round after the integration pull request merges: it refuses unless that pull request is merged, makes or resumes the new base only at the trunk tip, moves every open pull request on the old base to it, and never deletes the old branch. A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The forge interface has no call that deletes a branch.
+The round cut and the merge audit are not part of the engine. They live in `examples/remediation/tools/` and run through the `remedy` binary, see the next section.
 
-`merge/audit` reads the merges of a range through git, with `-z` path lists, and returns `[]Line`. `Authored` lists the paths of a merge that differ from every parent, as resolved or authored, with a mark on sensitive paths. `Present` lists the lines a merge added that the tip lost, and the files deleted at the tip. A range that git cannot read is an error, never a clean report. A checkout that cannot be entered is a `NoWorktree` error with code 9.
+## Remediation tools
+
+`examples/remediation/tools/` holds the tools of the remediation example, in the same Go module as the engine. The one binary is `examples/remediation/tools/cmd/remedy`. `make build` makes `bin/remedy`; the release archive holds only `obee`. The package `remedy` holds the command table, and `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner. A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`.
+
+Each subcommand follows the exit codes of obee: 0 for a pass, 1 for a defect found, 2 for a refusal or a failed read. A bad argument is a refusal. The tool finds the repository from the `origin` remote of its working folder.
+
+`remedy cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]` runs `roundcut`. It refuses unless the integration pull request is merged, makes or resumes the new base only at the trunk tip, moves every open pull request on the old base to it, and never deletes the old branch. A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The forge interface has no call that deletes a branch. The trunk is `main` when `--trunk` is not given. The number of the new round is the text after the last dash of the new branch.
+
+`remedy audit authored <span>` and `remedy audit present <tip> <base>` run `audit`. The audit reads the merges of a range through git, with `-z` path lists. `Authored` lists the paths of a merge that differ from every parent, as resolved or authored, with a mark on sensitive paths. `Present` lists the lines a merge added that the tip lost, and the files deleted at the tip. A line that marks a finding is exit code 1. A range that git cannot read is a refusal, never a clean report.
+
+`depguard` keeps the engine free of the tools: no file under `internal/` or `cmd/obee/` imports `examples/`. The rule has no exception, test files included. The `testscript` scripts of `remedy` are a test in `examples/remediation/tools/cmd/remedy`. A test in `examples/remediation/tools/remedy` loads `workflow.hcl` and fails when a `remedy` command in it names a subcommand that is not in the table.
 
 ### Own work is never merged
 

@@ -1,6 +1,7 @@
 GO_TEST_FLAGS := -race -count=1 -p 2
 GOLANGCI_LINT_VERSION := v2.15.0
 BIN := bin/obee
+REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
@@ -15,8 +16,9 @@ setup:  ## Install the Go tools and generate the agent files
 	command -v deadcode >/dev/null 2>&1 || go install $(DEADCODE_VERSION)
 	$(MAKE) governance-generate
 
-build:  ## Build bin/obee
+build:  ## Build bin/obee and bin/remedy
 	go build -trimpath -o $(BIN) ./cmd/obee
+	go build -trimpath -o $(REMEDY) ./examples/remediation/tools/cmd/remedy
 
 release-snapshot:  ## Build release archives without publishing
 	goreleaser release --snapshot --clean --skip=publish
@@ -55,6 +57,7 @@ coverage:  ## Enforce the coverage gate on coverage.out (run make test first)
 
 smoke: build  ## Run the built binary: --version prints and exits 0
 	$(BIN) --version | grep -q '^obee '
+	$(REMEDY) --help | grep -q '^usage: remedy '
 
 # Run on one package: make mutation PKG=./internal/cli/...
 mutation:
