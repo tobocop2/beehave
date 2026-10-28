@@ -1,9 +1,10 @@
-package shell_test
+package job_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/job"
 	"github.com/tobocop2/obee/internal/check/shell"
 )
 
@@ -49,7 +50,7 @@ type markerResult struct{ Lines []string }
 // OK reports whether no line is a defect.
 func (r markerResult) OK() bool {
 	for _, line := range r.Lines {
-		if strings.HasPrefix(line, shell.FailPrefix) {
+		if strings.HasPrefix(line, job.FailPrefix) {
 			return false
 		}
 	}
@@ -68,5 +69,5 @@ func gateOf(t *testing.T, script string, files map[string]string) markerResult {
 	}
 	units, _ := shell.ParseUnits(script)
 
-	return markerResult{Lines: shell.FixedStatusLines(units, jobDir, read)}
+	return markerResult{Lines: job.FixedStatusLines(units, jobDir, read)}
 }

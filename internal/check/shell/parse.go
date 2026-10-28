@@ -2,7 +2,6 @@ package shell
 
 import (
 	"io"
-	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/expand"
@@ -10,9 +9,12 @@ import (
 )
 
 const (
-	newline         = "\n"
-	cmdSubstMarker  = "$(...)"
-	quoteCharacters = "'\""
+	// Newline is the line break the scan splits text on.
+	Newline = "\n"
+	// QuoteCharacters are the characters that open or close a quoted string.
+	QuoteCharacters = "'\""
+
+	cmdSubstMarker = "$(...)"
 	// trailingOperators are the characters a line ends in when it continues on the next line.
 	trailingOperators = " \t&|;"
 )
@@ -34,7 +36,7 @@ func ParseUnits(text string) ([]Unit, []string) {
 		bad   []string
 	)
 
-	for _, line := range strings.Split(text, newline) {
+	for _, line := range strings.Split(text, Newline) {
 		lineUnits := unitsOfLine(line)
 		units = append(units, lineUnits...)
 
@@ -224,34 +226,6 @@ func lone(word *syntax.Word) (string, bool) {
 	return expansion.Param.Value, true
 }
 
-// isQuoted reports whether the word has a quoted part.
-func isQuoted(word *syntax.Word) bool {
-	return slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
-		switch part.(type) {
-		case *syntax.DblQuoted, *syntax.SglQuoted:
-			return true
-		}
-
-		return false
-	})
-}
-
-// hasExpansion reports whether the word holds a parameter, command or arithmetic expansion that the shell runs.
-func hasExpansion(word *syntax.Word) bool {
-	found := false
-
-	syntax.Walk(word, func(node syntax.Node) bool {
-		switch node.(type) {
-		case *syntax.ParamExp, *syntax.CmdSubst, *syntax.ArithmExp:
-			found = true
-		}
-
-		return !found
-	})
-
-	return found
-}
-
 // valueText returns the text of an assigned value: the inside of a value that is one quoted string, else the source text.
 func valueText(src string, word *syntax.Word) string {
 	if len(word.Parts) == 1 {
@@ -267,5 +241,5 @@ func valueText(src string, word *syntax.Word) string {
 		}
 	}
 
-	return strings.Trim(SrcOf(src, word), quoteCharacters)
+	return strings.Trim(SrcOf(src, word), QuoteCharacters)
 }

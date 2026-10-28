@@ -1,4 +1,4 @@
-package shell_test
+package job_test
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/obee/examples/remediation/tools/job"
 )
 
 const (
@@ -54,7 +54,7 @@ func TestJobScriptRefusesATestCommandWithNoTimeout(t *testing.T) {
 	}
 
 	for _, script := range refused {
-		out := shell.JobScript(script)
+		out := job.Script(script)
 		require.NotEmpty(t, out, script)
 		assert.Contains(t, out[0], noTimeout, script)
 	}
@@ -82,14 +82,14 @@ func TestJobScriptAcceptsATimedTestCommandAndALineThatOnlyNamesOne(t *testing.T)
 	}
 
 	for _, script := range accepted {
-		assert.Empty(t, shell.JobScript(script), script)
+		assert.Empty(t, job.Script(script), script)
 	}
 }
 
 func TestJobScriptNamesTheFileAHeredocWroteAndTheJobRunsLater(t *testing.T) {
 	t.Parallel()
 
-	out := shell.JobScript("cat > t.sh <<EOF\ncargo test\nEOF\nbash t.sh")
+	out := job.Script("cat > t.sh <<EOF\ncargo test\nEOF\nbash t.sh")
 
 	assert.Equal(t, []string{noTimeout + "cargo test (written to t.sh by a heredoc and run later). Write timeout <seconds> cargo test"}, out)
 }
@@ -97,7 +97,7 @@ func TestJobScriptNamesTheFileAHeredocWroteAndTheJobRunsLater(t *testing.T) {
 func TestJobScriptNamesTheLineAndTheFix(t *testing.T) {
 	t.Parallel()
 
-	out := shell.JobScript("cd /w && cargo test")
+	out := job.Script("cd /w && cargo test")
 
 	assert.Equal(t, []string{noTimeout + "cargo test. Write timeout <seconds> cargo test. If the line only names a test tool in a message, quote the message"}, out)
 }
@@ -115,7 +115,7 @@ func TestJobScriptRefusesBulkStaging(t *testing.T) {
 	}
 
 	for _, script := range refused {
-		out := shell.JobScript(script)
+		out := job.Script(script)
 		require.NotEmpty(t, out, script)
 		assert.Contains(t, out[0], bulkFail+"git ", script)
 	}
@@ -126,7 +126,7 @@ func TestJobScriptNamesTheFormAndTheFixForBulkStaging(t *testing.T) {
 
 	assert.Equal(t,
 		[]string{"FAIL: the job stages in bulk (git add -A). Stage explicit paths only, or set GIT_INDEX_FILE for a private index"},
-		shell.JobScript("git add -A"))
+		job.Script("git add -A"))
 }
 
 func TestJobScriptAcceptsStagingThatIsNotBulk(t *testing.T) {
@@ -140,7 +140,7 @@ func TestJobScriptAcceptsStagingThatIsNotBulk(t *testing.T) {
 	}
 
 	for _, script := range accepted {
-		assert.Empty(t, shell.JobScript(script), script)
+		assert.Empty(t, job.Script(script), script)
 	}
 }
 
@@ -148,7 +148,7 @@ func TestJobScriptRefusesALineThatDoesNotParse(t *testing.T) {
 	t.Parallel()
 
 	for _, script := range []string{"pytest tests )", "if true; then\ngit add -A", `git add -A "x`, "echo a <<", "cat > t.sh <<EOF\nfi )\nEOF\nbash t.sh"} {
-		out := shell.JobScript(script)
+		out := job.Script(script)
 		require.NotEmpty(t, out, script)
 		assert.Contains(t, strings.Join(out, "\n"), "FAIL: the job has a line that does not parse as shell: ", script)
 	}
@@ -157,15 +157,15 @@ func TestJobScriptRefusesALineThatDoesNotParse(t *testing.T) {
 func TestJobScriptReadsCommandSubstitutions(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, shell.JobScript("x=$(git add -A)")[0], bulkFail)
-	assert.Contains(t, shell.JobScript("x=$(pytest tests)")[0], noTimeout)
-	assert.Contains(t, shell.JobScript("echo $(cargo test)")[0], noTimeout)
+	assert.Contains(t, job.Script("x=$(git add -A)")[0], bulkFail)
+	assert.Contains(t, job.Script("x=$(pytest tests)")[0], noTimeout)
+	assert.Contains(t, job.Script("echo $(cargo test)")[0], noTimeout)
 }
 
 func TestJobScriptRefusesACommandItCannotRead(t *testing.T) {
 	t.Parallel()
 
-	out := shell.JobScript("g=git\n$g add -A")
+	out := job.Script("g=git\n$g add -A")
 
 	assert.Equal(t, []string{"FAIL: the job runs a command the check cannot read ($g). Write the command name out, with no variable or wrapper that hides it"}, out)
 }
@@ -174,7 +174,7 @@ func TestJobScriptRefusesATestCommandBehindAVariable(t *testing.T) {
 	t.Parallel()
 
 	for _, script := range []string{"T=timeout\n$T 600 cargo test", "T=timeout\n${T} 600 pytest", "R=timeout\n\"${R}\" cargo test"} {
-		assert.NotEmpty(t, shell.JobScript(script), script)
+		assert.NotEmpty(t, job.Script(script), script)
 	}
 }
 
@@ -191,8 +191,8 @@ func TestJobScriptStaysLinearInTheNumberOfHeredocFiles(t *testing.T) { //nolint:
 	}
 
 	small, large := script(200), script(400)
-	smallAllocs := testing.AllocsPerRun(1, func() { shell.JobScript(small) })
-	largeAllocs := testing.AllocsPerRun(1, func() { shell.JobScript(large) })
+	smallAllocs := testing.AllocsPerRun(1, func() { job.Script(small) })
+	largeAllocs := testing.AllocsPerRun(1, func() { job.Script(large) })
 
 	assert.Less(t, largeAllocs, 2.5*smallAllocs)
 }
@@ -200,7 +200,44 @@ func TestJobScriptStaysLinearInTheNumberOfHeredocFiles(t *testing.T) { //nolint:
 func TestJobScriptReadsTheWordsOfAStringThatDoesNotParse(t *testing.T) {
 	t.Parallel()
 
-	out := strings.Join(shell.JobScript("bash -c 'cargo test )'"), "\n")
+	out := strings.Join(job.Script("bash -c 'cargo test )'"), "\n")
 
 	assert.Contains(t, out, noTimeout+"cargo test ).")
+}
+
+func TestAWrapperFunctionWithNoCommandAndAHeredocWithNoFileAreNotRefused(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, job.Script("f() { timeout 5; }\nf() { sudo -E \"$@\"; }\nf() { tee -a <<EOF\nx\nEOF\n}"))
+}
+
+func TestAnyNumberOfWrappersIsDropped(t *testing.T) {
+	t.Parallel()
+
+	assert.NotEmpty(t, job.Script(strings.Repeat("exec ", 21)+"pytest"))
+	assert.NotEmpty(t, job.Script(strings.Repeat("nice ", 200)+"pytest"))
+}
+
+// seeds are scripts that cover the forms the job check reads.
+var seeds = []string{
+	"()0", "R='ssh h; $R '; $R rm x", "git add -A", "cd /w && cargo test", "cat > t.sh <<EOF\ncargo test\nEOF\nbash t.sh",
+	"bash -c 'cargo test )'", "g=git\n$g add -A", "x=$(pytest tests)", "timeout 5 pytest", `echo "DONE-x rc=0"`,
+}
+
+func TestJobScriptReadsEveryCutOfAScriptWithoutPanicking(t *testing.T) {
+	t.Parallel()
+
+	for _, script := range seeds {
+		for end := range len(script) + 1 {
+			assert.NotPanics(t, func() { job.Script(script[:end]) }, "%q cut at %d", script, end)
+		}
+	}
+}
+
+func FuzzJobScript(f *testing.F) {
+	for _, script := range seeds {
+		f.Add(script)
+	}
+
+	f.Fuzz(func(_ *testing.T, text string) { job.Script(text) })
 }

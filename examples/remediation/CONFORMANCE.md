@@ -106,7 +106,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-H-04 | Read the host verdict before any resize, freeze or launch | core | gap | - | - | S1-H-04 |
 | S1-H-05 | A gate queue on the host with a cap, wait states and a grant | core | gap | - | - | S1-H-05, S1-H-06, S1-H-07, S1-H-08, S1-H-10, S1-H-13, S1-H-14, S1-H-15, S1-H-17, S1-H-19, S1-H-20, S1-H-21, S1-H-22, S1-H-23, S1-H-24, S1-H-25 |
 | S1-H-11 | A disk floor makes a job wait; an unparseable reading is a refusal | core | gap | - | - | S1-H-11, S1-H-29, S1-H-30, S1-H-32, S1-H-33 |
-| S1-H-12 | Job checks: delete the clone after the marker; every test step under a timeout | core | gap | - | - | S1-H-12, S1-H-34, S1-H-60, S1-H-62, S1-H-63, S1-H-67 |
+| S1-H-12 | Job checks: delete the clone after the marker; every test step under a timeout. The test covers the timeout part only; no test covers the clone delete | core | gap | tools/remedy job | TestJob_ATestCommandWithNoTimeoutIsExitCodeOne | S1-H-12, S1-H-34, S1-H-60, S1-H-62, S1-H-63, S1-H-67 |
 | S1-H-16 | Job scripts live under a jobs folder on the host, never in tmp | file | gap | - | - | S1-H-16 |
 | S1-H-18 | Freeze and continue jobs by priority; stop a superseded job | core | gap | - | - | S1-H-18, S1-H-66 |
 | S1-H-26 | Jobs outside the queue go through a slot; the reviewed item gets the host first | core | gap | - | - | S1-H-26, S1-H-27, S1-H-28, S1-H-64 |
@@ -120,19 +120,19 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-H-65 | A handoff line says whether the code compiled and at which SHA | core | gap | - | - | S1-H-65 |
 | S1-H-69 | Hook commits on the build host; never build on the laptop; local-only profiles | file | gap | - | - | S1-H-69, S1-H-70, S1-H-72, S1-H-73, S1-H-74 |
 | SC-02 | Run a many-process probe under a timeout and a process cap | core | gap | - | - | - |
-| S1-G-01 | One gate list per round; each job checked against it; a gate prints a result per step. The file holds only `gate "check" {}`, so the prompts state the rule until the core enforces it | core | gap | - | - | S1-G-01, S1-G-02, S1-G-03, S1-G-07, S1-D-08 |
+| S1-G-01 | One gate list per round; each job checked against it; a gate prints a result per step. The file holds only `gate "check" {}`, so the prompts state the rule until the core enforces it | core | gap | tools/remedy job | TestJob_AStepThatTheJobDoesNotRunIsExitCodeOne | S1-G-01, S1-G-02, S1-G-03, S1-G-07, S1-D-08 |
 | S1-G-04 | A pinned tool at another version voids the step; a base red is not counted | core | gap | - | - | S1-G-04, S1-G-05 |
-| S1-G-06 | The merge gate needs every step at the head that merges, one report row each | core | gap | - | - | S1-G-06, S1-R-26, S1-G-09, S1-G-43, S1-R-47, S1-R-46 |
+| S1-G-06 | The merge gate needs every step at the head that merges, one report row each | core | gap | tools/remedy report | TestReport_AWholeReportPassesWithTheSummary | S1-G-06, S1-R-26, S1-G-09, S1-G-43, S1-R-47, S1-R-46 |
 | S1-G-08 | A mutation run is a separate job after the gate | core | gap | - | - | S1-G-08 |
-| S1-G-10 | Capture the exit code before any pipe | core | gap | - | - | S1-G-10, S1-G-40 |
-| S1-G-14 | A while-read loop must not feed stdin to commands | core | gap | - | - | S1-G-14 |
-| S1-G-11 | Assert a non-zero test count; a missing result line is a failure | core | gap | - | - | S1-G-11, S1-G-13 |
+| S1-G-10 | Capture the exit code before any pipe. The test covers the fixed-status marker only; no test covers a pipe before the capture | core | gap | tools/remedy job | TestExitMarker_RefusesAMarkerLineThatPrintsALiteralExitStatus | S1-G-10, S1-G-40 |
+| S1-G-14 | A while-read loop must not feed stdin to commands | core | gap | tools/remedy job | - | S1-G-14 |
+| S1-G-11 | Assert a non-zero test count; a missing result line is a failure | core | gap | tools/remedy job | - | S1-G-11, S1-G-13 |
 | S1-G-12 | A completion marker is not the artifact; gate on the result line | core | gap | - | - | S1-G-12 |
 | S1-G-15 | A task killed by our timeout is unresolved, not green or red | core | gap | - | - | S1-G-15 |
 | S1-G-16 | Base-red entries name the CI command; exclusion lists expire | skill | gap | - | - | S1-G-16, S1-G-17, S1-G-19, S1-G-22, S1-G-29, S1-G-30, S1-G-32, S1-G-34, S1-G-41, S1-G-42, S1-G-47, S1-G-49 |
 | S1-G-18 | After an aborting gate stops, every later step is unknown | core | gap | - | - | S1-G-18 |
-| S1-G-20 | Derive the gate list from the CI files; screen steps that publish | core | gap | - | - | S1-G-20, S1-G-21, S1-S-20 |
-| S1-G-23 | Every lane report holds claims, hunks, inputs and siblings tables | core | gap | - | - | S1-G-23, S1-P-01, S1-P-02, S1-P-03, S1-R-28, S1-R-31, S1-R-32 |
+| S1-G-20 | Derive the gate list from the CI files; screen steps that publish. The test covers the derived-from line only; no test covers the screen for steps that publish | core | gap | tools/remedy gatelist | TestGatelist_AListThatNamesNoSourceWorkflowIsExitCodeTwo | S1-G-20, S1-G-21, S1-S-20 |
+| S1-G-23 | Every lane report holds claims, hunks, inputs and siblings tables | core | gap | tools/remedy report | TestReport_AReportWithNoBackgroundLineIsExitCodeOne | S1-G-23, S1-P-01, S1-P-02, S1-P-03, S1-R-28, S1-R-31, S1-R-32 |
 | S1-G-24 | Review method: controls, mutation proof, every changed cell against the base | skill | gap | - | - | S1-G-24, S1-G-25, S1-G-28, S1-R-13, S1-R-14, S1-R-15, S1-R-30, S1-R-33, S1-R-34, S1-R-35, S1-R-36, S1-R-38, S1-R-40, S1-R-41, S1-R-42, S1-R-43, S1-R-44, S1-R-45, S1-R-48, S1-R-50, S1-R-55, S1-R-57, S1-R-58, S1-R-61, S1-S-25 |
 | S1-G-26 | A secrets differential for every item, with a planted key as control | core | gap | - | - | S1-G-26, S1-G-46, S1-R-27, S1-M-09 |
 | S1-G-27 | Unknown is not zero: a failed read never lets a request through | core | gap | - | - | S1-G-27, S1-X-17 |

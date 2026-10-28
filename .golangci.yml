@@ -127,14 +127,12 @@ linters:
           files: ["**/internal/check/transcript/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/check/shell
-              desc: only check/gate imports check/shell
-            - pkg: github.com/tobocop2/obee/internal/check/gate
-              desc: only cmd/obee imports check/gate
+              desc: check/transcript takes the shell scanner as a function value
         check-siblings:
-          files: ["**/internal/check/shell/**", "**/internal/check/gate/**"]
+          files: ["**/internal/check/shell/**", "**/examples/remediation/tools/gate/**", "**/examples/remediation/tools/job/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/check/transcript
-              desc: check/shell and check/gate never import check/transcript
+              desc: check/shell and the gate and job tools never import check/transcript
         test-packages-in-tests-only:
           files: ["!$test"]
           deny:
@@ -285,7 +283,6 @@ linters:
           files:
             - "**/internal/check/*.go"
             - "**/internal/check/shell/**"
-            - "**/internal/check/gate/**"
             - "**/internal/check/transcript/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"

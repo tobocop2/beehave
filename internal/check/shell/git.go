@@ -124,7 +124,7 @@ func commitWord(arg string) (string, int, bool) {
 	case arg == "--all":
 		return "git commit --all", 0, false
 	case commitValueLong(arg):
-		return "", valueOptionWidth, false
+		return "", ValueOptionWidth, false
 	case strings.HasPrefix(arg, dashDash):
 		return "", 1, false
 	}

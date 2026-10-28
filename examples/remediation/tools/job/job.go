@@ -1,4 +1,5 @@
-package shell
+// Package job judges a job script for the host: exit-code capture, timeouts on tests and the rules of the gate list. It reads the script with the parser of check/shell.
+package job
 
 import (
 	"path"
@@ -8,16 +9,45 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
+	"github.com/tobocop2/obee/internal/check/shell"
 	"github.com/tobocop2/obee/internal/model"
 )
 
 var makeTarget = regexp.MustCompile(`^test[A-Za-z0-9_.:-]*$`)
 
-// JobScript returns the FAIL lines for a job script: a line that does not parse, a command no static read can see, bulk staging, and a test command with no timeout in front of it.
-func JobScript(script string) []string {
+// isQuoted reports whether the word has a quoted part.
+func isQuoted(word *syntax.Word) bool {
+	return slices.ContainsFunc(word.Parts, func(part syntax.WordPart) bool {
+		switch part.(type) {
+		case *syntax.DblQuoted, *syntax.SglQuoted:
+			return true
+		}
+
+		return false
+	})
+}
+
+// hasExpansion reports whether the word holds a parameter, command or arithmetic expansion that the shell runs.
+func hasExpansion(word *syntax.Word) bool {
+	found := false
+
+	syntax.Walk(word, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.ParamExp, *syntax.CmdSubst, *syntax.ArithmExp:
+			found = true
+		}
+
+		return !found
+	})
+
+	return found
+}
+
+// Script returns the FAIL lines for a job script: a line that does not parse, a command no static read can see, bulk staging, and a test command with no timeout in front of it.
+func Script(script string) []string {
 	var lines []string
 
-	for _, finding := range Scan(script) {
+	for _, finding := range shell.Scan(script) {
 		if line := jobLine(finding); line != "" {
 			lines = append(lines, line)
 		}
@@ -46,7 +76,7 @@ func unparsedMessage(line string) string {
 
 // site is one simple command of the script.
 type site struct {
-	u    Unit
+	u    shell.Unit
 	stmt *syntax.Stmt
 	call *syntax.CallExpr
 }
@@ -55,13 +85,13 @@ type site struct {
 type job struct {
 	sites []site
 	wraps map[string]bool
-	words *scanner
+	words *shell.Reader
 }
 
 func newJob(script string) *job {
-	j := &job{wraps: map[string]bool{}, words: newScanner()}
+	j := &job{wraps: map[string]bool{}, words: shell.NewReader()}
 
-	units, _ := ParseUnits(script) // JobScript reports the lines that do not parse
+	units, _ := shell.ParseUnits(script) // Script reports the lines that do not parse
 	for _, u := range units {
 		j.collect(u)
 	}
@@ -69,7 +99,7 @@ func newJob(script string) *job {
 	return j
 }
 
-func (j *job) collect(u Unit) {
+func (j *job) collect(u shell.Unit) {
 	syntax.Walk(u.File, func(node syntax.Node) bool {
 		switch typed := node.(type) {
 		case *syntax.FuncDecl:
@@ -87,7 +117,7 @@ func (j *job) collect(u Unit) {
 }
 
 // runsItsArguments reports whether the body of a function runs its arguments (`"$@"`, `$1`, `$*` or eval of them).
-func (j *job) runsItsArguments(u Unit, body *syntax.Stmt) bool {
+func (j *job) runsItsArguments(u shell.Unit, body *syntax.Stmt) bool {
 	found := false
 
 	syntax.Walk(body, func(node syntax.Node) bool {
@@ -101,18 +131,18 @@ func (j *job) runsItsArguments(u Unit, body *syntax.Stmt) bool {
 	return found
 }
 
-func (j *job) callRunsArguments(u Unit, call *syntax.CallExpr) bool {
-	head, _ := headOf(j.words.words(u, call.Args))
+func (j *job) callRunsArguments(u shell.Unit, call *syntax.CallExpr) bool {
+	head, _ := shell.HeadOf(j.words.Words(u, call.Args))
 	if len(head) == 0 {
 		return false
 	}
 
 	args := call.Args[len(call.Args)-len(head):]
-	if name, ok := lone(args[0]); ok && oneOf(name, "@", "*", "1") {
+	if name, ok := shell.Lone(args[0]); ok && shell.OneOf(name, "@", "*", "1") {
 		return true
 	}
 
-	evaluates := head[0] == cmdEval || (isShell(head[0]) && len(head) > 1 && head[1] == "-c")
+	evaluates := head[0] == shell.CmdEval || (shell.IsShell(head[0]) && len(head) > 1 && head[1] == "-c")
 
 	return evaluates && slices.ContainsFunc(args[1:], hasExpansion)
 }
@@ -126,13 +156,13 @@ type invocation struct {
 }
 
 // invocation drops the wrappers of a call, and a module word (`runner -m tool`), until the command is left.
-func (j *job) invocation(u Unit, call *syntax.CallExpr) invocation {
-	words, args := j.words.words(u, call.Args), call.Args
+func (j *job) invocation(u shell.Unit, call *syntax.CallExpr) invocation {
+	words, args := j.words.Words(u, call.Args), call.Args
 	inv := invocation{}
 
 	for {
-		head, prefix := headOf(words)
-		inv.timed = inv.timed || dropped(prefix, timeoutName) || dropped(prefix, gtimeoutName)
+		head, prefix := shell.HeadOf(words)
+		inv.timed = inv.timed || dropped(prefix, shell.TimeoutName) || dropped(prefix, shell.GtimeoutName)
 		inv.lookup = inv.lookup || (dropped(prefix, "command") && (slices.Contains(prefix, "-v") || slices.Contains(prefix, "-V")))
 		words, args = head, args[len(args)-len(head):]
 
@@ -168,7 +198,7 @@ func startsTool(words []string) bool {
 			rest = rest[1:]
 		}
 
-		return len(rest) > 0 && oneOf(rest[0], "test", "nextest")
+		return len(rest) > 0 && shell.OneOf(rest[0], "test", "nextest")
 	case "make":
 		return len(words) > 1 && makeTarget.MatchString(words[1])
 	}
@@ -179,7 +209,7 @@ func startsTool(words []string) bool {
 // toolIn returns the command text from the first test command in the words, unless a timeout comes before it.
 func (j *job) toolIn(words []string) string {
 	for at, word := range words {
-		if isTimeout(path.Base(word)) {
+		if shell.IsTimeout(path.Base(word)) {
 			return ""
 		}
 
@@ -192,7 +222,7 @@ func (j *job) toolIn(words []string) string {
 }
 
 // untimed returns the command text when the call runs a test command with no timeout in front of it.
-func (j *job) untimed(u Unit, call *syntax.CallExpr) string {
+func (j *job) untimed(u shell.Unit, call *syntax.CallExpr) string {
 	if found := j.quotedAssign(u, call); found != "" {
 		return found
 	}
@@ -222,10 +252,10 @@ func (j *job) untimedCommand(inv invocation) string {
 }
 
 // quotedAssign checks the quoted value of an assignment: it may hold a command line.
-func (j *job) quotedAssign(u Unit, call *syntax.CallExpr) string {
+func (j *job) quotedAssign(u shell.Unit, call *syntax.CallExpr) string {
 	for _, assign := range call.Assigns {
 		if assign.Value != nil && isQuoted(assign.Value) {
-			if found := j.toolIn(strings.Fields(j.words.literal(u, assign.Value))); found != "" {
+			if found := j.toolIn(strings.Fields(j.words.Literal(u, assign.Value))); found != "" {
 				return found
 			}
 		}
@@ -275,7 +305,7 @@ func (j *job) codeIn(words []string, args []*syntax.Word, stringsRun bool) strin
 func (j *job) nested(text string) (string, []string) {
 	var unread []string
 
-	units, bad := ParseUnits(text)
+	units, bad := shell.ParseUnits(text)
 	for _, line := range bad {
 		unread = append(unread, strings.Fields(line)...)
 	}
@@ -295,12 +325,12 @@ func (j *job) nested(text string) (string, []string) {
 func carries(head []string) bool {
 	name := path.Base(head[0])
 
-	return isCarrier(name) || (oneOf(name, "uv", "poetry", "pipx") && uvRuns(head[1:]))
+	return isCarrier(name) || (shell.OneOf(name, "uv", "poetry", "pipx") && uvRuns(head[1:]))
 }
 
 func isCarrier(name string) bool {
 	switch name {
-	case "bash", "sh", "zsh", "dash", "ssh", cmdEval, "docker", "podman", "flock", "parallel", "watch", "su", "uvx":
+	case "bash", "sh", "zsh", "dash", shell.SSHName, shell.CmdEval, "docker", "podman", "flock", "parallel", "watch", "su", "uvx":
 		return true
 	}
 
@@ -308,13 +338,13 @@ func isCarrier(name string) bool {
 }
 
 func carrierWord(name string) bool {
-	return isCarrier(name) || oneOf(name, "uv", "poetry", "pipx")
+	return isCarrier(name) || shell.OneOf(name, "uv", "poetry", "pipx")
 }
 
 // uvRuns reports whether the words after `uv` are options, an optional `tool`, and then `run`. An option may take the next word as its value.
 // reach marks each index the walk can stand on, so the work is linear in the number of words.
 func uvRuns(words []string) bool {
-	reach := make([]bool, len(words)+valueOptionWidth)
+	reach := make([]bool, len(words)+shell.ValueOptionWidth)
 	reach[0] = true
 
 	for at, word := range words {
@@ -328,7 +358,7 @@ func uvRuns(words []string) bool {
 
 		if strings.HasPrefix(word, "-") {
 			reach[at+1] = true
-			reach[at+valueOptionWidth] = at+1 < len(words) && !strings.HasPrefix(words[at+1], "-")
+			reach[at+shell.ValueOptionWidth] = at+1 < len(words) && !strings.HasPrefix(words[at+1], "-")
 		}
 	}
 
@@ -371,10 +401,10 @@ func (j *job) heredocLines(s site, ran map[string]bool) []string {
 		}
 
 		switch {
-		case feedsShell(j.words.words(s.u, s.call.Args)):
-			lines = append(lines, j.bodyLines(SrcOf(s.u.Src, redir.Hdoc), "")...)
+		case feedsShell(j.words.Words(s.u, s.call.Args)):
+			lines = append(lines, j.bodyLines(shell.SrcOf(s.u.Src, redir.Hdoc), "")...)
 		case file != "" && ran[file]:
-			lines = append(lines, j.bodyLines(SrcOf(s.u.Src, redir.Hdoc), file)...)
+			lines = append(lines, j.bodyLines(shell.SrcOf(s.u.Src, redir.Hdoc), file)...)
 		}
 	}
 
@@ -384,7 +414,7 @@ func (j *job) heredocLines(s site, ran map[string]bool) []string {
 func (j *job) bodyLines(body, file string) []string {
 	var lines []string
 
-	units, bad := ParseUnits(body)
+	units, bad := shell.ParseUnits(body)
 	for _, line := range bad {
 		lines = append(lines, unparsedMessage(line))
 	}
@@ -408,7 +438,7 @@ func bodyMessage(found, file string) string {
 	return "FAIL: the job runs a test command without timeout in front of it: " + found + " (written to " + file + " by a heredoc and run later). Write timeout <seconds> " + found
 }
 
-func unitCalls(u Unit) []*syntax.CallExpr {
+func unitCalls(u shell.Unit) []*syntax.CallExpr {
 	var calls []*syntax.CallExpr
 
 	syntax.Walk(u.File, func(node syntax.Node) bool {
@@ -426,7 +456,7 @@ func feedsShell(words []string) bool {
 	return slices.ContainsFunc(words, func(word string) bool {
 		name := path.Base(word)
 
-		return isShell(name) || name == sshName
+		return shell.IsShell(name) || name == shell.SSHName
 	})
 }
 
@@ -434,11 +464,11 @@ func feedsShell(words []string) bool {
 func (j *job) heredocFile(s site) string {
 	for _, redir := range s.stmt.Redirs {
 		if (redir.Op == syntax.RdrOut || redir.Op == syntax.AppOut) && redir.Word != nil {
-			return j.words.literal(s.u, redir.Word)
+			return j.words.Literal(s.u, redir.Word)
 		}
 	}
 
-	head, _ := headOf(j.words.words(s.u, s.call.Args))
+	head, _ := shell.HeadOf(j.words.Words(s.u, s.call.Args))
 	if len(head) == 0 || path.Base(head[0]) != "tee" {
 		return ""
 	}
@@ -493,7 +523,7 @@ func hasHeredoc(stmt *syntax.Stmt) bool {
 
 // runTarget returns the file a command runs: as the command, or as the argument of a shell or `source`.
 func (j *job) runTarget(s site) string {
-	head, _ := headOf(j.words.words(s.u, s.call.Args))
+	head, _ := shell.HeadOf(j.words.Words(s.u, s.call.Args))
 	if len(head) > 1 && (head[0] == "source" || head[0] == ".") {
 		head = head[1:]
 	}

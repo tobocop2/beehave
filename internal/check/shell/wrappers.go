@@ -13,19 +13,23 @@ var (
 	shellCommandOption = regexp.MustCompile(`^-[A-Za-z]*c[A-Za-z]*$`)
 )
 
+// The names a check outside this package reads the same way the scan does.
 const (
-	timeoutName      = "timeout"
-	gtimeoutName     = "gtimeout"
-	sshName          = "ssh"
-	cmdSudo          = "sudo"
-	cmdEnv           = "env"
-	cmdNice          = "nice"
-	cmdExec          = "exec"
-	cmdEval          = "eval"
-	cmdFind          = "find"
-	cmdNohup         = "nohup"
-	cmdTime          = "time"
-	valueOptionWidth = 2
+	TimeoutName      = "timeout"
+	GtimeoutName     = "gtimeout"
+	SSHName          = "ssh"
+	CmdEval          = "eval"
+	ValueOptionWidth = 2
+)
+
+const (
+	cmdSudo  = "sudo"
+	cmdEnv   = "env"
+	cmdNice  = "nice"
+	cmdExec  = "exec"
+	cmdFind  = "find"
+	cmdNohup = "nohup"
+	cmdTime  = "time"
 )
 
 // isShell reports whether the command name is a shell that reads a script.
@@ -41,7 +45,7 @@ func isShell(name string) bool {
 // isWrapper reports whether the command name is a wrapper that runs the command after its options.
 func isWrapper(name string) bool {
 	switch name {
-	case cmdSudo, cmdEnv, cmdNice, timeoutName, gtimeoutName, "xargs", "sshpass", "stdbuf", "ionice", "busybox", cmdNohup, cmdTime, cmdExec, "command", "setsid":
+	case cmdSudo, cmdEnv, cmdNice, TimeoutName, GtimeoutName, "xargs", "sshpass", "stdbuf", "ionice", "busybox", cmdNohup, cmdTime, cmdExec, "command", "setsid":
 		return true
 	}
 
@@ -52,13 +56,13 @@ func isWrapper(name string) bool {
 func takesValue(name, option string) bool {
 	switch name {
 	case cmdSudo:
-		return oneOf(option, "-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U")
+		return OneOf(option, "-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U")
 	case cmdEnv:
-		return oneOf(option, "-u", "-C", "-S", "--unset", "--chdir", "--split-string")
+		return OneOf(option, "-u", "-C", "-S", "--unset", "--chdir", "--split-string")
 	case cmdNice:
-		return oneOf(option, "-n", "--adjustment")
-	case timeoutName, gtimeoutName:
-		return oneOf(option, "-k", "-s", "--kill-after", "--signal")
+		return OneOf(option, "-n", "--adjustment")
+	case TimeoutName, GtimeoutName:
+		return OneOf(option, "-k", "-s", "--kill-after", "--signal")
 	}
 
 	return takesValueOfTool(name, option)
@@ -67,19 +71,20 @@ func takesValue(name, option string) bool {
 func takesValueOfTool(name, option string) bool {
 	switch name {
 	case "xargs":
-		return oneOf(option, "-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a")
+		return OneOf(option, "-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a")
 	case "sshpass":
-		return oneOf(option, "-p", "-f", "-d", "-P")
+		return OneOf(option, "-p", "-f", "-d", "-P")
 	case "stdbuf":
-		return oneOf(option, "-i", "-o", "-e")
+		return OneOf(option, "-i", "-o", "-e")
 	case "ionice":
-		return oneOf(option, "-c", "-n", "-t", "-p", "-P", "-u")
+		return OneOf(option, "-c", "-n", "-t", "-p", "-P", "-u")
 	}
 
 	return false
 }
 
-func oneOf(word string, options ...string) bool {
+// OneOf reports whether the word is one of the options.
+func OneOf(word string, options ...string) bool {
 	return slices.Contains(options, word)
 }
 
@@ -95,7 +100,7 @@ func skipPrefix(words []string, i int) (int, bool) {
 	}
 
 	i = skipOptions(words, i+1, name)
-	if isTimeout(name) {
+	if IsTimeout(name) {
 		i++
 	}
 
@@ -111,13 +116,14 @@ func skipOptions(words []string, i int, wrapper string) int {
 	return i
 }
 
-func isTimeout(name string) bool {
-	return name == timeoutName || name == gtimeoutName
+// IsTimeout reports whether the command name is a timeout wrapper.
+func IsTimeout(name string) bool {
+	return name == TimeoutName || name == GtimeoutName
 }
 
 func optionWidth(valued bool) int {
 	if valued {
-		return valueOptionWidth
+		return ValueOptionWidth
 	}
 
 	return 1
