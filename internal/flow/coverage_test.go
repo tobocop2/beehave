@@ -560,6 +560,49 @@ func TestClient_StatusReportsAQuestionThatIsNotText(t *testing.T) {
 	t.Log("the run is canceled and the context is shut down")
 }
 
+// stuckMerge sets a merge state that is not text, then waits for the owner.
+func stuckMerge(ctx dbos.Context, _ string) (string, error) {
+	if err := dbos.SetEvent(ctx, mergeKey, 42); err != nil {
+		return "", err
+	}
+
+	return dbos.Recv[string](ctx, ownerTopic, time.Minute)
+}
+
+func TestClient_StatusReportsAMergeStateThatIsNotText(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	state, err := openStore(harness.opts)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = state.log.Close() })
+
+	flowCtx, err := dbos.NewContext(t.Context(), dbos.Config{
+		AppName: appName, DatabaseURL: state.url, ApplicationVersion: testVersion, ExecutorID: executorName,
+	})
+	require.NoError(t, err)
+
+	dbos.RegisterWorkflow(flowCtx, stuckMerge, dbos.WithWorkflowName(itemName))
+	require.NoError(t, dbos.Launch(flowCtx))
+
+	_, err = dbos.RunWorkflow(flowCtx, stuckMerge, stuckItemName, dbos.WithWorkflowID(stuckItemID))
+	require.NoError(t, err)
+
+	client := harness.client(t, testVersion)
+
+	eventually(t, func() bool {
+		_, err := client.Status()
+
+		return err != nil
+	})
+
+	_, err = client.Status()
+	require.ErrorContains(t, err, "read the merge state of "+stuckItemID)
+	require.NoError(t, dbos.CancelWorkflow(flowCtx, stuckItemID))
+	require.NoError(t, dbos.Shutdown(flowCtx, shutdownTimeout))
+}
+
 func TestClient_CommandsReportAStoreThatIsGone(t *testing.T) {
 	t.Parallel()
 

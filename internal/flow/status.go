@@ -44,6 +44,8 @@ type RunInfo struct {
 	Question string
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
 	SentBack string
+	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged or sent_back. It is empty for a run with no merge step.
+	Merge string
 }
 
 // questionReadLimit is how long status waits for an event that the run has not set.
@@ -119,26 +121,36 @@ func (c *Client) Status() ([]RunInfo, error) {
 
 // info describes one run of the store. An open run also carries the question it asks the owner.
 func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
-	open := !run{Status: row}.terminal()
 	info := RunInfo{
 		ID: row.ID, State: stateOf(row.Status), Version: row.ApplicationVersion,
-		Stranded: open && row.ApplicationVersion != c.version,
+		Stranded: !run{Status: row}.terminal() && row.ApplicationVersion != c.version,
 	}
 
-	var err error
-
-	switch {
-	case open:
-		info.Question, err = c.questionOf(row.ID)
-	case info.State == runDone:
-		info.SentBack, err = sentBackOf(row)
-	}
-
-	if err != nil {
+	if err := c.details(row, &info); err != nil {
 		return RunInfo{}, err
 	}
 
 	return info, nil
+}
+
+// details adds what the run shows besides its state. An open run shows its question and its merge state; a finished run shows its result.
+func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
+	var err error
+
+	switch {
+	case !run{Status: row}.terminal():
+		info.Question, err = c.questionOf(row.ID)
+		if err == nil {
+			info.Merge, err = c.mergeOf(row.ID)
+		}
+	case info.State == runDone:
+		var result ItemResult
+
+		result, err = resultOf(row)
+		info.SentBack, info.Merge = result.SentBack, result.Merge
+	}
+
+	return err
 }
 
 // questionOf reads the question an open run asks the owner.
@@ -152,19 +164,29 @@ func (c *Client) questionOf(id string) (string, error) {
 	return question, nil
 }
 
-// sentBackOf reads the reason in the result of a finished run. A run with no result has none.
-func sentBackOf(row dbos.WorkflowStatus) (string, error) {
+// mergeOf reads the state that an open run sets while its merge step waits for the owner.
+func (c *Client) mergeOf(id string) (string, error) {
+	state, err := dbos.GetEvent[string](c.flow, id, mergeKey, questionReadLimit)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return "", fmt.Errorf("read the merge state of %s: %w", id, err)
+	}
+
+	return state, nil
+}
+
+// resultOf reads the result of a finished run. A run with no result has an empty one.
+func resultOf(row dbos.WorkflowStatus) (ItemResult, error) {
 	if row.Output == nil {
-		return "", nil
+		return ItemResult{}, nil
 	}
 
 	var result ItemResult
 	// ListWorkflows returns the stored JSON of the output as a string.
 	if err := json.Unmarshal([]byte(fmt.Sprint(row.Output)), &result); err != nil {
-		return "", fmt.Errorf("read the result of %s: %w", row.ID, err)
+		return ItemResult{}, fmt.Errorf("read the result of %s: %w", row.ID, err)
 	}
 
-	return result.SentBack, nil
+	return result, nil
 }
 
 func stateOf(status dbos.WorkflowStatusType) runState {

@@ -89,15 +89,16 @@ func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T)
 func TestSentBackOf_ReadsTheResultOfAFinishedRun(t *testing.T) {
 	t.Parallel()
 
-	reason, err := sentBackOf(dbos.WorkflowStatus{ID: "item-12-r1"})
+	result, err := resultOf(dbos.WorkflowStatus{ID: "item-12-r1"})
 	require.NoError(t, err)
-	assert.Empty(t, reason, "a run with no stored result has no reason")
+	assert.Empty(t, result.SentBack, "a run with no stored result has no reason")
 
-	reason, err = sentBackOf(dbos.WorkflowStatus{ID: "item-12-r1", Output: `{"item":"12","sent_back":"it conflicts"}`})
+	result, err = resultOf(dbos.WorkflowStatus{ID: "item-12-r1", Output: `{"item":"12","sent_back":"it conflicts","merge":"sent_back"}`})
 	require.NoError(t, err)
-	assert.Equal(t, "it conflicts", reason)
+	assert.Equal(t, "it conflicts", result.SentBack)
+	assert.Equal(t, "sent_back", result.Merge)
 
-	_, err = sentBackOf(dbos.WorkflowStatus{ID: "item-12-r1", Output: "not json"})
+	_, err = resultOf(dbos.WorkflowStatus{ID: "item-12-r1", Output: "not json"})
 	require.ErrorContains(t, err, "read the result of item-12-r1")
 }
 

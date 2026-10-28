@@ -46,7 +46,7 @@ type Steering interface {
 // Flow opens the engine and the client over the validated config. A nil factory leaves its commands out.
 type Flow struct {
 	Engine func(context.Context, config.Config, flow.Options) (Runner, error)
-	Client func(context.Context, flow.Options) (Steering, error)
+	Client func(context.Context, config.Config, flow.Options) (Steering, error)
 }
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
@@ -351,19 +351,26 @@ func printStatus(stdout io.Writer, infos []flow.RunInfo) {
 	}
 
 	for _, info := range infos {
-		line := fmt.Sprintf("%s\t%s", info.ID, info.State)
-
-		switch {
-		case info.Stranded:
-			line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
-		case info.Question != "":
-			line += "\tpaused: " + oneLine(info.Question)
-		case info.SentBack != "":
-			line += "\tsent back to draft: " + oneLine(info.SentBack)
-		}
-
-		_, _ = fmt.Fprintln(stdout, line)
+		_, _ = fmt.Fprintln(stdout, statusLine(info))
 	}
+}
+
+// statusLine describes one run: its id and state, then the one thing that the run waits for or ended with.
+func statusLine(info flow.RunInfo) string {
+	line := fmt.Sprintf("%s\t%s", info.ID, info.State)
+
+	switch {
+	case info.Stranded:
+		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
+	case info.Question != "":
+		line += "\tpaused: " + oneLine(info.Question)
+	case info.SentBack != "":
+		line += "\tsent back to draft: " + oneLine(info.SentBack)
+	case info.Merge != "":
+		line += "\tmerge: " + info.Merge
+	}
+
+	return line
 }
 
 func oneLine(text string) string {
@@ -372,12 +379,12 @@ func oneLine(text string) string {
 
 // withClient opens the client over the validated config, runs fn and closes the client.
 func (f flowCommands) withClient(cmd *cobra.Command, flag string, fn func(Steering) error) error {
-	_, opts, err := f.options(cmd.ErrOrStderr(), flag)
+	cfg, opts, err := f.options(cmd.ErrOrStderr(), flag)
 	if err != nil {
 		return err
 	}
 
-	client, err := f.factory.Client(f.ctx, opts)
+	client, err := f.factory.Client(f.ctx, cfg, opts)
 	if err != nil {
 		return err
 	}

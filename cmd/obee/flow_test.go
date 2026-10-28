@@ -20,14 +20,25 @@ func TestNotBuilt_EveryStepSaysThisBuildLacksIt(t *testing.T) {
 	_, briefErr := pending.Write(ctx, flow.BriefRequest{})
 	_, gateErr := gate{}.Run(ctx, "p", "1")
 	_, verdictErr := pending.Read(ctx, "p", "1", 0)
-	_, claimErr := pending.Claim(ctx, "p", "1")
-	_, beatErr := pending.Beat(ctx, "p", "owner")
-	_, pullErr := pending.Pull(ctx, "p", "1")
-	_, watchErr := pending.Watch(ctx, 1)
 
-	for _, err := range []error{briefErr, gateErr, verdictErr, claimErr, beatErr, pullErr, watchErr, pending.SetDraft(ctx, 1, true), pending.Ready(ctx, "p", "1"), pending.Release(ctx, "p", "1", "owner")} {
+	for _, err := range []error{briefErr, gateErr, verdictErr} {
 		require.ErrorIs(t, err, flow.ErrNotBuilt)
 	}
+}
+
+func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
+	t.Parallel()
+
+	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, Env: map[string]string{}}
+
+	engine, err := flowFactory().Engine(t.Context(), config.Config{Projects: map[string]config.Project{}}, opts)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	_, err = engine.Run("12", "zzz")
+
+	require.ErrorContains(t, err, errUnknownProject.Error())
 }
 
 func TestLogins_PickTheRunnersOfTheProjectTheItemBelongsTo(t *testing.T) {
@@ -85,7 +96,7 @@ func TestFlowFactory_OpensTheClientAndTheEngineOverTheStateFolder(t *testing.T) 
 	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, Env: map[string]string{}}
 	factory := flowFactory()
 
-	client, err := factory.Client(t.Context(), opts)
+	client, err := factory.Client(t.Context(), config.Config{}, opts)
 	require.NoError(t, err)
 	require.NoError(t, client.Close())
 
@@ -96,7 +107,7 @@ func TestFlowFactory_OpensTheClientAndTheEngineOverTheStateFolder(t *testing.T) 
 	bad := opts
 	bad.StateDir = "relative"
 
-	_, err = factory.Client(t.Context(), bad)
+	_, err = factory.Client(t.Context(), config.Config{}, bad)
 	require.ErrorContains(t, err, "invalid flow options")
 
 	_, err = factory.Engine(t.Context(), config.Config{}, bad)

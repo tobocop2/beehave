@@ -146,7 +146,7 @@ func (rig *flowRig) factory() cli.Flow {
 
 			return rig.runner, nil
 		},
-		Client: func(_ context.Context, opts flow.Options) (cli.Steering, error) {
+		Client: func(_ context.Context, _ config.Config, opts flow.Options) (cli.Steering, error) {
 			rig.options = opts
 			if rig.clientOf != nil {
 				return nil, rig.clientOf()
@@ -379,6 +379,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-2-r1", State: "running", Question: "pick\n  option a or b"},
 		{ID: "item-3-r1", State: "running", Version: "v1", Stranded: true},
 		{ID: "item-4-r1", State: "done", SentBack: "a review asks\nfor changes"},
+		{ID: "item-5-r1", State: "running", Merge: "owner_merge"},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -386,7 +387,8 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "item-1-r1\tdone\nitem-2-r1\trunning\tpaused: pick option a or b\n"+
 		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
-		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n", stdout)
+		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
+		"item-5-r1\trunning\tmerge: owner_merge\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

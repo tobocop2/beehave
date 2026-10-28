@@ -201,12 +201,12 @@ func TestLoadReportsASyntaxError(t *testing.T) {
 func TestUnknownTopLevelBlockNamesTheValidBlocks(t *testing.T) {
 	t.Parallel()
 
-	d := only(t, "workflow \"a\" {}\nmerge \"m\" {}\n")
+	d := only(t, "workflow \"a\" {}\nship \"m\" {}\n")
 
 	assert.Equal(t, 2, d.Line)
 	assert.Equal(t, 1, d.Col)
-	assert.Contains(t, d.Text, "`merge`")
-	assert.Contains(t, d.Text, "workflow, agent, command, gate, loop, wait")
+	assert.Contains(t, d.Text, "`ship`")
+	assert.Contains(t, d.Text, "workflow, agent, command, gate, loop, merge, wait")
 }
 
 func TestUnknownBlockInALoopExcludesTheWorkflowBlock(t *testing.T) {
@@ -215,7 +215,7 @@ func TestUnknownBlockInALoopExcludesTheWorkflowBlock(t *testing.T) {
 	d := only(t, "workflow \"a\" {}\nloop \"l\" {\n  max = 1\n  until = true\n  workflow \"b\" {}\n}\n")
 
 	assert.Equal(t, 5, d.Line)
-	assert.Contains(t, d.Text, "agent, command, gate, loop, wait")
+	assert.Contains(t, d.Text, "agent, command, gate, loop, merge, wait")
 	assert.NotContains(t, d.Text, "workflow,")
 }
 

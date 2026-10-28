@@ -32,6 +32,8 @@ type ItemResult struct {
 	Item      string `json:"item"`
 	FixRounds int    `json:"fix_rounds"`
 	SentBack  string `json:"sent_back,omitempty"`
+	// Merge is the state that the merge step of a workflow file ended in: merged or sent_back. It is empty when the file has no merge step, or when the step did not run.
+	Merge string `json:"merge,omitempty"`
 }
 
 // loopState is the part of an item the fix loop carries from one round to the next.
@@ -262,8 +264,10 @@ func (e *Engine) readyAndWatch(ctx dbos.Context, state loopState, reviewed strin
 		return "", err
 	}
 
-	if err := e.mergeReady(ctx, state.project, state.item, reviewed); err != nil {
-		return "", err
+	if e.deps.Merge != nil {
+		if err := e.mergeReady(ctx, state.project, state.item, reviewed); err != nil {
+			return "", err
+		}
 	}
 
 	return e.watchReady(ctx, state.project, state.item)
@@ -358,8 +362,8 @@ func (e *Engine) fix(ctx dbos.Context, state *loopState, action roundAction) err
 // waitOwner blocks until the owner answers through obee answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
 func (e *Engine) waitOwner(ctx dbos.Context, item, question string) (string, error) {
-	if err := dbos.SetEvent(ctx, questionKey, question); err != nil {
-		return "", fmt.Errorf("item %s cannot show its question: %w", item, err)
+	if err := show(ctx, item, questionKey, question, "its question"); err != nil {
+		return "", err
 	}
 
 	answer, err := e.receiveAnswer(ctx)
@@ -372,6 +376,15 @@ func (e *Engine) waitOwner(ctx dbos.Context, item, question string) (string, err
 	}
 
 	return answer, nil
+}
+
+// show sets an event of the run that status reads. what names the event for the error.
+func show(ctx dbos.Context, item, key, value, what string) error {
+	if err := dbos.SetEvent(ctx, key, value); err != nil {
+		return fmt.Errorf("item %s cannot show %s: %w", item, what, err)
+	}
+
+	return nil
 }
 
 // receiveAnswer waits for the answer of the owner. The owner has no deadline: a wait that times out starts again.

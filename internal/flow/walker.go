@@ -68,6 +68,8 @@ func executorFor(kind workflow.Kind) executor {
 		return bind(func(s *workflow.Command) hcl.Expression { return s.When }, runCommand)
 	case workflow.KindGate:
 		return bind(func(*workflow.Gate) hcl.Expression { return nil }, runGate)
+	case workflow.KindMerge:
+		return bind(func(s *workflow.Merge) hcl.Expression { return s.When }, runMerge)
 	case workflow.KindWait:
 		return bind(func(s *workflow.Wait) hcl.Expression { return s.When }, runWait)
 	case workflow.KindAgent:
@@ -323,6 +325,9 @@ type walker struct {
 	ctx   dbos.Context
 	in    ItemInput
 	scope *workflow.Scope
+
+	// merge and sentBack are what a merge step reported. They go into the result of the item.
+	merge, sentBack string
 }
 
 // readFile reads the workflow file once and returns its bytes and their SHA-256, in hex.
@@ -373,7 +378,9 @@ func (e *Engine) walk(ctx dbos.Context, in ItemInput) (ItemResult, error) {
 
 	w := &walker{e: e, ctx: ctx, in: in, scope: scope}
 
-	return ItemResult{Item: in.Item}, w.steps(file.Steps, nil)
+	err = w.steps(file.Steps, nil)
+
+	return ItemResult{Item: in.Item, Merge: w.merge, SentBack: w.sentBack}, err
 }
 
 // recordScope records the environment the file reads and the fields of the item, as the first two steps, and builds the scope from the records.

@@ -355,7 +355,7 @@ In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, t
 
 ## Workflow files
 
-One HCL file is one workflow. A `workflow "<name>"` block holds `method_version` and `require_model`. The step blocks are `agent`, `command`, `gate`, `loop` and `wait`. Steps run in file order, and a `loop` holds its own steps. The schema names the arguments and the built-in outputs of each block. A method value, such as a prompt or a model name, is a value in the file and never a Go constant.
+One HCL file is one workflow. A `workflow "<name>"` block holds `method_version` and `require_model`. The step blocks are `agent`, `command`, `gate`, `loop`, `merge` and `wait`. Steps run in file order, and a `loop` holds its own steps. The schema names the arguments and the built-in outputs of each block. A method value, such as a prompt or a model name, is a value in the file and never a Go constant.
 
 A step reads another step with `<kind>.<name>.<output>`. It reads the work item with `item.<field>`, the environment with `env.<NAME>`, and the round with `loop.round` or `loop.<name>.exhausted`. A step that was skipped has null outputs. `resume_from` names an agent with `agent.<name>`. A step name is unique in the whole file, across all kinds.
 

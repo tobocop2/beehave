@@ -16,7 +16,6 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/pool"
 	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/review"
 )
 
 var errUnknownProject = errors.New("the config has no project of this name")
@@ -32,31 +31,8 @@ func (notBuilt) Read(context.Context, string, string, int) (flow.Review, error) 
 	return flow.Review{}, flow.ErrNotBuilt
 }
 
-func (notBuilt) Claim(context.Context, string, string) (string, error) {
-	return "", flow.ErrNotBuilt
-}
-
-func (notBuilt) Ready(context.Context, string, string) error { return flow.ErrNotBuilt }
-func (notBuilt) Release(context.Context, string, string, string) error {
-	return flow.ErrNotBuilt
-}
-
-func (notBuilt) Pull(context.Context, string, string) (review.Standing, error) {
-	return review.Standing{}, flow.ErrNotBuilt
-}
-
-func (notBuilt) Watch(context.Context, int) (review.Outcome, error) {
-	return review.Outcome{}, flow.ErrNotBuilt
-}
-
-func (notBuilt) SetDraft(context.Context, int, bool) error { return flow.ErrNotBuilt }
-
-func (notBuilt) Beat(context.Context, string, string) (string, error) {
-	return "", flow.ErrNotBuilt
-}
-
-// gate is notBuilt under the name of the Gate method.
-type gate struct{ notBuilt }
+// gate stands in for the gate of the workflow, which a later milestone adds.
+type gate struct{}
 
 func (gate) Run(context.Context, string, string) (flow.GateResult, error) {
 	return flow.GateResult{}, flow.ErrNotBuilt
@@ -122,10 +98,10 @@ func flowFactory() cli.Flow {
 
 			return engine, nil
 		},
-		Client: func(ctx context.Context, opts flow.Options) (cli.Steering, error) {
-			pending := notBuilt{}
+		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
+			table := newAdapters(proc.NewExecRunner("bd", ""))
 
-			client, err := flow.OpenClient(ctx, opts, flow.ReleaseDeps{Lifecycle: pending, Trees: newWorktrees(nil, opts, nil)})
+			client, err := flow.OpenClient(ctx, opts, flow.ReleaseDeps{Lifecycle: newLife(cfg, table), Trees: newWorktrees(nil, opts, nil)})
 			if err != nil {
 				return nil, err
 			}
@@ -140,11 +116,21 @@ func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow
 	pending := notBuilt{}
 	table := newAdapters(proc.NewExecRunner("bd", ""))
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
+	life := newLife(cfg, table)
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Briefs: pending, Agents: newAgents(cfg, opts, trees, table), Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg, opts), Lifecycle: pending, Forge: pending, Watch: pending, Trees: trees, Beats: pending,
+		Briefs: pending, Agents: newAgents(cfg, opts, trees, table), Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg, opts), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
 		Commands: newPrograms(cfg, trees, table), Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 	})
+}
+
+// newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.
+// The build has no merger yet, so a merge step with `merge = true` fails, and the owner merges every pull request.
+func newLife(cfg config.Config, table adapters) itemLife {
+	return itemLife{
+		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
+		pulls:  pulls{projects: cfg.Projects, forge: table.forge},
+	}
 }
 
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.

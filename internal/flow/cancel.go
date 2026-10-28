@@ -11,6 +11,7 @@ import (
 
 const (
 	questionKey  = "question"
+	mergeKey     = "merge"
 	tickInterval = 2 * time.Second
 )
 
