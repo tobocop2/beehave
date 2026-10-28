@@ -26,12 +26,13 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-func refuse(format string, args ...any) *Error {
+// Refuse returns a refusal with the formatted message.
+func Refuse(format string, args ...any) *Error {
 	return &Error{Code: CodeRefused, Message: fmt.Sprintf(format, args...)}
 }
 
-// refusal builds a refusal from base. An answer of the wrong shape adds the command that sent it.
-func refusal(base string, cause error) *Error {
+// Refusal builds a refusal from base. An answer of the wrong shape adds the command that sent it.
+func Refusal(base string, cause error) *Error {
 	message := base
 
 	var bad *model.DecodeError

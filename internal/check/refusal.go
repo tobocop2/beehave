@@ -1,3 +1,4 @@
+// Package check holds what the check packages share: the Refusal. Each child judges one thing: check/shell, check/papers, check/gate and check/transcript.
 package check
 
 // Refusal is a check that cannot run. Lines holds the lines the check found before it stopped.

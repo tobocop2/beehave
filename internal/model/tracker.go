@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -53,16 +52,6 @@ func nonEmptyFile(path string) bool {
 	info, err := os.Stat(path)
 
 	return err == nil && info.Size() > 0
-}
-
-// Tracker is an issue tracker: work items and their parents. beads and GitHub Issues implement it. The claim rows are not part of it.
-type Tracker interface {
-	OpenItems(ctx context.Context) ([]Item, error)
-	Containers(ctx context.Context) ([]string, error)
-	Children(ctx context.Context, container string) ([]string, error)
-	Show(ctx context.Context, item string) (string, error)
-	Close(ctx context.Context, item, reason string) error
-	Create(ctx context.Context, request CreateRequest) (string, error)
 }
 
 // TrackerName names a tracker adapter that a project selects.
@@ -132,18 +121,4 @@ type OverlapRequest struct {
 type Overlap struct {
 	Lines []string
 	Found int
-}
-
-// Forge is a code host: pull requests, reviews, threads and checks. GitHub implements it.
-type Forge interface {
-	Reviews(ctx context.Context, pr int) ([]Review, error)
-	PRBody(ctx context.Context, pr int) (string, error)
-	PRView(ctx context.Context, pr int, fields ...string) (PullRequest, error)
-	PRList(ctx context.Context, limit int, args ...string) ([]PullRequest, error)
-	PRChecks(ctx context.Context, pr int) ([]Check, error)
-	OpenChangeRequests(ctx context.Context, pr int) ([]ChangeRequest, error)
-	UnresolvedThreads(ctx context.Context, pr int) ([]ReviewThread, error)
-	StackID(ctx context.Context, pr int) (string, error)
-	ExistingReview(ctx context.Context, pr int) ([]string, error)
-	Overlap(ctx context.Context, req OverlapRequest) (Overlap, error)
 }

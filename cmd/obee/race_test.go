@@ -12,12 +12,13 @@ import (
 
 	"github.com/tobocop2/obee/internal/claim"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/store/beads"
+	"github.com/tobocop2/obee/internal/store/beads/beadstest"
 )
 
 // The tests here run claim over the real beads claim store, which only the composition root may join.
-// The fake bd is the one of internal/store/storetest. It implements --claim, heartbeat, reclaim, --if-assignee and --if-status as bd does:
+// The fake bd is the one of internal/store/beadstest. It implements --claim, heartbeat, reclaim, --if-assignee and --if-status as bd does:
 // a test calls a second claimer from a hook, between the read of the first claimer and its write.
 
 const (
@@ -45,10 +46,10 @@ func claimCode(t *testing.T, err error) int {
 	return failure.Code
 }
 
-func beadsOver(t *testing.T, run store.Runner) *store.BeadsStore {
+func beadsOver(t *testing.T, run proc.Runner) *beads.Store {
 	t.Helper()
 
-	bd, err := store.NewBeadsStore(run, "p")
+	bd, err := beads.New(run, "p")
 	require.NoError(t, err)
 
 	return bd
@@ -82,8 +83,8 @@ func clears(args []string) bool {
 }
 
 // expiredRow makes a claim row held by oldHolder whose lease ended.
-func expiredRow(bd *storetest.Bd) {
-	bd.Add(oldRow, storetest.Fields{"title": "lock:gh-5", "status": storetest.Progress, "assignee": oldHolder, "lease_expires_at": storetest.At(storetest.Now - 1)})
+func expiredRow(bd *beadstest.Bd) {
+	bd.Add(oldRow, beadstest.Fields{"title": "lock:gh-5", "status": beadstest.Progress, "assignee": oldHolder, "lease_expires_at": beadstest.At(beadstest.Now - 1)})
 }
 
 type raceResult struct {
@@ -93,12 +94,12 @@ type raceResult struct {
 }
 
 // twoClaimers makes A and B over the same bd. B reaches the command that when accepts, and A takes the item in the gap.
-func twoClaimers(t *testing.T, bd *storetest.Bd, when func([]string) bool) raceResult {
+func twoClaimers(t *testing.T, bd *beadstest.Bd, when func([]string) bool) raceResult {
 	t.Helper()
 
-	a, outA := claimsOn(t, beadsOver(t, bd), storetest.Now)
-	hook := &storetest.Hook{Inner: bd, When: when, Fire: func() { require.NoError(t, a.Take(t.Context(), "a", "5")) }}
-	b, _ := claimsOn(t, beadsOver(t, hook), storetest.Now)
+	a, outA := claimsOn(t, beadsOver(t, bd), beadstest.Now)
+	hook := &beadstest.Hook{Inner: bd, When: when, Fire: func() { require.NoError(t, a.Take(t.Context(), "a", "5")) }}
+	b, _ := claimsOn(t, beadsOver(t, hook), beadstest.Now)
 
 	return raceResult{errB: b.Take(t.Context(), "b", "5"), outA: outA.String(), rows: beadsOver(t, bd)}
 }
@@ -115,7 +116,7 @@ func (r raceResult) oneWinner(t *testing.T) {
 func TestRace_ATakeRacingATakeGivesOneWinner(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 
 	twoClaimers(t, bd, updates("--claim")).oneWinner(t)
 }
@@ -123,7 +124,7 @@ func TestRace_ATakeRacingATakeGivesOneWinner(t *testing.T) {
 func TestRace_AReclaimRacingAReclaimGivesOneWinner(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 	expiredRow(bd)
 
 	twoClaimers(t, bd, reclaims).oneWinner(t)
@@ -132,8 +133,8 @@ func TestRace_AReclaimRacingAReclaimGivesOneWinner(t *testing.T) {
 func TestRace_AClearOfAStaleAssigneeCannotWipeANewClaim(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
-	bd.Add(oldRow, storetest.Fields{"title": "lock:gh-5", "status": "closed", "assignee": oldHolder})
+	bd := beadstest.NewBd(t)
+	bd.Add(oldRow, beadstest.Fields{"title": "lock:gh-5", "status": "closed", "assignee": oldHolder})
 
 	twoClaimers(t, bd, clears).oneWinner(t)
 }
@@ -141,10 +142,10 @@ func TestRace_AClearOfAStaleAssigneeCannotWipeANewClaim(t *testing.T) {
 func TestRace_ABeatBeforeTheReclaimKeepsTheHold(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 	expiredRow(bd)
-	hook := &storetest.Hook{Inner: bd, When: reclaims, Fire: func() { require.NoError(t, beadsOver(t, bd).Beat(t.Context(), oldHolder)) }}
-	b, _ := claimsOn(t, beadsOver(t, hook), storetest.Now)
+	hook := &beadstest.Hook{Inner: bd, When: reclaims, Fire: func() { require.NoError(t, beadsOver(t, bd).Beat(t.Context(), oldHolder)) }}
+	b, _ := claimsOn(t, beadsOver(t, hook), beadstest.Now)
 
 	err := b.Take(t.Context(), "b", "5")
 
@@ -156,21 +157,21 @@ func TestRace_ABeatBeforeTheReclaimKeepsTheHold(t *testing.T) {
 func TestRace_ABdWithoutTheGuardsRefusesTheClaim(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 	bd.NoGuard = true
-	bd.Add(oldRow, storetest.Fields{"title": "lock:gh-5", "status": "closed", "assignee": oldHolder})
-	b, _ := claimsOn(t, beadsOver(t, bd), storetest.Now)
+	bd.Add(oldRow, beadstest.Fields{"title": "lock:gh-5", "status": "closed", "assignee": oldHolder})
+	b, _ := claimsOn(t, beadsOver(t, bd), beadstest.Now)
 
 	require.ErrorContains(t, b.Take(t.Context(), "b", "5"), "the guards need bd 1.3.2 or newer")
 	assert.Equal(t, oldHolder, bd.Rows[oldRow]["assignee"], "nothing was cleared")
 }
 
 // adapterCase returns the claim store over a fake bd that can fail its reads.
-func adapterCase(t *testing.T) (claim.Rows, *storetest.Bd, *storetest.Reads) {
+func adapterCase(t *testing.T) (claim.Rows, *beadstest.Bd, *beadstest.Reads) {
 	t.Helper()
 
-	bd := storetest.NewBd(t)
-	reads := &storetest.Reads{Inner: bd}
+	bd := beadstest.NewBd(t)
+	reads := &beadstest.Reads{Inner: bd}
 
 	return beadsOver(t, reads), bd, reads
 }
@@ -179,17 +180,17 @@ func TestClaimOverBeads_TakeRefuseEndAndReclaim(t *testing.T) {
 	t.Parallel()
 
 	rows, bd, _ := adapterCase(t)
-	first, firstOut := claimsOn(t, rows, storetest.Now)
+	first, firstOut := claimsOn(t, rows, beadstest.Now)
 	require.NoError(t, first.Take(t.Context(), "A", "5"))
 	assert.Contains(t, firstOut.String(), "TAKEN #5 by session-A")
 
-	live, _ := claimsOn(t, rows, storetest.Now+30)
+	live, _ := claimsOn(t, rows, beadstest.Now+30)
 	liveErr := live.Take(t.Context(), "B", "5")
 	require.Error(t, liveErr, "a live hold is not taken")
 	assert.Equal(t, claim.CodeHeld, claimCode(t, liveErr))
 
-	bd.Rows[oldRow]["lease_expires_at"] = storetest.At(storetest.Now - 3600)
-	later, laterOut := claimsOn(t, rows, storetest.Now)
+	bd.Rows[oldRow]["lease_expires_at"] = beadstest.At(beadstest.Now - 3600)
+	later, laterOut := claimsOn(t, rows, beadstest.Now)
 	who, err := later.Who(t.Context(), "5")
 	require.NoError(t, err)
 	assert.Contains(t, who, "LEASE ENDED 1h00m ago")
@@ -204,14 +205,14 @@ func TestClaimOverBeads_BeatKeepsTheHoldAndReleaseGivesTheItemBack(t *testing.T)
 	t.Parallel()
 
 	rows, _, _ := adapterCase(t)
-	first, out := claimsOn(t, rows, storetest.Now)
+	first, out := claimsOn(t, rows, beadstest.Now)
 	require.NoError(t, first.Take(t.Context(), "A", "5"))
 
 	problem, err := first.Beat(t.Context(), "A")
 	require.NoError(t, err)
 	assert.Empty(t, problem)
 
-	other, _ := claimsOn(t, rows, storetest.Now)
+	other, _ := claimsOn(t, rows, beadstest.Now)
 	assert.Equal(t, claim.CodeHeld, claimCode(t, other.Release(t.Context(), "B", "5")), "another owner cannot release")
 
 	require.NoError(t, first.Release(t.Context(), "A", "5"))
@@ -224,11 +225,11 @@ func TestClaimOverBeads_AFailedReadIsARefusalAndChangesNothing(t *testing.T) {
 	t.Parallel()
 
 	rows, _, reads := adapterCase(t)
-	first, _ := claimsOn(t, rows, storetest.Now)
+	first, _ := claimsOn(t, rows, beadstest.Now)
 	require.NoError(t, first.Take(t.Context(), "A", "5"))
 
 	reads.Down = true
-	other, _ := claimsOn(t, rows, storetest.Now+3600)
+	other, _ := claimsOn(t, rows, beadstest.Now+3600)
 	err := other.Take(t.Context(), "B", "5")
 	require.Error(t, err)
 	assert.Equal(t, claim.CodeRefused, claimCode(t, err))
@@ -244,14 +245,14 @@ func TestClaimOverBeads_AFailedReadIsARefusalAndChangesNothing(t *testing.T) {
 func TestClaimOverBeads_AnyTrackerGetsBeadsClaims(t *testing.T) {
 	t.Parallel()
 
-	bd := storetest.NewBd(t)
+	bd := beadstest.NewBd(t)
 	table := newAdapters(bd)
 
 	for _, tracker := range slices.Sorted(maps.Keys(table.trackers)) {
 		rows, err := table.leases(model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: model.ForgeGithub, BeadsPrefix: "p"})
 		require.NoError(t, err, string(tracker))
 
-		c, _ := claimsOn(t, rows, storetest.Now)
+		c, _ := claimsOn(t, rows, beadstest.Now)
 		require.NoError(t, c.Take(t.Context(), "A", "5"), string(tracker))
 		assert.Equal(t, "session-A", heldBy(t, rows, "5"), string(tracker))
 		require.NoError(t, c.Release(t.Context(), "A", "5"), string(tracker))

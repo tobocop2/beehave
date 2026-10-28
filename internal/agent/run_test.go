@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -43,10 +44,16 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 
 	log := &bytes.Buffer{}
 
+	var adapter agent.Adapter
+	if kind == model.AgentClaude {
+		adapter = claude.New()
+	}
+
 	return &fixture{records: records, config: config, work: work, log: log, spec: agent.Spec{
-		Runner: model.Runner{Name: "main", Agent: kind, ConfigDir: config},
-		Dir:    work,
-		Prompt: "do the step\n",
+		Adapter: adapter,
+		Runner:  model.Runner{Name: "main", Agent: kind, ConfigDir: config},
+		Dir:     work,
+		Prompt:  "do the step\n",
 		Env: map[string]string{
 			"PATH": records + ":/bin:/usr/bin", "HOME": home, "LC_ALL": "C",
 			"ANTHROPIC_API_KEY": "leak", "GH_TOKEN": "leak", "CLAUDE_CONFIG_DIR": "/other/login",
@@ -354,6 +361,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	t.Run("unknown_agent", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
 		f := newFixture(t, "claude", model.AgentClaude, "")
 		f.spec.Runner.Agent = model.Agent("pi")
+		f.spec.Adapter = nil
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 

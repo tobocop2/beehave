@@ -40,12 +40,13 @@ func unreadable(command string, cause error) *Error {
 	}
 }
 
-func refuse(format string, args ...any) *Error {
+// Refuse returns a refusal with code 2 and the formatted message.
+func Refuse(format string, args ...any) *Error {
 	return &Error{Code: CodeRefused, Message: fmt.Sprintf(format, args...)}
 }
 
-// validated refuses an invalid request with code 2.
-func validated(request model.CreateRequest) error {
+// CheckCreate refuses an invalid request with code 2.
+func CheckCreate(request model.CreateRequest) error {
 	if err := request.Validate(); err != nil {
 		return &Error{Code: CodeRefused, Message: "REFUSE: " + err.Error(), Err: err}
 	}
