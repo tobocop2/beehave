@@ -9,9 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
+	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
 	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/internal/ledger"
 )
 
 // fakeBook is a fake ledger. It answers each question with a fixed number and records the folder that was opened.
@@ -35,9 +34,13 @@ func (b fakeBook) Prior(_, _ string) (int, error) { return b.prior, nil }
 
 func (fakeBook) Add(ledger.Request) (ledger.Added, error) { return ledger.Added{}, nil }
 
+func (fakeBook) Closes(string) ([]string, error) { return nil, nil }
+
+func (fakeBook) OwnerAdds(string) ([]string, error) { return nil, nil }
+
 // bookDeps gives deps whose ledger is the fake, and records the state folder that the command opened.
 func bookDeps(book fakeBook, opened *string) remedy.Deps {
-	return remedy.Deps{Book: func(dir string) brief.Book {
+	return remedy.Deps{Book: func(dir string) remedy.Book {
 		*opened = dir
 
 		return book

@@ -24,7 +24,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool · preflight · review · scope · merge<br/>lane policy"]
+        policy["gate · pool · preflight · review · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -104,7 +104,7 @@ Every package imports `model`, and `model` imports no obee package. Only `proc` 
 
 `hclfile` is the one place that reads an HCL file. It decodes the file into a struct and reports each problem with its file, line and column. It imports no obee package, and `depguard` refuses one. `config` uses it. `config` imports the `hcl` package only for the range types of its decode structs.
 
-`filelock` is the one place that calls `flock`. It gives an exclusive lock that waits, an exclusive lock that fails at once when the file is held, and a shared lock. `ledger` and `flow` use it and import no other lock code.
+`filelock` is the one place that calls `flock`. It gives an exclusive lock that waits, an exclusive lock that fails at once when the file is held, and a shared lock. `flow` and the ledger of the remediation tools (`examples/remediation/tools/ledger`) use it and import no other lock code.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `check/transcript` takes the transcript readers and the shell scanner as function values, so it imports neither `agent` nor `check/shell`. `cmd/obee` passes the methods of the agent adapter. The `Call` type lives in `model`, which both sides import.
 
@@ -239,13 +239,21 @@ The exit marker rule finds a print command (`echo`, `printf`, a here-document or
 
 ## Ledger
 
+`ledger` is a tool of the remediation example, in `examples/remediation/tools/ledger`. It is not part of the engine: no file under `internal/` or `cmd/obee/` names it. The command is `remedy ledger`.
+
 `ledger` keeps one row for each lane of each pull request. The rows are a TSV file in the state folder. A second file records the issues that the first review of a key closes. Both files have mode 0600.
 
 `Add` holds an exclusive lock for the whole call. The lock file is `<ledger>.lock`, and the `Rows` interface carries it as `Hold`, so a fake needs no file. Every read takes the same lock as a shared lock (`Share`), so a read never sees part of a write. `Add` records a lane once: a key that has a row for the lane is left as it is. A request with no time is refused. The first review of a key also reads the closing keywords of the pull request body and records the issue numbers. `Add` writes the lane row first. It then writes the closes file by `Publish`: a temp file beside it, renamed over it. If the publish fails, a retry finds the lane row and no closes, so it records the closes and returns them. The body comes from the `Body` function of the request. The closing-keyword pattern spells each letter in both cases, because Go case folding maps the long s to `s`.
 
 A fix lane is a fix, a rework or a relay. Only a fix lane writes the mechanism, model and round columns. The empty columns at the end of a row are left off. `Rounds` counts the fix and rework rows on one mechanism since the last design row. `Since` returns whole days from the latest row of a kind. A row whose time is not a UTC stamp is refused.
 
-`ledger` imports `model` and `check`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
+`ledger` imports `check` and `filelock`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
+
+The state folder is a flag. Every `remedy ledger` verb and `remedy scope` take `--state <folder>`, and the ledger file is `lane-ledger.tsv` in that folder. The tool does not guess the folder from the working folder, and it reads no environment variable for it. `remedy admit` takes the same flag. The workflow passes the folder that it keeps for the run.
+
+`remedy ledger add <key> <lane> <kind>` records a lane. A fix lane takes `--mechanism`, `--model` and `--round`. An `owner-add` row takes the issue number as the lane and `--words`. The first review of a key needs the pull request body: `--body-file <path>` reads it from a file, and `--pr <number>` reads it through the forge of the `origin` remote, and only when the ledger asks for it. The time of the row is the time of the run. The verb prints the issues that a first review recorded.
+
+`remedy ledger count <key> <kinds>`, `rounds <key> <mechanism>`, `prior <key> <lane>` and `closes <key>` print the answer of the ledger. A refusal of the ledger and a failed read are exit code 2.
 
 ## Gate
 
@@ -289,9 +297,11 @@ A failed read, or a pull request with no state, draft flag, head branch or label
 
 ## Scope
 
+`scope` is a tool of the remediation example, in `examples/remediation/tools/scope`. The command is `remedy scope <pr> --state <folder> [--key <key>]`. It reads the pull request body through the forge of the `origin` remote and the ledger in the state folder. `--key` names the ledger key when it is not the pull request number. A pass is exit code 0. A refusal, a bad argument and a failed read are exit code 2.
+
 `scope` refuses a pull request that started to close a new issue after its first review. The first review of a key records the issues that the pull request body closes. `Check` reads the body now and compares the two lists. It reads the body only when the ledger holds a first review for the key, and with no first review it fixes the scope under the key and passes. Two spellings of one number, such as `12` and `012`, name one issue.
 
-A new issue passes only when the ledger holds an `owner-add` row for the key and the issue. The lane column of that row is the issue number and the words column is the reason of the owner. The row text names the command `obee scope allow <key> <issue> <words>`. An `owner-add` row never fixes a lane, so `Count`, `Prior`, `Rounds` and `Since` do not see it. `Check` imports `ledger`, reads the ledger and the forge through the small `Records` and `Reader` interfaces, and returns a `Result` with an exit code and the lines to show.
+A new issue passes only when the ledger holds an `owner-add` row for the key and the issue. The lane column of that row is the issue number and the words column is the reason of the owner. The refusal names the command that adds the row: `remedy ledger add <key> <issue> owner-add --state <folder> --words <words>`. An `owner-add` row never fixes a lane, so `Count`, `Prior`, `Rounds` and `Since` do not see it. `Check` imports `ledger`, reads the ledger and the forge through the small `Records` and `Reader` interfaces, and returns a `Result` with an exit code and the lines to show.
 
 ## Merge
 

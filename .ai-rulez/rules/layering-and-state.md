@@ -21,7 +21,7 @@ The method tools are under `examples/remediation/tools/`, in the same Go module.
 | 0 | `model`, `config`, `filelock` | Domain types and enums, the typed config, the file locks. No upward imports. |
 | leaf | `hclfile` | The HCL file reader. It imports no obee package; `config` imports it. |
 | 1 | `store`, `forge`, `proc`, `agent`, `host` | Adapters for `bd`, `gh`, agent CLIs and build hosts. Each wraps an external shape once. |
-| 2 | `check`, `claim`, `gate`, `ledger`, `merge`, `review`, `pool`, `workflow` | Round policy and the workflow file schema. Declares the small interfaces it needs from layer 1. |
+| 2 | `check`, `claim`, `gate`, `merge`, `review`, `pool`, `workflow` | Round policy and the workflow file schema. Declares the small interfaces it needs from layer 1. |
 | 3 | `flow` | DBOS workflows and steps that call layer 2. |
 | 4 | `cli`, `tui` | Surfaces. Then `cmd/obee`. |
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobocop2/obee/examples/remediation/tools/brief"
 	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
+	"github.com/tobocop2/obee/examples/remediation/tools/scope"
 	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/proc"
 )
@@ -22,10 +23,17 @@ const (
 	ExitRefused = 2
 )
 
-// Forge is the forge of every subcommand: the calls of the round cut and the calls of the takeover.
+// Forge is the forge of every subcommand: the calls of the round cut, the calls of the takeover and the body read of the scope check and of the first review row.
 type Forge interface {
 	roundcut.Forge
 	takeover.Reader
+	scope.Reader
+}
+
+// Book is the lane ledger of the subcommands: the reads and the write of admission, and the reads of the scope check.
+type Book interface {
+	brief.Book
+	scope.Records
 }
 
 // Claims is the claim store of obee: the one call of the claim that the takeover needs.
@@ -37,14 +45,14 @@ type Claims interface {
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
 // Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
 // Claims opens the claim store of the project that owns the repository. A step opens it only when it reads the claim, after the guards that need no store.
-// Book opens the lane ledger in a state folder.
+// Book opens the lane ledger in the state folder that the --state flag of a subcommand names.
 type Deps struct {
 	Git    proc.Runner
 	Dir    string
 	Forge  func(repo string) (Forge, error)
 	Now    func() time.Time
 	Claims func(repo string) (Claims, error)
-	Book   func(dir string) brief.Book
+	Book   func(dir string) Book
 }
 
 // streams are the two outputs of a run.
@@ -62,7 +70,25 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.hcl reads it.
 func commands() []command {
-	return append(roundCommands(), briefCommands()...)
+	return append(append(roundCommands(), briefCommands()...), ledgerCommands()...)
+}
+
+// ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.
+func ledgerCommands() []command {
+	return []command{
+		{
+			name:    "ledger",
+			usage:   ledgerSyntax,
+			summary: "add a lane row to the ledger, or count its rows, patch rounds, earlier lanes and closed issues; the first review of a key records the issues its pull request body closes",
+			run:     ledgerCommand,
+		},
+		{
+			name:    "scope",
+			usage:   scopeSyntax,
+			summary: "refuse a pull request that closes an issue it did not close at its first review, unless the ledger holds an owner-add row for it",
+			run:     scopeCommand,
+		},
+	}
 }
 
 // briefCommands are the subcommands that judge a lane and its brief before the lane starts.

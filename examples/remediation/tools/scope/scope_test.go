@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/scope"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/scope"
 )
 
 var errDown = errors.New("down")
@@ -53,7 +53,7 @@ func TestCheck_AnIssueClosedOnlyAfterTheFirstReviewIsRefusedWithoutAnOwnerRow(t 
 	assert.Equal(t, scope.CodeRefused, got.Code)
 	require.Len(t, got.Lines, 4)
 	assert.Equal(t, "REFUSED: pull request 792 closes #795 #800 now, and did not at its first review (then: 751 762 778).", got.Lines[0])
-	assert.Equal(t, "         obee scope allow 792 <issue> <the owner's words>", got.Lines[2])
+	assert.Equal(t, "         remedy ledger add 792 <issue> owner-add --state <folder> --words <the owner's words>", got.Lines[2])
 }
 
 func TestCheck_AnOwnerRowThatNamesTheIssueLetsItStay(t *testing.T) {
@@ -85,7 +85,7 @@ func TestCheck_AFirstReviewWithNoClosesLineFixesTheScopeUnderTheKey(t *testing.T
 	assert.Equal(t, scope.CodeRefused, got.Code)
 	assert.Contains(t, got.Lines[0], "closes #803 now")
 	assert.Contains(t, got.Lines[0], "(then: -)")
-	assert.Equal(t, "         obee scope allow h2m-spacing <issue> <the owner's words>", got.Lines[2])
+	assert.Equal(t, "         remedy ledger add h2m-spacing <issue> owner-add --state <folder> --words <the owner's words>", got.Lines[2])
 }
 
 func TestCheck_APullRequestTheLedgerHasNotReviewedHasNoScopeYet(t *testing.T) {
