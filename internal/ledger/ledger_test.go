@@ -159,7 +159,7 @@ func TestAdd_ABadAddIsARefusalThatNamesTheFixAndWritesNothing(t *testing.T) {
 		request ledger.Request
 		message string
 	}{
-		{"unknown_kind", ledger.Request{Key: "792", Lane: "fix-1", Kind: "survey"}, "'survey' is not a lane kind. Use fix, rework, relay, review, design or papers."},
+		{"unknown_kind", ledger.Request{Key: "792", Lane: "fix-1", Kind: "survey"}, "'survey' is not a lane kind. Use fix, rework, relay, review, design, papers or owner-add."},
 		{"key_with_a_blank", ledger.Request{Key: "a b", Lane: "fix-1", Kind: ledger.KindFix}, "'a b' is not a pull request key. Use the number, or the item's name: "},
 		{"lane_with_a_blank", ledger.Request{Key: "792", Lane: "fix 1", Kind: ledger.KindFix}, "the lane name 'fix 1' holds a blank."},
 		{"lane_with_a_tab", ledger.Request{Key: "792", Lane: "fix\t1", Kind: ledger.KindFix}, "the lane name 'fix\t1' holds a blank."},
@@ -713,14 +713,14 @@ func TestSince_AFileThatCannotBeReadIsAnError(t *testing.T) {
 func TestParseKind(t *testing.T) {
 	t.Parallel()
 
-	for _, kind := range []ledger.Kind{ledger.KindFix, ledger.KindRework, ledger.KindRelay, ledger.KindReview, ledger.KindDesign, ledger.KindPapers} {
+	for _, kind := range ledger.Kinds() {
 		got, err := ledger.ParseKind(string(kind))
 		require.NoError(t, err)
 		assert.Equal(t, kind, got)
 	}
 
 	_, err := ledger.ParseKind("survey")
-	require.EqualError(t, err, "'survey' is not a lane kind. Use fix, rework, relay, review, design or papers.")
+	require.EqualError(t, err, "'survey' is not a lane kind. Use fix, rework, relay, review, design, papers or owner-add.")
 }
 
 type failingRows struct {

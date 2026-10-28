@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 var errUnknownProject = errors.New("the config has no project of this name")
@@ -38,9 +39,15 @@ func (notBuilt) Release(context.Context, string, string, string) error {
 	return flow.ErrNotBuilt
 }
 
-func (notBuilt) Pull(context.Context, string, string) (flow.PullState, error) {
-	return flow.PullState{}, flow.ErrNotBuilt
+func (notBuilt) Pull(context.Context, string, string) (review.Standing, error) {
+	return review.Standing{}, flow.ErrNotBuilt
 }
+
+func (notBuilt) Watch(context.Context, int) (review.Outcome, error) {
+	return review.Outcome{}, flow.ErrNotBuilt
+}
+
+func (notBuilt) SetDraft(context.Context, int, bool) error { return flow.ErrNotBuilt }
 
 func (notBuilt) Path(context.Context, string, string) (string, error) {
 	return "", flow.ErrNotBuilt
@@ -121,6 +128,6 @@ func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow
 	pending := notBuilt{}
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Briefs: pending, Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Trees: pending, Beats: pending,
+		Briefs: pending, Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Watch: pending, Trees: pending, Beats: pending,
 	})
 }

@@ -25,8 +25,9 @@ func TestNotBuilt_EveryStepSaysThisBuildLacksIt(t *testing.T) {
 	_, beatErr := pending.Beat(ctx, "p", "owner")
 	_, pullErr := pending.Pull(ctx, "p", "1")
 	_, pathErr := pending.Path(ctx, "p", "1")
+	_, watchErr := pending.Watch(ctx, 1)
 
-	for _, err := range []error{briefErr, agentErr, gateErr, verdictErr, claimErr, beatErr, pullErr, pathErr, pending.Ready(ctx, "p", "1"), pending.Release(ctx, "p", "1", "owner")} {
+	for _, err := range []error{briefErr, agentErr, gateErr, verdictErr, claimErr, beatErr, pullErr, pathErr, watchErr, pending.SetDraft(ctx, 1, true), pending.Ready(ctx, "p", "1"), pending.Release(ctx, "p", "1", "owner")} {
 		require.ErrorIs(t, err, flow.ErrNotBuilt)
 	}
 }

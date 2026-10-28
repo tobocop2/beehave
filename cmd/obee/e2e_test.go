@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 // These tests run the obee commands as separate processes, as testscript does for any command line tool.
@@ -69,7 +70,7 @@ func e2eFlow(dir, path string) cli.Flow {
 
 			engine, err := flow.NewEngine(ctx, opts, flow.Deps{
 				Briefs: files, Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{}, Verdicts: files, Logins: newLogins(cfg),
-				Lifecycle: files, Forge: files, Trees: files, Beats: files,
+				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files,
 			})
 			if err != nil {
 				return nil, err
@@ -133,9 +134,15 @@ func (f e2eFiles) Release(_ context.Context, _, item, _ string) error {
 	return f.event("release", item)
 }
 
-func (e2eFiles) Pull(context.Context, string, string) (flow.PullState, error) {
-	return flow.PullState{Number: 1}, nil
+func (e2eFiles) Pull(context.Context, string, string) (review.Standing, error) {
+	return review.Standing{Number: 1}, nil
 }
+
+func (e2eFiles) Watch(context.Context, int) (review.Outcome, error) {
+	return review.Outcome{Kind: review.Merged}, nil
+}
+
+func (e2eFiles) SetDraft(context.Context, int, bool) error { return nil }
 
 func (e2eFiles) Path(context.Context, string, string) (string, error) { return "", nil }
 

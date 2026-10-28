@@ -24,7 +24,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check<br/>shell · papers · gate · transcript"]
-        policy["gate · ledger · pool · brief · preflight · review<br/>lane policy"]
+        policy["gate · ledger · pool · brief · preflight · review · scope · takeover<br/>lane policy"]
         later["merge"]:::planned
     end
 
@@ -276,6 +276,22 @@ A failed read, or a pull request with no state, draft flag, head branch or label
 
 `Sweep` lists our open pull requests with their change requests, open threads and base branch. A base branch that is not the integration branch gets a flag. The sweep and the `OWN` rows read the forge once, through `OwnPulls`. A pull request with a list longer than one page is read again with the per-pull-request reads, so the batched answer and the single reads give the same rows. A list that the single read also refuses for length prints `?` in the sweep and `unknown` in the poll. A failed read stops the poll with an `UnreadError` that names the read and its cause. A page of unknown rows would hide the cause.
 
+## Scope
+
+`scope` refuses a pull request that started to close a new issue after its first review. The first review of a key records the issues that the pull request body closes. `Check` reads the body now and compares the two lists. It reads the body only when the ledger holds a first review for the key, and with no first review it fixes the scope under the key and passes. Two spellings of one number, such as `12` and `012`, name one issue.
+
+A new issue passes only when the ledger holds an `owner-add` row for the key and the issue. The lane column of that row is the issue number and the words column is the reason of the owner. The row text names the command `obee scope allow <key> <issue> <words>`. An `owner-add` row never fixes a lane, so `Count`, `Prior`, `Rounds` and `Since` do not see it. `Check` imports `ledger`, reads the ledger and the forge through the small `Records` and `Reader` interfaces, and returns a `Result` with an exit code and the lines to show.
+
+## Takeover
+
+`takeover` decides whether we take over a pull request that somebody else holds. It has three modes. The dry mode reads and says what it would do. The apply mode posts the notice. The take mode checks the notice, the grace period and the replies, and then calls the take function of the caller. A pull request that is not open, is ours, or has moved from the head the caller names is refused first, in every mode.
+
+The apply mode reads the claim before it posts the notice, so a claim that is held or unreadable posts nothing. The notice names its basis, assigned to us or idle, and the grace period. The notice needs a `CHANGES_REQUESTED` review of ours. A second notice is nagging and is refused.
+
+The take mode refuses in this order: no notice, a notice younger than the grace period, a pull request touched inside the idle threshold, and a reply or a push after the notice. A push after the notice is an objection with no words, and it refuses before any reply block prints. A reply that says `KEEP` stops the take. A reply that says `RELEASE` takes the pull request without the grace wait or the idle wait. A reply with neither word prints every reply and asks the caller to read it, and `--reply-read` lets the take go on with a note.
+
+`takeover` never calls `time.Now`. The caller puts the time in the `Context`, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal, and a pull request with no timestamp at all is unreadable, not idle. A token stands alone as a word when no Unicode letter, digit or underscore touches it, so `KEEPER`, `KEEP_ALL` and `KEEPé` do not say `KEEP`. The text of the notice is Markdown in `takeover/text`, read through one `embed` variable. `takeover` imports `model` and `check`.
+
 ## Brief
 
 `brief` writes the text that a lane reads before it starts. A brief has two parts. The first part is fixed rules: the skeleton, the rules of the kind, the context cap, the standing blocks and the rules file of the project. The second part is the lines of the item: the title, the model, the read-first list and the names of the lane. Two briefs of one kind share every byte up to the first line of the item, so a prompt cache reads the rules once. A test pins this prefix.
@@ -309,7 +325,8 @@ An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at th
 3. Run the plan phase and the implement phase.
 4. Run the gate, run the review phase, and read the verdict. If the verdict file is missing, run the review phase one more time. Repeat with a fix round until the verdict approves.
 5. Read the forge, then mark the pull request ready. The gate, the review and the ready step must see the same head commit: a push after the review stops the item.
-6. Release the worktree, then release the claim.
+6. Watch the ready pull request until it merges. A change request or a conflict sets it to draft and ends the item.
+7. Release the worktree, then release the claim.
 
 Each agent phase (plan, implement, review, fix) is a child workflow named `phase`. It writes the brief, then starts the agent. Both are steps. The agent is a subprocess (`claude -p`) in its own process group, with a total and an idle timeout. A phase that does not exit with code 0 stops the item with an error that names the step.
 
@@ -368,9 +385,19 @@ On each tick, the process also stops the agents of each run that is now canceled
 
 ### Ready and release
 
-Before the ready step marks a pull request ready, it reads the forge. It refuses the step when the head of the pull request is not the commit the review read, when a review asks for changes, when a thread is unresolved, or when the branch conflicts with its base. The error names the pull request and each reason. A failed read refuses the step too.
+Before the ready step marks a pull request ready, it reads the forge. The read is `review.Pull`, and it returns one `review.Standing`. `Standing.Reasons` is the only list of reasons: a read that failed, a head that is not the commit the review read, a review that asks for changes, a conflict with the base branch, and an unresolved thread, in that order. The refusal lists the reasons in this order, so its text differs from the text of the earlier flow check. The ready step refuses with the pull request and each reason. A failed read refuses the step too, because an empty fact is not a clean one.
+
+After the ready step marks the pull request ready, the item runs the watch step. The next section describes it.
 
 The release steps run on every exit of the item except a cancel, while the claim is still held. Ctrl-C is not an exit: the run stays open. The worktree step removes the worktree only when all of these are true: the tree is clean, `git ls-remote --heads origin` lists a branch tip, and HEAD equals that tip. In every other case the tree stays, and the log says why. One timeout covers all the git calls. The claim release runs last.
+
+### Ready watch
+
+`review.Watch` reads a ready pull request once and returns `Merged`, `Waiting` or `SendBack` with a reason. A merged pull request wins over every other fact. A change request or a conflict is `SendBack`. An open thread and a moved head are `Waiting`, because the ready step already judged them. A failed read is an `UnreadError`, never `Waiting`.
+
+The watch step of the item reads the pull request number through the forge, then reads with `review.Watch` and waits with `dbos.Sleep` between two reads. The sleep is durable, so a restart resumes the watch and no timer of ours runs. The clock of the engine sets the length of the sleep. The default is one hour, so a day of waiting adds 48 reads and 48 sleeps, 96 durable rows, to the history of the run. A restart replays all of them. Three failed reads in a row end the watch with the last error. A good read resets the count.
+
+On `Merged` the step ends. On `SendBack` the step calls `SetDraft` to put the pull request back to draft and ends the item with a finished run. The result of the run holds the reason, and `obee status` shows it as `sent back to draft`. The next `obee run <item>` starts a new attempt, because the run did not fail.
 
 ### Status, resume and cancel
 

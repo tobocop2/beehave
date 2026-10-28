@@ -185,11 +185,22 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 
 	result, err := f.await(engine, item, project)
 	if err == nil {
-		// A failed write to stdout has no recovery.
-		_, _ = fmt.Fprintf(stdout, "item %s finished after %d fix rounds\n", item, result.FixRounds)
+		printResult(stdout, item, result)
 	}
 
 	return errors.Join(err, engine.Shutdown())
+}
+
+// printResult says how a finished run ended: at the end of the fix rounds, or back at draft.
+func printResult(stdout io.Writer, item string, result flow.ItemResult) {
+	// A failed write to stdout has no recovery.
+	if result.SentBack != "" {
+		_, _ = fmt.Fprintf(stdout, "item %s went back to draft: %s\n", item, oneLine(result.SentBack))
+
+		return
+	}
+
+	_, _ = fmt.Fprintf(stdout, "item %s finished after %d fix rounds\n", item, result.FixRounds)
 }
 
 // await runs the item and waits for its result. An interrupt of the command ends the wait.
@@ -259,6 +270,8 @@ func printStatus(stdout io.Writer, infos []flow.RunInfo) {
 			line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
 		case info.Question != "":
 			line += "\tpaused: " + oneLine(info.Question)
+		case info.SentBack != "":
+			line += "\tsent back to draft: " + oneLine(info.SentBack)
 		}
 
 		_, _ = fmt.Fprintln(stdout, line)
