@@ -10,8 +10,8 @@ import (
 
 const snippetRunes = 160
 
-// Scanner finds the forbidden commands in one shell command.
-type Scanner func(command string) []model.Finding
+// scanner finds the forbidden commands in one shell command.
+type scanner func(command string) []model.Finding
 
 // CheckSkills counts the Skill calls for each required skill. It returns the lines to print and whether every skill was called.
 func CheckSkills(path string, required []string, agentID string) ([]string, bool, error) {
@@ -50,7 +50,7 @@ func tally(calls []Call, required []string) ([]string, []string) {
 }
 
 // CheckTranscript returns one HIT line for each forbidden command in a Bash call of the transcript.
-func CheckTranscript(path string, scan Scanner) ([]string, error) {
+func CheckTranscript(path string, scan scanner) ([]string, error) {
 	calls, err := BashCalls(path)
 	if err != nil {
 		return nil, err

@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// MinBd is the oldest bd that has the guards the claim rows need: bd update --if-assignee and --if-status, with exit code 13 for a mismatch.
-const MinBd = "1.3.2"
+// minBd is the oldest bd that has the guards the claim rows need: bd update --if-assignee and --if-status, with exit code 13 for a mismatch.
+const minBd = "1.3.2"
 
 var bdVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?`)
 
@@ -32,22 +32,22 @@ func (s *BeadsStore) requireGuards(ctx context.Context) error {
 	return nil
 }
 
-// RequireBd refuses a bd older than MinBd. It reads `bd --version`, which prints `bd version <x.y.z> (<build>)`.
+// RequireBd refuses a bd older than minBd. It reads `bd --version`, which prints `bd version <x.y.z> (<build>)`.
 func RequireBd(ctx context.Context, run Runner) error {
 	done := run.Run(ctx, []string{"--version"})
 	if done.ExitCode != 0 {
-		return refuse("store: cannot run `bd --version`: %s. obee needs bd %s or newer for claims", firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes), MinBd)
+		return refuse("store: cannot run `bd --version`: %s. obee needs bd %s or newer for claims", firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes), minBd)
 	}
 
 	found := bdVersion.FindStringSubmatch(done.Stdout)
 	have, readable := versionOf(found)
 
 	if !readable {
-		return refuse("obee needs bd %s or newer for claims; cannot read a version from %q", MinBd, firstRunes(strings.TrimSpace(done.Stdout), maxStderrRunes))
+		return refuse("obee needs bd %s or newer for claims; cannot read a version from %q", minBd, firstRunes(strings.TrimSpace(done.Stdout), maxStderrRunes))
 	}
 
 	if olderThanMin(have) {
-		return refuse("obee needs bd %s or newer for claims; found %s", MinBd, found[0])
+		return refuse("obee needs bd %s or newer for claims; found %s", minBd, found[0])
 	}
 
 	return nil
@@ -81,9 +81,9 @@ func versionOf(found []string) (version, bool) {
 	return have, true
 }
 
-// olderThanMin compares a version with MinBd. A pre-release is older than its release.
+// olderThanMin compares a version with minBd. A pre-release is older than its release.
 func olderThanMin(have version) bool {
-	want, _ := versionOf(bdVersion.FindStringSubmatch(MinBd))
+	want, _ := versionOf(bdVersion.FindStringSubmatch(minBd))
 
 	if have.numbers != want.numbers {
 		return slices.Compare(have.numbers[:], want.numbers[:]) < 0

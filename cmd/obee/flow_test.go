@@ -98,8 +98,8 @@ func TestFlowFactory_OpensTheClientAndTheEngineOverTheStateFolder(t *testing.T) 
 	bad.StateDir = "relative"
 
 	_, err = factory.Client(t.Context(), bad)
-	require.ErrorIs(t, err, flow.ErrBadOptions)
+	require.ErrorContains(t, err, "invalid flow options")
 
 	_, err = factory.Engine(t.Context(), config.Config{}, bad)
-	require.ErrorIs(t, err, flow.ErrBadOptions)
+	require.ErrorContains(t, err, "invalid flow options")
 }

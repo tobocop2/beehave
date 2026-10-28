@@ -30,8 +30,8 @@ type BuildInfo struct {
 	Flow Flow
 }
 
-// NewRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
-func NewRootCommand(ctx context.Context, info BuildInfo, env map[string]string, stdout, stderr io.Writer) *cobra.Command {
+// newRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
+func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           commandName,
 		Short:         shortHelp,
@@ -58,7 +58,7 @@ func Execute(ctx context.Context, args []string, info BuildInfo, env map[string]
 		return exitError
 	}
 
-	root := NewRootCommand(ctx, info, env, stdout, stderr)
+	root := newRootCommand(ctx, info, env, stdout, stderr)
 	root.SetArgs(args)
 
 	if err := root.ExecuteContext(ctx); err != nil {

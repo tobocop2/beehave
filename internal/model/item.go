@@ -18,8 +18,8 @@ const (
 	SeverityUnknown Severity = "P?"
 )
 
-// FieldSeparator splits the columns of Item.Line. A shell reader folds a tab, so the unit separator is used.
-const FieldSeparator = "\x1f"
+// fieldSeparator splits the columns of Item.Line. A shell reader folds a tab, so the unit separator is used.
+const fieldSeparator = "\x1f"
 
 // ErrUnknownSeverity is returned when text names no severity from P0 to P3.
 var ErrUnknownSeverity = errors.New("unknown severity")
@@ -57,5 +57,5 @@ func (i Item) Line() string {
 		hold = "1"
 	}
 
-	return strings.Join([]string{i.ID, string(i.Severity), hold, i.Parent, i.Assignee, i.Title}, FieldSeparator)
+	return strings.Join([]string{i.ID, string(i.Severity), hold, i.Parent, i.Assignee, i.Title}, fieldSeparator)
 }

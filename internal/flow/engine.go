@@ -41,8 +41,8 @@ const (
 	minMaxConcurrent = 1
 )
 
-// ErrBadOptions is returned when the options of the engine or the client are not usable.
-var ErrBadOptions = errors.New("invalid flow options")
+// errBadOptions is returned when the options of the engine or the client are not usable.
+var errBadOptions = errors.New("invalid flow options")
 
 // Options holds the settings the engine and the client share.
 // Version is the build version that pins each run. MaxConcurrent is agents.max_concurrent.
@@ -60,11 +60,11 @@ func (o Options) validate() error {
 
 	switch {
 	case o.Version == "":
-		return fmt.Errorf("%w: the build version is empty", ErrBadOptions)
+		return fmt.Errorf("%w: the build version is empty", errBadOptions)
 	case !filepath.IsAbs(o.StateDir):
-		return fmt.Errorf("%w: the state folder %q is not an absolute path", ErrBadOptions, o.StateDir)
+		return fmt.Errorf("%w: the state folder %q is not an absolute path", errBadOptions, o.StateDir)
 	case o.MaxConcurrent < minMaxConcurrent:
-		return fmt.Errorf("%w: agents.max_concurrent is %d: set it to 1 or more", ErrBadOptions, o.MaxConcurrent)
+		return fmt.Errorf("%w: agents.max_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxConcurrent)
 	}
 
 	return nil
@@ -274,7 +274,7 @@ func (e *Engine) Run(item, project string) (ItemResult, error) {
 	}
 
 	if project == "" {
-		return ItemResult{}, fmt.Errorf("%w %s: name the project", ErrNoProject, item)
+		return ItemResult{}, fmt.Errorf("%w %s: name the project", errNoProject, item)
 	}
 
 	handle, err := e.handleFor(item, project)
@@ -322,7 +322,7 @@ func (e *Engine) checkLogin(item, project string) error {
 	}
 
 	if login == "" {
-		return ErrEmptyLogin
+		return errEmptyLogin
 	}
 
 	return nil

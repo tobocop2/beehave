@@ -18,20 +18,20 @@ const (
 	taskType       = "task"
 )
 
-// BeadsType is an item type beads knows. Any other kind a caller files becomes a label on a task.
-type BeadsType string
+// beadsType is an item type beads knows. Any other kind a caller files becomes a label on a task.
+type beadsType string
 
 // The item types beads accepts for create.
 const (
-	BeadsBug     BeadsType = "bug"
-	BeadsTask    BeadsType = "task"
-	BeadsFeature BeadsType = "feature"
-	BeadsChore   BeadsType = "chore"
+	beadsBug     beadsType = "bug"
+	beadsTask    beadsType = "task"
+	beadsFeature beadsType = "feature"
+	beadsChore   beadsType = "chore"
 )
 
-func (t BeadsType) known() bool {
+func (t beadsType) known() bool {
 	switch t {
-	case BeadsBug, BeadsTask, BeadsFeature, BeadsChore:
+	case beadsBug, beadsTask, beadsFeature, beadsChore:
 		return true
 	}
 
@@ -356,7 +356,7 @@ func readableCreated(id string) (string, error) {
 
 func createArgs(request model.CreateRequest) []string {
 	kind, label := request.Kind, ""
-	if !BeadsType(kind).known() {
+	if !beadsType(kind).known() {
 		kind, label = taskType, request.Kind
 	}
 

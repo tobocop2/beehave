@@ -71,7 +71,7 @@ func TestResume_TakesAFreshClaimAndTheRunUsesItsTokenForBeatAndRelease(t *testin
 	eventually(t, func() bool {
 		rows, err := client.Status()
 
-		return err == nil && rows[0].State == RunDone
+		return err == nil && rows[0].State == runDone
 	})
 
 	assert.Equal(t, []string{"owner-12", "owner-12#2"}, harness.life.releasedBy(), "the release uses the fresh token")
@@ -99,7 +99,7 @@ func TestResume_RefusesWhenTheFreshClaimCannotBeTaken(t *testing.T) {
 
 	rows, err := client.Status()
 	require.NoError(t, err)
-	assert.Equal(t, RunFailed, rows[0].State, "a refused resume leaves the run as it was")
+	assert.Equal(t, runFailed, rows[0].State, "a refused resume leaves the run as it was")
 }
 
 func TestResume_GivesTheFreshClaimBackWhenItCannotSaveTheToken(t *testing.T) {
@@ -244,7 +244,7 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 
 	err := client.Answer(testItem, "go on")
 
-	require.ErrorIs(t, err, ErrWrongState)
+	require.ErrorIs(t, err, errWrongState)
 	require.ErrorContains(t, err, "asks no question")
 
 	release()
@@ -344,7 +344,7 @@ func TestRun_TheReadyStepRefusesAPullRequestThatMovedAfterTheReview(t *testing.T
 				return
 			}
 
-			require.ErrorIs(t, err, ErrNotReady)
+			require.ErrorIs(t, err, errNotReady)
 			require.ErrorContains(t, err, test.want)
 		})
 	}
@@ -360,7 +360,7 @@ func TestRun_AnEmptyLoginIsRefusedBeforeTheClaimAndLeavesNoRun(t *testing.T) {
 
 	_, err := engine.Run(testItem, testProject)
 
-	require.ErrorIs(t, err, ErrEmptyLogin)
+	require.ErrorIs(t, err, errEmptyLogin)
 	assert.Empty(t, harness.life.seen(), "nothing is claimed")
 
 	rows, err := client.Status()
@@ -435,7 +435,7 @@ func TestTick_AClaimRenewalThatHangsEndsAtItsOwnTimeout(t *testing.T) {
 	release()
 
 	outcome := <-done
-	require.ErrorIs(t, outcome.err, ErrClaimLost)
+	require.ErrorIs(t, outcome.err, errClaimLost)
 	require.ErrorContains(t, outcome.err, "deadline exceeded")
 }
 

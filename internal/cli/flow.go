@@ -19,8 +19,8 @@ import (
 // maxRunArgs is the item and the optional project.
 const maxRunArgs = 2
 
-// ErrInterrupted is returned by run when the user stops the command before the item ends.
-var ErrInterrupted = errors.New("stopped before the item finished: run obee run again to continue it")
+// errInterrupted is returned by run when the user stops the command before the item ends.
+var errInterrupted = errors.New("stopped before the item finished: run obee run again to continue it")
 
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
@@ -210,7 +210,7 @@ func (f flowCommands) await(engine Runner, item, project string) (flow.ItemResul
 	case finished := <-done:
 		return finished.result, finished.err
 	case <-f.ctx.Done():
-		return flow.ItemResult{}, ErrInterrupted
+		return flow.ItemResult{}, errInterrupted
 	}
 }
 
@@ -305,8 +305,8 @@ func (f flowCommands) resumeCommand() *cobra.Command {
 
 	command := &cobra.Command{
 		Use:   "resume <item>",
-		Short: "Reopen the cancelled or failed run of an item", //nolint:misspell // user-facing state word, same as flow.RunCancelled
-		Long: "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as flow.RunCancelled
+		Short: "Reopen the cancelled or failed run of an item", //nolint:misspell // user-facing state word, same as the cancelled run state
+		Long: "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as the cancelled run state
 			"Resume takes a fresh claim on the item first, and refuses if another holder has it.\n" +
 			"A canceled run that left its claim gives it back at the next obee run.\n" +
 			"Run obee run for the item next: it continues the reopened run and renews the claim.",

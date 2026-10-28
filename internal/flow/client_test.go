@@ -15,15 +15,15 @@ import (
 func TestStateOf_MapsEveryStoreStatusToARunState(t *testing.T) {
 	t.Parallel()
 
-	tests := map[dbos.WorkflowStatusType]RunState{
-		dbos.WorkflowStatusPending:                     RunRunning,
-		dbos.WorkflowStatusEnqueued:                    RunQueued,
-		dbos.WorkflowStatusDelayed:                     RunQueued,
-		dbos.WorkflowStatusSuccess:                     RunDone,
-		dbos.WorkflowStatusError:                       RunFailed,
-		dbos.WorkflowStatusMaxRecoveryAttemptsExceeded: RunFailed,
-		dbos.WorkflowStatusCancelled:                   RunCancelled,
-		"SOMETHING_NEW":                                RunRunning,
+	tests := map[dbos.WorkflowStatusType]runState{
+		dbos.WorkflowStatusPending:                     runRunning,
+		dbos.WorkflowStatusEnqueued:                    runQueued,
+		dbos.WorkflowStatusDelayed:                     runQueued,
+		dbos.WorkflowStatusSuccess:                     runDone,
+		dbos.WorkflowStatusError:                       runFailed,
+		dbos.WorkflowStatusMaxRecoveryAttemptsExceeded: runFailed,
+		dbos.WorkflowStatusCancelled:                   runCancelled,
+		"SOMETHING_NEW":                                runRunning,
 	}
 
 	for status, want := range tests {
@@ -41,16 +41,16 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	require.ErrorIs(t, client.Answer("not an id", "x"), ErrBadItem)
 	require.ErrorIs(t, client.Cancel("not an id"), ErrBadItem)
 	require.ErrorIs(t, client.Resume("not an id"), ErrBadItem)
-	require.ErrorIs(t, client.Answer(testItem, ""), ErrEmptyAnswer)
-	require.ErrorIs(t, client.Answer(testItem, "x"), ErrNoRun)
+	require.ErrorIs(t, client.Answer(testItem, ""), errEmptyAnswer)
+	require.ErrorIs(t, client.Answer(testItem, "x"), errNoRun)
 	require.ErrorContains(t, client.Cancel(testItem), "start item 12 with obee run 12")
 
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	require.ErrorIs(t, client.Answer(testItem, "x"), ErrWrongState)
-	require.ErrorIs(t, client.Cancel(testItem), ErrWrongState)
-	require.ErrorIs(t, client.Resume(testItem), ErrWrongState)
+	require.ErrorIs(t, client.Answer(testItem, "x"), errWrongState)
+	require.ErrorIs(t, client.Cancel(testItem), errWrongState)
+	require.ErrorIs(t, client.Resume(testItem), errWrongState)
 	require.ErrorContains(t, client.Resume(testItem), "only a cancelled or failed run resumes") //nolint:misspell // user-facing state word
 }
 
@@ -71,7 +71,7 @@ func TestClient_StatusListsARunThatAsksNoQuestion(t *testing.T) {
 	infos, err := client.Status()
 	require.NoError(t, err, "a run in its agent step has no question and is not an error")
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunRunning, infos[0].State)
+	assert.Equal(t, runRunning, infos[0].State)
 	assert.Empty(t, infos[0].Question)
 
 	release()
@@ -81,7 +81,7 @@ func TestClient_StatusListsARunThatAsksNoQuestion(t *testing.T) {
 func TestRunCancelled_SpellsTheWordOfTheAgentOutcome(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, string(agent.OutcomeCancelled), string(RunCancelled))
+	assert.Equal(t, string(agent.OutcomeCancelled), string(runCancelled))
 }
 
 func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
@@ -103,10 +103,10 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 
 	infos, err = client.Status()
 	require.NoError(t, err)
-	assert.Equal(t, RunCancelled, infos[0].State)
+	assert.Equal(t, runCancelled, infos[0].State)
 
 	other := harness.client(t, "v2")
-	require.ErrorIs(t, other.Resume(testItem), ErrStranded)
+	require.ErrorIs(t, other.Resume(testItem), errStranded)
 
 	// The tick of the running copy sees the cancel and wakes the owner wait.
 	harness.tick(t)
@@ -123,7 +123,7 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 	eventually(t, func() bool {
 		rows, statusErr := client.Status()
 
-		return statusErr == nil && rows[0].State == RunDone
+		return statusErr == nil && rows[0].State == runDone
 	})
 }
 

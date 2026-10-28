@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	// RunnersFileName is the file with the agent logins, the agent limit and the pool caps.
-	RunnersFileName = "runners.toml"
-	// ProjectsDirName is the folder with one TOML file for each project.
-	ProjectsDirName = "projects"
-	// LocalHost is the build host that means this machine.
-	LocalHost = "local"
+	// runnersFileName is the file with the agent logins, the agent limit and the pool caps.
+	runnersFileName = "runners.toml"
+	// projectsDirName is the folder with one TOML file for each project.
+	projectsDirName = "projects"
+	// localHost is the build host that means this machine.
+	localHost = "local"
 
 	runnerKeys  = "name, agent, config_dir, keychain"
 	poolKeys    = "five_hour_max, seven_day_max"

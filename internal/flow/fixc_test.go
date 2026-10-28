@@ -75,7 +75,7 @@ func TestClient_DropClaimStopsWaitingForATrackerThatHangs(t *testing.T) {
 	harness := newHarness(t)
 	harness.life.hang = true
 
-	client, err := OpenClient(t.Context(), harness.opts, ReleaseDeps{Lifecycle: harness.life, Trees: harness.trees, Clock: Clock{Release: 50 * time.Millisecond}})
+	client, err := OpenClient(t.Context(), harness.opts, ReleaseDeps{Lifecycle: harness.life, Trees: harness.trees, Clock: clock{Release: 50 * time.Millisecond}})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 
@@ -429,7 +429,7 @@ func TestCancel_RefusesToCancelWhenItCannotWriteTheMarker(t *testing.T) {
 
 	rows, err := client.Status()
 	require.NoError(t, err)
-	assert.Equal(t, RunRunning, rows[0].State, "a cancel that left no marker does not cancel")
+	assert.Equal(t, runRunning, rows[0].State, "a cancel that left no marker does not cancel")
 
 	close(harness.agents.gate)
 }

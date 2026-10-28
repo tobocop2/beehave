@@ -2,7 +2,9 @@ GO_TEST_FLAGS := -race -count=1 -p 2
 GOLANGCI_LINT_VERSION := v2.15.0
 BIN := bin/obee
 
-.PHONY: setup lint-version deps build release-snapshot format format-check lint vet vuln test coverage smoke mutation \
+DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
+
+.PHONY: setup lint-version deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke mutation \
 	governance-generate governance-validate governance-verify clean check
 
 setup:  ## Install the Go tools and generate the agent files
@@ -10,6 +12,7 @@ setup:  ## Install the Go tools and generate the agent files
 	command -v ai-rulez >/dev/null 2>&1 || brew install goldziher/tap/ai-rulez
 	command -v go-test-coverage >/dev/null 2>&1 || go install github.com/vladopajic/go-test-coverage/v2@v2.20.1
 	command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+	command -v deadcode >/dev/null 2>&1 || go install $(DEADCODE_VERSION)
 	$(MAKE) governance-generate
 
 build:  ## Build bin/obee
@@ -36,6 +39,10 @@ vet:
 # No package of the module may link DBOS Conductor, the enterprise module, viper, net/http or the shell interpreter. crypto/tls is allowed: DBOS links it through its Postgres driver, and TestRun_OpensNoNetworkSocket proves obee opens no connection.
 deps:  ## Fail if the binary links a forbidden dependency
 	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|net/http$$|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
+
+# deadcode -test counts the tests as entry points, so it reports a function that nothing calls, not even a test.
+deadcode:  ## Fail if a function is unreachable from main and from the tests
+	@out="$$(deadcode -test ./...)" || exit 1; if [ -n "$$out" ]; then echo "$$out"; echo "unreachable functions: delete them"; exit 1; fi
 
 vuln:  ## Fail on a known vulnerability the code can reach
 	GOTELEMETRY=off govulncheck ./...
@@ -65,4 +72,4 @@ governance-verify: governance-validate  ## Validate the config and render it wit
 clean:
 	go clean -cache -testcache
 
-check: format-check lint vet deps vuln test coverage smoke governance-verify  ## The full gate (same as CI)
+check: format-check lint vet deps deadcode vuln test coverage smoke governance-verify  ## The full gate (same as CI)

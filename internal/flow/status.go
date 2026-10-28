@@ -13,30 +13,30 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// ErrNoRun is returned when an item has no run.
-var ErrNoRun = errors.New("the item has no run")
+// errNoRun is returned when an item has no run.
+var errNoRun = errors.New("the item has no run")
 
-// ErrEmptyAnswer is returned when the answer of the owner has no text.
-var ErrEmptyAnswer = errors.New("the answer has no text")
+// errEmptyAnswer is returned when the answer of the owner has no text.
+var errEmptyAnswer = errors.New("the answer has no text")
 
-// ErrWrongState is returned when a command does not fit the state of the run.
-var ErrWrongState = errors.New("the run is in the wrong state for this command")
+// errWrongState is returned when a command does not fit the state of the run.
+var errWrongState = errors.New("the run is in the wrong state for this command")
 
-// RunState says where a run stands.
-type RunState string
+// runState says where a run stands.
+type runState string
 
 const (
-	RunRunning   RunState = "running"
-	RunQueued    RunState = "queued"
-	RunDone      RunState = "done"
-	RunFailed    RunState = "failed"
-	RunCancelled RunState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
+	runRunning   runState = "running"
+	runQueued    runState = "queued"
+	runDone      runState = "done"
+	runFailed    runState = "failed"
+	runCancelled runState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
 )
 
 // RunInfo is one line of the status list. Stranded marks an open run that another version of obee started.
 type RunInfo struct {
 	ID       string
-	State    RunState
+	State    runState
 	Version  string
 	Stranded bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
@@ -135,27 +135,27 @@ func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
 	return info, nil
 }
 
-func stateOf(status dbos.WorkflowStatusType) RunState {
+func stateOf(status dbos.WorkflowStatusType) runState {
 	switch status {
 	case dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusDelayed:
-		return RunQueued
+		return runQueued
 	case dbos.WorkflowStatusSuccess:
-		return RunDone
+		return runDone
 	case dbos.WorkflowStatusError, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded:
-		return RunFailed
+		return runFailed
 	case dbos.WorkflowStatusCancelled:
-		return RunCancelled
+		return runCancelled
 	case dbos.WorkflowStatusPending:
 		// A pending run is running, as is a status this version does not know.
 	}
 
-	return RunRunning
+	return runRunning
 }
 
 // Answer sends the answer of the owner to the open run of an item.
 func (c *Client) Answer(item, text string) error {
 	if text == "" {
-		return fmt.Errorf("%w: write the answer after the item", ErrEmptyAnswer)
+		return fmt.Errorf("%w: write the answer after the item", errEmptyAnswer)
 	}
 
 	last, err := c.latest(item)
@@ -173,12 +173,12 @@ func (c *Client) Answer(item, text string) error {
 // requireQuestion refuses a run that is finished or that asks the owner nothing: a message to such a run would answer the next question at once.
 func (c *Client) requireQuestion(item string, last run) error {
 	if last.terminal() {
-		return fmt.Errorf("%w: %s is %s and waits for no answer. Run obee run %s to start again", ErrWrongState, last.Status.ID, stateOf(last.Status.Status), item)
+		return fmt.Errorf("%w: %s is %s and waits for no answer. Run obee run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
 	}
 
 	asked, err := c.info(last.Status)
 	if err == nil && asked.Question == "" {
-		err = fmt.Errorf("%w: %s asks no question. Run obee status to see which run waits for an answer", ErrWrongState, last.Status.ID)
+		err = fmt.Errorf("%w: %s asks no question. Run obee status to see which run waits for an answer", errWrongState, last.Status.ID)
 	}
 
 	return err
@@ -222,8 +222,8 @@ func (c *Client) dropClaim(project, item, owner string) error {
 
 // requireResumable refuses a run that is not canceled or failed, and a run that another version of obee started.
 func (c *Client) requireResumable(item string, last run) error {
-	if state := stateOf(last.Status.Status); state != RunCancelled && state != RunFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run obee run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as RunCancelled
+	if state := stateOf(last.Status.Status); state != runCancelled && state != runFailed {
+		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run obee run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if last.Status.ApplicationVersion != c.version {
@@ -287,7 +287,7 @@ func (c *Client) Cancel(item string) error {
 	}
 
 	if last.terminal() {
-		return fmt.Errorf("%w: %s is %s and has nothing to cancel", ErrWrongState, last.Status.ID, stateOf(last.Status.Status))
+		return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, last.Status.ID, stateOf(last.Status.Status))
 	}
 
 	// The marker comes first. An engine that stops before its release ends leaves it, and the next start finishes the release.
@@ -358,7 +358,7 @@ func (c *Client) latest(item string) (run, error) {
 	}
 
 	if !found {
-		return run{}, fmt.Errorf("%w: start item %s with obee run %s", ErrNoRun, item, item)
+		return run{}, fmt.Errorf("%w: start item %s with obee run %s", errNoRun, item, item)
 	}
 
 	if last.Status.ApplicationVersion != c.version && !last.terminal() {

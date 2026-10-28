@@ -23,7 +23,7 @@ const (
 // Config is the config folder: the agent limit, the pool caps, the runners and the projects.
 type Config struct {
 	Dir      string
-	Agents   Agents
+	Agents   agents
 	Pool     Pool
 	Runners  []model.Runner
 	Projects map[string]Project
@@ -45,7 +45,7 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   Agents{MaxConcurrent: defaultConcurrent},
+		Agents:   agents{MaxConcurrent: defaultConcurrent},
 		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
 		Projects: map[string]Project{},
 	}
@@ -84,7 +84,7 @@ func (c *Config) loadFiles() Problems {
 }
 
 func (c *Config) loadRunners() error {
-	path := filepath.Join(c.Dir, RunnersFileName)
+	path := filepath.Join(c.Dir, runnersFileName)
 	if !isFile(path) {
 		return nil
 	}
@@ -97,7 +97,7 @@ func (c *Config) loadRunners() error {
 
 // loadProjects reads projects/*.toml in name order. A missing projects folder holds no project.
 func (c *Config) loadProjects() Problems {
-	dir := filepath.Join(c.Dir, ProjectsDirName)
+	dir := filepath.Join(c.Dir, projectsDirName)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -162,7 +162,7 @@ func overlayPercent(env map[string]string, name string, target *float64) error {
 func (c Config) Validate() Problems {
 	var problems Problems
 
-	runnersPath := filepath.Join(c.Dir, RunnersFileName)
+	runnersPath := filepath.Join(c.Dir, runnersFileName)
 
 	if c.Agents.MaxConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))

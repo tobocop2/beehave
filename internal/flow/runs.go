@@ -17,14 +17,14 @@ const attemptMarker = "-r"
 // ErrBadItem is returned when an item id is neither a forge number nor a beads id.
 var ErrBadItem = errors.New("invalid item")
 
-// ErrNoProject is returned when run names no project.
-var ErrNoProject = errors.New("no project for the item")
+// errNoProject is returned when run names no project.
+var errNoProject = errors.New("no project for the item")
 
-// ErrProjectConflict is returned when an open run of the item belongs to another project.
-var ErrProjectConflict = errors.New("the item has an open run under another project")
+// errProjectConflict is returned when an open run of the item belongs to another project.
+var errProjectConflict = errors.New("the item has an open run under another project")
 
-// ErrStranded is returned when a run belongs to another build version.
-var ErrStranded = errors.New("the run belongs to another version of obee")
+// errStranded is returned when a run belongs to another build version.
+var errStranded = errors.New("the run belongs to another version of obee")
 
 // errRunFailed is returned when run finds that the last attempt of the item failed.
 var errRunFailed = errors.New("the last run of the item failed")
@@ -48,7 +48,7 @@ func (r run) terminal() bool {
 
 // failed reports whether the attempt ended with an error. Only obee resume continues it.
 func (r run) failed() bool {
-	return stateOf(r.Status.Status) == RunFailed
+	return stateOf(r.Status.Status) == runFailed
 }
 
 // failedError tells the owner why a new attempt does not start after a failed one.
@@ -99,10 +99,10 @@ func (r run) project() (string, error) {
 // conflictError names both projects when run asks for a project the open run of the item does not use.
 func conflictError(item, held, asked string) error {
 	return fmt.Errorf("%w: item %s has an open run under project %s and you asked for %s. Run obee cancel %s to end it, then run obee run %s %s",
-		ErrProjectConflict, item, held, asked, item, item, asked)
+		errProjectConflict, item, held, asked, item, item, asked)
 }
 
 func strandedError(stranded run, version string) error {
 	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it",
-		ErrStranded, stranded.Status.ID, stranded.Status.ApplicationVersion, version, stranded.Status.ApplicationVersion)
+		errStranded, stranded.Status.ID, stranded.Status.ApplicationVersion, version, stranded.Status.ApplicationVersion)
 }

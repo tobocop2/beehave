@@ -35,7 +35,7 @@ x-ai-rulez:
 ## Names and constants
 
 - Name constants for magic numbers and magic strings. Search the repo for the raw value before you add a constant.
-- A closed set of values is a named type with constants (`type Verdict string`), a `ParseVerdict` that rejects unknown input, and `switch` statements that the `exhaustive` linter checks. A `kind string` parameter for a closed set is a defect.
+- A closed set of values is a named type with constants (`type Verdict string`), a parser that rejects unknown input, and `switch` statements that the `exhaustive` linter checks. A `kind string` parameter for a closed set is a defect.
 - Keep package-level constants together and functions together. Do not interleave them.
 - Descriptive names: `pendingLanes`, not `cur`.
 

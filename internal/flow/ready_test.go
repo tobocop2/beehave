@@ -30,7 +30,7 @@ func TestRun_TheReadyStepRefusesAPullRequestThatIsNotReadyAndNamesTheReason(t *t
 
 			_, err := engine.Run(testItem, testProject)
 
-			require.ErrorIs(t, err, ErrNotReady)
+			require.ErrorIs(t, err, errNotReady)
 			require.ErrorContains(t, err, "ready of item 12")
 			require.ErrorContains(t, err, tt.reason)
 			assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen(), "the pull request is not marked ready, and the claim is still released")
