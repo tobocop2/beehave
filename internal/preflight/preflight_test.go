@@ -82,10 +82,39 @@ func summary(state, draft, base, labels string) string {
 func check(t *testing.T, f *fake, req preflight.Request) preflight.Result {
 	t.Helper()
 
-	result, err := preflight.Check(context.Background(), f, req)
+	result, err := preflight.Check(context.Background(), f, req, "hold")
 	require.NoError(t, err)
 
 	return result
+}
+
+func TestCheck_HoldsOnTheLabelItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	p := open()
+	p.labels = []string{"blocked", "P1"}
+
+	held, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "blocked")
+	require.NoError(t, err)
+	assert.Equal(t, preflight.Held, held.Stop)
+	assert.Equal(t, "STOP: #1 now carries the 'blocked' label. A product decision is open; nothing merges.", held.Lines[0])
+
+	other, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "hold")
+	require.NoError(t, err)
+	assert.True(t, other.OK(), "the label hold is not the label blocked")
+}
+
+func TestCheck_AnEmptyHoldLabelHoldsNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, labels := range [][]string{nil, {"hold"}} {
+		p := open()
+		p.labels = labels
+
+		result, err := preflight.Check(context.Background(), p.fake(t), preflight.Request{PR: 1}, "")
+		require.NoError(t, err)
+		assert.True(t, result.OK(), labels)
+	}
 }
 
 func TestCheck_ReadsThePullRequestOnceWithTheFieldsTheChecksNeed(t *testing.T) {
@@ -271,7 +300,7 @@ func TestCheck_AnAnswerThatCannotBeUsedIsARefusal(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := preflight.Check(context.Background(), &fake{view: view}, preflight.Request{PR: 1})
+			_, err := preflight.Check(context.Background(), &fake{view: view}, preflight.Request{PR: 1}, "hold")
 
 			var unread *preflight.ReadError
 			require.ErrorAs(t, err, &unread)
@@ -283,11 +312,11 @@ func TestCheck_AnAnswerThatCannotBeUsedIsARefusal(t *testing.T) {
 func TestCheck_AFailedReadIsARefusalThatKeepsItsCause(t *testing.T) {
 	t.Parallel()
 
-	_, err := preflight.Check(context.Background(), &fake{viewErr: errDown}, preflight.Request{PR: 1})
+	_, err := preflight.Check(context.Background(), &fake{viewErr: errDown}, preflight.Request{PR: 1}, "hold")
 	require.ErrorIs(t, err, errDown)
 	assert.Equal(t, "cannot read #1", err.Error())
 
-	_, err = preflight.Check(context.Background(), &fake{view: `{"state":"OPEN","isDraft":false,"headRefName":"f","labels":[]}`, branchErr: errDown}, preflight.Request{PR: 1})
+	_, err = preflight.Check(context.Background(), &fake{view: `{"state":"OPEN","isDraft":false,"headRefName":"f","labels":[]}`, branchErr: errDown}, preflight.Request{PR: 1}, "hold")
 	require.ErrorIs(t, err, errDown)
 	assert.Equal(t, "cannot read the branch f of #1", err.Error())
 }

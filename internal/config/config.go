@@ -1,3 +1,5 @@
+// Package config loads the config folder and the state folder.
+// It is the only package that reads the process environment.
 package config
 
 import (
@@ -17,6 +19,9 @@ const (
 	envFiveHourMax   = "OBEE_POOL_FIVE_HOUR_MAX"
 	envSevenDayMax   = "OBEE_POOL_SEVEN_DAY_MAX"
 )
+
+// floatBits is the bit size of a percent that the OBEE_* variables give.
+const floatBits = 64
 
 // Config is the config folder: the agent limit, the pool caps, the runners and the projects.
 type Config struct {

@@ -60,7 +60,7 @@ func (a *attempt) authors() *refusal {
 		return nil
 	}
 
-	head := "REFUSE: these commits have no linked account and carry an address other than " + a.req.Settings.MeEmail() + ":"
+	head := "REFUSE: these commits have no linked account and carry an address other than " + a.req.OwnerEmail + ":"
 
 	return refuse(append(append([]string{head}, unlinked...),
 		"  They may be OUR commits under a wrong address. If they are, repair them.",

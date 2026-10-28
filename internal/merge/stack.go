@@ -20,7 +20,7 @@ func (a *attempt) orphans() *refusal {
 
 	a.say(
 		fmt.Sprintf("REFUSE: #%d is the base of %s. A squash merge orphans them.", a.req.PR, strings.Join(blocking, " ")),
-		fmt.Sprintf("        Link them into the stack of #%d, or rebase each child onto %s,", a.req.PR, a.req.Settings.Base()),
+		fmt.Sprintf("        Link them into the stack of #%d, or rebase each child onto %s,", a.req.PR, a.req.Base),
 		"        or merge the children before the parent, or use a merge commit so their base survives.",
 		"        Then run the merge again.",
 		"        To merge anyway, pass --allow-orphans, and say in the verdict what happens to each child.",

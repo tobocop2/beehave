@@ -16,10 +16,6 @@ func writeFile(t *testing.T, path string, content string) string {
 	return path
 }
 
-func symlink(target, link string) error {
-	return os.Symlink(target, link)
-}
-
 func chmod(t *testing.T, path string, mode os.FileMode) {
 	t.Helper()
 	require.NoError(t, os.Chmod(path, mode))

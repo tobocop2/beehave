@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -116,7 +115,8 @@ type view struct {
 
 // Check judges the pull request against the request. The order is the state, the branch, the labels, the draft flag, then the head and the base.
 // A merged pull request still shows a head that looks fine, so the state comes first.
-func Check(ctx context.Context, r Reader, req Request) (Result, error) {
+// A pull request that carries the whole label hold is held. An empty hold holds nothing.
+func Check(ctx context.Context, r Reader, req Request, hold string) (Result, error) {
 	v, err := read(ctx, r, req.PR)
 	if err != nil {
 		return Result{}, err
@@ -125,7 +125,7 @@ func Check(ctx context.Context, r Reader, req Request) (Result, error) {
 	summary := fmt.Sprintf("pr %d  state %s  draft %t  head %s  ref %s  base %s  labels [%s]",
 		v.pr, v.state, v.draft, v.head, v.ref, v.base, v.labels)
 
-	stop, lines, err := judge(ctx, r, v, req)
+	stop, lines, err := judge(ctx, r, v, req, hold)
 	if err != nil {
 		return Result{}, err
 	}
@@ -138,7 +138,7 @@ func Check(ctx context.Context, r Reader, req Request) (Result, error) {
 }
 
 // judge returns the first stop in the order, or Unchanged. Only the branch check reads the forge again.
-func judge(ctx context.Context, r Reader, v view, req Request) (Stop, []string, error) {
+func judge(ctx context.Context, r Reader, v view, req Request, hold string) (Stop, []string, error) {
 	if stop, lines := stateStop(v); stop != Unchanged {
 		return stop, lines, nil
 	}
@@ -147,7 +147,7 @@ func judge(ctx context.Context, r Reader, v view, req Request) (Stop, []string, 
 		return stop, lines, err
 	}
 
-	if stop, lines := labelStop(v); stop != Unchanged {
+	if stop, lines := labelStop(v, hold); stop != Unchanged {
 		return stop, lines, nil
 	}
 
@@ -241,10 +241,10 @@ func branchStop(v view) (Stop, []string) {
 }
 
 // labelStop holds the hold label and the draft flag. A hold is a product decision opening, so it outranks a draft.
-func labelStop(v view) (Stop, []string) {
-	if config.IsHeld(v.labels) {
+func labelStop(v view, hold string) (Stop, []string) {
+	if hold != "" && slices.Contains(strings.Split(v.labels, ","), hold) {
 		return Held, []string{
-			fmt.Sprintf("STOP: #%d now carries the 'hold' label. A product decision is open; nothing merges.", v.pr),
+			fmt.Sprintf("STOP: #%d now carries the '%s' label. A product decision is open; nothing merges.", v.pr, hold),
 			"  Recovery: write the judgement on the issue and move to the next item.",
 		}
 	}

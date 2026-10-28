@@ -114,20 +114,50 @@ func TestRun_TheBeforeLineEscapesATabAndPrintsANull(t *testing.T) {
 	assert.Equal(t, "before: A\\tB\\n\\r\\\\\tfalse\tmain\t"+sha+"\t", result.Lines[0])
 }
 
+func TestRun_ReadsTheRepositoryBaseRoundAndOwnerFromTheRequest(t *testing.T) {
+	t.Parallel()
+
+	req := merge.Request{
+		PR: pr, Gated: sha, Runners: []string{"bee-1"},
+		Repo: "owner/name", Base: "main", Round: "r1", OwnerLogin: me, OwnerEmail: meMail,
+	}
+	w := newWorld(t)
+	result := w.run(req)
+
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+	assert.Len(t, merges(w), 1)
+}
+
+func TestRun_TheBaseOfTheRequestIsTheBaseTheGuardExpects(t *testing.T) {
+	t.Parallel()
+
+	req := request()
+	req.Base = "develop"
+	result := newWorld(t).run(req)
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: base is main, expected develop", last(result))
+}
+
 func TestRun_AMissingRoundSettingRefuses(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"BASE", "REPO", "ROUND"} {
+	blanks := map[string]func(*merge.Request){
+		"base branch": func(r *merge.Request) { r.Base = "" },
+		"repository":  func(r *merge.Request) { r.Repo = "" },
+		"round name":  func(r *merge.Request) { r.Round = "" },
+	}
+	for name, blank := range blanks {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			req := request()
-			req.Settings = settings(map[string]string{name: ""})
+			blank(&req)
 			w := newWorld(t)
 			result := w.run(req)
 
 			assert.Equal(t, merge.Refused, result.Stop)
-			assert.Equal(t, "REFUSE: "+name+" is not set. Set it in the round settings.", result.Lines[0])
+			assert.Equal(t, "REFUSE: the "+name+" of the merge is not set.", result.Lines[0])
 			assert.Empty(t, w.writes)
 		})
 	}
