@@ -22,6 +22,14 @@ type Step interface {
 	// Pos is the range of the block header.
 	Pos() hcl.Range
 	place(name string, pos hcl.Range)
+	arguments() []argument
+}
+
+// argument is an argument of a step that holds an expression. whole is true when the argument
+// names a step and no output of it.
+type argument struct {
+	expr  hcl.Expression
+	whole bool
 }
 
 // Header is the part that every step block shares.
@@ -61,6 +69,23 @@ type Agent struct {
 // Kind returns KindAgent.
 func (*Agent) Kind() Kind { return KindAgent }
 
+func (a *Agent) arguments() []argument {
+	return []argument{
+		{expr: a.Prompt},
+		{expr: a.Model},
+		{expr: a.Runner},
+		{expr: a.Skills},
+		{expr: a.RequireSkills},
+		{expr: a.Timeout},
+		{expr: a.IdleTimeout},
+		{expr: a.Pin},
+		{expr: a.ResumeFrom, whole: true},
+		{expr: a.Inputs},
+		{expr: a.Outputs},
+		{expr: a.When},
+	}
+}
+
 // Command runs a program.
 type Command struct {
 	Header
@@ -73,6 +98,10 @@ type Command struct {
 
 // Kind returns KindCommand.
 func (*Command) Kind() Kind { return KindCommand }
+
+func (c *Command) arguments() []argument {
+	return []argument{{expr: c.Run}, {expr: c.Timeout}, {expr: c.Host}, {expr: c.When}}
+}
 
 // Gate runs the check command of the project, or the command in Run.
 type Gate struct {
@@ -87,6 +116,10 @@ type Gate struct {
 // Kind returns KindGate.
 func (*Gate) Kind() Kind { return KindGate }
 
+func (g *Gate) arguments() []argument {
+	return []argument{{expr: g.Run}, {expr: g.Host}, {expr: g.Timeout}, {expr: g.Head}}
+}
+
 // Loop repeats its steps up to Max times and stops early when Until holds.
 type Loop struct {
 	Header
@@ -99,6 +132,8 @@ type Loop struct {
 // Kind returns KindLoop.
 func (*Loop) Kind() Kind { return KindLoop }
 
+func (l *Loop) arguments() []argument { return []argument{{expr: l.Until}} }
+
 // Wait stops the workflow until a person answers.
 type Wait struct {
 	Header
@@ -109,6 +144,8 @@ type Wait struct {
 
 // Kind returns KindWait.
 func (*Wait) Kind() Kind { return KindWait }
+
+func (w *Wait) arguments() []argument { return []argument{{expr: w.Question}, {expr: w.When}} }
 
 // Workflow is one workflow file. Steps are in file order, and a loop holds its own steps.
 type Workflow struct {
