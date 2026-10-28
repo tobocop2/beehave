@@ -42,11 +42,25 @@ func TestExecute(t *testing.T) {
 
 			var stdout, stderr bytes.Buffer
 
-			code := cli.Execute(context.Background(), tc.args, info, &stdout, &stderr)
+			code := cli.Execute(context.Background(), tc.args, info, map[string]string{}, &stdout, &stderr)
 
 			require.Equal(t, tc.wantCode, code)
 			require.Equal(t, tc.wantStdout, stdout.String())
 			require.Equal(t, tc.wantStderr, stderr.String())
 		})
 	}
+}
+
+func TestExecute_RefusesToStartWhenADBOSVariableIsSet(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+
+	env := map[string]string{"DBOS__CONDUCTOR_KEY": "secret-value"}
+	code := cli.Execute(context.Background(), []string{"--version"}, cli.BuildInfo{Version: "1"}, env, &stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	require.Empty(t, stdout.String())
+	require.Equal(t, "obee: DBOS__CONDUCTOR_KEY is set. DBOS reads it and would connect to a service outside this machine. Unset it and start obee again.\n", stderr.String())
+	require.NotContains(t, stderr.String(), "secret-value")
 }
