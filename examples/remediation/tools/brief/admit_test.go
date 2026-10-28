@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/brief"
+	"github.com/tobocop2/obee/examples/remediation/tools/brief"
 	obeecheck "github.com/tobocop2/obee/internal/check"
 	"github.com/tobocop2/obee/internal/ledger"
 )
@@ -118,7 +118,8 @@ func TestAdmit_ANewBehaviorNeedsADesignLaneInTheLedger(t *testing.T) {
 
 	require.ErrorAs(t, err, &stop)
 	assert.Contains(t, stop.Error(), "REFUSED: lane fix-1 adds new behavior to 1, and the ledger holds no design lane for it.")
-	assert.Contains(t, stop.Error(), "obee brief new design <name> <model>")
+	// The refusal names no command: it says in plain words that the next lane is a design lane.
+	assert.Contains(t, stop.Error(), "dispatch a design lane next")
 
 	addRow(t, book, "1", "des-1", ledger.KindDesign, "")
 
@@ -208,6 +209,7 @@ func TestAdmit_AThirdPatchRoundIsStoppedUntilADesignLane(t *testing.T) {
 
 	require.ErrorAs(t, err, &stop)
 	assert.Contains(t, stop.Error(), "REFUSED: pull request 1 had 2 patch rounds on the mechanism robots, with no design lane since.")
+	assert.Contains(t, stop.Error(), "on the opus:stuck model tier by default")
 	assert.Contains(t, stop.Error(), "A third patch round is a redesign that nobody wrote down.")
 
 	lane.Mechanism = "title"
@@ -389,7 +391,7 @@ func TestAdmit_TwoRegressionsSendTheNextBriefToADesignLane(t *testing.T) {
 
 		require.ErrorAs(t, err, &stop)
 		assert.Contains(t, stop.Error(), "REFUSED: "+lane.Handoff+" counts 2 regressions of pull request 1, and the ledger holds no design lane for it.")
-		assert.Contains(t, stop.Error(), "obee brief new design <name> <model>")
+		assert.Contains(t, stop.Error(), "dispatch a design lane next")
 
 		_, err = admit(brief.KindDesign, lane, book, passes(lines, false))
 		require.NoError(t, err)

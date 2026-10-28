@@ -1,4 +1,4 @@
-// Package brief builds the text a lane reads before it starts: the rules of the project cut for one kind of lane, the standing blocks, the model and the filled slots.
+// Package brief judges a brief before a lane starts: it admits a lane against the ledger, and it sizes the reading list of the brief.
 // Every function here reads the text or the files it is given. None reads the environment or runs a command.
 package brief
 

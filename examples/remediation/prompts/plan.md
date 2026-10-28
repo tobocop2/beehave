@@ -20,6 +20,12 @@ Report each cell where the issue leaves the answer open, and do not choose: that
 Write the paths of the harness and of the build of the base into the same file: every later lane of
 the item uses them.
 
+## A proof-and-papers lane writes no source path
+
+**When the item asks for proof and papers only, run the proof, and write the report and the pull request body.**
+Change no source path. When the proof finds a defect, do not fix it here: report it with the red row, and the
+orchestrator dispatches a fix lane.
+
 ## Before you write
 
 **Check for an existing pull request, at the start and again before you push.**
@@ -28,6 +34,7 @@ rather than the commits. A closed pull request is not a record of work that land
 **Re-derive every cited site at the tip you branch from.** Line numbers move.
 **Build-versus-buy search.** Before you write a new mechanism, search the project, its dependencies and the standard
 library for one that already does the job. Name what you found, or write that you found none.
+**Name the tempting wrong fix and why it is wrong.** Prefer enabling an existing judgement over writing a rival one.
 
 ## Your context cap: a trigger, not a hard stop
 

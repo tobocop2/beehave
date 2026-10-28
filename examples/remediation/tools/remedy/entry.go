@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/tobocop2/obee/internal/ledger"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
@@ -43,7 +44,9 @@ func Main[F Forge](args []string, out, errOut io.Writer, open func(repo string) 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	deps := Deps{Git: proc.NewExecRunner("git", workingFolder), Dir: workingFolder, Forge: OpenForge(open), Now: time.Now, Claims: claims}
+	deps := Deps{
+		Git: proc.NewExecRunner("git", workingFolder), Dir: workingFolder, Forge: OpenForge(open), Now: time.Now, Claims: claims, Book: OpenBook(ledger.Open),
+	}
 
 	return Execute(ctx, args, deps, out, errOut)
 }

@@ -22,7 +22,7 @@ Covers lists every rule ID that the row covers, its own ID first. A row with no 
 
 The review in this workflow is fresh in each round (`agent "review"` has no `resume_from`). The method keeps a conflict open between a resumed reviewer (S1-L-12) and a fresh agent in late rounds (S1-L-19). This example takes the fresh side. An implementer iterating the review to zero, and a reviewer running one sweep, are prose in the prompts and not in the file.
 
-The prompts hold the brief parts that `internal/brief` emits for the role, in the same order, in plain words. The parts that depend on the project (build host, compiled code, union) are not in the prompts. The long-job and handoff-before-launch parts are not in the prompts either: the engine submits and waits for each job, so an agent launches none (S1-L-56, drop). The prompts also state rules that the core is meant to enforce. Each of these rules has a row with Home `core` and Status `gap`: S1-P-04 (a reviewer does not fix, commit or push), S1-G-01 and S1-G-11 (gate steps and a result for each step), S1-L-06 (the context cap), S1-Q-08 (the check for an existing pull request) and S1-G-23 (the four report tables). The prompts keep the prose until the core enforces it.
+The prompts hold the rules of the brief text that the `brief` package once built from 19 embedded files, in plain words. The test `TestPrompts_HoldEveryRuleOfTheBriefText` keeps one phrase of each rule in the prompts, and fails when a prompt loses one. The rules for the build host, compiled code and a union are in the prompts too. The long-job and handoff-before-launch parts are not in the prompts: the engine submits and waits for each job, so an agent launches none (S1-L-56, drop). The prompts also state rules that the core is meant to enforce. Each of these rules has a row with Home `core` and Status `gap`: S1-P-04 (a reviewer does not fix, commit or push), S1-G-01 and S1-G-11 (gate steps and a result for each step), S1-L-06 (the context cap), S1-Q-08 (the check for an existing pull request) and S1-G-23 (the four report tables). The prompts keep the prose until the core enforces it.
 
 | ID | Rule | Home | Status | Where | Test | Covers |
 |---|---|---|---|---|---|---|
@@ -70,7 +70,7 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-L-18 | A handoff holds regressions, tokens, compile state and unread jobs | core | gap | - | - | S1-L-18, S1-L-23, S1-L-54, S1-L-55 |
 | S1-L-19 | Five fix rounds: rounds 1 to 3 resume, rounds 4 and 5 start fresh one tier up and are told the round | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-19, S1-L-20 |
 | S1-L-21 | At five rounds, adjudicate each open finding | skill | expressed | workflow.hcl wait adjudicate | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-21 |
-| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | - | - | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
+| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | tools/remedy admit | TestAdmit_ATwoPatchRoundMechanismSendsTheLaneToADesignLane | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
 | S1-L-26 | Design lane rules: coverage, cheapest evidence, repeat-offender, build-versus-buy | skill | gap | - | - | S1-L-26, S1-L-86, S1-L-97, S1-L-98, S1-L-99, S1-L-100, S1-L-104 |
 | S1-L-27 | Keep a capped number of lanes busy; a parked lane holds no slot | core | gap | - | - | S1-L-27, S1-L-28, S1-L-31 |
 | S1-L-29 | Retire a lane only when its worktree is clean and pushed | core | gap | - | - | S1-L-29, S1-L-30, S1-L-32 |
@@ -93,11 +93,11 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-L-102 | Frame security reviews of our validators as verification | skill | gap | - | - | S1-L-102 |
 | S1-B-01 | One prompt file per agent | core | expressed | workflow.hcl agent implement | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-B-01, S1-B-02, S1-B-03, S1-B-35, S1-B-26 |
 | S1-B-05 | Put everything in the brief; do not edit another item's brief | core | gap | - | - | S1-B-05, S1-B-06, S1-B-07, S1-B-36 |
-| S1-B-08 | Splice the profile's brief rules; refuse a brief without preflight sections | core | gap | - | - | S1-B-08, S1-B-09, S1-B-10, S1-B-11, S1-B-27, S1-B-33 |
-| S1-B-12 | Refuse a brief above the reading budget; list tokens per file | core | gap | - | - | S1-B-12, S1-B-13 |
-| S1-B-14 | An implementer brief needs acceptance and base result lines | core | gap | - | - | S1-B-14, S1-B-15, S1-B-16, S1-B-17 |
+| S1-B-08 | Splice the profile's brief rules; refuse a brief without preflight sections | core | gap | prompts/implement.md, the rules in the prompt | TestPrompts_HoldEveryRuleOfTheBriefText | S1-B-08, S1-B-09, S1-B-10, S1-B-11, S1-B-27, S1-B-33 |
+| S1-B-12 | Refuse a brief above the reading budget; list tokens per file | core | gap | tools/remedy size | TestSize_AReadingAboveTheLimitIsARefusal | S1-B-12, S1-B-13 |
+| S1-B-14 | An implementer brief needs acceptance and base result lines | core | gap | tools/remedy admit | TestAdmit_ALaneWithNoAcceptanceFieldIsRefused | S1-B-14, S1-B-15, S1-B-16, S1-B-17 |
 | S1-B-18 | Ruling lines, fewer cells, skill choice, blast-radius floor in the brief | skill | gap | - | - | S1-B-18, S1-B-19, S1-B-20, S1-B-21, S1-B-29, S1-B-30, S1-B-31, S1-B-32 |
-| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | - | - | S1-B-22 |
+| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | prompts/plan.md, the proof-and-papers section | TestPrompts_HoldEveryRuleOfTheBriefText | S1-B-22 |
 | S1-B-23 | Probe rules; no touching the laptop checkout; delete and shell bans | core | gap | - | - | S1-B-23, S1-B-24, S1-B-25 |
 | S1-B-28 | Closing reference by base: Addresses on a round branch, Closes on the default | core | gap | - | - | S1-B-28 |
 | S1-B-34 | Derive the dispatch gate from CI through the profile gate source | file | gap | - | - | S1-B-34 |
@@ -154,7 +154,7 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-P-13 | Owner dashboard as a profile section | core | gap | - | - | S1-P-13, S1-D-14, S1-PS-13 |
 | S1-P-14 | Never paste a lane report into GitHub; rewrite it | skill | gap | - | - | S1-P-14, S1-F-13 |
 | S1-P-15 | A reproduction is self-contained, with no round paths or lane names | core | gap | - | - | S1-P-15, S1-F-03, S1-F-02 |
-| S1-P-16 | Estimated tokens per file and in total | core | gap | - | - | S1-P-16 |
+| S1-P-16 | Estimated tokens per file and in total | core | gap | tools/remedy size | TestSize_PrintsTheTokenTableAndPassesASmallReading | S1-P-16 |
 | S1-R-01 | Review your own work: a fresh reviewer that did not write the code | core | expressed | workflow.hcl agent review | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-01, S1-R-02, S1-R-04, S1-R-62, S1-M-13 |
 | S1-R-05 | Findings on our own PR go to the author lane | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-05, S1-R-06, S1-F-15 |
 | S1-R-07 | Read every review and inline comment before ready and before merge | core | gap | - | - | S1-R-07, S1-M-04, S1-M-10, S1-M-11 |

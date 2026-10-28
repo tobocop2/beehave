@@ -16,7 +16,7 @@ const (
 	MinRegressions = 2
 
 	regressionsWord = "regressions="
-	newDesignLane   = "obee brief new design <name> <model>"
+	newDesignLane   = "dispatch a design lane next"
 )
 
 var notTokenChar = regexp.MustCompile(`[^A-Za-z0-9_.-]`)
@@ -56,7 +56,7 @@ func (k LaneKind) ledgerKind() ledger.Kind {
 }
 
 // Lane is what a dispatch tells the brief about one lane. A zero value is an unset slot.
-// Cap is the context cap in tokens, and zero means ContextCap. Body returns the pull request body for the first review of a key.
+// Cap is the context cap in tokens, and zero means ContextCap.
 type Lane struct {
 	Key         string
 	Kind        LaneKind
@@ -67,12 +67,6 @@ type Lane struct {
 	Handoff     string
 	Transcript  string
 	Cap         int
-	ReviewPR    string
-	Expected    string
-	Union       bool
-	Branch      string
-	ReadFirst   string
-	Body        func() (string, error)
 }
 
 // Admission is what the ledger says about a lane before its brief is written: the kind of row to add and the mechanism it patches.
@@ -216,7 +210,7 @@ func admitMechanism(name string, lane Lane, book Book) error {
 	return &Stopped{Lines: []string{
 		"REFUSED: pull request " + lane.Key + " had " + strconv.Itoa(rounds.Count) + " patch rounds on the mechanism " + lane.Mechanism + ", with no design lane since.",
 		"         A third patch round is a redesign that nobody wrote down. The next lane is a design lane:",
-		"         " + newDesignLane + ", opus:stuck by default. It writes the rule of the mechanism",
+		"         " + newDesignLane + ", on the opus:stuck model tier by default. It writes the rule of the mechanism",
 		"         and an acceptance script that covers every case the earlier rounds found.",
 	}}
 }
@@ -276,7 +270,7 @@ func afterRegressions(kind Kind, lane Lane, book Book, lines []string) error {
 
 	return &Stopped{Lines: []string{
 		"REFUSED: " + lane.Handoff + " counts " + strconv.Itoa(regressions) + " regressions of pull request " + lane.Key + ", and the ledger holds no design lane for it.",
-		"         The next brief is a design brief: " + newDesignLane + ", opus:stuck by default. That lane writes the rule and",
+		"         The next brief is a design brief: " + newDesignLane + ". That lane writes the rule and",
 		"         the acceptance script, runs the script at the base, and changes no product code.",
 	}}
 }
