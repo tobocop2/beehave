@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const lintAndFixFile = `workflow "lint-and-fix" {
@@ -165,12 +166,12 @@ command "show" {
 
 const projectText = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
 
-func runCheckWorkflowWith(t *testing.T, fields func(context.Context, model.Project) ([]string, error), args ...string) (int, string) {
+func runCheckWorkflowWith(t *testing.T, capabilities func(context.Context, model.Project) (workflow.Capabilities, error), args ...string) (int, string) {
 	t.Helper()
 
 	var stdout, stderr bytes.Buffer
 
-	info := cli.BuildInfo{Version: "x", ItemFields: fields}
+	info := cli.BuildInfo{Version: "x", Capabilities: capabilities}
 	code := cli.Execute(context.Background(), append([]string{"check", "workflow"}, args...), info, map[string]string{}, &stdout, &stderr)
 
 	return code, stderr.String()
@@ -185,10 +186,10 @@ func TestCheckWorkflow_RefusesAnItemFieldThatTheProjectAdaptersDoNotDeclare(t *t
 
 	var named string
 
-	code, stderr := runCheckWorkflowWith(t, func(_ context.Context, project model.Project) ([]string, error) {
+	code, stderr := runCheckWorkflowWith(t, func(_ context.Context, project model.Project) (workflow.Capabilities, error) {
 		named = project.Name
 
-		return []string{"id", "title", "body"}, nil
+		return workflow.Capabilities{Fields: []string{"id", "title", "body"}}, nil
 	}, filepath.Join(dir, "w.hcl"), "--project", "p", "--config", dir)
 
 	require.Equal(t, 1, code)
@@ -203,8 +204,8 @@ func TestCheckWorkflow_AcceptsAnItemFieldThatTheProjectAdaptersDeclare(t *testin
 	writeConfig(t, dir, "projects/p.hcl", projectText)
 	writeConfig(t, dir, "w.hcl", branchFile)
 
-	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) ([]string, error) {
-		return []string{"id", "title", "body", "branch"}, nil
+	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) (workflow.Capabilities, error) {
+		return workflow.Capabilities{Fields: []string{"id", "title", "body", "branch"}}, nil
 	}, filepath.Join(dir, "w.hcl"), "--project", "p", "--config", dir)
 
 	require.Equal(t, 0, code)
@@ -217,8 +218,8 @@ func TestCheckWorkflow_WithoutAProjectUsesIDTitleAndBody(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, "w.hcl", branchFile)
 
-	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) ([]string, error) {
-		return []string{"branch"}, nil
+	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) (workflow.Capabilities, error) {
+		return workflow.Capabilities{Fields: []string{"branch"}}, nil
 	}, filepath.Join(dir, "w.hcl"))
 
 	require.Equal(t, 1, code)
@@ -283,10 +284,50 @@ func TestCheckWorkflow_ReportsAnAdapterThatCannotBeBuilt(t *testing.T) {
 	writeConfig(t, dir, "projects/p.hcl", projectText)
 	writeConfig(t, dir, "w.hcl", branchFile)
 
-	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) ([]string, error) {
-		return nil, errors.New("no gh on the path")
+	code, stderr := runCheckWorkflowWith(t, func(context.Context, model.Project) (workflow.Capabilities, error) {
+		return workflow.Capabilities{}, errors.New("no gh on the path")
 	}, filepath.Join(dir, "w.hcl"), "--project", "p", "--config", dir)
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "no gh on the path")
+}
+
+const mergeFile = "workflow \"w\" {}\n\ngate \"check\" {}\n\nmerge \"ship\" {\n  head  = gate.check.head\n  merge = false\n}\n"
+
+const noForgeProject = "source = \"/srv/repo\"\ntracker = \"local\"\nclaims = \"local\"\nbase_branch = \"main\"\ngate = \"g\"\n"
+
+func TestCheckWorkflow_RefusesAMergeStepInAProjectWithNoForge(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/shop.hcl", noForgeProject)
+	writeConfig(t, dir, "w.hcl", mergeFile)
+
+	code, stderr := runCheckWorkflowWith(t, nil, filepath.Join(dir, "w.hcl"), "--project", "shop", "--config", dir)
+
+	require.Equal(t, 1, code)
+	require.Contains(t, stderr, "w.hcl:5:1: step `merge.ship` needs a forge, and project `shop` has none.")
+}
+
+func TestCheckWorkflow_AcceptsAMergeStepInAProjectWithAForge(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/p.hcl", projectText)
+	writeConfig(t, dir, "w.hcl", mergeFile)
+
+	code, stderr := runCheckWorkflowWith(t, nil, filepath.Join(dir, "w.hcl"), "--project", "p", "--config", dir)
+
+	require.Equal(t, 0, code, stderr)
+}
+
+func TestCheckWorkflow_WithoutAProjectRefusesNoMergeStep(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "w.hcl", mergeFile)
+
+	code, stderr := runCheckWorkflowWith(t, nil, filepath.Join(dir, "w.hcl"))
+
+	require.Equal(t, 0, code, stderr)
 }

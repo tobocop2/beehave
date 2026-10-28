@@ -146,7 +146,10 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 func (f *Forge) CloneURL() string { return "https://github.com/" + f.repo + ".git" }
 
 // ItemFields declares the fields that Item returns.
-func (*Forge) ItemFields() []string { return []string{"branch", "head_sha", "pr", "author"} }
+func (*Forge) ItemFields() []string { return ItemFields() }
+
+// ItemFields returns the fields that a GitHub forge declares for an item.
+func ItemFields() []string { return []string{"branch", "head_sha", "pr", "author"} }
 
 // Item returns the branch, head commit, number and author of a pull request. A field the forge does not send is empty.
 func (f *Forge) Item(ctx context.Context, pr int) (map[string]string, error) {

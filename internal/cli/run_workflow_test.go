@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const oneCommandFile = "workflow \"w\" {}\n\ncommand \"a\" {\n  run = [\"true\"]\n}\n"
@@ -167,25 +168,27 @@ func TestRun_TheItemFieldsOfTheProjectAdaptersCheckTheWorkflowFile(t *testing.T)
 
 	var asked model.Project
 
-	run := func(fields func(context.Context, model.Project) ([]string, error)) (int, string) {
+	run := func(capabilities func(context.Context, model.Project) (workflow.Capabilities, error)) (int, string) {
 		var stdout, stderr bytes.Buffer
 
-		info := cli.BuildInfo{Version: "v9", Flow: rig.factory(), ItemFields: fields}
+		info := cli.BuildInfo{Version: "v9", Flow: rig.factory(), Capabilities: capabilities}
 		code := cli.Execute(t.Context(), []string{"run", "12", "--workflow", filepath.Join(dir, "flow.hcl"), "--config", rig.dir}, info, rig.env, &stdout, &stderr)
 
 		return code, stderr.String()
 	}
 
-	code, _ := run(func(_ context.Context, project model.Project) ([]string, error) {
+	code, _ := run(func(_ context.Context, project model.Project) (workflow.Capabilities, error) {
 		asked = project
 
-		return []string{"id", "title", "body", "sha"}, nil
+		return workflow.Capabilities{Fields: []string{"id", "title", "body", "sha"}}, nil
 	})
 
 	require.Equal(t, 0, code)
 	assert.Equal(t, "o/n", asked.Repo)
 
-	code, stderr := run(func(context.Context, model.Project) ([]string, error) { return nil, errors.New("the forge is down") })
+	code, stderr := run(func(context.Context, model.Project) (workflow.Capabilities, error) {
+		return workflow.Capabilities{}, errors.New("the forge is down")
+	})
 
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, stderr, "the forge is down")
@@ -193,4 +196,22 @@ func TestRun_TheItemFieldsOfTheProjectAdaptersCheckTheWorkflowFile(t *testing.T)
 	code, _ = run(nil)
 
 	require.Equal(t, 1, code, "without the hook only id, title and body exist")
+}
+
+func TestRun_AMergeStepInAProjectWithNoForgeIsRefusedBeforeAnyClaimOrRun(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "projects/p.hcl", noForgeProject)
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "flow.hcl", mergeFile)
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12", "--workflow", filepath.Join(dir, "flow.hcl"))
+
+	require.Equal(t, 1, code)
+	assert.Contains(t, stderr, "flow.hcl:5:1: step `merge.ship` needs a forge, and project `p` has none.")
+	assert.Zero(t, rig.engines, "no engine opens, so no claim row and no run is written")
+	assert.Empty(t, rig.runner.files)
+	assert.False(t, rig.steering.closeOK, "no client opens either")
 }

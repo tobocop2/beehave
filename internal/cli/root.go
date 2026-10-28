@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
@@ -26,8 +27,8 @@ type BuildInfo struct {
 	Version string
 	// Adapters builds the tracker, the forge and the claim store of a project and returns why it cannot. A nil value skips the check.
 	Adapters func(context.Context, model.Project) error
-	// ItemFields returns the item fields that the tracker and the forge of a project declare. A nil value leaves the common fields.
-	ItemFields func(context.Context, model.Project) ([]string, error)
+	// Capabilities returns the item fields that the tracker and the forge of a project declare, and whether the project has a forge. A nil value leaves the common fields.
+	Capabilities func(context.Context, model.Project) (workflow.Capabilities, error)
 	// Items opens the item list of a project with the local tracker, for the item commands and the check of the run. A nil value leaves both out.
 	Items ItemOpener
 	// Doctor reads what the doctor command checks outside the process: the Keychain and the bd version.
@@ -49,8 +50,8 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.ItemFields), newDoctorCommand(ctx, env, info.Doctor))
-	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, itemFields: info.ItemFields, items: info.Items}
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Capabilities), newDoctorCommand(ctx, env, info.Doctor))
+	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, capabilities: info.Capabilities, items: info.Items}
 	commands.add(root)
 	commands.addItems(root)
 

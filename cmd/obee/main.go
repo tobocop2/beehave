@@ -26,12 +26,12 @@ func main() {
 	bd := proc.NewExecRunner("bd", "")
 	table := newAdapters(bd, func() (string, error) { return config.StateDir(env) })
 	info := cli.BuildInfo{
-		Version:    version,
-		Adapters:   table.check,
-		ItemFields: table.itemFields,
-		Items:      table.itemOpener(),
-		Doctor:     newDoctor(bd, newSecurityRunner()),
-		Flow:       flowFactory(),
+		Version:      version,
+		Adapters:     table.check,
+		Capabilities: table.capabilities,
+		Items:        table.itemOpener(),
+		Doctor:       newDoctor(bd, newSecurityRunner()),
+		Flow:         flowFactory(),
 	}
 	code := cli.Execute(ctx, os.Args[1:], info, env, os.Stdout, os.Stderr)
 	stop()

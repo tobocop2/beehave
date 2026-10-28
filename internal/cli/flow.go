@@ -16,7 +16,6 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // maxRunArgs is the item and the optional project.
@@ -54,12 +53,12 @@ type Flow struct {
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
 type flowCommands struct {
-	ctx        context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
-	env        map[string]string
-	version    string
-	factory    Flow
-	itemFields itemFieldsFunc
-	items      ItemOpener
+	ctx          context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
+	env          map[string]string
+	version      string
+	factory      Flow
+	capabilities capabilitiesFunc
+	items        ItemOpener
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -213,16 +212,12 @@ func chooseWorkflow(named string) (string, error) {
 
 // checkWorkflow runs the same check as obee check workflow, and refuses the run on any problem.
 func (f flowCommands) checkWorkflow(cmd *cobra.Command, project model.Project, file string) error {
-	fields := workflow.CommonItemFields()
-
-	if f.itemFields != nil {
-		var err error
-		if fields, err = f.itemFields(f.ctx, project); err != nil {
-			return err
-		}
+	caps, err := projectCapabilities(f.ctx, f.capabilities, project)
+	if err != nil {
+		return err
 	}
 
-	return runCheckWorkflow(cmd.ErrOrStderr(), file, fields)
+	return runCheckWorkflow(cmd.ErrOrStderr(), file, caps)
 }
 
 // runArgs accepts a valid item id and at most one project name.

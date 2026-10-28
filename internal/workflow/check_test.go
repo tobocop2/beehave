@@ -24,11 +24,32 @@ func filesWith(text string) fstest.MapFS {
 func check(t *testing.T, text string) ([]hclfile.Diagnostic, bool) {
 	t.Helper()
 
-	return workflow.Check(filesWith(text), "w.hcl", forgeFields)
+	return workflow.Check(filesWith(text), "w.hcl", withForge)
 }
 
-// forgeFields is the field list of a tracker and a forge together.
-var forgeFields = []string{"id", "title", "body", "branch", "head_sha", "pr", "author"}
+// checkWith checks text for a project with the given capabilities.
+func checkWith(t *testing.T, text string, caps workflow.Capabilities) []hclfile.Diagnostic {
+	t.Helper()
+
+	found, unparsed := workflow.Check(filesWith(text), "w.hcl", caps)
+	require.False(t, unparsed)
+
+	return found
+}
+
+// withForge is the project `shop`: the fields of a tracker and a forge together, and a forge.
+var withForge = workflow.Capabilities{
+	Project: "shop",
+	Fields:  []string{"id", "title", "body", "branch", "head_sha", "pr", "author"},
+	Forge:   true,
+}
+
+// noForge is the project `shop` with a tracker only.
+var noForge = workflow.Capabilities{
+	Project:   "shop",
+	Fields:    []string{"id", "title", "body"},
+	ForgeOnly: []string{"branch", "head_sha", "pr", "author"},
+}
 
 // oneProblem checks text and wants exactly one problem.
 func oneProblem(t *testing.T, text string) hclfile.Diagnostic {
@@ -476,7 +497,7 @@ command "use" {
 }
 `)
 
-	found, unparsed := workflow.Check(filesWith(text), "w.hcl", workflow.CommonItemFields())
+	found, unparsed := workflow.Check(filesWith(text), "w.hcl", workflow.Capabilities{Fields: workflow.CommonItemFields()})
 
 	require.False(t, unparsed)
 	require.Len(t, found, 1)
@@ -625,10 +646,10 @@ func TestPromptPathIsRelativeToTheWorkflowFile(t *testing.T) {
 		"other/note.txt": {Data: []byte("x")},
 	}
 
-	found, _ := workflow.Check(fsys, "sub/w.hcl", forgeFields)
+	found, _ := workflow.Check(fsys, "sub/w.hcl", withForge)
 	assert.Empty(t, found)
 
-	found, _ = workflow.Check(fsys, "other/w.hcl", forgeFields)
+	found, _ = workflow.Check(fsys, "other/w.hcl", withForge)
 	require.Len(t, found, 1)
 	assert.Equal(t, "other/w.hcl", found[0].File)
 }
@@ -665,7 +686,7 @@ func TestAPromptThatClimbsOutOfASubfolderIsReported(t *testing.T) {
 		"p.md":      {Data: []byte("outside")},
 	}
 
-	found, unparsed := workflow.Check(fsys, "sub/w.hcl", forgeFields)
+	found, unparsed := workflow.Check(fsys, "sub/w.hcl", withForge)
 
 	require.False(t, unparsed)
 	require.Len(t, found, 1, "%v", found)
@@ -741,7 +762,7 @@ func TestATemplateThatDoesNotParseIsReported(t *testing.T) {
 	fsys := filesWith("workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/fix.md\"\n}\n")
 	fsys["prompts/fix.md"] = &fstest.MapFile{Data: []byte("{{ .open ")}
 
-	found, unparsed := workflow.Check(fsys, "w.hcl", forgeFields)
+	found, unparsed := workflow.Check(fsys, "w.hcl", withForge)
 
 	require.Len(t, found, 1)
 	assert.False(t, unparsed)
@@ -767,7 +788,7 @@ agent "c" {
 func TestCheckMarksAFileThatDoesNotParse(t *testing.T) {
 	t.Parallel()
 
-	found, unparsed := workflow.Check(fstest.MapFS{}, "none.hcl", forgeFields)
+	found, unparsed := workflow.Check(fstest.MapFS{}, "none.hcl", withForge)
 
 	require.Len(t, found, 1)
 	assert.True(t, unparsed)
@@ -1103,4 +1124,88 @@ command "use" {
 `)
 
 	assert.Empty(t, found)
+}
+
+const mergeStep = `workflow "w" {}
+gate "check" {}
+merge "ship" {
+  head  = gate.check.head
+  merge = false
+}
+`
+
+func TestAMergeStepInAProjectWithNoForgeIsRefusedAtTheStepLabel(t *testing.T) {
+	t.Parallel()
+
+	found := checkWith(t, mergeStep, noForge)
+
+	require.Len(t, found, 1, "%v", found)
+	assert.Equal(t, 3, found[0].Line)
+	assert.Equal(t, "step `merge.ship` needs a forge, and project `shop` has none. Set `forge = \"github\"` in the project file, or remove the step.", found[0].Text)
+}
+
+func TestAMergeStepInAProjectWithAForgeIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, checkWith(t, mergeStep, withForge))
+}
+
+func TestAWorkflowWithNoMergeStepNeedsNoForge(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, checkWith(t, lintAndFix, noForge))
+}
+
+func TestTheForgeRefusalComesBeforeTheMergeSettingsOfTheSameStep(t *testing.T) {
+	t.Parallel()
+
+	found := checkWith(t, strings.Replace(mergeSettings, `  repo  = "owner/name"
+`, "", 1), noForge)
+
+	require.Len(t, found, 2, "%v", found)
+	assert.Contains(t, found[0].Text, "needs a forge")
+	assert.Contains(t, found[1].Text, "no `repo`")
+}
+
+func TestAForgeFieldInAProjectWithNoForgeSaysThatTheProjectHasNoForge(t *testing.T) {
+	t.Parallel()
+
+	found := checkWith(t, twoSteps(`
+command "use" {
+  run = [item.pr]
+}
+`), noForge)
+
+	require.Len(t, found, 1, "%v", found)
+	assert.Equal(t, "w.hcl:7:10: `item` has no field `pr`. The project has no forge, and only a forge declares `pr`. Use one of: body, id, kind, title.", found[0].Error())
+}
+
+func TestAnUnknownFieldInAProjectWithNoForgeDoesNotBlameTheForge(t *testing.T) {
+	t.Parallel()
+
+	found := checkWith(t, twoSteps(`
+command "use" {
+  run = [item.sha]
+}
+`), noForge)
+
+	require.Len(t, found, 1, "%v", found)
+	assert.NotContains(t, found[0].Text, "no forge")
+}
+
+func TestEveryStepKindAnswersWhetherItNeedsAForge(t *testing.T) {
+	t.Parallel()
+
+	steps := map[workflow.Kind]workflow.Step{
+		workflow.KindAgent:   &workflow.Agent{},
+		workflow.KindCommand: &workflow.Command{},
+		workflow.KindGate:    &workflow.Gate{},
+		workflow.KindLoop:    &workflow.Loop{},
+		workflow.KindMerge:   &workflow.Merge{},
+		workflow.KindWait:    &workflow.Wait{},
+	}
+
+	for kind, step := range steps {
+		assert.Equal(t, kind == workflow.KindMerge, step.NeedsForge(), kind)
+	}
 }
