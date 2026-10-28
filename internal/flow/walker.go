@@ -30,6 +30,10 @@ type CommandRequest struct {
 	Run     []string
 	Host    string
 	Timeout time.Duration
+	// Stdin is the text that the program reads. It is empty when the step sets none.
+	Stdin string
+	// Env is the whole environment of the program as NAME=value pairs. It is nil for a request that keeps the environment of the process.
+	Env []string
 }
 
 // CommandOutput is what a program printed and its exit code. A non-zero RC is data, not an error.
@@ -53,6 +57,8 @@ type stepResult struct {
 	Skipped bool           `json:"skipped,omitempty"`
 	Outputs map[string]any `json:"outputs,omitempty"`
 	Note    string         `json:"note,omitempty"`
+	// Stopped is set by a command step whose code is in its `stop_on_rc`. A replay reads it back, so the step stays stopped.
+	Stopped *Stopped `json:"stopped,omitempty"`
 }
 
 // executor runs the steps of one kind: it evaluates the `when` of the step, then runs the step or records it as skipped.
@@ -221,8 +227,9 @@ func absent(expr hcl.Expression) bool {
 	return !diags.HasErrors() && value.IsNull()
 }
 
+// runCommand evaluates the request and the stop codes before the durable step, so a replay builds the same request from the recorded results.
 func runCommand(c *call, step *workflow.Command) (stepResult, error) {
-	request, err := c.request(step.Run, step.Host, step.Timeout)
+	request, stops, err := c.commandInput(step)
 	if err != nil {
 		return stepResult{}, err
 	}
@@ -233,7 +240,12 @@ func runCommand(c *call, step *workflow.Command) (stepResult, error) {
 			return stepResult{}, err
 		}
 
-		return stepResult{Outputs: map[string]any{"stdout": out.Stdout, "rc": out.RC}}, nil
+		result := stepResult{Outputs: map[string]any{"stdout": out.Stdout, "rc": out.RC}}
+		if slices.Contains(stops, out.RC) {
+			result.Stopped = &Stopped{Step: c.step.Label(), RC: out.RC, Output: out.Stdout}
+		}
+
+		return result, nil
 	})
 }
 
@@ -331,7 +343,13 @@ type walker struct {
 
 	// merge and sentBack are what a merge step reported. They go into the result of the item.
 	merge, sentBack string
+
+	// stopped is the command step that ended the item on a code of its `stop_on_rc`.
+	stopped *Stopped
 }
+
+// errStopped unwinds the walk when a command step stops the item. It is not a failure: walk turns it into a result.
+var errStopped = errors.New("a command step stopped the item")
 
 // readFile reads the workflow file once and returns its bytes and their SHA-256, in hex.
 func readFile(path string) ([]byte, string, error) {
@@ -382,8 +400,11 @@ func (e *Engine) walk(ctx dbos.Context, in ItemInput, login string) (ItemResult,
 	w := &walker{e: e, ctx: ctx, in: in, login: login, scope: scope}
 
 	err = w.steps(file.Steps, nil)
+	if errors.Is(err, errStopped) {
+		err = nil
+	}
 
-	return ItemResult{Item: in.Item, Merge: w.merge, SentBack: w.sentBack}, err
+	return ItemResult{Item: in.Item, Merge: w.merge, SentBack: w.sentBack, Stopped: w.stopped}, err
 }
 
 // recordScope records the environment the file reads and the fields of the item, as the first two steps, and builds the scope from the records.
@@ -472,7 +493,12 @@ func (w *walker) node(step workflow.Step, at rounds) error {
 		return fmt.Errorf("step %s: %w", c.name, err)
 	}
 
-	return w.record(step, result)
+	err = w.record(step, result)
+	if err == nil && result.Stopped != nil {
+		w.stopped, err = result.Stopped, errStopped
+	}
+
+	return err
 }
 
 func (w *walker) record(step workflow.Step, result stepResult) error {

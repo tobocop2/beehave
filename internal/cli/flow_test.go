@@ -28,6 +28,7 @@ const (
 type fakeRunner struct {
 	launchErr, runErr error
 	sentBack          string
+	stopped           *flow.Stopped
 	block             chan struct{}
 	mu                sync.Mutex
 	items             []string
@@ -47,7 +48,7 @@ func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error
 		<-r.block
 	}
 
-	return flow.ItemResult{Item: item, SentBack: r.sentBack}, r.runErr
+	return flow.ItemResult{Item: item, SentBack: r.sentBack, Stopped: r.stopped}, r.runErr
 }
 
 // Shutdown releases a blocked Run, as a real engine shutdown ends the run it holds.
@@ -184,6 +185,25 @@ func TestRun_ASentBackItemSaysItWentBackToDraft(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "item 12 went back to draft: a review asks for changes\n", stdout)
+}
+
+func TestRun_AnItemThatAStepStoppedNamesTheStepTheCodeAndTheOutput(t *testing.T) {
+	t.Parallel()
+
+	for output, want := range map[string]string{
+		"refused: no scope\n": "item 12 stopped at step check with exit code 2\nrefused: no scope\n",
+		"refused":             "item 12 stopped at step check with exit code 2\nrefused\n",
+		"":                    "item 12 stopped at step check with exit code 2\n",
+	} {
+		rig := newRig(t)
+		rig.runner.stopped = &flow.Stopped{Step: "check", RC: 2, Output: output}
+
+		code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+		require.Equal(t, 1, code, "a stop ends the run without done, so the exit code is not 0")
+		assert.Empty(t, stderr)
+		assert.Equal(t, want, stdout)
+	}
 }
 
 func TestRun_TakesTheItemToTheEndAndPassesTheSettingsOfTheConfig(t *testing.T) {
@@ -389,6 +409,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-3-r1", State: "running", Version: "v1", Stranded: true},
 		{ID: "item-4-r1", State: "done", SentBack: "a review asks\nfor changes"},
 		{ID: "item-5-r1", State: "running", Merge: "owner_merge"},
+		{ID: "item-6-r1", State: "done", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -397,7 +418,8 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 	assert.Equal(t, "item-1-r1\tdone\nitem-2-r1\trunning\tpaused: pick option a or b\n"+
 		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
-		"item-5-r1\trunning\tmerge: owner_merge\n", stdout)
+		"item-5-r1\trunning\tmerge: owner_merge\n"+
+		"item-6-r1\tdone\tstopped at check rc 2\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

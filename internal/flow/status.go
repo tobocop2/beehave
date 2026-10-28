@@ -46,6 +46,8 @@ type RunInfo struct {
 	SentBack string
 	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged or sent_back. It is empty for a run with no merge step.
 	Merge string
+	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did.
+	Stopped *Stopped
 }
 
 // questionReadLimit is how long status waits for an event that the run has not set.
@@ -147,7 +149,7 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 		var result ItemResult
 
 		result, err = resultOf(row)
-		info.SentBack, info.Merge = result.SentBack, result.Merge
+		info.SentBack, info.Merge, info.Stopped = result.SentBack, result.Merge, result.Stopped
 	}
 
 	return err

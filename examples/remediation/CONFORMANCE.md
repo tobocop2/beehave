@@ -39,7 +39,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-Q-22 | Every terminal state dispatches the next item | core | gap | - | - | S1-Q-22 |
 | S1-Q-23 | Dispatch independent items to free slots while one item loops | core | gap | - | - | S1-Q-23 |
 | S1-Q-24 | An item is the scope of one PR; batch issues that share a mechanism | skill | gap | - | - | S1-Q-24 |
-| S1-Q-25 | Scope is fixed at the first review; a new closed issue needs an owner line | core | gap | tools/remedy scope | TestScope_ANewClosedIssueIsExitCodeTwoAndNamesTheCommandForTheOwnerRow | S1-Q-25 |
+| S1-Q-25 | Scope is fixed at the first review; a new closed issue needs an owner line | core | gap | tools/remedy scope (F2 landed; no step yet) | TestScope_ANewClosedIssueIsExitCodeTwoAndNamesTheCommandForTheOwnerRow | S1-Q-25 |
 | S1-Q-26 | Work that belongs to someone outside the system gets an owner token | core | gap | - | - | S1-Q-26 |
 | S1-Q-27 | A filed issue has no assignee by default | file | gap | - | - | S1-Q-27 |
 | S1-Q-28 | The issue store is pluggable; an unknown value is refused | core | gap | - | - | S1-Q-28, S1-Q-29 |
@@ -66,11 +66,11 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-L-12 | One fresh context per phase, started from files | core | gap | - | - | S1-L-12, S1-L-13 |
 | S1-L-14 | One PR per reviewer; split a fix round into fix, proof and review lanes | file | gap | - | - | S1-L-14, S1-L-15 |
 | S1-L-16 | Every log a lane reads has a summary command | skill | gap | - | - | S1-L-16 |
-| S1-L-17 | Hourly spend lines per live lane; flag over-cap lanes | core | gap | tools/remedy spend | TestSpend_ALaneOverTheCapIsExitCodeOne | S1-L-17 |
-| S1-L-18 | A handoff holds regressions, tokens, compile state and unread jobs | core | gap | - | - | S1-L-18, S1-L-23, S1-L-54, S1-L-55 |
+| S1-L-17 | Hourly spend lines per live lane; flag over-cap lanes | core | gap | tools/remedy spend (F2 landed; no step yet) | TestSpend_ALaneOverTheCapIsExitCodeOne | S1-L-17 |
+| S1-L-18 | A handoff holds regressions, tokens, compile state and unread jobs | core | gap | F2 landed; no step yet | - | S1-L-18, S1-L-23, S1-L-54, S1-L-55 |
 | S1-L-19 | Five fix rounds: rounds 1 to 3 resume, rounds 4 and 5 start fresh one tier up and are told the round | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-19, S1-L-20 |
 | S1-L-21 | At five rounds, adjudicate each open finding | skill | expressed | workflow.hcl wait adjudicate | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-21 |
-| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | tools/remedy ledger count | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
+| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | tools/remedy ledger count (F2 landed; no step yet) | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
 | S1-L-26 | Design lane rules: coverage, cheapest evidence, repeat-offender, build-versus-buy | skill | gap | - | - | S1-L-26, S1-L-86, S1-L-97, S1-L-98, S1-L-99, S1-L-100, S1-L-104 |
 | S1-L-27 | Keep a capped number of lanes busy; a parked lane holds no slot | core | gap | - | - | S1-L-27, S1-L-28, S1-L-31 |
 | S1-L-29 | Retire a lane only when its worktree is clean and pushed | core | gap | - | - | S1-L-29, S1-L-30, S1-L-32 |
@@ -94,10 +94,10 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-B-01 | One prompt file per agent | core | expressed | workflow.hcl agent implement | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-B-01, S1-B-02, S1-B-03, S1-B-35, S1-B-26 |
 | S1-B-05 | Put everything in the brief; do not edit another item's brief | core | gap | - | - | S1-B-05, S1-B-06, S1-B-07, S1-B-36 |
 | S1-B-08 | Splice the profile's brief rules; refuse a brief without preflight sections | core | gap | prompts/implement.md, the rules in the prompt | TestPrompts_HoldEveryRuleOfTheBriefText | S1-B-08, S1-B-09, S1-B-10, S1-B-11, S1-B-27, S1-B-33 |
-| S1-B-12 | Refuse a brief above the reading budget; list tokens per file | core | gap | tools/remedy size | TestSize_AReadingAboveTheLimitIsARefusal | S1-B-12, S1-B-13 |
-| S1-B-14 | An implementer brief needs acceptance and base result lines | core | gap | tools/remedy admit | TestAdmit_ALaneWithNoAcceptanceFieldIsRefused | S1-B-14, S1-B-15, S1-B-16, S1-B-17 |
+| S1-B-12 | Refuse a brief above the reading budget; list tokens per file | core | gap | tools/remedy size (F2 landed; no step yet) | TestSize_AReadingAboveTheLimitIsARefusal | S1-B-12, S1-B-13 |
+| S1-B-14 | An implementer brief needs acceptance and base result lines | core | gap | tools/remedy admit (F2 landed; no step yet) | TestAdmit_ALaneWithNoAcceptanceFieldIsRefused | S1-B-14, S1-B-15, S1-B-16, S1-B-17 |
 | S1-B-18 | Ruling lines, fewer cells, skill choice, blast-radius floor in the brief | skill | gap | - | - | S1-B-18, S1-B-19, S1-B-20, S1-B-21, S1-B-29, S1-B-30, S1-B-31, S1-B-32 |
-| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | tools/remedy papers | TestPapers_ASourcePathIsExitCodeOne | S1-B-22 |
+| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | tools/remedy papers (F2 landed; no step yet) | TestPapers_ASourcePathIsExitCodeOne | S1-B-22 |
 | S1-B-23 | Probe rules; no touching the laptop checkout; delete and shell bans | core | gap | - | - | S1-B-23, S1-B-24, S1-B-25 |
 | S1-B-28 | Closing reference by base: Addresses on a round branch, Closes on the default | core | gap | - | - | S1-B-28 |
 | S1-B-34 | Derive the dispatch gate from CI through the profile gate source | file | gap | - | - | S1-B-34 |
@@ -106,7 +106,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-H-04 | Read the host verdict before any resize, freeze or launch | core | gap | - | - | S1-H-04 |
 | S1-H-05 | A gate queue on the host with a cap, wait states and a grant | core | gap | - | - | S1-H-05, S1-H-06, S1-H-07, S1-H-08, S1-H-10, S1-H-13, S1-H-14, S1-H-15, S1-H-17, S1-H-19, S1-H-20, S1-H-21, S1-H-22, S1-H-23, S1-H-24, S1-H-25 |
 | S1-H-11 | A disk floor makes a job wait; an unparseable reading is a refusal | core | gap | - | - | S1-H-11, S1-H-29, S1-H-30, S1-H-32, S1-H-33 |
-| S1-H-12 | Job checks: delete the clone after the marker; every test step under a timeout. The test covers the timeout part only; no test covers the clone delete | core | gap | tools/remedy job | TestJob_ATestCommandWithNoTimeoutIsExitCodeOne | S1-H-12, S1-H-34, S1-H-60, S1-H-62, S1-H-63, S1-H-67 |
+| S1-H-12 | Job checks: delete the clone after the marker; every test step under a timeout. The test covers the timeout part only; no test covers the clone delete | core | gap | tools/remedy job (F2 landed; no step yet) | TestJob_ATestCommandWithNoTimeoutIsExitCodeOne | S1-H-12, S1-H-34, S1-H-60, S1-H-62, S1-H-63, S1-H-67 |
 | S1-H-16 | Job scripts live under a jobs folder on the host, never in tmp | file | gap | - | - | S1-H-16 |
 | S1-H-18 | Freeze and continue jobs by priority; stop a superseded job | core | gap | - | - | S1-H-18, S1-H-66 |
 | S1-H-26 | Jobs outside the queue go through a slot; the reviewed item gets the host first | core | gap | - | - | S1-H-26, S1-H-27, S1-H-28, S1-H-64 |
@@ -117,22 +117,22 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-H-43 | Browser rounds need the reaper installed and reported | core | gap | - | - | S1-H-43 |
 | S1-H-45 | Public repository: never copy the laptop to the box; bucket rules | core | gap | - | - | S1-H-45, S1-H-46, S1-H-47, S1-H-48, S1-H-49 |
 | S1-H-50 | Job wait states: done, died after 20 minutes stale, lost on ssh drop | core | gap | - | - | S1-H-50, S1-H-51, S1-H-52, S1-H-53, S1-H-54, S1-H-55, S1-H-56, S1-H-57, S1-H-58, S1-H-59, S1-H-61 |
-| S1-H-65 | A handoff line says whether the code compiled and at which SHA | core | gap | - | - | S1-H-65 |
+| S1-H-65 | A handoff line says whether the code compiled and at which SHA | core | gap | F2 landed; no step yet | - | S1-H-65 |
 | S1-H-69 | Hook commits on the build host; never build on the laptop; local-only profiles | file | gap | - | - | S1-H-69, S1-H-70, S1-H-72, S1-H-73, S1-H-74 |
 | SC-02 | Run a many-process probe under a timeout and a process cap | core | gap | - | - | - |
-| S1-G-01 | One gate list per round; each job checked against it; a gate prints a result per step. The file holds only `gate "check" {}`, so the prompts state the rule until the core enforces it | core | gap | tools/remedy job | TestJob_AStepThatTheJobDoesNotRunIsExitCodeOne | S1-G-01, S1-G-02, S1-G-03, S1-G-07, S1-D-08 |
+| S1-G-01 | One gate list per round; each job checked against it; a gate prints a result per step. The file holds only `gate "check" {}`, so the prompts state the rule until the core enforces it | core | gap | tools/remedy job (F2 landed; no step yet) | TestJob_AStepThatTheJobDoesNotRunIsExitCodeOne | S1-G-01, S1-G-02, S1-G-03, S1-G-07, S1-D-08 |
 | S1-G-04 | A pinned tool at another version voids the step; a base red is not counted | core | gap | - | - | S1-G-04, S1-G-05 |
-| S1-G-06 | The merge gate needs every step at the head that merges, one report row each | core | gap | tools/remedy report | TestReport_AWholeReportPassesWithTheSummary | S1-G-06, S1-R-26, S1-G-09, S1-G-43, S1-R-47, S1-R-46 |
-| S1-G-08 | A mutation run is a separate job after the gate | core | gap | - | - | S1-G-08 |
-| S1-G-10 | Capture the exit code before any pipe. The test covers the fixed-status marker only; no test covers a pipe before the capture | core | gap | tools/remedy job | TestExitMarker_RefusesAMarkerLineThatPrintsALiteralExitStatus | S1-G-10, S1-G-40 |
-| S1-G-14 | A while-read loop must not feed stdin to commands | core | gap | tools/remedy job | - | S1-G-14 |
-| S1-G-11 | Assert a non-zero test count; a missing result line is a failure | core | gap | tools/remedy job | - | S1-G-11, S1-G-13 |
+| S1-G-06 | The merge gate needs every step at the head that merges, one report row each | core | gap | tools/remedy report (F2 landed; no step yet) | TestReport_AWholeReportPassesWithTheSummary | S1-G-06, S1-R-26, S1-G-09, S1-G-43, S1-R-47, S1-R-46 |
+| S1-G-08 | A mutation run is a separate job after the gate | core | gap | F2 landed; no step yet | - | S1-G-08 |
+| S1-G-10 | Capture the exit code before any pipe. The test covers the fixed-status marker only; no test covers a pipe before the capture | core | gap | tools/remedy job (F2 landed; no step yet) | TestExitMarker_RefusesAMarkerLineThatPrintsALiteralExitStatus | S1-G-10, S1-G-40 |
+| S1-G-14 | A while-read loop must not feed stdin to commands | core | gap | tools/remedy job (F2 landed; no step yet) | - | S1-G-14 |
+| S1-G-11 | Assert a non-zero test count; a missing result line is a failure | core | gap | tools/remedy job (F2 landed; no step yet) | - | S1-G-11, S1-G-13 |
 | S1-G-12 | A completion marker is not the artifact; gate on the result line | core | gap | - | - | S1-G-12 |
 | S1-G-15 | A task killed by our timeout is unresolved, not green or red | core | gap | - | - | S1-G-15 |
 | S1-G-16 | Base-red entries name the CI command; exclusion lists expire | skill | gap | - | - | S1-G-16, S1-G-17, S1-G-19, S1-G-22, S1-G-29, S1-G-30, S1-G-32, S1-G-34, S1-G-41, S1-G-42, S1-G-47, S1-G-49 |
 | S1-G-18 | After an aborting gate stops, every later step is unknown | core | gap | - | - | S1-G-18 |
-| S1-G-20 | Derive the gate list from the CI files; screen steps that publish. The test covers the derived-from line only; no test covers the screen for steps that publish | core | gap | tools/remedy gatelist | TestGatelist_AListThatNamesNoSourceWorkflowIsExitCodeTwo | S1-G-20, S1-G-21, S1-S-20 |
-| S1-G-23 | Every lane report holds claims, hunks, inputs and siblings tables | core | gap | tools/remedy report | TestReport_AReportWithNoBackgroundLineIsExitCodeOne | S1-G-23, S1-P-01, S1-P-02, S1-P-03, S1-R-28, S1-R-31, S1-R-32 |
+| S1-G-20 | Derive the gate list from the CI files; screen steps that publish. The test covers the derived-from line only; no test covers the screen for steps that publish | core | gap | tools/remedy gatelist (F2 landed; no step yet) | TestGatelist_AListThatNamesNoSourceWorkflowIsExitCodeTwo | S1-G-20, S1-G-21, S1-S-20 |
+| S1-G-23 | Every lane report holds claims, hunks, inputs and siblings tables | core | gap | tools/remedy report (F2 landed; no step yet) | TestReport_AReportWithNoBackgroundLineIsExitCodeOne | S1-G-23, S1-P-01, S1-P-02, S1-P-03, S1-R-28, S1-R-31, S1-R-32 |
 | S1-G-24 | Review method: controls, mutation proof, every changed cell against the base | skill | gap | - | - | S1-G-24, S1-G-25, S1-G-28, S1-R-13, S1-R-14, S1-R-15, S1-R-30, S1-R-33, S1-R-34, S1-R-35, S1-R-36, S1-R-38, S1-R-40, S1-R-41, S1-R-42, S1-R-43, S1-R-44, S1-R-45, S1-R-48, S1-R-50, S1-R-55, S1-R-57, S1-R-58, S1-R-61, S1-S-25 |
 | S1-G-26 | A secrets differential for every item, with a planted key as control | core | gap | - | - | S1-G-26, S1-G-46, S1-R-27, S1-M-09 |
 | S1-G-27 | Unknown is not zero: a failed read never lets a request through | core | gap | - | - | S1-G-27, S1-X-17 |
@@ -145,16 +145,16 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-G-48 | Route a gate red the lane did not cause before a merge | core | gap | - | - | S1-G-48, S1-R-49 |
 | S1-P-04 | A reviewer builds its own tables and does not fix, commit or push | core | gap | - | - | S1-P-04, S1-R-59 |
 | S1-P-05 | Run the transcript check before accepting a report | core | proven | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run, read with loop.previous, forces a fix round and keeps the loop open | TestScripts | S1-P-05 |
-| S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | tools/remedy handoff | TestHandoff_ALaunchedJobThatNobodyReadIsExitCodeOneAndNamesTheCap | S1-P-06 |
-| S1-P-07 | Report length limits per item and per batch | core | gap | - | - | S1-P-07, S1-P-08 |
+| S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | tools/remedy handoff (F2 landed; no step yet) | TestHandoff_ALaunchedJobThatNobodyReadIsExitCodeOneAndNamesTheCap | S1-P-06 |
+| S1-P-07 | Report length limits per item and per batch | core | gap | F2 landed; no step yet | - | S1-P-07, S1-P-08 |
 | S1-P-09 | Dump issue and PR threads into files and name them in the brief | core | gap | - | - | S1-P-09 |
 | S1-P-10 | Read the PR body before editing it; write suspicion down | drop | n/a | - | - | S1-P-10, S1-P-17, S1-P-18, S1-R-03 |
-| S1-P-11 | A papers or design lane changes no source path | core | gap | tools/remedy papers | TestPapers_ASourcePathIsExitCodeOne | S1-P-11 |
+| S1-P-11 | A papers or design lane changes no source path | core | gap | tools/remedy papers (F2 landed; no step yet) | TestPapers_ASourcePathIsExitCodeOne | S1-P-11 |
 | S1-P-12 | Write each measured deliverable to a file; report days since the last | core | gap | - | - | S1-P-12, S1-D-06 |
 | S1-P-13 | Owner dashboard as a profile section | core | gap | - | - | S1-P-13, S1-D-14, S1-PS-13 |
 | S1-P-14 | Never paste a lane report into GitHub; rewrite it | skill | gap | - | - | S1-P-14, S1-F-13 |
 | S1-P-15 | A reproduction is self-contained, with no round paths or lane names | core | gap | - | - | S1-P-15, S1-F-03, S1-F-02 |
-| S1-P-16 | Estimated tokens per file and in total | core | gap | tools/remedy size | TestSize_PrintsTheTokenTableAndPassesASmallReading | S1-P-16 |
+| S1-P-16 | Estimated tokens per file and in total | core | gap | tools/remedy size (F2 landed; no step yet) | TestSize_PrintsTheTokenTableAndPassesASmallReading | S1-P-16 |
 | S1-R-01 | Review your own work: a fresh reviewer that did not write the code | core | expressed | workflow.hcl agent review | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-01, S1-R-02, S1-R-04, S1-R-62, S1-M-13 |
 | S1-R-05 | Findings on our own PR go to the author lane | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-05, S1-R-06, S1-F-15 |
 | S1-R-07 | Read every review and inline comment before ready and before merge | core | gap | settings repo of workflow.hcl merge ship | - | S1-R-07, S1-M-04, S1-M-10, S1-M-11 |
@@ -188,18 +188,18 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-M-33 | Struck 2026-10-28: the skill has no rule that a maintainer's approval makes a PR safe to merge | drop | n/a | - | - | S1-M-33, S1-X-16 |
 | S1-M-34 | No no-verify, stash, config writes or force-push of a shared branch | core | gap | - | - | S1-M-34, S1-S-15, S1-S-21 |
 | S1-M-35 | Do not edit a branch a merge depends on; file a surviving finding first | skill | gap | - | - | S1-M-35, S1-M-36, S1-M-38 |
-| S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | tools/remedy authors | TestAuthors_ACommitOfOursUnderAnotherAddressIsExitCodeOne | S1-M-37, S1-S-11, S1-L-94 |
-| S1-I-05 | Close the resolved issue with evidence; file a surviving finding before merge | core | gap | tools/remedy ledger closes | TestLedger_TheFirstReviewRecordsTheIssuesOfTheBodyFile | S1-I-05, S1-I-11, S1-F-04, S1-F-06, S1-F-07 |
-| S1-I-06 | Closing keywords only on the integration PR, except on the default branch | core | gap | tools/remedy ledger add | TestLedger_TheFirstReviewReadsTheBodyOfThePullRequestThroughTheForge | S1-I-06, S1-B-28 |
-| S1-I-07 | Audit closing keywords at the tip; read closing references after each batch | core | gap | tools/remedy scope | TestScope_TheKeyFlagNamesTheLedgerKeyOfAnItemWhosePullRequestHasAnotherNumber | S1-I-07, S1-F-20 |
+| S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | tools/remedy authors (F2 landed; no step yet) | TestAuthors_ACommitOfOursUnderAnotherAddressIsExitCodeOne | S1-M-37, S1-S-11, S1-L-94 |
+| S1-I-05 | Close the resolved issue with evidence; file a surviving finding before merge | core | gap | tools/remedy ledger closes (F2 landed; no step yet) | TestLedger_TheFirstReviewRecordsTheIssuesOfTheBodyFile | S1-I-05, S1-I-11, S1-F-04, S1-F-06, S1-F-07 |
+| S1-I-06 | Closing keywords only on the integration PR, except on the default branch | core | gap | tools/remedy ledger add (F2 landed; no step yet) | TestLedger_TheFirstReviewReadsTheBodyOfThePullRequestThroughTheForge | S1-I-06, S1-B-28 |
+| S1-I-07 | Audit closing keywords at the tip; read closing references after each batch | core | gap | tools/remedy scope (F2 landed; no step yet) | TestScope_TheKeyFlagNamesTheLedgerKeyOfAnItemWhosePullRequestHasAnotherNumber | S1-I-07, S1-F-20 |
 | S1-I-08 | At round end report remaining work, release locks and tear down | core | gap | - | - | S1-I-08 |
 | S1-I-10 | A rulings file holds expected behavior, references, harness and base build | core | gap | - | - | S1-I-10, S1-D-11, S1-R-16 |
 | S1-W-01 | A background watcher arms at round start and after each wake | drop | n/a | - | - | S1-W-01, S1-W-02, S1-W-03, S1-W-04, S1-W-05, S1-W-07, S1-W-08, S1-W-15, S1-W-16, S1-W-19, S1-D-09, S1-D-10 |
 | S1-W-06 | A stop guard fails a turn when the watcher is dead | drop | n/a | - | - | S1-W-06, S1-W-10, S1-W-11, S1-W-12, S1-W-13, S1-W-18 |
-| S1-W-20 | Spend instrumentation per lane with an hourly flag | core | gap | tools/remedy spend | TestSpend_TheHoursFlagKeepsTheLastHoursOfTheTable | S1-W-20, S1-D-13 |
+| S1-W-20 | Spend instrumentation per lane with an hourly flag | core | gap | tools/remedy spend (F2 landed; no step yet) | TestSpend_TheHoursFlagKeepsTheLastHoursOfTheTable | S1-W-20, S1-D-13 |
 | S1-D-01 | Queue, lane and gate records are edited through scripts | drop | n/a | - | - | S1-D-01, S1-D-02, S1-D-03, S1-D-15 |
-| S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | tools/remedy ledger add | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-D-04 |
-| S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | tools/remedy handoff | TestHandoff_AWholeHandoffPasses | S1-D-12 |
+| S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | tools/remedy ledger add (F2 landed; no step yet) | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-D-04 |
+| S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | tools/remedy handoff (F2 landed; no step yet) | TestHandoff_AWholeHandoffPasses | S1-D-12 |
 | S1-D-17 | One record of known base reds with a timestamp and the tip | file | gap | - | - | S1-D-17, S1-PS-12 |
 | S1-X-01 | Take-over: review first, then notice with a token ask, then claim | core | gap | tools/remedy take | TestTake_ApplyPostsTheNoticeAndPasses | S1-X-01, S1-X-02, S1-X-08, S1-X-09, S1-X-10, S1-X-11, S1-X-12, S1-F-16, S1-R-67 |
 | S1-X-03 | Stale means an hour of no author activity and an hour of no queue activity | file | gap | tools/remedy take | TestTake_IdleAndGraceFlagsAreHours | S1-X-03 |
@@ -237,12 +237,12 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-PS-13 | Profile: token discipline, dashboard, cross-repo and release steps | file | gap | - | - | S1-PS-13 |
 | S1-PS-14 | Profile: hard limits, commands never run, real user data | file | gap | - | - | S1-PS-14 |
 | S1-PS-15 | Profile: measured traps and ownership rules | file | gap | - | - | S1-PS-15 |
-| SC-03 | Cut the next round only after the previous integration PR merged | core | gap | tools/remedy cut | TestCut_MergedPullRequestMovesTheRoundAndPasses | - |
-| SC-04 | For each merge in a range, show which lines the tip still has | core | gap | tools/remedy audit | TestAudit_PresentWithAMergeThatLeftTheBranchIsADefect | - |
+| SC-03 | Cut the next round only after the previous integration PR merged | core | gap | tools/remedy cut (F2 landed; no step yet) | TestCut_MergedPullRequestMovesTheRoundAndPasses | - |
+| SC-04 | For each merge in a range, show which lines the tip still has | core | gap | tools/remedy audit (F2 landed; no step yet) | TestAudit_PresentWithAMergeThatLeftTheBranchIsADefect | - |
 | SC-05 | Green baseline and mutation arms with a hardcoded path | drop | n/a | - | - | - |
 | SC-06 | Merge helpers: all checks green, our commits carry our email, orphan list | core | gap | settings own, children of workflow.hcl merge ship | - | - |
 | SC-07 | Pinned asynchronous merge for a stacked PR with polling | core | gap | - | - | - |
-| SC-08 | Stop in fixed order: merged, closed, branch gone, hold, draft, head moved | core | gap | tools/remedy cut | TestCut_PullRequestThatIsNotMergedIsARefusal | - |
+| SC-08 | Stop in fixed order: merged, closed, branch gone, hold, draft, head moved | core | gap | tools/remedy cut (F2 landed; no step yet) | TestCut_PullRequestThatIsNotMergedIsARefusal | - |
 | SC-09 | Add a closing row, recount heading and title, assert the count changed | core | gap | - | - | - |
 | SC-10 | Sync a project board from issues and PRs with a read-back | core | gap | - | - | - |
 | SC-11 | A tmux view of lanes, forge, logs and host | drop | n/a | - | - | - |
