@@ -13,7 +13,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const goodProject = "repo = \"o/n\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const goodProject = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
 
 const goodRunner = "[[runner]]\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \"~/c\"\n"
 
@@ -64,7 +64,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
 		cfg.Projects["example"].Project)
 	require.Equal(t, config.DefaultSteps(), cfg.Projects["example"].Steps)
 }
@@ -120,7 +120,7 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects", "b.toml"), goodProject)
-	writeFile(t, filepath.Join(dir, "projects", "a.toml"), "repo = \"o/a\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeFile(t, filepath.Join(dir, "projects", "a.toml"), "repo = \"o/a\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 	writeFile(t, filepath.Join(dir, "projects", "notes.md"), "not a project")
 
 	cfg, problems := config.LoadFolder(dir, nil)
@@ -170,16 +170,22 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		words string
 	}{
 		{"unknown_key", goodProject + "shade = \"red\"\n", "unknown key `shade`"},
-		{"unknown_key_lists_the_allowed_ones", goodProject + "shade = \"red\"\n", "repo, base_branch, gate, build_host, steps"},
+		{"unknown_key_lists_the_allowed_ones", goodProject + "shade = \"red\"\n", "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, steps"},
 		{"missing_repo", "base_branch = \"main\"\ngate = \"g\"\n", "`repo` must be a non-empty string"},
-		{"blank_repo", "repo = \" \"\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` must be a non-empty string"},
+		{"blank_repo", "repo = \" \"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", "repo = 3\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` has the wrong type"},
-		{"repo_without_owner", "repo = \"justname\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
-		{"repo_with_three_parts", "repo = \"a/b/c\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
-		{"repo_without_owner_text", "repo = \"/n\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
-		{"repo_without_name", "repo = \"o/\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
-		{"missing_gate", "repo = \"o/n\"\nbase_branch = \"main\"\n", "`gate` must be"},
-		{"missing_base_branch", "repo = \"o/n\"\ngate = \"g\"\n", "`base_branch` must be"},
+		{"repo_without_owner", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
+		{"repo_with_three_parts", "repo = \"a/b/c\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
+		{"repo_without_owner_text", "repo = \"/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
+		{"repo_without_name", "repo = \"o/\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "owner/name"},
+		{"missing_tracker", "repo = \"o/n\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`tracker` must be a non-empty string"},
+		{"missing_forge", "repo = \"o/n\"\ntracker = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`forge` must be a non-empty string"},
+		{"unknown_tracker", "repo = \"o/n\"\ntracker = \"jira\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`tracker`: unknown tracker \"jira\": use one of beads, github"},
+		{"unknown_forge", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"gitlab\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`forge`: unknown forge \"gitlab\": use one of github"},
+		{"beads_without_a_prefix", "repo = \"o/n\"\ntracker = \"beads\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`beads_prefix` must be a non-empty string"},
+		{"github_without_a_prefix", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "`beads_prefix` must be a non-empty string"},
+		{"missing_gate", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\n", "`gate` must be"},
+		{"missing_base_branch", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\ngate = \"g\"\n", "`base_branch` must be"},
 		{"empty_build_host", goodProject + "build_host = \"\"\n", "`build_host` must be"},
 		{"build_host_starts_with_a_digit", goodProject + "build_host = \"1gpu\"\n", hostWords},
 		{"build_host_with_underscore", goodProject + "build_host = \"gpu_a\"\n", hostWords},
@@ -204,10 +210,20 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 	}
 }
 
+func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, "repo = \"o/n\"\ntracker = \"beads\"\nforge = \"github\"\nbeads_prefix = \"proj\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+
+	require.Empty(t, problems)
+	require.Equal(t, model.TrackerBeads, project.Tracker)
+	require.Equal(t, "proj", project.BeadsPrefix)
+}
+
 func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "repo = \"o/n\"\r\nbase_branch = \"main\"\r\ngate = \"make check\"\r\n")
+	project, problems := loadProjectText(t, "repo = \"o/n\"\r\ntracker = \"github\"\r\nforge = \"github\"\r\nbeads_prefix = \"p\"\r\nbase_branch = \"main\"\r\ngate = \"make check\"\r\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)
@@ -216,7 +232,7 @@ func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 func TestLoadFolder_AProjectFileWithALoneCarriageReturnIsRefused(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadProjectText(t, "repo = \"o/n\"\rbase_branch = \"main\"\rgate = \"g\"\r")
+	_, problems := loadProjectText(t, "repo = \"o/n\"\rtracker = \"github\"\rforge = \"github\"\rbeads_prefix = \"p\"\rbase_branch = \"main\"\rgate = \"g\"\r")
 
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "is not valid TOML")

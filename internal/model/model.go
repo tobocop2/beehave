@@ -45,11 +45,14 @@ type Runner struct {
 
 // Project is one project profile, from projects/<name>.toml.
 type Project struct {
-	Name       string
-	Repo       string
-	BaseBranch string
-	Gate       string
-	BuildHost  string
+	Name        string
+	Repo        string
+	Tracker     TrackerName
+	Forge       ForgeName
+	BeadsPrefix string
+	BaseBranch  string
+	Gate        string
+	BuildHost   string
 }
 
 func joinNames[T ~string](items []T) string {

@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -310,14 +311,14 @@ func TestGithubCreate_FilesWithLabelsAndReturnsTheNumber(t *testing.T) {
 	planCreate(t, run, issue(1, "other"))
 	body := bodyFile(t)
 
-	number, err := gh.Create(context.Background(), store.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP1})
+	number, err := gh.Create(context.Background(), model.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP1})
 	require.NoError(t, err)
 	assert.Equal(t, "42", number)
 	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "New", "--body-file", body, "--label", "P1"}, run.calls[1])
 
 	full, runFull := newGithub(t)
 	planCreate(t, runFull)
-	_, err = full.Create(context.Background(), store.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP0, Kind: "bug", Assignee: "ann"})
+	_, err = full.Create(context.Background(), model.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP0, Kind: "bug", Assignee: "ann"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "New", "--body-file", body, "--label", "P0", "--label", "bug", "--assignee", "ann"}, runFull.calls[1])
 }
@@ -345,7 +346,7 @@ func TestGithubCreate_DuplicateTitles(t *testing.T) {
 			gh, run := newGithub(t)
 			planCreate(t, run, issue(7, "same title"))
 
-			_, err := gh.Create(context.Background(), store.CreateRequest{Title: tt.title, BodyFile: body, Severity: model.SeverityP2, AllowDuplicate: tt.allow})
+			_, err := gh.Create(context.Background(), model.CreateRequest{Title: tt.title, BodyFile: body, Severity: model.SeverityP2, AllowDuplicate: tt.allow})
 			if !tt.dup {
 				require.NoError(t, err)
 
@@ -363,7 +364,7 @@ func TestGithubCreate_RefusesWithoutFiling(t *testing.T) {
 	t.Parallel()
 
 	body := bodyFile(t)
-	request := store.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP2}
+	request := model.CreateRequest{Title: "New", BodyFile: body, Severity: model.SeverityP2}
 
 	tests := []struct {
 		name  string
@@ -391,7 +392,7 @@ func TestGithubCreate_RefusesWithoutFiling(t *testing.T) {
 		})
 	}
 
-	_, err := gh0(t).Create(context.Background(), store.CreateRequest{})
+	_, err := gh0(t).Create(context.Background(), model.CreateRequest{})
 	require.ErrorContains(t, err, "create needs --title")
 
 	broken, run := newGithub(t)
@@ -401,7 +402,7 @@ func TestGithubCreate_RefusesWithoutFiling(t *testing.T) {
 	require.ErrorContains(t, err, "no readable title")
 }
 
-func TestCreateRequest_Validate(t *testing.T) {
+func TestCreate_RefusesAnInvalidRequestWithCodeTwo(t *testing.T) {
 	t.Parallel()
 
 	body := bodyFile(t)
@@ -410,31 +411,35 @@ func TestCreateRequest_Validate(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		request store.CreateRequest
+		request model.CreateRequest
 		want    string
 	}{
-		{name: "no_title", request: store.CreateRequest{BodyFile: body, Severity: model.SeverityP1}, want: "create needs --title"},
-		{name: "no_body_file", request: store.CreateRequest{Title: "t", Severity: model.SeverityP1}, want: "create needs --body-file"},
-		{name: "missing_body_file", request: store.CreateRequest{Title: "t", BodyFile: body + ".gone", Severity: model.SeverityP1}, want: "create needs --body-file"},
-		{name: "empty_body_file", request: store.CreateRequest{Title: "t", BodyFile: empty, Severity: model.SeverityP1}, want: "create needs --body-file"},
-		{name: "no_severity", request: store.CreateRequest{Title: "t", BodyFile: body}, want: "got ''"},
-		{name: "severity_p4", request: store.CreateRequest{Title: "t", BodyFile: body, Severity: "P4"}, want: "got 'P4'"},
-		{name: "unknown_severity", request: store.CreateRequest{Title: "t", BodyFile: body, Severity: model.SeverityUnknown}, want: "got 'P?'"},
+		{name: "no_title", request: model.CreateRequest{BodyFile: body, Severity: model.SeverityP1}, want: "create needs --title"},
+		{name: "no_body_file", request: model.CreateRequest{Title: "t", Severity: model.SeverityP1}, want: "create needs --body-file"},
+		{name: "missing_body_file", request: model.CreateRequest{Title: "t", BodyFile: body + ".gone", Severity: model.SeverityP1}, want: "create needs --body-file"},
+		{name: "empty_body_file", request: model.CreateRequest{Title: "t", BodyFile: empty, Severity: model.SeverityP1}, want: "create needs --body-file"},
+		{name: "no_severity", request: model.CreateRequest{Title: "t", BodyFile: body}, want: "got ''"},
+		{name: "severity_p4", request: model.CreateRequest{Title: "t", BodyFile: body, Severity: "P4"}, want: "got 'P4'"},
+		{name: "unknown_severity", request: model.CreateRequest{Title: "t", BodyFile: body, Severity: model.SeverityUnknown}, want: "got 'P?'"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tt.request.Validate()
+			gh, _ := newGithub(t)
+
+			_, err := gh.Create(context.Background(), tt.request)
 			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), "REFUSE: "))
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Equal(t, store.CodeRefused, codeOf(t, err))
+			require.ErrorIs(t, err, model.ErrInvalidRequest)
 		})
 	}
 
 	for _, severity := range model.Severities() {
-		require.NoError(t, store.CreateRequest{Title: "t", BodyFile: body, Severity: severity}.Validate())
+		require.NoError(t, model.CreateRequest{Title: "t", BodyFile: body, Severity: severity}.Validate())
 	}
 }
 
@@ -448,7 +453,7 @@ func TestGithubCreate_LinksTheParentBySubIssue(t *testing.T) {
 	run.planContaining(linkAnswer, "p:issue")
 	run.planContaining("{}", "addSubIssue")
 
-	number, err := gh.Create(context.Background(), store.CreateRequest{Title: "T", BodyFile: bodyFile(t), Severity: model.SeverityP2, Parent: "9"})
+	number, err := gh.Create(context.Background(), model.CreateRequest{Title: "T", BodyFile: bodyFile(t), Severity: model.SeverityP2, Parent: "9"})
 	require.NoError(t, err)
 	assert.Equal(t, "42", number)
 
@@ -486,7 +491,7 @@ func TestGithubCreate_AFailedLinkCarriesTheNumberAndCodeFour(t *testing.T) {
 			planCreate(t, run)
 			tt.setup(run)
 
-			number, err := gh.Create(context.Background(), store.CreateRequest{Title: "T", BodyFile: bodyFile(t), Severity: model.SeverityP2, Parent: tt.parent})
+			number, err := gh.Create(context.Background(), model.CreateRequest{Title: "T", BodyFile: bodyFile(t), Severity: model.SeverityP2, Parent: tt.parent})
 			assert.Equal(t, "42", number)
 			assert.Equal(t, store.CodeUnlinked, codeOf(t, err))
 

@@ -29,7 +29,10 @@ func newBeads(t *testing.T) (*store.BeadsStore, *scripted) {
 		run.plan("[]", words...)
 	}
 
-	return store.NewBeadsStore(run), run
+	bd, err := store.NewBeadsStore(run, "p")
+	require.NoError(t, err)
+
+	return bd, run
 }
 
 func TestBeadsOpenItems_CarrySeverityHoldParentAndAssignee(t *testing.T) {
@@ -257,16 +260,16 @@ func TestBeadsCreate_FilesWithSeverityTypeAndParent(t *testing.T) {
 	body := bodyFile(t)
 	tests := []struct {
 		name    string
-		request store.CreateRequest
+		request model.CreateRequest
 		want    []string
 	}{
-		{name: "plain", request: store.CreateRequest{Title: "T", Severity: model.SeverityP1}, want: []string{"create", "T", "-t", "task", "-p", "1"}},
-		{name: "bug_is_a_type", request: store.CreateRequest{Title: "T", Severity: model.SeverityP0, Kind: "bug"}, want: []string{"create", "T", "-t", "bug", "-p", "0"}},
-		{name: "feature_is_a_type", request: store.CreateRequest{Title: "T", Severity: model.SeverityP3, Kind: "feature"}, want: []string{"create", "T", "-t", "feature", "-p", "3"}},
-		{name: "chore_is_a_type", request: store.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "chore"}, want: []string{"create", "T", "-t", "chore", "-p", "2"}},
-		{name: "task_is_a_type", request: store.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "task"}, want: []string{"create", "T", "-t", "task", "-p", "2"}},
-		{name: "other_kind_is_a_label", request: store.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "docs"}, want: []string{"create", "T", "-t", "task", "-p", "2", "--body-file", body, "--json", "--labels", "docs"}},
-		{name: "parent_and_assignee", request: store.CreateRequest{Title: "T", Severity: model.SeverityP2, Parent: "p-9", Assignee: "ann"}, want: []string{"create", "T", "-t", "task", "-p", "2", "--body-file", body, "--json", "--parent", "p-9", "--assignee", "ann"}},
+		{name: "plain", request: model.CreateRequest{Title: "T", Severity: model.SeverityP1}, want: []string{"create", "T", "-t", "task", "-p", "1"}},
+		{name: "bug_is_a_type", request: model.CreateRequest{Title: "T", Severity: model.SeverityP0, Kind: "bug"}, want: []string{"create", "T", "-t", "bug", "-p", "0"}},
+		{name: "feature_is_a_type", request: model.CreateRequest{Title: "T", Severity: model.SeverityP3, Kind: "feature"}, want: []string{"create", "T", "-t", "feature", "-p", "3"}},
+		{name: "chore_is_a_type", request: model.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "chore"}, want: []string{"create", "T", "-t", "chore", "-p", "2"}},
+		{name: "task_is_a_type", request: model.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "task"}, want: []string{"create", "T", "-t", "task", "-p", "2"}},
+		{name: "other_kind_is_a_label", request: model.CreateRequest{Title: "T", Severity: model.SeverityP2, Kind: "docs"}, want: []string{"create", "T", "-t", "task", "-p", "2", "--body-file", body, "--json", "--labels", "docs"}},
+		{name: "parent_and_assignee", request: model.CreateRequest{Title: "T", Severity: model.SeverityP2, Parent: "p-9", Assignee: "ann"}, want: []string{"create", "T", "-t", "task", "-p", "2", "--body-file", body, "--json", "--parent", "p-9", "--assignee", "ann"}},
 	}
 
 	for _, tt := range tests {
@@ -300,7 +303,7 @@ func TestBeadsCreate_DuplicateCheck(t *testing.T) {
 	bd, run := newBeads(t)
 	run.plan(`[{"id":"p-7","title":"Same  Title"}]`, "list")
 	run.plan(`{"id":"p-42"}`, "create")
-	request := store.CreateRequest{Title: "same title", BodyFile: body, Severity: model.SeverityP2}
+	request := model.CreateRequest{Title: "same title", BodyFile: body, Severity: model.SeverityP2}
 
 	_, err := bd.Create(context.Background(), request)
 	require.EqualError(t, err, "REFUSED: p-7 is open with the same title. Comment there, or pass --allow-duplicate.")
@@ -339,7 +342,7 @@ func TestBeadsCreate_Refuses(t *testing.T) {
 			bd, run := newBeads(t)
 			tt.setup(run)
 
-			_, err := bd.Create(context.Background(), store.CreateRequest{Title: "T", BodyFile: body, Severity: model.SeverityP2})
+			_, err := bd.Create(context.Background(), model.CreateRequest{Title: "T", BodyFile: body, Severity: model.SeverityP2})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.want)
 			assert.Equal(t, store.CodeRefused, codeOf(t, err))
@@ -347,6 +350,6 @@ func TestBeadsCreate_Refuses(t *testing.T) {
 	}
 
 	bd, _ := newBeads(t)
-	_, err := bd.Create(context.Background(), store.CreateRequest{})
+	_, err := bd.Create(context.Background(), model.CreateRequest{})
 	require.ErrorContains(t, err, "create needs --title")
 }

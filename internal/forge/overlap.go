@@ -21,30 +21,14 @@ const (
 	historyFilter  = `.[] | "\(.sha[0:9]) \(.commit.message | split("\n")[0])"`
 )
 
-// OverlapRequest names what to compare. Set PR, or set Files to a list of file names and optionally Since.
-type OverlapRequest struct {
-	PR          string
-	Files       string
-	Since       string
-	Base        string
-	Integration string
-	Now         time.Time
-}
-
-// Overlap is the lines the check prints and how many overlaps it found. A caller exits 1 when Found is above zero.
-type Overlap struct {
-	Lines []string
-	Found int
-}
-
 // Overlap looks for open pull requests and new base commits that touch the files of a pull request or a file list.
-func (f *Forge) Overlap(ctx context.Context, req OverlapRequest) (Overlap, error) {
+func (f *Forge) Overlap(ctx context.Context, req model.OverlapRequest) (model.Overlap, error) {
 	names, since, err := f.target(ctx, req)
 	if err != nil {
-		return Overlap{}, err
+		return model.Overlap{}, err
 	}
 
-	found := Overlap{}
+	found := model.Overlap{}
 	if err := f.openPullRequests(ctx, names, req.PR, &found); err != nil {
 		return found, err
 	}
@@ -59,7 +43,7 @@ func (f *Forge) Overlap(ctx context.Context, req OverlapRequest) (Overlap, error
 }
 
 // target returns the sorted file names to compare and the time to read base commits from.
-func (f *Forge) target(ctx context.Context, req OverlapRequest) ([]string, string, error) {
+func (f *Forge) target(ctx context.Context, req model.OverlapRequest) ([]string, string, error) {
 	if err := IntegrationAgrees(req.Base, req.Integration); err != nil {
 		return nil, "", err
 	}
@@ -80,7 +64,7 @@ func (f *Forge) target(ctx context.Context, req OverlapRequest) ([]string, strin
 	return names, since, err
 }
 
-func (f *Forge) source(ctx context.Context, req OverlapRequest) ([]string, string, error) {
+func (f *Forge) source(ctx context.Context, req model.OverlapRequest) ([]string, string, error) {
 	if req.PR != "" {
 		return f.pullRequestFiles(ctx, req)
 	}
@@ -116,7 +100,7 @@ func uniqueNames(text string) []string {
 	return slices.Sorted(maps.Keys(set))
 }
 
-func (f *Forge) pullRequestFiles(ctx context.Context, req OverlapRequest) ([]string, string, error) {
+func (f *Forge) pullRequestFiles(ctx context.Context, req model.OverlapRequest) ([]string, string, error) {
 	pull := "repos/" + f.repo + "/pulls/" + req.PR
 
 	files, err := f.text(ctx, []string{argAPI, argPaginate, pull + "/files", argJQ, ".[].filename"}, "cannot read the files of #"+req.PR)
@@ -139,7 +123,7 @@ func (f *Forge) pullRequestFiles(ctx context.Context, req OverlapRequest) ([]str
 }
 
 // branchPoint returns the time the head branched from the base.
-func (f *Forge) branchPoint(ctx context.Context, req OverlapRequest, head string) (string, error) {
+func (f *Forge) branchPoint(ctx context.Context, req model.OverlapRequest, head string) (string, error) {
 	compare := "repos/" + f.repo + "/compare/" + req.Base + "..." + head
 	failure := fmt.Sprintf("cannot find where #%s branched from %s", req.PR, req.Base)
 
@@ -156,7 +140,7 @@ func (f *Forge) text(ctx context.Context, args []string, failure string) (string
 	return strings.TrimRight(done.Stdout, "\n"), nil
 }
 
-func (f *Forge) openPullRequests(ctx context.Context, names []string, skip string, found *Overlap) error {
+func (f *Forge) openPullRequests(ctx context.Context, names []string, skip string, found *model.Overlap) error {
 	rows, err := f.PRList(ctx, openListLimit, "--state", "open", argJSON, "number,author,title,files")
 	if err != nil {
 		return &Error{Code: CodeRefused, Message: "cannot list the open pull requests: " + err.Error(), Err: err}
@@ -169,7 +153,7 @@ func (f *Forge) openPullRequests(ctx context.Context, names []string, skip strin
 
 	for _, row := range rows {
 		if strconv.Itoa(row.Number) != skip {
-			found.add(describeOpen(row, mine))
+			addFinding(found, describeOpen(row, mine))
 		}
 	}
 
@@ -198,14 +182,14 @@ func describeOpen(row model.PullRequest, mine map[string]struct{}) string {
 	return ""
 }
 
-func (o *Overlap) add(line string) {
+func addFinding(o *model.Overlap, line string) {
 	if line != "" {
 		o.Lines = append(o.Lines, line)
 		o.Found++
 	}
 }
 
-func (f *Forge) baseCommits(ctx context.Context, base string, names []string, since string, found *Overlap) error {
+func (f *Forge) baseCommits(ctx context.Context, base string, names []string, since string, found *model.Overlap) error {
 	for _, name := range names {
 		hits, err := f.text(ctx, f.historyArgs(base, name, since), fmt.Sprintf("cannot read the history of %s on %s", name, base))
 		if err != nil {

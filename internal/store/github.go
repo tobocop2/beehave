@@ -41,7 +41,7 @@ type ghUser struct {
 	Login string `json:"login"`
 }
 
-// GithubStore is the open issues of one repository, read through gh.
+// GithubStore is the issues of one repository, read and written through gh. It implements model.Tracker.
 type GithubStore struct {
 	repo  string
 	owner string
@@ -49,7 +49,7 @@ type GithubStore struct {
 	run   Runner
 }
 
-// NewGithubStore returns the store of repo, written owner/name.
+// NewGithubStore returns the store of repo, written owner/name. It reads and writes issues only. The claim rows live in beads.
 func NewGithubStore(repo string, run Runner) (*GithubStore, error) {
 	owner, name, found := strings.Cut(repo, "/")
 	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
@@ -285,8 +285,8 @@ func (s *GithubStore) Close(ctx context.Context, item, reason string) error {
 }
 
 // Create files an issue and returns its number. A parent that cannot be linked is an error with code 4 that carries the number.
-func (s *GithubStore) Create(ctx context.Context, request CreateRequest) (string, error) {
-	if err := request.Validate(); err != nil {
+func (s *GithubStore) Create(ctx context.Context, request model.CreateRequest) (string, error) {
+	if err := validated(request); err != nil {
 		return "", err
 	}
 
@@ -331,9 +331,9 @@ func openTitlesOf(rows []ghIssue) ([]openTitle, error) {
 	return titles, nil
 }
 
-func (s *GithubStore) file(ctx context.Context, request CreateRequest) (string, error) {
+func (s *GithubStore) file(ctx context.Context, request model.CreateRequest) (string, error) {
 	args := []string{
-		argIssue, "create", argRepo, s.repo, "--title", request.Title,
+		argIssue, argCreate, argRepo, s.repo, argTitle, request.Title,
 		"--body-file", request.BodyFile, "--label", string(request.Severity),
 	}
 	if request.Kind != "" {
