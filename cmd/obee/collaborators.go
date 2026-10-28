@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,8 +22,6 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/beads"
 )
 
 var (
@@ -127,7 +126,7 @@ func (w worktrees) refresh(ctx context.Context, project config.Project, clone st
 	return w.run(ctx, clone, "fetch", "origin", project.BaseBranch)
 }
 
-// clone makes the clone of the repository of the project in dir, unless it is there.
+// clone makes the clone of the repository of the project in dir, unless it is there. The clone comes from the source of the project, or else from its forge.
 func (w worktrees) clone(ctx context.Context, project config.Project, dir string) error {
 	_, err := os.Stat(filepath.Join(dir, ".git"))
 	if err == nil {
@@ -142,12 +141,27 @@ func (w worktrees) clone(ctx context.Context, project config.Project, dir string
 		return fmt.Errorf("make the folder for the clone of project %s: %w", project.Name, err)
 	}
 
-	remote, err := w.forge(project.Project)
+	remote, err := cloneSource(project.Project, w.forge)
 	if err != nil {
 		return err
 	}
 
-	return w.run(ctx, w.repos, "clone", remote.CloneURL(), dir)
+	return w.run(ctx, w.repos, "clone", remote, dir)
+}
+
+// cloneSource returns what git clones the repository of the project from: its source when the project sets one, else the clone URL of its forge.
+// A project with neither gets the error of the forge, which matches forge.ErrNoForge.
+func cloneSource(project model.Project, forges func(model.Project) (forge.Forge, error)) (string, error) {
+	if project.Source != "" {
+		return project.Source, nil
+	}
+
+	remote, err := forges(project)
+	if err != nil {
+		return "", err
+	}
+
+	return remote.CloneURL(), nil
 }
 
 // run runs git with args in dir and returns an error that carries what git printed when it fails.
@@ -298,7 +312,7 @@ func shellQuote(word string) string {
 // trackerItems reads the fields of an item from the tracker of its project.
 type trackerItems struct {
 	projects map[string]config.Project
-	tracker  func(model.Project) (store.Tracker, error)
+	tracker  trackerBuilder
 }
 
 // Fields returns the fields that the tracker declares for the item.
@@ -308,12 +322,28 @@ func (t trackerItems) Fields(ctx context.Context, project, item string) (map[str
 		return nil, fmt.Errorf("%w: %q", errUnknownProject, project)
 	}
 
-	tracker, err := t.tracker(found.Project)
+	tracker, err := t.tracker(ctx, found.Project)
 	if err != nil {
 		return nil, err
 	}
 
-	return tracker.Item(ctx, item)
+	fields, err := tracker.Item(ctx, item)
+
+	return fields, closeAfter(err, tracker)
+}
+
+// closeAfter closes what holds a file, and returns err joined with the error of the close. What holds no file is left as it is.
+func closeAfter(err error, opened any) error {
+	closer, ok := opened.(io.Closer)
+	if !ok {
+		return err
+	}
+
+	if closeErr := closer.Close(); closeErr != nil {
+		return errors.Join(err, closeErr)
+	}
+
+	return err
 }
 
 var (
@@ -424,34 +454,36 @@ func (p pulls) SetDraft(ctx context.Context, project string, pr int, draft bool)
 // leases takes, renews and gives back the claim of an item in the claim store of its project.
 type leases struct {
 	projects map[string]config.Project
-	rows     func(model.Project) (*beads.Store, error)
+	rows     func(context.Context, model.Project) (claimStore, error)
 	owner    func() string
 }
 
-// claims builds the claims of the named project.
-func (l leases) claims(name string) (*claim.Claims, error) {
+// with opens the claim store of the named project, runs fn on the claims over it and closes the store.
+// A store that fails to close is an error, joined with the error of fn.
+func (l leases) with(ctx context.Context, name string, fn func(*claim.Claims) error) error {
 	found, ok := l.projects[name]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", errUnknownProject, name)
+		return fmt.Errorf("%w: %q", errUnknownProject, name)
 	}
 
-	rows, err := l.rows(found.Project)
+	rows, err := l.rows(ctx, found.Project)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return lease.Open(rows)
+	claims, err := lease.Open(rows)
+	if err == nil {
+		err = fn(claims)
+	}
+
+	return errors.Join(err, rows.Close())
 }
 
 // Claim takes the item for a new owner and returns the token of that owner.
 func (l leases) Claim(ctx context.Context, project, item string) (string, error) {
-	claims, err := l.claims(project)
-	if err != nil {
-		return "", err
-	}
-
 	owner := l.owner()
-	if err := claims.Take(ctx, owner, item); err != nil {
+
+	if err := l.with(ctx, project, func(claims *claim.Claims) error { return claims.Take(ctx, owner, item) }); err != nil {
 		return "", err
 	}
 
@@ -460,22 +492,22 @@ func (l leases) Claim(ctx context.Context, project, item string) (string, error)
 
 // Release gives the item back for the owner.
 func (l leases) Release(ctx context.Context, project, item, owner string) error {
-	claims, err := l.claims(project)
-	if err != nil {
-		return err
-	}
-
-	return claims.Release(ctx, owner, item)
+	return l.with(ctx, project, func(claims *claim.Claims) error { return claims.Release(ctx, owner, item) })
 }
 
 // Beat renews the claims of the owner. A text means the claim store says the claim is gone.
 func (l leases) Beat(ctx context.Context, project, owner string) (string, error) {
-	claims, err := l.claims(project)
-	if err != nil {
-		return "", err
-	}
+	var text string
 
-	return claims.Beat(ctx, owner)
+	err := l.with(ctx, project, func(claims *claim.Claims) error {
+		var err error
+
+		text, err = claims.Beat(ctx, owner)
+
+		return err
+	})
+
+	return text, err
 }
 
 // ownerToken returns a new owner token: letters and digits, and no two calls alike.

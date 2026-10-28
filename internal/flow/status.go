@@ -416,7 +416,7 @@ func (c *Client) PinnedFile(item string) (string, error) {
 // latest returns the newest run of an item, and refuses a run that another version of obee started.
 func (c *Client) latest(item string) (run, error) {
 	if model.ItemKind(item) == "" {
-		return run{}, fmt.Errorf("%w %q: use a forge number or a beads id", ErrBadItem, item)
+		return run{}, fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, item)
 	}
 
 	last, found, err := latestRun(c.flow, item)

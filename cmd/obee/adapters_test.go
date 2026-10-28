@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -8,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store/beads/beadstest"
@@ -16,26 +20,24 @@ import (
 func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	for _, name := range model.Trackers() {
-		if name != model.TrackerLocal {
-			assert.Contains(t, table.trackers, name)
-		}
+		assert.Contains(t, table.trackers, name)
 	}
 
 	for _, name := range model.Forges() {
 		assert.Contains(t, table.forges, name)
 	}
 
-	assert.Len(t, table.trackers, len(model.Trackers())-1, "the local tracker is not built yet")
+	assert.Len(t, table.trackers, len(model.Trackers()))
 	assert.Len(t, table.forges, len(model.Forges()))
 }
 
 func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	assert.Equal(t, claude.New(), table.agent(model.AgentClaude))
 	assert.Nil(t, table.agent(model.AgentOpenCode))
@@ -44,15 +46,15 @@ func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *t
 func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
-	tracker, err := table.tracker(project)
+	tracker, err := table.tracker(t.Context(), project)
 	require.NoError(t, err)
 	assert.NotNil(t, tracker)
 
 	project.Tracker = model.TrackerGithub
-	tracker, err = table.tracker(project)
+	tracker, err = table.tracker(t.Context(), project)
 	require.NoError(t, err)
 	assert.NotNil(t, tracker)
 
@@ -64,19 +66,19 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
-	_, err := table.tracker(model.Project{Name: "p", Tracker: "jira"})
+	_, err := table.tracker(t.Context(), model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
 
 	_, err = table.forge(model.Project{Name: "p", Forge: "gitlab"})
 	require.EqualError(t, err, `project p: no forge adapter named "gitlab"`)
 
-	tracker, err := table.tracker(model.Project{Name: "p", Tracker: model.TrackerBeads})
+	tracker, err := table.tracker(t.Context(), model.Project{Name: "p", Tracker: model.TrackerBeads})
 	require.ErrorContains(t, err, "the beads id prefix is required")
 	assert.Nil(t, tracker)
 
-	tracker, err = table.tracker(model.Project{Name: "p", Tracker: model.TrackerGithub, Repo: "bad"})
+	tracker, err = table.tracker(t.Context(), model.Project{Name: "p", Tracker: model.TrackerGithub, Repo: "bad"})
 	require.Error(t, err)
 	assert.Nil(t, tracker)
 
@@ -88,7 +90,7 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 func TestAdapters_ItemFieldsAreTheTrackerFieldsThenTheForgeFields(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	fields, err := table.itemFields(t.Context(), good)
@@ -99,7 +101,7 @@ func TestAdapters_ItemFieldsAreTheTrackerFieldsThenTheForgeFields(t *testing.T) 
 func TestAdapters_ItemFieldsRefuseAProjectWhoseAdapterCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	_, err := table.itemFields(t.Context(), model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
@@ -111,7 +113,7 @@ func TestAdapters_ItemFieldsRefuseAProjectWhoseAdapterCannotBeBuilt(t *testing.T
 func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 	require.NoError(t, table.check(t.Context(), good))
 
@@ -125,42 +127,125 @@ func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *tes
 	require.ErrorContains(t, table.check(t.Context(), noPrefix), "the beads id prefix is required")
 }
 
-func TestAdapters_TheLocalTrackerAndTheLocalClaimsAreNotBuiltYet(t *testing.T) {
-	t.Parallel()
-
-	table := newAdapters(beadstest.NewBd(t))
-	local := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal}
-
-	_, err := table.tracker(local)
-	require.EqualError(t, err, `project p: the local tracker is not built yet; set tracker = "beads" or "github" in the project file`)
-
-	_, err = table.leases(local)
-	require.EqualError(t, err, `project p: the local claim store is not built yet; set claims = "beads" in the project file`)
-
-	_, err = table.itemFields(t.Context(), local)
-	require.ErrorContains(t, err, "the local tracker is not built yet")
+func stateAt(dir string) func() (string, error) {
+	return func() (string, error) { return dir, nil }
 }
 
-func TestAdapters_CheckReportsALocalProjectAsNotBuiltYet(t *testing.T) {
+func localProjectNamed(name string) model.Project {
+	return model.Project{Name: name, Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal}
+}
+
+func TestAdapters_TheLocalTrackerOpensLocalDbInTheStateFolderAndRefusesAnUnknownItem(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	state := t.TempDir()
+	table := newAdapters(nil, stateAt(state))
 
-	trackerLocal := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
-	require.ErrorContains(t, table.check(t.Context(), trackerLocal), "the local tracker is not built yet")
+	tracker, err := table.tracker(t.Context(), localProjectNamed("p"))
+	require.NoError(t, err)
 
-	claimsLocal := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerBeads, Claims: model.ClaimsLocal, BeadsPrefix: "p"}
-	require.ErrorContains(t, table.check(t.Context(), claimsLocal), "the local claim store is not built yet")
+	closer, ok := tracker.(io.Closer)
+	require.True(t, ok, "a local tracker holds a file, so it closes")
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	info, err := os.Stat(filepath.Join(state, "local.db"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	_, err = tracker.Item(t.Context(), "fix-login")
+	require.EqualError(t, err, "no item fix-login in project p. Add it: obee item add")
+}
+
+func TestAdapters_TheLocalClaimStoreHoldsAndFreesARowInTheStateFolder(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, stateAt(t.TempDir()))
+
+	rows, err := table.leases(t.Context(), localProjectNamed("p"))
+	require.NoError(t, err)
+
+	row := model.ClaimRow{Item: "fix-login", Holder: "ownerone"}
+	require.NoError(t, rows.TryHold(t.Context(), row))
+
+	held, err := rows.HeldRows(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, held, 1)
+	require.NoError(t, rows.Close())
+}
+
+func TestAdapters_ItemOpenerOpensTheItemListOfALocalProjectAndReportsAStateFolderThatFails(t *testing.T) {
+	t.Parallel()
+
+	opened, err := newAdapters(nil, stateAt(t.TempDir())).itemOpener()(t.Context(), localProjectNamed("p"))
+	require.NoError(t, err)
+	require.NoError(t, opened.Add(t.Context(), "fix-login", "Fix login", "body"))
+	require.NoError(t, opened.Close())
+
+	opened, err = newAdapters(nil, func() (string, error) { return "", errFake }).itemOpener()(t.Context(), localProjectNamed("p"))
+	require.ErrorIs(t, err, errFake)
+	assert.Nil(t, opened)
+}
+
+func TestAdapters_ALocalStoreThatCannotOpenIsAnError(t *testing.T) {
+	t.Parallel()
+
+	failing := func() (string, error) { return "", errFake }
+	table := newAdapters(nil, failing)
+
+	tracker, err := table.tracker(t.Context(), localProjectNamed("p"))
+	require.ErrorIs(t, err, errFake)
+	assert.Nil(t, tracker)
+
+	_, err = table.leases(t.Context(), localProjectNamed("p"))
+	require.ErrorIs(t, err, errFake)
+
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o600))
+
+	_, err = newAdapters(nil, stateAt(filepath.Join(file, "state"))).tracker(t.Context(), localProjectNamed("p"))
+	require.Error(t, err)
+}
+
+func TestAdapters_ALocalProjectNeedsNoBdAndCheckBuildsNothingOnDisk(t *testing.T) {
+	t.Parallel()
+
+	state := filepath.Join(t.TempDir(), "state")
+	table := newAdapters(nil, stateAt(state))
+	project := localProjectNamed("p")
+
+	require.NoError(t, table.check(t.Context(), project))
+
+	fields, err := table.itemFields(t.Context(), project)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"id", "title", "body"}, fields)
+
+	_, err = os.Stat(state)
+	require.ErrorIs(t, err, os.ErrNotExist, "check and the item fields leave the state folder alone")
+}
+
+func TestAdapters_CheckRefusesABeadsClaimStoreWithNoPrefixEvenWhenTheTrackerIsLocal(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsBeads}
+
+	require.ErrorContains(t, newAdapters(beadstest.NewBd(t), nil).check(t.Context(), project), "the beads id prefix is required")
+
+	project.BeadsPrefix = "p"
+	bd := beadstest.NewBd(t)
+	bd.Version = "0.56.1"
+	require.ErrorContains(t, newAdapters(bd, nil).check(t.Context(), project), "found 0.56.1")
 }
 
 func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerBeads, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
-	_, err := table.forge(noForge)
+	built, err := table.forge(noForge)
 	require.EqualError(t, err, `project p: no forge; set forge = "github" in the project file`)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+	assert.Nil(t, built)
 
 	fields, err := table.itemFields(t.Context(), noForge)
 	require.NoError(t, err)
@@ -169,10 +254,31 @@ func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testin
 	require.NoError(t, table.check(t.Context(), noForge))
 }
 
+func TestAdapters_ABeadsClaimStoreWithNoPrefixAndAnUnknownClaimsNameAreRefusedByLeasesAndCheck(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t), nil)
+
+	rows, err := table.leases(t.Context(), model.Project{Name: "p", Claims: model.ClaimsBeads})
+	require.ErrorContains(t, err, "the beads id prefix is required")
+	assert.Nil(t, rows.Rows)
+
+	require.EqualError(t, table.check(t.Context(), model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: "zk"}), `project p: no claim store named "zk"`)
+}
+
+func TestStateFolder_AnswersWithTheFolderOfTheOptions(t *testing.T) {
+	t.Parallel()
+
+	dir, err := stateFolder("/var/obee")()
+
+	require.NoError(t, err)
+	assert.Equal(t, "/var/obee", dir)
+}
+
 func TestAdapters_AClaimsNameThatIsNeitherLocalNorBeadsIsRefused(t *testing.T) {
 	t.Parallel()
 
-	_, err := newAdapters(beadstest.NewBd(t)).leases(model.Project{Name: "p", Claims: "zk"})
+	_, err := newAdapters(beadstest.NewBd(t), nil).leases(t.Context(), model.Project{Name: "p", Claims: "zk"})
 
 	require.EqualError(t, err, `project p: no claim store named "zk"`)
 }
@@ -184,16 +290,16 @@ func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 	bd.Version = "0.56.1"
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
-	require.EqualError(t, newAdapters(bd).check(t.Context(), project), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
+	require.EqualError(t, newAdapters(bd, nil).check(t.Context(), project), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
 
 	bd.Version = "1.3.2"
-	require.NoError(t, newAdapters(bd).check(t.Context(), project))
+	require.NoError(t, newAdapters(bd, nil).check(t.Context(), project))
 }
 
 func TestAdapters_TheHostTableHasAConstructorForEveryProviderAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	for _, name := range model.HostProviders() {
 		assert.Contains(t, table.hosts, name)
@@ -212,7 +318,7 @@ func hostProject(provider model.HostProvider, buildHost string) model.Project {
 func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
 	require.NoError(t, err)
@@ -232,7 +338,7 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 func TestAdapters_CheckRefusesAHostProviderItDoesNotKnowAndAHostItCannotBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t))
+	table := newAdapters(beadstest.NewBd(t), nil)
 
 	require.NoError(t, table.check(t.Context(), hostProject(model.HostSkyPilot, "lane-host")))
 	require.ErrorContains(t, table.check(t.Context(), hostProject("ssh", "lane-host")), `no host adapter named "ssh"`)

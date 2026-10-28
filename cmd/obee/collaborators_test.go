@@ -243,7 +243,7 @@ func TestNewPrograms_BuildTheHostOfTheProjectOnlyWhenItHasOne(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Projects: map[string]config.Project{"bare": {}}}
-	runs := newPrograms(cfg, treeAt("/tree"), newAdapters(nil))
+	runs := newPrograms(cfg, treeAt("/tree"), newAdapters(nil, nil))
 
 	_, err := runs.hosts("zzz")
 	require.ErrorIs(t, err, errUnknownProject)
@@ -259,7 +259,7 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	t.Parallel()
 
 	hosted := &fakeHost{}
-	table := newAdapters(nil)
+	table := newAdapters(nil, nil)
 	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
 		model.HostSkyPilot: func(model.Project) (host.Host, error) { return hosted, nil },
 	}
@@ -309,7 +309,7 @@ func TestTrackerItems_ReadTheFieldsFromTheTrackerOfTheProject(t *testing.T) {
 
 	items := trackerItems{
 		projects: map[string]config.Project{"p": {}},
-		tracker: func(model.Project) (store.Tracker, error) {
+		tracker: func(context.Context, model.Project) (store.Tracker, error) {
 			return fakeTracker{}, nil
 		},
 	}
@@ -321,7 +321,49 @@ func TestTrackerItems_ReadTheFieldsFromTheTrackerOfTheProject(t *testing.T) {
 	_, err = items.Fields(t.Context(), "zzz", "bb-1")
 	require.ErrorIs(t, err, errUnknownProject)
 
-	items.tracker = func(model.Project) (store.Tracker, error) { return nil, errFake }
+	items.tracker = func(context.Context, model.Project) (store.Tracker, error) { return nil, errFake }
 	_, err = items.Fields(t.Context(), "p", "bb-1")
 	require.ErrorIs(t, err, errFake)
+}
+
+type closingTracker struct {
+	fakeTracker
+
+	closed int
+	err    error
+}
+
+func (c *closingTracker) Close() error {
+	c.closed++
+
+	return c.err
+}
+
+func TestTrackerItems_ClosesTheTrackerAfterEveryReadAndReportsAFailedClose(t *testing.T) {
+	t.Parallel()
+
+	closing := &closingTracker{}
+	items := trackerItems{
+		projects: map[string]config.Project{"p": {}},
+		tracker:  func(context.Context, model.Project) (store.Tracker, error) { return closing, nil },
+	}
+
+	_, err := items.Fields(t.Context(), "p", "bb-1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, closing.closed)
+
+	closing.err = errFake
+	_, err = items.Fields(t.Context(), "p", "bb-1")
+	require.ErrorIs(t, err, errFake)
+}
+
+func TestTrackerItems_ALocalProjectRefusesAnItemThatWasNeverAdded(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, stateAt(t.TempDir()))
+	items := trackerItems{projects: map[string]config.Project{"p": {Project: localProjectNamed("p")}}, tracker: table.tracker}
+
+	_, err := items.Fields(t.Context(), "p", "fix-login")
+
+	require.EqualError(t, err, "no item fix-login in project p. Add it: obee item add")
 }

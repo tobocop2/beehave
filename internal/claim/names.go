@@ -55,10 +55,10 @@ func OwnerOf(token string) (string, error) {
 	return ownerPrefix + token, nil
 }
 
-// ItemOf returns item when it is a forge number or a beads id.
+// ItemOf returns item when it is an item id.
 func ItemOf(item string) (string, error) {
 	if model.ItemKind(item) == "" {
-		return "", refuse("claim: '%s' is neither a forge number nor a beads id", item)
+		return "", refuse("claim: '%s' is not an item id", item)
 	}
 
 	return item, nil

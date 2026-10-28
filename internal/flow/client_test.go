@@ -40,6 +40,7 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	client := harness.client(t, testVersion)
 
 	require.ErrorIs(t, client.Answer("not an id", "x"), ErrBadItem)
+	require.ErrorContains(t, client.Answer("not an id", "x"), "use an item id such as 12 or fix-login")
 	require.ErrorIs(t, client.Cancel("not an id"), ErrBadItem)
 	require.ErrorIs(t, client.Resume("not an id"), ErrBadItem)
 	require.ErrorIs(t, client.Answer(testItem, ""), errEmptyAnswer)

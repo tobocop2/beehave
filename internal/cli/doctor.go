@@ -15,9 +15,6 @@ import (
 	"github.com/tobocop2/obee/internal/proc"
 )
 
-// requiredTools are the programs obee starts that are not agent CLIs.
-var requiredTools = []string{"bd", "gh"} //nolint:gochecknoglobals // a fixed list
-
 // ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Both fields are required.
 var ErrDoctorIncomplete = errors.New("the doctor is missing a reader")
 
@@ -65,7 +62,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 	command := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check that this machine can run obee, and name the fix for each failure",
-		Long:  "Check the config folder, the login folder and the token of each runner, and the bd and gh programs. Exit 0 when every check passes, 1 when one fails.",
+		Long:  "Check the config folder, the login folder and the token of each runner, and the programs that the projects need: git always, bd for a project with beads, gh for a project with GitHub. Exit 0 when every check passes, 1 when one fails.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, flag)
@@ -128,7 +125,7 @@ func doctorChecks(ctx context.Context, env map[string]string, doctor Doctor, dir
 		return fix(problems.Error() + " Fix the file, or create it.")
 	}}}
 
-	checks = append(checks, toolChecks(ctx, env, doctor)...)
+	checks = append(checks, toolChecks(ctx, env, doctor, requiredTools(cfg))...)
 
 	for _, runner := range cfg.Runners {
 		checks = append(checks, runnerChecks(ctx, doctor, runner)...)
@@ -172,19 +169,40 @@ func tokenCheck(ctx context.Context, readable func(context.Context, string) bool
 	}}
 }
 
-// toolChecks returns the checks of the programs on the path, and of the bd version when bd is there.
-func toolChecks(ctx context.Context, env map[string]string, doctor Doctor) []check {
+// requiredTools returns the programs that the projects of the config need, in the order of the report: git always, then bd and gh when a project names them.
+func requiredTools(cfg config.Config) []string {
+	needed := map[string]bool{model.ToolGit: true}
+
+	for _, project := range cfg.Projects {
+		for _, tool := range project.Tools() {
+			needed[tool] = true
+		}
+	}
+
+	var tools []string
+
+	for _, tool := range []string{model.ToolGit, model.ToolBd, model.ToolGh} {
+		if needed[tool] {
+			tools = append(tools, tool)
+		}
+	}
+
+	return tools
+}
+
+// toolChecks returns the checks of the programs on the path, and of the bd version when bd is needed and there.
+func toolChecks(ctx context.Context, env map[string]string, doctor Doctor, tools []string) []check {
 	var checks []check
 
 	found := map[string]bool{}
 
-	for _, tool := range requiredTools {
+	for _, tool := range tools {
 		_, err := proc.LookPath(tool, env["PATH"])
 		found[tool] = err == nil
 		checks = append(checks, pathCheck(tool, found[tool]))
 	}
 
-	if found["bd"] {
+	if found[model.ToolBd] {
 		checks = append(checks, check{"bd version", func() error { return doctor.BdVersion(ctx) }})
 	}
 

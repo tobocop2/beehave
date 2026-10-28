@@ -26,7 +26,9 @@ func newMachine(t *testing.T) machine {
 	m := machine{config: t.TempDir(), login: t.TempDir(), bin: t.TempDir()}
 	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \""+m.login+"\"\nkeychain = \"obee-a\"\n}\n")
 
-	for _, tool := range []string{"bd", "gh"} {
+	writeConfig(t, m.config, "projects/p.hcl", validProject)
+
+	for _, tool := range []string{"bd", "gh", "git"} {
 		require.NoError(t, os.WriteFile(filepath.Join(m.bin, tool), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a fake program must be executable
 	}
 
@@ -73,7 +75,51 @@ func TestDoctor_EveryCheckPassesOnAGoodMachine(t *testing.T) {
 	code, out := runDoctor(t, m, cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}, m.env())
 
 	require.Equal(t, 0, code)
-	require.Equal(t, "ok   config readable\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   token of a readable\n", out)
+	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   token of a readable\n", out)
+}
+
+const localProjectFile = "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+
+func TestDoctor_AProjectWithNoBeadsAndNoGithubNeedsOnlyGit(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	writeConfig(t, m.config, "projects/p.hcl", localProjectFile)
+	require.NoError(t, os.Remove(filepath.Join(m.bin, "bd")))
+	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
+
+	code, out := runDoctor(t, m, cli.Doctor{BdVersion: func(context.Context) error { return errors.New("never asked") }}, m.env())
+
+	require.Equal(t, 0, code)
+	require.Equal(t, "ok   config readable\nok   git on the path\nok   config_dir of a exists\nok   token of a readable\n", out)
+}
+
+func TestDoctor_GitIsRequiredEvenWhenTheConfigHasNoProject(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	require.NoError(t, os.Remove(filepath.Join(m.config, "projects", "p.hcl")))
+	require.NoError(t, os.Remove(filepath.Join(m.bin, "git")))
+
+	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
+
+	require.Equal(t, 1, code)
+	require.Contains(t, out, "FAIL git on the path\n     fix: Install git.\n")
+	require.NotContains(t, out, "bd on the path")
+}
+
+func TestDoctor_OnlyTheBeadsProjectNeedsBdAndOnlyTheGithubProjectNeedsGh(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	writeConfig(t, m.config, "projects/p.hcl", "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\n")
+	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
+
+	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
+
+	require.Equal(t, 0, code)
+	require.Contains(t, out, "ok   bd on the path\n")
+	require.NotContains(t, out, "gh on the path")
 }
 
 func TestDoctor_AConfigThatDoesNotLoadFailsWithTheFix(t *testing.T) {
@@ -150,7 +196,7 @@ func TestDoctor_ARunnerWithoutAKeychainEntryHasNoTokenCheck(t *testing.T) {
 func TestDoctor_AMissingToolFailsWithTheInstallFix(t *testing.T) {
 	t.Parallel()
 
-	for _, tool := range []string{"bd", "gh"} {
+	for _, tool := range []string{"bd", "gh", "git"} {
 		t.Run(tool, func(t *testing.T) {
 			t.Parallel()
 

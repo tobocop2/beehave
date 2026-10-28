@@ -119,6 +119,38 @@ func TestWorktrees_EnsureAddsAWorktreeOnABranchNamedForTheItemFromTheBaseBranch(
 	}, git.calls)
 }
 
+func TestWorktrees_EnsureClonesFromTheSourceOfTheProjectAndNeverAsksTheForge(t *testing.T) {
+	t.Parallel()
+
+	for _, source := range []string{"/srv/repos/shop", "https://example.test/shop.git"} {
+		t.Run(source, func(t *testing.T) {
+			t.Parallel()
+
+			trees, git, state := ensureFixture(t)
+			trees.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: source, BaseBranch: "main"}}}
+			trees.forge = func(model.Project) (forge.Forge, error) { return nil, errFake }
+
+			_, err := trees.Ensure(t.Context(), "p", "fix-login")
+
+			require.NoError(t, err)
+			assert.Equal(t, filepath.Join(state, "repos")+": clone "+source+" "+filepath.Join(state, "repos", "p"), git.calls[0])
+		})
+	}
+}
+
+func TestWorktrees_EnsureWithNoSourceAndNoForgeSaysThereIsNoForge(t *testing.T) {
+	t.Parallel()
+
+	trees, git, _ := ensureFixture(t)
+	trees.forge = newAdapters(nil, nil).forge
+	trees.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", BaseBranch: "main"}}}
+
+	_, err := trees.Ensure(t.Context(), "p", "fix-login")
+
+	require.ErrorIs(t, err, forge.ErrNoForge)
+	assert.Empty(t, git.calls)
+}
+
 func TestWorktrees_EnsureAddsTheWorktreeOnAnExistingItemBranchAndNeverResetsIt(t *testing.T) {
 	t.Parallel()
 

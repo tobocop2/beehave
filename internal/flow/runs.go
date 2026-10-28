@@ -14,7 +14,7 @@ const runPrefix = "item-"
 
 const attemptMarker = "-r"
 
-// ErrBadItem is returned when an item id is neither a forge number nor a beads id.
+// ErrBadItem is returned when an item id is not an item id: digits, or a prefix, a dash and a name.
 var ErrBadItem = errors.New("invalid item")
 
 // errNoProject is returned when run names no project.

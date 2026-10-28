@@ -37,6 +37,32 @@ func TestParseClaims(t *testing.T) {
 	assert.EqualError(t, err, `unknown claims "github": use one of local, beads`)
 }
 
+func TestProject_ToolsNameTheProgramsTheAdaptersStart(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		project model.Project
+		want    []string
+	}{
+		{"nothing named", model.Project{}, []string{"git"}},
+		{"local", model.Project{Tracker: model.TrackerLocal, Claims: model.ClaimsLocal}, []string{"git"}},
+		{"beads tracker", model.Project{Tracker: model.TrackerBeads}, []string{"git", "bd"}},
+		{"beads claims", model.Project{Claims: model.ClaimsBeads}, []string{"git", "bd"}},
+		{"github tracker", model.Project{Tracker: model.TrackerGithub}, []string{"git", "gh"}},
+		{"github forge", model.Project{Forge: model.ForgeGithub}, []string{"git", "gh"}},
+		{"all", model.Project{Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub}, []string{"git", "bd", "gh"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.want, test.project.Tools())
+		})
+	}
+}
+
 func TestParseForge(t *testing.T) {
 	t.Parallel()
 

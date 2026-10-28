@@ -200,6 +200,7 @@ func TestRun_RefusesAnItemThatIsNeitherAForgeNumberNorABeadsID(t *testing.T) {
 	_, err := engine.Run("not an id", testProject)
 
 	require.ErrorIs(t, err, ErrBadItem)
+	require.ErrorContains(t, err, `"not an id": use an item id such as 12 or fix-login`)
 }
 
 func TestRun_AnOpenRunOfTheItemIsJoinedNotStartedAgain(t *testing.T) {

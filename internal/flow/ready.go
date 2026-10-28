@@ -12,9 +12,11 @@ import (
 // errNotReady is returned by the ready step when the forge shows a reason to hold the pull request back.
 var errNotReady = errors.New("the pull request is not ready")
 
-// forge reads the pull request of an item. A failed read is an error, never an empty standing.
+// forge reads the pull request of an item and takes it out of draft. A failed read is an error, never an empty standing.
+// Ready runs after an approved review and a clean Pull.
 type forge interface {
 	Pull(ctx context.Context, project, item string) (review.Standing, error)
+	Ready(ctx context.Context, project, item string) error
 }
 
 // markReady reads the forge and refuses a pull request with a reason to wait, or one that moved after the review.
@@ -29,5 +31,5 @@ func (e *Engine) markReady(ctx context.Context, project, item, reviewed string) 
 		return fmt.Errorf("%w: pull request %d: %s", errNotReady, standing.Number, strings.Join(reasons, ", "))
 	}
 
-	return e.deps.Lifecycle.Ready(ctx, project, item)
+	return e.deps.Forge.Ready(ctx, project, item)
 }

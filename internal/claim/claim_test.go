@@ -25,7 +25,7 @@ func TestItemOf(t *testing.T) {
 	assert.Equal(t, "12", got)
 
 	_, err = claim.ItemOf("x y")
-	require.EqualError(t, err, "claim: 'x y' is neither a forge number nor a beads id")
+	require.EqualError(t, err, "claim: 'x y' is not an item id")
 	assert.Equal(t, claim.CodeRefused, newHarness(t).code(err))
 }
 
