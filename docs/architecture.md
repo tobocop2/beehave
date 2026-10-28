@@ -369,6 +369,8 @@ A step reads another step with `<kind>.<name>.<output>`. It reads the work item 
 
 The check reads the names in an expression and never evaluates it. An `outputs` argument that is not a list of strings, or a `prompt` that an expression computes, switches off the check of the output name or the file. Types are checked at run time.
 
+`examples/remediation/` is one workflow written in this schema: a plan, an implement step, and a review and fix loop of up to five rounds, with four prompt files. The method lives in that folder and never in Go. `examples/remediation/CONFORMANCE.md` has one row for each rule of the method, with its home (`core`, `file`, `skill` or `drop`) and its status (`gap`, `expressed`, `proven` or `n/a`). A test in the `workflow` package fails when an ID repeats, when a home or status is not one of the allowed words, or when an `expressed` row names a block that the example does not hold. A row moves to `proven` when a behavior test runs it.
+
 ## The durable loop
 
 `flow` runs each item as a DBOS workflow. DBOS stores the state of every workflow in SQLite (`dbos.db`) in the state folder. A finished step is never run again, so a crash resumes at the last finished step. The workflows make no outgoing request other than the model call.
