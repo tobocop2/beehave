@@ -11,7 +11,6 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
@@ -27,7 +26,7 @@ func TestMain(m *testing.M) {
 }
 
 func scriptRemedy() {
-	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, func(string) (roundcut.Forge, error) { return nil, errNoForge }))
+	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, func(string) (remedy.Forge, error) { return nil, errNoForge }, nil))
 }
 
 // scriptSetup makes the git folder `tree` in the work folder of a script, with one empty commit.

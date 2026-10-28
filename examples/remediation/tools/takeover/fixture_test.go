@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/takeover"
 )
 
 var (
@@ -120,7 +120,6 @@ func (s *setup) PostComment(_ context.Context, _ int, body string) error {
 func (s *setup) context() takeover.Context {
 	return takeover.Context{
 		Me: "me", Idle: s.idle, Grace: s.grace, Now: now,
-		Take: func(context.Context) error { s.calls = append(s.calls, "take"); return nil },
 		Free: func(context.Context) error { s.calls = append(s.calls, "free"); return s.freeErr },
 	}
 }

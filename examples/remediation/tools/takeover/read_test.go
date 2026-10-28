@@ -1,15 +1,14 @@
 package takeover_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/check"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/takeover"
 )
 
 const badTime = "2026-10-23T11:00:00"
@@ -91,16 +90,33 @@ func TestGuard_AStateThatIsMissingReadsAsNull(t *testing.T) {
 	assert.Equal(t, "REFUSE: #7 is null, not OPEN", last(got))
 }
 
-func TestTake_AFailedTakeIsAnError(t *testing.T) {
+func TestTake_AClaimThatCannotBeReadIsAnErrorAndNothingSaysTheItemMayBeTaken(t *testing.T) {
 	t.Parallel()
 
 	s := newSetup(spec{assignees: []string{"me"}, age: 9, notice: 5})
-	c := s.context()
-	c.Take = func(context.Context) error { return errDown }
+	s.freeErr = errDown
 
-	_, err := takeover.Run(context.Background(), s, takeover.Request{PR: 7, Mode: takeover.ModeTake}, c)
+	got, err := s.try(takeover.ModeTake)
 
 	require.ErrorIs(t, err, errDown)
+	assert.NotContains(t, all(got), "may be taken")
+}
+
+func TestTake_ARefusalOfAGuardOrARuleNeverReadsTheClaim(t *testing.T) {
+	t.Parallel()
+
+	own := newSetup(spec{age: 9, notice: 5, author: "me"})
+	own.freeErr = errDown
+	tooYoung := newSetup(spec{age: 9, notice: 0.2})
+	tooYoung.freeErr = errDown
+
+	for name, s := range map[string]*setup{"own pull request": own, "young notice": tooYoung} {
+		got, err := s.try(takeover.ModeTake)
+
+		require.NoError(t, err, name)
+		assert.NotZero(t, got.Code, name)
+		assert.Zero(t, s.count("free"), name)
+	}
 }
 
 func TestTake_APushAfterTheNoticeRefusesBeforeAnyReplyBlockPrints(t *testing.T) {
@@ -115,6 +131,6 @@ func TestTake_APushAfterTheNoticeRefusesBeforeAnyReplyBlockPrints(t *testing.T) 
 		assert.Equal(t, takeover.CodeRule, got.Code, name)
 		assert.Contains(t, all(got), "somebody pushed 1 commit(s)", name)
 		assert.NotContains(t, all(got), "replies after", name)
-		assert.Zero(t, s.count("take"), name)
+		assert.Zero(t, s.count("free"), name)
 	}
 }

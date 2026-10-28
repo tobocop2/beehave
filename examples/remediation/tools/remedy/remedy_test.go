@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -66,6 +65,10 @@ func (f *forgeWorld) CreateBranch(_ context.Context, branch, _ string) error {
 
 func (*forgeWorld) SetBase(context.Context, int, string) error { return nil }
 
+func (*forgeWorld) ReviewComments(context.Context, int) ([]model.Comment, error) { return nil, nil }
+
+func (*forgeWorld) PostComment(context.Context, int, string) error { return nil }
+
 // run executes one command line and returns the exit code with the two outputs.
 func run(t *testing.T, deps remedy.Deps, args ...string) (int, string, string) {
 	t.Helper()
@@ -82,7 +85,7 @@ func cutDeps(world *forgeWorld) remedy.Deps {
 	return remedy.Deps{
 		Git:   origin("git@github.com:owner/name.git", nothing),
 		Dir:   ".",
-		Forge: func(string) (roundcut.Forge, error) { return world, nil },
+		Forge: func(string) (remedy.Forge, error) { return world, nil },
 	}
 }
 
@@ -124,7 +127,7 @@ func TestExecute_UnknownCommandRefuses(t *testing.T) {
 func TestNames_AreTheCommandsOfTheTable(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"cut", "audit"}, remedy.Names())
+	assert.Equal(t, []string{"cut", "audit", "take"}, remedy.Names())
 }
 
 func TestCut_MergedPullRequestMovesTheRoundAndPasses(t *testing.T) {
@@ -221,7 +224,7 @@ func TestCut_ForgeThatCannotOpenIsARefusal(t *testing.T) {
 	t.Parallel()
 
 	deps := cutDeps(&forgeWorld{})
-	deps.Forge = func(string) (roundcut.Forge, error) { return nil, errDown }
+	deps.Forge = func(string) (remedy.Forge, error) { return nil, errDown }
 
 	code, _, errOut := run(t, deps, cutArgs...)
 
@@ -244,7 +247,7 @@ func TestCut_ForgeIsOpenedForTheRepositoryOfTheOrigin(t *testing.T) {
 
 		deps := cutDeps(&forgeWorld{state: "MERGED"})
 		deps.Git = origin(address, nothing)
-		deps.Forge = func(repo string) (roundcut.Forge, error) {
+		deps.Forge = func(repo string) (remedy.Forge, error) {
 			opened = repo
 
 			return nil, errDown

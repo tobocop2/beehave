@@ -6,17 +6,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/takeover"
 )
 
 func TestDry_AssignedButNotIdleTheNoticeMayGoOut(t *testing.T) {
 	t.Parallel()
 
-	got := newSetup(spec{assignees: []string{"me"}, age: 0.2}).run(t, takeover.ModeDry)
+	s := newSetup(spec{assignees: []string{"me"}, age: 0.2})
+	got := s.run(t, takeover.ModeDry)
 
 	assert.Equal(t, 0, got.Code)
 	assert.Contains(t, all(got), "WOULD POST")
+	assert.Empty(t, s.posted)
 }
 
 func TestDry_UnassignedAndNotIdleNothingIsPosted(t *testing.T) {

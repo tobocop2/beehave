@@ -514,11 +514,13 @@ func (s *session) take(ctx context.Context, p plan) error {
 		return err
 	}
 
-	if err = s.c.Take(ctx); err != nil {
+	// The take writes no claim. A claim lapses after 5 minutes unless something renews it, and this step exits at once.
+	// The run of the item in the engine takes the claim and renews it. This step only reads, so it can refuse a claim that another owner holds.
+	if err = s.c.Free(ctx); err != nil {
 		return err
 	}
 
-	s.say(fmt.Sprintf("TAKEN #%d (basis: %s) after a %sh grace.", s.request.PR, basisOf(p.assigned), hours(since)))
+	s.say(fmt.Sprintf("#%d may be taken now (basis: %s) after a %sh grace. The run of the item holds the claim.", s.request.PR, basisOf(p.assigned), hours(since)))
 
 	return nil
 }

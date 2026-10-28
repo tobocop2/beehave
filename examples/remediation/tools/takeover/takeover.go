@@ -1,5 +1,5 @@
-// Package takeover announces an intent to take over the pull request of somebody else, then takes it.
-// Three steps: a dry read, an apply that posts the notice, and a take after the grace period. Only a take can duplicate work.
+// Package takeover announces an intent to take over the pull request of somebody else, then says when it may be taken.
+// Three steps: a dry read, an apply that posts the notice, and a take after the grace period. The take step decides and writes no claim: the run of the item holds the claim.
 package takeover
 
 import (
@@ -42,13 +42,12 @@ type Request struct {
 }
 
 // Context is the settings of the round and the calls of the takeover. The caller passes the clock as Now.
-// Free refuses when another owner holds the claim and writes nothing. Take claims the pull request.
+// Free refuses when another owner holds the claim and writes nothing. No call in the takeover writes a claim.
 type Context struct {
 	Me    string
 	Idle  time.Duration
 	Grace time.Duration
 	Now   time.Time
-	Take  func(ctx context.Context) error
 	Free  func(ctx context.Context) error
 }
 

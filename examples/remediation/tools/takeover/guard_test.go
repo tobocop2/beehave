@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/check"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/takeover"
 )
 
 func comments(pairs ...string) []model.Comment {

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/takeover"
 )
 
 func readReplies(r *takeover.Request) { r.ReplyRead = true }
@@ -21,7 +21,7 @@ func TestTake_AssignedNotIdleNoticeAgedOutStillRefuses(t *testing.T) {
 
 	assert.Equal(t, takeover.CodeRule, got.Code)
 	assert.Contains(t, all(got), "Assignment does not shorten that wait")
-	assert.Zero(t, s.count("take"))
+	assert.Zero(t, s.count("free"))
 }
 
 func TestTake_AssignedIdleNoticeAgedOutNoReplyTakes(t *testing.T) {
@@ -31,8 +31,9 @@ func TestTake_AssignedIdleNoticeAgedOutNoReplyTakes(t *testing.T) {
 	got := s.run(t, takeover.ModeTake)
 
 	assert.Equal(t, 0, got.Code)
-	assert.Equal(t, 1, s.count("take"))
-	assert.Equal(t, "TAKEN #7 (basis: assigned) after a 5.00h grace.", last(got))
+	assert.Equal(t, []string{"free"}, s.calls)
+	assert.Equal(t, "#7 may be taken now (basis: assigned) after a 5.00h grace. The run of the item holds the claim.", last(got))
+	assert.NotContains(t, all(got), "TAKEN")
 }
 
 func TestTake_IdleButNoNoticeRefuses(t *testing.T) {
@@ -52,7 +53,7 @@ func TestTake_AKeepReplyStopsIt(t *testing.T) {
 
 	assert.Equal(t, takeover.CodeRule, got.Code)
 	assert.Contains(t, all(got), "says KEEP")
-	assert.Zero(t, s.count("take"))
+	assert.Zero(t, s.count("free"))
 }
 
 func TestTake_AReleaseReplyIsHonouredAlthoughTheReplyResetsIdleness(t *testing.T) {
@@ -64,7 +65,7 @@ func TestTake_AReleaseReplyIsHonouredAlthoughTheReplyResetsIdleness(t *testing.T
 	assert.Equal(t, 0, got.Code)
 	assert.Contains(t, all(got), "RELEASE received on #7: taking it now, without the grace period or the idle wait.")
 	assert.NotContains(t, all(got), "inside the")
-	assert.Equal(t, 1, s.count("take"))
+	assert.Equal(t, 1, s.count("free"))
 }
 
 func TestTake_NoChangesRequestedReviewRefusesAndReleaseDoesNotExcuseIt(t *testing.T) {
@@ -96,7 +97,7 @@ func TestTake_ACommitBeforeOrAtTheSecondOfTheNoticeIsNoPush(t *testing.T) {
 		got := s.run(t, takeover.ModeTake)
 
 		assert.Equal(t, 0, got.Code, name)
-		assert.Equal(t, 1, s.count("take"), name)
+		assert.Equal(t, 1, s.count("free"), name)
 		assert.NotContains(t, all(got), "note:", name)
 	}
 }

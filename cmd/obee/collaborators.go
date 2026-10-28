@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/lease"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
@@ -440,7 +440,7 @@ func (l leases) claims(name string) (*claim.Claims, error) {
 		return nil, err
 	}
 
-	return claim.New(claim.Options{Rows: rows, Clock: time.Now, Out: io.Discard})
+	return lease.Open(rows)
 }
 
 // Claim takes the item for a new owner and returns the token of that owner.

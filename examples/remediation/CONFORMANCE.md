@@ -58,7 +58,7 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-C-18 | Re-read the base tip twice before a merge when another session can merge | core | gap | - | - | S1-C-18 |
 | S1-C-19 | Merge or retarget PRs based on the head branch first | core | gap | - | - | S1-C-19 |
 | S1-C-20 | Hand over between orchestrator sessions with a parked row | drop | n/a | - | - | S1-C-20, S1-C-21 |
-| SC-01 | Take over an idle foreign PR after notice, grace and idle hours | core | gap | - | - | - |
+| SC-01 | Take over an idle foreign PR after notice, grace and idle hours | core | gap | tools/remedy take | TestTake_TakeAfterTheGracePeriodPasses | - |
 | S1-L-01 | Name the model in every dispatch; a step without a model is a defect | file | expressed | workflow.hcl workflow remediation | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-01, S1-L-02, S1-L-03, S1-L-04 |
 | S1-L-05 | Turn count beats token price; keep a mid-tier floor | drop | n/a | - | - | S1-L-05 |
 | S1-L-06 | Replace a lane near the context cap at a step boundary | core | gap | - | - | S1-L-06, S1-L-07, S1-L-08, S1-L-10, S1-L-11 |
@@ -201,9 +201,9 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | - | - | S1-D-04 |
 | S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | - | - | S1-D-12 |
 | S1-D-17 | One record of known base reds with a timestamp and the tip | file | gap | - | - | S1-D-17, S1-PS-12 |
-| S1-X-01 | Take-over: review first, then notice with a token ask, then claim | core | gap | - | - | S1-X-01, S1-X-02, S1-X-08, S1-X-09, S1-X-10, S1-X-11, S1-X-12, S1-F-16, S1-R-67 |
-| S1-X-03 | Stale means an hour of no author activity and an hour of no queue activity | file | gap | - | - | S1-X-03 |
-| S1-X-04 | A take after the stale hour gets one line on the PR first | core | gap | - | - | S1-X-04 |
+| S1-X-01 | Take-over: review first, then notice with a token ask, then claim | core | gap | tools/remedy take | TestTake_ApplyPostsTheNoticeAndPasses | S1-X-01, S1-X-02, S1-X-08, S1-X-09, S1-X-10, S1-X-11, S1-X-12, S1-F-16, S1-R-67 |
+| S1-X-03 | Stale means an hour of no author activity and an hour of no queue activity | file | gap | tools/remedy take | TestTake_IdleAndGraceFlagsAreHours | S1-X-03 |
+| S1-X-04 | A take after the stale hour gets one line on the PR first | core | gap | tools/remedy take | TestTake_RefusalOfARuleIsExitCodeTwoWithTheLinesOnTheOutput | S1-X-04 |
 | S1-X-05 | Every take co-assigns the PR and its linked issues | core | gap | - | - | S1-X-05 |
 | S1-X-06 | When the author hands over a branch with terms, the terms win | skill | gap | - | - | S1-X-06, S1-X-07, S1-M-38 |
 | S1-X-15 | Check the forge head against the worktree head before each dispatch | core | gap | - | - | S1-X-15 |
