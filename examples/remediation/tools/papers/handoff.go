@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/transcript"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/check/transcript"
 	"github.com/tobocop2/obee/internal/model"
 )
 

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/transcript"
+	"github.com/tobocop2/obee/examples/remediation/tools/transcript"
 )
 
 const (
@@ -283,28 +283,26 @@ func TestLaneCap(t *testing.T) {
 	cases := []struct {
 		name string
 		arg  *string
-		env  map[string]string
 		want int64
 		fail bool
 	}{
-		{"default", nil, nil, 150000, false},
-		{"above_the_32_bit_range", ptr("3000000000"), nil, 3000000000, false},
-		{"argument", ptr("50000"), map[string]string{"LANE_CONTEXT_CAP": "60000"}, 50000, false},
-		{"environment", nil, map[string]string{"LANE_CONTEXT_CAP": "60000"}, 60000, false},
-		{"zero", ptr("0"), nil, 0, true},
-		{"negative", ptr("-1"), nil, 0, true},
-		{"word", ptr("x"), nil, 0, true},
-		{"empty_argument", ptr(""), nil, 0, true},
-		{"arabic_indic_digit", ptr("٣"), nil, 0, true},
-		{"superscript_two", ptr("²"), nil, 0, true},
-		{"too_large_is_the_largest_cap", ptr("99999999999999999999999"), nil, math.MaxInt64, false},
+		{"default", nil, 150000, false},
+		{"above_the_32_bit_range", ptr("3000000000"), 3000000000, false},
+		{"argument", ptr("50000"), 50000, false},
+		{"zero", ptr("0"), 0, true},
+		{"negative", ptr("-1"), 0, true},
+		{"word", ptr("x"), 0, true},
+		{"empty_argument", ptr(""), 0, true},
+		{"arabic_indic_digit", ptr("٣"), 0, true},
+		{"superscript_two", ptr("²"), 0, true},
+		{"too_large_is_the_largest_cap", ptr("99999999999999999999999"), math.MaxInt64, false},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := transcript.LaneCap(tc.arg, tc.env)
+			got, err := transcript.LaneCap(tc.arg)
 			if tc.fail {
 				require.ErrorContains(t, err, "is not a whole number of tokens above zero")
 
@@ -315,59 +313,6 @@ func TestLaneCap(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
-}
-
-func TestTranscriptPath(t *testing.T) {
-	t.Parallel()
-
-	config := t.TempDir()
-	project := filepath.Join(config, "projects", "p")
-	require.NoError(t, os.MkdirAll(project, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(project, "s1.jsonl"), nil, 0o600))
-	require.NoError(t, os.MkdirAll(filepath.Join(config, "projects", "q"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(config, "projects", "q", "s2.jsonl"), nil, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(project, "s2.jsonl"), nil, 0o600))
-
-	require.NoError(t, os.MkdirAll(filepath.Join(config, "projects", ".hid"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(config, "projects", ".hid", "s1.jsonl"), nil, 0o600))
-
-	home := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(home, ".claude", "projects", "h"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(home, ".claude", "projects", "h", "s3.jsonl"), nil, 0o600))
-
-	got, err := transcript.Path("given.jsonl", map[string]string{"TRANSCRIPT": "env.jsonl"})
-	require.NoError(t, err)
-	assert.Equal(t, "given.jsonl", got)
-
-	got, err = transcript.Path("", map[string]string{"TRANSCRIPT": "env.jsonl"})
-	require.NoError(t, err)
-	assert.Equal(t, "env.jsonl", got)
-
-	got, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s1", "CLAUDE_CONFIG_DIR": config})
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(project, "s1.jsonl"), got)
-
-	got, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s3", "HOME": home})
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(home, ".claude", "projects", "h", "s3.jsonl"), got)
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s1"})
-	require.ErrorContains(t, err, "set TRANSCRIPT, HOME or CLAUDE_CONFIG_DIR")
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CONFIG_DIR": config})
-	require.ErrorContains(t, err, "no transcript. Pass its path, or set TRANSCRIPT. Looked for <no CLAUDE_CODE_SESSION_ID>.jsonl under "+config+"/projects and found 0.")
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s2", "CLAUDE_CONFIG_DIR": config})
-	require.ErrorContains(t, err, "Looked for s2.jsonl under "+config+"/projects and found 2.")
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s1", "CLAUDE_CONFIG_DIR": t.TempDir()})
-	require.ErrorContains(t, err, "found 0.", "a config folder with no projects holds none")
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "p/s1", "CLAUDE_CONFIG_DIR": config})
-	require.ErrorContains(t, err, "found 0.", "a path in the id is not an id")
-
-	_, err = transcript.Path("", map[string]string{"CLAUDE_CODE_SESSION_ID": "s*", "CLAUDE_CONFIG_DIR": config})
-	require.ErrorContains(t, err, "found 0.", "a glob character in the id is literal")
 }
 
 func TestLaneTranscriptLine(t *testing.T) {

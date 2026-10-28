@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/check/papers"
+	"github.com/tobocop2/obee/examples/remediation/tools/papers"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 
 	wrongText    = "these commits are OURS but carry the wrong address"
 	unlinkedText = "these commits have no linked account"
-	bothText     = "ME_EMAIL and ME_LOGIN must BOTH be set"
+	bothText     = "--email and --login must both be given"
 )
 
 func TestAuthors_Verdicts(t *testing.T) {

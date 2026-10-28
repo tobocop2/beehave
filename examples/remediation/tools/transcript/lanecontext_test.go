@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/transcript"
+	"github.com/tobocop2/obee/examples/remediation/tools/transcript"
 )
 
 func TestLaneContext_IsTheContextFieldOfTheLaneTranscriptLine(t *testing.T) {

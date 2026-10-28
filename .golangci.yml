@@ -124,7 +124,7 @@ linters:
             - pkg: mvdan.cc/sh/v3/interp
               desc: obee parses shell text and never runs it
         check-children:
-          files: ["**/internal/check/papers/**", "**/internal/check/transcript/**"]
+          files: ["**/internal/check/transcript/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/check/shell
               desc: only check/gate imports check/shell
@@ -133,8 +133,6 @@ linters:
         check-siblings:
           files: ["**/internal/check/shell/**", "**/internal/check/gate/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/check/papers
-              desc: check/shell and check/gate never import check/papers
             - pkg: github.com/tobocop2/obee/internal/check/transcript
               desc: check/shell and check/gate never import check/transcript
         test-packages-in-tests-only:
@@ -287,7 +285,6 @@ linters:
           files:
             - "**/internal/check/*.go"
             - "**/internal/check/shell/**"
-            - "**/internal/check/papers/**"
             - "**/internal/check/gate/**"
             - "**/internal/check/transcript/**"
             - "**/internal/claim/**"
