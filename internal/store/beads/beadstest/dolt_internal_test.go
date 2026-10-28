@@ -2,7 +2,6 @@ package beadstest
 
 import (
 	"net"
-	"strconv"
 	"testing"
 	"time"
 
@@ -12,7 +11,8 @@ import (
 func TestReachable_GivesUpWhenNothingListensWithinTheWait(t *testing.T) {
 	t.Parallel()
 
-	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(FreePort(t)))
+	// Nothing can listen on port 0, so no other test can take it between the pick and the dial.
+	address := net.JoinHostPort("127.0.0.1", "0")
 
 	assert.False(t, reachable(t.Context(), address, time.Millisecond))
 }
