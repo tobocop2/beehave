@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -141,8 +142,15 @@ func awaitPhase(ctx dbos.Context, handle dbos.WorkflowHandle[PhaseOutput], optio
 	case finished := <-done:
 		return finished.out, finished.err
 	case <-ctx.Done():
-		return PhaseOutput{}, context.Cause(ctx)
+		return PhaseOutput{}, stopError(ctx)
 	}
+}
+
+// stopError is the error of a step that stops because ctx is done. It wraps context.Canceled as well as the cause. The library records a run as failed
+// when a step returns a plain cause in the instant between the close of the context and its own cancel hook, and as stopped only when the error is a cancel.
+// Every wait inside a step returns this error when its context ends.
+func stopError(ctx context.Context) error {
+	return errors.Join(ctx.Err(), context.Cause(ctx))
 }
 
 // phaseEnd turns a phase that did not exit with code 0 into an error that names the step.
