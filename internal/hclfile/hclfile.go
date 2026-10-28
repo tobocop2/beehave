@@ -4,6 +4,7 @@ package hclfile
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,18 +47,47 @@ var (
 func Decode(path string, target any) error {
 	src, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return Diagnostic{File: path, Text: "cannot read the file: " + err.Error() + ". Check that the file exists and that you can read it.", Cause: err}
+		return unreadable(path, err)
 	}
 
+	body, err := parseSource(path, src)
+	if err != nil {
+		return err
+	}
+
+	return DecodeBody(body, target)
+}
+
+// Parse reads the file at path from fsys and returns its top-level body, so a caller can walk the
+// blocks in file order. The error holds one Diagnostic for each syntax problem.
+func Parse(fsys fs.FS, path string) (*hclsyntax.Body, error) {
+	src, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		return nil, unreadable(path, err)
+	}
+
+	return parseSource(path, src)
+}
+
+// DecodeBody decodes one body, such as the body of a block, into target with the rules of Decode.
+func DecodeBody(body *hclsyntax.Body, target any) error {
+	return report(gohcl.DecodeBody(body, nil, target), body)
+}
+
+func unreadable(path string, err error) Diagnostic {
+	return Diagnostic{File: path, Text: "cannot read the file: " + err.Error() + ". Check that the file exists and that you can read it.", Cause: err}
+}
+
+func parseSource(path string, src []byte) (*hclsyntax.Body, error) {
 	file, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
 
 	body := syntaxBody(file)
 
-	if !diags.HasErrors() {
-		diags = gohcl.DecodeBody(body, nil, target)
+	if diags.HasErrors() {
+		return nil, report(diags, body)
 	}
 
-	return report(diags, body)
+	return body, nil
 }
 
 func report(diags hcl.Diagnostics, body *hclsyntax.Body) error {
