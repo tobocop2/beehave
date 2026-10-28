@@ -8,3 +8,4 @@ threshold:
 exclude:
   paths:
     - ^cmd/obee/main\.go$
+    - ^examples/remediation/tools/cmd/remedy/main\.go$

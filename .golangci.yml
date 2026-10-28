@@ -157,19 +157,35 @@ linters:
           deny:
             - pkg: github.com/dbos-inc/dbos-transact-golang
               desc: only internal/flow imports DBOS
-        backends-only-in-main:
-          files: ["!$test", "!**/cmd/obee/**"]
+        engine-never-imports-examples:
+          files: ["**/internal/**", "**/cmd/obee/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/examples
+              desc: the engine never imports the examples, and the rule has no exception
+        remedy-binary-takes-the-forge-only:
+          files: ["**/examples/remediation/tools/cmd/remedy/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/store/beads
-              desc: only cmd/obee imports a backend
+              desc: the remedy binary imports the forge backend and no other
             - pkg: github.com/tobocop2/obee/internal/store/github
-              desc: only cmd/obee imports a backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
-              desc: only cmd/obee imports a backend
+              desc: the remedy binary imports the forge backend and no other
             - pkg: github.com/tobocop2/obee/internal/agent/claude
-              desc: only cmd/obee imports a backend
+              desc: the remedy binary imports the forge backend and no other
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
-              desc: only cmd/obee imports a backend
+              desc: the remedy binary imports the forge backend and no other
+        backends-only-in-main:
+          files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: only cmd/obee and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
         # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
         no-backend-to-backend-store-beads:
@@ -338,6 +354,7 @@ linters:
           list-mode: lax
           files:
             - "!**/cmd/obee/**"
+            - "!**/examples/**"
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/filelock/**"
@@ -374,7 +391,7 @@ linters:
         linters:
           - forbidigo
         text: os\.(Getenv|LookupEnv|Environ)
-      - path: (internal/cli/|cmd/obee/)
+      - path: (internal/cli/|cmd/obee/|examples/remediation/tools/cmd/remedy/)
         linters:
           - forbidigo
         text: fmt\.|os\.Exit|os\.Std|panic

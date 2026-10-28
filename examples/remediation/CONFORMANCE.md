@@ -237,12 +237,12 @@ The prompts hold the brief parts that `internal/brief` emits for the role, in th
 | S1-PS-13 | Profile: token discipline, dashboard, cross-repo and release steps | file | gap | - | - | S1-PS-13 |
 | S1-PS-14 | Profile: hard limits, commands never run, real user data | file | gap | - | - | S1-PS-14 |
 | S1-PS-15 | Profile: measured traps and ownership rules | file | gap | - | - | S1-PS-15 |
-| SC-03 | Cut the next round only after the previous integration PR merged | core | gap | - | - | - |
-| SC-04 | For each merge in a range, show which lines the tip still has | core | gap | - | - | - |
+| SC-03 | Cut the next round only after the previous integration PR merged | core | gap | tools/remedy cut | TestCut_MergedPullRequestMovesTheRoundAndPasses | - |
+| SC-04 | For each merge in a range, show which lines the tip still has | core | gap | tools/remedy audit | TestAudit_PresentWithAMergeThatLeftTheBranchIsADefect | - |
 | SC-05 | Green baseline and mutation arms with a hardcoded path | drop | n/a | - | - | - |
 | SC-06 | Merge helpers: all checks green, our commits carry our email, orphan list | core | gap | - | - | - |
 | SC-07 | Pinned asynchronous merge for a stacked PR with polling | core | gap | - | - | - |
-| SC-08 | Stop in fixed order: merged, closed, branch gone, hold, draft, head moved | core | gap | - | - | - |
+| SC-08 | Stop in fixed order: merged, closed, branch gone, hold, draft, head moved | core | gap | tools/remedy cut | TestCut_PullRequestThatIsNotMergedIsARefusal | - |
 | SC-09 | Add a closing row, recount heading and title, assert the count changed | core | gap | - | - | - |
 | SC-10 | Sync a project board from issues and PRs with a read-back | core | gap | - | - | - |
 | SC-11 | A tmux view of lanes, forge, logs and host | drop | n/a | - | - | - |

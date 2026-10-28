@@ -1,0 +1,17 @@
+# The remedy tool runs in the test binary. It follows the exit codes of obee.
+exec remedy --help
+stdout '^  cut --old'
+stdout '^  audit authored'
+
+# An unknown command is a refusal: exit code 2.
+! exec remedy bake
+stderr 'unknown command "bake"'
+
+# A report with no finding passes.
+cd tree
+exec remedy audit authored HEAD..HEAD
+stdout 'AUD_AUTHORED_DONE'
+
+# A cut with no origin remote is a refusal.
+! exec remedy cut --old staging/r-I --new staging/r-II --pr 1
+stderr 'cannot read the origin remote'
