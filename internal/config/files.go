@@ -16,8 +16,8 @@ const (
 	runnersFileName = "runners.toml"
 	// projectsDirName is the folder with one TOML file for each project.
 	projectsDirName = "projects"
-	// localHost is the build host that means this machine.
-	localHost = "local"
+	// LocalHost is the build host that means this machine.
+	LocalHost = "local"
 
 	runnerKeys  = "name, agent, config_dir, keychain"
 	poolKeys    = "five_hour_max, seven_day_max"

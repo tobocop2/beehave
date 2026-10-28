@@ -9,6 +9,9 @@ type CommandResult struct {
 	Stderr   string
 }
 
+// ReportLimit is the most bytes of command output that obee keeps. The tail of an output holds the findings.
+const ReportLimit = 16 * 1024
+
 // IsDigits reports whether text is a non-empty run of ASCII digits.
 func IsDigits(text string) bool {
 	if text == "" {

@@ -93,7 +93,7 @@ func validateProject(path string, raw rawProject) (string, error) {
 
 func buildHost(path string, raw *string) (string, error) {
 	if raw == nil {
-		return localHost, nil
+		return LocalHost, nil
 	}
 
 	if err := requireText(path, "build_host", *raw); err != nil {
@@ -102,7 +102,7 @@ func buildHost(path string, raw *string) (string, error) {
 
 	if !clusterName.MatchString(*raw) {
 		return "", refuse("%s: `build_host` must be %q or a SkyPilot cluster name (a letter, then letters, digits and hyphens); got `%s`. Fix the value.",
-			path, localHost, *raw)
+			path, LocalHost, *raw)
 	}
 
 	return *raw, nil

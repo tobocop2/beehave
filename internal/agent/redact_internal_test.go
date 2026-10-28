@@ -85,6 +85,15 @@ func TestBuildEnv_KeepsOnlyTheAllowlistTheLoginAndTheToken(t *testing.T) {
 	}, got)
 }
 
+func TestLoginEnv_HoldsTheAllowlistAndTheLoginButNoToken(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{"PATH": "/bin", "CLAUDE_CODE_OAUTH_TOKEN": "x", "AWS_SECRET_ACCESS_KEY": "x"}
+	p := Profile{ConfigVars: []string{"CLAUDE_CONFIG_DIR"}, TokenVar: "CLAUDE_CODE_OAUTH_TOKEN"} //nolint:gosec // the token variable name, not a credential
+
+	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR=/login", "PATH=/bin"}, LoginEnv(base, p, "/login"))
+}
+
 type refusingWriter struct{}
 
 func (refusingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }

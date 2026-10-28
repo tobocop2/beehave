@@ -32,6 +32,11 @@ func allowed(base map[string]string) map[string]string {
 	return env
 }
 
+// LoginEnv returns the NAME=value list for a CLI that needs no token: the allowlisted names of base and the login folder.
+func LoginEnv(base map[string]string, p Profile, dir string) []string {
+	return buildEnv(base, p, dir, "")
+}
+
 // buildEnv returns the NAME=value list for an agent: the allowlisted names of base, the login folder and the token.
 func buildEnv(base map[string]string, p Profile, dir, token string) []string {
 	env := allowed(base)

@@ -13,7 +13,7 @@ func New() Adapter { return Adapter{} }
 func (Adapter) Profile() agent.Profile {
 	return agent.Profile{ //nolint:gosec // the token variable name, not a credential
 		Binary:     "claude",
-		Args:       []string{"-p", "--output-format", "stream-json", "--verbose"},
+		Args:       []string{"-p", "--output-format", streamJSON, "--verbose"},
 		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 	}

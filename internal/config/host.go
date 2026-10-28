@@ -32,9 +32,9 @@ type rawSkyPilot struct {
 // hostConfig checks the [host] table against build_host and returns it. A project that builds locally has none.
 func hostConfig(path, buildHost string, raw *rawHost) (*model.HostConfig, error) {
 	switch {
-	case buildHost == localHost && raw == nil:
+	case buildHost == LocalHost && raw == nil:
 		return nil, nil //nolint:nilnil // a local build has no host table
-	case buildHost == localHost:
+	case buildHost == LocalHost:
 		return nil, refuse(hostTableMessage, path, "is not allowed when `build_host` is \"local\"", "Remove the table, or set `build_host` to a cluster name.")
 	case raw == nil:
 		return nil, refuse(hostTableMessage, path, "is required when `build_host` is a cluster name", "Add `[host]` with `provider` and `disk_floor_gb`.")
