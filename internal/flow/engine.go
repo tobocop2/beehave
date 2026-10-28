@@ -107,6 +107,7 @@ type Engine struct {
 	log     io.Closer
 	lock    *filelock.Lock
 	logger  *slog.Logger
+	env     map[string]string
 	redact  func(string) string
 	cancels cancels
 	holds   holds
@@ -132,7 +133,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	engine := &Engine{
-		deps: deps, version: opts.Version, dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, env: opts.Env, version: opts.Version, dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}),
 	}
 
@@ -271,22 +272,59 @@ func (e *Engine) oldRuns() ([]string, error) {
 // Run takes one item to the end of its workflow and returns the result. It joins the run of the item when one is still open.
 // The item belongs to the project from this call on; an open run under another project is refused.
 func (e *Engine) Run(item, project string) (ItemResult, error) {
-	if model.ItemKind(item) == "" {
-		return ItemResult{}, fmt.Errorf("%w %q: use a forge number or a beads id", ErrBadItem, item)
+	return e.run(ItemInput{Item: item, Project: project})
+}
+
+// RunFile is Run for a workflow file. The run pins the SHA-256 of the file, and a replay refuses a changed file.
+func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
+	abs, absErr := filepath.Abs(file)
+
+	hash, hashErr := hashFile(file)
+	if err := errors.Join(hashErr, absErr); err != nil {
+		return ItemResult{}, err
 	}
 
-	if project == "" {
-		return ItemResult{}, fmt.Errorf("%w %s: name the project", errNoProject, item)
+	return e.run(ItemInput{Item: item, Project: project, File: abs, Hash: hash})
+}
+
+// PinnedFile returns the workflow file of the open run of the item. It is empty when the item has no open run, or when the open run uses no file.
+func (e *Engine) PinnedFile(item string) (string, error) {
+	last, found, err := latestRun(e.ctx, item)
+	if err != nil || !found || last.terminal() {
+		return "", err
 	}
 
-	handle, err := e.handleFor(item, project)
+	in, err := last.input()
+
+	return in.File, err
+}
+
+// check refuses an item that is not a forge number or a beads id, and a missing project.
+func (in ItemInput) check() error {
+	if model.ItemKind(in.Item) == "" {
+		return fmt.Errorf("%w %q: use a forge number or a beads id", ErrBadItem, in.Item)
+	}
+
+	if in.Project == "" {
+		return fmt.Errorf("%w %s: name the project", errNoProject, in.Item)
+	}
+
+	return nil
+}
+
+func (e *Engine) run(in ItemInput) (ItemResult, error) {
+	if err := in.check(); err != nil {
+		return ItemResult{}, err
+	}
+
+	handle, err := e.handleFor(in)
 	if err != nil {
 		return ItemResult{}, err
 	}
 
 	result, err := handle.GetResult(e.deps.Clock.resultOptions()...)
 	if err != nil {
-		return ItemResult{}, fmt.Errorf("item %s: %w", item, err)
+		return ItemResult{}, fmt.Errorf("item %s: %w", in.Item, err)
 	}
 
 	return result, nil
@@ -294,7 +332,9 @@ func (e *Engine) Run(item, project string) (ItemResult, error) {
 
 // handleFor joins the open run of the item, or starts the next attempt.
 // A new attempt starts only after a finished or a canceled one: a failed attempt continues with obee resume.
-func (e *Engine) handleFor(item, project string) (dbos.WorkflowHandle[ItemResult], error) {
+func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	item, project := in.Item, in.Project
+
 	last, found, err := latestRun(e.ctx, item)
 	if err != nil {
 		return nil, err
@@ -313,7 +353,7 @@ func (e *Engine) handleFor(item, project string) (dbos.WorkflowHandle[ItemResult
 		return nil, err
 	}
 
-	return dbos.RunWorkflow(e.ctx, e.item, ItemInput{Item: item, Project: project}, dbos.WithWorkflowID(runID(item, last.Attempt+1)))
+	return dbos.RunWorkflow(e.ctx, e.item, in, dbos.WithWorkflowID(runID(item, last.Attempt+1)))
 }
 
 // checkLogin refuses an item that has no agent login.

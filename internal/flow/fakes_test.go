@@ -403,6 +403,8 @@ type harness struct {
 	watch    *fakeWatch
 	trees    *fakeTrees
 	beats    *fakeBeats
+	commands *fakeCommands
+	items    *fakeItems
 	ticks    chan time.Time
 	sleep    time.Duration
 	opts     Options
@@ -422,6 +424,8 @@ func newHarness(t *testing.T) *harness {
 		watch:    &fakeWatch{outcomes: []review.Outcome{{Kind: review.Merged}}},
 		trees:    &fakeTrees{},
 		beats:    &fakeBeats{},
+		commands: &fakeCommands{},
+		items:    &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}},
 		ticks:    make(chan time.Time),
 		opts: Options{
 			StateDir:      filepath.Join(t.TempDir(), "state"),
@@ -434,7 +438,7 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats,
+		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items,
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
 	if h.merge != nil {

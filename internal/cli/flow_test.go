@@ -25,14 +25,27 @@ const (
 
 type fakeRunner struct {
 	launchErr, runErr error
+	pinnedErr         error
+	pinned            string
 	sentBack          string
 	block             chan struct{}
 	mu                sync.Mutex
 	items             []string
+	files             []string
 	shutdowns         int
 }
 
 func (r *fakeRunner) Launch() error { return r.launchErr }
+
+func (r *fakeRunner) PinnedFile(string) (string, error) { return r.pinned, r.pinnedErr }
+
+func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error) {
+	r.mu.Lock()
+	r.files = append(r.files, item+"@"+project+" "+file)
+	r.mu.Unlock()
+
+	return flow.ItemResult{Item: item, FixRounds: 1}, r.runErr
+}
 
 func (r *fakeRunner) Run(item, project string) (flow.ItemResult, error) {
 	r.mu.Lock()

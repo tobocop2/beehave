@@ -22,6 +22,8 @@ var errHeadMoved = errors.New("the head of the pull request moved")
 type ItemInput struct {
 	Item    string `json:"item"`
 	Project string `json:"project"`
+	File    string `json:"file,omitempty"`
+	Hash    string `json:"hash,omitempty"`
 }
 
 // ItemResult is what a finished item workflow reports. FixRounds counts the fix rounds the review asked for.
@@ -79,12 +81,22 @@ func (e *Engine) workHolding(ctx dbos.Context, in ItemInput, login string, taken
 		return ItemResult{}, err
 	}
 
-	result, err := e.work(ctx, in, login)
+	result, err := e.perform(ctx, in, login)
+
 	if lost := e.claimCheck(id, in.Item); lost != nil {
 		return result, lost
 	}
 
 	return result, err
+}
+
+// perform runs the workflow file of the item, or the fixed item loop when the item has none.
+func (e *Engine) perform(ctx dbos.Context, in ItemInput, login string) (ItemResult, error) {
+	if in.File != "" {
+		return e.walk(ctx, in)
+	}
+
+	return e.work(ctx, in, login)
 }
 
 // firstTrust starts the trust in a claim. A take that this run made is trusted from the start of the take. A take of unknown age

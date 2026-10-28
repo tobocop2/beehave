@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // maxRunArgs is the item and the optional project.
@@ -26,6 +28,9 @@ var errInterrupted = errors.New("stopped before the item finished: run obee run 
 type Runner interface {
 	Launch() error
 	Run(item, project string) (flow.ItemResult, error)
+	RunFile(item, project, file string) (flow.ItemResult, error)
+	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
+	PinnedFile(item string) (string, error)
 	Shutdown() error
 }
 
@@ -46,10 +51,11 @@ type Flow struct {
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
 type flowCommands struct {
-	ctx     context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
-	env     map[string]string
-	version string
-	factory Flow
+	ctx        context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
+	env        map[string]string
+	version    string
+	factory    Flow
+	itemFields itemFieldsFunc
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -113,25 +119,28 @@ func addConfigFlag(command *cobra.Command, target *string) {
 }
 
 func (f flowCommands) runCommand() *cobra.Command {
-	var flag string
+	var flag, workflowFile string
 
 	command := &cobra.Command{
 		Use:   "run <item> [project]",
-		Short: "Take one item through plan, implement, review and fix rounds",
-		Long: "Take one item through plan, implement, review and fix rounds.\nName the project when the config holds more than one.\n\n" +
+		Short: "Take one item through its workflow",
+		Long: "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
+			"With --workflow, or when " + defaultWorkflowFile + " is in the current folder, the steps of that file run. " +
+			"obee checks the file first and refuses on any problem. Without a file, the item goes through plan, implement, review and fix rounds.\n\n" +
 			"If an earlier run of the item is open, obee run continues it. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
 			"If the last run failed, obee run refuses and names the step that failed. Run obee resume, then obee run.\n" +
 			"After a finished or a canceled run, obee run starts a new run.",
 		Args: runArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return f.run(cmd, args, flag) },
+		RunE: func(cmd *cobra.Command, args []string) error { return f.run(cmd, args, flag, workflowFile) },
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().StringVar(&workflowFile, workflowFlag, "", "the workflow file (default: "+defaultWorkflowFile+" in the current folder, when it exists)")
 
 	return command
 }
 
-// run validates the config and the project, then takes the item to the end of its run.
-func (f flowCommands) run(cmd *cobra.Command, args []string, flag string) error {
+// run validates the config, the project and the workflow file, then takes the item to the end of its run.
+func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string) error {
 	cfg, opts, err := f.options(cmd.ErrOrStderr(), flag)
 	if err != nil {
 		return err
@@ -142,7 +151,60 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag string) error 
 		return err
 	}
 
-	return f.runItem(cmd.OutOrStdout(), cfg, opts, args[0], project)
+	file, err := f.checkedWorkflow(cmd, cfg.Projects[project].Project, workflowFile)
+	if err != nil {
+		return err
+	}
+
+	return f.runItem(cmd.OutOrStdout(), cfg, opts, args[0], project, file)
+}
+
+// checkedWorkflow returns the workflow file that run uses after it passes the check, or an empty name for the fixed item loop.
+func (f flowCommands) checkedWorkflow(cmd *cobra.Command, project model.Project, named string) (string, error) {
+	file, err := chooseWorkflow(named)
+	if err != nil || file == "" {
+		return "", err
+	}
+
+	return file, f.checkWorkflow(cmd, project, file)
+}
+
+// chooseWorkflow returns the workflow file that run uses, or an empty name for the fixed item loop.
+// A file named with --workflow must exist. Without the flag, workflow.hcl in the current folder is used when it exists.
+func chooseWorkflow(named string) (string, error) {
+	if named != "" {
+		if _, err := os.Stat(named); err != nil {
+			return "", fmt.Errorf("read the workflow file: %w. Name a file that exists", err)
+		}
+
+		return named, nil
+	}
+
+	_, err := os.Stat(defaultWorkflowFile)
+
+	switch {
+	case err == nil:
+		return defaultWorkflowFile, nil
+	case errors.Is(err, os.ErrNotExist):
+		// No default file means the fixed item loop, not a failure.
+		return "", nil
+	}
+
+	return "", fmt.Errorf("read the workflow file %s: %w. Fix the access to the file, or name another file with --%s", defaultWorkflowFile, err, workflowFlag)
+}
+
+// checkWorkflow runs the same check as obee check workflow, and refuses the run on any problem.
+func (f flowCommands) checkWorkflow(cmd *cobra.Command, project model.Project, file string) error {
+	fields := workflow.CommonItemFields()
+
+	if f.itemFields != nil {
+		var err error
+		if fields, err = f.itemFields(f.ctx, project); err != nil {
+			return err
+		}
+	}
+
+	return runCheckWorkflow(cmd.ErrOrStderr(), file, fields)
 }
 
 // runArgs accepts a valid item id and at most one project name.
@@ -173,7 +235,7 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 	return "", fmt.Errorf("the config holds %d projects: name one after the item: %s", len(names), strings.Join(names, ", "))
 }
 
-func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Options, item, project string) error {
+func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
 	engine, err := f.factory.Engine(f.ctx, cfg, opts)
 	if err != nil {
 		return err
@@ -183,12 +245,29 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	result, err := f.await(engine, item, project)
+	if err := announceOpenRun(stdout, engine, item); err != nil {
+		return errors.Join(err, engine.Shutdown())
+	}
+
+	result, err := f.await(engine, item, project, file)
 	if err == nil {
 		printResult(stdout, item, result)
 	}
 
 	return errors.Join(err, engine.Shutdown())
+}
+
+// announceOpenRun says which file an open run continues with. obee run ignores --workflow when it joins an open run.
+func announceOpenRun(stdout io.Writer, engine Runner, item string) error {
+	pinned, err := engine.PinnedFile(item)
+	if err != nil || pinned == "" {
+		return err
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, pinned)
+
+	return nil
 }
 
 // printResult says how a finished run ended: at the end of the fix rounds, or back at draft.
@@ -203,8 +282,8 @@ func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 	_, _ = fmt.Fprintf(stdout, "item %s finished after %d fix rounds\n", item, result.FixRounds)
 }
 
-// await runs the item and waits for its result. An interrupt of the command ends the wait.
-func (f flowCommands) await(engine Runner, item, project string) (flow.ItemResult, error) {
+// await runs the item and waits for its result. An empty file runs the fixed item loop. An interrupt of the command ends the wait.
+func (f flowCommands) await(engine Runner, item, project, file string) (flow.ItemResult, error) {
 	type outcome struct {
 		result flow.ItemResult
 		err    error
@@ -213,7 +292,7 @@ func (f flowCommands) await(engine Runner, item, project string) (flow.ItemResul
 	done := make(chan outcome, 1)
 
 	go func() {
-		result, err := engine.Run(item, project)
+		result, err := start(engine, item, project, file)
 		done <- outcome{result: result, err: err}
 	}()
 
@@ -223,6 +302,15 @@ func (f flowCommands) await(engine Runner, item, project string) (flow.ItemResul
 	case <-f.ctx.Done():
 		return flow.ItemResult{}, errInterrupted
 	}
+}
+
+// start runs the workflow file, or the fixed item loop when the file is empty.
+func start(engine Runner, item, project, file string) (flow.ItemResult, error) {
+	if file == "" {
+		return engine.Run(item, project)
+	}
+
+	return engine.RunFile(item, project, file)
 }
 
 func (f flowCommands) statusCommand() *cobra.Command {

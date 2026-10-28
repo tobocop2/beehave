@@ -217,6 +217,17 @@ func TestDecodeSyntaxErrorGivesPosition(t *testing.T) {
 	assert.Contains(t, found[0].Text, "Fix the syntax")
 }
 
+func TestParseBytesParsesTheGivenBytesAndNamesTheFile(t *testing.T) {
+	t.Parallel()
+
+	body, err := hclfile.ParseBytes("a.hcl", []byte("name = \"x\"\n"))
+	require.NoError(t, err)
+	assert.Contains(t, body.Attributes, "name")
+
+	_, err = hclfile.ParseBytes("a.hcl", []byte("name = \n"))
+	require.ErrorContains(t, err, "a.hcl:1")
+}
+
 func TestDecodeMissingRequiredKeyGivesPosition(t *testing.T) {
 	t.Parallel()
 

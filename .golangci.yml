@@ -331,6 +331,8 @@ linters:
             - github.com/tobocop2/obee/internal/merge
             - github.com/tobocop2/obee/internal/review
             - github.com/tobocop2/obee/internal/pool
+            - github.com/tobocop2/obee/internal/workflow
+            - github.com/tobocop2/obee/internal/hclfile
             - github.com/tobocop2/obee/internal/flow
         unlisted-package:
           list-mode: lax

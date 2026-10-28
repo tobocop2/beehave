@@ -185,4 +185,6 @@ type Deps struct {
 	Trees     trees
 	Beats     beats
 	Merge     merger
+	Commands  commands
+	Items     items
 }
