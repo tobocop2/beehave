@@ -1,9 +1,9 @@
 package config
 
 import (
-	"errors"
-	"fmt"
 	"time"
+
+	"github.com/hashicorp/hcl/v2"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -55,52 +55,97 @@ func DefaultSteps() Steps {
 	}
 }
 
-// rawStep is one [steps.<name>] table as written.
+// rawStep is one steps "<name>" block as written.
+// Each key has a range for the refusals that come after the decode. A key that is not in the block has an empty range.
 type rawStep struct {
-	Runner      *string   `toml:"runner"`
-	FreshRunner *string   `toml:"fresh_runner"`
-	Skills      *[]string `toml:"skills"`
-	Timeout     *string   `toml:"timeout"`
-	IdleTimeout *string   `toml:"idle_timeout"`
+	At            hcl.Range `hcl:",def_range"`
+	Name          string    `hcl:"name,label"`
+	Runner        *string   `hcl:"runner,optional"`
+	RunnerAt      hcl.Range `hcl:"runner,attr_name_range"`
+	FreshRunner   *string   `hcl:"fresh_runner,optional"`
+	FreshRunnerAt hcl.Range `hcl:"fresh_runner,attr_name_range"`
+	Skills        *[]string `hcl:"skills,optional"`
+	SkillsAt      hcl.Range `hcl:"skills,attr_name_range"`
+	Timeout       *string   `hcl:"timeout,optional"`
+	TimeoutAt     hcl.Range `hcl:"timeout,attr_name_range"`
+	IdleTimeout   *string   `hcl:"idle_timeout,optional"`
+	IdleTimeoutAt hcl.Range `hcl:"idle_timeout,attr_name_range"`
 }
 
-const stepKeys = "runner, fresh_runner, skills, timeout, idle_timeout"
+// override is a duration key as written, with the range of its name.
+type override struct {
+	key  string
+	text *string
+	at   hcl.Range
+}
 
-// applySteps merges the tables of one file over the defaults. path names the file in messages.
-func applySteps(path string, base Steps, tables map[string]rawStep) (Steps, error) {
+// applySteps merges the blocks of one file over the defaults.
+func applySteps(base Steps, blocks []rawStep) (Steps, error) {
 	merged := make(Steps, len(base))
 	for step, settings := range base {
 		merged[step] = settings
 	}
 
-	for name, table := range tables {
-		step, err := model.ParseStep(name)
-		if err != nil {
-			return nil, refuse("%s: [steps.%s]: %w. Rename the table.", path, name, err)
+	seen := make(map[string]bool, len(blocks))
+
+	for _, block := range blocks {
+		if seen[block.Name] {
+			return nil, refuseAt(block.At, "steps %q appears twice. Keep one.", block.Name)
 		}
 
-		settings, err := mergeStep(step, merged[step], table)
-		if err != nil {
-			return nil, refuse("%s: [steps.%s]: %w", path, step, err)
-		}
+		seen[block.Name] = true
 
-		merged[step] = settings
+		if err := applyStep(merged, block); err != nil {
+			return nil, err
+		}
 	}
 
 	return merged, nil
 }
 
-// checkStepKeys refuses a table that holds a key its step does not take.
+// applyStep merges one steps block into merged.
+func applyStep(merged Steps, block rawStep) error {
+	step, err := model.ParseStep(block.Name)
+	if err != nil {
+		return refuseAt(block.At, "steps %q: %w. Rename the block.", block.Name, err)
+	}
+
+	settings, err := mergeStep(step, merged[step], block)
+	if err != nil {
+		return err
+	}
+
+	merged[step] = settings
+
+	return nil
+}
+
+// checkStepKeys refuses a table that holds a key its step does not take. The refusal points at the first such key.
 func checkStepKeys(step model.Step, table rawStep) error {
 	if !step.IsAgent() && (table.Runner != nil || table.Skills != nil || table.IdleTimeout != nil) {
-		return errors.New("only plan, implement and review take runner, skills and idle_timeout. Remove them")
+		return refuseAt(earliest(table.RunnerAt, table.SkillsAt, table.IdleTimeoutAt),
+			"steps %q: only plan, implement and review take runner, skills and idle_timeout. Remove them", step)
 	}
 
 	if table.FreshRunner != nil && step != model.StepImplement {
-		return errors.New("only implement takes fresh_runner, because fix round 4 runs as an implement step. Remove it")
+		return refuseAt(table.FreshRunnerAt,
+			"steps %q: only implement takes fresh_runner, because fix round 4 runs as an implement step. Remove it", step)
 	}
 
 	return nil
+}
+
+// earliest returns the range that starts first. A key that is not in the file has an empty range and never wins.
+func earliest(ranges ...hcl.Range) hcl.Range {
+	var first hcl.Range
+
+	for _, r := range ranges {
+		if r.Filename != "" && (first.Filename == "" || r.Start.Byte < first.Start.Byte) {
+			first = r
+		}
+	}
+
+	return first
 }
 
 func mergeStep(step model.Step, settings StepSettings, table rawStep) (StepSettings, error) {
@@ -111,11 +156,11 @@ func mergeStep(step model.Step, settings StepSettings, table rawStep) (StepSetti
 	settings = withNames(settings, table)
 
 	var err error
-	if settings.Timeout, err = duration(table.Timeout, settings.Timeout, step, "timeout", !step.IsAgent()); err != nil {
+	if settings.Timeout, err = duration(step, settings.Timeout, override{"timeout", table.Timeout, table.TimeoutAt}, !step.IsAgent()); err != nil {
 		return settings, err
 	}
 
-	settings.IdleTimeout, err = duration(table.IdleTimeout, settings.IdleTimeout, step, "idle_timeout", step.IsAgent())
+	settings.IdleTimeout, err = duration(step, settings.IdleTimeout, override{"idle_timeout", table.IdleTimeout, table.IdleTimeoutAt}, step.IsAgent())
 
 	return settings, err
 }
@@ -138,18 +183,18 @@ func withNames(settings StepSettings, table rawStep) StepSettings {
 }
 
 // duration parses an override. A key the step does not take is refused with the fix.
-func duration(text *string, current time.Duration, step model.Step, key string, allowed bool) (time.Duration, error) {
-	if text == nil {
+func duration(step model.Step, current time.Duration, set override, allowed bool) (time.Duration, error) {
+	if set.text == nil {
 		return current, nil
 	}
 
 	if !allowed || !step.HasDeadline() {
-		return 0, fmt.Errorf("%s does not apply to step %s. Remove it", key, step)
+		return 0, refuseAt(set.at, "steps %q: %s does not apply to step %s. Remove it", step, set.key, step)
 	}
 
-	parsed, err := time.ParseDuration(*text)
+	parsed, err := time.ParseDuration(*set.text)
 	if err != nil || parsed <= 0 {
-		return 0, fmt.Errorf("%s = %q must be a positive duration such as \"30m\". Fix the value", key, *text)
+		return 0, refuseAt(set.at, "steps %q: %s = %q must be a positive duration such as \"30m\". Fix the value", step, set.key, *set.text)
 	}
 
 	return parsed, nil

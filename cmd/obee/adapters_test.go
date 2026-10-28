@@ -145,7 +145,7 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	require.EqualError(t, err, `project p: no host adapter named "ssh"`)
 
 	_, err = table.host(model.Project{Name: "p"})
-	require.EqualError(t, err, "project p: no [host] table, so no build host")
+	require.EqualError(t, err, "project p: no host block, so no build host")
 
 	built, err = table.host(hostProject(model.HostSkyPilot, "-oProxyCommand=x"))
 	require.ErrorIs(t, err, skypilot.ErrConfig)

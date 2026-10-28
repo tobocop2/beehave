@@ -46,6 +46,10 @@ flowchart TD
         filelock["filelock<br/>flock locks"]
     end
 
+    subgraph LEAF["Leaf: imports no obee package"]
+        hclfile["hclfile<br/>HCL files with positions"]
+    end
+
     main --> cli
     main --> config
     main --> store
@@ -67,6 +71,7 @@ flowchart TD
     ghissues --> store
     ghforge --> forge
     config --> model
+    config --> hclfile
     proc --> model
     store --> model
     forge --> model
@@ -97,6 +102,8 @@ flowchart TD
 
 Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
 
+`hclfile` is the one place that reads an HCL file. It decodes the file into a struct and reports each problem with its file, line and column. It imports no obee package, and `depguard` refuses one. `config` uses it. `config` imports the `hcl` package only for the range types of its decode structs.
+
 `filelock` is the one place that calls `flock`. It gives an exclusive lock that waits, an exclusive lock that fails at once when the file is held, and a shared lock. `ledger` and `flow` use it and import no other lock code.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `check/transcript` takes the transcript readers and the shell scanner as function values, so it imports neither `agent` nor `check/shell`. `cmd/obee` passes the methods of the agent adapter. The `Call` type lives in `model`, which both sides import.
@@ -115,7 +122,7 @@ Each contract has an exported conformance suite, in `internal/store/storetest`, 
 
 ```mermaid
 flowchart LR
-    project["projects/&lt;name&gt;.toml<br/>tracker = …<br/>forge = …<br/>beads_prefix = …"]
+    project["projects/&lt;name&gt;.hcl<br/>tracker = …<br/>forge = …<br/>beads_prefix = …"]
     table["cmd/obee/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]
@@ -192,7 +199,7 @@ The invariant is: a job holds its slot until its work is banked, for at most `ho
 4. **In-use directories.** `EnsureUnused` refuses when a process or one of its threads has the directory as its working directory, runs an executable from it, or holds a file open in it. One call to `sh` on the host resolves the directory with `readlink -f` and matches the cleaned and the resolved path; nothing resolves on the machine of obee. A scan that fails counts as in use.
 5. **Waits.** `WaitJob` accepts only a final job state from the scheduler of the host. Any other state refuses.
 
-A project selects a host with `build_host` and the `[host]` table. `[host]` is required when `build_host` is a cluster name and refused when it is `"local"`. `provider` names an adapter, `[host.<provider>]` holds the keys of that adapter only, and an unknown key or table is refused. `cmd/obee/adapters.go` picks the provider from its host table by `provider`, like the tracker and the forge, and `obee check config` builds the host of each project. The `[host.skypilot]` keys are `cloud`, `region` (needs `cloud`) and `instance_type`; the cluster name is `build_host`.
+A project selects a host with `build_host` and the `host` block. The `host` block is required when `build_host` is a cluster name and refused when it is `"local"`. `provider` names an adapter, a nested block named after the provider (`host { skypilot { } }`) holds the keys of that adapter only, and an unknown key or block is refused. `cmd/obee/adapters.go` picks the provider from its host block by `provider`, like the tracker and the forge, and `obee check config` builds the host of each project. The `skypilot` block keys are `cloud`, `region` (needs `cloud`) and `instance_type`; the cluster name is `build_host`.
 
 ## Agent runs
 
@@ -306,7 +313,7 @@ The take mode refuses in this order: no notice, a notice younger than the grace 
 
 ### Own work is never merged
 
-obee never merges its own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, or any author of any commit, has a login or address equal to the owner login, the owner address or the login of a runner in `runners.toml`, the stop is `OwnWork`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
+obee never merges its own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, or any author of any commit, has a login or address equal to the owner login, the owner address or the login of a runner in `runners.hcl`, the stop is `OwnWork`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
 
 No flag lifts this rule. `AllowOrphans`, `AllowNoChecks` and `AllowReady` do not reach it, and `auto_merge` covers only the pull request of a contributor. A missing owner login or address is a refusal, because the rule cannot tell whose work it is. The scopes of the token and every later read run after guard 0, so a refused pull request has had no write.
 
@@ -342,7 +349,7 @@ The rules file of the project comes from the config path. `LoadRules` refuses a 
 
 ## Configuration
 
-In the config folder, `runners.toml` holds `[agents]` (`max_concurrent`, the global limit on agent processes), `[pool]` and the `[[runner]]` logins. `projects/<name>.toml` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`), a `[host]` table for a project with a build host, and an optional `[steps.<step>]` table that overrides the defaults of the default workflow. The step names are the typed constants in `model`. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
+In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`), a `host` block for a project with a build host, and an optional `steps "<step>"` block that overrides the defaults of the default workflow. The step names are the typed constants in `model`. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
 
 `config` is the only package that reads the environment. The `OBEE_*` variables override the file values, `OBEE_CONFIG` names the config folder and `OBEE_STATE_DIR` names the state folder. `cmd/obee` sets `umask 077`. `cli.Execute` refuses to start when a `DBOS__*` variable is set. The state folder must be absolute, owned by the user and mode 0700.
 
@@ -383,7 +390,7 @@ The round policy is one pure function of the number of fix rounds so far and the
 
 An approved verdict ends the loop at any round. A gate that ran and failed counts as a verdict that asks for changes, with the gate report as the findings. A gate that could not run stops the item with an error and uses no fix round. The findings of round `k` go into the brief of round `k + 1`.
 
-The optional key `fresh_runner` of the `implement` step names the runner of the fresh agent in round 4. If the key is absent, the fresh agent uses the runner of the item. `obee check config` refuses a name that `runners.toml` does not list.
+The optional key `fresh_runner` of the `implement` step names the runner of the fresh agent in round 4. If the key is absent, the fresh agent uses the runner of the item. `obee check config` refuses a name that `runners.hcl` does not list.
 
 The pause sets the findings as the question of the run and waits for a durable receive with no deadline: the receive starts again every seven days. `obee status` shows the question. `obee answer <item> <text>` sends the answer. The answer goes into the brief of round 6, and the run continues.
 
@@ -504,7 +511,7 @@ The DBOS rules live in `.ai-rulez/rules/dbos-and-secrets.md`. In short:
 
 - **Interfaces at the consumer.** A package states what it needs, so a fake needs few methods and an adapter can change without edits in policy code.
 - **CLI as contract for `gh` and `bd`.** The `gh` and `bd` commands are what the owner runs by hand. `bd` has a public Go package, but it needs cgo or a Dolt backend and pulls its whole tree. Revisit when `bd` ships a slim client module.
-- **No framework for config.** go-toml/v2 decodes into a struct and rejects unknown keys. The overlay is explicit code in one package.
+- **No framework for config.** `hclfile` decodes an HCL file into a struct with `gohcl`, rejects unknown keys and reports each problem with `file:line:col`. The overlay is explicit code in one package.
 - **Make, not Task.** A single Makefile holds the targets: `check`, `lint`, `test`, `format`, `vet` and `coverage`.
 - **Coverage exclusion.** Only `cmd/obee/main.go` is excluded from the 100% gate. The smoke step runs the built binary.
 - **Agent rules from `.ai-rulez/`.** Generated files (`AGENTS.md`, `CLAUDE.md` and the preset folders) are ignored by git.

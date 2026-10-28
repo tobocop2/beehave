@@ -36,8 +36,8 @@ func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "runners.toml", "[[runner]]\nname = \"a\"\nagent = \"claude\"\n")
-	writeConfig(t, dir, "projects/p.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+	writeConfig(t, dir, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
+	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
@@ -62,8 +62,8 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 
 	dir := t.TempDir()
 	text := "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
-	writeConfig(t, dir, "projects/a.toml", text)
-	writeConfig(t, dir, "projects/b.toml", text)
+	writeConfig(t, dir, "projects/a.hcl", text)
+	writeConfig(t, dir, "projects/b.hcl", text)
 
 	var built []string
 
@@ -78,14 +78,14 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 
 	require.Equal(t, 2, code)
 	require.Equal(t, []string{"a", "b"}, built)
-	require.Equal(t, filepath.Join(dir, "projects", "b.toml")+": no gh on the path\n", stderr)
+	require.Equal(t, filepath.Join(dir, "projects", "b.hcl")+": no gh on the path\n", stderr)
 }
 
 func TestCheckConfig_RefusesAProjectWithoutABeadsPrefixWhateverItsTracker(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "projects/p.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
@@ -97,17 +97,17 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "runners.toml", "bogus = 1\n")
-	writeConfig(t, dir, "projects/a.toml", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
-	writeConfig(t, dir, "projects/b.toml", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "runners.hcl", "bogus = 1\n")
+	writeConfig(t, dir, "projects/a.hcl", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/b.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
 	require.Empty(t, stdout)
 	require.Equal(t,
-		filepath.Join(dir, "runners.toml")+": unknown key `bogus`. Remove it, or use one of: agents, pool, runner; [agents]: max_concurrent; [pool]: five_hour_max, seven_day_max; [[runner]]: name, agent, config_dir, keychain.\n"+
-			filepath.Join(dir, "projects", "a.toml")+": `repo` must be written owner/name. Fix the value.\n",
+		filepath.Join(dir, "runners.hcl")+":1:1: unknown key `bogus`. Remove it.\n"+
+			filepath.Join(dir, "projects", "a.hcl")+":1:1: `repo` must be written owner/name. Fix the value.\n",
 		stderr)
 }
 
@@ -133,19 +133,19 @@ func TestCheckConfig_TakesTheFolderFromTheEnvironment(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "projects/p.toml", "shade = 1\n")
+	writeConfig(t, dir, "projects/p.hcl", "shade = 1\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{"OBEE_CONFIG": dir})
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, filepath.Join(dir, "projects", "p.toml"))
+	require.Contains(t, stderr, filepath.Join(dir, "projects", "p.hcl"))
 }
 
 func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 	t.Parallel()
 
 	bad := t.TempDir()
-	writeConfig(t, bad, "projects/p.toml", "shade = 1\n")
+	writeConfig(t, bad, "projects/p.hcl", "shade = 1\n")
 
 	code, _, _ := runCheckConfig(t, map[string]string{"OBEE_CONFIG": bad}, "--config", t.TempDir())
 
@@ -155,12 +155,12 @@ func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 func TestCheckConfig_UsesTheHomeFolderByDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	writeConfig(t, home, ".config/obee/projects/p.toml", "shade = 1\n")
+	writeConfig(t, home, ".config/obee/projects/p.hcl", "shade = 1\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{})
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, filepath.Join(home, ".config", "obee", "projects", "p.toml"))
+	require.Contains(t, stderr, filepath.Join(home, ".config", "obee", "projects", "p.hcl"))
 }
 
 func TestCheckConfig_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {

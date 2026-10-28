@@ -79,7 +79,7 @@ type Forge interface {
 	Body
 }
 
-// Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.toml.
+// Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.hcl.
 // The settings name the repository, the base, the round and the login and address of the owner.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.

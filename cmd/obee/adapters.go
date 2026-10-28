@@ -109,10 +109,10 @@ func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:i
 	return build(project)
 }
 
-// host builds the build host the project names. A project with no [host] table builds locally and has none.
-func (a adapters) host(project model.Project) (host.Host, error) { //nolint:ireturn // the table builds whichever adapter the project names
+// host builds the build host the project names. A project with no host block builds locally and has none.
+func (a adapters) host(project model.Project) (host.Host, error) { //nolint:ireturn // the host block names the adapter to build
 	if project.Host == nil {
-		return nil, fmt.Errorf("project %s: no [host] table, so no build host", project.Name)
+		return nil, fmt.Errorf("project %s: no host block, so no build host", project.Name)
 	}
 
 	build, found := a.hosts[project.Host.Provider]

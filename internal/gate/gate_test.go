@@ -324,7 +324,7 @@ func TestRun_AHostFailureIsReturnedWithTheStep(t *testing.T) {
 func TestRun_AClusterWithNoHostIsAnErrorThatNamesTheFix(t *testing.T) {
 	t.Parallel()
 
-	failure := errors.New("no [host] table")
+	failure := errors.New("no host block")
 	g := gate.New(nil, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return nil, failure })
 
 	_, err := g.Run(context.Background(), gate.Request{Project: project("gpu-a"), Dir: "/w"})
