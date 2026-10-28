@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -54,6 +55,31 @@ func write(t *testing.T, path, text string, mode os.FileMode) {
 
 	if err := os.WriteFile(path, []byte(text), mode); err != nil {
 		t.Fatal(err)
+	}
+
+	if mode == scriptMode {
+		startOnce(t, path)
+	}
+}
+
+// startOnce starts a new script and stops it at once, so the first-run scan of macOS happens before any timer starts.
+// The start returns after the scan, so the script has no time to do its work. A script that cannot start is not an error here.
+func startOnce(t *testing.T, path string) {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), path)
+	if err := cmd.Start(); err != nil {
+		t.Logf("warm-up start of %s: %v", path, err)
+
+		return
+	}
+
+	if err := cmd.Process.Kill(); err != nil {
+		t.Logf("warm-up stop of %s: %v", path, err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		t.Logf("warm-up end of %s: %v", path, err)
 	}
 }
 
