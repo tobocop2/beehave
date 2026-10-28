@@ -39,8 +39,19 @@ func fakeOnPath(t *testing.T, name, script string) string {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o700)) //nolint:gosec // a test script must be executable
 	t.Setenv("PATH", dir+":/bin:/usr/bin")
+	runOnce(t, filepath.Join(dir, name))
 
 	return dir
+}
+
+// runOnce starts a new script once, so the first-run scan of macOS happens before any timer starts.
+// The script gets no arguments, so it ends at once; a script that cannot start is not an error here.
+func runOnce(t *testing.T, path string) {
+	t.Helper()
+
+	if err := exec.CommandContext(t.Context(), path).Run(); err != nil {
+		t.Logf("warm-up run of %s: %v", path, err)
+	}
 }
 
 func TestExecRunner_ReturnsOutputAndExitCode(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
