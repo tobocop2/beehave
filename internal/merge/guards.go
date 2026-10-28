@@ -9,10 +9,10 @@ import (
 // settings refuses a round with no repository, base or round name.
 func (a *attempt) settings() *refusal {
 	for _, key := range []struct{ name, value string }{
-		{"REPO", a.req.Settings.Repo()}, {"BASE", a.req.Settings.Base()}, {"ROUND", a.req.Settings.RoundName()},
+		{"repository", a.req.Repo}, {"base branch", a.req.Base}, {"round name", a.req.Round},
 	} {
 		if key.value == "" {
-			return refuse("REFUSE: " + key.name + " is not set. Set it in the round settings.")
+			return refuse("REFUSE: the " + key.name + " of the merge is not set.")
 		}
 	}
 
@@ -45,8 +45,8 @@ func (a *attempt) state() *refusal {
 	switch {
 	case state != "OPEN":
 		return refuse("REFUSE: state is " + state)
-	case base != a.req.Settings.Base():
-		return refuse(fmt.Sprintf("REFUSE: base is %s, expected %s", base, a.req.Settings.Base()))
+	case base != a.req.Base:
+		return refuse(fmt.Sprintf("REFUSE: base is %s, expected %s", base, a.req.Base))
 	case head != a.req.Gated:
 		return refuse(fmt.Sprintf("REFUSE: head %s is not the gated %s. Re-gate.", head, a.req.Gated))
 	case mergeable != "MERGEABLE":

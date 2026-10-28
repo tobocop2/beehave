@@ -18,7 +18,7 @@ const (
 )
 
 // errMergeNotBuilt is returned when a merge step asks to merge and this build has no merger.
-var errMergeNotBuilt = errors.New("merging is not built yet: the round settings that it needs come in R1. Remove `merge = true` from the merge step, and the owner merges the pull request")
+var errMergeNotBuilt = errors.New("merging is not built yet: the settings of the merge step come in R1. Remove `merge = true` from the merge step, and the owner merges the pull request")
 
 // runMerge pins the commit in `head`, marks the pull request ready, and merges it only when `merge` is true.
 // It then reads the pull request until the owner merges it or sends it back. The wait is a durable sleep.

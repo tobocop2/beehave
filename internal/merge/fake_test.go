@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -231,17 +230,11 @@ func (w *world) SetBody(_ context.Context, number int, body string) error {
 	return nil
 }
 
-func settings(over map[string]string) config.Settings {
-	env := map[string]string{"REPO": "owner/name", "BASE": "main", "ROUND": "r1", "ME_LOGIN": me, "ME_EMAIL": meMail}
-	for key, value := range over {
-		env[key] = value
-	}
-
-	return config.NewSettings(env)
-}
-
 func request() merge.Request {
-	return merge.Request{PR: pr, Gated: sha, Settings: settings(nil), Runners: []string{"bee-1"}}
+	return merge.Request{
+		PR: pr, Gated: sha, Runners: []string{"bee-1"},
+		Repo: "owner/name", Base: "main", Round: "r1", OwnerLogin: me, OwnerEmail: meMail,
+	}
 }
 
 func (w *world) run(req merge.Request) merge.Result {

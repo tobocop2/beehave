@@ -518,7 +518,7 @@ func (c *checker) merges() {
 		}
 
 		if value, diags := step.Merge.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True() {
-			c.add(step.Merge.Range(), "merging is not built yet: the round settings that it needs come in R1. Remove `merge = true`, and the owner merges the pull request.")
+			c.add(step.Merge.Range(), "merging is not built yet: the settings of the merge step come in R1. Remove `merge = true`, and the owner merges the pull request.")
 		}
 	}
 }

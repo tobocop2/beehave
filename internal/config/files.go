@@ -27,6 +27,12 @@ const (
 // The value goes into an ssh command, so a cluster name is a letter, then letters, digits, hyphens.
 var clusterName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+
+	return err == nil && info.Mode().IsRegular()
+}
+
 // decodeFile reads an HCL file into target and reports each problem with its position.
 func decodeFile(path string, target any) error {
 	if err := hclfile.Decode(path, target); err != nil {

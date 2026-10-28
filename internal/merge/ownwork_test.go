@@ -82,17 +82,21 @@ func TestOwnWork_ASecondAuthorOfACommitCounts(t *testing.T) {
 func TestOwnWork_AMissingLoginOrAddressRefuses(t *testing.T) {
 	t.Parallel()
 
-	for _, missing := range []string{"ME_LOGIN", "ME_EMAIL"} {
+	blanks := map[string]func(*merge.Request){
+		"owner login":   func(r *merge.Request) { r.OwnerLogin = "" },
+		"owner address": func(r *merge.Request) { r.OwnerEmail = "" },
+	}
+	for missing, blank := range blanks {
 		t.Run(missing, func(t *testing.T) {
 			t.Parallel()
 
 			w := newWorld(t)
 			req := request()
-			req.Settings = settings(map[string]string{missing: ""})
+			blank(&req)
 			result := w.run(req)
 
 			assert.Equal(t, merge.Refused, result.Stop)
-			assert.Contains(t, result.Lines[0], "ME_EMAIL and ME_LOGIN must both be set")
+			assert.Contains(t, result.Lines[0], "the owner login and the owner address must both be set")
 			assert.Empty(t, w.calls, "no read before the guard")
 			assert.Empty(t, w.writes)
 		})

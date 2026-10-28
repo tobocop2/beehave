@@ -16,9 +16,9 @@ func fields() []string {
 // of any commit, whose login or address is the owner login, the owner address or the login of a runner. Case does not count.
 // No setting lifts it, and it runs before any other read, so a refused pull request has had no write.
 func (a *attempt) ownWork() *refusal {
-	login, email := a.req.Settings.MeLogin(), a.req.Settings.MeEmail()
+	login, email := a.req.OwnerLogin, a.req.OwnerEmail
 	if login == "" || email == "" {
-		return refuse("REFUSE: ME_EMAIL and ME_LOGIN must both be set. They tell obee which work is its own, and obee never merges its own work.")
+		return refuse("REFUSE: the owner login and the owner address must both be set. They tell obee which work is its own, and obee never merges its own work.")
 	}
 
 	if stop := a.read(); stop != nil {

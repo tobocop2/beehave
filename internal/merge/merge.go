@@ -6,7 +6,6 @@ import (
 	"context"
 	"slices"
 
-	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -80,13 +79,17 @@ type Forge interface {
 }
 
 // Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.hcl.
-// The settings name the repository, the base, the round and the login and address of the owner.
+// Repo, Base and Round name the repository, the base and the round. OwnerLogin and OwnerEmail are the login and address of the owner.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
 	PR            int
 	Gated         string
-	Settings      config.Settings
+	Repo          string
+	Base          string
+	Round         string
+	OwnerLogin    string
+	OwnerEmail    string
 	Runners       []string
 	Dir           string
 	IntegrationPR int

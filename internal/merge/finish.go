@@ -76,7 +76,7 @@ func (a *attempt) ready() *refusal {
 
 // merged says the merge and the tip of the base after it. A tip that cannot be read does not undo the merge.
 func (a *attempt) merged() {
-	base := a.req.Settings.Base()
+	base := a.req.Base
 
 	tip, found, err := a.forge.BranchRef(a.ctx, base)
 	if err != nil || !found {
