@@ -39,7 +39,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-Q-22 | Every terminal state dispatches the next item | core | gap | - | - | S1-Q-22 |
 | S1-Q-23 | Dispatch independent items to free slots while one item loops | core | gap | - | - | S1-Q-23 |
 | S1-Q-24 | An item is the scope of one PR; batch issues that share a mechanism | skill | gap | - | - | S1-Q-24 |
-| S1-Q-25 | Scope is fixed at the first review; a new closed issue needs an owner line | core | gap | - | - | S1-Q-25 |
+| S1-Q-25 | Scope is fixed at the first review; a new closed issue needs an owner line | core | gap | tools/remedy scope | TestScope_ANewClosedIssueIsExitCodeTwoAndNamesTheCommandForTheOwnerRow | S1-Q-25 |
 | S1-Q-26 | Work that belongs to someone outside the system gets an owner token | core | gap | - | - | S1-Q-26 |
 | S1-Q-27 | A filed issue has no assignee by default | file | gap | - | - | S1-Q-27 |
 | S1-Q-28 | The issue store is pluggable; an unknown value is refused | core | gap | - | - | S1-Q-28, S1-Q-29 |
@@ -70,7 +70,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-L-18 | A handoff holds regressions, tokens, compile state and unread jobs | core | gap | - | - | S1-L-18, S1-L-23, S1-L-54, S1-L-55 |
 | S1-L-19 | Five fix rounds: rounds 1 to 3 resume, rounds 4 and 5 start fresh one tier up and are told the round | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-19, S1-L-20 |
 | S1-L-21 | At five rounds, adjudicate each open finding | skill | expressed | workflow.hcl wait adjudicate | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-21 |
-| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | tools/remedy admit | TestAdmit_ATwoPatchRoundMechanismSendsTheLaneToADesignLane | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
+| S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | core | gap | tools/remedy ledger count | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-L-22, S1-L-59, S1-L-24, S1-L-25 |
 | S1-L-26 | Design lane rules: coverage, cheapest evidence, repeat-offender, build-versus-buy | skill | gap | - | - | S1-L-26, S1-L-86, S1-L-97, S1-L-98, S1-L-99, S1-L-100, S1-L-104 |
 | S1-L-27 | Keep a capped number of lanes busy; a parked lane holds no slot | core | gap | - | - | S1-L-27, S1-L-28, S1-L-31 |
 | S1-L-29 | Retire a lane only when its worktree is clean and pushed | core | gap | - | - | S1-L-29, S1-L-30, S1-L-32 |
@@ -189,16 +189,16 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-M-34 | No no-verify, stash, config writes or force-push of a shared branch | core | gap | - | - | S1-M-34, S1-S-15, S1-S-21 |
 | S1-M-35 | Do not edit a branch a merge depends on; file a surviving finding first | skill | gap | - | - | S1-M-35, S1-M-36, S1-M-38 |
 | S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | - | - | S1-M-37, S1-S-11, S1-L-94 |
-| S1-I-05 | Close the resolved issue with evidence; file a surviving finding before merge | core | gap | - | - | S1-I-05, S1-I-11, S1-F-04, S1-F-06, S1-F-07 |
-| S1-I-06 | Closing keywords only on the integration PR, except on the default branch | core | gap | - | - | S1-I-06, S1-B-28 |
-| S1-I-07 | Audit closing keywords at the tip; read closing references after each batch | core | gap | - | - | S1-I-07, S1-F-20 |
+| S1-I-05 | Close the resolved issue with evidence; file a surviving finding before merge | core | gap | tools/remedy ledger closes | TestLedger_TheFirstReviewRecordsTheIssuesOfTheBodyFile | S1-I-05, S1-I-11, S1-F-04, S1-F-06, S1-F-07 |
+| S1-I-06 | Closing keywords only on the integration PR, except on the default branch | core | gap | tools/remedy ledger add | TestLedger_TheFirstReviewReadsTheBodyOfThePullRequestThroughTheForge | S1-I-06, S1-B-28 |
+| S1-I-07 | Audit closing keywords at the tip; read closing references after each batch | core | gap | tools/remedy scope | TestScope_TheKeyFlagNamesTheLedgerKeyOfAnItemWhosePullRequestHasAnotherNumber | S1-I-07, S1-F-20 |
 | S1-I-08 | At round end report remaining work, release locks and tear down | core | gap | - | - | S1-I-08 |
 | S1-I-10 | A rulings file holds expected behavior, references, harness and base build | core | gap | - | - | S1-I-10, S1-D-11, S1-R-16 |
 | S1-W-01 | A background watcher arms at round start and after each wake | drop | n/a | - | - | S1-W-01, S1-W-02, S1-W-03, S1-W-04, S1-W-05, S1-W-07, S1-W-08, S1-W-15, S1-W-16, S1-W-19, S1-D-09, S1-D-10 |
 | S1-W-06 | A stop guard fails a turn when the watcher is dead | drop | n/a | - | - | S1-W-06, S1-W-10, S1-W-11, S1-W-12, S1-W-13, S1-W-18 |
 | S1-W-20 | Spend instrumentation per lane with an hourly flag | core | gap | - | - | S1-W-20, S1-D-13 |
 | S1-D-01 | Queue, lane and gate records are edited through scripts | drop | n/a | - | - | S1-D-01, S1-D-02, S1-D-03, S1-D-15 |
-| S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | - | - | S1-D-04 |
+| S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | tools/remedy ledger add | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-D-04 |
 | S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | - | - | S1-D-12 |
 | S1-D-17 | One record of known base reds with a timestamp and the tip | file | gap | - | - | S1-D-17, S1-PS-12 |
 | S1-X-01 | Take-over: review first, then notice with a token ask, then claim | core | gap | tools/remedy take | TestTake_ApplyPostsTheNoticeAndPasses | S1-X-01, S1-X-02, S1-X-08, S1-X-09, S1-X-10, S1-X-11, S1-X-12, S1-F-16, S1-R-67 |

@@ -14,8 +14,8 @@ import (
 const admitSyntax = "admit <kind> --lane <name> --key <pr> --state <folder> [--lane-kind fix|rework|relay] [--mechanism <token>] [--acceptance <path>] [--base-result <path>] [--new-behavior] [--handoff <file>] [--transcript <file>] [--cap <tokens>]"
 
 // OpenBook turns the opener of a lane ledger into the Book field of Deps.
-func OpenBook[B brief.Book](open func(dir string) B) func(string) brief.Book {
-	return func(dir string) brief.Book {
+func OpenBook[B Book](open func(dir string) B) func(string) Book {
+	return func(dir string) Book {
 		return open(dir)
 	}
 }

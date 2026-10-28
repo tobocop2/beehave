@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/tobocop2/obee/internal/ledger"
+	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
 	"github.com/tobocop2/obee/internal/proc"
 )
 

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
 	"github.com/tobocop2/obee/internal/check"
-	"github.com/tobocop2/obee/internal/ledger"
 )
 
 // CodeRefused is the exit code of a pull request that closes a new issue with no approval of the owner.
@@ -105,7 +105,7 @@ func refused(pr, key, fresh string, then []string) Result {
 	return Result{Code: CodeRefused, Lines: []string{
 		fmt.Sprintf("REFUSED: pull request %s closes%s now, and did not at its first review (then: %s).", pr, fresh, strings.Join(then, " ")),
 		"         Move each one to a new pull request. To keep one here, ask the owner and run",
-		fmt.Sprintf("         obee scope allow %s <issue> <the owner's words>", key),
+		fmt.Sprintf("         remedy ledger add %s <issue> owner-add --state <folder> --words <the owner's words>", key),
 		"         once for each issue.",
 	}}
 }

@@ -69,6 +69,8 @@ func (*forgeWorld) ReviewComments(context.Context, int) ([]model.Comment, error)
 
 func (*forgeWorld) PostComment(context.Context, int, string) error { return nil }
 
+func (*forgeWorld) PRBody(context.Context, int) (string, error) { return "", nil }
+
 // run executes one command line and returns the exit code with the two outputs.
 func run(t *testing.T, deps remedy.Deps, args ...string) (int, string, string) {
 	t.Helper()
@@ -127,7 +129,7 @@ func TestExecute_UnknownCommandRefuses(t *testing.T) {
 func TestNames_AreTheCommandsOfTheTable(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"cut", "audit", "take", "admit", "size"}, remedy.Names())
+	assert.Equal(t, []string{"cut", "audit", "take", "admit", "size", "ledger", "scope"}, remedy.Names())
 }
 
 func TestCut_MergedPullRequestMovesTheRoundAndPasses(t *testing.T) {
