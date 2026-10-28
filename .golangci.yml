@@ -118,6 +118,11 @@ linters:
           deny:
             - pkg: go.dbos.dev/dbos-enterprise-go
               desc: the enterprise module opens an outgoing connection; never import it
+        no-shell-interpreter:
+          files: ["$all"]
+          deny:
+            - pkg: mvdan.cc/sh/v3/interp
+              desc: obee parses shell text and never runs it
         dbos-only-in-flow:
           files: ["!**/internal/flow/**"]
           deny:
