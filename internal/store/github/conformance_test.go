@@ -15,10 +15,15 @@ import (
 func TestStore_ConformsToTracker(t *testing.T) {
 	t.Parallel()
 
-	storetest.TestTracker(t, func(t *testing.T, _ bool) store.Tracker {
+	storetest.TestTracker(t, func(t *testing.T, broken bool) store.Tracker {
 		t.Helper()
 
-		gh, err := github.New(ghRepo, proctest.Always(model.CommandResult{ExitCode: 1, Stderr: "boom"}))
+		run := proctest.Always(model.CommandResult{ExitCode: 1, Stderr: "boom"})
+		if !broken {
+			run.Plan(`{"number":5,"title":"A finding","body":"The body."}`, "issue", "view")
+		}
+
+		gh, err := github.New(ghRepo, run)
 		require.NoError(t, err)
 
 		return gh

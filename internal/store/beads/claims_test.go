@@ -47,7 +47,10 @@ func TestStore_ConformsToTracker(t *testing.T) {
 			return beadsOver(t, brokenRunner{})
 		}
 
-		return beadsOver(t, newFakeBd(t))
+		run := newFakeBd(t)
+		run.Add(storetest.ItemID, beadstest.Fields{"title": "A finding", "description": "The body."})
+
+		return beadsOver(t, run)
 	})
 }
 

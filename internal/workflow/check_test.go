@@ -23,8 +23,11 @@ func filesWith(text string) fstest.MapFS {
 func check(t *testing.T, text string) ([]hclfile.Diagnostic, bool) {
 	t.Helper()
 
-	return workflow.Check(filesWith(text), "w.hcl")
+	return workflow.Check(filesWith(text), "w.hcl", forgeFields)
 }
+
+// forgeFields is the field list of a tracker and a forge together.
+var forgeFields = []string{"id", "title", "body", "branch", "head_sha", "pr", "author"}
 
 // oneProblem checks text and wants exactly one problem.
 func oneProblem(t *testing.T, text string) hclfile.Diagnostic {
@@ -411,6 +414,28 @@ command "use" {
 	assert.Contains(t, d.Text, "author, body, branch, head_sha, id, kind, pr, title")
 }
 
+func TestAnItemFieldThatTheAdaptersDoNotDeclareIsRefusedWithThePositionAndTheDeclaredNames(t *testing.T) {
+	t.Parallel()
+
+	text := twoSteps(`
+command "use" {
+  run = [item.branch]
+}
+`)
+
+	found, unparsed := workflow.Check(filesWith(text), "w.hcl", workflow.CommonItemFields())
+
+	require.False(t, unparsed)
+	require.Len(t, found, 1)
+	assert.Equal(t, "w.hcl:7:10: `item` has no field `branch`. Use one of: body, id, kind, title.", found[0].Error())
+}
+
+func TestCommonItemFieldsAreTheIdTheTitleAndTheBody(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"id", "title", "body"}, workflow.CommonItemFields())
+}
+
 func TestABareItemOrEnvReferenceIsReported(t *testing.T) {
 	t.Parallel()
 
@@ -547,10 +572,10 @@ func TestPromptPathIsRelativeToTheWorkflowFile(t *testing.T) {
 		"other/note.txt": {Data: []byte("x")},
 	}
 
-	found, _ := workflow.Check(fsys, "sub/w.hcl")
+	found, _ := workflow.Check(fsys, "sub/w.hcl", forgeFields)
 	assert.Empty(t, found)
 
-	found, _ = workflow.Check(fsys, "other/w.hcl")
+	found, _ = workflow.Check(fsys, "other/w.hcl", forgeFields)
 	require.Len(t, found, 1)
 	assert.Equal(t, "other/w.hcl", found[0].File)
 }
@@ -587,7 +612,7 @@ func TestAPromptThatClimbsOutOfASubfolderIsReported(t *testing.T) {
 		"p.md":      {Data: []byte("outside")},
 	}
 
-	found, unparsed := workflow.Check(fsys, "sub/w.hcl")
+	found, unparsed := workflow.Check(fsys, "sub/w.hcl", forgeFields)
 
 	require.False(t, unparsed)
 	require.Len(t, found, 1, "%v", found)
@@ -663,7 +688,7 @@ func TestATemplateThatDoesNotParseIsReported(t *testing.T) {
 	fsys := filesWith("workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/fix.md\"\n}\n")
 	fsys["prompts/fix.md"] = &fstest.MapFile{Data: []byte("{{ .open ")}
 
-	found, unparsed := workflow.Check(fsys, "w.hcl")
+	found, unparsed := workflow.Check(fsys, "w.hcl", forgeFields)
 
 	require.Len(t, found, 1)
 	assert.False(t, unparsed)
@@ -689,7 +714,7 @@ agent "c" {
 func TestCheckMarksAFileThatDoesNotParse(t *testing.T) {
 	t.Parallel()
 
-	found, unparsed := workflow.Check(fstest.MapFS{}, "none.hcl")
+	found, unparsed := workflow.Check(fstest.MapFS{}, "none.hcl", forgeFields)
 
 	require.Len(t, found, 1)
 	assert.True(t, unparsed)

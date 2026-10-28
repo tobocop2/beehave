@@ -14,6 +14,14 @@ type Forge interface {
 	Activity
 	Lookup
 	Standing
+	ItemReads
+}
+
+// ItemReads reads a pull request as a workflow item. ItemFields lists the names of the fields that Item returns and needs no call to the forge.
+// Item returns one value for each declared field. A failed read is an error.
+type ItemReads interface {
+	ItemFields() []string
+	Item(ctx context.Context, pr int) (map[string]string, error)
 }
 
 // Standing is the review state of our own open pull requests, read in one call.

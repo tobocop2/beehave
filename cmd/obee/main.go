@@ -23,11 +23,13 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	bd := proc.NewExecRunner("bd", "")
+	table := newAdapters(bd)
 	info := cli.BuildInfo{
-		Version:  version,
-		Adapters: newAdapters(bd).check,
-		Doctor:   newDoctor(bd, newSecurityRunner()),
-		Flow:     flowFactory(),
+		Version:    version,
+		Adapters:   table.check,
+		ItemFields: table.itemFields,
+		Doctor:     newDoctor(bd, newSecurityRunner()),
+		Flow:       flowFactory(),
 	}
 	code := cli.Execute(ctx, os.Args[1:], info, config.ProcessEnv(), os.Stdout, os.Stderr)
 	stop()

@@ -367,7 +367,13 @@ A step reads another step with `<kind>.<name>.<output>`. It reads the work item 
 - no step depends on itself, directly or through other steps (the error shows the path as `a -> b -> a`);
 - each prompt file is a relative path inside the folder of the workflow file, exists there, and parses as a `text/template`.
 
+The names after `item.` come from the adapters. Each tracker and each forge declares its item fields (`ItemFields`): beads and GitHub issues declare `id`, `title` and `body`, and the forge declares `branch`, `head_sha`, `pr` and `author`. The core adds `kind`. `obee check workflow --project <name>` reads the fields from the adapters of that project (`--config` names the config folder). Without `--project`, the fields are `id`, `title`, `body` and `kind`. A reference to any other field gives an error with the position and the declared names.
+
 The check reads the names in an expression and never evaluates it. An `outputs` argument that is not a list of strings, or a `prompt` that an expression computes, switches off the check of the output name or the file. Types are checked at run time.
+
+At run time, an expression sees one scope. The scope holds `item`, `env`, `loop`, and one object for each step kind, with the outputs of every step that has run. A step that was skipped has an empty value of the right type for each output. An expression fails with the file, the line and the column when it names a step that has not run, uses a function, or has the wrong type. A condition fails when its value is empty or is not true or false.
+
+`examples/remediation/` is one workflow written in this schema: a plan, an implement step, and a review and fix loop of up to five rounds, with four prompt files. The method lives in that folder and never in Go. `examples/remediation/CONFORMANCE.md` has one row for each rule of the method, with its home (`core`, `file`, `skill` or `drop`) and its status (`gap`, `expressed`, `proven` or `n/a`). A test in the `workflow` package fails when an ID repeats, when a home or status is not one of the allowed words, or when an `expressed` row names a block that the example does not hold. A row moves to `proven` when a behavior test runs it.
 
 ## The durable loop
 
