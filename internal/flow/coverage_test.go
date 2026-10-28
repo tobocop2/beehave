@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -305,9 +306,7 @@ func TestTick_TheRealTickerRenewsAHeldClaim(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	engine.holds.mu.Lock()
-	engine.holds.rows = map[string]claimHold{"run-1": {project: testProject, owner: testOwner + testItem, renewed: time.Now()}}
-	engine.holds.mu.Unlock()
+	engine.holds.add("run-1", claimHold{project: testProject, owner: testOwner + testItem, renewed: time.Now()})
 
 	stop := make(chan struct{})
 	ended := make(chan struct{})
@@ -322,6 +321,34 @@ func TestTick_TheRealTickerRenewsAHeldClaim(t *testing.T) {
 	<-ended
 
 	assert.Equal(t, testProject+"/"+testOwner+testItem, harness.beats.seen()[0])
+}
+
+func TestShutdown_StopsTheTrustTimerOfAClaimThatIsStillHeld(t *testing.T) {
+	t.Parallel()
+
+	var (
+		stopped atomic.Bool
+		fire    func()
+	)
+
+	harness := newHarness(t)
+	deps := harness.deps()
+	deps.Clock.After = func(_ time.Duration, f func()) func() {
+		fire = f
+
+		return func() { stopped.Store(true) }
+	}
+
+	engine, err := NewEngine(t.Context(), harness.opts, deps)
+	require.NoError(t, err)
+
+	engine.holds.add("run-1", claimHold{renewed: time.Now()})
+	engine.trust("run-1", time.Now())
+
+	require.NoError(t, engine.Shutdown())
+
+	assert.True(t, stopped.Load(), "a timer must not outlive the engine")
+	assert.NotPanics(t, fire, "a timer that fires after the shutdown finds no claim")
 }
 
 func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
