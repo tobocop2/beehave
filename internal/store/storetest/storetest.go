@@ -8,14 +8,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store"
 )
 
+// ItemID is the item that a tracker under test serves when it is not broken.
+const ItemID = "5"
+
 const (
-	item     = "5"
+	item     = ItemID
 	holderA  = "session-a"
 	holderB  = "session-b"
 	bodyMode = 0o600
@@ -27,12 +31,18 @@ type Reporter interface {
 	Errorf(format string, args ...any)
 }
 
-// TrackerFactory returns a new tracker over an empty fake. When broken is true, every command of the fake fails.
+// TrackerFactory returns a new tracker over a fake that serves the item ItemID. When broken is true, every command of the fake fails.
 type TrackerFactory func(t *testing.T, broken bool) store.Tracker
 
 // TestTracker runs the conformance suite against the tracker that make returns, as testing/fstest.TestFS does for a file system.
 func TestTracker(t *testing.T, make TrackerFactory) {
 	t.Helper()
+	t.Run("declares_the_item_fields", func(t *testing.T) {
+		CheckItemFields(t, make(t, false))
+	})
+	t.Run("item_returns_the_declared_fields", func(t *testing.T) {
+		CheckItem(t, make(t, false))
+	})
 	t.Run("a_failed_command_is_an_error_everywhere", func(t *testing.T) {
 		CheckTrackerFails(t, make(t, true), filepath.Join(t.TempDir(), "body.md"))
 	})
@@ -184,6 +194,54 @@ func (c check) allFail(calls []call) {
 	}
 }
 
+// CheckItemFields checks that a tracker declares the fields every tracker must carry: id, title and body.
+func CheckItemFields(r Reporter, tracker store.Tracker) {
+	r.Helper()
+
+	declared := tracker.ItemFields()
+
+	for _, want := range []string{"id", "title", "body"} {
+		if !slices.Contains(declared, want) {
+			r.Errorf("ItemFields: want %q among the declared fields, got %v", want, declared)
+		}
+	}
+}
+
+// CheckItem checks the success path of Item on a tracker that serves the item ItemID: the result holds one value for each declared field, and the id is the item.
+func CheckItem(r Reporter, tracker store.Tracker) {
+	r.Helper()
+
+	got, err := tracker.Item(context.Background(), ItemID)
+	if err != nil {
+		r.Errorf("Item: unexpected error: %v", err)
+
+		return
+	}
+
+	checkDeclared(r, got, tracker.ItemFields())
+
+	if got["id"] != ItemID {
+		r.Errorf("Item: want id %q, got %q", ItemID, got["id"])
+	}
+}
+
+// checkDeclared checks that got holds one value for each declared field and no other field.
+func checkDeclared(r Reporter, got map[string]string, declared []string) {
+	r.Helper()
+
+	for _, name := range declared {
+		if _, found := got[name]; !found {
+			r.Errorf("Item: want a value for the declared field %q, got %v", name, got)
+		}
+	}
+
+	for name := range got {
+		if !slices.Contains(declared, name) {
+			r.Errorf("Item: got the field %q, which ItemFields does not declare (%v)", name, declared)
+		}
+	}
+}
+
 // CheckTrackerFails runs every method of a tracker whose commands all fail. Each must return an error and never a guess.
 func CheckTrackerFails(r Reporter, tracker store.Tracker, bodyFile string) {
 	r.Helper()
@@ -201,6 +259,7 @@ func trackerCalls(tracker store.Tracker, bodyFile string) []call {
 		{"Containers", func(ctx context.Context) error { _, err := tracker.Containers(ctx); return err }},
 		{"Children", func(ctx context.Context) error { _, err := tracker.Children(ctx, item); return err }},
 		{"Show", func(ctx context.Context) error { _, err := tracker.Show(ctx, item); return err }},
+		{"Item", func(ctx context.Context) error { _, err := tracker.Item(ctx, item); return err }},
 		{"Close", func(ctx context.Context) error { return tracker.Close(ctx, item, "done") }},
 		{"Create", func(ctx context.Context) error { _, err := tracker.Create(ctx, request); return err }},
 	}

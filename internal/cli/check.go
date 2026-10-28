@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +24,7 @@ const (
 	exitWorkflowProblems = 1
 
 	configFlag          = "config"
+	projectFlag         = "project"
 	defaultWorkflowFile = "workflow.hcl"
 )
 
@@ -35,37 +37,99 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, itemFields itemFieldsFunc) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(env, itemFields))
 
 	return check
 }
 
-func newCheckWorkflowCommand() *cobra.Command {
-	return &cobra.Command{
+// itemFieldsFunc returns the item fields that the adapters of a project declare.
+type itemFieldsFunc func(context.Context, model.Project) ([]string, error)
+
+// workflowCheck holds what `check workflow` reads: the process environment, the adapter hook and the two flags.
+type workflowCheck struct {
+	env        map[string]string
+	itemFields itemFieldsFunc
+	project    string
+	configDir  string
+}
+
+func newCheckWorkflowCommand(env map[string]string, itemFields itemFieldsFunc) *cobra.Command {
+	w := &workflowCheck{env: env, itemFields: itemFields}
+
+	command := &cobra.Command{
 		Use:   "workflow [file]",
 		Short: "Check a workflow file and print one line for each problem",
 		Long: "Check the structure, the references, the cycles and the prompt files of a workflow file. " +
 			"The default file is " + defaultWorkflowFile + " in the current folder. " +
+			"With --project, the item fields come from the tracker and the forge of that project. Without it, the only item fields are id, title and body. " +
 			"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.",
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			file := defaultWorkflowFile
-			if len(args) > 0 {
-				file = args[0]
-			}
-
-			return runCheckWorkflow(cmd.ErrOrStderr(), file)
-		},
+		RunE: w.run,
 	}
+	command.Flags().StringVar(&w.project, projectFlag, "", "the project whose adapters declare the item fields (default: id, title and body only)")
+	command.Flags().StringVar(&w.configDir, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+
+	return command
 }
 
-func runCheckWorkflow(stderr io.Writer, file string) error {
-	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file))
+func (w *workflowCheck) run(cmd *cobra.Command, args []string) error {
+	file := defaultWorkflowFile
+	if len(args) > 0 {
+		file = args[0]
+	}
+
+	fields, err := w.fields(cmd.Context())
+	if err != nil {
+		return err
+	}
+
+	return runCheckWorkflow(cmd.ErrOrStderr(), file, fields)
+}
+
+// fields returns the item fields of the named project. No project name, or a build with no adapter hook, gives the common fields.
+func (w *workflowCheck) fields(ctx context.Context) ([]string, error) {
+	if w.project == "" {
+		return workflow.CommonItemFields(), nil
+	}
+
+	project, err := w.loadProject()
+	if err != nil {
+		return nil, err
+	}
+
+	if w.itemFields == nil {
+		return workflow.CommonItemFields(), nil
+	}
+
+	return w.itemFields(ctx, project)
+}
+
+func (w *workflowCheck) loadProject() (model.Project, error) {
+	dir, err := config.FolderPath(w.env, w.configDir)
+	if err != nil {
+		return model.Project{}, err
+	}
+
+	cfg, problems := config.LoadFolder(dir, w.env)
+	if len(problems) > 0 {
+		return model.Project{}, problems
+	}
+
+	project, found := cfg.Projects[w.project]
+	if !found {
+		return model.Project{}, fmt.Errorf("no project named %q. Use one of: %s", w.project, strings.Join(slices.Sorted(maps.Keys(cfg.Projects)), ", "))
+	}
+
+	return project.Project, nil
+}
+
+func runCheckWorkflow(stderr io.Writer, file string, fields []string) error {
+	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file), fields)
 	if len(found) == 0 {
 		return nil
 	}

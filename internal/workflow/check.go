@@ -31,7 +31,8 @@ const (
 // The second result is true when the file could not be read or parsed, and no other check ran.
 // A file with structural problems still gets the reference, cycle and file checks on the steps that loaded.
 // A reference to a step that failed to load is not reported again.
-func Check(fsys fs.FS, file string) ([]hclfile.Diagnostic, bool) {
+// fields lists the names that the tracker and the forge declare for an item. The field `kind` is always valid.
+func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool) {
 	body, err := hclfile.Parse(fsys, file)
 	if err != nil {
 		return diagnostics(err), true
@@ -39,7 +40,10 @@ func Check(fsys fs.FS, file string) ([]hclfile.Diagnostic, bool) {
 
 	flow, names, err := build(file, body)
 
-	c := &checker{fsys: fsys, flow: flow, byName: map[string]*site{}, declared: names, found: diagnostics(err)}
+	valid := append(slices.Clone(fields), "kind")
+	slices.Sort(valid)
+
+	c := &checker{fsys: fsys, flow: flow, byName: map[string]*site{}, declared: names, fields: slices.Compact(valid), found: diagnostics(err)}
 
 	c.index(flow.Steps, nil)
 	c.references()
@@ -76,7 +80,9 @@ type checker struct {
 	byName map[string]*site
 	// declared holds every step name in the file, including the steps that failed to load.
 	declared map[string]hcl.Range
-	found    []hclfile.Diagnostic
+	// fields holds the sorted names that `item` may read.
+	fields []string
+	found  []hclfile.Diagnostic
 }
 
 // index lists the steps in walk order. ancestors holds the loops around steps.
@@ -152,13 +158,13 @@ func attribute(tr hcl.Traversal, i int) (string, bool) {
 
 func (c *checker) item(at hcl.Range, field string, named bool) {
 	if !named {
-		c.add(at, "`item` needs a field. Write `item.<field>`."+hint("", itemFields()))
+		c.add(at, "`item` needs a field. Write `item.<field>`."+hint("", c.fields))
 
 		return
 	}
 
-	if !slices.Contains(itemFields(), field) {
-		c.add(at, fmt.Sprintf("`item` has no field `%s`.%s", field, hint(field, itemFields())))
+	if !slices.Contains(c.fields, field) {
+		c.add(at, fmt.Sprintf("`item` has no field `%s`.%s", field, hint(field, c.fields)))
 	}
 }
 
@@ -257,36 +263,19 @@ func (c *checker) output(tr hcl.Traversal, target *site) {
 // outputs returns the sorted output names of a step. The second result is true when the step
 // declares its outputs with an expression that is not a list of strings, so any name may be valid.
 func outputs(step Step) ([]string, bool) {
-	names := builtinOutputs(step.Kind())
+	all, open := stepOutputs(step)
+	if open {
+		return nil, true
+	}
 
-	if agent, ok := step.(*Agent); ok {
-		declared, open := declaredOutputs(agent.Outputs)
-		if open {
-			return nil, true
-		}
-
-		names = append(names, declared...)
+	names := make([]string, 0, len(all))
+	for _, o := range all {
+		names = append(names, o.Name)
 	}
 
 	slices.Sort(names)
 
-	return slices.Compact(names), false
-}
-
-func builtinOutputs(kind Kind) []string {
-	switch kind {
-	case KindAgent:
-		return []string{"head_sha", "session", "text", "transcript"}
-	case KindCommand:
-		return []string{"rc", "stdout"}
-	case KindGate:
-		return []string{"head", "passed", "rc", "report"}
-	case KindWait:
-		return []string{"answer"}
-	case KindLoop:
-	}
-
-	return []string{"exhausted"}
+	return names, false
 }
 
 // declaredOutputs reads the names in an `outputs` argument that is a list of strings.
@@ -333,8 +322,9 @@ func roots() []string {
 	return []string{"agent", "command", rootEnv, "gate", rootItem, "loop", "wait"}
 }
 
-func itemFields() []string {
-	return []string{"author", "body", "branch", "head_sha", "id", "kind", "pr", "title"}
+// CommonItemFields returns the item fields that every tracker declares. A check without a project uses them.
+func CommonItemFields() []string {
+	return []string{"id", "title", "body"}
 }
 
 // hint says which name is nearest to name and lists the valid names. It is empty when valid is empty.

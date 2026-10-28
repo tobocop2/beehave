@@ -249,6 +249,29 @@ func (s *Store) Show(ctx context.Context, item string) (string, error) {
 	return issue.render()
 }
 
+// ItemFields declares the fields that Item returns.
+func (*Store) ItemFields() []string { return []string{"id", "title", "body"} }
+
+// Item returns the number, title and body of an issue. An unreadable issue is a refusal with code 2.
+func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
+	done := s.run.Run(ctx, []string{argIssue, "view", item, argRepo, s.repo, argJSON, "number,title,body"})
+	if done.ExitCode != 0 {
+		return nil, store.Refuse("REFUSE: cannot read item %s in %s", item, s.repo)
+	}
+
+	issue, err := store.Decode[ghView](viewCommand, done.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	title, number, err := ghIssue{Number: issue.Number, Title: issue.Title}.identity()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{"id": number, "title": title, "body": derefText(issue.Body)}, nil
+}
+
 func (v ghView) render() (string, error) {
 	title, number, err := ghIssue{Number: v.Number, Title: v.Title}.identity()
 	if err != nil {

@@ -31,6 +31,10 @@ type memForge struct {
 	wrong     bool
 	down      bool
 	wrongGone bool
+	noFields  bool
+	dropped   string
+	extra     bool
+	wrongPR   bool
 }
 
 func (m memForge) fail() error {
@@ -55,6 +59,103 @@ func (m memForge) PRBody(context.Context, int) (string, error) {
 
 func (m memForge) PRView(context.Context, int, ...string) (model.PullRequest, error) {
 	return model.PullRequest{Title: forgetest.SevenTitle}, m.fail()
+}
+
+func (m memForge) ItemFields() []string {
+	if m.noFields {
+		return nil
+	}
+
+	return []string{"branch", "head_sha", "pr", "author"}
+}
+
+func (m memForge) Item(context.Context, int) (map[string]string, error) {
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+
+	got := map[string]string{}
+
+	for _, name := range m.ItemFields() {
+		got[name] = "value of " + name
+	}
+
+	got["pr"] = "7"
+	if m.wrongPR {
+		got["pr"] = "8"
+	}
+
+	delete(got, m.dropped)
+
+	if m.extra {
+		got["undeclared"] = "x"
+	}
+
+	return got, nil
+}
+
+func TestCheckItem_AcceptsAForgeThatReturnsTheDeclaredFields(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{})
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckItem_FailsAForgeThatDropsADeclaredField(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{dropped: "author"})
+	assert.Equal(t, []string{`Item: want a value for the declared field "author", got map[branch:value of branch head_sha:value of head_sha pr:7]`}, r.failures)
+}
+
+func TestCheckItem_FailsAForgeThatReturnsAnUndeclaredField(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{extra: true})
+	assert.Equal(t, []string{`Item: got the field "undeclared", which ItemFields does not declare ([branch head_sha pr author])`}, r.failures)
+}
+
+func TestCheckItem_FailsAForgeThatReturnsAnotherNumber(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{wrongPR: true})
+	assert.Equal(t, []string{`Item: want pr "7", got "8"`}, r.failures)
+}
+
+func TestCheckItem_ReportsAnErrorOfAForge(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{down: true})
+	assert.Equal(t, []string{"Item: unexpected error: down"}, r.failures)
+}
+
+func TestCheckItem_FailsAForgeThatDeclaresNoFieldButReturnsOne(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItem(r, memForge{noFields: true})
+	assert.Equal(t, []string{`Item: got the field "pr", which ItemFields does not declare ([])`}, r.failures)
+}
+
+func TestCheckItemFields_AcceptsAForgeThatDeclaresFields(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItemFields(r, memForge{})
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckItemFields_FailsAForgeThatDeclaresNone(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckItemFields(r, memForge{noFields: true})
+	assert.Equal(t, []string{"ItemFields: want at least one declared field, got none"}, r.failures)
 }
 
 func (m memForge) PRList(context.Context, int, ...string) ([]model.PullRequest, error) {

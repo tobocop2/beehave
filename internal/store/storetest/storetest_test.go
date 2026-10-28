@@ -40,6 +40,10 @@ type memTracker struct {
 	beatAny     bool
 	reclaimLive bool
 	noLease     bool
+	fields      []string
+	dropped     string
+	extra       bool
+	wrongID     bool
 }
 
 func newMem() *memTracker {
@@ -120,6 +124,110 @@ func (m *memTracker) Containers(context.Context) ([]string, error) { return nil,
 func (m *memTracker) Children(context.Context, string) ([]string, error) { return nil, m.err() }
 
 func (m *memTracker) Show(context.Context, string) (string, error) { return "", m.err() }
+
+func (m *memTracker) ItemFields() []string {
+	if m.fields != nil {
+		return m.fields
+	}
+
+	return []string{"id", "title", "body"}
+}
+
+func (m *memTracker) Item(context.Context, string) (map[string]string, error) {
+	if err := m.err(); err != nil {
+		return nil, err
+	}
+
+	got := map[string]string{}
+
+	for _, name := range m.ItemFields() {
+		got[name] = "value of " + name
+	}
+
+	got["id"] = storetest.ItemID
+	if m.wrongID {
+		got["id"] = "other"
+	}
+
+	delete(got, m.dropped)
+
+	if m.extra {
+		got["undeclared"] = "x"
+	}
+
+	return got, nil
+}
+
+func TestCheckItem_AcceptsATrackerThatReturnsTheDeclaredFields(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckItem(r, newMem())
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckItem_FailsATrackerThatDropsADeclaredField(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.dropped = "body"
+
+	r := &recorder{}
+	storetest.CheckItem(r, mem)
+	assert.Equal(t, []string{`Item: want a value for the declared field "body", got map[id:5 title:value of title]`}, r.failures)
+}
+
+func TestCheckItem_FailsATrackerThatReturnsAnUndeclaredField(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.extra = true
+
+	r := &recorder{}
+	storetest.CheckItem(r, mem)
+	assert.Equal(t, []string{`Item: got the field "undeclared", which ItemFields does not declare ([id title body])`}, r.failures)
+}
+
+func TestCheckItem_FailsATrackerThatReturnsAnotherID(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.wrongID = true
+
+	r := &recorder{}
+	storetest.CheckItem(r, mem)
+	assert.Equal(t, []string{`Item: want id "5", got "other"`}, r.failures)
+}
+
+func TestCheckItem_ReportsAnErrorOfATracker(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.down = true
+
+	r := &recorder{}
+	storetest.CheckItem(r, mem)
+	assert.Equal(t, []string{"Item: unexpected error: down"}, r.failures)
+}
+
+func TestCheckItemFields_AcceptsATrackerThatDeclaresIDTitleAndBody(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	storetest.CheckItemFields(r, newMem())
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckItemFields_FailsATrackerThatLeavesOutAField(t *testing.T) {
+	t.Parallel()
+
+	mem := newMem()
+	mem.fields = []string{"id", "title"}
+
+	r := &recorder{}
+	storetest.CheckItemFields(r, mem)
+	assert.Equal(t, []string{`ItemFields: want "body" among the declared fields, got [id title]`}, r.failures)
+}
 
 func (m *memTracker) Close(context.Context, string, string) error { return m.err() }
 

@@ -8,7 +8,11 @@ import (
 )
 
 // Tracker is an issue tracker: work items and their parents. beads and GitHub Issues implement it. The claim rows are not part of it.
+// ItemFields lists the names of the fields that Item returns; every tracker declares id, title and body. It needs no call to the tracker.
+// Item reads one item and returns one value for each declared field. A failed read is an error.
 type Tracker interface {
+	ItemFields() []string
+	Item(ctx context.Context, id string) (map[string]string, error)
 	OpenItems(ctx context.Context) ([]model.Item, error)
 	Containers(ctx context.Context) ([]string, error)
 	Children(ctx context.Context, container string) ([]string, error)

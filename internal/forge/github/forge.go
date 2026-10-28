@@ -143,6 +143,32 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 	return view, nil
 }
 
+// ItemFields declares the fields that Item returns.
+func (*Forge) ItemFields() []string { return []string{"branch", "head_sha", "pr", "author"} }
+
+// Item returns the branch, head commit, number and author of a pull request. A field the forge does not send is empty.
+func (f *Forge) Item(ctx context.Context, pr int) (map[string]string, error) {
+	view, err := f.PRView(ctx, pr, "number", "headRefName", "headRefOid", "author")
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		"branch":   deref(view.HeadRefName),
+		"head_sha": deref(view.HeadRefOid),
+		"pr":       strconv.Itoa(view.Number),
+		"author":   view.Author.Login,
+	}, nil
+}
+
+func deref(text *string) string {
+	if text == nil {
+		return ""
+	}
+
+	return *text
+}
+
 // countsAnswer is the answer of the pull request read of the REST API. A nil count means the API sent null or no field.
 type countsAnswer struct {
 	Commits      *int `json:"commits"`

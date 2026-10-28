@@ -26,6 +26,8 @@ type BuildInfo struct {
 	Version string
 	// Adapters builds the tracker, the forge and the claim store of a project and returns why it cannot. A nil value skips the check.
 	Adapters func(context.Context, model.Project) error
+	// ItemFields returns the item fields that the tracker and the forge of a project declare. A nil value leaves the common fields.
+	ItemFields func(context.Context, model.Project) ([]string, error)
 	// Doctor reads what the doctor command checks outside the process: the Keychain and the bd version.
 	Doctor Doctor
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
@@ -45,7 +47,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters), newDoctorCommand(ctx, env, info.Doctor))
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.ItemFields), newDoctorCommand(ctx, env, info.Doctor))
 	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow}.add(root)
 
 	return root
