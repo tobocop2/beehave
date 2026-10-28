@@ -6,18 +6,24 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/hclfile"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
-	exitProblems = 2
+	exitProblems         = 2
+	exitWorkflowProblems = 1
 
-	configFlag = "config"
+	configFlag          = "config"
+	defaultWorkflowFile = "workflow.hcl"
 )
 
 // ExitError carries the exit code of a command that failed on purpose.
@@ -34,9 +40,43 @@ func newCheckCommand(ctx context.Context, env map[string]string, adapters func(c
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters))
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand())
 
 	return check
+}
+
+func newCheckWorkflowCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "workflow [file]",
+		Short: "Check a workflow file and print one line for each problem",
+		Long: "Check the structure, the references, the cycles and the prompt files of a workflow file. " +
+			"The default file is " + defaultWorkflowFile + " in the current folder. " +
+			"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			file := defaultWorkflowFile
+			if len(args) > 0 {
+				file = args[0]
+			}
+
+			return runCheckWorkflow(cmd.ErrOrStderr(), file)
+		},
+	}
+}
+
+func runCheckWorkflow(stderr io.Writer, file string) error {
+	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file))
+	if len(found) == 0 {
+		return nil
+	}
+
+	printProblems(stderr, file, found)
+
+	if unparsed {
+		return &ExitError{Code: exitProblems}
+	}
+
+	return &ExitError{Code: exitWorkflowProblems}
 }
 
 func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
@@ -77,6 +117,24 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 	}
 
 	return nil
+}
+
+// printProblems prints one line for each problem and then the count. The check reads the file by
+// its name inside its folder, and each line shows the path that the user typed.
+func printProblems(stderr io.Writer, file string, found []hclfile.Diagnostic) {
+	for _, problem := range found {
+		problem.File = file
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintln(stderr, problem)
+	}
+
+	noun := "problems"
+	if len(found) == 1 {
+		noun = "problem"
+	}
+
+	// A failed write to stderr has no recovery.
+	_, _ = fmt.Fprintf(stderr, "%d %s in %s\n", len(found), noun, file)
 }
 
 // adapterProblems builds the adapters each project names, in name order, and reports each project that cannot build them.

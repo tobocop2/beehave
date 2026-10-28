@@ -29,16 +29,27 @@ func Load(fsys fs.FS, path string) (*Workflow, error) {
 		return nil, err
 	}
 
+	flow, _, err := build(path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	return flow, nil
+}
+
+// build makes the workflow from a parsed file. The workflow holds the steps that loaded, even
+// when the error is set. The map holds the name of every step in the file, loaded or not.
+func build(path string, body *hclsyntax.Body) (*Workflow, map[string]hcl.Range, error) {
 	b := &builder{path: path, names: map[string]hcl.Range{}, flow: &Workflow{File: path}}
 
 	b.file(body)
 	b.requireModel()
 
 	if len(b.found) > 0 {
-		return nil, join(b.found)
+		return b.flow, b.names, join(b.found)
 	}
 
-	return b.flow, nil
+	return b.flow, b.names, nil
 }
 
 // builder collects the workflow and every problem found while it walks the file.
@@ -161,7 +172,16 @@ func (b *builder) step(step Step, blk *hclsyntax.Block) bool {
 
 	loop.Steps = b.steps(blk.Body.Blocks, loopBlocks)
 
-	if b.decode(loop, blk) && loop.Max < 1 {
+	return b.decodeLoop(loop, blk)
+}
+
+// decodeLoop decodes a loop and reports whether it is usable. A loop that fails to decode has no condition.
+func (b *builder) decodeLoop(loop *Loop, blk *hclsyntax.Block) bool {
+	if !b.decode(loop, blk) {
+		return false
+	}
+
+	if loop.Max < 1 {
 		b.add(blk.Body.Attributes["max"].Expr.Range(), "`max` must be at least 1. Set a number from 1 up.")
 	}
 
@@ -253,28 +273,42 @@ func (b *builder) add(at hcl.Range, text string) {
 
 // addAll adds each problem inside an error that hclfile returned.
 func (b *builder) addAll(err error) {
+	b.found = append(b.found, diagnostics(err)...)
+}
+
+// diagnostics returns each problem inside an error that hclfile or join returned.
+func diagnostics(err error) []hclfile.Diagnostic {
 	var many interface{ Unwrap() []error }
 
 	if errors.As(err, &many) {
+		var found []hclfile.Diagnostic
+
 		for _, one := range many.Unwrap() {
-			b.addAll(one)
+			found = append(found, diagnostics(one)...)
 		}
 
-		return
+		return found
 	}
 
 	var one hclfile.Diagnostic
 
 	if errors.As(err, &one) {
-		b.found = append(b.found, one)
+		return []hclfile.Diagnostic{one}
 	}
+
+	return nil
+}
+
+// sortByPosition orders the problems by line and column and keeps the order of equal positions.
+func sortByPosition(found []hclfile.Diagnostic) {
+	slices.SortStableFunc(found, func(a, c hclfile.Diagnostic) int {
+		return cmp.Or(cmp.Compare(a.Line, c.Line), cmp.Compare(a.Col, c.Col))
+	})
 }
 
 // join sorts the problems by position and returns them as one error.
 func join(found []hclfile.Diagnostic) error {
-	slices.SortStableFunc(found, func(a, c hclfile.Diagnostic) int {
-		return cmp.Or(cmp.Compare(a.Line, c.Line), cmp.Compare(a.Col, c.Col))
-	})
+	sortByPosition(found)
 
 	errs := make([]error, len(found))
 	for i, d := range found {
