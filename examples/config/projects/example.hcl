@@ -1,12 +1,14 @@
 # One project profile. Make one file for each project.
 # The keys of a project. An unknown key is refused. build_host is optional; the default is local.
-# tracker and forge name the adapters of the project. No adapter is a default.
+# tracker, claims and forge name the adapters of the project. Each one is optional.
 # Name this file in `obee run --project <name>`. The gate step runs `gate` for that project.
 
-repo         = "your-org/your-repo"
-tracker      = "github"        # "beads" or "github" (GitHub Issues); this chooses where work items live
-forge        = "github"        # "github"
-beads_prefix = "proj"          # the id prefix of the beads database. The claim leases live in beads for every tracker.
+repo         = "your-org/your-repo"   # owner/name; required when tracker or forge is "github"
+# source     = "~/work/your-repo"     # a git URL or an absolute path (a leading ~ expands); required when the project has no forge
+tracker      = "github"        # "local" (default), "beads" or "github" (GitHub Issues); this chooses where work items live
+claims       = "beads"         # "local" (default) or "beads"; this chooses where the claim leases live
+forge        = "github"        # "github", or leave the key out for a project with no forge
+beads_prefix = "proj"          # the id prefix of the beads database; required when tracker or claims is "beads"
 base_branch  = "main"
 gate         = "make check"    # the same command that your CI runs
 build_host   = "local"         # "local", or the name of a SkyPilot cluster (not a Slurm partition)

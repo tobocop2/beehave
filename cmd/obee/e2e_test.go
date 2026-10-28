@@ -259,6 +259,7 @@ runner {
 const e2eProject = `repo = "example/shop"
 tracker = "github"
 forge = "github"
+claims = "beads"
 beads_prefix = "shop"
 base_branch = "main"
 gate = "true"

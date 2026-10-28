@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/tobocop2/obee/internal/claim"
 	"github.com/tobocop2/obee/internal/lease"
 	"github.com/tobocop2/obee/internal/model"
@@ -21,12 +23,19 @@ func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim
 	}
 }
 
-// claimsOf builds the claims of a project. The rows are beads, as they are for every project.
+// claimsOf builds the claims of a project. Only beads rows are built; the local claim store comes later.
 func claimsOf(bd proc.Runner, project model.Project) (*claim.Claims, error) {
-	rows, err := beads.New(bd, project.BeadsPrefix)
-	if err != nil {
-		return nil, err
-	}
+	switch project.Claims {
+	case model.ClaimsBeads:
+		rows, err := beads.New(bd, project.BeadsPrefix)
+		if err != nil {
+			return nil, err
+		}
 
-	return lease.Open(rows)
+		return lease.Open(rows)
+	case model.ClaimsLocal:
+		return nil, fmt.Errorf("project %s: the local claim store is not built yet; set claims = \"beads\" in the project file", project.Name)
+	default:
+		return nil, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
 }

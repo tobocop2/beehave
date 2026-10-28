@@ -113,7 +113,7 @@ Layer 2 packages declare the small interfaces they need and do not import layer 
 
 ## Adapters
 
-The tracker and the forge are adapters that a project selects. The package `store` declares two contracts and the package `forge` declares one. `store.Tracker` covers items and parents. `store.ClaimRows` covers the claim of each item. `forge.Forge` covers pull requests, reviews, threads and checks. The claim store is not a choice: beads fills `ClaimRows` for every project. beads, GitHub Issues and GitHub are the first adapters. No adapter is a default: a project file names both with `tracker` and `forge`. Every project also sets `beads_prefix`, because its leases live in beads whatever its `tracker` is. `obee check config` refuses a project without one.
+The tracker and the forge are adapters that a project selects. The package `store` declares two contracts and the package `forge` declares one. `store.Tracker` covers items and parents. `store.ClaimRows` covers the claim of each item. `forge.Forge` covers pull requests, reviews, threads and checks. A project file selects each adapter with a key: `tracker` (`local`, `beads` or `github`), `claims` (`local` or `beads`) and `forge` (`github`). Each key is optional. A missing `tracker` or `claims` means `local`. A missing `forge` means the project has no forge. `repo` is required when `tracker` or `forge` is `github`. `beads_prefix` is required when `tracker` or `claims` is `beads`. A project with no forge must set `source`, a git URL or an absolute path (a leading `~` expands). A path `source` needs `build_host = "local"`, because a remote host cannot read a path on this machine. `obee check config` refuses each of these cases at the position of the key. The local tracker and the local claim store are not built yet: `obee run` and `obee check config` refuse a project that names them, and say so.
 
 `model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `obee check config` refuses an unknown name. `cmd/obee/adapters.go` holds the one table from name to constructor, and a test fails when the table and the name lists differ. `obee check config` builds the tracker, the forge and the claim store of each project, so a project that cannot build them is a problem. It also runs `bd --version` through the command runner and refuses a bd older than 1.3.2: "obee needs bd 1.3.2 or newer for claims; found 0.56.1". No other package dispatches on an adapter name. Layer 2 packages keep small interfaces over the contracts, so a consumer never sees the whole `Tracker`.
 
@@ -121,7 +121,7 @@ Each contract has an exported conformance suite, in `internal/store/storetest`, 
 
 ```mermaid
 flowchart LR
-    project["projects/&lt;name&gt;.hcl<br/>tracker = …<br/>forge = …<br/>beads_prefix = …"]
+    project["projects/&lt;name&gt;.hcl<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads_prefix = …"]
     table["cmd/obee/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]
@@ -157,7 +157,7 @@ flowchart LR
 
 ## Claims live in beads
 
-Claims live in beads for every project, whatever tracker the project uses, because beads has native claim leases. GitHub labels have no write that tests the old value and no lease. obee keeps no lease of its own: bd grants, renews and ends the lease.
+Until the local claim store exists, claims live in beads (`claims = "beads"`), whatever tracker the project uses, because beads has native claim leases. GitHub labels have no write that tests the old value and no lease. obee keeps no lease of its own: bd grants, renews and ends the lease.
 
 - **Row.** A forge number has no beads row, so each item gets a task titled `lock:<kind>-<item>`. A row left with a stale assignee or a closed status is reset to open first, guarded by the values that were read.
 - **Take.** `bd update <row> --claim --actor <holder>` claims an open row with no assignee in one write and grants the lease to the actor. The holder is the actor and the assignee. A refused take exits 1 with the text `issue already claimed` or `issue not claimable`. The adapter reads that exit as a lost take, and `claim` reads the row to learn the winner. Any other exit 1 is an error.
@@ -360,7 +360,7 @@ When the build has a merger, the item merges after the ready step, pinned to the
 
 ## Configuration
 
-In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`) and a `host` block for a project with a build host. The limits and the runner of a step are keys of its block in the workflow file. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
+In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`) and a `host` block for a project with a build host. The limits and the runner of a step are keys of its block in the workflow file. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
 
 `config` is the only package that reads the environment. The `OBEE_*` variables override the file values, `OBEE_CONFIG` names the config folder and `OBEE_STATE_DIR` names the state folder. `cmd/obee` sets `umask 077`. `cli.Execute` refuses to start when a `DBOS__*` variable is set. The state folder must be absolute, owned by the user and mode 0700.
 

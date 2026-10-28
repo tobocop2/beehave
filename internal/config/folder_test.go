@@ -64,7 +64,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
 		cfg.Projects["example"].Project)
 }
 
@@ -176,7 +176,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"unknown_key", goodProject + "shade = \"red\"\n", "unknown key `shade`. Remove it"},
 		{"unknown_key_gives_the_position", goodProject + "shade = \"red\"\n", "p.hcl:7:1: unknown key `shade`"},
 		{"the_steps_block_is_gone", goodProject + "steps \"gate\" {\ntimeout = \"2h\"\n}\n", "p.hcl:7:1: unknown block `steps`. Remove it."},
-		{"missing_repo", "base_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
+		{"missing_repo", "tracker = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\nsource = \"/s\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
 		{"blank_repo", "repo = \" \"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", "repo = [\"o/n\"]\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:"},
 		{"repo_of_the_wrong_type_names_the_key", "repo = [\"o/n\"]\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` has the wrong type"},
@@ -184,17 +184,15 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"repo_with_three_parts", "repo = \"a/b/c\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
 		{"repo_without_owner_text", "repo = \"/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
 		{"repo_without_name", "repo = \"o/\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
-		{"missing_tracker", "repo = \"o/n\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `tracker` must be a non-empty string"},
-		{"missing_forge", "repo = \"o/n\"\ntracker = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `forge` must be a non-empty string"},
-		{"unknown_tracker", "repo = \"o/n\"\ntracker = \"jira\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:2:1: `tracker`: unknown tracker \"jira\": use one of beads, github"},
+		{"unknown_tracker", "repo = \"o/n\"\ntracker = \"jira\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:2:1: `tracker`: unknown tracker \"jira\": use one of local, beads, github"},
 		{"unknown_forge", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"gitlab\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:3:1: `forge`: unknown forge \"gitlab\": use one of github"},
 		{"beads_without_a_prefix", "repo = \"o/n\"\ntracker = \"beads\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `beads_prefix` must be a non-empty string"},
-		{"github_without_a_prefix", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `beads_prefix` must be a non-empty string"},
+		{"beads_claims_without_a_prefix", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `beads_prefix` must be a non-empty string"},
 		{"missing_gate", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\n", "p.hcl:1:1: `gate` must be"},
 		{"missing_base_branch", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\ngate = \"g\"\n", "p.hcl:1:1: `base_branch` must be"},
 		{"blank_tracker", strings.Replace(goodProject, `tracker = "github"`, `tracker = " "`, 1), "p.hcl:2:1: `tracker` must be a non-empty string"},
 		{"blank_forge", strings.Replace(goodProject, `forge = "github"`, `forge = " "`, 1), "p.hcl:3:1: `forge` must be a non-empty string"},
-		{"blank_beads_prefix", strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1), "p.hcl:4:1: `beads_prefix` must be a non-empty string"},
+		{"blank_beads_prefix", strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + "claims = \"beads\"\n", "p.hcl:4:1: `beads_prefix` must be a non-empty string"},
 		{"blank_base_branch", strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1), "p.hcl:5:1: `base_branch` must be a non-empty string"},
 		{"blank_gate", strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1), "p.hcl:6:1: `gate` must be a non-empty string"},
 		{"empty_build_host", goodProject + "build_host = \"\"\n", "p.hcl:7:1: `build_host` must be"},

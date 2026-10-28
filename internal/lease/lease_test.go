@@ -11,7 +11,7 @@ import (
 	"github.com/tobocop2/obee/internal/lease"
 )
 
-const project = "repo = \"owner/name\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const project = "repo = \"owner/name\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
 
 // configFolder writes a config folder with one project file and gives the environment that names it.
 func configFolder(t *testing.T, text string) map[string]string {
@@ -41,6 +41,45 @@ func TestProjectOf_FindsTheProjectThatOwnsTheRepository(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "p", found.Name)
 	assert.Equal(t, "p", found.BeadsPrefix)
+}
+
+func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {
+	t.Parallel()
+
+	env := configFolder(t, "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+
+	found, err := lease.ProjectOf(env, "/srv/repo")
+
+	require.NoError(t, err)
+	assert.Equal(t, "p", found.Name)
+	assert.Equal(t, "/srv/repo", found.Source)
+
+	_, err = lease.ProjectOf(env, "/srv/other")
+	require.Error(t, err)
+}
+
+func TestProjectOf_FindsTheProjectThatOwnsAUrlSourceByExactText(t *testing.T) {
+	t.Parallel()
+
+	env := configFolder(t, "source = \"git@host:o/n.git\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+
+	found, err := lease.ProjectOf(env, "git@host:o/n.git")
+
+	require.NoError(t, err)
+	assert.Equal(t, "git@host:o/n.git", found.Source)
+
+	// The match is by exact text: the owner/name form of the same repository is a different string.
+	_, err = lease.ProjectOf(env, "o/n")
+	require.Error(t, err)
+}
+
+func TestProjectOf_EmptyRepositoryMatchesNoProject(t *testing.T) {
+	t.Parallel()
+
+	_, err := lease.ProjectOf(configFolder(t, project), "")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no project of the obee config has this repository")
 }
 
 func TestProjectOf_RepositoryInTwoProjectsIsRefusedAndNamesBoth(t *testing.T) {

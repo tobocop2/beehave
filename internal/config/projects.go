@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -24,8 +25,12 @@ type rawProject struct {
 	At            hcl.Range
 	Repo          string    `hcl:"repo,optional"`
 	RepoAt        hcl.Range `hcl:"repo,attr_name_range"`
+	Source        string    `hcl:"source,optional"`
+	SourceAt      hcl.Range `hcl:"source,attr_name_range"`
 	Tracker       string    `hcl:"tracker,optional"`
 	TrackerAt     hcl.Range `hcl:"tracker,attr_name_range"`
+	Claims        string    `hcl:"claims,optional"`
+	ClaimsAt      hcl.Range `hcl:"claims,attr_name_range"`
 	Forge         string    `hcl:"forge,optional"`
 	ForgeAt       hcl.Range `hcl:"forge,attr_name_range"`
 	BeadsPrefix   string    `hcl:"beads_prefix,optional"`
@@ -61,12 +66,12 @@ func loadProject(path string) (Project, error) {
 
 // profileOf checks the keys of a project file and returns the profile they describe.
 func profileOf(path string, raw rawProject) (model.Project, error) {
-	host, err := validateProject(raw)
+	names, err := adapterNames(raw)
 	if err != nil {
 		return model.Project{}, err
 	}
 
-	tracker, forge, err := adapterNames(raw)
+	host, source, err := checkKeys(raw, names)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -77,32 +82,28 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 	}
 
 	return model.Project{
-		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo, Tracker: tracker, Forge: forge,
-		BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable,
+		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo, Source: source, Tracker: names.tracker, Claims: names.claims,
+		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable,
 	}, nil
 }
 
-// validateProject checks the keys and returns the build host.
-func validateProject(raw rawProject) (string, error) {
-	if err := requireText(raw.at(raw.RepoAt), "repo", raw.Repo); err != nil {
-		return "", err
-	}
-
-	owner, name, found := strings.Cut(raw.Repo, "/")
-	if !found || owner == "" || name == "" || strings.Contains(name, "/") {
-		return "", refuseAt(raw.RepoAt, "`repo` must be written owner/name. Fix the value.")
+// checkKeys checks the keys that the named adapters need and returns the build host and the source.
+func checkKeys(raw rawProject, names adapters) (string, string, error) {
+	if err := requireAdapterKeys(raw, names); err != nil {
+		return "", "", err
 	}
 
 	host, err := buildHost(raw)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	if err = requireText(raw.at(raw.BaseBranchAt), "base_branch", raw.BaseBranch); err != nil {
-		return "", err
+	source, err := sourceOf(raw, names.forge, host)
+	if err != nil {
+		return "", "", err
 	}
 
-	return host, requireText(raw.at(raw.GateAt), "gate", raw.Gate)
+	return host, source, errors.Join(requireText(raw.at(raw.BaseBranchAt), "base_branch", raw.BaseBranch), requireText(raw.at(raw.GateAt), "gate", raw.Gate))
 }
 
 func buildHost(raw rawProject) (string, error) {
@@ -122,22 +123,152 @@ func buildHost(raw rawProject) (string, error) {
 	return *raw.BuildHost, nil
 }
 
-// adapterNames checks that the project names a tracker and a forge that obee has an adapter for, and its beads prefix. The claim rows live in beads whatever tracker the project uses. No adapter is a default.
-func adapterNames(raw rawProject) (model.TrackerName, model.ForgeName, error) {
-	if err := errors.Join(requireText(raw.at(raw.TrackerAt), "tracker", raw.Tracker), requireText(raw.at(raw.ForgeAt), "forge", raw.Forge)); err != nil {
-		return "", "", err
-	}
+// adapters holds the adapters that a project names.
+type adapters struct {
+	tracker model.TrackerName
+	claims  model.ClaimsName
+	forge   model.ForgeName
+}
 
-	tracker, err := model.ParseTracker(raw.Tracker)
+// adapterNames returns the tracker, the claim store and the forge that the project names. A key that is not in the file
+// gives the local tracker, the local claim store and no forge. A key that is in the file must name an adapter.
+func adapterNames(raw rawProject) (adapters, error) {
+	tracker, err := trackerName(raw)
 	if err != nil {
-		return "", "", refuseAt(raw.TrackerAt, "`tracker`: %w. Fix the value.", err)
+		return adapters{}, err
 	}
 
-	forge, err := model.ParseForge(raw.Forge)
+	claims, err := claimsName(raw)
 	if err != nil {
-		return "", "", refuseAt(raw.ForgeAt, "`forge`: %w. Fix the value.", err)
+		return adapters{}, err
 	}
 
-	// The claim rows live in beads whatever tracker the project uses, so every project names its beads prefix.
-	return tracker, forge, requireText(raw.at(raw.BeadsPrefixAt), "beads_prefix", raw.BeadsPrefix)
+	forge, err := forgeName(raw)
+
+	return adapters{tracker: tracker, claims: claims, forge: forge}, err
+}
+
+// present reports whether a key is in the file.
+func present(key hcl.Range) bool { return key.Filename != "" }
+
+// given returns the text of a key that is in the file, and false for a key that is not. A key that is in the file must not be blank.
+func given(at hcl.Range, key, value string) (string, bool, error) {
+	if !present(at) {
+		return "", false, nil
+	}
+
+	return value, true, requireText(at, key, value)
+}
+
+func trackerName(raw rawProject) (model.TrackerName, error) {
+	text, found, err := given(raw.TrackerAt, "tracker", raw.Tracker)
+	if err != nil || !found {
+		return model.TrackerLocal, err
+	}
+
+	tracker, err := model.ParseTracker(text)
+	if err != nil {
+		return "", refuseAt(raw.TrackerAt, "`tracker`: %w. Fix the value.", err)
+	}
+
+	return tracker, nil
+}
+
+func claimsName(raw rawProject) (model.ClaimsName, error) {
+	text, found, err := given(raw.ClaimsAt, "claims", raw.Claims)
+	if err != nil || !found {
+		return model.ClaimsLocal, err
+	}
+
+	claims, err := model.ParseClaims(text)
+	if err != nil {
+		return "", refuseAt(raw.ClaimsAt, "`claims`: %w. Fix the value.", err)
+	}
+
+	return claims, nil
+}
+
+func forgeName(raw rawProject) (model.ForgeName, error) {
+	text, found, err := given(raw.ForgeAt, "forge", raw.Forge)
+	if err != nil || !found {
+		return "", err
+	}
+
+	forge, err := model.ParseForge(text)
+	if err != nil {
+		return "", refuseAt(raw.ForgeAt, "`forge`: %w. Fix the value.", err)
+	}
+
+	return forge, nil
+}
+
+// requireAdapterKeys checks the keys that the named adapters need: repo for GitHub, and the beads prefix for beads.
+// A repo that is in the file is checked even when no adapter needs it.
+func requireAdapterKeys(raw rawProject, names adapters) error {
+	if names.tracker == model.TrackerGithub || names.forge == model.ForgeGithub || present(raw.RepoAt) {
+		if err := requireRepo(raw); err != nil {
+			return err
+		}
+	}
+
+	if names.tracker == model.TrackerBeads || names.claims == model.ClaimsBeads {
+		return requireText(raw.at(raw.BeadsPrefixAt), "beads_prefix", raw.BeadsPrefix)
+	}
+
+	return nil
+}
+
+func requireRepo(raw rawProject) error {
+	if err := requireText(raw.at(raw.RepoAt), "repo", raw.Repo); err != nil {
+		return err
+	}
+
+	owner, name, found := strings.Cut(raw.Repo, "/")
+	if !found || owner == "" || name == "" || strings.Contains(name, "/") {
+		return refuseAt(raw.at(raw.RepoAt), "`repo` must be written owner/name. Fix the value.")
+	}
+
+	return nil
+}
+
+// urlSource matches a git URL: a scheme with "://", or the scp form [user@]host:path. As git reads it, a colon before any slash makes the scp form.
+var urlSource = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*://|([^/\s@:]+@)?[^/\s@:]+:)`)
+
+// sourceOf checks the source of the project and returns it. A project with no forge must have one. A path expands a
+// leading "~", must be absolute and needs a local build host, because a remote host cannot read a path on this machine.
+func sourceOf(raw rawProject, forge model.ForgeName, host string) (string, error) {
+	if !present(raw.SourceAt) {
+		if forge == "" {
+			return "", refuseAt(raw.At, "the project has no forge and no `source`. Set `source` to a git URL or an absolute path, or set `forge = \"github\"`.")
+		}
+
+		return "", nil
+	}
+
+	if err := requireText(raw.SourceAt, "source", raw.Source); err != nil {
+		return "", err
+	}
+
+	if urlSource.MatchString(raw.Source) {
+		return raw.Source, nil
+	}
+
+	return sourcePath(raw, host)
+}
+
+func sourcePath(raw rawProject, host string) (string, error) {
+	path, err := expandHome(raw.Source)
+	if err != nil {
+		return "", err
+	}
+
+	if !filepath.IsAbs(path) {
+		return "", refuseAt(raw.SourceAt, "`source` must be a git URL or an absolute path; got `%s`. Fix the value.", raw.Source)
+	}
+
+	if host != LocalHost {
+		return "", refuseAt(raw.SourceAt, "a path `source` needs `build_host = %q`, because the host %q cannot read a path on this machine. Use a git URL for `source`.", LocalHost, host)
+	}
+
+	return path, nil
 }

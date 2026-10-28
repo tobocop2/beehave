@@ -20,7 +20,21 @@ func TestParseTracker(t *testing.T) {
 
 	_, err := model.ParseTracker("jira")
 	require.ErrorIs(t, err, model.ErrUnknownTracker)
-	assert.EqualError(t, err, `unknown tracker "jira": use one of beads, github`)
+	assert.EqualError(t, err, `unknown tracker "jira": use one of local, beads, github`)
+}
+
+func TestParseClaims(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range model.ClaimsNames() {
+		got, err := model.ParseClaims(string(name))
+		require.NoError(t, err)
+		assert.Equal(t, name, got)
+	}
+
+	_, err := model.ParseClaims("github")
+	require.ErrorIs(t, err, model.ErrUnknownClaims)
+	assert.EqualError(t, err, `unknown claims "github": use one of local, beads`)
 }
 
 func TestParseForge(t *testing.T) {
