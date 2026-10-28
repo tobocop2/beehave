@@ -61,12 +61,12 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | SC-01 | Take over an idle foreign PR after notice, grace and idle hours | core | gap | tools/remedy take | TestTake_TakeAfterTheGracePeriodPasses | - |
 | S1-L-01 | Name the model in every dispatch; a step without a model is a defect | file | expressed | workflow.hcl workflow remediation | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-01, S1-L-02, S1-L-03, S1-L-04 |
 | S1-L-05 | Turn count beats token price; keep a mid-tier floor | drop | n/a | - | - | S1-L-05 |
-| S1-L-06 | Replace a lane near the context cap at a step boundary | core | gap | - | - | S1-L-06, S1-L-07, S1-L-08, S1-L-10, S1-L-11 |
+| S1-L-06 | Replace a lane near the context cap at a step boundary | core | gap | tools/remedy spend | TestSpend_TheCapFlagMovesTheLine | S1-L-06, S1-L-07, S1-L-08, S1-L-10, S1-L-11 |
 | S1-L-09 | Message a lane that has no handoff at the next wake | drop | n/a | - | - | S1-L-09, S1-L-51 |
 | S1-L-12 | One fresh context per phase, started from files | core | gap | - | - | S1-L-12, S1-L-13 |
 | S1-L-14 | One PR per reviewer; split a fix round into fix, proof and review lanes | file | gap | - | - | S1-L-14, S1-L-15 |
 | S1-L-16 | Every log a lane reads has a summary command | skill | gap | - | - | S1-L-16 |
-| S1-L-17 | Hourly spend lines per live lane; flag over-cap lanes | core | gap | - | - | S1-L-17 |
+| S1-L-17 | Hourly spend lines per live lane; flag over-cap lanes | core | gap | tools/remedy spend | TestSpend_ALaneOverTheCapIsExitCodeOne | S1-L-17 |
 | S1-L-18 | A handoff holds regressions, tokens, compile state and unread jobs | core | gap | - | - | S1-L-18, S1-L-23, S1-L-54, S1-L-55 |
 | S1-L-19 | Five fix rounds: rounds 1 to 3 resume, rounds 4 and 5 start fresh one tier up and are told the round | core | expressed | workflow.hcl agent fix | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-19, S1-L-20 |
 | S1-L-21 | At five rounds, adjudicate each open finding | skill | expressed | workflow.hcl wait adjudicate | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-21 |
@@ -97,7 +97,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-B-12 | Refuse a brief above the reading budget; list tokens per file | core | gap | tools/remedy size | TestSize_AReadingAboveTheLimitIsARefusal | S1-B-12, S1-B-13 |
 | S1-B-14 | An implementer brief needs acceptance and base result lines | core | gap | tools/remedy admit | TestAdmit_ALaneWithNoAcceptanceFieldIsRefused | S1-B-14, S1-B-15, S1-B-16, S1-B-17 |
 | S1-B-18 | Ruling lines, fewer cells, skill choice, blast-radius floor in the brief | skill | gap | - | - | S1-B-18, S1-B-19, S1-B-20, S1-B-21, S1-B-29, S1-B-30, S1-B-31, S1-B-32 |
-| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | prompts/plan.md, the proof-and-papers section | TestPrompts_HoldEveryRuleOfTheBriefText | S1-B-22 |
+| S1-B-22 | A papers brief kind; fail when a papers commit touches source | core | gap | tools/remedy papers | TestPapers_ASourcePathIsExitCodeOne | S1-B-22 |
 | S1-B-23 | Probe rules; no touching the laptop checkout; delete and shell bans | core | gap | - | - | S1-B-23, S1-B-24, S1-B-25 |
 | S1-B-28 | Closing reference by base: Addresses on a round branch, Closes on the default | core | gap | - | - | S1-B-28 |
 | S1-B-34 | Derive the dispatch gate from CI through the profile gate source | file | gap | - | - | S1-B-34 |
@@ -145,11 +145,11 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-G-48 | Route a gate red the lane did not cause before a merge | core | gap | - | - | S1-G-48, S1-R-49 |
 | S1-P-04 | A reviewer builds its own tables and does not fix, commit or push | core | gap | - | - | S1-P-04, S1-R-59 |
 | S1-P-05 | Run the transcript check before accepting a report | core | gap | - | - | S1-P-05 |
-| S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | - | - | S1-P-06 |
+| S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | tools/remedy handoff | TestHandoff_ALaunchedJobThatNobodyReadIsExitCodeOneAndNamesTheCap | S1-P-06 |
 | S1-P-07 | Report length limits per item and per batch | core | gap | - | - | S1-P-07, S1-P-08 |
 | S1-P-09 | Dump issue and PR threads into files and name them in the brief | core | gap | - | - | S1-P-09 |
 | S1-P-10 | Read the PR body before editing it; write suspicion down | drop | n/a | - | - | S1-P-10, S1-P-17, S1-P-18, S1-R-03 |
-| S1-P-11 | A papers or design lane changes no source path | core | gap | - | - | S1-P-11 |
+| S1-P-11 | A papers or design lane changes no source path | core | gap | tools/remedy papers | TestPapers_ASourcePathIsExitCodeOne | S1-P-11 |
 | S1-P-12 | Write each measured deliverable to a file; report days since the last | core | gap | - | - | S1-P-12, S1-D-06 |
 | S1-P-13 | Owner dashboard as a profile section | core | gap | - | - | S1-P-13, S1-D-14, S1-PS-13 |
 | S1-P-14 | Never paste a lane report into GitHub; rewrite it | skill | gap | - | - | S1-P-14, S1-F-13 |
@@ -188,7 +188,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-M-33 | A maintainer's approval makes a PR safe to merge | file | gap | - | - | S1-M-33, S1-X-16 |
 | S1-M-34 | No no-verify, stash, config writes or force-push of a shared branch | core | gap | - | - | S1-M-34, S1-S-15, S1-S-21 |
 | S1-M-35 | Do not edit a branch a merge depends on; file a surviving finding first | skill | gap | - | - | S1-M-35, S1-M-36, S1-M-38 |
-| S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | - | - | S1-M-37, S1-S-11, S1-L-94 |
+| S1-M-37 | Our commits carry our identity and theirs keep theirs | core | gap | tools/remedy authors | TestAuthors_ACommitOfOursUnderAnotherAddressIsExitCodeOne | S1-M-37, S1-S-11, S1-L-94 |
 | S1-I-05 | Close the resolved issue with evidence; file a surviving finding before merge | core | gap | tools/remedy ledger closes | TestLedger_TheFirstReviewRecordsTheIssuesOfTheBodyFile | S1-I-05, S1-I-11, S1-F-04, S1-F-06, S1-F-07 |
 | S1-I-06 | Closing keywords only on the integration PR, except on the default branch | core | gap | tools/remedy ledger add | TestLedger_TheFirstReviewReadsTheBodyOfThePullRequestThroughTheForge | S1-I-06, S1-B-28 |
 | S1-I-07 | Audit closing keywords at the tip; read closing references after each batch | core | gap | tools/remedy scope | TestScope_TheKeyFlagNamesTheLedgerKeyOfAnItemWhosePullRequestHasAnotherNumber | S1-I-07, S1-F-20 |
@@ -196,10 +196,10 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-I-10 | A rulings file holds expected behavior, references, harness and base build | core | gap | - | - | S1-I-10, S1-D-11, S1-R-16 |
 | S1-W-01 | A background watcher arms at round start and after each wake | drop | n/a | - | - | S1-W-01, S1-W-02, S1-W-03, S1-W-04, S1-W-05, S1-W-07, S1-W-08, S1-W-15, S1-W-16, S1-W-19, S1-D-09, S1-D-10 |
 | S1-W-06 | A stop guard fails a turn when the watcher is dead | drop | n/a | - | - | S1-W-06, S1-W-10, S1-W-11, S1-W-12, S1-W-13, S1-W-18 |
-| S1-W-20 | Spend instrumentation per lane with an hourly flag | core | gap | - | - | S1-W-20, S1-D-13 |
+| S1-W-20 | Spend instrumentation per lane with an hourly flag | core | gap | tools/remedy spend | TestSpend_TheHoursFlagKeepsTheLastHoursOfTheTable | S1-W-20, S1-D-13 |
 | S1-D-01 | Queue, lane and gate records are edited through scripts | drop | n/a | - | - | S1-D-01, S1-D-02, S1-D-03, S1-D-15 |
 | S1-D-04 | A lane ledger: one row per lane per PR with a kind | core | gap | tools/remedy ledger add | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-D-04 |
-| S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | - | - | S1-D-12 |
+| S1-D-12 | Handoff files at a fixed path, at most 300 words | core | gap | tools/remedy handoff | TestHandoff_AWholeHandoffPasses | S1-D-12 |
 | S1-D-17 | One record of known base reds with a timestamp and the tip | file | gap | - | - | S1-D-17, S1-PS-12 |
 | S1-X-01 | Take-over: review first, then notice with a token ask, then claim | core | gap | tools/remedy take | TestTake_ApplyPostsTheNoticeAndPasses | S1-X-01, S1-X-02, S1-X-08, S1-X-09, S1-X-10, S1-X-11, S1-X-12, S1-F-16, S1-R-67 |
 | S1-X-03 | Stale means an hour of no author activity and an hour of no queue activity | file | gap | tools/remedy take | TestTake_IdleAndGraceFlagsAreHours | S1-X-03 |

@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -24,27 +23,21 @@ import (
 )
 
 const (
-	// DefaultCap is the lane context cap in tokens when no argument or variable sets one.
+	// DefaultCap is the lane context cap in tokens when no argument sets one.
 	DefaultCap    = 150000
 	newline       = "\n"
 	smallestPlain = 1e-4
 	largestPlain  = 1e16
 
-	hourStamp        = 13
-	capVariable      = "LANE_CONTEXT_CAP"
-	transcriptVar    = "TRANSCRIPT"
-	sessionVar       = "CLAUDE_CODE_SESSION_ID"
-	configDirVar     = "CLAUDE_CONFIG_DIR"
-	homeVar          = "HOME"
-	assistantRole    = "assistant"
-	usageMarker      = `"usage"`
-	assistantMarker  = `"role":"assistant"`
-	millions         = 1e6
-	thousands        = 1e3
-	overCap          = "OVER"
-	underCap         = "under"
-	noDescription    = "-"
-	transcriptSuffix = ".jsonl"
+	hourStamp       = 13
+	assistantRole   = "assistant"
+	usageMarker     = `"usage"`
+	assistantMarker = `"role":"assistant"`
+	millions        = 1e6
+	thousands       = 1e3
+	overCap         = "OVER"
+	underCap        = "under"
+	noDescription   = "-"
 )
 
 var (
@@ -426,15 +419,12 @@ func (s *spend) findLane(key string) (string, bool) {
 	return best, found
 }
 
-// LaneCap returns the lane context cap: the argument, else the variable in env, else the default.
-func LaneCap(arg *string, env map[string]string) (int64, error) {
+// LaneCap returns the lane context cap: the argument, else the default.
+func LaneCap(arg *string) (int64, error) {
 	raw := strconv.FormatInt(DefaultCap, 10)
 
-	switch {
-	case arg != nil:
+	if arg != nil {
 		raw = *arg
-	case env[capVariable] != "":
-		raw = env[capVariable]
 	}
 
 	capTokens, err := strconv.ParseInt(raw, 10, 64)
@@ -447,75 +437,6 @@ func LaneCap(arg *string, env map[string]string) (int64, error) {
 	}
 
 	return capTokens, nil
-}
-
-// Path returns the transcript to read: the argument, else the TRANSCRIPT variable, else the file of the session.
-func Path(arg string, env map[string]string) (string, error) {
-	if arg != "" {
-		return arg, nil
-	}
-
-	if env[transcriptVar] != "" {
-		return env[transcriptVar], nil
-	}
-
-	base, err := configBase(env)
-	if err != nil {
-		return "", err
-	}
-
-	hits := findTranscripts(env[sessionVar], base)
-	if len(hits) != 1 {
-		return "", noTranscript(env[sessionVar], base, len(hits))
-	}
-
-	return hits[0], nil
-}
-
-// configBase returns the folder that holds the projects: CLAUDE_CONFIG_DIR, else .claude under HOME.
-func configBase(env map[string]string) (string, error) {
-	switch {
-	case env[configDirVar] != "":
-		return env[configDirVar], nil
-	case env[homeVar] != "":
-		return filepath.Join(env[homeVar], ".claude"), nil
-	}
-
-	return "", &check.Refusal{Message: "no transcript. Pass its path, or set TRANSCRIPT, HOME or CLAUDE_CONFIG_DIR."}
-}
-
-func noTranscript(session, base string, found int) error {
-	if session == "" {
-		session = "<no CLAUDE_CODE_SESSION_ID>"
-	}
-
-	return &check.Refusal{Message: fmt.Sprintf("no transcript. Pass its path, or set TRANSCRIPT. Looked for %s.jsonl under %s/projects and found %d.", session, base, found)}
-}
-
-// findTranscripts returns the transcript files of the session, one for each project folder that holds one.
-func findTranscripts(session, base string) []string {
-	projects := filepath.Join(base, "projects")
-
-	dirs, err := os.ReadDir(projects)
-	if err != nil || session == "" || strings.ContainsRune(session, filepath.Separator) {
-		return nil
-	}
-
-	var hits []string
-
-	for _, dir := range dirs {
-		file := filepath.Join(projects, dir.Name(), session+transcriptSuffix)
-		if _, err := os.Lstat(file); err == nil && !hidden(dir) {
-			hits = append(hits, file)
-		}
-	}
-
-	return hits
-}
-
-// hidden reports whether a project folder starts with a dot, which a glob does not match.
-func hidden(dir os.DirEntry) bool {
-	return strings.HasPrefix(dir.Name(), ".")
 }
 
 // HoursTable returns the lines of the per-hour table: the orchestrator's calls and the lanes' tokens.

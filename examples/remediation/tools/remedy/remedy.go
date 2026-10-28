@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/brief"
@@ -70,7 +71,7 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.hcl reads it.
 func commands() []command {
-	return append(append(roundCommands(), briefCommands()...), ledgerCommands()...)
+	return slices.Concat(roundCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands())
 }
 
 // ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.

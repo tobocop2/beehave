@@ -14,7 +14,7 @@ const papersIndent = "         "
 
 var revisionPair = regexp.MustCompile(`(?s)^.+\.\..+$`)
 
-// runner runs git in the repository under check. Layer 2 declares its own interface and does not import forge.
+// runner runs git in the repository under check. The package declares its own git runner.
 type runner interface {
 	Run(ctx context.Context, args []string) model.CommandResult
 }
@@ -22,7 +22,7 @@ type runner interface {
 // SourcePaths lists the source paths a revision range changes. The first line starts with REFUSED when it finds one.
 func SourcePaths(ctx context.Context, git runner, revisionRange, sourceGlobs string) ([]string, error) {
 	if !revisionPair.MatchString(revisionRange) || strings.HasPrefix(revisionRange, "-") {
-		return nil, &check.Refusal{Message: "usage: obee check papers <base>..<head>"}
+		return nil, &check.Refusal{Message: "usage: remedy papers <base>..<head>"}
 	}
 
 	result := git.Run(ctx, []string{"diff", "--name-only", revisionRange})

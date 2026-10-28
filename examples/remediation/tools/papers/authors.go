@@ -23,7 +23,7 @@ type AuthorsResult struct {
 func Authors(text, meEmail, meLogin string) AuthorsResult {
 	if meEmail == "" || meLogin == "" {
 		return AuthorsResult{Code: exitAuthorsRefused, Err: []string{
-			"REFUSE: ME_EMAIL and ME_LOGIN must BOTH be set. The address says what a commit of ours",
+			"REFUSE: --email and --login must both be given. The address says what a commit of ours",
 			"        must carry; the login says which commits are ours. Without both, a wrong address",
 			"        on our own commit cannot be told apart from a third party's legitimate one.",
 		}}

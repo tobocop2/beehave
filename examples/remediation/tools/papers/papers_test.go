@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/papers"
+	"github.com/tobocop2/obee/examples/remediation/tools/papers"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -65,52 +65,55 @@ func TestPapers_Refusals(t *testing.T) {
 
 	for _, bad := range []string{"HEAD", "..HEAD", "HEAD..", "--output=x..HEAD", "-x..HEAD"} {
 		_, err := papers.SourcePaths(t.Context(), diffRunner{}, bad, globs)
-		require.ErrorContains(t, err, "usage: obee check papers <base>..<head>", bad)
+		require.ErrorContains(t, err, "usage: remedy papers <base>..<head>", bad)
 	}
 
 	_, err := papers.SourcePaths(t.Context(), diffRunner{model.CommandResult{ExitCode: 128}}, "nosuchref..HEAD", globs)
 	require.ErrorContains(t, err, "git cannot read the range nosuchref..HEAD")
 }
 
+// globCase is one fixture of the source globs: a changed path, the globs and whether the path is source under them.
+type globCase struct {
+	name, path, glob string
+	source           bool
+}
+
+var globCases = []globCase{
+	{"star_crosses_slash", "crates/a/src/deep/lib.rs", "crates/*/src/*", true},
+	{"literal_mismatch", "crates/a/tests/t.rs", "crates/*/src/*", false},
+	{"question_mark_one_char", "a/b", "a?b", true},
+	{"question_mark_needs_a_char", "ab", "a?b", false},
+	{"set_member", "x.c", "x.[ch]", true},
+	{"set_range", "x.d", "x.[a-e]", true},
+	{"set_range_miss", "x.z", "x.[a-e]", false},
+	{"bang_negates", "x.c", "x.[!c]", false},
+	{"bang_negates_other", "x.d", "x.[!c]", true},
+	{"caret_is_literal", "x.^", "x.[^c]", true},
+	{"caret_does_not_negate", "x.d", "x.[^c]", false},
+	{"unclosed_bracket_is_literal", "x[a", "x[a", true},
+	{"unclosed_bracket_matches_nothing_else", "xa", "x[a", false},
+	{"bang_then_close_unclosed", "[!", "[!", true},
+	{"leading_close_is_a_member", "]", "[]a]", true},
+	{"empty_bracket_is_literal", "[]", "[]", true},
+	{"reversed_range_holds_nothing", "b", "[b-a]", false},
+	{"negated_reversed_range_holds_all", "b", "[!b-a]", true},
+	{"trailing_dash_is_literal", "-", "[a-]", true},
+	{"leading_dash_is_literal", "-", "[-a]", true},
+	{"dash_after_range_is_literal", "-", "[a-c-]", true},
+	{"backslash_is_literal", `a\b`, `a\b`, true},
+	{"case_sensitive", "CRATES/a/src/x", "crates/*/src/*", false},
+	{"star_matches_empty", "a", "a*", true},
+	{"star_backtracks", "abcabd", "*abd", true},
+	{"unicode_one_rune", "é", "?", true},
+	{"blank_globs_match_nothing", "src/a.rs", " \t ", false},
+	{"any_of_several", "b.go", "a.go b.go", true},
+	{"form_feed_separates", "b.go", "a.go\fb.go", true},
+}
+
 func TestPapers_GlobsMatchAsFnmatchDoes(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name, path, glob string
-		source           bool
-	}{
-		{"star_crosses_slash", "crates/a/src/deep/lib.rs", "crates/*/src/*", true},
-		{"literal_mismatch", "crates/a/tests/t.rs", "crates/*/src/*", false},
-		{"question_mark_one_char", "a/b", "a?b", true},
-		{"question_mark_needs_a_char", "ab", "a?b", false},
-		{"set_member", "x.c", "x.[ch]", true},
-		{"set_range", "x.d", "x.[a-e]", true},
-		{"set_range_miss", "x.z", "x.[a-e]", false},
-		{"bang_negates", "x.c", "x.[!c]", false},
-		{"bang_negates_other", "x.d", "x.[!c]", true},
-		{"caret_is_literal", "x.^", "x.[^c]", true},
-		{"caret_does_not_negate", "x.d", "x.[^c]", false},
-		{"unclosed_bracket_is_literal", "x[a", "x[a", true},
-		{"unclosed_bracket_matches_nothing_else", "xa", "x[a", false},
-		{"bang_then_close_unclosed", "[!", "[!", true},
-		{"leading_close_is_a_member", "]", "[]a]", true},
-		{"empty_bracket_is_literal", "[]", "[]", true},
-		{"reversed_range_holds_nothing", "b", "[b-a]", false},
-		{"negated_reversed_range_holds_all", "b", "[!b-a]", true},
-		{"trailing_dash_is_literal", "-", "[a-]", true},
-		{"leading_dash_is_literal", "-", "[-a]", true},
-		{"dash_after_range_is_literal", "-", "[a-c-]", true},
-		{"backslash_is_literal", `a\b`, `a\b`, true},
-		{"case_sensitive", "CRATES/a/src/x", "crates/*/src/*", false},
-		{"star_matches_empty", "a", "a*", true},
-		{"star_backtracks", "abcabd", "*abd", true},
-		{"unicode_one_rune", "é", "?", true},
-		{"blank_globs_match_nothing", "src/a.rs", " \t ", false},
-		{"any_of_several", "b.go", "a.go b.go", true},
-		{"form_feed_separates", "b.go", "a.go\fb.go", true},
-	}
-
-	for _, tc := range cases {
+	for _, tc := range globCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
