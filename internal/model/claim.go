@@ -12,6 +12,9 @@ type ClaimRow struct {
 	LeaseEnds time.Time
 }
 
+// ClaimLease is the time a take or a renewal holds a claim row. A store grants it, and the engine trusts a claim for it, less one tick.
+const ClaimLease = 5 * time.Minute
+
 // ErrRowMoved is returned by ClaimRows.Free when the row no longer belongs to the holder the caller read.
 var ErrRowMoved = errors.New("the claim row changed hands")
 

@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // errClaimLost is returned when the engine stopped trusting the claim of a run.
 var errClaimLost = errors.New("the claim on the item is lost")
 
 // trustLimit is how long the engine trusts a claim after a good renewal began: the lease, less one tick.
-const trustLimit = claimLease - tickInterval
+const trustLimit = model.ClaimLease - tickInterval
 
 // trustPoll is how often a phase looks again for the first trust of its run. trustGrace is how long a phase waits for a run that is not open.
 const (

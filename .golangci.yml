@@ -162,6 +162,8 @@ linters:
           deny:
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/store/local
+              desc: only cmd/obee and the remedy binary import a backend
             - pkg: github.com/tobocop2/obee/internal/store/github
               desc: only cmd/obee and the remedy binary import a backend
             - pkg: github.com/tobocop2/obee/internal/forge/github
