@@ -31,16 +31,18 @@ func (r *recorder) Errorf(format string, args ...any) {
 type memTracker struct {
 	model.Tracker
 
-	rows      map[string]model.ClaimRow
-	seen      map[string]time.Time
-	down      bool
-	overwrite bool
-	keepFree  bool
-	freeAny   bool
+	rows        map[string]model.ClaimRow
+	down        bool
+	overwrite   bool
+	keepFree    bool
+	freeAny     bool
+	beatAny     bool
+	reclaimLive bool
+	noLease     bool
 }
 
 func newMem() *memTracker {
-	return &memTracker{rows: map[string]model.ClaimRow{}, seen: map[string]time.Time{}}
+	return &memTracker{rows: map[string]model.ClaimRow{}}
 }
 
 func (m *memTracker) err() error {
@@ -60,34 +62,41 @@ func (m *memTracker) HeldRows(context.Context) ([]model.ClaimRow, error) {
 	return rows, m.err()
 }
 
-func (m *memTracker) LastSeen(context.Context) (map[string]time.Time, error) {
-	return m.seen, m.err()
-}
-
 func (m *memTracker) Beat(_ context.Context, holder string) error {
-	m.seen[holder] = time.Unix(1, 0)
+	for _, row := range m.rows {
+		if row.Holder == holder {
+			return m.err()
+		}
+	}
 
-	return m.err()
-}
+	if m.beatAny {
+		return m.err()
+	}
 
-func (m *memTracker) Row(_ context.Context, item string) (model.RowState, error) {
-	row, found := m.rows[item]
-
-	return model.RowState{Exists: found, Held: found, Holder: row.Holder}, m.err()
+	return errors.Join(model.ErrNoClaim, m.err())
 }
 
 func (m *memTracker) TryHold(_ context.Context, row model.ClaimRow) error {
 	if _, held := m.rows[row.Item]; !held || m.overwrite {
+		row.LeaseEnds = time.Unix(100, 0)
+		if m.noLease {
+			row.LeaseEnds = time.Time{}
+		}
+
 		m.rows[row.Item] = row
 	}
 
 	return m.err()
 }
 
-func (m *memTracker) StoreLease(_ context.Context, row model.ClaimRow) error {
-	m.rows[row.Item] = row
+func (m *memTracker) Reclaim(_ context.Context, item string) (bool, error) {
+	if _, found := m.rows[item]; found && m.reclaimLive {
+		delete(m.rows, item)
 
-	return m.err()
+		return true, m.err()
+	}
+
+	return false, m.err()
 }
 
 func (m *memTracker) Free(_ context.Context, row model.ClaimRow) error {
@@ -131,7 +140,7 @@ func TestCheckClaimRows_FailsATrackerThatLetsASecondHolderOverwrite(t *testing.T
 
 	r := &recorder{}
 	contract.CheckClaimRows(r, mem)
-	assert.Contains(t, r.failures, "a second TryHold leaves the first holder: got session-b, want session-a")
+	assert.Contains(t, r.failures, "a second TryHold leaves the first holder: got [session-b], want [session-a]")
 }
 
 func TestCheckClaimRows_FailsATrackerWhoseFreeKeepsTheRow(t *testing.T) {
@@ -154,6 +163,28 @@ func TestCheckClaimRows_FailsATrackerWhoseFreeClearsAnotherHoldersRow(t *testing
 	r := &recorder{}
 	contract.CheckClaimRows(r, mem)
 	assert.Contains(t, r.failures, "Free of a row that another holder holds returns ErrRowMoved: got false, want true")
+}
+
+func TestCheckClaimRows_FailsATrackerThatBreaksTheLeaseRules(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		flaw func(*memTracker)
+		want string
+	}{
+		"beat_any":     {func(m *memTracker) { m.beatAny = true }, "Beat of a holder with no row returns ErrNoClaim: got false, want true"},
+		"reclaim_live": {func(m *memTracker) { m.reclaimLive = true }, "Reclaim leaves a row whose lease has not ended: got true, want false"},
+		"no_lease":     {func(m *memTracker) { m.noLease = true }, "a take carries the end of its lease: got true, want false"},
+	}
+
+	for name, tt := range tests {
+		mem := newMem()
+		tt.flaw(mem)
+
+		r := &recorder{}
+		contract.CheckClaimRows(r, mem)
+		assert.Contains(t, r.failures, tt.want, name)
+	}
 }
 
 func TestCheckClaimRows_ReportsAnErrorOfATracker(t *testing.T) {

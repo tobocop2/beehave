@@ -18,7 +18,9 @@ var ErrNotBuilt = errors.New("this step is not in this build yet: update obee")
 var errEmptyLogin = errors.New("no agent login for this item: add a runner to runners.toml and set the steps to use it")
 
 // BriefRequest asks for the brief of one agent phase. Findings are the open review findings. Answer is the last answer of the owner.
+// Run is the id of the run that queued the phase. A brief path is keyed by it, so the brief of a lost run never replaces the brief of a new run of the item.
 type BriefRequest struct {
+	Run      string     `json:"run"`
 	Item     string     `json:"item"`
 	Project  string     `json:"project"`
 	Step     model.Step `json:"step"`
@@ -60,7 +62,9 @@ type briefs interface {
 	Write(ctx context.Context, request BriefRequest) (string, error)
 }
 
-// agents runs one agent phase for a login.
+// agents runs one agent phase for a login. The context of Run ends when the run loses its claim, as well as when the phase is canceled or times out.
+// Run starts the process of the agent under that context, in its own process group, and the end of the context kills the group.
+// A context that is done before the start means no process starts.
 type agents interface {
 	Run(ctx context.Context, request AgentRequest) (agent.Result, error)
 }
@@ -92,17 +96,22 @@ type lifecycle interface {
 }
 
 // beats renews the claims of one owner in the tracker of a project.
-// A non-empty text or an error means the renewal failed. The signature matches claim.Claims.Beat, plus the project.
+// A non-empty text means the tracker says the claim is gone. An error means the renewal could not run, and the claim can still be live.
+// The signature matches claim.Claims.Beat, plus the project.
 type beats interface {
 	Beat(ctx context.Context, project, owner string) (string, error)
 }
 
 // clock sets the intervals the engine waits on. The zero value uses the real ones.
 // Tick replaces the ticker of the status tick: each value received runs one tick.
-// Poll replaces the interval at which the agents queue looks for work and at which a run looks for the result of a phase.
+// Poll replaces the interval at which the agents queue looks for work, at which a run looks for the result of a phase,
+// at which a phase looks again for the first trust of its run, and at which a run tries again the first renewal of a claim it did not take.
 // Release replaces the time that the git calls of one worktree release share.
 // Beat replaces the time that one claim renewal may take. OwnerWait replaces the time of one wait for the owner before the wait starts again.
-// Retain replaces the age at which Launch deletes a finished run.
+// Retain replaces the age at which Launch deletes a finished run. Now replaces the monotonic reading of the clock that measures the time since the last good claim renewal.
+// Wall replaces the wall reading of that clock: when it is nil, the wall reading is the one that Now returns.
+// After replaces the timer that ends the trust in a claim: it starts f once d has passed, and the function it returns stops the timer.
+// Grace replaces the time that a phase waits for the first trust of a run that is not open.
 type clock struct {
 	Tick      <-chan time.Time
 	Poll      time.Duration
@@ -110,6 +119,45 @@ type clock struct {
 	Beat      time.Duration
 	OwnerWait time.Duration
 	Retain    time.Duration
+	Now       func() time.Time
+	Wall      func() time.Time
+	After     func(d time.Duration, f func()) (stop func())
+	Grace     time.Duration
+}
+
+// now reads the clock of the process. The reading carries the monotonic clock, so a difference of two readings counts the time that the machine ran.
+func (c clock) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+
+	return time.Now()
+}
+
+// wall reads the wall clock, which keeps counting while the machine sleeps.
+func (c clock) wall() time.Time {
+	if c.Wall != nil {
+		return c.Wall()
+	}
+
+	return c.now().Round(0)
+}
+
+// age returns how long ago since began, a reading of now. It counts the larger of the monotonic and the wall time, because the monotonic clock stops
+// while the machine sleeps and the lease in the tracker does not. The larger count can only make the engine stop trusting the claim early.
+func (c clock) age(since time.Time) time.Duration {
+	return max(c.now().Sub(since), c.wall().Sub(since.Round(0)))
+}
+
+// after starts f once d has passed and returns the function that stops the timer.
+func (c clock) after(d time.Duration, f func()) func() {
+	if c.After != nil {
+		return c.After(d, f)
+	}
+
+	timer := time.AfterFunc(d, f)
+
+	return func() { timer.Stop() }
 }
 
 // resultOptions makes a result wait poll at the interval of the clock.

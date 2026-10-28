@@ -24,7 +24,7 @@ const (
 // BuildInfo describes the running binary.
 type BuildInfo struct {
 	Version string
-	// Adapters builds the tracker, the forge and the lease store of a project and returns why it cannot. A nil value skips the check.
+	// Adapters builds the tracker, the forge and the claim store of a project and returns why it cannot. A nil value skips the check.
 	Adapters func(context.Context, model.Project) error
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
 	Flow Flow
