@@ -835,9 +835,25 @@ func TestReads_WaitForAWriterThatHoldsTheLock(t *testing.T) {
 				return nil
 			})
 			require.NoError(t, err)
-			require.NoError(t, <-done)
+			require.NoError(t, within(t, done, "the read after the writer let go"))
 		})
 	}
+}
+
+// within returns what arrives on the channel and fails the test when nothing arrives in two seconds.
+func within[T any](t *testing.T, got <-chan T, what string) T {
+	t.Helper()
+
+	select {
+	case value := <-got:
+		return value
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "timed out after 2 s: "+what)
+	}
+
+	var none T
+
+	return none
 }
 
 func TestShare_ReadersRunAtTheSameTimeAndAWriterWaitsForThem(t *testing.T) {
@@ -857,8 +873,13 @@ func TestShare_ReadersRunAtTheSameTimeAndAWriterWaitsForThem(t *testing.T) {
 		})
 	}()
 
-	<-inside
-	require.NoError(t, table.Share(func() error { return nil }))
+	within(t, inside, "the first reader to hold the lock")
+
+	second := make(chan error, 1)
+
+	go func() { second <- table.Share(func() error { return nil }) }()
+
+	require.NoError(t, within(t, second, "a second reader does not wait for the first"))
 
 	written := make(chan error, 1)
 
@@ -871,8 +892,8 @@ func TestShare_ReadersRunAtTheSameTimeAndAWriterWaitsForThem(t *testing.T) {
 	}
 
 	close(release)
-	require.NoError(t, <-shared)
-	require.NoError(t, <-written)
+	require.NoError(t, within(t, shared, "the first reader to finish"))
+	require.NoError(t, within(t, written, "the writer after the readers let go"))
 }
 
 func TestAdd_ARequestWithNoTimeIsRefused(t *testing.T) {

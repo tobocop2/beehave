@@ -61,6 +61,10 @@ func (m memForge) PRList(context.Context, int, ...string) ([]model.PullRequest, 
 	return []model.PullRequest{{Number: forgetest.Seven}}, m.fail()
 }
 
+func (m memForge) PullCounts(context.Context, int) (commits, files int, err error) {
+	return forgetest.SevenCommits, forgetest.SevenFiles, m.fail()
+}
+
 func (m memForge) PRChecks(context.Context, int) ([]model.Check, error) {
 	return []model.Check{{Name: forgetest.SevenCheck, Bucket: model.CheckPass}}, m.fail()
 }
@@ -118,6 +122,18 @@ func (m memForge) CheckNotStarted(context.Context, string) (bool, error) { retur
 func (m memForge) PostComment(context.Context, int, string) error { return m.fail() }
 
 func (m memForge) SetDraft(context.Context, int, bool) error { return m.fail() }
+
+func (m memForge) MergePR(context.Context, int, string) error { return m.fail() }
+
+func (m memForge) CreateBranch(context.Context, string, string) error { return m.fail() }
+
+func (m memForge) SetBase(context.Context, int, string) error { return m.fail() }
+
+func (m memForge) SetBody(context.Context, int, string) error { return m.fail() }
+
+func (m memForge) TokenScopes(context.Context) ([]string, error) {
+	return []string{forgetest.ScopeRepo, forgetest.ScopeWorkflow}, m.fail()
+}
 
 func TestCheckForgeReads_ReportsAMissingBranchThatReadsAsPresent(t *testing.T) {
 	t.Parallel()

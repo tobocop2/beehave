@@ -232,12 +232,14 @@ linters:
           files:
             - "**/internal/model/**"
             - "**/internal/config/**"
+            - "**/internal/filelock/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/filelock
         layer-1:
           list-mode: lax
           files:
@@ -281,6 +283,7 @@ linters:
           allow:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/filelock
             - github.com/tobocop2/obee/internal/check
             - github.com/tobocop2/obee/internal/brief
             - github.com/tobocop2/obee/internal/claim
@@ -302,6 +305,7 @@ linters:
           allow:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/filelock
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
             - github.com/tobocop2/obee/internal/proc
@@ -322,6 +326,7 @@ linters:
             - "!**/cmd/obee/**"
             - "!**/internal/model/**"
             - "!**/internal/config/**"
+            - "!**/internal/filelock/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
             - "!**/internal/proc/**"

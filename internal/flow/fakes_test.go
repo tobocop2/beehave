@@ -398,6 +398,7 @@ type harness struct {
 	verdicts *fakeVerdicts
 	logins   fakeLogins
 	life     *fakeLifecycle
+	merge    *fakeMerge
 	forge    *fakeForge
 	watch    *fakeWatch
 	trees    *fakeTrees
@@ -432,10 +433,15 @@ func newHarness(t *testing.T) *harness {
 }
 
 func (h *harness) deps() Deps {
-	return Deps{
+	deps := Deps{
 		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats,
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
+	if h.merge != nil {
+		deps.Merge = h.merge
+	}
+
+	return deps
 }
 
 // tick runs one status tick and returns when it has finished. The second send is taken only after the first tick ended.

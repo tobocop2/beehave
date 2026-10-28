@@ -490,6 +490,47 @@ func TestStackID_Refusals(t *testing.T) {
 	require.EqualError(t, err, base)
 }
 
+func TestPullCounts_ReadsTheCountsOfTheForgeInOneCall(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, `{"commits":101,"changed_files":7}`)
+
+	commits, files, err := f.PullCounts(context.Background(), 3)
+	require.NoError(t, err)
+	assert.Equal(t, []int{101, 7}, []int{commits, files})
+	assert.Equal(t, [][]string{{"api", "repos/" + repo + "/pulls/3"}}, run.Calls)
+}
+
+func TestPullCounts_Refusals(t *testing.T) {
+	t.Parallel()
+
+	const base = "cannot read the counts of pull request 3"
+
+	for name, stdout := range map[string]string{
+		"not_json":         "not json",
+		"no_commits":       `{"changed_files":7}`,
+		"no_files":         `{"commits":1}`,
+		"a_null_count":     `{"commits":null,"changed_files":7}`,
+		"a_count_as_text":  `{"commits":"1","changed_files":7}`,
+		"a_null_pull_body": "null",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f, _ := fixed(t, stdout)
+
+			_, _, err := f.PullCounts(context.Background(), 3)
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), base), err.Error())
+		})
+	}
+
+	f, _ := failing(t, "")
+
+	_, _, err := f.PullCounts(context.Background(), 3)
+	require.EqualError(t, err, base)
+}
+
 func TestPRBody(t *testing.T) {
 	t.Parallel()
 

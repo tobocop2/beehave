@@ -18,6 +18,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/filelock"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -104,7 +105,7 @@ type Engine struct {
 	version string
 	dir     string
 	log     io.Closer
-	lock    *fileLock
+	lock    *filelock.Lock
 	logger  *slog.Logger
 	redact  func(string) string
 	cancels cancels
@@ -136,7 +137,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.release(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Release(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts.MaxConcurrent))
@@ -367,5 +368,5 @@ func (e *Engine) shutdown() error {
 	// an agent that dies before it would end its phase as failed, and the run would not stay open.
 	<-e.ctx.Done()
 
-	return errors.Join(e.procs.killAll(), <-stopped, e.log.Close(), e.lock.release())
+	return errors.Join(e.procs.killAll(), <-stopped, e.log.Close(), e.lock.Release())
 }

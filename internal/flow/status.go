@@ -360,7 +360,7 @@ func (c *Client) giveBackUnowned(project, item string, last run) error {
 		return err
 	}
 
-	return errors.Join(c.giveBack(project, item, last.Status.ID), held.release())
+	return errors.Join(c.giveBack(project, item, last.Status.ID), held.Release())
 }
 
 // giveBack releases the worktree and the claim of a run with the token the run holds, then removes the files of the run.

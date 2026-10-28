@@ -171,7 +171,7 @@ func (c clock) resultOptions() []dbos.GetResultOption {
 	return []dbos.GetResultOption{dbos.WithHandlePollingInterval(c.Poll)}
 }
 
-// Deps holds the collaborators of the workflows.
+// Deps holds the collaborators of the workflows. A nil Merge means the build has no merge step.
 type Deps struct {
 	Clock     clock
 	Briefs    briefs
@@ -184,4 +184,5 @@ type Deps struct {
 	Watch     watcher
 	Trees     trees
 	Beats     beats
+	Merge     merger
 }

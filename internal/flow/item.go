@@ -241,12 +241,16 @@ func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) 
 	}
 }
 
-// readyAndWatch marks the pull request ready after an approved review and then watches it until it merges or goes back to draft.
+// readyAndWatch marks the pull request ready after an approved review, merges it when the build has a merger, and then watches it until it merges or goes back to draft.
 // It returns the reason when the pull request went back to draft.
 func (e *Engine) readyAndWatch(ctx dbos.Context, state loopState, reviewed string) (string, error) {
 	ready := func(c context.Context, project, item string) error { return e.markReady(c, project, item, reviewed) }
 
 	if err := e.lifecycle(ctx, model.StepReady, ready, state.project, state.item); err != nil {
+		return "", err
+	}
+
+	if err := e.mergeReady(ctx, state.project, state.item, reviewed); err != nil {
 		return "", err
 	}
 

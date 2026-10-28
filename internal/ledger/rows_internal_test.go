@@ -3,27 +3,11 @@ package ledger
 import (
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestWithLock_AFileThatTheSystemCannotLockIsARefusalThatNamesIt(t *testing.T) {
-	t.Parallel()
-
-	file, err := os.Create(filepath.Join(t.TempDir(), "lock"))
-	require.NoError(t, err)
-	require.NoError(t, file.Close())
-
-	ran := false
-	err = withLock(file, syscall.LOCK_EX, func() error { ran = true; return nil })
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot lock "+file.Name()+": ")
-	assert.False(t, ran)
-}
 
 func TestPublish_AFileThatCannotBeReadOrWrittenIsARefusalThatNamesIt(t *testing.T) {
 	t.Parallel()

@@ -35,16 +35,26 @@ type PullReads interface {
 	Overlap(ctx context.Context, req model.OverlapRequest) (model.Overlap, error)
 }
 
-// Activity is what is said on a pull request and what is done to it. PostComment and SetDraft change the forge.
+// Activity is what is said on a pull request and what is done to it. Every method but the two reads changes the forge.
+// MergePR merges only if the head of the pull request is still sha, a full 40-character commit id. A shorter pin is refused.
+// CreateBranch makes a branch at sha and fails if the branch exists. SetBase retargets a pull request. SetBody replaces its body.
 type Activity interface {
 	Comments(ctx context.Context, number int) ([]model.Comment, error)
 	ReviewComments(ctx context.Context, pr int) ([]model.Comment, error)
 	PostComment(ctx context.Context, pr int, body string) error
 	SetDraft(ctx context.Context, pr int, draft bool) error
+	MergePR(ctx context.Context, pr int, sha string) error
+	CreateBranch(ctx context.Context, branch, sha string) error
+	SetBase(ctx context.Context, pr int, base string) error
+	SetBody(ctx context.Context, pr int, body string) error
 }
 
 // Lookup finds items and branches: a search, the default branch and the tip of a branch.
+// TokenScopes lists the scopes of the token the forge command line uses.
+// PullCounts returns the forge's own count of the commits and changed files of a pull request. A list in PRView can be cut short, so a caller compares the count to the list.
 type Lookup interface {
+	PullCounts(ctx context.Context, pr int) (commits, files int, err error)
+	TokenScopes(ctx context.Context) ([]string, error)
 	Search(ctx context.Context, req model.SearchRequest) ([]int, error)
 	DefaultBranch(ctx context.Context) (string, error)
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
