@@ -3,56 +3,8 @@ package model
 import (
 	"errors"
 	"fmt"
-	"os"
 	"time"
 )
-
-// CreateRequest holds the arguments of Tracker.Create. Kind, Parent and Assignee are optional.
-type CreateRequest struct {
-	Title          string
-	BodyFile       string
-	Severity       Severity
-	Kind           string
-	Parent         string
-	Assignee       string
-	AllowDuplicate bool
-}
-
-// ErrInvalidRequest is returned when a CreateRequest lacks a title, a body file or a severity.
-var ErrInvalidRequest = errors.New("invalid create request")
-
-type requestError string
-
-func (e requestError) Error() string { return string(e) }
-
-func (requestError) Is(target error) bool { return target == ErrInvalidRequest }
-
-// Validate refuses a request without a title, a non-empty body file or a severity from P0 to P3.
-func (r CreateRequest) Validate() error {
-	if r.Title == "" {
-		return requestError("create needs --title")
-	}
-
-	if !nonEmptyFile(r.BodyFile) {
-		return requestError("create needs --body-file with the finding and its reproduction")
-	}
-
-	if _, err := ParseSeverity(string(r.Severity)); err != nil {
-		return requestError(fmt.Sprintf("create needs --severity P0, P1, P2 or P3, got '%s'", r.Severity))
-	}
-
-	return nil
-}
-
-func nonEmptyFile(path string) bool {
-	if path == "" {
-		return false
-	}
-
-	info, err := os.Stat(path)
-
-	return err == nil && info.Size() > 0
-}
 
 // TrackerName names a tracker adapter that a project selects.
 type TrackerName string

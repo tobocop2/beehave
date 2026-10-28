@@ -3,21 +3,10 @@ package github_test
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func bodyFile(t *testing.T) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "body.md")
-	require.NoError(t, os.WriteFile(path, []byte("finding\n"), 0o600))
-
-	return path
-}
 
 func toJSON(t *testing.T, value any) string {
 	t.Helper()
@@ -38,8 +27,4 @@ func fill(count int, row map[string]any) []map[string]any {
 	}
 
 	return rows
-}
-
-func writeFile(path, text string) error {
-	return os.WriteFile(path, []byte(text), 0o600)
 }

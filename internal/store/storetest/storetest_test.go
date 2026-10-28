@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -119,12 +118,6 @@ func (m *memTracker) Free(_ context.Context, row model.ClaimRow) error {
 
 func (m *memTracker) OpenItems(context.Context) ([]model.Item, error) { return nil, m.err() }
 
-func (m *memTracker) Containers(context.Context) ([]string, error) { return nil, m.err() }
-
-func (m *memTracker) Children(context.Context, string) ([]string, error) { return nil, m.err() }
-
-func (m *memTracker) Show(context.Context, string) (string, error) { return "", m.err() }
-
 func (m *memTracker) ItemFields() []string {
 	if m.fields != nil {
 		return m.fields
@@ -229,10 +222,6 @@ func TestCheckItemFields_FailsATrackerThatLeavesOutAField(t *testing.T) {
 	assert.Equal(t, []string{`ItemFields: want "body" among the declared fields, got [id title]`}, r.failures)
 }
 
-func (m *memTracker) Close(context.Context, string, string) error { return m.err() }
-
-func (m *memTracker) Create(context.Context, model.CreateRequest) (string, error) { return "", m.err() }
-
 func TestCheckClaimRows_AcceptsACorrectTracker(t *testing.T) {
 	t.Parallel()
 
@@ -314,7 +303,7 @@ func TestCheckTrackerFails_AcceptsATrackerThatErrorsEverywhere(t *testing.T) {
 	mem.down = true
 
 	r := &recorder{}
-	storetest.CheckTrackerFails(r, mem, filepath.Join(t.TempDir(), "body.md"))
+	storetest.CheckTrackerFails(r, mem)
 	assert.Empty(t, r.failures)
 }
 
@@ -322,16 +311,8 @@ func TestCheckTrackerFails_FailsATrackerThatAnswersAfterAFailure(t *testing.T) {
 	t.Parallel()
 
 	r := &recorder{}
-	storetest.CheckTrackerFails(r, newMem(), filepath.Join(t.TempDir(), "body.md"))
-	assert.Contains(t, r.failures, "Close: want an error from a failed command, got none")
-}
-
-func TestCheckTrackerFails_ReportsABodyFileThatCannotBeWritten(t *testing.T) {
-	t.Parallel()
-
-	r := &recorder{}
-	storetest.CheckTrackerFails(r, newMem(), filepath.Join(t.TempDir(), "missing", "body.md"))
-	assert.NotEmpty(t, r.failures)
+	storetest.CheckTrackerFails(r, newMem())
+	assert.Contains(t, r.failures, "OpenItems: want an error from a failed command, got none")
 }
 
 func TestCheckClaimRowsFail_AcceptsRowsThatErrorEverywhere(t *testing.T) {

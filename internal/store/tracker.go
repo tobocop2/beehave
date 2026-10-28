@@ -14,11 +14,6 @@ type Tracker interface {
 	ItemFields() []string
 	Item(ctx context.Context, id string) (map[string]string, error)
 	OpenItems(ctx context.Context) ([]model.Item, error)
-	Containers(ctx context.Context) ([]string, error)
-	Children(ctx context.Context, container string) ([]string, error)
-	Show(ctx context.Context, item string) (string, error)
-	Close(ctx context.Context, item, reason string) error
-	Create(ctx context.Context, request model.CreateRequest) (string, error)
 }
 
 // ClaimRows stores the claim rows of the project. The claim store keeps one row for each item and grants the lease, which bd renews on Beat.

@@ -151,7 +151,7 @@ flowchart LR
 
 ## Store and claim
 
-`store` holds the `Tracker` and `ClaimRows` contracts and the decode helpers. It has two backends: `store/beads` through `bd --json` and `store/github` for GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads and writes issues only. It holds no lease.
+`store` holds the `Tracker` and `ClaimRows` contracts and the decode helpers. It has two backends: `store/beads` through `bd --json` and `store/github` for GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. The GitHub backend reads issues only. It holds no lease.
 
 `claim` holds the claim policy and no command line: the read of the winner, one reclaim of an ended lease and the refusal of a live holder. It declares the small `Rows` interface it needs and does not import `store`. Beads holds one claim row for each item.
 

@@ -3,23 +3,12 @@ package beads_test
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/store"
 )
-
-func bodyFile(t *testing.T) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "body.md")
-	require.NoError(t, os.WriteFile(path, []byte("finding\n"), 0o600))
-
-	return path
-}
 
 func toJSON(t *testing.T, value any) string {
 	t.Helper()

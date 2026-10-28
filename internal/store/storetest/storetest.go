@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 
@@ -19,10 +17,9 @@ import (
 const ItemID = "5"
 
 const (
-	item     = ItemID
-	holderA  = "session-a"
-	holderB  = "session-b"
-	bodyMode = 0o600
+	item    = ItemID
+	holderA = "session-a"
+	holderB = "session-b"
 )
 
 // Reporter is the part of testing.T the suites use. A test of a suite passes a recorder to see a failure.
@@ -44,7 +41,7 @@ func TestTracker(t *testing.T, make TrackerFactory) {
 		CheckItem(t, make(t, false))
 	})
 	t.Run("a_failed_command_is_an_error_everywhere", func(t *testing.T) {
-		CheckTrackerFails(t, make(t, true), filepath.Join(t.TempDir(), "body.md"))
+		CheckTrackerFails(t, make(t, true))
 	})
 }
 
@@ -243,25 +240,16 @@ func checkDeclared(r Reporter, got map[string]string, declared []string) {
 }
 
 // CheckTrackerFails runs every method of a tracker whose commands all fail. Each must return an error and never a guess.
-func CheckTrackerFails(r Reporter, tracker store.Tracker, bodyFile string) {
+func CheckTrackerFails(r Reporter, tracker store.Tracker) {
 	r.Helper()
 
-	writeBody(r, bodyFile)
-
-	check{r: r}.allFail(trackerCalls(tracker, bodyFile))
+	check{r: r}.allFail(trackerCalls(tracker))
 }
 
-func trackerCalls(tracker store.Tracker, bodyFile string) []call {
-	request := model.CreateRequest{Title: "a finding", BodyFile: bodyFile, Severity: model.SeverityP2}
-
+func trackerCalls(tracker store.Tracker) []call {
 	return []call{
 		{"OpenItems", func(ctx context.Context) error { _, err := tracker.OpenItems(ctx); return err }},
-		{"Containers", func(ctx context.Context) error { _, err := tracker.Containers(ctx); return err }},
-		{"Children", func(ctx context.Context) error { _, err := tracker.Children(ctx, item); return err }},
-		{"Show", func(ctx context.Context) error { _, err := tracker.Show(ctx, item); return err }},
 		{"Item", func(ctx context.Context) error { _, err := tracker.Item(ctx, item); return err }},
-		{"Close", func(ctx context.Context) error { return tracker.Close(ctx, item, "done") }},
-		{"Create", func(ctx context.Context) error { _, err := tracker.Create(ctx, request); return err }},
 	}
 }
 
@@ -281,13 +269,5 @@ func rowCalls(rows store.ClaimRows) []call {
 		{"TryHold", func(ctx context.Context) error { return rows.TryHold(ctx, hold) }},
 		{"Reclaim", func(ctx context.Context) error { _, err := rows.Reclaim(ctx, item); return err }},
 		{"Free", func(ctx context.Context) error { return rows.Free(ctx, hold) }},
-	}
-}
-
-func writeBody(r Reporter, path string) {
-	r.Helper()
-
-	if err := os.WriteFile(path, []byte("finding\n"), bodyMode); err != nil {
-		r.Errorf("cannot write the body file: %v", err)
 	}
 }
