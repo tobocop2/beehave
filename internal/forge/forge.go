@@ -15,6 +15,12 @@ type Forge interface {
 	Lookup
 	Standing
 	ItemReads
+	Remote
+}
+
+// Remote names where the repository of the forge is cloned from. CloneURL needs no call to the forge.
+type Remote interface {
+	CloneURL() string
 }
 
 // ItemReads reads a pull request as a workflow item. ItemFields lists the names of the fields that Item returns and needs no call to the forge.

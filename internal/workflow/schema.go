@@ -68,6 +68,7 @@ type Agent struct {
 	ResumeFrom    hcl.Expression `hcl:"resume_from,optional"`
 	Inputs        hcl.Expression `hcl:"inputs,optional"`
 	Outputs       hcl.Expression `hcl:"outputs,optional"`
+	OutputTries   hcl.Expression `hcl:"output_tries,optional"`
 	When          hcl.Expression `hcl:"when,optional"`
 }
 
@@ -87,6 +88,7 @@ func (a *Agent) arguments() []argument {
 		{expr: a.ResumeFrom, whole: true},
 		{expr: a.Inputs},
 		{expr: a.Outputs},
+		{expr: a.OutputTries},
 		{expr: a.When},
 	}
 }

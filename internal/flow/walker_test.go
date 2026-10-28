@@ -448,17 +448,6 @@ func TestWalk_AWaitWithAQuestionThatIsNotTextIsRefused(t *testing.T) {
 	require.ErrorContains(t, err, "must be a string")
 }
 
-func TestWalk_AnAgentStepIsRefusedAndNamed(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-
-	_, err := walkText(t, h, "workflow \"w\" {}\nagent \"fix\" {\n  prompt = \"prompts/fix.md\"\n}\n")
-
-	require.ErrorContains(t, err, `agent "fix" is not built yet`)
-	assert.Empty(t, h.agents.seen())
-}
-
 func TestWalk_TheFieldsOfTheItemFillTheItemObject(t *testing.T) {
 	t.Parallel()
 
@@ -813,13 +802,15 @@ func TestRecord_RefusesAnOutputTheKindDoesNotDeclare(t *testing.T) {
 func TestTyped_ConvertsEachOutputByItsDeclaredType(t *testing.T) {
 	t.Parallel()
 
-	got, err := typed(workflow.KindCommand, map[string]any{"stdout": "x", "rc": float64(3)})
+	step := loadStep(t, "workflow \"w\" {}\ncommand \"a\" {\n  run = [\"a\"]\n}\n")
+
+	got, err := typed(step, map[string]any{"stdout": "x", "rc": float64(3)})
 	require.NoError(t, err)
 	assert.Equal(t, "x", got["stdout"].AsString())
 
 	assert.True(t, cty.NumberIntVal(3).RawEquals(got["rc"]))
 
-	_, err = typed(workflow.KindCommand, map[string]any{"rc": "three"})
+	_, err = typed(step, map[string]any{"rc": "three"})
 	require.ErrorContains(t, err, `output "rc" of a command step: the value three is not a number`)
 }
 

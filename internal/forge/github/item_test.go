@@ -16,6 +16,15 @@ func TestItemFields_DeclareBranchHeadShaPrAndAuthor(t *testing.T) {
 	assert.Equal(t, []string{"branch", "head_sha", "pr", "author"}, f.ItemFields())
 }
 
+func TestCloneURL_IsTheHTTPSAddressOfTheRepository(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	assert.Equal(t, "https://github.com/"+repo+".git", f.CloneURL())
+	assert.Empty(t, run.Calls, "the URL needs no call to the forge")
+}
+
 func TestItem_ReadsTheDeclaredFields(t *testing.T) {
 	t.Parallel()
 

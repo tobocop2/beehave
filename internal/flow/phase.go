@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
@@ -21,13 +22,25 @@ type PhaseInput struct {
 	Fresh    bool       `json:"fresh"`
 	Findings string     `json:"findings"`
 	Answer   string     `json:"answer"`
+
+	// The phase of an agent step of a workflow file sets Prompt in place of Step and Round: the rendered prompt, which is the whole brief.
+	// Resume is the session to continue. Model, Timeout and IdleTimeout go to the agent as they are.
+	Prompt      string        `json:"prompt,omitempty"`
+	Resume      string        `json:"resume,omitempty"`
+	Model       string        `json:"model,omitempty"`
+	Timeout     time.Duration `json:"timeout,omitempty"`
+	IdleTimeout time.Duration `json:"idle_timeout,omitempty"`
 }
 
-// PhaseOutput records how the agent of a phase ended.
+// PhaseOutput records how the agent of a phase ended. Session, Transcript, Text and Skills describe the session that ended.
 type PhaseOutput struct {
-	Outcome  agent.Outcome `json:"outcome"`
-	ExitCode int           `json:"exit_code"`
-	Note     string        `json:"note"`
+	Outcome    agent.Outcome `json:"outcome"`
+	ExitCode   int           `json:"exit_code"`
+	Note       string        `json:"note"`
+	Session    string        `json:"session,omitempty"`
+	Transcript string        `json:"transcript,omitempty"`
+	Text       string        `json:"text,omitempty"`
+	Skills     []string      `json:"skills,omitempty"`
 }
 
 // phase waits for the claim of its run, writes the brief, then runs the agent. The brief and the agent are steps, so a restart skips the work that finished.
@@ -39,14 +52,18 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 		return PhaseOutput{}, err
 	}
 
-	brief, err := runStep(e, ctx, "brief", func(c context.Context) (string, error) {
-		return e.deps.Briefs.Write(c, BriefRequest{Run: in.Run, Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Findings: in.Findings, Answer: in.Answer})
-	})
-	if err != nil {
-		return PhaseOutput{}, fmt.Errorf("write the brief for the %s of item %s: %w", in.Step, in.Item, err)
+	brief := ""
+
+	if in.Prompt == "" {
+		brief, err = runStep(e, ctx, "brief", func(c context.Context) (string, error) {
+			return e.deps.Briefs.Write(c, BriefRequest{Run: in.Run, Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Findings: in.Findings, Answer: in.Answer})
+		})
+		if err != nil {
+			return PhaseOutput{}, fmt.Errorf("write the brief for the %s of item %s: %w", in.Step, in.Item, err)
+		}
 	}
 
-	return runStep(e, ctx, string(in.Step), func(c context.Context) (PhaseOutput, error) {
+	return runStep(e, ctx, orDefault(string(in.Step), "agent"), func(c context.Context) (PhaseOutput, error) {
 		return e.runAgent(c, claim, in, brief)
 	})
 }
@@ -63,9 +80,10 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput, brief strin
 
 	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
 		Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Login: in.Login, Fresh: in.Fresh, Brief: brief, Started: e.recordGroup(ctx, in),
+		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
 	})
 
-	out := PhaseOutput{Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note}
+	out := PhaseOutput{Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note, Session: result.Session, Transcript: result.Transcript, Text: result.Text, Skills: result.Skills}
 	if err != nil {
 		return out, err
 	}
@@ -93,24 +111,29 @@ func (e *Engine) endGroups(run string) {
 
 // runPhase runs a phase as a child workflow on the agents queue, keyed by the login, and waits for it.
 func (e *Engine) runPhase(ctx dbos.Context, in PhaseInput) error {
+	_, err := e.queuePhase(ctx, in)
+
+	return err
+}
+
+// queuePhase is runPhase that also returns how the agent ended.
+func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 	if in.Login == "" {
-		return errEmptyLogin
+		return PhaseOutput{}, errEmptyLogin
 	}
 
 	in.Run = workflowID(ctx)
 
 	if err := e.claimCheck(in.Run, in.Item); err != nil {
-		return err
+		return PhaseOutput{}, err
 	}
 
 	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.queue), dbos.WithQueuePartitionKey(in.Login))
 	if err != nil {
-		return fmt.Errorf("queue the %s of item %s: %w", in.Step, in.Item, err)
+		return PhaseOutput{}, fmt.Errorf("queue the %s of item %s: %w", orDefault(string(in.Step), "agent step"), in.Item, err)
 	}
 
-	_, err = awaitPhase(ctx, handle, e.deps.Clock.resultOptions())
-
-	return err
+	return awaitPhase(ctx, handle, e.deps.Clock.resultOptions())
 }
 
 // awaitPhase waits for the result of a phase. A cancel of ctx ends the wait at once:
@@ -139,7 +162,7 @@ func awaitPhase(ctx dbos.Context, handle dbos.WorkflowHandle[PhaseOutput], optio
 // phaseEnd turns a phase that did not exit with code 0 into an error that names the step.
 func phaseEnd(in PhaseInput, out PhaseOutput) error {
 	if out.Outcome != agent.OutcomeExited || out.ExitCode != 0 {
-		return fmt.Errorf("the %s of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", in.Step, in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
+		return fmt.Errorf("the %s of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", orDefault(string(in.Step), "agent step"), in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
 	}
 
 	return nil

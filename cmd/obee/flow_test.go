@@ -18,18 +18,14 @@ func TestNotBuilt_EveryStepSaysThisBuildLacksIt(t *testing.T) {
 	ctx := t.Context()
 
 	_, briefErr := pending.Write(ctx, flow.BriefRequest{})
-	_, agentErr := agents{}.Run(ctx, flow.AgentRequest{})
 	_, gateErr := gate{}.Run(ctx, "p", "1")
 	_, verdictErr := pending.Read(ctx, "p", "1", 0)
 	_, claimErr := pending.Claim(ctx, "p", "1")
 	_, beatErr := pending.Beat(ctx, "p", "owner")
 	_, pullErr := pending.Pull(ctx, "p", "1")
-	_, pathErr := pending.Path(ctx, "p", "1")
 	_, watchErr := pending.Watch(ctx, 1)
-	_, commandErr := commands{}.Run(ctx, flow.CommandRequest{})
-	_, fieldsErr := items{}.Fields(ctx, "p", "1")
 
-	for _, err := range []error{commandErr, fieldsErr, briefErr, agentErr, gateErr, verdictErr, claimErr, beatErr, pullErr, pathErr, watchErr, pending.SetDraft(ctx, 1, true), pending.Ready(ctx, "p", "1"), pending.Release(ctx, "p", "1", "owner")} {
+	for _, err := range []error{briefErr, gateErr, verdictErr, claimErr, beatErr, pullErr, watchErr, pending.SetDraft(ctx, 1, true), pending.Ready(ctx, "p", "1"), pending.Release(ctx, "p", "1", "owner")} {
 		require.ErrorIs(t, err, flow.ErrNotBuilt)
 	}
 }
@@ -45,7 +41,7 @@ func TestLogins_PickTheRunnersOfTheProjectTheItemBelongsTo(t *testing.T) {
 	picked := newLogins(config.Config{
 		Runners:  []model.Runner{{Name: "a"}},
 		Projects: map[string]config.Project{"p": {Steps: steps}, "q": {Steps: other}},
-	})
+	}, flow.Options{})
 
 	tests := []struct {
 		project   string
@@ -74,7 +70,7 @@ func TestLogins_PickTheRunnersOfTheProjectTheItemBelongsTo(t *testing.T) {
 func TestLogins_NeverGuessAProjectTheConfigLacks(t *testing.T) {
 	t.Parallel()
 
-	picked := newLogins(config.Config{Runners: []model.Runner{{Name: "a"}}, Projects: map[string]config.Project{}})
+	picked := newLogins(config.Config{Runners: []model.Runner{{Name: "a"}}, Projects: map[string]config.Project{}}, flow.Options{})
 
 	_, pickErr := picked.Pick(t.Context(), "zzz", "1")
 	_, freshErr := picked.PickFresh(t.Context(), "zzz", "1")

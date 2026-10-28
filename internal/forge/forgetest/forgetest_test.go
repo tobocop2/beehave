@@ -32,6 +32,7 @@ type memForge struct {
 	down      bool
 	wrongGone bool
 	noFields  bool
+	noURL     bool
 	dropped   string
 	extra     bool
 	wrongPR   bool
@@ -140,6 +141,30 @@ func TestCheckItem_FailsAForgeThatDeclaresNoFieldButReturnsOne(t *testing.T) {
 	r := &recorder{}
 	forgetest.CheckItem(r, memForge{noFields: true})
 	assert.Equal(t, []string{`Item: got the field "pr", which ItemFields does not declare ([])`}, r.failures)
+}
+
+func (m memForge) CloneURL() string {
+	if m.noURL {
+		return ""
+	}
+
+	return "https://example.test/owner/name.git"
+}
+
+func TestCheckCloneURL_AcceptsAForgeThatNamesAURL(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckCloneURL(r, memForge{})
+	assert.Empty(t, r.failures)
+}
+
+func TestCheckCloneURL_FailsAForgeThatNamesNone(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckCloneURL(r, memForge{noURL: true})
+	assert.Equal(t, []string{"CloneURL: want the URL to clone the repository from, got none"}, r.failures)
 }
 
 func TestCheckItemFields_AcceptsAForgeThatDeclaresFields(t *testing.T) {

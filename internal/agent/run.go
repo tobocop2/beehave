@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ var (
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
 // OnStart, when set, receives the pid of the agent process as soon as it runs.
+// A non-empty Model or Resume adds the model flag or the resume flag of the profile; a profile without that flag refuses the run.
 // A nil Adapter means the agent of the runner has no adapter, and the run does not start.
 type Spec struct {
 	Adapter     Adapter
@@ -44,16 +46,24 @@ type Spec struct {
 	Token       string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
+	Model       string
+	Resume      string
 	Log         io.Writer
 	OnStart     func(pid int)
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
+// Session, Transcript, Text and Skills describe the finished session: its id, the path of its transcript, its last message and the skills it called.
+// The Runner leaves them empty. The caller that owns the Adapter fills them from the transcript.
 type Result struct {
-	Outcome  Outcome
-	ExitCode int
-	Stderr   string
-	Note     string
+	Outcome    Outcome
+	ExitCode   int
+	Stderr     string
+	Note       string
+	Session    string
+	Transcript string
+	Text       string
+	Skills     []string
 }
 
 // Timer is the part of time.Timer that the idle limit uses.
@@ -94,6 +104,14 @@ func prepare(spec Spec) (Profile, string) {
 
 	p := spec.Adapter.Profile()
 
+	if spec.Model != "" && p.ModelFlag == "" {
+		return p, fmt.Sprintf("%s has no option to set a model, so model %q is not used. Remove the model from the step.", p.Binary, spec.Model)
+	}
+
+	if spec.Resume != "" && p.ResumeFlag == "" {
+		return p, p.Binary + " has no option to resume a session, so the run does not start. Remove resume_from from the step."
+	}
+
 	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {
 		return p, fmt.Sprintf("the config_dir %q of runner %s is not a folder, so %s is not started. Log in to the runner first.",
 			spec.Runner.ConfigDir, spec.Runner.Name, p.Binary)
@@ -116,7 +134,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result 
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
-	cmd := proc.GroupCommand(ctx, binary, p.Args, spec.Dir)
+	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p), spec.Dir)
 
 	cmd.Env = buildEnv(spec.Env, p, spec.Runner.ConfigDir, spec.Token)
 	cmd.Stdin = strings.NewReader(spec.Prompt)
@@ -131,6 +149,21 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result 
 	killLeftovers(cmd)
 
 	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
+}
+
+// argsOf returns the arguments of the profile, then the model and the session to resume when the spec sets them.
+func argsOf(spec Spec, p Profile) []string {
+	args := slices.Clone(p.Args)
+
+	if spec.Model != "" {
+		args = append(args, p.ModelFlag, spec.Model)
+	}
+
+	if spec.Resume != "" {
+		args = append(args, p.ResumeFlag, spec.Resume)
+	}
+
+	return args
 }
 
 // killLeftovers kills the group of a command that started.
