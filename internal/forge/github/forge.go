@@ -201,6 +201,39 @@ func (f *Forge) PullCounts(ctx context.Context, pr int) (commits, files int, err
 	return *answer.Commits, *answer.ChangedFiles, nil
 }
 
+// commitRow is one commit of the REST list of a pull request. A null committer account is a committer with no linked login.
+type commitRow struct {
+	Committer *struct {
+		Login string `json:"login"`
+	} `json:"committer"`
+	Commit struct {
+		Committer struct {
+			Email string `json:"email"`
+		} `json:"committer"`
+	} `json:"commit"`
+}
+
+// Committers returns the committer of each commit of a pull request, in the order of the commits.
+// The commit list of gh pr view holds the authors only, so this reads the REST list.
+func (f *Forge) Committers(ctx context.Context, pr int) ([]model.Committer, error) {
+	rows, err := readPages[commitRow](ctx, f, "pulls/"+strconv.Itoa(pr)+"/commits")
+	if err != nil {
+		return nil, forge.Refusal(fmt.Sprintf("could not read the committers of pull request %d", pr), err)
+	}
+
+	committers := make([]model.Committer, len(rows))
+
+	for i, row := range rows {
+		committers[i].Email = row.Commit.Committer.Email
+
+		if row.Committer != nil {
+			committers[i].Login = row.Committer.Login
+		}
+	}
+
+	return committers, nil
+}
+
 // PRList runs gh pr list with the limit and the arguments, which must name --json. An answer that fills the limit may be cut off and is refused.
 func (f *Forge) PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error) {
 	shown := strings.Join(args, " ")

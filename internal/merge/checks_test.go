@@ -232,7 +232,7 @@ func TestAttribution_RefusesWhereverItHides(t *testing.T) {
 				result := w.run(request())
 
 				assert.Equal(t, merge.Refused, result.Stop)
-				assert.Equal(t, "REFUSE: AI attribution on #5. Offending lines:", result.Lines[len(result.Lines)-2])
+				assert.Equal(t, "REFUSE: forbidden text on #5. Offending lines:", result.Lines[len(result.Lines)-2])
 				assert.Regexp(t, ":"+regexp.QuoteMeta(text)+"$", last(result))
 				assert.Empty(t, w.writes)
 			})

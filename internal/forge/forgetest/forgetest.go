@@ -148,6 +148,10 @@ func checkCounts(c check, target forge.Forge) {
 	commits, files, err := target.PullCounts(context.Background(), Seven)
 	c.noError(err, "PullCounts")
 	c.equal([]int{commits, files}, []int{SevenCommits, SevenFiles}, "counts")
+
+	committers, err := target.Committers(context.Background(), Seven)
+	c.noError(err, "Committers")
+	c.equal(len(committers), SevenCommits, "committers")
 }
 
 // checkStanding runs the batched read of our pull requests, the title of an item and the annotations of a check run.
@@ -364,6 +368,7 @@ func checkMergeFail(r Reporter, target forge.Forge) {
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
 		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
+		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
 	})
 }
 

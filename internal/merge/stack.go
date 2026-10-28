@@ -12,12 +12,24 @@ const listLimit = 1000
 
 // orphans refuses a merge that would leave open pull requests with no base. A child is an open pull request on the branch of this one.
 // A child in the same native stack is a note, not a block: GitHub retargets it when its parent merges.
+// With Retarget set, the guard only records the children. The move happens in conclude, after every other guard.
 func (a *attempt) orphans() *refusal {
-	blocking, stop := a.children()
-	if stop != nil || len(blocking) == 0 {
+	kids, stop := a.children()
+	if stop != nil || len(kids) == 0 {
 		return stop
 	}
 
+	if a.req.Retarget {
+		a.kids = kids
+
+		return nil
+	}
+
+	return a.block(hashed(kids))
+}
+
+// block says why the children stop the merge. It refuses unless --allow-orphans is set.
+func (a *attempt) block(blocking []string) *refusal {
 	a.say(
 		fmt.Sprintf("REFUSE: #%d is the base of %s. A squash merge orphans them.", a.req.PR, strings.Join(blocking, " ")),
 		fmt.Sprintf("        Link them into the stack of #%d, or rebase each child onto %s,", a.req.PR, a.req.Base),
@@ -35,8 +47,45 @@ func (a *attempt) orphans() *refusal {
 	return nil
 }
 
-// children returns the children that a merge would orphan, as #N. A read that fails refuses: an unreadable guard is not a passing one.
-func (a *attempt) children() ([]string, *refusal) {
+// hashed writes each pull request number as #N.
+func hashed(numbers []int) []string {
+	names := make([]string, len(numbers))
+
+	for i, number := range numbers {
+		names[i] = fmt.Sprintf("#%d", number)
+	}
+
+	return names
+}
+
+// retarget moves each child onto the base, so the merge orphans none. It runs after every guard has passed, right before the merge call.
+// A move that fails refuses and the merge does not happen. The children before it stay moved, and the refusal names both groups.
+func (a *attempt) retarget() *refusal {
+	for i, kid := range a.kids {
+		if err := a.forge.SetBase(a.ctx, kid, a.req.Base); err != nil {
+			left := listed(hashed(a.kids[i:]))
+
+			return refuse(fmt.Sprintf("REFUSE: cannot move #%d onto %s: %s. Moved: %s. Not moved: %s. #%d is not merged. Move %s by hand, then run the merge again.",
+				kid, a.req.Base, err, listed(hashed(a.kids[:i])), left, a.req.PR, left))
+		}
+
+		a.say(fmt.Sprintf("retargeted #%d onto %s before the merge of #%d", kid, a.req.Base, a.req.PR))
+	}
+
+	return nil
+}
+
+// listed joins names with commas. No name gives "none".
+func listed(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// children returns the children that a merge would orphan. A read that fails refuses: an unreadable guard is not a passing one.
+func (a *attempt) children() ([]int, *refusal) {
 	branch := text(a.view.HeadRefName)
 	if branch == "" {
 		return nil, refuse(fmt.Sprintf("REFUSE: cannot read #%d's own branch name, so its children cannot be found", a.req.PR))
@@ -68,13 +117,13 @@ func onBranch(rows []model.PullRequest, branch string) []int {
 }
 
 // unstacked returns the children that are not in the stack of the pull request itself, and notes the ones that are.
-func (a *attempt) unstacked(kids []int) ([]string, *refusal) {
+func (a *attempt) unstacked(kids []int) ([]int, *refusal) {
 	mine, err := a.forge.StackID(a.ctx, a.req.PR)
 	if err != nil {
 		return nil, refuse(fmt.Sprintf("REFUSE: cannot read which stack #%d is in", a.req.PR))
 	}
 
-	var blocking []string
+	var blocking []int
 
 	for _, kid := range kids {
 		same, stop := a.sameStack(mine, kid)
@@ -83,7 +132,7 @@ func (a *attempt) unstacked(kids []int) ([]string, *refusal) {
 		}
 
 		if !same {
-			blocking = append(blocking, fmt.Sprintf("#%d", kid))
+			blocking = append(blocking, kid)
 		}
 	}
 

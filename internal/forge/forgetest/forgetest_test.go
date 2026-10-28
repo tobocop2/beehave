@@ -191,6 +191,10 @@ func (m memForge) PullCounts(context.Context, int) (commits, files int, err erro
 	return forgetest.SevenCommits, forgetest.SevenFiles, m.fail()
 }
 
+func (m memForge) Committers(context.Context, int) ([]model.Committer, error) {
+	return make([]model.Committer, forgetest.SevenCommits), m.fail()
+}
+
 func (m memForge) PRChecks(context.Context, int) ([]model.Check, error) {
 	return []model.Check{{Name: forgetest.SevenCheck, Bucket: model.CheckPass}}, m.fail()
 }

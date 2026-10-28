@@ -18,17 +18,17 @@ const mergeStep = "merge"
 var errMergeRefused = errors.New("the merge was refused")
 
 // merger merges the pull request of an item, pinned to head. It returns the verdict of the merge with the lines to show.
-// A pull request of ours is always refused with merge.OwnWork: the owner merges it in the forge.
+// A pull request of an own identity is refused with merge.OwnWork unless the settings say another step approved it.
 type merger interface {
-	Merge(ctx context.Context, project, item, head string) (merge.Result, error)
+	Merge(ctx context.Context, project, item, head string, settings MergeSettings) (merge.Result, error)
 }
 
 // mergeReady merges the ready pull request, pinned to the head that the gate and the review read.
 // A merge that was done, or that was refused as our own work, goes on to the watch, which ends when the owner merges. Any other refusal ends the item.
 // The caller makes sure that the build has a merger.
-func (e *Engine) mergeReady(ctx dbos.Context, project, item, head string) error {
+func (e *Engine) mergeReady(ctx dbos.Context, project, item, head string, settings MergeSettings) error {
 	result, err := runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) {
-		return e.deps.Merge.Merge(c, project, item, head)
+		return e.deps.Merge.Merge(c, project, item, head, settings)
 	})
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", mergeStep, item, err)

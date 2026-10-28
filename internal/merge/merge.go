@@ -1,9 +1,10 @@
 // Package merge merges one reviewed pull request into the base, pinned to the commit that a reviewer gated.
-// Every guard refuses before the merge call. A pull request of ours is never merged: the first guard refuses it.
+// Every guard refuses before the merge call. A pull request of ours merges only when the request says another step approved it.
 package merge
 
 import (
 	"context"
+	"regexp"
 	"slices"
 
 	"github.com/tobocop2/obee/internal/model"
@@ -51,6 +52,7 @@ type Reads interface {
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 	PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error)
 	PullCounts(ctx context.Context, pr int) (commits, files int, err error)
+	Committers(ctx context.Context, pr int) ([]model.Committer, error)
 	PRChecks(ctx context.Context, pr int) ([]model.Check, error)
 	OpenChangeRequests(ctx context.Context, pr int) ([]model.ChangeRequest, error)
 	UnresolvedThreads(ctx context.Context, pr int) ([]model.ReviewThread, error)
@@ -62,6 +64,7 @@ type Reads interface {
 // Writes is what the merge changes on the forge. MergePR merges only if the head is still the pin.
 type Writes interface {
 	SetDraft(ctx context.Context, pr int, draft bool) error
+	SetBase(ctx context.Context, pr int, base string) error
 	MergePR(ctx context.Context, pr int, sha string) error
 }
 
@@ -79,7 +82,10 @@ type Forge interface {
 }
 
 // Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.hcl.
-// Repo and Base name the repository and the base. OwnerLogin and OwnerEmail are the login and address of the owner.
+// Repo and Base name the repository and the base. OwnLogins and OwnEmails are the identities of the owner; both lists need an entry, and no entry may be empty.
+// Approved is true when a step other than the author accepted the head: work of an own identity merges only then.
+// Hold is the label of a pull request that is never merged; empty means no label holds. ForbidText holds the patterns that no line of the body or of a commit message may match.
+// Retarget moves each child pull request onto the base before the merge, where a child would otherwise block it.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
@@ -87,8 +93,12 @@ type Request struct {
 	Gated         string
 	Repo          string
 	Base          string
-	OwnerLogin    string
-	OwnerEmail    string
+	OwnLogins     []string
+	OwnEmails     []string
+	Approved      bool
+	Hold          string
+	ForbidText    []*regexp.Regexp
+	Retarget      bool
 	Runners       []string
 	Dir           string
 	IntegrationPR int
@@ -120,6 +130,12 @@ type attempt struct {
 	req   Request
 	view  model.PullRequest
 	files int // the forge's count of changed files, read with the first read
+	// committers are the committers of the commits, read with the first read.
+	committers []model.Committer
+	// tip is the tip of the base at the start of the run. The run refuses if the base is somewhere else right before the merge call.
+	tip string
+	// kids are the children to move onto the base right before the merge call. Only a retarget fills it.
+	kids  []int
 	lines []string
 }
 
@@ -130,7 +146,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).state, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).state, (*attempt).held, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }

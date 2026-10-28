@@ -531,6 +531,48 @@ func TestPullCounts_Refusals(t *testing.T) {
 	require.EqualError(t, err, base)
 }
 
+func TestCommitters_ReadsTheCommitterOfEveryCommitOnEveryPage(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, `[[`+
+		`{"committer":{"login":"me"},"commit":{"committer":{"email":"me@x"}}},`+
+		`{"committer":null,"commit":{"committer":{"email":"gh@x"}}}`+
+		`],[{"committer":{"login":"web-flow"},"commit":{"committer":{}}}]]`)
+
+	got, err := f.Committers(context.Background(), 3)
+	require.NoError(t, err)
+	assert.Equal(t, []model.Committer{{Login: "me", Email: "me@x"}, {Email: "gh@x"}, {Login: "web-flow"}}, got)
+	assert.Equal(t, [][]string{{"api", "--paginate", "--slurp", "repos/" + repo + "/pulls/3/commits"}}, run.Calls)
+}
+
+func TestCommitters_Refusals(t *testing.T) {
+	t.Parallel()
+
+	const base = "could not read the committers of pull request 3"
+
+	for name, stdout := range map[string]string{
+		"not_json":  "not json",
+		"null_page": "[null]",
+		"null_item": "[[null]]",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f, _ := fixed(t, stdout)
+
+			_, err := f.Committers(context.Background(), 3)
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), base), err.Error())
+		})
+	}
+
+	f, _ := failing(t, "")
+
+	_, err := f.Committers(context.Background(), 3)
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), base), err.Error())
+}
+
 func TestPRBody(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // ownWorkCases are the pull requests that obee must never merge. Each one refuses before the first write.
@@ -83,8 +84,10 @@ func TestOwnWork_AMissingLoginOrAddressRefuses(t *testing.T) {
 	t.Parallel()
 
 	blanks := map[string]func(*merge.Request){
-		"owner login":   func(r *merge.Request) { r.OwnerLogin = "" },
-		"owner address": func(r *merge.Request) { r.OwnerEmail = "" },
+		"no owner login":   func(r *merge.Request) { r.OwnLogins = nil },
+		"no owner address": func(r *merge.Request) { r.OwnEmails = nil },
+		"an empty login":   func(r *merge.Request) { r.OwnLogins = []string{me, ""} },
+		"an empty address": func(r *merge.Request) { r.OwnEmails = []string{""} },
 	}
 	for missing, blank := range blanks {
 		t.Run(missing, func(t *testing.T) {
@@ -96,7 +99,7 @@ func TestOwnWork_AMissingLoginOrAddressRefuses(t *testing.T) {
 			result := w.run(req)
 
 			assert.Equal(t, merge.Refused, result.Stop)
-			assert.Contains(t, result.Lines[0], "the owner login and the owner address must both be set")
+			assert.Contains(t, result.Lines[0], "the owner logins and the owner addresses must both be set")
 			assert.Empty(t, w.calls, "no read before the guard")
 			assert.Empty(t, w.writes)
 		})
@@ -174,6 +177,58 @@ func TestOwnWork_EqualCountsPass(t *testing.T) {
 	w.counts = &counts{commits: 1, files: 1}
 
 	assert.Equal(t, merge.Done, w.run(request()).Stop)
+}
+
+func TestOwnWork_ACommitterThatIsOursCountsLikeAnAuthor(t *testing.T) {
+	t.Parallel()
+
+	for name, committer := range map[string]model.Committer{
+		"login": {Login: me}, "address": {Email: meMail}, "runner": {Login: "bee-1"}, "case": {Login: "ME"},
+	} {
+		w := newWorld(t)
+		w.committers = []model.Committer{committer}
+		result := w.run(request())
+
+		assert.Equal(t, merge.OwnWork, result.Stop, name)
+		assert.Contains(t, result.Lines[0], "the committer of a commit", name)
+		assert.Empty(t, w.writes, name)
+
+		approved := request()
+		approved.Approved = true
+		w = newWorld(t)
+		w.committers = []model.Committer{committer}
+
+		assert.Equal(t, merge.Done, w.run(approved).Stop, name)
+	}
+}
+
+func TestOwnWork_ACommitterThatIsNotOursOrNotNamedMerges(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	w.committers = []model.Committer{{Login: "web-flow", Email: "noreply@github.com"}}
+
+	assert.Equal(t, merge.Done, w.run(request()).Stop)
+}
+
+func TestOwnWork_CommittersThatCannotBeReadOrAreFewerThanTheCommitsRefuse(t *testing.T) {
+	t.Parallel()
+
+	failing := newWorld(t)
+	failing.fails["Committers"] = true
+	result := failing.run(request())
+
+	assert.Equal(t, merge.OwnWork, result.Stop)
+	assert.Contains(t, result.Lines[0], "committers of #5 cannot be read")
+	assert.Empty(t, failing.writes)
+
+	short := newWorld(t)
+	short.committers = []model.Committer{}
+	result = short.run(request())
+
+	assert.Equal(t, merge.OwnWork, result.Stop)
+	assert.Contains(t, result.Lines[0], "list of committers is incomplete for #5 (0 read, 1 in the forge)")
+	assert.Empty(t, short.writes)
 }
 
 func TestOwnWork_AThirdPartyPullRequestStillMerges(t *testing.T) {

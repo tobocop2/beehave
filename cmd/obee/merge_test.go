@@ -1,0 +1,392 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/forge"
+	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
+)
+
+const (
+	gated  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	moved  = "ffffffffffffffffffffffffffffffffffffffff"
+	number = 5
+)
+
+// shipForge is the forge fake of the merge scripts: one open pull request on the branch "item", and the writes it saw.
+// A method it does not define panics, so a test shows every call the merge makes.
+type shipForge struct {
+	forge.Forge
+
+	view     func(call int) model.PullRequest
+	views    int
+	children []model.PullRequest
+	// committers are the committers the forge reports. Nil means one unnamed committer, as the pull request has one commit.
+	committers []model.Committer
+	writes     []string
+}
+
+func (f *shipForge) PRList(_ context.Context, _ int, args ...string) ([]model.PullRequest, error) {
+	for i, arg := range args {
+		switch {
+		case arg == "--state" && args[i+1] == "merged":
+			return nil, nil
+		case arg == "--head" && args[i+1] != "item":
+			return nil, nil
+		case arg == "--head":
+			return []model.PullRequest{{Number: number}}, nil
+		case arg == "--base":
+			return f.children, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (f *shipForge) PRView(context.Context, int, ...string) (model.PullRequest, error) {
+	f.views++
+
+	return f.view(f.views), nil
+}
+
+func (*shipForge) PullCounts(context.Context, int) (commits, files int, err error) { return 1, 1, nil }
+
+func (f *shipForge) Committers(context.Context, int) ([]model.Committer, error) {
+	if f.committers == nil {
+		return []model.Committer{{}}, nil
+	}
+
+	return f.committers, nil
+}
+
+func (*shipForge) PRChecks(context.Context, int) ([]model.Check, error) {
+	return []model.Check{{Name: "ci", Bucket: model.CheckPass}}, nil
+}
+
+func (*shipForge) OpenChangeRequests(context.Context, int) ([]model.ChangeRequest, error) {
+	return nil, nil
+}
+
+func (*shipForge) UnresolvedThreads(context.Context, int) ([]model.ReviewThread, error) {
+	return nil, nil
+}
+
+func (*shipForge) StackID(context.Context, int) (string, error) { return "", nil }
+
+func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+
+func (*shipForge) BranchRef(context.Context, string) (string, bool, error) {
+	return strings.Repeat("c", 40), true, nil
+}
+
+func (f *shipForge) SetBase(_ context.Context, pr int, base string) error {
+	f.writes = append(f.writes, fmt.Sprintf("SetBase %d %s", pr, base))
+
+	return nil
+}
+
+func (f *shipForge) MergePR(_ context.Context, pr int, sha string) error {
+	f.writes = append(f.writes, fmt.Sprintf("MergePR %d %s", pr, sha))
+
+	return nil
+}
+
+// pullOf decodes a pull request of the default shape with the keys of over replaced.
+func pullOf(t *testing.T, over map[string]any) model.PullRequest {
+	t.Helper()
+
+	row := map[string]any{
+		"number": number, "state": "OPEN", "isDraft": false, "baseRefName": "integration", "headRefName": "item",
+		"headRefOid": gated, "mergeable": "MERGEABLE", "body": "text", "author": map[string]any{"login": "dev"},
+		"files":   []any{map[string]any{"path": "a.go"}},
+		"commits": []any{commit("dev@x", "dev", "fix", "")},
+	}
+	for key, value := range over {
+		row[key] = value
+	}
+
+	text, err := json.Marshal(row)
+	require.NoError(t, err)
+
+	view, err := model.Decode[model.PullRequest]("test", string(text))
+	require.NoError(t, err)
+
+	return view
+}
+
+func commit(email, login, headline, body string) map[string]any {
+	author := map[string]any{"email": email, "login": login}
+
+	return map[string]any{"oid": strings.Repeat("b", 40), "messageHeadline": headline, "messageBody": body, "authors": []any{author}}
+}
+
+// shipping returns the pulls over a forge whose pull request has the keys of over replaced, with the settings of the example.
+func shipping(t *testing.T, over map[string]any) (pulls, *shipForge, flow.MergeSettings) {
+	t.Helper()
+
+	f := &shipForge{}
+	view := pullOf(t, over)
+	f.view = func(int) model.PullRequest { return view }
+
+	p := pulls{
+		projects: map[string]config.Project{"p": {Project: model.Project{Repo: "o/r"}}},
+		forge:    func(model.Project) (forge.Forge, error) { return f, nil },
+		runners:  []string{"bee-1"},
+	}
+
+	return p, f, flow.MergeSettings{
+		Repo: "o/r", Base: "integration", Hold: "hold", Logins: []string{"me"}, Emails: []string{"me@x"},
+		ForbidText: exampleForbidText(t), Retarget: true,
+	}
+}
+
+// exampleForbidText reads the `forbid_text` patterns of the merge step of the remediation example.
+func exampleForbidText(t *testing.T) []string {
+	t.Helper()
+
+	var patterns []string
+
+	walkExampleMerge(t, func(ship *workflow.Merge) {
+		items, diags := hcl.ExprList(ship.ForbidText)
+		require.False(t, diags.HasErrors(), "%v", diags)
+
+		for _, item := range items {
+			value, diags := item.Value(nil)
+			require.False(t, diags.HasErrors(), "%v", diags)
+
+			patterns = append(patterns, value.AsString())
+		}
+	})
+
+	return patterns
+}
+
+func walkExampleMerge(t *testing.T, visit func(*workflow.Merge)) {
+	t.Helper()
+
+	flowFile, err := workflow.Load(os.DirFS("../../examples/remediation"), "workflow.hcl")
+	require.NoError(t, err)
+
+	flowFile.Walk(func(step workflow.Step, _ int) {
+		if ship, ok := step.(*workflow.Merge); ok {
+			visit(ship)
+		}
+	})
+}
+
+func TestMerge_M13_OwnWorkWithoutApprovedIsRefusedWithNoWriteCall(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, map[string]any{"commits": []any{commit("me@x", "linked", "fix", "")}})
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.OwnWork, result.Stop)
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_M13_OwnWorkWithApprovedIsMergedAtThePin(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, map[string]any{"commits": []any{commit("me@x", "linked", "fix", "")}})
+	settings.Approved = true
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+	assert.Equal(t, []string{"MergePR 5 " + gated}, f.writes)
+}
+
+func TestMerge_ARunnerOfTheConfigIsAnOwnIdentity(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, map[string]any{"author": map[string]any{"login": "bee-1"}})
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.OwnWork, result.Stop)
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_M31_AHeldPullRequestIsNotMerged(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, map[string]any{"labels": []any{map[string]any{"name": "hold"}}})
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, strings.Join(result.Lines, "\n"), "has the label hold")
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_M08_ABodyWithAnAttributionLineIsRefusedWithItsLineNumber(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, map[string]any{"body": "a\nb\nGenerated with [Claude Code]"})
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, "  3:Generated with [Claude Code]", result.Lines[len(result.Lines)-1])
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_M19_C18_AHeadThatMovesBeforeTheMergeCallIsRefusedAndNothingIsMerged(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	f.view = func(call int) model.PullRequest {
+		if call > 1 {
+			return pullOf(t, map[string]any{"headRefOid": moved})
+		}
+
+		return pullOf(t, nil)
+	}
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_C19_ChildrenRetargetMovesTheChildFirstAndRefuseBlocks(t *testing.T) {
+	t.Parallel()
+
+	child := pullOf(t, map[string]any{"number": 7, "baseRefName": "item"})
+
+	p, f, settings := shipping(t, nil)
+	f.children = []model.PullRequest{child}
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+	require.NoError(t, err)
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+	assert.Equal(t, []string{"SetBase 7 integration", "MergePR 5 " + gated}, f.writes)
+
+	p, f, settings = shipping(t, nil)
+	f.children = []model.PullRequest{child}
+	settings.Retarget = false
+
+	result, err = p.Merge(t.Context(), "p", "item", gated, settings)
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_ARepoThatIsNotTheRepositoryOfTheProjectIsRefusedAndNothingIsRead(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	settings.Repo = "someone/else"
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Equal(t, []string{"REFUSE: the merge step names the repository someone/else, and the project p uses o/r. Set `repo` to o/r."}, result.Lines)
+	assert.Zero(t, f.views)
+	assert.Empty(t, f.writes)
+}
+
+func TestMerge_TheRepoOfTheProjectMatchesWithoutRegardToCase(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	settings.Repo = "O/R"
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+	assert.Equal(t, []string{"MergePR 5 " + gated}, f.writes)
+}
+
+func TestMerge_APatternThatIsNotValidIsAnErrorAndNothingIsRead(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	settings.ForbidText = []string{"(unclosed"}
+
+	_, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.ErrorContains(t, err, "(unclosed")
+	assert.Zero(t, f.views)
+}
+
+func TestMerge_AnItemWithNoPullRequestAndAProjectWithNoForgeAreErrors(t *testing.T) {
+	t.Parallel()
+
+	p, _, settings := shipping(t, nil)
+	p.forge = func(model.Project) (forge.Forge, error) { return &shipForge{}, nil }
+
+	_, err := p.Merge(t.Context(), "p", "other", gated, settings)
+	require.Error(t, err)
+
+	p = pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil).forge}
+
+	_, err = p.Merge(t.Context(), "p", "item", gated, settings)
+	require.ErrorIs(t, err, forge.ErrNoForge)
+}
+
+func TestNewLife_TheRunnersOfTheConfigAreTheOwnRunnersOfTheMerger(t *testing.T) {
+	t.Parallel()
+
+	life := newLife(config.Config{Runners: []model.Runner{{Name: "bee-1"}, {Name: "bee-2"}}}, newAdapters(nil, nil))
+
+	assert.Equal(t, []string{"bee-1", "bee-2"}, life.runners)
+}
+
+func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T) {
+	t.Parallel()
+
+	var seen bool
+
+	walkExampleMerge(t, func(ship *workflow.Merge) {
+		seen = true
+
+		for name, expr := range map[string]hcl.Expression{
+			"repo": ship.Repo, "base": ship.Base, "hold": ship.Hold, "own": ship.Own,
+			"approved": ship.Approved, "forbid_text": ship.ForbidText, "children": ship.Children,
+		} {
+			assert.NotNil(t, expr, name)
+			assert.NotEmpty(t, expr.Range().Filename, "%s is set in the example", name)
+		}
+
+		assert.Equal(t, "env.BASE", sourceOf(t, ship.Base), "base is the integration branch")
+		assert.Equal(t, "env.REPO", sourceOf(t, ship.Repo))
+		assert.Equal(t, `"retarget"`, sourceOf(t, ship.Children))
+		assert.Equal(t, `"hold"`, sourceOf(t, ship.Hold))
+		assert.NotContains(t, sourceOf(t, ship.Own), "@", "the file holds no address")
+		assert.Contains(t, sourceOf(t, ship.Approved), "agent.review.verdict")
+	})
+	assert.True(t, seen)
+}
+
+// sourceOf returns the text of the expression in the example file.
+func sourceOf(t *testing.T, expr hcl.Expression) string {
+	t.Helper()
+
+	text, err := os.ReadFile("../../examples/remediation/" + expr.Range().Filename)
+	require.NoError(t, err)
+
+	return strings.TrimSpace(string(text[expr.Range().Start.Byte:expr.Range().End.Byte]))
+}

@@ -105,17 +105,22 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 	commands := newPrograms(cfg, trees, table)
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: loginsReading(cfg, read), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
+		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: loginsReading(cfg, read), Lifecycle: life, Forge: life, Watch: life, Merge: life, Trees: trees, Beats: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 	})
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.
-// The build has no merger yet, so a merge step with `merge = true` fails, and the owner merges every pull request.
+// The same value is the merger of a merge step with `merge = true`. The runners of the config count as own identities there.
 func newLife(cfg config.Config, table adapters) itemLife {
+	runners := make([]string, len(cfg.Runners))
+	for i, runner := range cfg.Runners {
+		runners[i] = runner.Name
+	}
+
 	return itemLife{
 		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
-		pulls:  pulls{projects: cfg.Projects, forge: table.forge},
+		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners},
 	}
 }
 

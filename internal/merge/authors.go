@@ -3,6 +3,7 @@ package merge
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/model"
@@ -14,20 +15,18 @@ const shaWidth = 9
 // noLogin stands for a commit author with no linked account, and for a missing address.
 const noLogin = "?"
 
-var attributionRule = regexp.MustCompile(`(?i)noreply@anthropic|laude-Session|uthored-By: Claude|Generated with \[Claude`)
-
-// attribution refuses AI attribution in the body, a commit headline or a commit body, and names each line.
-// A line number counts from the first line of the body, then the commit bodies, then the headlines.
+// attribution refuses a line of the body, a commit headline or a commit body that matches a pattern of the request, and names each line.
+// A line number counts from the first line of the body, then the commit bodies, then the headlines. With no pattern, nothing is forbidden.
 func (a *attempt) attribution() *refusal {
-	hits := attributedLines(a.view)
+	hits := forbiddenLines(a.view, a.req.ForbidText)
 	if len(hits) == 0 {
 		return nil
 	}
 
-	return refuse(append([]string{fmt.Sprintf("REFUSE: AI attribution on #%d. Offending lines:", a.req.PR)}, hits...)...)
+	return refuse(append([]string{fmt.Sprintf("REFUSE: forbidden text on #%d. Offending lines:", a.req.PR)}, hits...)...)
 }
 
-func attributedLines(view model.PullRequest) []string {
+func forbiddenLines(view model.PullRequest, forbidden []*regexp.Regexp) []string {
 	var bodies, headlines []string
 
 	for _, commit := range view.Commits {
@@ -40,7 +39,7 @@ func attributedLines(view model.PullRequest) []string {
 	var hits []string
 
 	for number, line := range strings.Split(whole, "\n")[:strings.Count(whole, "\n")] {
-		if attributionRule.MatchString(line) {
+		if slices.ContainsFunc(forbidden, func(rule *regexp.Regexp) bool { return rule.MatchString(line) }) {
 			hits = append(hits, fmt.Sprintf("  %d:%s", number+1, line))
 		}
 	}
@@ -60,7 +59,7 @@ func (a *attempt) authors() *refusal {
 		return nil
 	}
 
-	head := "REFUSE: these commits have no linked account and carry an address other than " + a.req.OwnerEmail + ":"
+	head := "REFUSE: these commits have no linked account and carry an address other than " + strings.Join(a.req.OwnEmails, ", ") + ":"
 
 	return refuse(append(append([]string{head}, unlinked...),
 		"  They may be OUR commits under a wrong address. If they are, repair them.",
