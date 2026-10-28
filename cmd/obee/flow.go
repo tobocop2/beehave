@@ -146,6 +146,7 @@ func newPrograms(cfg config.Config, trees treeFinder, table adapters) programs {
 		local: func(binary, dir string, timeout time.Duration) proc.Runner {
 			return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
 		},
+		exec: func(spec proc.ExecRunner) proc.Runner { return spec },
 		hosts: func(project string) (host.Host, error) {
 			found, ok := cfg.Projects[project]
 			if !ok {

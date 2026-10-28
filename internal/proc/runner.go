@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,12 +33,16 @@ type Runner interface {
 	Run(ctx context.Context, args []string) model.CommandResult
 }
 
-// ExecRunner runs a binary found on PATH. A zero Timeout means no limit. Env holds NAME=value pairs that the command gets on top of the environment of the process.
+// ExecRunner runs a binary found on PATH. A zero Timeout means no limit. Env holds NAME=value pairs that the command gets on top of its base environment.
+// The base environment is that of the process, unless Only is not nil: then it is Only, and no variable of the process reaches the command.
+// Stdin is the text that the command reads. An empty Stdin is an empty input.
 type ExecRunner struct {
 	Binary  string
 	Dir     string
 	Timeout time.Duration
 	Env     []string
+	Only    []string
+	Stdin   string
 }
 
 // NewExecRunner returns a runner for the binary in dir that stops a call after DefaultTimeout.
@@ -102,7 +108,7 @@ func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandRes
 		return model.CommandResult{ExitCode: exitNotFound, Stderr: r.Binary + ": command not found"}
 	}
 
-	cmd.Env = append(cmd.Environ(), r.Env...)
+	r.feed(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -117,6 +123,20 @@ func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandRes
 	}
 
 	return model.CommandResult{ExitCode: code, Stdout: stdout.String(), Stderr: stderr.String()}
+}
+
+// feed sets the environment and the stdin of cmd. An empty Stdin leaves the input empty (the null device).
+func (r ExecRunner) feed(cmd *exec.Cmd) {
+	base := r.Only
+	if base == nil {
+		base = cmd.Environ()
+	}
+
+	cmd.Env = append(slices.Clone(base), r.Env...)
+
+	if r.Stdin != "" {
+		cmd.Stdin = strings.NewReader(r.Stdin)
+	}
 }
 
 // interrupted reports a context that is over: exit code 124 with the note "timed out" or 130 with the note for a canceled call.

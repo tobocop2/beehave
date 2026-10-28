@@ -94,6 +94,14 @@ func TestLoginEnv_HoldsTheAllowlistAndTheLoginButNoToken(t *testing.T) {
 	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR=/login", "PATH=/bin"}, LoginEnv(base, p, "/login"))
 }
 
+func TestLoginEnv_KeepsTheSocketOfTheSSHAgentAndNoGitOrTokenVariable(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{"SSH_AUTH_SOCK": "/tmp/agent.sock", "GH_TOKEN": "x", "GITHUB_TOKEN": "x", "GIT_SSH_COMMAND": "ssh -i k"}
+
+	assert.Equal(t, []string{"SSH_AUTH_SOCK=/tmp/agent.sock"}, LoginEnv(base, Profile{}, ""))
+}
+
 type refusingWriter struct{}
 
 func (refusingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }

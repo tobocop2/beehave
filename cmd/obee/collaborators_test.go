@@ -140,28 +140,40 @@ func TestPrograms_ALocalProgramRunsInTheWorktreeAndKeepsItsExitCode(t *testing.T
 	t.Parallel()
 
 	var (
-		args   []string
-		binary string
-		dir    string
-		limit  time.Duration
+		args []string
+		spec proc.ExecRunner
 	)
 
 	runs := programs{
 		trees: treeAt("/tree"),
-		local: func(b, d string, timeout time.Duration) proc.Runner {
-			binary, dir, limit = b, d, timeout
+		exec: func(s proc.ExecRunner) proc.Runner {
+			spec = s
 
 			return scripted{result: model.CommandResult{Stdout: "out", ExitCode: 3}, args: &args}
 		},
 	}
 
-	got, err := runs.Run(t.Context(), flow.CommandRequest{Project: "p", Item: "1", Run: []string{"make", "check"}, Timeout: time.Minute})
+	request := flow.CommandRequest{Project: "p", Item: "1", Run: []string{"make", "check"}, Timeout: time.Minute, Stdin: "the text", Env: []string{"PATH=/bin"}}
+
+	got, err := runs.Run(t.Context(), request)
 	require.NoError(t, err)
 	assert.Equal(t, flow.CommandOutput{Stdout: "out", RC: 3}, got)
-	assert.Equal(t, "make", binary)
-	assert.Equal(t, "/tree", dir)
-	assert.Equal(t, time.Minute, limit)
+	assert.Equal(t, proc.ExecRunner{Binary: "make", Dir: "/tree", Timeout: time.Minute, Only: []string{"PATH=/bin"}, Stdin: "the text"}, spec, "the environment of the request replaces the environment of the process")
 	assert.Equal(t, []string{"check"}, args)
+}
+
+func TestNewPrograms_ACommandStepGetsOnlyTheEnvironmentOfItsRequestAndItsStdin(t *testing.T) {
+	t.Setenv("OBEE_TEST_SECRET", "secret")
+
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil))
+
+	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", "env; cat"}, Stdin: "from stdin\n", Env: []string{"A=1"}})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.RC)
+	assert.Contains(t, got.Stdout, "A=1\n")
+	assert.Contains(t, got.Stdout, "from stdin\n")
+	assert.NotContains(t, got.Stdout, "OBEE_TEST_SECRET")
 }
 
 func TestPrograms_RefuseAnEmptyProgramAndAFailedTreeLookup(t *testing.T) {

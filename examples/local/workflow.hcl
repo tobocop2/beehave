@@ -40,6 +40,7 @@ loop "review_fix" {
 }
 
 # The branch goes into the source repository under the id of the item. An item that used all of its passes is not pushed.
+# A command step gets no token. For a remote that needs one, add env = { GH_TOKEN = env.GH_TOKEN }.
 command "push" {
   run  = ["git", "push", "origin", "HEAD:refs/heads/${item.id}"]
   when = !loop.review_fix.exhausted

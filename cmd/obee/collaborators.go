@@ -240,7 +240,10 @@ type treeFinder interface {
 // A step with a host runs as one job on the host of the project. A host job has no output to read: its stdout is empty and its code is 0 or 1.
 type programs struct {
 	trees treeFinder
+	// local runs a program with the environment of the process. The gate uses it.
 	local func(binary, dir string, timeout time.Duration) proc.Runner
+	// exec runs the program of a command step. Its spec holds the whole environment of the program (Only) and its stdin.
+	exec  func(spec proc.ExecRunner) proc.Runner
 	hosts func(project string) (host.Host, error)
 }
 
@@ -259,7 +262,8 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
 	}
 
-	result := p.local(request.Run[0], dir, request.Timeout).Run(ctx, request.Run[1:])
+	spec := proc.ExecRunner{Binary: request.Run[0], Dir: dir, Timeout: request.Timeout, Only: request.Env, Stdin: request.Stdin}
+	result := p.exec(spec).Run(ctx, request.Run[1:])
 
 	return flow.CommandOutput{Stdout: result.Stdout, RC: result.ExitCode}, nil
 }

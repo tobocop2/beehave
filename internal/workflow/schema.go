@@ -108,13 +108,18 @@ func (a *Agent) arguments() []argument {
 }
 
 // Command runs a program.
+// Stdin is the text that the program reads. Env adds variables to the small environment of the program.
+// StopOnRC lists exit codes, from 1 to 255, that end the item with the output of the step.
 type Command struct {
 	Header
 
-	Run     hcl.Expression `hcl:"run"`
-	Timeout hcl.Expression `hcl:"timeout,optional"`
-	Host    hcl.Expression `hcl:"host,optional"`
-	When    hcl.Expression `hcl:"when,optional"`
+	Run      hcl.Expression `hcl:"run"`
+	Stdin    hcl.Expression `hcl:"stdin,optional"`
+	Env      hcl.Expression `hcl:"env,optional"`
+	StopOnRC hcl.Expression `hcl:"stop_on_rc,optional"`
+	Timeout  hcl.Expression `hcl:"timeout,optional"`
+	Host     hcl.Expression `hcl:"host,optional"`
+	When     hcl.Expression `hcl:"when,optional"`
 }
 
 // Kind returns KindCommand.
@@ -124,7 +129,7 @@ func (*Command) Kind() Kind { return KindCommand }
 func (*Command) NeedsForge() bool { return false }
 
 func (c *Command) arguments() []argument {
-	return []argument{{expr: c.Run}, {expr: c.Timeout}, {expr: c.Host}, {expr: c.When}}
+	return []argument{{expr: c.Run}, {expr: c.Stdin}, {expr: c.Env}, {expr: c.StopOnRC}, {expr: c.Timeout}, {expr: c.Host}, {expr: c.When}}
 }
 
 // Gate runs the check command of the project, or the command in Run.

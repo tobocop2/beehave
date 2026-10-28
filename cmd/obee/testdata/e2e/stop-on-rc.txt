@@ -1,0 +1,36 @@
+# A command step whose code is in stop_on_rc ends the item. obee run prints the step, the code and the output, and exits with code 1. obee status shows the stop.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+subst config/projects/local.hcl
+
+exec obeereal item add local stop-it --title 'Stop it' --body-file body.txt
+
+exitcode 1 obeereal run stop-it local --workflow flow/stop.hcl
+stdout 'item stop-it stopped at step probe with exit code 128'
+! stdout 'finished'
+! stdout 'after'
+
+exec obeereal status
+stdout 'stop-it-r1\tdone\tstopped at probe rc 128'
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Stop at the probe.
+-- config/projects/local.hcl --
+source      = "@WORK@/origin"
+base_branch = "main"
+gate        = "true"
+-- flow/stop.hcl --
+workflow "w" {}
+command "probe" {
+  run        = ["git", "rev-parse", "--verify", "refs/heads/nope"]
+  stop_on_rc = [128]
+}
+command "after" {
+  run = ["git", "--version"]
+}

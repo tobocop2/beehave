@@ -274,11 +274,18 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 
 func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string) error {
 	result, err := f.await(engine, item, project, file)
-	if err == nil {
-		printResult(stdout, item, result)
+	if err != nil {
+		return err
 	}
 
-	return err
+	printResult(stdout, item, result)
+
+	// A stop ends the run without done, so it is a failed run for a script.
+	if result.Stopped != nil {
+		return &ExitError{Code: exitError}
+	}
+
+	return nil
 }
 
 // openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
@@ -305,6 +312,16 @@ func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 	// A failed write to stdout has no recovery.
 	if result.SentBack != "" {
 		_, _ = fmt.Fprintf(stdout, "item %s went back to draft: %s\n", item, oneLine(result.SentBack))
+
+		return
+	}
+
+	if stop := result.Stopped; stop != nil {
+		_, _ = fmt.Fprintf(stdout, "item %s stopped at step %s with exit code %d\n", item, stop.Step, stop.RC)
+
+		if stop.Output != "" {
+			_, _ = fmt.Fprintf(stdout, "%s\n", strings.TrimSuffix(stop.Output, "\n"))
+		}
 
 		return
 	}
@@ -387,6 +404,8 @@ func statusLine(info flow.RunInfo) string {
 		line += "\tpaused: " + oneLine(info.Question)
 	case info.SentBack != "":
 		line += "\tsent back to draft: " + oneLine(info.SentBack)
+	case info.Stopped != nil:
+		line += fmt.Sprintf("\tstopped at %s rc %d", info.Stopped.Step, info.Stopped.RC)
 	case info.Merge != "":
 		line += "\tmerge: " + info.Merge
 	}

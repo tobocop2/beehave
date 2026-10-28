@@ -744,6 +744,7 @@ func (c *checker) arguments() {
 	c.prompts()
 	c.forbids()
 	c.forges()
+	c.commands()
 	c.merges()
 }
 
