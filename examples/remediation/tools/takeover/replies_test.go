@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/takeover"
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 )
 
 func TestReplies_AnOrdinaryReplyRefusesAndPrintsEveryReplyBlock(t *testing.T) {
@@ -28,7 +28,7 @@ func TestReplies_AnOrdinaryReplyRefusesAndPrintsEveryReplyBlock(t *testing.T) {
 	assert.Contains(t, text, "(review comment on a.go):\nline\n")
 	assert.Contains(t, text, "--- end of replies ---")
 	assert.Equal(t, "PROCEED only if the intent plainly allows it, by re-running: --take --reply-read", last(got))
-	assert.Zero(t, s.count("take"))
+	assert.Zero(t, s.count("free"))
 }
 
 func TestReplies_AReadReplyLetsTheTakeGoOnWithANote(t *testing.T) {
@@ -39,7 +39,7 @@ func TestReplies_AReadReplyLetsTheTakeGoOnWithANote(t *testing.T) {
 
 	assert.Equal(t, 0, got.Code)
 	assert.Contains(t, got.Lines, "note: 1 replies landed after the notice, were read, and did not forbid this take.")
-	assert.Equal(t, 1, s.count("take"))
+	assert.Equal(t, 1, s.count("free"))
 }
 
 func TestReplies_AReplyWithoutABodyIsRead(t *testing.T) {

@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
+	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
@@ -19,12 +21,27 @@ const (
 	ExitRefused = 2
 )
 
+// Forge is the forge of every subcommand: the calls of the round cut and the calls of the takeover.
+type Forge interface {
+	roundcut.Forge
+	takeover.Reader
+}
+
+// Claims is the claim store of obee: the one call of the claim that the takeover needs.
+// EnsureFree refuses when another owner holds the item, and writes nothing. The tools write no claim: the run of an item in the engine holds it.
+type Claims interface {
+	EnsureFree(ctx context.Context, owner, item string) error
+}
+
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
-// Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names.
+// Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
+// Claims opens the claim store of the project that owns the repository. A step opens it only when it reads the claim, after the guards that need no store.
 type Deps struct {
-	Git   proc.Runner
-	Dir   string
-	Forge func(repo string) (roundcut.Forge, error)
+	Git    proc.Runner
+	Dir    string
+	Forge  func(repo string) (Forge, error)
+	Now    func() time.Time
+	Claims func(repo string) (Claims, error)
 }
 
 // streams are the two outputs of a run.
@@ -54,6 +71,12 @@ func commands() []command {
 			usage:   "audit authored <span> | audit present <tip> <base>",
 			summary: "read the merges of a range for content that no pull request diff shows",
 			run:     auditCommand,
+		},
+		{
+			name:    "take",
+			usage:   takeSyntax,
+			summary: "decide whether to take a pull request of somebody else: a dry read, --apply posts the notice, --take checks the grace period",
+			run:     takeCommand,
 		},
 	}
 }

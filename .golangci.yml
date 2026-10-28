@@ -162,17 +162,15 @@ linters:
           deny:
             - pkg: github.com/tobocop2/obee/examples
               desc: the engine never imports the examples, and the rule has no exception
-        remedy-binary-takes-the-forge-only:
+        remedy-binary-takes-the-forge-and-the-claim-rows-only:
           files: ["**/examples/remediation/tools/cmd/remedy/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/store/beads
-              desc: the remedy binary imports the forge backend and no other
             - pkg: github.com/tobocop2/obee/internal/store/github
-              desc: the remedy binary imports the forge backend and no other
+              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
             - pkg: github.com/tobocop2/obee/internal/agent/claude
-              desc: the remedy binary imports the forge backend and no other
+              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
-              desc: the remedy binary imports the forge backend and no other
+              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
         backends-only-in-main:
           files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**"]
           deny:
@@ -295,13 +293,13 @@ linters:
             - "**/internal/brief/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
+            - "**/internal/lease/**"
             - "**/internal/ledger/**"
             - "**/internal/merge/**"
             - "**/internal/review/**"
             - "**/internal/pool/**"
             - "**/internal/preflight/**"
             - "**/internal/scope/**"
-            - "**/internal/takeover/**"
             - "**/internal/workflow/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
@@ -315,13 +313,13 @@ linters:
             - github.com/tobocop2/obee/internal/brief
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
+            - github.com/tobocop2/obee/internal/lease
             - github.com/tobocop2/obee/internal/ledger
             - github.com/tobocop2/obee/internal/merge
             - github.com/tobocop2/obee/internal/review
             - github.com/tobocop2/obee/internal/pool
             - github.com/tobocop2/obee/internal/preflight
             - github.com/tobocop2/obee/internal/scope
-            - github.com/tobocop2/obee/internal/takeover
             - github.com/tobocop2/obee/internal/workflow
         layer-3:
           list-mode: lax
@@ -368,13 +366,13 @@ linters:
             - "!**/internal/brief/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
+            - "!**/internal/lease/**"
             - "!**/internal/ledger/**"
             - "!**/internal/merge/**"
             - "!**/internal/review/**"
             - "!**/internal/pool/**"
             - "!**/internal/preflight/**"
             - "!**/internal/scope/**"
-            - "!**/internal/takeover/**"
             - "!**/internal/workflow/**"
             - "!**/internal/flow/**"
             - "!**/internal/cli/**"

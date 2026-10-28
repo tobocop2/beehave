@@ -5,9 +5,13 @@ import (
 	"os"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/obee/internal/config"
 	forgegithub "github.com/tobocop2/obee/internal/forge/github"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 func main() {
-	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, forgegithub.NewExec))
+	claims := remedy.OpenClaims(openClaims(config.ProcessEnv(), proc.NewExecRunner("bd", "")))
+
+	os.Exit(remedy.Main(os.Args[1:], os.Stdout, os.Stderr, forgegithub.NewExec, claims))
 }
