@@ -401,5 +401,9 @@ func (e *Engine) shutdown() error {
 	// an agent that dies before it would end its phase as failed, and the run would not stay open.
 	<-e.ctx.Done()
 
-	return errors.Join(e.procs.killAll(), <-stopped, e.log.Close(), e.lock.Release())
+	killed, waited := e.procs.killAll(), <-stopped
+
+	e.holds.clear()
+
+	return errors.Join(killed, waited, e.log.Close(), e.lock.Release())
 }

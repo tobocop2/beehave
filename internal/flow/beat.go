@@ -79,6 +79,11 @@ func (h *holds) drop(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	h.release(id)
+}
+
+// release stops the timer of a claim, ends its context and forgets it. The caller holds the lock.
+func (h *holds) release(id string) {
 	if row, found := h.rows[id]; found {
 		if row.stop != nil {
 			row.stop()
@@ -88,6 +93,16 @@ func (h *holds) drop(id string) {
 	}
 
 	delete(h.rows, id)
+}
+
+// clear drops every claim the engine still holds, so no timer of a trust fires after the engine ends.
+func (h *holds) clear() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for id := range h.rows {
+		h.release(id)
+	}
 }
 
 // snapshot lists the claims that still renew: a lost claim stays lost, and a claim with no first trust waits for it.
