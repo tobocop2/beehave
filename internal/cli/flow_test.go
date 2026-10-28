@@ -19,7 +19,7 @@ var errFake = errors.New("fake failure")
 
 const (
 	stateDirVariable = "OBEE_STATE_DIR"
-	validRunners     = "[[runner]]\nname = \"a\"\nagent = \"claude\"\n"
+	validRunners     = "runner {\nname = \"a\"\nagent = \"claude\"\n}\n"
 	validProject     = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
 )
 
@@ -114,8 +114,8 @@ func newRig(t *testing.T) *flowRig {
 	t.Helper()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "runners.toml", validRunners)
-	writeConfig(t, dir, "projects/p.toml", validProject)
+	writeConfig(t, dir, "runners.hcl", validRunners)
+	writeConfig(t, dir, "projects/p.hcl", validProject)
 
 	return &flowRig{
 		runner: &fakeRunner{}, steering: &fakeSteering{}, dir: dir,
@@ -205,7 +205,7 @@ func TestRun_TheProjectIsNamedOrTheOnlyOneAndNeverGuessed(t *testing.T) {
 			rig := newRig(t)
 
 			if test.extra != "" {
-				writeConfig(t, rig.dir, "projects/"+test.extra+".toml", validProject)
+				writeConfig(t, rig.dir, "projects/"+test.extra+".hcl", validProject)
 			}
 
 			code, _, stderr := rig.execute(t.Context(), test.args...)
@@ -232,7 +232,7 @@ func TestRun_RefusesAConfigWithoutAProject(t *testing.T) {
 
 	rig := newRig(t)
 	rig.dir = t.TempDir()
-	writeConfig(t, rig.dir, "runners.toml", validRunners)
+	writeConfig(t, rig.dir, "runners.hcl", validRunners)
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
@@ -335,7 +335,7 @@ func TestCommands_RefuseAnUnusableConfigAndAnUnknownStateFolder(t *testing.T) {
 			t.Parallel()
 
 			rig := newRig(t)
-			writeConfig(t, rig.dir, "runners.toml", "[agents]\nmax_concurrent = 0\n"+validRunners)
+			writeConfig(t, rig.dir, "runners.hcl", "agents {\nmax_concurrent = 0\n}\n"+validRunners)
 
 			code, _, stderr := rig.execute(t.Context(), command...)
 

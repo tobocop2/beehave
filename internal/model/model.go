@@ -43,7 +43,7 @@ type Runner struct {
 	Keychain  string
 }
 
-// Project is one project profile, from projects/<name>.toml.
+// Project is one project profile, from projects/<name>.hcl.
 type Project struct {
 	Name        string
 	Repo        string

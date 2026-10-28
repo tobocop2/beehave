@@ -1,6 +1,10 @@
 package config
 
 import (
+	"errors"
+
+	"github.com/hashicorp/hcl/v2"
+
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -24,35 +28,45 @@ type agents struct {
 	MaxConcurrent int
 }
 
+// rawRunner is a runner block as written. Each key has a range for the refusals that come after the decode.
+// A key that is not in the block has an empty range.
 type rawRunner struct {
-	Name      string  `toml:"name"`
-	Agent     string  `toml:"agent"`
-	ConfigDir *string `toml:"config_dir"`
-	Keychain  *string `toml:"keychain"`
+	At          hcl.Range `hcl:",def_range"`
+	Name        string    `hcl:"name,optional"`
+	NameAt      hcl.Range `hcl:"name,attr_name_range"`
+	Agent       string    `hcl:"agent,optional"`
+	AgentAt     hcl.Range `hcl:"agent,attr_name_range"`
+	ConfigDir   *string   `hcl:"config_dir,optional"`
+	ConfigDirAt hcl.Range `hcl:"config_dir,attr_name_range"`
+	Keychain    *string   `hcl:"keychain,optional"`
+	KeychainAt  hcl.Range `hcl:"keychain,attr_name_range"`
 }
 
+// at returns the range of a key, or the start of the block when the key is not in it.
+func (r rawRunner) at(key hcl.Range) hcl.Range { return keyAt(key, r.At) }
+
 type rawPool struct {
-	FiveHourMax *float64 `toml:"five_hour_max"`
-	SevenDayMax *float64 `toml:"seven_day_max"`
+	FiveHourMax *float64 `hcl:"five_hour_max,optional"`
+	SevenDayMax *float64 `hcl:"seven_day_max,optional"`
 }
 
 type rawAgents struct {
-	MaxConcurrent *int `toml:"max_concurrent"`
+	MaxConcurrent *int `hcl:"max_concurrent,optional"`
 }
 
 type rawRunnersFile struct {
-	Agents *rawAgents  `toml:"agents"`
-	Pool   *rawPool    `toml:"pool"`
-	Runner []rawRunner `toml:"runner"`
+	Agents *rawAgents  `hcl:"agents,block"`
+	Pool   *rawPool    `hcl:"pool,block"`
+	Runner []rawRunner `hcl:"runner,block"`
 }
 
 func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 	var raw rawRunnersFile
-	if err := decodeFile(path, &raw, runnersTop+"; [agents]: "+agentsKeys+"; [pool]: "+poolKeys+"; [[runner]]: "+runnerKeys); err != nil {
+	if err := decodeFile(path, &raw); err != nil {
 		return agents{}, Pool{}, nil, err
 	}
 
-	runners, err := buildRunners(path, raw.Runner)
+	runners, err := buildRunners(raw.Runner)
 
 	return buildAgents(raw.Agents), buildPool(raw.Pool), runners, err
 }
@@ -82,18 +96,18 @@ func buildPool(raw *rawPool) Pool {
 	return pool
 }
 
-func buildRunners(path string, raws []rawRunner) ([]model.Runner, error) {
+func buildRunners(raws []rawRunner) ([]model.Runner, error) {
 	seen := make(map[string]bool, len(raws))
 	runners := make([]model.Runner, 0, len(raws))
 
 	for _, raw := range raws {
-		runner, err := buildRunner(path, raw)
+		runner, err := buildRunner(raw)
 		if err != nil {
 			return nil, err
 		}
 
 		if seen[runner.Name] {
-			return nil, refuse("%s: runner `%s` appears twice. Give each runner its own name.", path, runner.Name)
+			return nil, refuseAt(raw.At, "runner `%s` appears twice. Give each runner its own name.", runner.Name)
 		}
 
 		seen[runner.Name] = true
@@ -103,35 +117,33 @@ func buildRunners(path string, raws []rawRunner) ([]model.Runner, error) {
 	return runners, nil
 }
 
-func buildRunner(path string, raw rawRunner) (model.Runner, error) {
-	for key, value := range map[string]string{"name": raw.Name, "agent": raw.Agent} {
-		if err := requireText(path, key, value); err != nil {
-			return model.Runner{}, err
-		}
+func buildRunner(raw rawRunner) (model.Runner, error) {
+	if err := errors.Join(requireText(raw.at(raw.NameAt), "name", raw.Name), requireText(raw.at(raw.AgentAt), "agent", raw.Agent)); err != nil {
+		return model.Runner{}, err
 	}
 
 	agent, err := model.ParseAgent(raw.Agent)
 	if err != nil {
-		return model.Runner{}, refuse("%s: runner `%s`: %w.", path, raw.Name, err)
+		return model.Runner{}, refuseAt(raw.AgentAt, "runner `%s`: %w.", raw.Name, err)
 	}
 
-	configDir, err := optionalText(path, "config_dir", raw.ConfigDir, expandHome)
+	configDir, err := optionalText(raw.ConfigDirAt, "config_dir", raw.ConfigDir, expandHome)
 	if err != nil {
 		return model.Runner{}, err
 	}
 
-	keychain, err := optionalText(path, "keychain", raw.Keychain, func(text string) (string, error) { return text, nil })
+	keychain, err := optionalText(raw.KeychainAt, "keychain", raw.Keychain, func(text string) (string, error) { return text, nil })
 
 	return model.Runner{Name: raw.Name, Agent: agent, ConfigDir: configDir, Keychain: keychain}, err
 }
 
 // optionalText returns "" for an absent key, and the converted text for a present one.
-func optionalText(path, key string, value *string, convert func(string) (string, error)) (string, error) {
+func optionalText(at hcl.Range, key string, value *string, convert func(string) (string, error)) (string, error) {
 	if value == nil {
 		return "", nil
 	}
 
-	if err := requireText(path, key, *value); err != nil {
+	if err := requireText(at, key, *value); err != nil {
 		return "", err
 	}
 

@@ -1,84 +1,64 @@
 package config
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	"github.com/hashicorp/hcl/v2"
+
+	"github.com/tobocop2/obee/internal/hclfile"
 )
 
 const (
 	// runnersFileName is the file with the agent logins, the agent limit and the pool caps.
-	runnersFileName = "runners.toml"
-	// projectsDirName is the folder with one TOML file for each project.
+	runnersFileName = "runners.hcl"
+	// projectsDirName is the folder with one HCL file for each project.
 	projectsDirName = "projects"
+	// projectExt is the file extension of a project file.
+	projectExt = ".hcl"
 	// LocalHost is the build host that means this machine.
 	LocalHost = "local"
-
-	runnerKeys  = "name, agent, config_dir, keychain"
-	poolKeys    = "five_hour_max, seven_day_max"
-	agentsKeys  = "max_concurrent"
-	runnersTop  = "agents, pool, runner"
-	projectKeys = "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, host, steps"
 )
 
 // The value goes into an ssh command, so a cluster name is a letter, then letters, digits, hyphens.
 var clusterName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 
-// decodeFile reads a TOML file as bytes and decodes it strictly into target. allowed lists the
-// keys of the file for the message about an unknown key.
-func decodeFile(path string, target any, allowed string) error {
-	raw, err := os.ReadFile(path) //nolint:gosec // the config folder is the user's own
-	if err != nil {
-		return refuse("cannot read %s: %w. Check that the file exists and that you can read it.", path, err)
-	}
-
-	if err = checkSyntax(path, raw); err != nil {
-		return err
-	}
-
-	err = toml.NewDecoder(bytes.NewReader(raw)).DisallowUnknownFields().Decode(target)
-	if err == nil {
-		return nil
-	}
-
-	return describeDecodeError(path, err, allowed)
-}
-
-// describeDecodeError names an unknown key or a key of the wrong type.
-func describeDecodeError(path string, err error, allowed string) error {
-	var missing *toml.StrictMissingError
-	if errors.As(err, &missing) {
-		return refuse("%s: unknown key `%s`. Remove it, or use one of: %s.", path, strings.Join(missing.Errors[0].Key(), "."), allowed)
-	}
-
-	var invalid *toml.DecodeError
-
-	if !errors.As(err, &invalid) || len(invalid.Key()) == 0 {
-		return refuse("%s cannot be read: %w. Write it as the example config shows.", path, err)
-	}
-
-	return refuse("%s: `%s` has the wrong type. Write it as the example config shows.", path, strings.Join(invalid.Key(), "."))
-}
-
-// checkSyntax decodes into a map, which finds syntax errors and repeated keys that a typed decode
-// would report as a wrong type.
-func checkSyntax(path string, raw []byte) error {
-	var syntax map[string]any
-	if err := toml.Unmarshal(raw, &syntax); err != nil {
-		return refuse("%s is not valid TOML: %w. Fix the syntax, or remove the repeated key.", path, err)
+// decodeFile reads an HCL file into target and reports each problem with its position.
+func decodeFile(path string, target any) error {
+	if err := hclfile.Decode(path, target); err != nil {
+		return refusal{err: err}
 	}
 
 	return nil
 }
 
-func requireText(path, key, value string) error {
+// refuseAt returns a refusal that starts with the file, line and column of at.
+// An %w cause stays reachable with errors.Is.
+func refuseAt(at hcl.Range, format string, args ...any) error {
+	err := fmt.Errorf(format, args...)
+	diag := hclfile.At(at, err.Error())
+	diag.Cause = errors.Unwrap(err)
+
+	return refusal{err: diag}
+}
+
+// keyAt returns the range of a key. A key that is not in the file has no range, so the range of
+// the block that should hold it stands in.
+func keyAt(key, holder hcl.Range) hcl.Range {
+	if key.Filename == "" {
+		return holder
+	}
+
+	return key
+}
+
+func requireText(at hcl.Range, key, value string) error {
 	if strings.TrimSpace(value) == "" {
-		return refuse("%s: `%s` must be a non-empty string. Set it.", path, key)
+		return refuseAt(at, "`%s` must be a non-empty string. Set it.", key)
 	}
 
 	return nil

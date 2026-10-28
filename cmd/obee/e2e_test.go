@@ -201,18 +201,21 @@ fi
 echo '{"type":"result"}'
 `
 
-const e2eRunners = `[agents]
-max_concurrent = 2
+const e2eRunners = `agents {
+  max_concurrent = 2
+}
 
-[[runner]]
-name = "a"
-agent = "claude"
-config_dir = "%DIR%"
+runner {
+  name       = "a"
+  agent      = "claude"
+  config_dir = "%DIR%"
+}
 
-[[runner]]
-name = "b"
-agent = "claude"
-config_dir = "%DIR%"
+runner {
+  name       = "b"
+  agent      = "claude"
+  config_dir = "%DIR%"
+}
 `
 
 const e2eProject = `repo = "example/shop"
@@ -222,9 +225,10 @@ beads_prefix = "shop"
 base_branch = "main"
 gate = "true"
 
-[steps.implement]
-runner = "a"
-fresh_runner = "b"
+steps "implement" {
+  runner       = "a"
+  fresh_runner = "b"
+}
 `
 
 // e2eSetup writes the config folder and the fake claude into the work folder of a script.
@@ -234,9 +238,9 @@ func e2eSetup(env *testscript.Env) error {
 		text string
 		mode os.FileMode
 	}{
-		"bin/claude":                {e2eClaude, e2eScriptMode},
-		"config/runners.toml":       {strings.ReplaceAll(e2eRunners, "%DIR%", work), e2eFileMode},
-		"config/projects/shop.toml": {e2eProject, e2eFileMode},
+		"bin/claude":               {e2eClaude, e2eScriptMode},
+		"config/runners.hcl":       {strings.ReplaceAll(e2eRunners, "%DIR%", work), e2eFileMode},
+		"config/projects/shop.hcl": {e2eProject, e2eFileMode},
 	}
 
 	for name, file := range files {

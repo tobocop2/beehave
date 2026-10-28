@@ -55,13 +55,13 @@ func TestLoadFolder_StepOverrides(t *testing.T) {
 
 	runners := goodRunner
 	project := goodProject +
-		"[steps.gate]\ntimeout = \"2h\"\n" +
-		"[steps.implement]\nrunner = \"a\"\nskills = [\"tdd\", \"review\"]\nidle_timeout = \"45m\"\n" +
-		"[steps.plan]\nrunner = \"a\"\n"
+		"steps \"gate\" {\ntimeout = \"2h\"\n}\n" +
+		"steps \"implement\" {\nrunner = \"a\"\nskills = [\"tdd\", \"review\"]\nidle_timeout = \"45m\"\n}\n" +
+		"steps \"plan\" {\nrunner = \"a\"\n}\n"
 
 	dir := t.TempDir()
-	writeFile(t, dir+"/runners.toml", runners)
-	writeFile(t, dir+"/projects/p.toml", project)
+	writeFile(t, dir+"/runners.hcl", runners)
+	writeFile(t, dir+"/projects/p.hcl", project)
 
 	cfg, problems := config.LoadFolder(dir, nil)
 
@@ -77,7 +77,7 @@ func TestLoadFolder_StepOverrides(t *testing.T) {
 func TestLoadFolder_ASkillsListMayBeEmptyAndOverrideTheDefault(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, goodProject+"[steps.review]\nskills = []\n")
+	project, problems := loadProjectText(t, goodProject+"steps \"review\" {\nskills = []\n}\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, []string{}, project.Steps[model.StepReview].Skills)
@@ -91,19 +91,25 @@ func TestLoadFolder_ABadStepTableIsRefused(t *testing.T) {
 		table string
 		words string
 	}{
-		{"unknown_step", "[steps.deploy]\ntimeout = \"1m\"\n", "[steps.deploy]: unknown step \"deploy\": use one of claim, claim-gate"},
-		{"unknown_key", "[steps.gate]\nretries = 3\n", "unknown key `steps.gate.retries`"},
-		{"unknown_key_lists_the_allowed_ones", "[steps.gate]\nretries = 3\n", "runner, skills, timeout, idle_timeout"},
-		{"timeout_of_the_wrong_type", "[steps.gate]\ntimeout = 60\n", "`steps.gate.timeout` has the wrong type"},
-		{"zero_timeout", "[steps.gate]\ntimeout = \"0s\"\n", `timeout = "0s" must be a positive duration`},
-		{"negative_timeout", "[steps.gate]\ntimeout = \"-5m\"\n", `timeout = "-5m" must be a positive duration`},
-		{"text_that_is_not_a_duration", "[steps.gate]\ntimeout = \"soon\"\n", `timeout = "soon" must be a positive duration`},
-		{"idle_timeout_on_a_command_step", "[steps.gate]\nidle_timeout = \"5m\"\n", "only plan, implement and review take runner, skills and idle_timeout"},
-		{"runner_on_a_command_step", "[steps.ready]\nrunner = \"a\"\n", "only plan, implement and review take runner"},
-		{"skills_on_a_command_step", "[steps.ready]\nskills = []\n", "only plan, implement and review take runner"},
-		{"timeout_on_an_agent_step", "[steps.plan]\ntimeout = \"5m\"\n", "timeout does not apply to step plan"},
-		{"idle_timeout_on_an_agent_step_must_parse", "[steps.plan]\nidle_timeout = \"x\"\n", `idle_timeout = "x" must be a positive duration`},
-		{"timeout_on_the_owner_wait", "[steps.owner-wait]\ntimeout = \"5m\"\n", "timeout does not apply to step owner-wait"},
+		{"unknown_step", "steps \"deploy\" {\ntimeout = \"1m\"\n}\n", "p.hcl:7:1: steps \"deploy\": unknown step \"deploy\": use one of claim, claim-gate"},
+		{"unknown_key", "steps \"gate\" {\nretries = 3\n}\n", "unknown key `retries`. Remove it"},
+		{"unknown_key_gives_the_position", "steps \"gate\" {\nretries = 3\n}\n", "p.hcl:8:1: unknown key `retries`"},
+		{"timeout_of_the_wrong_type", "steps \"gate\" {\ntimeout = [\"1h\"]\n}\n", "`timeout` has the wrong type"},
+		{"timeout_of_the_wrong_type_gives_the_position", "steps \"gate\" {\ntimeout = [\"1h\"]\n}\n", "p.hcl:8:"},
+		{"repeated_key", "steps \"gate\" {\ntimeout = \"1h\"\ntimeout = \"2h\"\n}\n", "p.hcl:9:1: `timeout` is set twice"},
+		{"repeated_step", "steps \"gate\" {\ntimeout = \"1h\"\n}\nsteps \"gate\" {\ntimeout = \"2h\"\n}\n", "p.hcl:10:1: steps \"gate\" appears twice. Keep one"},
+		{"step_without_a_label", "steps {\ntimeout = \"1h\"\n}\n", "p.hcl:"},
+		{"zero_timeout", "steps \"gate\" {\ntimeout = \"0s\"\n}\n", `p.hcl:8:1: steps "gate": timeout = "0s" must be a positive duration`},
+		{"negative_timeout", "steps \"gate\" {\ntimeout = \"-5m\"\n}\n", `p.hcl:8:1: steps "gate": timeout = "-5m" must be a positive duration`},
+		{"text_that_is_not_a_duration", "steps \"gate\" {\ntimeout = \"soon\"\n}\n", `p.hcl:8:1: steps "gate": timeout = "soon" must be a positive duration`},
+		{"idle_timeout_on_a_command_step", "steps \"gate\" {\nidle_timeout = \"5m\"\n}\n", "p.hcl:8:1: steps \"gate\": only plan, implement and review take runner, skills and idle_timeout"},
+		{"runner_on_a_command_step", "steps \"ready\" {\nrunner = \"a\"\n}\n", "p.hcl:8:1: steps \"ready\": only plan, implement and review take runner"},
+		{"skills_on_a_command_step", "steps \"ready\" {\nskills = []\n}\n", "p.hcl:8:1: steps \"ready\": only plan, implement and review take runner"},
+		{"first_wrong_key_on_a_command_step", "steps \"ready\" {\nidle_timeout = \"5m\"\nrunner = \"a\"\n}\n", "p.hcl:8:1: steps \"ready\": only plan, implement and review take runner"},
+		{"timeout_on_an_agent_step", "steps \"plan\" {\ntimeout = \"5m\"\n}\n", "p.hcl:8:1: steps \"plan\": timeout does not apply to step plan"},
+		{"idle_timeout_on_an_agent_step_must_parse", "steps \"plan\" {\nidle_timeout = \"x\"\n}\n", `p.hcl:8:1: steps "plan": idle_timeout = "x" must be a positive duration`},
+		{"idle_timeout_on_a_command_step_after_a_good_timeout", "steps \"gate\" {\ntimeout = \"5m\"\nidle_timeout = \"5m\"\n}\n", "p.hcl:9:1: steps \"gate\": only plan, implement and review take runner"},
+		{"timeout_on_the_owner_wait", "steps \"owner-wait\" {\ntimeout = \"5m\"\n}\n", "p.hcl:8:1: steps \"owner-wait\": timeout does not apply to step owner-wait"},
 	}
 
 	for _, tc := range tests {
@@ -115,7 +121,7 @@ func TestLoadFolder_ABadStepTableIsRefused(t *testing.T) {
 			require.Len(t, problems, 1)
 			require.ErrorIs(t, problems[0], config.ErrRefused)
 			require.ErrorContains(t, problems[0], tc.words)
-			require.ErrorContains(t, problems[0], "p.toml")
+			require.ErrorContains(t, problems[0], "p.hcl")
 		})
 	}
 }
@@ -128,9 +134,9 @@ func TestLoadFolder_FreshRunnerBelongsToImplementAndMustBeDefined(t *testing.T) 
 		table string
 		want  string
 	}{
-		{"accepts_a_defined_runner", "[steps.implement]\nfresh_runner = \"a\"\n", ""},
-		{"refuses_an_unknown_runner", "[steps.implement]\nfresh_runner = \"ghost\"\n", "names fresh_runner `ghost`"},
-		{"refuses_a_step_that_never_has_a_fix_round", "[steps.review]\nfresh_runner = \"a\"\n", "only implement takes fresh_runner"},
+		{"accepts_a_defined_runner", "steps \"implement\" {\nfresh_runner = \"a\"\n}\n", ""},
+		{"refuses_an_unknown_runner", "steps \"implement\" {\nfresh_runner = \"ghost\"\n}\n", "names fresh_runner `ghost`"},
+		{"refuses_a_step_that_never_has_a_fix_round", "steps \"review\" {\nfresh_runner = \"a\"\n}\n", "p.hcl:8:1: steps \"review\": only implement takes fresh_runner"},
 	}
 
 	for _, test := range tests {
@@ -138,8 +144,8 @@ func TestLoadFolder_FreshRunnerBelongsToImplementAndMustBeDefined(t *testing.T) 
 			t.Parallel()
 
 			dir := t.TempDir()
-			writeFile(t, dir+"/runners.toml", goodRunner)
-			writeFile(t, dir+"/projects/p.toml", goodProject+test.table)
+			writeFile(t, dir+"/runners.hcl", goodRunner)
+			writeFile(t, dir+"/projects/p.hcl", goodProject+test.table)
 
 			cfg, problems := config.LoadFolder(dir, nil)
 			if test.want == "" {
@@ -159,17 +165,17 @@ func TestLoadFolder_AStepRunnerMustBeDefined(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir+"/runners.toml", goodRunner)
-	writeFile(t, dir+"/projects/p.toml", goodProject+"[steps.review]\nrunner = \"ghost\"\n")
+	writeFile(t, dir+"/runners.hcl", goodRunner)
+	writeFile(t, dir+"/projects/p.hcl", goodProject+"steps \"review\" {\nrunner = \"ghost\"\n}\n")
 
 	_, problems := config.LoadFolder(dir, nil)
 
 	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "p.toml")
+	require.ErrorContains(t, problems[0], "p.hcl")
 	require.ErrorContains(t, problems[0], "step `review` names runner `ghost`, which")
-	require.ErrorContains(t, problems[0], "runners.toml does not define")
+	require.ErrorContains(t, problems[0], "runners.hcl does not define")
 
-	writeFile(t, dir+"/projects/p.toml", goodProject+"[steps.review]\nrunner = \"a\"\n")
+	writeFile(t, dir+"/projects/p.hcl", goodProject+"steps \"review\" {\nrunner = \"a\"\n}\n")
 	_, problems = config.LoadFolder(dir, nil)
 	require.Empty(t, problems)
 }

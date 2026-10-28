@@ -51,7 +51,7 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadFolder loads runners.toml and every projects/*.toml of a config folder, applies the OBEE_*
+// LoadFolder loads runners.hcl and every projects/*.hcl of a config folder, applies the OBEE_*
 // variables of env, and validates the result. It reports every problem it finds, one for each file.
 func LoadFolder(dir string, env map[string]string) (Config, Problems) {
 	cfg := DefaultConfig()
@@ -95,7 +95,7 @@ func (c *Config) loadRunners() error {
 	return err
 }
 
-// loadProjects reads projects/*.toml in name order. A missing projects folder holds no project.
+// loadProjects reads projects/*.hcl in name order. A missing projects folder holds no project.
 func (c *Config) loadProjects() Problems {
 	dir := filepath.Join(c.Dir, projectsDirName)
 
@@ -107,7 +107,7 @@ func (c *Config) loadProjects() Problems {
 	var problems Problems
 
 	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) == ".toml" {
+		if filepath.Ext(entry.Name()) == projectExt {
 			problems = c.addProject(problems, filepath.Join(dir, entry.Name()))
 		}
 	}
@@ -185,7 +185,7 @@ func (c Config) poolProblems(runnersPath string) Problems {
 	} {
 		// The negated form also refuses NaN, which fails every comparison.
 		if !(limit.percent > 0 && limit.percent <= maxPercent) {
-			problems = append(problems, refuse("`%s` in [pool] must be a number above 0 and up to 100. Set it in %s or in %s.",
+			problems = append(problems, refuse("`%s` in the pool block must be a number above 0 and up to 100. Set it in %s or in %s.",
 				limit.key, runnersPath, limit.variable))
 		}
 	}

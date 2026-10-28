@@ -15,7 +15,7 @@ import (
 var ErrNotBuilt = errors.New("this step is not in this build yet: update obee")
 
 // errEmptyLogin is returned when no agent login is set for an item.
-var errEmptyLogin = errors.New("no agent login for this item: add a runner to runners.toml and set the steps to use it")
+var errEmptyLogin = errors.New("no agent login for this item: add a runner to runners.hcl and set the steps to use it")
 
 // BriefRequest asks for the brief of one agent phase. Findings are the open review findings. Answer is the last answer of the owner.
 // Run is the id of the run that queued the phase. A brief path is keyed by it, so the brief of a lost run never replaces the brief of a new run of the item.
