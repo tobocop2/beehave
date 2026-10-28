@@ -283,6 +283,22 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 	}
 }
 
+func TestRun_AFixedLoopRunWithNoWorkflowFileEndsWithTheNotBuiltErrorAtTheBrief(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.briefs.err = ErrNotBuilt
+	engine := harness.engine(t)
+
+	require.NotPanics(t, func() {
+		_, err := engine.Run(testItem, testProject)
+
+		require.ErrorContains(t, err, ErrNotBuilt.Error())
+	})
+	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen())
+	assert.Empty(t, harness.agents.requests)
+}
+
 func TestRun_RefusesAnItemThatIsNeitherAForgeNumberNorABeadsID(t *testing.T) {
 	t.Parallel()
 

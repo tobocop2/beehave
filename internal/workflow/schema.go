@@ -16,6 +16,7 @@ const (
 	KindCommand Kind = "command"
 	KindGate    Kind = "gate"
 	KindLoop    Kind = "loop"
+	KindMerge   Kind = "merge"
 	KindWait    Kind = "wait"
 )
 
@@ -140,6 +141,23 @@ type Loop struct {
 func (*Loop) Kind() Kind { return KindLoop }
 
 func (l *Loop) arguments() []argument { return []argument{{expr: l.Until}} }
+
+// Merge marks the pull request ready and then waits for the owner to merge it or send it back.
+// Head pins the commit. When Merge is true, the step merges at that commit itself.
+type Merge struct {
+	Header
+
+	Head  hcl.Expression `hcl:"head"`
+	Merge hcl.Expression `hcl:"merge,optional"`
+	When  hcl.Expression `hcl:"when,optional"`
+}
+
+// Kind returns KindMerge.
+func (*Merge) Kind() Kind { return KindMerge }
+
+func (m *Merge) arguments() []argument {
+	return []argument{{expr: m.Head}, {expr: m.Merge}, {expr: m.When}}
+}
 
 // Wait stops the workflow until a person answers.
 type Wait struct {

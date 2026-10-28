@@ -28,6 +28,8 @@ func KindOutputs(kind Kind) []Output {
 		return []Output{{"rc", cty.Number}, {"stdout", cty.String}}
 	case KindGate:
 		return []Output{{"head", cty.String}, {"passed", cty.Bool}, {"report", cty.String}}
+	case KindMerge:
+		return []Output{{"reason", cty.String}, {"state", cty.String}}
 	case KindWait:
 		return []Output{{"answer", cty.String}}
 	case KindLoop:
@@ -115,7 +117,7 @@ func (s *Scope) Context(round int) *hcl.EvalContext {
 		rootEnv:  texts(s.env),
 	}
 
-	for _, kind := range []Kind{KindAgent, KindCommand, KindGate, KindWait} {
+	for _, kind := range []Kind{KindAgent, KindCommand, KindGate, KindMerge, KindWait} {
 		vars[string(kind)] = cty.ObjectVal(valuesOr(s.ran[kind]))
 	}
 
@@ -182,7 +184,7 @@ func (s *Scope) notRun(expr hcl.Expression) error {
 // stepReference returns the kind and the name that a traversal points at. It reports false for a root that is not a step or a loop, and for loop.round.
 func stepReference(tr hcl.Traversal) (Kind, string, bool) {
 	kind := Kind(tr.RootName())
-	if kind != KindAgent && kind != KindCommand && kind != KindGate && kind != KindWait && kind != KindLoop {
+	if kind != KindAgent && kind != KindCommand && kind != KindGate && kind != KindMerge && kind != KindWait && kind != KindLoop {
 		return "", "", false
 	}
 

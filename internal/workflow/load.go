@@ -17,8 +17,8 @@ import (
 
 const (
 	workflowBlock = "workflow"
-	topBlocks     = "workflow, agent, command, gate, loop, wait"
-	loopBlocks    = "agent, command, gate, loop, wait"
+	topBlocks     = "workflow, agent, command, gate, loop, merge, wait"
+	loopBlocks    = "agent, command, gate, loop, merge, wait"
 )
 
 // Load reads the workflow file at path from fsys. The steps are in file order, and each loop holds
@@ -150,6 +150,8 @@ func (b *builder) appendStep(out []Step, blk *hclsyntax.Block, valid string) []S
 		return b.keep(out, &Gate{}, blk)
 	case KindLoop:
 		return b.keep(out, &Loop{}, blk)
+	case KindMerge:
+		return b.keep(out, &Merge{}, blk)
 	case KindWait:
 		return b.keep(out, &Wait{}, blk)
 	}
@@ -220,6 +222,8 @@ func (b *builder) required(kind Kind, blk *hclsyntax.Block) {
 		key = "run"
 	case KindLoop:
 		key = "until"
+	case KindMerge:
+		key = "head"
 	case KindGate, KindWait:
 		return
 	}

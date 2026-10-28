@@ -11,6 +11,7 @@ import (
 	"text/template"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/tobocop2/obee/internal/hclfile"
 )
@@ -49,6 +50,7 @@ func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool
 	c.references()
 	c.cycles()
 	c.prompts()
+	c.merges()
 	sortByPosition(c.found)
 
 	return c.found, false
@@ -118,7 +120,7 @@ func (c *checker) resolve(from *site, tr hcl.Traversal, whole bool) {
 	name, named := attribute(tr, 1)
 
 	switch Kind(root) {
-	case KindAgent, KindCommand, KindGate, KindWait:
+	case KindAgent, KindCommand, KindGate, KindMerge, KindWait:
 		if named {
 			c.step(from, tr, Kind(root), name, whole)
 		} else {
@@ -319,7 +321,7 @@ func literalString(expr hcl.Expression) (string, bool) {
 }
 
 func roots() []string {
-	return []string{"agent", "command", rootEnv, "gate", rootItem, "loop", "wait"}
+	return []string{"agent", "command", rootEnv, "gate", rootItem, "loop", "merge", "wait"}
 }
 
 // CommonItemFields returns the item fields that every tracker declares. A check without a project uses them.
@@ -429,6 +431,20 @@ func (c *checker) cycle(chain []*site, entry *site) {
 	names = append(names, entry.step.Label())
 
 	c.add(entry.step.Pos(), fmt.Sprintf("cycle `%s`. Remove one of the references.", strings.Join(names, " -> ")))
+}
+
+// merges refuses a merge step that sets `merge = true` as a literal. A computed value is refused when the step runs.
+func (c *checker) merges() {
+	for _, s := range c.sites {
+		step, ok := s.step.(*Merge)
+		if !ok || step.Merge == nil {
+			continue
+		}
+
+		if value, diags := step.Merge.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True() {
+			c.add(step.Merge.Range(), "merging is not built yet: the round settings that it needs come in R1. Remove `merge = true`, and the owner merges the pull request.")
+		}
+	}
 }
 
 // prompts checks the prompt file of each agent. A prompt that an expression computes is not checked.

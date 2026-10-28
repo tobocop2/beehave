@@ -119,7 +119,7 @@ command "use" {
 	assert.Equal(t, "w.hcl", d.File)
 	assert.Contains(t, d.Text, "unknown name `itme`")
 	assert.Contains(t, d.Text, "Did you mean `item`?")
-	assert.Contains(t, d.Text, "agent, command, env, gate, item, loop, wait")
+	assert.Contains(t, d.Text, "agent, command, env, gate, item, loop, merge, wait")
 }
 
 func TestUnknownRootWithNothingCloseOffersNoGuess(t *testing.T) {
@@ -739,6 +739,68 @@ agent "a" {
 	assert.False(t, unparsed)
 	require.Len(t, found, 1)
 	assert.Contains(t, found[0].Text, "unknown key `bogus`")
+}
+
+func TestCheckReadsAMergeStepAndItsOutputs(t *testing.T) {
+	t.Parallel()
+
+	found, _ := check(t, `workflow "w" {}
+gate "check" {}
+merge "ship" {
+  head  = gate.check.head
+  merge = false
+  when  = gate.check.passed
+}
+command "after" {
+  run = ["echo", merge.ship.state, merge.ship.reason]
+}
+`)
+
+	assert.Empty(t, found)
+}
+
+func TestCheckRefusesALiteralMergeTrueUntilMergingIsBuilt(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, `workflow "w" {}
+merge "ship" {
+  head  = "abc"
+  merge = true
+}
+`)
+
+	assert.Contains(t, d.Text, "merging is not built yet")
+	assert.Contains(t, d.Text, "R1")
+
+	computed, _ := check(t, `workflow "w" {}
+merge "ship" {
+  head  = "abc"
+  merge = env.GO
+}
+`)
+
+	assert.Empty(t, computed, "a computed value is refused by the step, not by the check")
+}
+
+func TestCheckRejectsAnUnknownMergeOutputAndAnUnknownMergeArgument(t *testing.T) {
+	t.Parallel()
+
+	found, _ := check(t, `workflow "w" {}
+merge "ship" {
+  head = "abc"
+}
+command "after" {
+  run = [merge.ship.nope]
+}
+`)
+
+	require.Len(t, found, 1)
+	assert.Contains(t, found[0].Text, "nope")
+
+	missing, _ := check(t, "workflow \"w\" {}\nmerge \"ship\" {}\n")
+
+	require.Len(t, missing, 1)
+	assert.Contains(t, missing[0].Text, "`head` is required")
 }
 
 func TestAnOutputsListWithAReferenceAcceptsAnyOutput(t *testing.T) {

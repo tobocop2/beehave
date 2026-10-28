@@ -22,8 +22,8 @@ const watchFailures = 3
 
 // watcher reads a ready pull request and returns it to draft. The forge backend implements both.
 type watcher interface {
-	Watch(ctx context.Context, pr int) (review.Outcome, error)
-	SetDraft(ctx context.Context, pr int, draft bool) error
+	Watch(ctx context.Context, project string, pr int) (review.Outcome, error)
+	SetDraft(ctx context.Context, project string, pr int, draft bool) error
 }
 
 // watchReady reads the ready pull request of an item until it merges. A change request or a conflict sets the pull request to draft and ends the watch with the reason; a merge ends it with no reason.
@@ -39,20 +39,20 @@ func (e *Engine) watchReady(ctx dbos.Context, project, item string) (string, err
 		return "", fmt.Errorf("%s of item %s: %w", watchStep, item, err)
 	}
 
-	return e.watchLoop(ctx, pr, item)
+	return e.watchLoop(ctx, project, pr, item)
 }
 
 // watchLoop reads the pull request until it merges, goes back to draft, or the reads fail watchFailures times in a row.
-func (e *Engine) watchLoop(ctx dbos.Context, pr int, item string) (string, error) {
+func (e *Engine) watchLoop(ctx dbos.Context, project string, pr int, item string) (string, error) {
 	for failed := 0; ; {
-		outcome, err := e.readWatch(ctx, pr)
+		outcome, err := e.readWatch(ctx, project, pr)
 
 		failed = nextFailed(failed, err)
 		if failed >= watchFailures {
 			return "", fmt.Errorf("%s of item %s: %w", watchStep, item, err)
 		}
 
-		if reason, over, err := e.watchSettle(ctx, pr, item, outcome, err); over {
+		if reason, over, err := e.watchSettle(ctx, project, pr, item, outcome, err); over {
 			return reason, err
 		}
 
@@ -63,7 +63,7 @@ func (e *Engine) watchLoop(ctx dbos.Context, pr int, item string) (string, error
 }
 
 // watchSettle acts on a good read. It reports whether the watch is over and, after a send back, the reason. A failed read is never over here.
-func (e *Engine) watchSettle(ctx dbos.Context, pr int, item string, outcome review.Outcome, readErr error) (string, bool, error) {
+func (e *Engine) watchSettle(ctx dbos.Context, project string, pr int, item string, outcome review.Outcome, readErr error) (string, bool, error) {
 	if readErr != nil {
 		return "", false, nil
 	}
@@ -72,7 +72,7 @@ func (e *Engine) watchSettle(ctx dbos.Context, pr int, item string, outcome revi
 	case review.Merged:
 		return "", true, nil
 	case review.SendBack:
-		return outcome.Reason, true, e.sendBack(ctx, pr, item)
+		return outcome.Reason, true, e.sendBack(ctx, project, pr, item)
 	case review.Waiting:
 	}
 
@@ -89,9 +89,9 @@ func (e *Engine) pause(ctx dbos.Context, item string) error {
 }
 
 // readWatch reads the pull request once, as one durable step.
-func (e *Engine) readWatch(ctx dbos.Context, pr int) (review.Outcome, error) {
+func (e *Engine) readWatch(ctx dbos.Context, project string, pr int) (review.Outcome, error) {
 	return runStep(e, ctx, watchStep, func(c context.Context) (review.Outcome, error) {
-		return e.deps.Watch.Watch(c, pr)
+		return e.deps.Watch.Watch(c, project, pr)
 	})
 }
 
@@ -105,9 +105,9 @@ func nextFailed(failed int, err error) int {
 }
 
 // sendBack sets the pull request to draft.
-func (e *Engine) sendBack(ctx dbos.Context, pr int, item string) error {
+func (e *Engine) sendBack(ctx dbos.Context, project string, pr int, item string) error {
 	_, err := runStep(e, ctx, watchStep, func(c context.Context) (struct{}, error) {
-		return struct{}{}, e.deps.Watch.SetDraft(c, pr, true)
+		return struct{}{}, e.deps.Watch.SetDraft(c, project, pr, true)
 	})
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", watchStep, item, err)

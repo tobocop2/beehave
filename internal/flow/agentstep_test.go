@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -579,6 +580,43 @@ func TestAgentStep_AReplayKeepsTheOutputFileOfAnAgentThatAlreadyRan(t *testing.T
 	require.NoError(t, (<-done).err)
 
 	assert.FileExists(t, outputFile(rig.h.opts.StateDir, testItem, "a#1"), "the replay must not remove the file")
+}
+
+func TestAgentStep_AReplayAfterTheAgentEndedButBeforeTheReadReadsTheFileTheAgentLeft(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply(`{"verdict":"ok"}`, exited)
+
+	file := writeFlow(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt  = \"prompts/a.md\"\n  outputs = [\"verdict\"]\n}\ncommand \"after\" {\n  run = [\"after\", agent.a.verdict]\n}\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
+
+	// The run reads the result of the phase once an hour, so it is still waiting when the phase has ended and the engine stops.
+	crashed, err := NewEngine(t.Context(), rig.h.opts, rig.h.deps())
+	require.NoError(t, err)
+	require.NoError(t, crashed.Launch())
+
+	crashed.deps.Clock.Poll = time.Hour
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := crashed.RunFile(testItem, testProject, file)
+		ran <- runErr
+	}()
+
+	eventually(t, func() bool { return phaseCount(t, crashed, dbos.WorkflowStatusSuccess) == 1 })
+
+	require.NoError(t, crashed.Shutdown())
+	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
+	require.FileExists(t, outputFile(rig.h.opts.StateDir, testItem, "a#1"))
+
+	_, err = rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the agent left")
+	assert.Len(t, rig.h.agents.seen(), 1, "the agent does not run again")
 }
 
 func TestAgentStep_AStepWhoseWhenIsFalseStartsNoAgent(t *testing.T) {

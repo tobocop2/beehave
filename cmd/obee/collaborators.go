@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,13 +13,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobocop2/obee/internal/claim"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/review"
 	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/obee/internal/store/beads"
 )
 
 var (
@@ -309,4 +314,175 @@ func (t trackerItems) Fields(ctx context.Context, project, item string) (map[str
 	}
 
 	return tracker.Item(ctx, item)
+}
+
+var (
+	errNoPull   = errors.New("the item has no pull request")
+	errManyPull = errors.New("the item has more than one pull request")
+)
+
+// pullListLimit is the limit of one pull request search. A list at the limit is refused, so it must be larger than one.
+const pullListLimit = 5
+
+// pulls reads and changes the pull request of an item. The pull request is the one on the branch that is named for the item.
+type pulls struct {
+	projects map[string]config.Project
+	forge    func(model.Project) (forge.Forge, error)
+}
+
+// opened is the forge of one project.
+type opened struct{ forge.Forge }
+
+// forgeOf builds the forge of the named project.
+func (p pulls) forgeOf(name string) (opened, error) {
+	found, ok := p.projects[name]
+	if !ok {
+		return opened{}, fmt.Errorf("%w: %q", errUnknownProject, name)
+	}
+
+	built, err := p.forge(found.Project)
+
+	return opened{built}, err
+}
+
+// find returns the forge of the project and the number of the pull request of the item.
+func (p pulls) find(ctx context.Context, project, item string) (opened, int, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return opened{}, 0, err
+	}
+
+	// The open pull request comes first. A merged one is found so that a resumed watch reads it.
+	for _, state := range []string{"open", "merged"} {
+		number, err := listed(ctx, built, item, state)
+		if err != nil || number != 0 {
+			return built, number, err
+		}
+	}
+
+	return opened{}, 0, fmt.Errorf("%w: no pull request is on the branch %s", errNoPull, item)
+}
+
+// listed returns the number of the one pull request in the state on the branch of the item, or 0 when there is none.
+func listed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
+	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	if err != nil {
+		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
+	}
+
+	if len(rows) > 1 {
+		return 0, fmt.Errorf("%w: item %s has %d %s pull requests", errManyPull, item, len(rows), state)
+	}
+
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	return rows[0].Number, nil
+}
+
+// Pull reads what the forge shows about the pull request of the item. A read that fails is a reason in the standing.
+func (p pulls) Pull(ctx context.Context, project, item string) (review.Standing, error) {
+	built, number, err := p.find(ctx, project, item)
+	if err != nil {
+		return review.Standing{}, err
+	}
+
+	return review.Pull(ctx, built, number), nil
+}
+
+// Ready takes the pull request of the item out of draft.
+func (p pulls) Ready(ctx context.Context, project, item string) error {
+	built, number, err := p.find(ctx, project, item)
+	if err != nil {
+		return err
+	}
+
+	return built.SetDraft(ctx, number, false)
+}
+
+// Watch reads the pull request once.
+func (p pulls) Watch(ctx context.Context, project string, pr int) (review.Outcome, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return review.Outcome{}, err
+	}
+
+	return review.Watch(ctx, built, pr)
+}
+
+// SetDraft sets or clears the draft state of the pull request.
+func (p pulls) SetDraft(ctx context.Context, project string, pr int, draft bool) error {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return err
+	}
+
+	return built.SetDraft(ctx, pr, draft)
+}
+
+// leases takes, renews and gives back the claim of an item in the claim store of its project.
+type leases struct {
+	projects map[string]config.Project
+	rows     func(model.Project) (*beads.Store, error)
+	owner    func() string
+}
+
+// claims builds the claims of the named project.
+func (l leases) claims(name string) (*claim.Claims, error) {
+	found, ok := l.projects[name]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", errUnknownProject, name)
+	}
+
+	rows, err := l.rows(found.Project)
+	if err != nil {
+		return nil, err
+	}
+
+	return claim.New(claim.Options{Rows: rows, Clock: time.Now, Out: io.Discard})
+}
+
+// Claim takes the item for a new owner and returns the token of that owner.
+func (l leases) Claim(ctx context.Context, project, item string) (string, error) {
+	claims, err := l.claims(project)
+	if err != nil {
+		return "", err
+	}
+
+	owner := l.owner()
+	if err := claims.Take(ctx, owner, item); err != nil {
+		return "", err
+	}
+
+	return owner, nil
+}
+
+// Release gives the item back for the owner.
+func (l leases) Release(ctx context.Context, project, item, owner string) error {
+	claims, err := l.claims(project)
+	if err != nil {
+		return err
+	}
+
+	return claims.Release(ctx, owner, item)
+}
+
+// Beat renews the claims of the owner. A text means the claim store says the claim is gone.
+func (l leases) Beat(ctx context.Context, project, owner string) (string, error) {
+	claims, err := l.claims(project)
+	if err != nil {
+		return "", err
+	}
+
+	return claims.Beat(ctx, owner)
+}
+
+// ownerToken returns a new owner token: letters and digits, and no two calls alike.
+func ownerToken() string { return "obee" + rand.Text() }
+
+// itemLife is the lifecycle of an item: the claim from the claim store and the pull request from the forge.
+type itemLife struct {
+	leases
+	pulls
 }

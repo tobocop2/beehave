@@ -49,3 +49,18 @@ wait "adjudicate" {
   question = "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong."
   when     = loop.review_fix.exhausted
 }
+
+# The ruling of the owner is applied once. No review follows it.
+agent "settle" {
+  prompt = "prompts/settle.md"
+  model  = "sonnet"
+  when   = loop.review_fix.exhausted
+  inputs = { ruling = wait.adjudicate.answer }
+}
+
+# An approved head is marked ready and then left to the owner: this step does not set `merge`, so it never merges.
+# If the loop is exhausted, the run ends at `settle` and this step does not run. The owner then marks the pull request ready by hand.
+merge "ship" {
+  head = gate.check.head
+  when = !loop.review_fix.exhausted
+}

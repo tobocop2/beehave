@@ -55,7 +55,7 @@ func e2eObee() {
 // e2eFlow keeps the real client and gives the engine the fake collaborators.
 func e2eFlow(dir, path string) cli.Flow {
 	return cli.Flow{
-		Client: func(ctx context.Context, opts flow.Options) (cli.Steering, error) {
+		Client: func(ctx context.Context, _ config.Config, opts flow.Options) (cli.Steering, error) {
 			files := e2eFiles{dir: dir}
 
 			client, err := flow.OpenClient(ctx, opts, flow.ReleaseDeps{Lifecycle: files, Trees: files})
@@ -138,11 +138,11 @@ func (e2eFiles) Pull(context.Context, string, string) (review.Standing, error) {
 	return review.Standing{Number: 1}, nil
 }
 
-func (e2eFiles) Watch(context.Context, int) (review.Outcome, error) {
+func (e2eFiles) Watch(context.Context, string, int) (review.Outcome, error) {
 	return review.Outcome{Kind: review.Merged}, nil
 }
 
-func (e2eFiles) SetDraft(context.Context, int, bool) error { return nil }
+func (e2eFiles) SetDraft(context.Context, string, int, bool) error { return nil }
 
 func (e2eFiles) Path(context.Context, string, string) (string, error) { return "", nil }
 

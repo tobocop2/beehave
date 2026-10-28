@@ -235,4 +235,5 @@ func TestOutputsDeclareOneListForEachKind(t *testing.T) {
 	assert.Equal(t, []string{"head", "passed", "report"}, names(workflow.KindGate))
 	assert.Equal(t, []string{"answer"}, names(workflow.KindWait))
 	assert.Equal(t, []string{"exhausted"}, names(workflow.KindLoop))
+	assert.Equal(t, []string{"reason", "state"}, names(workflow.KindMerge))
 }

@@ -559,7 +559,7 @@ type fakeWatch struct {
 	drafts   []int
 }
 
-func (f *fakeWatch) Watch(_ context.Context, pr int) (review.Outcome, error) {
+func (f *fakeWatch) Watch(_ context.Context, _ string, pr int) (review.Outcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -574,7 +574,7 @@ func (f *fakeWatch) Watch(_ context.Context, pr int) (review.Outcome, error) {
 	return next, f.err
 }
 
-func (f *fakeWatch) SetDraft(_ context.Context, pr int, draft bool) error {
+func (f *fakeWatch) SetDraft(_ context.Context, _ string, pr int, draft bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

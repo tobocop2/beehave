@@ -25,12 +25,8 @@ type merger interface {
 
 // mergeReady merges the ready pull request, pinned to the head that the gate and the review read.
 // A merge that was done, or that was refused as our own work, goes on to the watch, which ends when the owner merges. Any other refusal ends the item.
-// A build with no merger has no merge step, so the owner merges every pull request.
+// The caller makes sure that the build has a merger.
 func (e *Engine) mergeReady(ctx dbos.Context, project, item, head string) error {
-	if e.deps.Merge == nil {
-		return nil
-	}
-
 	result, err := runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) {
 		return e.deps.Merge.Merge(c, project, item, head)
 	})
