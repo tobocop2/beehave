@@ -14,6 +14,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/tobocop2/obee/internal/hclfile"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -49,8 +50,7 @@ func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool
 	c.index(flow.Steps, nil)
 	c.references()
 	c.cycles()
-	c.prompts()
-	c.merges()
+	c.arguments()
 	sortByPosition(c.found)
 
 	return c.found, false
@@ -443,6 +443,42 @@ func (c *checker) merges() {
 
 		if value, diags := step.Merge.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.Bool && value.True() {
 			c.add(step.Merge.Range(), "merging is not built yet: the round settings that it needs come in R1. Remove `merge = true`, and the owner merges the pull request.")
+		}
+	}
+}
+
+// arguments checks the arguments of each step that no reference check covers: prompt files, forbidden kinds and the merge flag.
+func (c *checker) arguments() {
+	c.prompts()
+	c.forbids()
+	c.merges()
+}
+
+// forbids checks the kinds that each agent lists in `forbid_commands`. A kind that an expression computes is checked when the step runs.
+func (c *checker) forbids() {
+	valid := model.FindingKindNames()
+
+	for _, s := range c.sites {
+		if agent, ok := s.step.(*Agent); ok && !unset(agent.ForbidCommands) {
+			c.forbid(agent.ForbidCommands, valid)
+		}
+	}
+}
+
+// forbid checks one `forbid_commands` argument: it must be a list, and each plain string in it must be a kind.
+func (c *checker) forbid(expr hcl.Expression, valid []string) {
+	items, diags := hcl.ExprList(expr)
+	if diags.HasErrors() {
+		if value, err := expr.Value(nil); !err.HasErrors() && !value.IsNull() {
+			c.add(expr.Range(), "forbid_commands must be a list of kinds."+hint("", valid)+" Write forbid_commands = [\"bulk-staging\"].")
+		}
+
+		return
+	}
+
+	for _, item := range items {
+		if name, literal := literalString(item); literal && !slices.Contains(valid, name) {
+			c.add(item.Range(), fmt.Sprintf("unknown kind `%s`.%s", name, hint(name, valid)))
 		}
 	}
 }

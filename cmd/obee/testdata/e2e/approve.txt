@@ -9,6 +9,9 @@ grep -count=1 '^plan ' calls.log
 grep -count=1 '^implement ' calls.log
 grep -count=1 '^review ' calls.log
 ! grep '^fix ' calls.log
+
+# The fake implementer stages everything. The example forbids it, so the review sees the violation and the run goes on.
+grep -count=1 '^bulk-staging: git add -A$' seen.log
 ! grep '^settle ' calls.log
 
 cmp events.log expected-events.log

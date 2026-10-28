@@ -53,8 +53,8 @@ type Spec struct {
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
-// Session, Transcript, Text and Skills describe the finished session: its id, the path of its transcript, its last message and the skills it called.
-// The Runner leaves them empty. The caller that owns the Adapter fills them from the transcript.
+// Session, Transcript, Text, Skills and Violations describe the finished session: its id, the path of its transcript, its last message, the skills it called
+// and one line for each Bash call that broke a forbidden kind. The Runner leaves them empty. The caller that owns the Adapter fills them from the transcript.
 type Result struct {
 	Outcome    Outcome
 	ExitCode   int
@@ -64,6 +64,7 @@ type Result struct {
 	Transcript string
 	Text       string
 	Skills     []string
+	Violations []string
 }
 
 // Timer is the part of time.Timer that the idle limit uses.

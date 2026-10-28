@@ -24,6 +24,7 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 
 	"github.com/tobocop2/obee/internal/hclfile"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -42,6 +43,7 @@ type agentArgs struct {
 	idleTimeout   time.Duration
 	pin           string
 	requireSkills []string
+	forbid        []model.FindingKind
 	resume        string
 	tries         int
 	dir           string
@@ -100,11 +102,15 @@ func (c *call) agentLimits(step *workflow.Agent, a *agentArgs) error {
 	return err
 }
 
-// agentData evaluates the required skills, the inputs of the prompt and the session to resume.
+// agentData evaluates the required skills, the forbidden kinds of command, the inputs of the prompt and the session to resume.
 func (c *call) agentData(step *workflow.Agent, a *agentArgs) error {
 	var err error
 
 	if a.requireSkills, err = c.words(step.RequireSkills); err != nil {
+		return err
+	}
+
+	if a.forbid, err = c.kinds(step.ForbidCommands); err != nil {
 		return err
 	}
 
@@ -115,6 +121,26 @@ func (c *call) agentData(step *workflow.Agent, a *agentArgs) error {
 	a.resume, err = c.session(step.ResumeFrom)
 
 	return err
+}
+
+// kinds evaluates `forbid_commands`: a list of finding kinds. A kind that the check of the file could not read is refused here.
+func (c *call) kinds(expr hcl.Expression) ([]model.FindingKind, error) {
+	names, err := c.words(expr)
+	if err != nil {
+		return nil, err
+	}
+
+	var kinds []model.FindingKind
+
+	for _, name := range names {
+		if !slices.Contains(model.FindingKindNames(), name) {
+			return nil, hclfile.At(expr.Range(), fmt.Sprintf("forbid_commands has the unknown kind %q. Use one of: %s.", name, strings.Join(model.FindingKindNames(), ", ")))
+		}
+
+		kinds = append(kinds, model.FindingKind(name))
+	}
+
+	return kinds, nil
 }
 
 // inputs evaluates the `inputs` object of an agent step into the data of its prompt template.
@@ -244,7 +270,7 @@ func (c *call) prepare(step *workflow.Agent) (agentArgs, error) {
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
-		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout,
+		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid,
 	}
 }
 
@@ -354,7 +380,8 @@ func (c *call) attempt(step *workflow.Agent, args agentArgs, in PhaseInput, try 
 	})
 }
 
-// readAgent checks the skills of a finished run and reads its declared outputs. A problem with the output file is the Note of the result,
+// readAgent checks the skills of a finished run, records its violations and reads its declared outputs.
+// A violation does not fail the step: the workflow reads `violations` and decides. A problem with the output file is the Note of the result,
 // so the caller can run the agent again. A missing skill is an error.
 func readAgent(ctx context.Context, step *workflow.Agent, args agentArgs, ended PhaseOutput) (stepResult, error) {
 	if err := missingSkill(args.requireSkills, ended.Skills); err != nil {
@@ -366,7 +393,10 @@ func readAgent(ctx context.Context, step *workflow.Agent, args agentArgs, ended 
 		return stepResult{}, err
 	}
 
-	outputs := map[string]any{"text": ended.Text, "session": ended.Session, "transcript": ended.Transcript, "head_sha": head}
+	outputs := map[string]any{
+		"text": ended.Text, "session": ended.Session, "transcript": ended.Transcript, "head_sha": head,
+		"violations": strings.Join(ended.Violations, "\n"),
+	}
 
 	if problem := addDeclared(outputs, declaredNames(step), args.file); problem != "" {
 		return stepResult{Note: problem}, nil

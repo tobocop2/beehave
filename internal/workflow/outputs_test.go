@@ -32,7 +32,8 @@ func TestStepOutputs_AnAgentListsItsKindOutputsAndItsDeclaredOnes(t *testing.T) 
 
 	assert.Equal(t, cty.String, got["verdict"])
 	assert.Equal(t, cty.String, got["session"])
-	assert.Len(t, got, 5)
+	assert.Equal(t, cty.String, got["violations"])
+	assert.Len(t, got, 6)
 }
 
 func TestStepOutputs_AnOpenListOfDeclaredOutputsAddsNone(t *testing.T) {
@@ -40,5 +41,5 @@ func TestStepOutputs_AnOpenListOfDeclaredOutputsAddsNone(t *testing.T) {
 
 	step := loadFirst(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt = \"p.md\"\n  outputs = var.names\n}\n")
 
-	assert.Len(t, workflow.StepOutputs(step), 4)
+	assert.Len(t, workflow.StepOutputs(step), 5)
 }

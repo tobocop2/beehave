@@ -8,6 +8,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // errEmptyLogin is returned when no agent login is set for an agent step.
@@ -16,6 +17,7 @@ var errEmptyLogin = errors.New("no agent login for this step: add a runner to ru
 // AgentRequest asks for one agent run. Prompt is the rendered prompt of the agent step.
 // Started receives the pid of the agent process, which leads its own process group, as soon as it runs.
 // Resume is the session to continue, empty for a fresh session. Model, Timeout and IdleTimeout are zero when the step sets none.
+// Forbid lists the kinds of command that the step forbids. The result holds one line in Violations for each Bash call of the run that breaks one.
 type AgentRequest struct {
 	Item        string
 	Project     string
@@ -25,6 +27,7 @@ type AgentRequest struct {
 	Model       string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
+	Forbid      []model.FindingKind
 	Started     func(pid int)
 }
 

@@ -70,7 +70,9 @@ type Agent struct {
 	Inputs        hcl.Expression `hcl:"inputs,optional"`
 	Outputs       hcl.Expression `hcl:"outputs,optional"`
 	OutputTries   hcl.Expression `hcl:"output_tries,optional"`
-	When          hcl.Expression `hcl:"when,optional"`
+	// ForbidCommands lists finding kinds. A Bash call of the run that breaks one is recorded in the output `violations`.
+	ForbidCommands hcl.Expression `hcl:"forbid_commands,optional"`
+	When           hcl.Expression `hcl:"when,optional"`
 }
 
 // Kind returns KindAgent.
@@ -90,6 +92,7 @@ func (a *Agent) arguments() []argument {
 		{expr: a.Inputs},
 		{expr: a.Outputs},
 		{expr: a.OutputTries},
+		{expr: a.ForbidCommands},
 		{expr: a.When},
 	}
 }

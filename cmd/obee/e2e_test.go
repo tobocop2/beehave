@@ -173,20 +173,26 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started,
 	})
 
-	reader := agents{skills: func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.SkillCalls(path, "") }}
+	reader := agents{
+		skills: func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.SkillCalls(path, "") },
+		bash:   func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.BashCalls(path) },
+	}
 
-	return reader.describe(adapter, runner, a.dir, tap, result)
+	return reader.describe(adapter, runner, a.dir, tap, result, request.Forbid)
 }
 
 // The agent runs in the work folder of the script and sees no other variable than PATH.
 // The file hang names the step that blocks on its first call; the file started marks that the block began.
 const e2eClaude = `#!/bin/sh
 # The fake claude: one line in calls.log for each call. Fields: step round login ruling.
+# A prompt that carries a seen value adds it as a line of seen.log.
 # A review writes the next line of the file verdicts to the output file that its prompt names.
 prompt=$(cat)
 field() { printf '%s\n' "$prompt" | sed -n "s/^$1=//p"; }
 step=$(field step)
 echo "$step $(field round) $(field login) $(field ruling)" >> calls.log
+seen=$(field seen)
+if [ -n "$seen" ]; then echo "$seen" >> seen.log; fi
 if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
   : > started
   exec sleep 300
@@ -200,6 +206,10 @@ fi
 folder=$(pwd | sed 's/[^A-Za-z0-9]/-/g')
 mkdir -p "projects/$folder"
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"blast-radius-review"}}]}}' > "projects/$folder/s1.jsonl"
+# The implementer stages everything, the command that the example forbids.
+if [ "$step" = implement ]; then
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
+fi
 echo '{"type":"result","session_id":"s1","result":"done"}'
 `
 
@@ -212,9 +222,10 @@ func (e2eLogins) Pick(context.Context, string, string) (string, error) { return 
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\n",
 	"implement": "step=implement\n",
-	"review":    "step=review\nwrite={{ .output_file }}\n",
+	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
 	"fix":       "step=fix\nround={{ .round }}\nfindings={{ .findings }}\n",
 	"settle":    "step=settle\nruling={{ .ruling }}\n",
+	"audit":     "step=audit\nseen={{ .seen }}\n",
 }
 
 const e2eRunners = `agents {
