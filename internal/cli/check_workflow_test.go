@@ -163,7 +163,7 @@ command "show" {
 }
 `
 
-const projectText = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
+const projectText = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
 
 func runCheckWorkflowWith(t *testing.T, fields func(context.Context, model.Project) ([]string, error), args ...string) (int, string) {
 	t.Helper()

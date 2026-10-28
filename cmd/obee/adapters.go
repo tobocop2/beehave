@@ -19,7 +19,7 @@ import (
 )
 
 // adapters is the one place that maps an adapter name to its constructor. No other package dispatches on a name.
-// The claim store is not a choice: the claim rows live in beads whatever tracker the project uses, so it has no table.
+// The claim store has no table: only beads is built, and a project that names the local tracker or the local claim store is refused until the local adapters exist.
 type adapters struct {
 	trackers map[model.TrackerName]func(model.Project) (store.Tracker, error)
 	forges   map[model.ForgeName]func(model.Project) (forge.Forge, error)
@@ -91,6 +91,10 @@ func newGithubForge(project model.Project) (forge.Forge, error) { //nolint:iretu
 
 // tracker builds the tracker the project names.
 func (a adapters) tracker(project model.Project) (store.Tracker, error) { //nolint:ireturn // the table builds whichever adapter the project names
+	if project.Tracker == model.TrackerLocal {
+		return nil, fmt.Errorf("project %s: the local tracker is not built yet; set tracker = \"beads\" or \"github\" in the project file", project.Name)
+	}
+
 	build, found := a.trackers[project.Tracker]
 	if !found {
 		return nil, fmt.Errorf("project %s: no tracker adapter named %q", project.Name, project.Tracker)
@@ -101,6 +105,10 @@ func (a adapters) tracker(project model.Project) (store.Tracker, error) { //noli
 
 // forge builds the forge the project names.
 func (a adapters) forge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table builds whichever adapter the project names
+	if project.Forge == "" {
+		return nil, fmt.Errorf("project %s: no forge; set forge = \"github\" in the project file", project.Name)
+	}
+
 	build, found := a.forges[project.Forge]
 	if !found {
 		return nil, fmt.Errorf("project %s: no forge adapter named %q", project.Name, project.Forge)
@@ -133,16 +141,27 @@ func (a adapters) agent(name model.Agent) agent.Adapter { //nolint:ireturn // th
 	return build()
 }
 
-// leases builds the claim store of the project. It is beads, so the project must name its beads prefix.
+// leases builds the claim store of the project. Only beads is built, so the project must name its beads prefix.
 func (a adapters) leases(project model.Project) (*beads.Store, error) {
-	return beads.New(a.bd, project.BeadsPrefix)
+	switch project.Claims {
+	case model.ClaimsBeads:
+		return beads.New(a.bd, project.BeadsPrefix)
+	case model.ClaimsLocal:
+		return nil, fmt.Errorf("project %s: the local claim store is not built yet; set claims = \"beads\" in the project file", project.Name)
+	default:
+		return nil, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)
+	}
 }
 
-// itemFields returns the item fields that the tracker and the forge of the project declare, the tracker first.
+// itemFields returns the item fields that the tracker and the forge of the project declare, the tracker first. A project with no forge has the fields of its tracker only.
 func (a adapters) itemFields(_ context.Context, project model.Project) ([]string, error) {
 	tracker, err := a.tracker(project)
 	if err != nil {
 		return nil, err
+	}
+
+	if project.Forge == "" {
+		return tracker.ItemFields(), nil
 	}
 
 	forge, err := a.forge(project)
@@ -153,15 +172,11 @@ func (a adapters) itemFields(_ context.Context, project model.Project) ([]string
 	return append(tracker.ItemFields(), forge.ItemFields()...), nil
 }
 
-// check builds the tracker, the forge, the build host (when the project has one) and the claim store of the project and reports why it cannot.
+// check builds the tracker, the forge (when the project has one), the build host (when the project has one) and the claim store of the project and reports why it cannot.
 // The claim store needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
 // `obee check config` calls it for each project.
 func (a adapters) check(ctx context.Context, project model.Project) error {
-	if _, err := a.tracker(project); err != nil {
-		return err
-	}
-
-	if _, err := a.forge(project); err != nil {
+	if _, err := a.itemFields(ctx, project); err != nil {
 		return err
 	}
 

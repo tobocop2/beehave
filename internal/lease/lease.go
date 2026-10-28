@@ -25,7 +25,7 @@ func Open(rows claim.Rows) (*claim.Claims, error) {
 	return claim.New(claim.Options{Rows: rows, Clock: time.Now, Out: io.Discard})
 }
 
-// ProjectOf reads the obee config folder that env names, with the same rules as `obee run`, and returns the project that owns the repository (owner/name).
+// ProjectOf reads the obee config folder that env names, with the same rules as `obee run`, and returns the project that owns the repository (owner/name, or the `source` of the project).
 func ProjectOf(env map[string]string, repo string) (model.Project, error) {
 	dir, err := config.FolderPath(env, "")
 	if err != nil {
@@ -54,7 +54,7 @@ func namesOf(cfg config.Config, repo string) []string {
 	var names []string
 
 	for name, project := range cfg.Projects {
-		if project.Repo == repo {
+		if project.Repo == repo || (project.Source != "" && project.Source == repo) {
 			names = append(names, name)
 		}
 	}

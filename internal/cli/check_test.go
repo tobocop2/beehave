@@ -37,7 +37,7 @@ func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
-	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
@@ -61,7 +61,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	text := "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
+	text := "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n"
 	writeConfig(t, dir, "projects/a.hcl", text)
 	writeConfig(t, dir, "projects/b.hcl", text)
 
@@ -81,11 +81,11 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	require.Equal(t, filepath.Join(dir, "projects", "b.hcl")+": no gh on the path\n", stderr)
 }
 
-func TestCheckConfig_RefusesAProjectWithoutABeadsPrefixWhateverItsTracker(t *testing.T) {
+func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/p.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
@@ -98,8 +98,8 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.hcl", "bogus = 1\n")
-	writeConfig(t, dir, "projects/a.hcl", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
-	writeConfig(t, dir, "projects/b.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/a.hcl", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeConfig(t, dir, "projects/b.hcl", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 

@@ -22,7 +22,7 @@ var errFake = errors.New("fake failure")
 const (
 	stateDirVariable = "OBEE_STATE_DIR"
 	validRunners     = "runner {\nname = \"a\"\nagent = \"claude\"\n}\n"
-	validProject     = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+	validProject     = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
 )
 
 type fakeRunner struct {

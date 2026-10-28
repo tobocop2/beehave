@@ -19,14 +19,16 @@ func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T
 	table := newAdapters(beadstest.NewBd(t))
 
 	for _, name := range model.Trackers() {
-		assert.Contains(t, table.trackers, name)
+		if name != model.TrackerLocal {
+			assert.Contains(t, table.trackers, name)
+		}
 	}
 
 	for _, name := range model.Forges() {
 		assert.Contains(t, table.forges, name)
 	}
 
-	assert.Len(t, table.trackers, len(model.Trackers()))
+	assert.Len(t, table.trackers, len(model.Trackers())-1, "the local tracker is not built yet")
 	assert.Len(t, table.forges, len(model.Forges()))
 }
 
@@ -43,7 +45,7 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t))
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	tracker, err := table.tracker(project)
 	require.NoError(t, err)
@@ -87,7 +89,7 @@ func TestAdapters_ItemFieldsAreTheTrackerFieldsThenTheForgeFields(t *testing.T) 
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t))
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	fields, err := table.itemFields(t.Context(), good)
 	require.NoError(t, err)
@@ -110,17 +112,69 @@ func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *tes
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t))
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 	require.NoError(t, table.check(t.Context(), good))
 
 	badTracker := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub}
 	require.ErrorContains(t, table.check(t.Context(), badTracker), "the beads id prefix is required")
 
-	badForge := model.Project{Name: "p", Repo: "bad", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+	badForge := model.Project{Name: "p", Repo: "bad", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 	require.Error(t, table.check(t.Context(), badForge))
 
-	noPrefix := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub}
+	noPrefix := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads}
 	require.ErrorContains(t, table.check(t.Context(), noPrefix), "the beads id prefix is required")
+}
+
+func TestAdapters_TheLocalTrackerAndTheLocalClaimsAreNotBuiltYet(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+	local := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal}
+
+	_, err := table.tracker(local)
+	require.EqualError(t, err, `project p: the local tracker is not built yet; set tracker = "beads" or "github" in the project file`)
+
+	_, err = table.leases(local)
+	require.EqualError(t, err, `project p: the local claim store is not built yet; set claims = "beads" in the project file`)
+
+	_, err = table.itemFields(t.Context(), local)
+	require.ErrorContains(t, err, "the local tracker is not built yet")
+}
+
+func TestAdapters_CheckReportsALocalProjectAsNotBuiltYet(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+
+	trackerLocal := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
+	require.ErrorContains(t, table.check(t.Context(), trackerLocal), "the local tracker is not built yet")
+
+	claimsLocal := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerBeads, Claims: model.ClaimsLocal, BeadsPrefix: "p"}
+	require.ErrorContains(t, table.check(t.Context(), claimsLocal), "the local claim store is not built yet")
+}
+
+func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerBeads, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
+
+	_, err := table.forge(noForge)
+	require.EqualError(t, err, `project p: no forge; set forge = "github" in the project file`)
+
+	fields, err := table.itemFields(t.Context(), noForge)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"id", "title", "body"}, fields)
+
+	require.NoError(t, table.check(t.Context(), noForge))
+}
+
+func TestAdapters_AClaimsNameThatIsNeitherLocalNorBeadsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	_, err := newAdapters(beadstest.NewBd(t)).leases(model.Project{Name: "p", Claims: "zk"})
+
+	require.EqualError(t, err, `project p: no claim store named "zk"`)
 }
 
 func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
@@ -128,7 +182,7 @@ func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	require.EqualError(t, newAdapters(bd).check(t.Context(), project), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
 
@@ -150,7 +204,7 @@ func TestAdapters_TheHostTableHasAConstructorForEveryProviderAndNothingElse(t *t
 
 func hostProject(provider model.HostProvider, buildHost string) model.Project {
 	return model.Project{
-		Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p", BuildHost: buildHost,
+		Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p", BuildHost: buildHost,
 		Host: &model.HostConfig{Provider: provider, IdleMinutes: 60, MaxRun: time.Hour, DiskFloorGB: 50},
 	}
 }

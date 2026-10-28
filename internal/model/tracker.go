@@ -11,6 +11,7 @@ type TrackerName string
 
 // The tracker adapters.
 const (
+	TrackerLocal  TrackerName = "local"
 	TrackerBeads  TrackerName = "beads"
 	TrackerGithub TrackerName = "github"
 )
@@ -20,7 +21,7 @@ var ErrUnknownTracker = errors.New("unknown tracker")
 
 // Trackers lists every tracker adapter.
 func Trackers() []TrackerName {
-	return []TrackerName{TrackerBeads, TrackerGithub}
+	return []TrackerName{TrackerLocal, TrackerBeads, TrackerGithub}
 }
 
 // ParseTracker returns the tracker adapter that text names.
