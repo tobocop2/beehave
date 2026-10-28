@@ -320,14 +320,14 @@ func (e *Engine) awaitClaim(ctx context.Context, in PhaseInput) (context.Context
 	}
 }
 
-// pause waits for d, or returns the cause of the end of ctx.
+// pause waits for d, or returns the stop error of ctx.
 func pause(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 
 	select {
 	case <-ctx.Done():
-		return context.Cause(ctx)
+		return stopError(ctx)
 	case <-timer.C:
 		return nil
 	}

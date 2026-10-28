@@ -1,0 +1,66 @@
+package flow
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// blockedHandle is a phase handle whose result never comes.
+type blockedHandle struct {
+	dbos.WorkflowHandle[PhaseOutput]
+}
+
+func (blockedHandle) GetResult(...dbos.GetResultOption) (PhaseOutput, error) {
+	select {}
+}
+
+func TestPause_AStoppedEngineEndsThePauseWithACancelThatKeepsTheCause(t *testing.T) {
+	t.Parallel()
+
+	ctx, stop := context.WithCancelCause(t.Context())
+	stopped := assert.AnError
+	stop(stopped)
+
+	err := pause(ctx, time.Hour)
+
+	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
+	require.ErrorIs(t, err, stopped)
+}
+
+func TestFirstRenewal_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.beats.failFor = "owner-a"
+	harness.beats.err = errors.New("tracker busy")
+	engine := idleEngine(t, harness)
+
+	ctx, stop := context.WithCancelCause(t.Context())
+	stopped := assert.AnError
+	stop(stopped)
+
+	err := engine.firstRenewal(ctx, "run-a", ItemInput{Item: testItem, Project: testProject}, "owner-a")
+
+	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
+	require.ErrorIs(t, err, stopped)
+}
+
+func TestAwaitPhase_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	ctx, stop := dbos.WithCancelCause(rig.h.engine(t).ctx)
+	stopped := assert.AnError
+	stop(stopped)
+
+	_, err := awaitPhase(ctx, blockedHandle{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
+	require.ErrorIs(t, err, stopped)
+}
