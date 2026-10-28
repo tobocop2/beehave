@@ -3,6 +3,7 @@ package claude_test
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,6 +219,60 @@ func TestParseUsage_TheEndsOf0To100AreValid(t *testing.T) {
 	}
 }
 
+func fixture(t *testing.T, name string) string {
+	t.Helper()
+
+	data, err := fs.ReadFile(os.DirFS("testdata"), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(data)
+}
+
+func TestParseUsage_ALoggedInReplyGivesBothWindows(t *testing.T) {
+	t.Parallel()
+
+	usage := usageOf(t, claude.ParseUsage(fixture(t, "logged-in.json")))
+	if usage.FiveHour.Percent != 16 || usage.SevenDay.Percent != 27 || usage.FiveHour.ResetsAt.IsZero() || usage.SevenDay.ResetsAt.IsZero() {
+		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestParseUsage_AReplyWithNoPlanLimitsNeedsALogin(t *testing.T) {
+	t.Parallel()
+
+	reading := claude.ParseUsage(fixture(t, "not-logged-in.json"))
+
+	wantUnknown(t, reading, "no Claude plan limits")
+
+	if !reading.NeedsLogin() {
+		t.Fatal("a reply with rate_limits_available false must need a login")
+	}
+}
+
+func TestParseUsage_AReplyWithNoRateLimitsAndNoSignOfMissingPlanLimitsIsUnknownAndNeedsNoLogin(t *testing.T) {
+	t.Parallel()
+
+	for name, response := range map[string]string{
+		"no rate_limits": `{"rate_limits_available":true}`, "null rate_limits": `{"rate_limits_available":true,"rate_limits":null}`,
+		"no availability field": `{}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			text := `{"type":"control_response","response":{"request_id":"obee-usage","subtype":"success","response":` + response + "}}\n"
+			reading := claude.ParseUsage(text)
+
+			wantUnknown(t, reading, "the reply has no rate_limits")
+
+			if reading.NeedsLogin() {
+				t.Fatal("this reply does not say that the login is missing")
+			}
+		})
+	}
+}
+
 func TestParseUsage_AReplyWithoutBothWindowsIsUnknownWithTheReason(t *testing.T) {
 	t.Parallel()
 
@@ -238,10 +293,10 @@ func TestParseUsage_AReplyWithoutBothWindowsIsUnknownWithTheReason(t *testing.T)
 		{"text utilization", reply(window("9", nil), window(1, nil)), "five_hour window has no utilization"},
 		{"bool utilization", reply(window(true, nil), window(1, nil)), "five_hour window has no utilization"},
 		{"no seven-day utilization", reply(window(1, nil), window(nil, nil)), "seven_day window has no utilization"},
-		{"no rate_limits", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": map[string]any{}}), "no rate_limits"},
+		{"a response with no rate_limits", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": map[string]any{}}), "no rate_limits"},
 		{"an error answer", envelope(map[string]any{"request_id": "obee-usage", "subtype": "error", "error": " nope "}), "refused get_usage: nope"},
 		{"an error answer without an error", envelope(map[string]any{"request_id": "obee-usage", "subtype": "error"}), "refused get_usage:"},
-		{"a response that is not an object", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": "x"}), "no rate_limits"},
+		{"a response that is not an object", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": "x"}), "the reply is not an object"},
 		{"an envelope without a response object", `{"type":"control_response","response":"x"}`, "ended without answering"},
 		{"the mark in a line that is not JSON", "control_response {", "ended without answering"},
 		{"the mark in a message of another type", `{"type":"assistant","text":"control_response"}`, "ended without answering"},
@@ -274,6 +329,21 @@ func TestUsageReader_SendsGetUsageAndReturnsTheWindows(t *testing.T) {
 	}
 
 	wantUsageRequest(t, log[2])
+}
+
+func TestUsageReader_ARunnerWithNoPlanLimitsGetsTheLoginFixNamingItsFolder(t *testing.T) {
+	t.Parallel()
+
+	cli := fake(t, answer)
+	cli.set(t, "reply", fixture(t, "not-logged-in.json"))
+
+	runner := login(t)
+	reading := cli.read(t, runner)
+
+	want := "runner a has no Claude plan limits, so it is not logged in or it uses an API key. Log in with `CLAUDE_CONFIG_DIR=" + runner.ConfigDir + " claude` and run /login"
+	if _, ok := reading.Usage(); ok || reading.Reason() != want || !reading.NeedsLogin() {
+		t.Fatalf("reading = %q, needs login %v", reading.Reason(), reading.NeedsLogin())
+	}
 }
 
 func wantUsageRequest(t *testing.T, line string) {

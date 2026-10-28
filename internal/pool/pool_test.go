@@ -207,7 +207,7 @@ func TestResetTimes_SixDigitsOfFractionOrNoFractionAtAll(t *testing.T) {
 	readings := map[string]model.Reading{"a": useReset(95, 10, half, t2)}
 
 	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
-		"The earliest reset is 2026-10-24T05:00:00.500000+00:00. Wait for it, or pass --runner."
+		"The earliest reset is 2026-10-24T05:00:00.500000+00:00. Wait for it."
 	if got := pool.Refusal(runners("a"), readings, caps, model.AgentClaude); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
@@ -221,6 +221,29 @@ func TestRefusal_ListsEachUnknownRunnerWithItsReason(t *testing.T) {
 	text := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude)
 	if !strings.Contains(text, "Unknown usage: a: login expired. Unknown usage: b: no answer.") {
 		t.Fatalf("Refusal = %q", text)
+	}
+}
+
+func TestRefusal_ARunnerThatNeedsALoginGetsNoAdviceToWait(t *testing.T) {
+	t.Parallel()
+
+	readings := map[string]model.Reading{"a": model.UnknownLogin("runner a has no Claude plan limits")}
+
+	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). Unknown usage: a: runner a has no Claude plan limits."
+	if got := pool.Refusal(runners("a"), readings, caps, model.AgentClaude); got != want {
+		t.Fatalf("Refusal = %q", got)
+	}
+}
+
+func TestRefusal_ALoginProblemAndAnOverCapRunnerStillSayToWaitForTheReset(t *testing.T) {
+	t.Parallel()
+
+	readings := map[string]model.Reading{"a": model.UnknownLogin("log in"), "b": useReset(95, 10, t1, t1)}
+
+	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
+		"The earliest reset is 2026-10-24T05:00:00+00:00. Unknown usage: a: log in. Wait for it."
+	if got := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude); got != want {
+		t.Fatalf("Refusal = %q", got)
 	}
 }
 
@@ -239,7 +262,7 @@ func TestRefusal_NamesTheCapsAndTheEarliestReset(t *testing.T) {
 	readings := map[string]model.Reading{"a": useReset(95, 10, t2, t2), "b": useReset(10, 99, t1, t1)}
 
 	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
-		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it, or pass --runner."
+		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it."
 	if got := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
@@ -381,7 +404,7 @@ func TestCommand_NoneQualifiesKeepsTheLinesAndReturnsTheRefusal(t *testing.T) {
 	}
 
 	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
-		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it, or pass --runner."
+		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it."
 	if none.Error() != want {
 		t.Fatalf("Error = %q", none.Error())
 	}

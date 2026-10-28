@@ -35,6 +35,20 @@ func TestReading_UnknownHoldsTheReason(t *testing.T) {
 	}
 }
 
+func TestReading_UnknownLoginHoldsTheReasonAndNeedsALogin(t *testing.T) {
+	t.Parallel()
+
+	reading := model.UnknownLogin("log in")
+
+	if _, ok := reading.Usage(); ok || reading.Reason() != "log in" || !reading.NeedsLogin() {
+		t.Fatalf("reading = %+v", reading)
+	}
+
+	if model.Unknown("x").NeedsLogin() || model.Known(model.Usage{}).NeedsLogin() {
+		t.Fatal("only UnknownLogin needs a login")
+	}
+}
+
 func TestReading_TheZeroReadingIsUnknownNotZeroUsage(t *testing.T) {
 	t.Parallel()
 

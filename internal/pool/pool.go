@@ -169,21 +169,42 @@ func guarded(ctx context.Context, runner model.Runner, read Reader) (reading mod
 
 // Refusal says why no runner qualifies, with the earliest reset time when one is known. The runners give the order of the unknown readings.
 func Refusal(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, agent model.Agent) string {
-	when := "No reset time is known."
-	if reset, ok := EarliestReset(readings, caps); ok {
-		when = "The earliest reset is " + formatReset(reset) + "."
+	when := " No reset time is known."
+	reset, resetKnown := EarliestReset(readings, caps)
+
+	if resetKnown {
+		when = " The earliest reset is " + formatReset(reset) + "."
 	}
 
-	var unknown strings.Builder
+	unknown, needsLogin := unknownUsage(runners, readings)
+
+	// A wait helps only when a reset is known or no runner lacks a login. A runner with no login stays unusable until someone logs in.
+	wait := " Wait for it."
+	if needsLogin && !resetKnown {
+		when, wait = "", ""
+	}
+
+	return fmt.Sprintf("no %s runner is under both caps (five-hour %g%%, seven-day %g%%).%s%s%s",
+		agent, caps.FiveHourMax, caps.SevenDayMax, when, unknown, wait)
+}
+
+// unknownUsage returns one sentence for each runner with unknown usage, and whether one of them needs a login.
+func unknownUsage(runners []model.Runner, readings map[string]model.Reading) (string, bool) {
+	var (
+		text       strings.Builder
+		needsLogin bool
+	)
 
 	for _, runner := range runners {
-		if _, known := readings[runner.Name].Usage(); !known {
-			fmt.Fprintf(&unknown, " Unknown usage: %s: %s.", runner.Name, readings[runner.Name].Reason())
+		reading := readings[runner.Name]
+		if _, known := reading.Usage(); !known {
+			fmt.Fprintf(&text, " Unknown usage: %s: %s.", runner.Name, reading.Reason())
+
+			needsLogin = needsLogin || reading.NeedsLogin()
 		}
 	}
 
-	return fmt.Sprintf("no %s runner is under both caps (five-hour %g%%, seven-day %g%%). %s%s Wait for it, or pass --runner.",
-		agent, caps.FiveHourMax, caps.SevenDayMax, when, unknown.String())
+	return text.String(), needsLogin
 }
 
 // Select returns the runner of the agent to use. It returns ErrNoRunner when the config has none of that agent.

@@ -38,7 +38,7 @@ func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildIn
 		Adapters:     table.check,
 		Capabilities: table.capabilities,
 		Items:        table.itemOpener(),
-		Doctor:       newDoctor(bd, newSecurityRunner()),
+		Doctor:       newDoctor(bd, newSecurityRunner(), env),
 		Flow:         flow,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store/beads"
@@ -21,8 +22,8 @@ func newSecurityRunner() proc.ExecRunner {
 	return runner
 }
 
-// newDoctor fills the function values of the doctor command: the bd version through the command line of bd, and the Keychain through `security`.
-func newDoctor(bd proc.Runner, security proc.Runner) cli.Doctor {
+// newDoctor fills the function values of the doctor command: the bd version through the command line of bd, the Keychain through `security`, and the usage of a login through the claude CLI with the environment env.
+func newDoctor(bd proc.Runner, security proc.Runner, env map[string]string) cli.Doctor {
 	return cli.Doctor{
 		TokenReadable: func(ctx context.Context, entry string) bool {
 			// The token is read to prove the entry holds one. It is never kept or printed.
@@ -31,5 +32,6 @@ func newDoctor(bd proc.Runner, security proc.Runner) cli.Doctor {
 			return done.ExitCode == 0 && strings.TrimSpace(done.Stdout) != ""
 		},
 		BdVersion: func(ctx context.Context) error { return beads.RequireBd(ctx, bd) },
+		ReadUsage: claude.UsageReader{Base: env}.Read,
 	}
 }

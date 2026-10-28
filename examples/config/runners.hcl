@@ -10,9 +10,9 @@
 # and store it with:
 #   security add-generic-password -s <keychain> -a $USER -w
 
-# The pool block sets the usage caps, in percent. `obee run` without --runner picks the Claude runner
-# that is under both caps, with the lowest seven-day use, then the lowest five-hour use. A runner
-# whose usage cannot be read is never picked. When no runner is under both caps, the run stops
+# The pool block sets the usage caps, in percent. `obee run` picks the Claude runner that is under
+# both caps, with the lowest seven-day use, then the lowest five-hour use. A runner whose usage
+# cannot be read, or that is not logged in, is never picked; `obee doctor` names it. When no runner is under both caps, the run stops
 # with exit 3 and names the earliest reset time. Both keys are optional.
 pool {
   five_hour_max = 90
