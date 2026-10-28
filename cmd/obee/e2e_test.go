@@ -186,6 +186,8 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 const e2eClaude = `#!/bin/sh
 # The fake claude: one line in calls.log for each call. Fields: step round login ruling.
 # A prompt that carries a seen value adds it as a line of seen.log.
+# A prompt that carries a found value adds its first line to found.log, with the step in front.
+# A fix stages everything when the next line of the file fixhits says hit.
 # A review writes the next line of the file verdicts to the output file that its prompt names.
 prompt=$(cat)
 field() { printf '%s\n' "$prompt" | sed -n "s/^$1=//p"; }
@@ -193,6 +195,8 @@ step=$(field step)
 echo "$step $(field round) $(field login) $(field ruling)" >> calls.log
 seen=$(field seen)
 if [ -n "$seen" ]; then echo "$seen" >> seen.log; fi
+found=$(field found)
+if [ -n "$found" ]; then echo "$step: $found" >> found.log; fi
 if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
   : > started
   exec sleep 300
@@ -210,6 +214,12 @@ echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill
 if [ "$step" = implement ]; then
   echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
 fi
+if [ "$step" = fix ]; then
+  n=$(grep -c '^fix ' calls.log)
+  if [ "$(sed -n "${n}p" fixhits 2>/dev/null)" = hit ]; then
+    echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
+  fi
+fi
 echo '{"type":"result","session_id":"s1","result":"done"}'
 `
 
@@ -223,7 +233,7 @@ var e2ePrompts = map[string]string{
 	"plan":      "step=plan\n",
 	"implement": "step=implement\n",
 	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
-	"fix":       "step=fix\nround={{ .round }}\nfindings={{ .findings }}\n",
+	"fix":       "step=fix\nround={{ .round }}\nfound={{ .findings }}\n",
 	"settle":    "step=settle\nruling={{ .ruling }}\n",
 	"audit":     "step=audit\nseen={{ .seen }}\n",
 }

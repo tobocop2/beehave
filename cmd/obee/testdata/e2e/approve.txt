@@ -1,4 +1,5 @@
-# The first review approves: one plan, one implement, one review, no fix round. The pull request is marked ready.
+# The first review approves and the gate passes, but the implementer left a forbidden command.
+# A hit in the latest lane run forces a fix round: the fix gets the hit as its findings, and the second review approves.
 exec obee run 7 --workflow flow/workflow.hcl
 stdout 'item 7 finished'
 
@@ -7,16 +8,19 @@ stdout '^item-7-r1\tdone\tmerge: merged$'
 
 grep -count=1 '^plan ' calls.log
 grep -count=1 '^implement ' calls.log
-grep -count=1 '^review ' calls.log
-! grep '^fix ' calls.log
+grep -count=2 '^review ' calls.log
+grep -count=1 '^fix 1 ' calls.log
+! grep '^fix 2 ' calls.log
 
-# The fake implementer stages everything. The example forbids it, so the review sees the violation and the run goes on.
+# The fake implementer stages everything. The example forbids it. The first review sees the hit, the fix takes it as findings, the clean fix leaves nothing for the second review.
 grep -count=1 '^bulk-staging: git add -A$' seen.log
+grep -count=1 '^fix: bulk-staging: git add -A$' found.log
 ! grep '^settle ' calls.log
 
 cmp events.log expected-events.log
 
 -- verdicts --
+approve
 approve
 -- expected-events.log --
 claim 7

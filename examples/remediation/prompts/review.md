@@ -189,7 +189,7 @@ thing not to redo; and these lines:
 
 {{ .item.body }}
 
-The commands of the implementer that the workflow forbids, one for each line, or nothing when there were none:
+The commands that the workflow forbids in the latest run of the implementer or the fixer, one for each line, or nothing when there were none:
 {{ .violations }}
 Report each one as a finding.
 

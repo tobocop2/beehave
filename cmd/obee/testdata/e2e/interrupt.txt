@@ -24,6 +24,7 @@ cmp events.log expected-events.log
 implement
 -- verdicts --
 approve
+approve
 -- expected-events.log --
 claim 7
 ready 7
