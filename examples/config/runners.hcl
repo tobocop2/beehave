@@ -10,31 +10,36 @@
 # and store it with:
 #   security add-generic-password -s <keychain> -a $USER -w
 
-# [pool] sets the usage caps, in percent. `obee run` without --runner picks the Claude runner
+# The pool block sets the usage caps, in percent. `obee run` without --runner picks the Claude runner
 # that is under both caps, with the lowest seven-day use, then the lowest five-hour use. A runner
 # whose usage cannot be read is never picked. When no runner is under both caps, the run stops
 # with exit 3 and names the earliest reset time. Both keys are optional.
-[pool]
-five_hour_max = 90
-seven_day_max = 95
+pool {
+  five_hour_max = 90
+  seven_day_max = 95
+}
 
-# [agents] max_concurrent is the global limit on agent processes. A laptop wants 2, a build host
-# more. Each login runs one agent at a time. The key is optional; the default is 2.
-[agents]
-max_concurrent = 2
+# max_concurrent in the agents block is the global limit on agent processes. A laptop wants 2, a
+# build host more. Each login runs one agent at a time. The key is optional; the default is 2.
+agents {
+  max_concurrent = 2
+}
 
-[[runner]]
-name = "claude-a"          # your own label
-agent = "claude"
-config_dir = "~/.claude-profiles/a"   # one Claude config folder for each login
-# keychain = "obee-claude-a"   # optional
+runner {
+  name       = "claude-a"                # your own label
+  agent      = "claude"
+  config_dir = "~/.claude-profiles/a"    # one Claude config folder for each login
+  # keychain = "obee-claude-a"           # optional
+}
 
-[[runner]]
-name = "claude-b"
-agent = "claude"
-config_dir = "~/.claude-profiles/b"
+runner {
+  name       = "claude-b"
+  agent      = "claude"
+  config_dir = "~/.claude-profiles/b"
+}
 
 # Later: a local model through Pi or OpenCode.
-# [[runner]]
-# name = "local"
-# agent = "opencode"
+# runner {
+#   name  = "local"
+#   agent = "opencode"
+# }

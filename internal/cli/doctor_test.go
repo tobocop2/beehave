@@ -24,7 +24,7 @@ func newMachine(t *testing.T) machine {
 	t.Helper()
 
 	m := machine{config: t.TempDir(), login: t.TempDir(), bin: t.TempDir()}
-	writeConfig(t, m.config, "runners.toml", "[[runner]]\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \""+m.login+"\"\nkeychain = \"obee-a\"\n")
+	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \""+m.login+"\"\nkeychain = \"obee-a\"\n}\n")
 
 	for _, tool := range []string{"bd", "gh"} {
 		require.NoError(t, os.WriteFile(filepath.Join(m.bin, tool), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a fake program must be executable
@@ -80,7 +80,7 @@ func TestDoctor_AConfigThatDoesNotLoadFailsWithTheFix(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "runners.toml", "[[runner]]\nname = \"a\"\nagent = \"nobody\"\n")
+	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"nobody\"\n}\n")
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
 
@@ -139,7 +139,7 @@ func TestDoctor_ARunnerWithoutAKeychainEntryHasNoTokenCheck(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "runners.toml", "[[runner]]\nname = \"a\"\nagent = \"claude\"\n")
+	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
 
 	_, out := runDoctor(t, m, cli.Doctor{TokenReadable: func(context.Context, string) bool { return false }}, m.env())
 

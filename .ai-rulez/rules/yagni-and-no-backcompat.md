@@ -15,7 +15,7 @@ x-ai-rulez:
 - Do not add a feature, abstraction or config field that nothing needs yet.
 - Three similar lines are better than a premature abstraction.
 - A config field needs a real user scenario named in its help text. Otherwise it is a constant.
-- Validate at system boundaries only (user input, TOML, `gh` and `bd` output, agent output). Trust internal code.
+- Validate at system boundaries only (user input, HCL, `gh` and `bd` output, agent output). Trust internal code.
 - Do not wrap a stdlib or mature-library call in a helper that adds nothing.
 
 ## Build before you build

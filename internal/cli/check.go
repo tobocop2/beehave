@@ -45,7 +45,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Check the config folder and print one line for each problem",
-		Long:  "Check runners.toml and projects/*.toml. Exit 0 when the folder is valid, 2 when it has problems.",
+		Long:  "Check runners.hcl and projects/*.hcl. Exit 0 when the folder is valid, 2 when it has problems.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, flag)

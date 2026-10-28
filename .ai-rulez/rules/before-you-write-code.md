@@ -12,7 +12,7 @@ x-ai-rulez:
 
 Apply these four rules before you write, not after.
 
-1. Type external data precisely. Decode a `gh`, `bd`, TOML or agent-CLI payload once, at the edge, into a named struct. Do not pass `map[string]any` or `any` inward.
+1. Type external data precisely. Decode a `gh`, `bd`, HCL or agent-CLI payload once, at the edge, into a named struct. Do not pass `map[string]any` or `any` inward.
 2. Do not copy the pattern of the nearby code without checking it against these rules. The nearby code can predate a rule.
 3. Write one-line doc comments. Say what the thing is. Do not write "previously", "now also", "kept for" or "moved here because".
 4. Run `make lint` before you commit. The lint config is the smell gate. A `//nolint` needs the linter name and a written reason (`nolintlint` enforces it).

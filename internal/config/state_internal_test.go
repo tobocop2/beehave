@@ -1,7 +1,7 @@
 package config
 
 import (
-	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,13 +22,14 @@ func TestEnsureStateDir_RefusesAFolderAnotherUserOwns(t *testing.T) {
 	require.NoError(t, ensureStateDir(dir, os.Getuid()))
 }
 
-func TestDescribeDecodeError_NamesTheFileWhenNoKeyIsKnown(t *testing.T) {
+func TestDecodeFile_AMissingFileIsRefusedAndNamesThePath(t *testing.T) {
 	t.Parallel()
 
-	cause := errors.New("boom")
-	err := describeDecodeError("runners.toml", cause, "name")
+	path := filepath.Join(t.TempDir(), "runners.hcl")
+
+	err := decodeFile(path, &rawRunnersFile{})
 
 	require.ErrorIs(t, err, ErrRefused)
-	require.ErrorIs(t, err, cause)
-	require.ErrorContains(t, err, "runners.toml cannot be read: boom")
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorContains(t, err, path)
 }
