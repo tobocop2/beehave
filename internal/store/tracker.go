@@ -7,7 +7,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// Tracker is an issue tracker: work items and their parents. beads and GitHub Issues implement it. The claim rows are not part of it.
+// Tracker is an issue tracker: work items and their parents. beads, GitHub Issues and the local store implement it. The claim rows are not part of it.
 // ItemFields lists the names of the fields that Item returns; every tracker declares id, title and body. It needs no call to the tracker.
 // Item reads one item and returns one value for each declared field. A failed read is an error.
 type Tracker interface {
@@ -17,7 +17,7 @@ type Tracker interface {
 }
 
 // ClaimRows stores the claim rows of the project. The claim store keeps one row for each item and grants the lease, which bd renews on Beat.
-// Only beads fills it, whatever tracker the project uses, because beads has the atomic operations and the leases.
+// beads and the local store fill it, whatever tracker the project uses, because both have atomic operations and leases.
 //
 // A method that cannot read or write its backend returns an error and never a guess: a failed read is no answer.
 // TryHold sets the holder only when no holder is set. It returns nil when it lost, so a caller reads HeldRows to learn the winner.

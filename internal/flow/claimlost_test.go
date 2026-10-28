@@ -9,6 +9,8 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // sleep moves the wall reading of the clock and leaves the monotonic reading behind, as a sleeping machine does.
@@ -117,6 +119,12 @@ func (g gatedBeats) Beat(ctx context.Context, _, _ string) (string, error) {
 	}
 
 	return "", errFake
+}
+
+func TestTrust_TheEngineTrustsAClaimForTheLeaseAStoreGrantsLessOneTick(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, model.ClaimLease, trustLimit+tickInterval)
 }
 
 func TestTrust_ATakeThisRunMadeIsTrustedFromTheStartOfTheTake(t *testing.T) {
