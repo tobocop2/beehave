@@ -38,7 +38,7 @@ func readChain(t *testing.T, shape chainShape, terms int) (kept, size int, took 
 	return kept, len(job), time.Since(begin)
 }
 
-// TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime bounds two costs of the step rules. A chain of n terms must keep about one copy of its text, not n copies. Reading a chain of 4n terms must take less than 8 times as long as reading n terms (linear is 4, quadratic is 16), where a read of n terms counts as at least the floor. Without the race detector the n-term read is under the floor, so the check is then an absolute bound of 8 times the floor. The shapes run one after the other, so that they share no CPU.
+// TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime bounds two costs of the step rules. A chain of n terms must keep about one copy of its text, not n copies. Reading a chain of 4n terms must take less than 8 times as long as reading n terms (linear is 4, quadratic is 16), where a read of n terms counts as at least the floor. Without the race detector the n-term read is under the floor, so the check is then an absolute bound of 8 times the floor. The shapes run one after the other, so that they share no CPU, and each time is the fastest of three reads, so that load from other tests does not count.
 func TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime(t *testing.T) {
 	t.Parallel()
 
@@ -65,12 +65,26 @@ func TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime(t 
 	}
 
 	for _, test := range tests {
-		_, _, small := readChain(t, test, terms)
-		kept, size, large := readChain(t, test, terms*grow)
+		_, _, small := fastestRead(t, test, terms)
+		kept, size, large := fastestRead(t, test, terms*grow)
 
 		assert.LessOrEqual(t, kept, size, test.name)
 		assert.Less(t, large, 2*grow*max(small, floor), "%s: the cost of reading a chain is linear in its length", test.name)
 	}
+}
+
+// fastestRead reads the chain three times and keeps the fastest time. Load from other tests only makes a read slower, so the fastest of three is the closest to the cost of the read itself.
+func fastestRead(t *testing.T, shape chainShape, terms int) (kept, size int, took time.Duration) {
+	t.Helper()
+
+	kept, size, took = readChain(t, shape, terms)
+
+	for range 2 {
+		_, _, again := readChain(t, shape, terms)
+		took = min(took, again)
+	}
+
+	return kept, size, took
 }
 
 func repeat(term string, count int) []string {
