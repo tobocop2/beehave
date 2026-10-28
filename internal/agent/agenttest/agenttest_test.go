@@ -31,6 +31,12 @@ type fakeAdapter struct {
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
 
+func (fakeAdapter) Line(string) (string, string) { return "", "" }
+
+func (fakeAdapter) TranscriptPath(configDir, _, session string) string {
+	return filepath.Join(configDir, session)
+}
+
 func (a fakeAdapter) BashCalls(string) ([]model.Call, error) { return nil, a.readErr }
 
 func (a fakeAdapter) SkillCalls(string, string) ([]model.Call, error) { return nil, a.readErr }

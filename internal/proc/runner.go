@@ -31,11 +31,12 @@ type Runner interface {
 	Run(ctx context.Context, args []string) model.CommandResult
 }
 
-// ExecRunner runs a binary found on PATH. A zero Timeout means no limit.
+// ExecRunner runs a binary found on PATH. A zero Timeout means no limit. Env holds NAME=value pairs that the command gets on top of the environment of the process.
 type ExecRunner struct {
 	Binary  string
 	Dir     string
 	Timeout time.Duration
+	Env     []string
 }
 
 // NewExecRunner returns a runner for the binary in dir that stops a call after DefaultTimeout.
@@ -100,6 +101,8 @@ func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandRes
 	if cmd.Err != nil {
 		return model.CommandResult{ExitCode: exitNotFound, Stderr: r.Binary + ": command not found"}
 	}
+
+	cmd.Env = append(cmd.Environ(), r.Env...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

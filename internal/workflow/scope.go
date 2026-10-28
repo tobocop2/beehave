@@ -36,6 +36,14 @@ func KindOutputs(kind Kind) []Output {
 	return []Output{{"exhausted", cty.Bool}}
 }
 
+// StepOutputs returns the outputs that a step records: those of its kind and, for an agent, the names in its `outputs` list.
+// An agent whose `outputs` is not a list of plain strings declares none beyond its kind.
+func StepOutputs(step Step) []Output {
+	all, _ := stepOutputs(step)
+
+	return all
+}
+
 // stepOutputs returns the outputs of a step: those of its kind and, for an agent, the names in its
 // `outputs` argument, which are strings. The second result is true when the agent declares its
 // outputs with an expression that is not a list of strings, so any name may be valid.

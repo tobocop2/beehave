@@ -83,6 +83,42 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 	assert.NotContains(t, env, "/other/login")
 }
 
+func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.Model, f.spec.Resume = "opus", "sess-1"
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Equal(t, "-p --output-format stream-json --verbose --model opus --resume sess-1", record(t, f.records, "args"))
+}
+
+func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.Adapter = noFlags{f.spec.Adapter}
+
+	f.spec.Model = "opus"
+	named := agent.Runner{}.Run(context.Background(), f.spec)
+
+	f.spec.Model, f.spec.Resume = "", "sess-1"
+	resume := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeNotStarted, named.Outcome)
+	assert.Contains(t, named.Note, `no option to set a model, so model "opus" is not used`)
+	assert.Equal(t, agent.OutcomeNotStarted, resume.Outcome)
+	assert.Contains(t, resume.Note, "no option to resume a session")
+}
+
+// noFlags is an adapter whose CLI has no model or resume option.
+type noFlags struct{ agent.Adapter }
+
+func (n noFlags) Profile() agent.Profile {
+	p := n.Adapter.Profile()
+	p.ModelFlag, p.ResumeFlag = "", ""
+
+	return p
+}
+
 func TestRunner_FindsTheBinaryOnTheSpecPathNotTheParentPath(t *testing.T) {
 	f := newFixture(t, "claude", model.AgentClaude, "")
 	t.Setenv("PATH", "/bin:/usr/bin")

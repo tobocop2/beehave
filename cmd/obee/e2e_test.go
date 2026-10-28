@@ -69,7 +69,7 @@ func e2eFlow(dir, path string) cli.Flow {
 			files := e2eFiles{dir: dir}
 
 			engine, err := flow.NewEngine(ctx, opts, flow.Deps{
-				Briefs: files, Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{}, Verdicts: files, Logins: newLogins(cfg),
+				Briefs: files, Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{}, Verdicts: files, Logins: newLogins(cfg, opts),
 				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files,
 			})
 			if err != nil {
@@ -145,6 +145,8 @@ func (e2eFiles) Watch(context.Context, int) (review.Outcome, error) {
 func (e2eFiles) SetDraft(context.Context, int, bool) error { return nil }
 
 func (e2eFiles) Path(context.Context, string, string) (string, error) { return "", nil }
+
+func (e2eFiles) Ensure(context.Context, string, string) (string, error) { return "", nil }
 
 func (e2eFiles) Beat(context.Context, string, string) (string, error) { return "", nil }
 

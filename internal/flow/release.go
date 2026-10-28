@@ -28,6 +28,12 @@ type trees interface {
 	Path(ctx context.Context, project, item string) (string, error)
 }
 
+// treeMaker finds the worktree of an item and makes it when it is missing. Ensure returns the folder, and an empty folder is not a success.
+type treeMaker interface {
+	trees
+	Ensure(ctx context.Context, project, item string) (string, error)
+}
+
 // read is one git call that only reads, with the words that name it in a reason to keep the tree.
 type read struct {
 	doing string

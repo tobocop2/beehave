@@ -60,6 +60,9 @@ func TestForge(t *testing.T, make Factory) {
 	t.Run("declares_the_item_fields", func(t *testing.T) {
 		CheckItemFields(t, make(t, false))
 	})
+	t.Run("names_the_clone_url", func(t *testing.T) {
+		CheckCloneURL(t, make(t, false))
+	})
 	t.Run("item_returns_the_declared_fields", func(t *testing.T) {
 		CheckItem(t, make(t, false))
 	})
@@ -237,6 +240,15 @@ func checkLists(c check, target forge.Forge) {
 	checks, err := target.PRChecks(ctx, Seven)
 	c.noError(err, "PRChecks")
 	c.equal(checks, []model.Check{{Name: SevenCheck, Bucket: model.CheckPass}}, "checks")
+}
+
+// CheckCloneURL checks that a forge names the URL to clone its repository from.
+func CheckCloneURL(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	if target.CloneURL() == "" {
+		r.Errorf("CloneURL: want the URL to clone the repository from, got none")
+	}
 }
 
 // CheckItemFields checks that a forge declares at least one item field.

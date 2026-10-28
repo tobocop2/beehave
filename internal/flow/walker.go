@@ -317,10 +317,6 @@ func orDefault(text, fallback string) string {
 	return text
 }
 
-func runAgent(c *call, _ *workflow.Agent) (stepResult, error) {
-	return stepResult{}, hclfile.At(c.step.Pos(), fmt.Sprintf("agent %q is not built yet. Remove the step until a later release.", c.step.Label()))
-}
-
 // walker runs the steps of one workflow file for one item. Its scope holds recorded results only.
 type walker struct {
 	e     *Engine
@@ -476,7 +472,7 @@ func (w *walker) record(step workflow.Step, result stepResult) error {
 		return nil
 	}
 
-	values, err := typed(step.Kind(), result.Outputs)
+	values, err := typed(step, result.Outputs)
 	if err != nil {
 		return fmt.Errorf("step %s: %w", step.Label(), err)
 	}
@@ -562,20 +558,21 @@ func stepIndex(steps []workflow.Step, kind, name string) int {
 	return -1
 }
 
-// typed converts recorded outputs to cty values by the types in workflow.KindOutputs. A name that the kind does not declare is an error.
-func typed(kind workflow.Kind, raw map[string]any) (map[string]cty.Value, error) {
-	declared := declaredTypes(kind)
+// typed converts recorded outputs to cty values by the types that workflow.StepOutputs gives: those of workflow.KindOutputs, and the names an agent declares.
+// A name that the step does not declare is an error.
+func typed(step workflow.Step, raw map[string]any) (map[string]cty.Value, error) {
+	declared := declaredTypes(step)
 	out := map[string]cty.Value{}
 
 	for name, v := range raw {
 		want, ok := declared[name]
 		if !ok {
-			return nil, fmt.Errorf("a %s step has no output %q", kind, name)
+			return nil, fmt.Errorf("a %s step has no output %q", step.Kind(), name)
 		}
 
 		value, err := toValue(want, v)
 		if err != nil {
-			return nil, fmt.Errorf("output %q of a %s step: %w", name, kind, err)
+			return nil, fmt.Errorf("output %q of a %s step: %w", name, step.Kind(), err)
 		}
 
 		out[name] = value
@@ -584,10 +581,10 @@ func typed(kind workflow.Kind, raw map[string]any) (map[string]cty.Value, error)
 	return out, nil
 }
 
-// declaredTypes returns the type of each output of a kind, by name.
-func declaredTypes(kind workflow.Kind) map[string]cty.Type {
+// declaredTypes returns the type of each output of a step, by name.
+func declaredTypes(step workflow.Step) map[string]cty.Type {
 	declared := map[string]cty.Type{}
-	for _, o := range workflow.KindOutputs(kind) {
+	for _, o := range workflow.StepOutputs(step) {
 		declared[o.Name] = o.Type
 	}
 

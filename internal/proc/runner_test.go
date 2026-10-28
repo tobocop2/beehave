@@ -66,6 +66,14 @@ func TestExecRunner_ReturnsOutputAndExitCode(t *testing.T) { //nolint:parallelte
 	assert.Equal(t, 7, run.Run(context.Background(), []string{"fail"}).ExitCode)
 }
 
+func TestExecRunner_PassesTheEnvironmentItIsGivenToTheCommand(t *testing.T) {
+	t.Parallel()
+
+	done := proc.ExecRunner{Binary: "sh", Env: []string{"OBEE_PROC_TEST=seen"}}.Run(context.Background(), []string{"-c", `printf %s "$OBEE_PROC_TEST"`})
+
+	assert.Equal(t, "seen", done.Stdout)
+}
+
 func TestExecRunner_RunsInTheFolderItIsGiven(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	fakeOnPath(t, "bd", fakeScript)
 	dir, err := filepath.EvalSymlinks(t.TempDir())

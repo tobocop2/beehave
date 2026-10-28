@@ -143,6 +143,9 @@ func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.Pul
 	return view, nil
 }
 
+// CloneURL is the HTTPS address of the repository.
+func (f *Forge) CloneURL() string { return "https://github.com/" + f.repo + ".git" }
+
 // ItemFields declares the fields that Item returns.
 func (*Forge) ItemFields() []string { return []string{"branch", "head_sha", "pr", "author"} }
 

@@ -21,6 +21,43 @@ const (
 	oracle = "diff-against-oracle"
 )
 
+func TestLine_ReadsTheSessionFromInitAndTheMessageFromResult(t *testing.T) {
+	t.Parallel()
+
+	adapter := claude.New()
+
+	session, text := adapter.Line(`{"type":"system","subtype":"init","session_id":"s1","result":"ignored"}`)
+	assert.Equal(t, "s1", session)
+	assert.Empty(t, text)
+
+	session, text = adapter.Line(`{"type":"result","subtype":"success","session_id":"s1","result":"done"}`)
+	assert.Equal(t, "s1", session)
+	assert.Equal(t, "done", text)
+
+	for _, other := range []string{`{"type":"system","subtype":"hook","session_id":"s2"}`, `{"type":"assistant"}`, "not json", ""} {
+		session, text = adapter.Line(other)
+		assert.Empty(t, session, other)
+		assert.Empty(t, text, other)
+	}
+}
+
+func TestTranscriptPath_TurnsEachOtherCharacterOfTheFolderIntoADash(t *testing.T) {
+	t.Parallel()
+
+	got := claude.New().TranscriptPath("/login", "/work/My.Tree_1", "abc")
+
+	assert.Equal(t, "/login/projects/-work-My-Tree-1/abc.jsonl", got)
+}
+
+func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
+	t.Parallel()
+
+	p := claude.New().Profile()
+
+	assert.Equal(t, "--model", p.ModelFlag)
+	assert.Equal(t, "--resume", p.ResumeFlag)
+}
+
 func TestAdapter(t *testing.T) {
 	t.Parallel()
 

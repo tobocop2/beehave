@@ -397,6 +397,7 @@ type harness struct {
 	gate     *fakeGate
 	verdicts *fakeVerdicts
 	logins   fakeLogins
+	picker   logins // replaces logins when set
 	life     *fakeLifecycle
 	merge    *fakeMerge
 	forge    *fakeForge
@@ -443,6 +444,10 @@ func (h *harness) deps() Deps {
 	}
 	if h.merge != nil {
 		deps.Merge = h.merge
+	}
+
+	if h.picker != nil {
+		deps.Logins = h.picker
 	}
 
 	return deps
@@ -587,12 +592,52 @@ func (f *fakeWatch) seen() (reads, drafts []int) {
 	return append([]int(nil), f.reads...), append([]int(nil), f.drafts...)
 }
 
-// fakeTrees answers every lookup with dir, or fails with err.
+// fakeTrees answers every lookup with dir, or fails with err. A fakeTrees with late set has no folder until Ensure makes it.
 type fakeTrees struct {
-	dir string
-	err error
+	dir  string
+	err  error
+	late *lateFolder
+}
+
+// lateFolder is a worktree that exists only after Ensure.
+type lateFolder struct {
+	mu   sync.Mutex
+	dir  string
+	made bool
+}
+
+func (l *lateFolder) path() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.made {
+		return l.dir
+	}
+
+	return ""
+}
+
+func (l *lateFolder) make() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.made = true
+
+	return l.dir
 }
 
 func (f fakeTrees) Path(context.Context, string, string) (string, error) {
+	if f.late != nil {
+		return f.late.path(), f.err
+	}
+
+	return f.dir, f.err
+}
+
+func (f fakeTrees) Ensure(context.Context, string, string) (string, error) {
+	if f.late != nil {
+		return f.late.make(), f.err
+	}
+
 	return f.dir, f.err
 }

@@ -31,15 +31,23 @@ type BriefRequest struct {
 
 // AgentRequest asks for one agent run. Fresh starts a new agent session; otherwise the run resumes the session of the item.
 // Started receives the pid of the agent process, which leads its own process group, as soon as it runs.
+//
+// A request from an agent step of a workflow file has an empty Step and a Round of zero, and carries the rendered Prompt in place of a Brief.
+// Resume is the session to continue, empty for a fresh session. Model, Timeout and IdleTimeout are zero when the step sets none.
 type AgentRequest struct {
-	Item    string
-	Project string
-	Step    model.Step
-	Round   int
-	Login   string
-	Fresh   bool
-	Brief   string
-	Started func(pid int)
+	Item        string
+	Project     string
+	Step        model.Step
+	Round       int
+	Login       string
+	Fresh       bool
+	Brief       string
+	Prompt      string
+	Resume      string
+	Model       string
+	Timeout     time.Duration
+	IdleTimeout time.Duration
+	Started     func(pid int)
 }
 
 // GateResult is the outcome of a gate that ran. Report holds the findings when Passed is false. Head is the commit the gate ran on.
@@ -182,7 +190,7 @@ type Deps struct {
 	Lifecycle lifecycle
 	Forge     forge
 	Watch     watcher
-	Trees     trees
+	Trees     treeMaker
 	Beats     beats
 	Merge     merger
 	Commands  commands
