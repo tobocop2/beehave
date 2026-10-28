@@ -1,0 +1,30 @@
+# Ctrl-C stops the command and leaves the run open with its claim held. The next obee run continues the same run.
+! exec obee run 7 &
+waitfile started
+kill -INT
+wait
+
+exec obee status
+stdout '^item-7-r1\trunning$'
+! grep '^release' events.log
+
+exec obee run 7
+stdout 'item 7 finished after 0 fix rounds'
+
+exec obee status
+stdout '^item-7-r1\tdone$'
+! stdout 'item-7-r2'
+
+grep -count=1 '^plan 0 true a ' calls.log
+grep -count=2 '^implement 0 true a ' calls.log
+
+cmp events.log expected-events.log
+
+-- hang --
+implement
+-- verdicts --
+approve
+-- expected-events.log --
+claim 7
+ready 7
+release 7

@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRedact_RemovesSecretsAndKeyShapedTokens(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "a [redacted] b [redacted]", Redactor("s3cret")("a s3cret b sk-ant-abcdefgh12"))
+	assert.Equal(t, "plain", Redactor()("plain"))
+}
+
 func TestRedactWriter_DropsALineLongerThanTheLimitAndKeepsTheNext(t *testing.T) {
 	t.Parallel()
 

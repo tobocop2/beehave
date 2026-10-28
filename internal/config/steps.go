@@ -11,7 +11,9 @@ import (
 // StepSettings holds the settings of one workflow step. A zero duration means the step has no
 // limit of that kind.
 type StepSettings struct {
-	Runner      string
+	Runner string
+	// FreshRunner names the runner of the fresh agent that fix round 4 starts. Empty means the same runner.
+	FreshRunner string
 	Skills      []string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
@@ -56,12 +58,13 @@ func DefaultSteps() Steps {
 // rawStep is one [steps.<name>] table as written.
 type rawStep struct {
 	Runner      *string   `toml:"runner"`
+	FreshRunner *string   `toml:"fresh_runner"`
 	Skills      *[]string `toml:"skills"`
 	Timeout     *string   `toml:"timeout"`
 	IdleTimeout *string   `toml:"idle_timeout"`
 }
 
-const stepKeys = "runner, skills, timeout, idle_timeout"
+const stepKeys = "runner, fresh_runner, skills, timeout, idle_timeout"
 
 // applySteps merges the tables of one file over the defaults. path names the file in messages.
 func applySteps(path string, base Steps, tables map[string]rawStep) (Steps, error) {
@@ -87,18 +90,25 @@ func applySteps(path string, base Steps, tables map[string]rawStep) (Steps, erro
 	return merged, nil
 }
 
-func mergeStep(step model.Step, settings StepSettings, table rawStep) (StepSettings, error) {
+// checkStepKeys refuses a table that holds a key its step does not take.
+func checkStepKeys(step model.Step, table rawStep) error {
 	if !step.IsAgent() && (table.Runner != nil || table.Skills != nil || table.IdleTimeout != nil) {
-		return settings, errors.New("only plan, implement and review take runner, skills and idle_timeout. Remove them")
+		return errors.New("only plan, implement and review take runner, skills and idle_timeout. Remove them")
 	}
 
-	if table.Runner != nil {
-		settings.Runner = *table.Runner
+	if table.FreshRunner != nil && step != model.StepImplement {
+		return errors.New("only implement takes fresh_runner, because fix round 4 runs as an implement step. Remove it")
 	}
 
-	if table.Skills != nil {
-		settings.Skills = *table.Skills
+	return nil
+}
+
+func mergeStep(step model.Step, settings StepSettings, table rawStep) (StepSettings, error) {
+	if err := checkStepKeys(step, table); err != nil {
+		return settings, err
 	}
+
+	settings = withNames(settings, table)
 
 	var err error
 	if settings.Timeout, err = duration(table.Timeout, settings.Timeout, step, "timeout", !step.IsAgent()); err != nil {
@@ -108,6 +118,23 @@ func mergeStep(step model.Step, settings StepSettings, table rawStep) (StepSetti
 	settings.IdleTimeout, err = duration(table.IdleTimeout, settings.IdleTimeout, step, "idle_timeout", step.IsAgent())
 
 	return settings, err
+}
+
+// withNames applies the runner, fresh runner and skills a table sets.
+func withNames(settings StepSettings, table rawStep) StepSettings {
+	if table.Runner != nil {
+		settings.Runner = *table.Runner
+	}
+
+	if table.FreshRunner != nil {
+		settings.FreshRunner = *table.FreshRunner
+	}
+
+	if table.Skills != nil {
+		settings.Skills = *table.Skills
+	}
+
+	return settings
 }
 
 // duration parses an override. A key the step does not take is refused with the fix.

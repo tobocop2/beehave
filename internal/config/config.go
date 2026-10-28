@@ -202,12 +202,22 @@ func (c Config) stepRunnerProblems(runnersPath string) Problems {
 	var problems Problems
 
 	for _, name := range slices.Sorted(maps.Keys(c.Projects)) {
-		project := c.Projects[name]
+		problems = append(problems, c.Projects[name].runnerProblems(known, runnersPath)...)
+	}
 
-		for _, step := range model.Steps() {
-			if runner := project.Steps[step].Runner; runner != "" && !known[runner] {
-				problems = append(problems, refuse("%s: step `%s` names runner `%s`, which %s does not define. Add the runner there, or fix the name.",
-					project.Path, step, runner, runnersPath))
+	return problems
+}
+
+// runnerProblems lists each step of the project that names a runner the runners file does not define.
+func (p Project) runnerProblems(known map[string]bool, runnersPath string) Problems {
+	var problems Problems
+
+	for _, step := range model.Steps() {
+		settings := p.Steps[step]
+		for _, key := range []struct{ name, runner string }{{"runner", settings.Runner}, {"fresh_runner", settings.FreshRunner}} {
+			if key.runner != "" && !known[key.runner] {
+				problems = append(problems, refuse("%s: step `%s` names %s `%s`, which %s does not define. Add the runner there, or fix the name.",
+					p.Path, step, key.name, key.runner, runnersPath))
 			}
 		}
 	}

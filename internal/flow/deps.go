@@ -1,0 +1,136 @@
+package flow
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
+)
+
+// ErrNotBuilt is returned by a step that this build does not include yet.
+var ErrNotBuilt = errors.New("this step is not in this build yet: update obee")
+
+// ErrEmptyLogin is returned when no agent login is set for an item.
+var ErrEmptyLogin = errors.New("no agent login for this item: add a runner to runners.toml and set the steps to use it")
+
+// BriefRequest asks for the brief of one agent phase. Findings are the open review findings. Answer is the last answer of the owner.
+type BriefRequest struct {
+	Item     string     `json:"item"`
+	Project  string     `json:"project"`
+	Step     model.Step `json:"step"`
+	Round    int        `json:"round"`
+	Findings string     `json:"findings"`
+	Answer   string     `json:"answer"`
+}
+
+// AgentRequest asks for one agent run. Fresh starts a new agent session; otherwise the run resumes the session of the item.
+// Started receives the pid of the agent process, which leads its own process group, as soon as it runs.
+type AgentRequest struct {
+	Item    string
+	Project string
+	Step    model.Step
+	Round   int
+	Login   string
+	Fresh   bool
+	Brief   string
+	Started func(pid int)
+}
+
+// GateResult is the outcome of a gate that ran. Report holds the findings when Passed is false. Head is the commit the gate ran on.
+// A gate that could not run returns an error instead: that ends the run and spends no fix round.
+type GateResult struct {
+	Passed bool   `json:"passed"`
+	Report string `json:"report"`
+	Head   string `json:"head"`
+}
+
+// Review is the verdict of one review and the findings behind it. Head is the commit the review read.
+type Review struct {
+	Verdict  Verdict `json:"verdict"`
+	Findings string  `json:"findings"`
+	Head     string  `json:"head"`
+}
+
+// Briefs writes the brief that an agent phase reads and returns its path.
+type Briefs interface {
+	Write(ctx context.Context, request BriefRequest) (string, error)
+}
+
+// Agents runs one agent phase for a login.
+type Agents interface {
+	Run(ctx context.Context, request AgentRequest) (agent.Result, error)
+}
+
+// Gate runs the gate of an item.
+type Gate interface {
+	Run(ctx context.Context, project, item string) (GateResult, error)
+}
+
+// Verdicts reads the verdict a review left for an item.
+type Verdicts interface {
+	Read(ctx context.Context, project, item string, round int) (Review, error)
+}
+
+// Logins picks the agent login for an item of a project and returns its runner name.
+// PickFresh returns the runner of the fresh agent in fix round 4, or an empty name to keep the login of the item.
+type Logins interface {
+	Pick(ctx context.Context, project, item string) (string, error)
+	PickFresh(ctx context.Context, project, item string) (string, error)
+}
+
+// Lifecycle holds the steps around the work of one item. Claim runs first, Ready after an approved review and the Forge reads are clean, and Release last, on every exit.
+// Claim returns the owner token of the claim. The engine renews that claim through Beats until Release runs, and Release gets the same token.
+// A resumed run takes a fresh claim, so its token differs from the one of the claim step it replays.
+type Lifecycle interface {
+	Claim(ctx context.Context, project, item string) (string, error)
+	Ready(ctx context.Context, project, item string) error
+	Release(ctx context.Context, project, item, owner string) error
+}
+
+// Beats renews the claims of one owner in the tracker of a project.
+// A non-empty text or an error means the renewal failed. The signature matches claim.Claims.Beat, plus the project.
+type Beats interface {
+	Beat(ctx context.Context, project, owner string) (string, error)
+}
+
+// Clock sets the intervals the engine waits on. The zero value uses the real ones.
+// Tick replaces the ticker of the status tick: each value received runs one tick.
+// Poll replaces the interval at which the agents queue looks for work and at which a run looks for the result of a phase.
+// Release replaces the time that the git calls of one worktree release share.
+// Beat replaces the time that one claim renewal may take. OwnerWait replaces the time of one wait for the owner before the wait starts again.
+// Retain replaces the age at which Launch deletes a finished run.
+type Clock struct {
+	Tick      <-chan time.Time
+	Poll      time.Duration
+	Release   time.Duration
+	Beat      time.Duration
+	OwnerWait time.Duration
+	Retain    time.Duration
+}
+
+// resultOptions makes a result wait poll at the interval of the clock.
+func (c Clock) resultOptions() []dbos.GetResultOption {
+	if c.Poll <= 0 {
+		return nil
+	}
+
+	return []dbos.GetResultOption{dbos.WithHandlePollingInterval(c.Poll)}
+}
+
+// Deps holds the collaborators of the workflows.
+type Deps struct {
+	Clock     Clock
+	Briefs    Briefs
+	Agents    Agents
+	Gate      Gate
+	Verdicts  Verdicts
+	Logins    Logins
+	Lifecycle Lifecycle
+	Forge     Forge
+	Trees     Trees
+	Beats     Beats
+}

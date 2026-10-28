@@ -1,0 +1,40 @@
+# Five fix rounds do not satisfy the review. The item pauses with the findings as its question.
+# Round 4 uses the fresh runner b. After the answer, round 6 reads it and the run ends.
+exec obee run 7 &
+
+# The run has opened the store once the first agent call is in the record.
+waitfile calls.log
+waitstatus 'paused: findings of review 5'
+
+exec obee status
+stdout '^item-7-r1\trunning\tpaused: findings of review 5$'
+! exists briefs/implement-6.txt
+
+exec obee answer 7 keep the current API
+wait
+stdout 'item 7 finished after 6 fix rounds'
+
+exec obee status
+stdout '^item-7-r1\tdone$'
+
+grep -count=1 '^implement 3 false a ' calls.log
+grep -count=1 '^implement 4 true b ' calls.log
+grep -count=1 '^implement 5 false b ' calls.log
+grep -count=1 '^implement 6 false b keep the current API$' calls.log
+grep -count=7 '^review ' calls.log
+grep 'answer=keep the current API' briefs/implement-6.txt
+
+cmp events.log expected-events.log
+
+-- verdicts --
+changes
+changes
+changes
+changes
+changes
+changes
+approve
+-- expected-events.log --
+claim 7
+ready 7
+release 7
