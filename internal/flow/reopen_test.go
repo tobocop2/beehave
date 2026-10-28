@@ -1,6 +1,9 @@
 package flow
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -8,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 )
 
 func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *testing.T) {
@@ -45,28 +47,21 @@ func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *te
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
 	assert.Equal(t, runDone, infos[0].State)
-	assert.Equal(t, []model.Step{model.StepPlan, model.StepPlan, model.StepImplement, model.StepReview}, stepsOf(harness.agents.seen()),
-		"the plan agent runs again after its failure and the finished steps do not")
+	assert.Len(t, harness.agents.seen(), 2, "the agent runs again after its failure")
 }
 
 func TestResume_AFailedRunWithNoFailedStepReplaysFromTheEndOfItsHistory(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	deps := harness.deps()
-	deps.Logins = &loginOnce{} // the run starts, then its own pick finds no login: the failure is no step.
+	file := writeFlow(t, crashFlow)
+	interrupted(t, harness, file)
+	require.NoError(t, os.WriteFile(file, []byte(crashFlow+"# edited\n"), 0o600)) // the replay refuses the changed file: the failure is no step.
 
-	engine, err := NewEngine(t.Context(), harness.opts, deps)
-	require.NoError(t, err)
-	require.NoError(t, engine.Launch())
-	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+	_, err := runFileWithin(t, harness.engine(t), file)
+	require.ErrorContains(t, err, "changed since the run started")
 
-	client := harness.client(t, testVersion)
-
-	_, err = engine.Run(testItem, testProject)
-	require.ErrorIs(t, err, errEmptyLogin)
-
-	require.NoError(t, client.Resume(testItem))
+	require.NoError(t, harness.client(t, testVersion).Resume(testItem))
 }
 
 func TestReopen_ReportsAStoreThatCannotBeRead(t *testing.T) {
@@ -137,8 +132,11 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	t.Parallel()
 
 	harness := newHarness(t)
+	harness.flowIs(t, "workflow \"w\" {}\nagent \"first\" {\n  prompt = \"prompts/work.md\"\n}\nagent \"second\" {\n  prompt = \"prompts/second.md\"\n}\n")
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(harness.opts.StateDir), "prompts", "second.md"), []byte("Second.\n"), 0o600))
+
 	harness.agents.result = func(request AgentRequest) agent.Result {
-		if request.Step == model.StepImplement {
+		if strings.Contains(request.Prompt, "Second.") {
 			return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "bad exit"}
 		}
 
@@ -148,10 +146,10 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	client := harness.client(t, testVersion)
 
 	_, err := engine.Run(testItem, testProject)
-	require.ErrorContains(t, err, "the implement of item 12 ended as exited (exit 3)")
+	require.ErrorContains(t, err, "the agent step of item 12 ended as exited (exit 3)")
 
 	_, err = engine.Run(testItem, testProject)
-	require.ErrorContains(t, err, "the implement of item 12 ended as exited (exit 3)", "run names the step that failed")
+	require.ErrorContains(t, err, "the agent step of item 12 ended as exited (exit 3)", "run names the step that failed")
 
 	harness.agents.mu.Lock()
 	harness.agents.result = nil
@@ -162,5 +160,11 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	_, err = engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	assert.Equal(t, []model.Step{model.StepPlan, model.StepImplement, model.StepImplement, model.StepReview}, stepsOf(harness.agents.seen()))
+	var prompts []string
+
+	for _, request := range harness.agents.seen() {
+		prompts = append(prompts, request.Prompt)
+	}
+
+	assert.Equal(t, []string{"Work on the item.\n", "Second.\n", "Second.\n"}, prompts, "the first agent does not run again and the second does")
 }

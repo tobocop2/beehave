@@ -42,48 +42,6 @@ func TestParseAgent(t *testing.T) {
 	}
 }
 
-func TestParseStep_RoundTripsEveryStep(t *testing.T) {
-	t.Parallel()
-
-	require.Len(t, model.Steps(), 12)
-
-	for _, step := range model.Steps() {
-		got, err := model.ParseStep(string(step))
-		require.NoError(t, err)
-		require.Equal(t, step, got)
-	}
-}
-
-func TestParseStep_RejectsUnknown(t *testing.T) {
-	t.Parallel()
-
-	_, err := model.ParseStep("deploy")
-	require.ErrorIs(t, err, model.ErrUnknownStep)
-	require.ErrorContains(t, err, "use one of claim, claim-gate, plan")
-}
-
-func TestStep_IsAgentOnlyForTheThreeAgentSteps(t *testing.T) {
-	t.Parallel()
-
-	var agents []model.Step
-
-	for _, step := range model.Steps() {
-		if step.IsAgent() {
-			agents = append(agents, step)
-		}
-	}
-
-	require.Equal(t, []model.Step{model.StepPlan, model.StepImplement, model.StepReview}, agents)
-}
-
-func TestStep_OnlyTheOwnerWaitHasNoDeadline(t *testing.T) {
-	t.Parallel()
-
-	for _, step := range model.Steps() {
-		require.Equal(t, step != model.StepOwnerWait, step.HasDeadline(), step)
-	}
-}
-
 func TestParseSeverity(t *testing.T) {
 	t.Parallel()
 

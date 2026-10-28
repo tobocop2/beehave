@@ -349,7 +349,7 @@ The rules file of the project comes from the config path. `LoadRules` refuses a 
 
 ## Configuration
 
-In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`), a `host` block for a project with a build host, and an optional `steps "<step>"` block that overrides the defaults of the default workflow. The step names are the typed constants in `model`. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
+In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `tracker`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`) and a `host` block for a project with a build host. The limits and the runner of a step are keys of its block in the workflow file. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
 
 `config` is the only package that reads the environment. The `OBEE_*` variables override the file values, `OBEE_CONFIG` names the config folder and `OBEE_STATE_DIR` names the state folder. `cmd/obee` sets `umask 077`. `cli.Execute` refuses to start when a `DBOS__*` variable is set. The state folder must be absolute, owned by the user and mode 0700.
 
@@ -373,7 +373,7 @@ The check reads the names in an expression and never evaluates it. An `outputs` 
 
 At run time, an expression sees one scope. The scope holds `item`, `env`, `loop`, and one object for each step kind, with the outputs of every step that has run. A step that was skipped has an empty value of the right type for each output. An expression fails with the file, the line and the column when it names a step that has not run, uses a function, or has the wrong type. A condition fails when its value is empty or is not true or false.
 
-`examples/remediation/` is one workflow written in this schema: a plan, an implement step, and a review and fix loop of up to five rounds, with four prompt files. The method lives in that folder and never in Go. `examples/remediation/CONFORMANCE.md` has one row for each rule of the method, with its home (`core`, `file`, `skill` or `drop`) and its status (`gap`, `expressed`, `proven` or `n/a`). A test in the `workflow` package fails when an ID repeats, when a home or status is not one of the allowed words, or when an `expressed` row names a block that the example does not hold. A row moves to `proven` when a behavior test runs it.
+`examples/remediation/` is one workflow written in this schema: a plan, an implement step, a review and fix loop of up to five fix rounds (six passes, so the sixth reviews the fifth fix), a wait for the owner, a settle step and a merge step, with five prompt files. The method lives in that folder and never in Go. `examples/remediation/CONFORMANCE.md` has one row for each rule of the method, with its home (`core`, `file`, `skill` or `drop`) and its status (`gap`, `expressed`, `proven` or `n/a`). A test in the `workflow` package fails when an ID repeats, when a home or status is not one of the allowed words, or when an `expressed` row names a block that the example does not hold. A row moves to `proven` when a behavior test runs it.
 
 ## The durable loop
 
@@ -383,38 +383,35 @@ At run time, an expression sees one scope. The scope holds `item`, `env`, `loop`
 
 An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. The ID makes a second start of the same attempt join the first. The item workflow is not queued. It runs these steps in order:
 
-1. Pick the login of the item from the `implement` step of its project.
+1. Pick the agent login of the run from the pool.
 2. Claim the item.
-3. Run the plan phase and the implement phase.
-4. Run the gate, run the review phase, and read the verdict. If the verdict file is missing, run the review phase one more time. Repeat with a fix round until the verdict approves.
-5. Read the forge, then mark the pull request ready. The gate, the review and the ready step must see the same head commit: a push after the review stops the item.
-6. Merge the ready pull request when the build has a merger. Then watch it until it merges. A change request or a conflict sets it to draft and ends the item.
-7. Release the worktree, then release the claim.
+3. Walk the workflow file in file order. Each step block runs as a recorded step, so a restart skips the steps that finished. A `loop` runs its steps again until its `until` expression is true or `max` rounds have run.
+4. Release the worktree, then release the claim.
 
-Each agent phase (plan, implement, review, fix) is a child workflow named `phase`. It writes the brief, then starts the agent. Both are steps. The agent is a subprocess (`claude -p`) in its own process group, with a total and an idle timeout. A phase that does not exit with code 0 stops the item with an error that names the step.
+The file decides the rest. The `gate` step runs the gate of the project and reports `passed`, `head` and `report`. An `agent` step with a `pin` starts only when the head of the worktree equals the pin, so a review reads the head that the gate passed. The `merge` step reads the forge, marks the pull request ready at the pinned head, and watches it until it merges. A change request or a conflict sets it to draft and ends the item.
+
+Each agent step runs as a child workflow named `phase`. It starts the agent with the prompt text of the step. The agent is a subprocess (`claude -p`) in its own process group, with a total and an idle timeout from the step. A phase that does not exit with code 0 stops the item with an error that names the step.
 
 ### Queue and limits
 
 Phases run on the queue `agents`. The partition key of a phase is the login, and each partition runs one phase at a time. The queue also has a global limit, `agents.max_concurrent`. One login never runs two agents at once, and the host never runs more than the global limit. The queue holds only phases. The wait for the owner is outside the queue and holds no slot.
 
-`run` refuses an item with an empty login before it claims the item or stores a run. The message names the runner setting to change.
+`run` refuses an item with an empty login before it claims the item or stores a run. An `agent` step that names no `runner` uses the login that the run picked. The pick happens once, before the run starts, and the login is stored in the input of the run. A resume keeps that login, so a step that resumes a session runs on the login that owns the session.
 
 ### Fix rounds
 
-The round policy is one pure function of the number of fix rounds so far and the verdict:
+The workflow file sets the fix rounds. `examples/remediation/workflow.hcl` holds one `loop` with `max = 6`. A round is one review and one fix. The loop starts with a review, so five fix rounds need six reviews: the sixth review reads the fifth fix. The `fix` step has a `when` of `loop.round <= 5`, so the sixth pass never fixes.
 
-| Fix rounds so far | Verdict asks for changes |
+| Round | The `fix` agent |
 |---|---|
-| 0 to 2 | The next round resumes the agent session. |
-| 3 | The next round (round 4) starts a fresh agent. |
-| 4 | The next round (round 5) resumes the fresh agent. |
-| 5 | The item pauses until the owner answers. |
+| 1 to 3 | Resumes the session of the `implement` agent, on `sonnet`. |
+| 4 and 5 | Starts a fresh agent, on `opus`. |
 
-An approved verdict ends the loop at any round. A gate that ran and failed counts as a verdict that asks for changes, with the gate report as the findings. A gate that could not run stops the item with an error and uses no fix round. The findings of round `k` go into the brief of round `k + 1`.
+The loop ends when the gate passed and the review approved. A gate that ran and failed gives its report as the findings of the round. A gate that could not run stops the item with an error and uses no fix round. The findings of round `k` go into the prompt of the `fix` step in round `k`.
 
-The optional key `fresh_runner` of the `implement` step names the runner of the fresh agent in round 4. If the key is absent, the fresh agent uses the runner of the item. `obee check config` refuses a name that `runners.hcl` does not list.
+The `review` step has a `pin` of `gate.check.head`, so the review reads only the head that the gate passed.
 
-The pause sets the findings as the question of the run and waits for a durable receive with no deadline: the receive starts again every seven days. `obee status` shows the question. `obee answer <item> <text>` sends the answer. The answer goes into the brief of round 6, and the run continues.
+If the loop used all its rounds, `loop.review_fix.exhausted` is true. The `wait` step then sets a question for the owner and waits for a durable receive with no deadline: the receive starts again every seven days. `obee status` shows the question. `obee answer <item> <text>` sends the answer. The `settle` agent step applies the answer, and the run continues.
 
 ### Claim beat
 
@@ -489,30 +486,37 @@ sequenceDiagram
     participant C as claim
     participant B as bd (beads)
     participant A as agent
-    participant K as check
+    participant K as gate
     participant G as gh (forge)
     participant O as owner
 
+    F->>F: pick the agent login of the run
     F->>C: take the claim for the item
     C->>B: bd update --claim --actor holder
     B-->>C: claimed, or refused with the winner
-    F->>A: run the plan step with the brief
+    F->>A: run the plan step
     A-->>F: plan
     F->>A: run the implement step with the plan
-    A-->>F: transcript and exit code
-    F->>K: scan the shell commands in the transcript
-    K-->>F: findings, or none
-    F->>F: run the gate on the build host
-    loop until the review approves
-        F->>A: run the review step
-        A-->>F: verdict
-        alt five fix rounds are done
-            F->>O: pause with the findings as the question
-            O-->>F: answer
+    A-->>F: output file
+    loop until the gate passed and the review approved, at most 6 passes
+        F->>K: run the gate on the worktree or the build host
+        K-->>F: passed, head and report
+        opt the gate passed
+            F->>A: run the review step, pinned to the head that passed
+            A-->>F: verdict
         end
-        F->>A: run a fix round with the findings (fresh agent in round 4)
+        opt fix rounds 1 to 5 remain
+            F->>A: run the fix step with the findings (resumes the implement session in rounds 1 to 3)
+        end
     end
-    F->>G: read the pull request, then mark it ready
+    opt the loop used all of its passes
+        F->>O: pause with the question
+        O-->>F: answer
+        F->>A: run the settle step with the answer
+    end
+    opt the loop ended approved
+        F->>G: mark the pull request ready at the pinned head, then wait for the owner
+    end
     F->>F: remove the worktree if it is clean and on a remote tip
     F->>C: release the claim
     C->>B: bd unclaim --if-assignee holder

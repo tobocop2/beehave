@@ -10,12 +10,11 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// Project is one project profile and the settings of its workflow steps.
+// Project is one project profile and the path of its file.
 type Project struct {
 	model.Project
 
-	Path  string
-	Steps Steps
+	Path string
 }
 
 // rawProject is a project file as written. Each key has a range for the refusals that come after the decode.
@@ -38,7 +37,6 @@ type rawProject struct {
 	BuildHost     *string   `hcl:"build_host,optional"`
 	BuildHostAt   hcl.Range `hcl:"build_host,attr_name_range"`
 	Host          *rawHost  `hcl:"host,block"`
-	Steps         []rawStep `hcl:"steps,block"`
 }
 
 // at returns the range of a key, or the start of the file when the key is not in it.
@@ -58,9 +56,7 @@ func loadProject(path string) (Project, error) {
 		return Project{}, err
 	}
 
-	steps, err := applySteps(DefaultSteps(), raw.Steps)
-
-	return Project{Project: profile, Path: path, Steps: steps}, err
+	return Project{Project: profile, Path: path}, nil
 }
 
 // profileOf checks the keys of a project file and returns the profile they describe.

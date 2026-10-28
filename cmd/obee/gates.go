@@ -1,0 +1,108 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/forge"
+	"github.com/tobocop2/obee/internal/gate"
+	"github.com/tobocop2/obee/internal/model"
+)
+
+// gateTimeout is the time that the gate command of a project may run on this machine.
+const gateTimeout = time.Hour
+
+// projectGate gives the gate step of the workflow to internal/gate, with the worktree of the item, the host of the project and the clone URL of its forge.
+type projectGate struct {
+	projects map[string]config.Project
+	programs programs
+	forge    func(model.Project) (forge.Forge, error)
+}
+
+// Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
+// has a host gate check out the head that it reports, and refuses a tree that changes during the run.
+func (g projectGate) Run(ctx context.Context, project, item string) (flow.GateResult, error) {
+	request, err := g.request(ctx, project, item)
+	if err != nil {
+		return flow.GateResult{}, err
+	}
+
+	hosts := func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) }
+
+	result, err := gate.New(g.shell, g.tree, hosts).Run(ctx, request)
+	if err != nil {
+		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
+	}
+
+	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head}, nil
+}
+
+// request names the project, the worktree of the item and, for a project with a build host, the URL that the host clones the repository from.
+func (g projectGate) request(ctx context.Context, project, item string) (gate.Request, error) {
+	found, ok := g.projects[project]
+	if !ok {
+		return gate.Request{}, fmt.Errorf("%w: %q", errUnknownProject, project)
+	}
+
+	dir, err := g.programs.trees.Path(ctx, project, item)
+	if err != nil {
+		return gate.Request{}, fmt.Errorf("find the folder of item %s: %w", item, err)
+	}
+
+	url, err := g.cloneURL(found)
+	if err != nil {
+		return gate.Request{}, err
+	}
+
+	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
+}
+
+// cloneURL returns the URL that a build host clones the repository of the project from. A project that builds here needs none.
+func (g projectGate) cloneURL(project config.Project) (string, error) {
+	if project.BuildHost == config.LocalHost {
+		return "", nil
+	}
+
+	remote, err := g.forge(project.Project)
+	if err != nil {
+		return "", fmt.Errorf("find the repository of project %s: %w", project.Name, err)
+	}
+
+	return remote.CloneURL(), nil
+}
+
+// shell runs the gate command in dir on this machine and returns its output and exit code.
+func (g projectGate) shell(ctx context.Context, dir, command string) (string, int) {
+	result := g.programs.local("sh", dir, gateTimeout).Run(ctx, []string{"-c", command})
+
+	return result.Stdout + result.Stderr, result.ExitCode
+}
+
+// tree reads the head of the worktree in dir and whether it has no uncommitted change.
+func (g projectGate) tree(ctx context.Context, dir string) (gate.State, error) {
+	head, err := g.git(ctx, dir, "rev-parse", "HEAD")
+	if err != nil {
+		return gate.State{}, err
+	}
+
+	changes, err := g.git(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return gate.State{}, err
+	}
+
+	return gate.State{Head: head, Clean: changes == ""}, nil
+}
+
+// git runs git in dir and returns what it printed, without the space at both ends.
+func (g projectGate) git(ctx context.Context, dir string, args ...string) (string, error) {
+	result := g.programs.local("git", dir, gateTimeout).Run(ctx, args)
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("git %s in %s: %s", args[0], dir, strings.TrimSpace(result.Stderr))
+	}
+
+	return strings.TrimSpace(result.Stdout), nil
+}

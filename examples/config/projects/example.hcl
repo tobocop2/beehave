@@ -24,20 +24,3 @@ build_host   = "local"         # "local", or the name of a SkyPilot cluster (not
 #     instance_type = "n2-standard-8"
 #   }
 # }
-
-# A steps block changes one step of the workflow for this project. All keys are optional.
-# Steps: claim, claim-gate, plan, implement, gate, round, review, record, owner-wait, ready,
-# integrate, release.
-# plan, implement and review start an agent: they take runner (a name from runners.hcl), skills
-# (the skills the step must call) and idle_timeout (the longest silence before the step stops).
-# The other steps run a command: they take timeout. owner-wait takes none; it waits for the owner.
-# Durations are written like "30m" or "1h30m". Write each step once.
-# steps "gate" {
-#   timeout = "2h"             # a slow project raises the gate limit
-# }
-# steps "implement" {
-#   runner       = "claude-a"
-#   skills       = ["test-driven-development"]
-#   idle_timeout = "45m"
-#   fresh_runner = "claude-b"  # implement only: the runner of the fresh agent in fix round 4 (default: the same runner)
-# }

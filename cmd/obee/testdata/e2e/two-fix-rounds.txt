@@ -1,19 +1,16 @@
-# Two reviews ask for changes. Each fix round resumes the agent session. The third review approves.
-exec obee run 7
-stdout 'item 7 finished after 2 fix rounds'
+# Two reviews ask for changes. Each fix round carries the findings of the review before it. The third review approves.
+exec obee run 7 --workflow flow/workflow.hcl
+stdout 'item 7 finished'
 
 exec obee status
-stdout '^item-7-r1\tdone$'
+stdout '^item-7-r1\tdone\tmerge: merged$'
 
-grep -count=1 '^plan 0 true a ' calls.log
-grep -count=1 '^implement 0 true a ' calls.log
-grep -count=1 '^implement 1 false a ' calls.log
-grep -count=1 '^implement 2 false a ' calls.log
+grep -count=1 '^plan ' calls.log
+grep -count=1 '^implement ' calls.log
+grep -count=1 '^fix 1 ' calls.log
+grep -count=1 '^fix 2 ' calls.log
 grep -count=3 '^review ' calls.log
-! grep '^implement 3' calls.log
-
-grep 'findings=findings of review 0' briefs/implement-1.txt
-grep 'findings=findings of review 1' briefs/implement-2.txt
+! grep '^fix 3 ' calls.log
 
 cmp events.log expected-events.log
 

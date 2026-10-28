@@ -326,6 +326,9 @@ type walker struct {
 	in    ItemInput
 	scope *workflow.Scope
 
+	// login is the pick of the run, for an agent step that names no runner.
+	login string
+
 	// merge and sentBack are what a merge step reported. They go into the result of the item.
 	merge, sentBack string
 }
@@ -365,7 +368,7 @@ func loadPinned(in ItemInput) (*workflow.Workflow, error) {
 }
 
 // walk runs the workflow file of the item, depth first.
-func (e *Engine) walk(ctx dbos.Context, in ItemInput) (ItemResult, error) {
+func (e *Engine) walk(ctx dbos.Context, in ItemInput, login string) (ItemResult, error) {
 	file, err := loadPinned(in)
 	if err != nil {
 		return ItemResult{}, err
@@ -376,7 +379,7 @@ func (e *Engine) walk(ctx dbos.Context, in ItemInput) (ItemResult, error) {
 		return ItemResult{}, err
 	}
 
-	w := &walker{e: e, ctx: ctx, in: in, scope: scope}
+	w := &walker{e: e, ctx: ctx, in: in, login: login, scope: scope}
 
 	err = w.steps(file.Steps, nil)
 

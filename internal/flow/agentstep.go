@@ -2,6 +2,7 @@ package flow
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -212,12 +213,7 @@ func runAgent(c *call, step *workflow.Agent) (stepResult, error) {
 		return stepResult{}, err
 	}
 
-	login, err := c.login(args.runner)
-	if err != nil {
-		return stepResult{}, err
-	}
-
-	return c.attempts(step, args, args.phase(c.w.in, login, rendered.Note))
+	return c.attempts(step, args, args.phase(c.w.in, cmp.Or(args.runner, c.w.login), rendered.Note))
 }
 
 // prepare evaluates the arguments of an agent step and finds its folder and output file.
@@ -318,22 +314,6 @@ func checkPin(ctx context.Context, dir, pin string) error {
 	}
 
 	return nil
-}
-
-// login returns the runner that the step names, or the login that the project picks for the item.
-func (c *call) login(runner string) (string, error) {
-	if runner != "" {
-		return runner, nil
-	}
-
-	picked, err := runStep(c.w.e, c.w.ctx, c.name+"/login", func(ctx context.Context) (string, error) {
-		return c.w.e.deps.Logins.Pick(ctx, c.w.in.Project, c.w.in.Item)
-	})
-	if err != nil {
-		return "", fmt.Errorf("pick the agent login for item %s: %w", c.w.in.Item, err)
-	}
-
-	return picked, nil
 }
 
 // attempts runs the agent up to args.tries times in all. A run that leaves a bad output file is run again.

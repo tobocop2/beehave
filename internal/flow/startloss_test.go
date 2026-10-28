@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 )
 
 // gateInAgents holds the first agent start until the test lets it go, after the phase checked the claim and before the agent runs.
@@ -62,38 +61,20 @@ func TestRunAgent_AClaimLostBeforeTheAgentStartsStartsNoAgent(t *testing.T) {
 	assert.Empty(t, harness.agents.seen(), "the claim was lost before the agent started, so the start found its context done")
 }
 
-func TestPhase_TheBriefIsKeyedByTheRunThatQueuedThePhase(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	engine := harness.engine(t)
-
-	_, err := engine.Run(testItem, testProject)
-	require.NoError(t, err)
-
-	briefs := harness.briefs.seen()
-	require.NotEmpty(t, briefs)
-
-	for _, request := range briefs {
-		assert.Equal(t, runID(testItem, 1), request.Run)
-	}
-}
-
-func TestPhase_NoBriefIsWrittenForARunThatHoldsNoClaim(t *testing.T) {
+func TestPhase_NoAgentStartsForARunThatHoldsNoClaim(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
 	engine := launchedWith(t, harness, func(deps *Deps) { deps.Clock.Grace = 20 * time.Millisecond })
 
-	handle, err := dbos.RunWorkflow(engine.ctx, engine.phase, PhaseInput{Run: "item-12-r9", Item: testItem, Project: testProject, Step: model.StepPlan, Login: testLogin},
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.phase, PhaseInput{Run: "item-12-r9", Item: testItem, Project: testProject, Login: testLogin},
 		dbos.WithQueue(engine.queue), dbos.WithQueuePartitionKey(testLogin))
 	require.NoError(t, err)
 
 	_, err = handle.GetResult()
 
 	require.ErrorContains(t, err, errClaimLost.Error())
-	assert.Empty(t, harness.briefs.seen(), "an orphan phase of a lost run writes no brief that a new run of the item could read")
-	assert.Empty(t, harness.agents.seen())
+	assert.Empty(t, harness.agents.seen(), "an orphan phase of a lost run starts no agent")
 }
 
 func TestRunAgent_TheAgentRunsUnderTheContextOfTheClaim(t *testing.T) {

@@ -747,7 +747,7 @@ func TestWalk_AChangedFileRefusesTheReplayWithBothHashes(t *testing.T) {
 func TestPinnedFile_NamesTheFileOfTheOpenRunAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	none, err := newHarness(t).engine(t).PinnedFile(testItem)
+	none, err := newHarness(t).client(t, testVersion).PinnedFile(testItem)
 	require.NoError(t, err)
 	assert.Empty(t, none, "no run is open")
 
@@ -755,7 +755,7 @@ func TestPinnedFile_NamesTheFileOfTheOpenRunAndNothingElse(t *testing.T) {
 	file := writeFlow(t, crashFlow)
 	interrupted(t, h, file)
 
-	pinned, err := h.engine(t).PinnedFile(testItem)
+	pinned, err := h.client(t, testVersion).PinnedFile(testItem)
 
 	require.NoError(t, err)
 	assert.Equal(t, file, pinned)

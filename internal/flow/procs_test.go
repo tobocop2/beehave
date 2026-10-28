@@ -223,7 +223,7 @@ func runAgentOf(ctx context.Context, engine *Engine, in PhaseInput) (PhaseOutput
 		return PhaseOutput{}, err
 	}
 
-	return engine.runAgent(ctx, claim, in, "")
+	return engine.runAgent(ctx, claim, in)
 }
 
 func TestRunAgent_AGroupDiesWhenThePhaseIsCancelled(t *testing.T) {
@@ -236,7 +236,7 @@ func TestRunAgent_AGroupDiesWhenThePhaseIsCancelled(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem})
 		done <- err
 	}()
 
@@ -259,7 +259,7 @@ func TestRunAgent_AGroupDiesWhenThePhaseTimesOut(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+		_, err := runAgentOf(ctx, engine, PhaseInput{Run: procRun, Item: testItem})
 		done <- err
 	}()
 
@@ -276,7 +276,7 @@ func TestRunAgent_APhaseThatEndsEmptiesTheFileAndTheEndOfItsContextKillsTheGroup
 
 	engine := newProcEngine(t, agents)
 
-	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem})
 
 	require.NoError(t, err)
 
@@ -296,7 +296,7 @@ func TestRunAgent_LogsAnAgentThatCannotBeRecorded(t *testing.T) {
 		return agent.Result{Outcome: agent.OutcomeExited}, nil
 	}))
 
-	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+	_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem})
 
 	require.NoError(t, err)
 }
@@ -325,7 +325,7 @@ func TestRunAgent_ALostClaimKillsTheGroupWhileTheRunStaysOpen(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem, Step: "implement"})
+		_, err := runAgentOf(t.Context(), engine, PhaseInput{Run: procRun, Item: testItem})
 		done <- err
 	}()
 

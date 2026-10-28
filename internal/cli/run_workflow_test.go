@@ -27,9 +27,8 @@ func TestRun_AWorkflowFileGoesToTheEngineByItsName(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "run", "12", "--workflow", file)
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "item 12 finished after 1 fix rounds\n", stdout)
+	assert.Equal(t, "item 12 finished\n", stdout)
 	assert.Equal(t, []string{"12@p " + file}, rig.runner.files)
-	assert.Empty(t, rig.runner.items, "the fixed item loop does not run")
 }
 
 func TestRun_AWorkflowFileThatDoesNotExistIsRefusedBeforeTheEngineOpens(t *testing.T) {
@@ -65,6 +64,7 @@ func TestRun_AWorkflowFileWithAProblemIsRefusedBeforeTheEngineOpens(t *testing.T
 
 func TestRun_WorkflowHclInTheCurrentFolderIsUsedWhenNoFileIsNamed(t *testing.T) {
 	rig := newRig(t)
+	rig.useFile = false
 	dir := t.TempDir()
 	writeConfig(t, dir, "workflow.hcl", oneCommandFile)
 	t.Chdir(dir)
@@ -73,11 +73,39 @@ func TestRun_WorkflowHclInTheCurrentFolderIsUsedWhenNoFileIsNamed(t *testing.T) 
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{"12@p workflow.hcl"}, rig.runner.files)
-	assert.Empty(t, rig.runner.items)
 }
 
-func TestRun_AWorkflowFileThatCannotBeReadIsRefusedAndTheFixedLoopDoesNotRun(t *testing.T) {
+func TestRun_AFolderWithoutAWorkflowFileIsRefusedAndNamesTheFlag(t *testing.T) {
 	rig := newRig(t)
+	rig.useFile = false
+	t.Chdir(t.TempDir())
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 1, code)
+	assert.Contains(t, stderr, "workflow.hcl is not in the current folder")
+	assert.Contains(t, stderr, "--workflow")
+	assert.Zero(t, rig.engines, "a refused run builds no engine")
+	assert.Zero(t, rig.runner.count(), "a refused run launches and shuts down nothing")
+	assert.Empty(t, rig.runner.files)
+}
+
+func TestRun_AnOpenRunContinuesInAFolderWithoutAWorkflowFile(t *testing.T) {
+	rig := newRig(t)
+	rig.useFile = false
+	rig.steering.pinned = "/work/flow.hcl"
+	t.Chdir(t.TempDir())
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "continues its open run with its pinned file /work/flow.hcl")
+	assert.Equal(t, []string{"12@p /work/flow.hcl"}, rig.runner.files, "the run continues with the file that it pinned")
+}
+
+func TestRun_AWorkflowFileThatCannotBeReadIsRefused(t *testing.T) {
+	rig := newRig(t)
+	rig.useFile = false
 	dir := t.TempDir()
 	require.NoError(t, os.Symlink("workflow.hcl", filepath.Join(dir, "workflow.hcl"))) // a link to itself: stat fails, and not with "does not exist"
 	t.Chdir(dir)
@@ -87,7 +115,6 @@ func TestRun_AWorkflowFileThatCannotBeReadIsRefusedAndTheFixedLoopDoesNotRun(t *
 	require.Equal(t, 1, code)
 	assert.Contains(t, stderr, "read the workflow file workflow.hcl")
 	assert.Contains(t, stderr, "too many levels of symbolic links")
-	assert.Empty(t, rig.runner.items, "a file that cannot be read does not select the fixed item loop")
 	assert.Empty(t, rig.runner.files)
 }
 
@@ -95,26 +122,40 @@ func TestRun_AnOpenRunWithAPinnedFileSaysSo(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	rig.runner.pinned = "/work/flow.hcl"
+	rig.steering.pinned = "/work/flow.hcl"
 
 	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "item 12 continues its open run with its pinned file /work/flow.hcl\nitem 12 finished after 2 fix rounds\n", stdout)
+	assert.Equal(t, "item 12 continues its open run with its pinned file /work/flow.hcl\nitem 12 finished\n", stdout)
 }
 
-func TestRun_AFailureToReadTheOpenRunStopsTheCommandAndShutsTheEngineDown(t *testing.T) {
+func TestRun_AFailureToReadTheOpenRunStopsTheCommandBeforeAnyEngineOpens(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	rig.runner.pinnedErr = errors.New("the store is locked")
+	rig.steering.pinnedErr = errors.New("the store is locked")
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 	require.Equal(t, 1, code)
 	assert.Contains(t, stderr, "the store is locked")
 	assert.Empty(t, rig.runner.items)
-	assert.Equal(t, 1, rig.runner.count())
+	assert.Zero(t, rig.engines)
+	assert.True(t, rig.steering.closeOK, "the client that read the open run is closed")
+}
+
+func TestRun_ARunThatCannotOpenTheClientBuildsNoEngine(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.clientOf = func() error { return errFake }
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 1, code)
+	assert.Contains(t, stderr, errFake.Error())
+	assert.Zero(t, rig.engines)
 }
 
 func TestRun_TheItemFieldsOfTheProjectAdaptersCheckTheWorkflowFile(t *testing.T) {

@@ -2,10 +2,12 @@ package flow
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,8 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/obee/internal/agent"
 )
 
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
@@ -31,7 +32,7 @@ func cancelledRunWaitingForTheOwner(t *testing.T) (*harness, *Engine, *Client) {
 	t.Helper()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -252,105 +253,6 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 	require.NoError(t, (<-done).err)
 }
 
-func TestRun_AReviewWithNoReadableVerdictGetsOneMoreReview(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		failFirst int
-		wantErr   string
-		steps     []model.Step
-	}{
-		{"one_missing_verdict_is_reviewed_again", 1, "", []model.Step{model.StepPlan, model.StepImplement, model.StepReview, model.StepReview}},
-		{"two_missing_verdicts_end_the_run", 2, "read the verdict of item 12 after 2 reviews: fake failure", []model.Step{model.StepPlan, model.StepImplement, model.StepReview, model.StepReview}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			harness := newHarness(t)
-			harness.verdicts.failFirst = test.failFirst
-			engine := harness.engine(t)
-
-			_, err := engine.Run(testItem, testProject)
-
-			if test.wantErr == "" {
-				require.NoError(t, err)
-			} else {
-				require.ErrorContains(t, err, test.wantErr)
-			}
-
-			assert.Equal(t, test.steps, stepsOf(harness.agents.seen()))
-		})
-	}
-}
-
-func TestRun_AGateThatCannotRunEndsTheRunAndSpendsNoFixRound(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.gate.err = errFake
-	engine := harness.engine(t)
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.ErrorContains(t, err, "gate of item 12")
-	assert.Equal(t, []model.Step{model.StepPlan, model.StepImplement}, stepsOf(harness.agents.seen()), "no review and no fix round ran")
-	assert.Zero(t, harness.verdicts.count())
-}
-
-func TestRun_AGateAndAReviewOnDifferentHeadsEndTheRun(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.gate.results = []GateResult{{Passed: true, Head: "aaa"}}
-	harness.verdicts.reviews = []Review{{Verdict: VerdictApprove, Head: "bbb"}}
-	engine := harness.engine(t)
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.ErrorIs(t, err, errHeadMoved)
-	require.ErrorContains(t, err, `the gate ran on "aaa" and the review read "bbb"`)
-	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen(), "the pull request is not marked ready")
-}
-
-func TestRun_TheReadyStepRefusesAPullRequestThatMovedAfterTheReview(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		head string
-		want string
-	}{
-		{"the_head_is_the_reviewed_one", "aaa", ""},
-		{"a_push_after_the_review", "ccc", `moved to "ccc" after the review read "aaa"`},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			harness := newHarness(t)
-			harness.gate.results = []GateResult{{Passed: true, Head: "aaa"}}
-			harness.verdicts.reviews = []Review{{Verdict: VerdictApprove, Head: "aaa"}}
-			harness.forge.state = review.Standing{Number: testPull, Head: test.head}
-			engine := harness.engine(t)
-
-			_, err := engine.Run(testItem, testProject)
-
-			if test.want == "" {
-				require.NoError(t, err)
-
-				return
-			}
-
-			require.ErrorIs(t, err, errNotReady)
-			require.ErrorContains(t, err, test.want)
-		})
-	}
-}
-
 func TestRun_AnEmptyLoginIsRefusedBeforeTheClaimAndLeavesNoRun(t *testing.T) {
 	t.Parallel()
 
@@ -363,17 +265,152 @@ func TestRun_AnEmptyLoginIsRefusedBeforeTheClaimAndLeavesNoRun(t *testing.T) {
 
 	require.ErrorIs(t, err, errEmptyLogin)
 	assert.Empty(t, harness.life.seen(), "nothing is claimed")
+	assert.Empty(t, harness.agents.seen(), "no agent starts")
 
 	rows, err := client.Status()
 	require.NoError(t, err)
 	assert.Empty(t, rows, "no failed attempt is stored")
+	assert.Zero(t, storedRuns(t, engine), "DBOS lists no workflow for the item")
+}
+
+func TestRun_APoolThatFailsToPickStoresNoRun(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.picker = &loginSequence{picks: []loginPick{{err: errors.New("usage unreadable")}, {login: "alice"}}}
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorContains(t, err, "pick the login of item "+testItem)
+	require.ErrorContains(t, err, "usage unreadable")
+	assert.Zero(t, storedRuns(t, engine), "DBOS lists no workflow for the item")
+
+	_, err = engine.Run(testItem, testProject)
+	require.NoError(t, err, "the next run is the first attempt, not a retry of a failed one")
+}
+
+func TestRun_TheLoginRidesInTheInputOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	logins := &loginSequence{picks: []loginPick{{login: "alice"}, {login: "bob"}}}
+	harness.picker = logins
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	last, found, err := latestRun(engine.ctx, testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	input, err := last.input()
+	require.NoError(t, err)
+	assert.Equal(t, "alice", input.Login)
+	assert.Equal(t, 1, logins.count(), "the pool is read once for the run")
+}
+
+func TestItem_ARunWithoutALoginInItsInputFailsBeforeTheClaim(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+
+	file := filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName)
+	hash, err := hashFile(file)
+	require.NoError(t, err)
+
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, Project: testProject, File: file, Hash: hash}, dbos.WithWorkflowID(runID(testItem, 1)))
+	require.NoError(t, err)
+
+	_, err = handle.GetResult()
+
+	require.ErrorIs(t, err, errEmptyLogin)
+	assert.Empty(t, harness.life.seen(), "nothing is claimed")
+}
+
+// storedRuns counts the workflows that DBOS lists for the test item.
+func storedRuns(t *testing.T, engine *Engine) int {
+	t.Helper()
+
+	rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterWorkflowIDPrefix(runPrefix+testItem+attemptMarker), dbos.WithFilterName(itemName))
+	require.NoError(t, err)
+
+	return len(rows)
+}
+
+func TestRun_TheLoginIsPickedOnceForTheRunAndEveryAgentWithoutARunnerUsesIt(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	logins := &loginSequence{picks: []loginPick{{login: "alice"}, {login: "bob"}}}
+	harness.picker = logins
+	harness.flowIs(t, "workflow \"w\" {}\nagent \"one\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"two\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"three\" {\n  prompt = \"prompts/a.md\"\n  runner = \"named\"\n}\n")
+	writePrompt(t, harness)
+
+	_, err := harness.engine(t).Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"alice", "alice", "named"}, harness.agents.logins())
+	assert.Equal(t, 1, logins.count(), "one pick, the first step of the run, never one for each agent")
+}
+
+func TestResume_AnAgentThatResumesASessionRunsOnTheLoginThatOwnsIt(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	logins := &loginSequence{picks: []loginPick{{login: "alice"}, {login: "bob"}}}
+	harness.picker = logins
+	harness.flowIs(t, "workflow \"w\" {}\nagent \"one\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"two\" {\n  prompt = \"prompts/a.md\"\n  resume_from = agent.one\n}\n")
+	writePrompt(t, harness)
+
+	var calls atomic.Int32
+
+	harness.agents.result = func(AgentRequest) agent.Result {
+		if calls.Add(1) == 2 {
+			return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "bad exit"}
+		}
+
+		return agent.Result{Outcome: agent.OutcomeExited, Session: "sess-1", Transcript: "/t.jsonl", Text: "done"}
+	}
+
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	_, err := engine.Run(testItem, testProject)
+	require.ErrorContains(t, err, "bad exit")
+
+	require.NoError(t, client.Resume(testItem))
+	_, err = engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"alice", "alice", "alice"}, harness.agents.logins(), "the resumed step keeps the login of the run")
+	assert.Equal(t, 1, logins.count(), "the resume picks nothing, though the pool would now pick bob")
+
+	last, found, err := latestRun(engine.ctx, testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	input, err := last.input()
+	require.NoError(t, err)
+	assert.Equal(t, "alice", input.Login, "the input of the run keeps its login")
+}
+
+// writePrompt writes the prompt file that the flow of the harness names, beside the flow.
+func writePrompt(t *testing.T, h *harness) {
+	t.Helper()
+
+	folder := filepath.Join(filepath.Dir(h.opts.StateDir), "prompts")
+	require.NoError(t, os.MkdirAll(folder, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "a.md"), []byte("Do the work.\n"), 0o600))
 }
 
 func TestRun_TheWaitForTheOwnerHasNoDeadline(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := launchedWith(t, harness, func(deps *Deps) { deps.Clock.OwnerWait = 20 * time.Millisecond })
 	client := harness.client(t, testVersion)
 
@@ -549,11 +586,11 @@ func TestRun_ALoginThatFailsInsideTheRunEndsItBeforeTheClaim(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	logins := &loginOnce{later: errFake}
+	logins := &loginSequence{picks: []loginPick{{err: errFake}}}
 	engine := launchedWith(t, harness, func(deps *Deps) { deps.Logins = logins })
 
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "pick the login of item 12")
-	assert.Empty(t, harness.life.seen(), "nothing is claimed")
+	assert.Empty(t, harness.life.seen(), "the pick is the first step of the run: nothing is claimed")
 }

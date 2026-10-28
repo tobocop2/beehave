@@ -9,8 +9,6 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/tobocop2/obee/internal/model"
 )
 
 // sleep moves the wall reading of the clock and leaves the monotonic reading behind, as a sleeping machine does.
@@ -259,13 +257,13 @@ func TestTrust_TheReasonOfALostDeadlineNamesTheLastFailure(t *testing.T) {
 	require.ErrorContains(t, outcome.err, "the last renewal failed with: "+errFake.Error())
 }
 
-// failedAtTheGate runs an item to a failed gate, then lets the gate work again. It returns the harness, the engine, the clock of the engine
-// and the number of gate runs so far.
-func failedAtTheGate(t *testing.T) (*harness, *Engine, *leaseClock, int) {
+// failedAtTheAgent runs an item to a failed agent, then lets the agent work again. It returns the harness, the engine, the clock of the engine
+// and the number of agent runs so far.
+func failedAtTheAgent(t *testing.T) (*harness, *Engine, *leaseClock, int) {
 	t.Helper()
 
 	harness := newHarness(t)
-	harness.gate.err = errFake
+	harness.agents.err = errFake
 	clk := &leaseClock{now: time.Unix(1_000_000, 0)}
 	engine := launchedWith(t, harness, func(deps *Deps) { clk.install(&deps.Clock) })
 
@@ -273,17 +271,17 @@ func failedAtTheGate(t *testing.T) (*harness, *Engine, *leaseClock, int) {
 	require.ErrorContains(t, err, errFake.Error())
 	require.Empty(t, harness.beats.seen())
 
-	harness.gate.mu.Lock()
-	gates := harness.gate.calls
-	harness.gate.err = nil
-	harness.gate.mu.Unlock()
+	harness.agents.mu.Lock()
+	agents := len(harness.agents.requests)
+	harness.agents.err = nil
+	harness.agents.mu.Unlock()
 
-	return harness, engine, clk, gates
+	return harness, engine, clk, agents
 }
 
-// resumeTheGate puts the failed run back, as obee resume does. The claim step of the run then replays with the fresh claim that the resume took,
+// resumeTheRun puts the failed run back, as obee resume does. The claim step of the run then replays with the fresh claim that the resume took,
 // so the run does not know how old that lease is.
-func resumeTheGate(t *testing.T, harness *harness) {
+func resumeTheRun(t *testing.T, harness *harness) {
 	t.Helper()
 
 	require.NoError(t, harness.client(t, testVersion).Resume(testItem))
@@ -292,8 +290,8 @@ func resumeTheGate(t *testing.T, harness *harness) {
 func TestFirstTrust_ARunWithAReplayedClaimNeedsOneGoodRenewalBeforeItsWork(t *testing.T) {
 	t.Parallel()
 
-	harness, engine, _, _ := failedAtTheGate(t)
-	resumeTheGate(t, harness)
+	harness, engine, _, _ := failedAtTheAgent(t)
+	resumeTheRun(t, harness)
 
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
@@ -304,13 +302,13 @@ func TestFirstTrust_ARunWithAReplayedClaimNeedsOneGoodRenewalBeforeItsWork(t *te
 func TestFirstTrust_ARenewalThatFailsOnceIsTriedAgainBeforeTheWorkStarts(t *testing.T) {
 	t.Parallel()
 
-	harness, engine, _, _ := failedAtTheGate(t)
+	harness, engine, _, _ := failedAtTheAgent(t)
 	owner := testOwner + testItem + "#2"
 
 	// The renewal fails once: the hook runs after the fake read that it fails, and it mends the tracker for the next renewal.
 	harness.beats.fail(owner, "", errFake)
 	harness.beats.hook(func() { harness.beats.fail("", "", nil) })
-	resumeTheGate(t, harness)
+	resumeTheRun(t, harness)
 
 	result, err := engine.Run(testItem, testProject)
 	require.NoError(t, err, "a tracker call that was busy once does not end the resumed run")
@@ -321,72 +319,44 @@ func TestFirstTrust_ARenewalThatFailsOnceIsTriedAgainBeforeTheWorkStarts(t *test
 func TestFirstTrust_ARunThatIsCanceledWhileItTriesTheRenewalAgainTriesNoMore(t *testing.T) {
 	t.Parallel()
 
-	harness, engine, _, gates := failedAtTheGate(t)
+	harness, engine, _, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "", errFake)
 	harness.beats.hook(func() { engine.cancels.stop(runID(testItem, 1)) })
-	resumeTheGate(t, harness)
+	resumeTheRun(t, harness)
 
 	_, err := engine.Run(testItem, testProject)
 	require.Error(t, err)
 	assert.Len(t, harness.beats.seen(), 1, "the cancel ended the wait before the second try")
-
-	harness.gate.mu.Lock()
-	defer harness.gate.mu.Unlock()
-
-	assert.Equal(t, gates, harness.gate.calls)
+	assert.Len(t, harness.agents.seen(), agents)
 }
 
 func TestFirstTrust_ARenewalThatFailsUntilTheLimitKeepsTheWorkFromStarting(t *testing.T) {
 	t.Parallel()
 
-	harness, engine, clk, gates := failedAtTheGate(t)
+	harness, engine, clk, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "", errFake)
 	harness.beats.hook(func() { clk.advance(2 * time.Minute) })
-	resumeTheGate(t, harness)
+	resumeTheRun(t, harness)
 
 	_, err := engine.Run(testItem, testProject)
 	require.ErrorContains(t, err, "before the first agent starts")
 	require.ErrorContains(t, err, errFake.Error())
 	assert.Greater(t, len(harness.beats.seen()), 1, "the renewal was tried again until the limit passed")
 
-	harness.gate.mu.Lock()
-	defer harness.gate.mu.Unlock()
-
-	assert.Equal(t, gates, harness.gate.calls, "no step ran on a claim nobody renewed")
+	assert.Len(t, harness.agents.seen(), agents, "no step ran on a claim nobody renewed")
 }
 
 func TestFirstTrust_ATrackerThatSaysTheClaimIsGoneEndsTheRunBeforeItsWork(t *testing.T) {
 	t.Parallel()
 
-	harness, engine, _, gates := failedAtTheGate(t)
+	harness, engine, _, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "heartbeat for session-x failed: it holds no claim row", nil)
-	resumeTheGate(t, harness)
+	resumeTheRun(t, harness)
 
 	_, err := engine.Run(testItem, testProject)
 	require.ErrorContains(t, err, errClaimLost.Error())
 	require.ErrorContains(t, err, "it holds no claim row")
-
-	harness.gate.mu.Lock()
-	defer harness.gate.mu.Unlock()
-
-	assert.Equal(t, gates, harness.gate.calls)
-}
-
-// blockingBriefs holds the first brief until the test releases it.
-type blockingBriefs struct {
-	fakeBriefs
-	entered chan struct{}
-	release chan struct{}
-	once    sync.Once
-}
-
-func (b *blockingBriefs) Write(ctx context.Context, request BriefRequest) (string, error) {
-	b.once.Do(func() {
-		b.entered <- struct{}{}
-		<-b.release
-	})
-
-	return b.fakeBriefs.Write(ctx, request)
+	assert.Len(t, harness.agents.seen(), agents)
 }
 
 // phaseCount counts the phase workflows in the store that have one of the statuses, or all of them when no status is named.
@@ -404,15 +374,15 @@ func phaseCount(t *testing.T, engine *Engine, statuses ...dbos.WorkflowStatusTyp
 	return len(rows)
 }
 
-func TestRunAgent_NoAgentStartsAfterTheClaimIsLostWhileThePhaseWritesItsBrief(t *testing.T) {
+func TestRunAgent_NoAgentStartsAfterTheClaimIsLostWhileThePhaseWaitsToStart(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	briefs := &blockingBriefs{entered: make(chan struct{}, 1), release: make(chan struct{})}
-	engine := launchedWith(t, harness, func(deps *Deps) { deps.Briefs = briefs })
+	gated := &gateInAgents{inner: harness.agents, entered: make(chan struct{}, 1), hold: make(chan struct{}), returned: make(chan struct{}, 1)}
+	engine := launchedWith(t, harness, func(deps *Deps) { deps.Agents = gated })
 	done := runInBackground(engine, testItem)
 
-	<-briefs.entered
+	<-gated.entered
 
 	harness.beats.fail(testOwner+testItem, "heartbeat for session-x failed: it holds no claim row", nil)
 	harness.tick(t)
@@ -420,19 +390,20 @@ func TestRunAgent_NoAgentStartsAfterTheClaimIsLostWhileThePhaseWritesItsBrief(t 
 	outcome := <-done
 	require.ErrorIs(t, outcome.err, errClaimLost)
 
-	close(briefs.release)
+	close(gated.hold)
+	<-gated.returned
 	eventually(t, func() bool { return phaseCount(t, engine, dbos.WorkflowStatusError) == 1 })
 
 	assert.Empty(t, harness.agents.seen(), "the phase read the lost claim and started no agent")
 }
 
-func TestRunPhase_QueuesNoPhaseForARunThatHoldsNoTrustedClaim(t *testing.T) {
+func TestQueuePhase_QueuesNoPhaseForARunThatHoldsNoTrustedClaim(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
 	engine := harness.engine(t)
 
-	err := engine.runPhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Step: model.StepPlan, Login: testLogin})
+	_, err := engine.queuePhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Login: testLogin})
 
 	require.ErrorIs(t, err, errClaimLost)
 	assert.Zero(t, phaseCount(t, engine), "the guard on the phase start queued nothing")
@@ -443,14 +414,14 @@ func TestRunAgent_AnOrphanPhaseOfALostRunStartsNoAgentWhenANewRunHoldsTheItem(t 
 	t.Parallel()
 
 	harness := newHarness(t)
-	briefs := &blockingBriefs{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	gated := &gateInAgents{inner: harness.agents, entered: make(chan struct{}, 1), hold: make(chan struct{}), returned: make(chan struct{}, 1)}
 	engine := launchedWith(t, harness, func(deps *Deps) {
-		deps.Briefs = briefs
+		deps.Agents = gated
 		deps.Clock.Grace = 20 * time.Millisecond
 	})
 	done := runInBackground(engine, testItem)
 
-	<-briefs.entered
+	<-gated.entered
 
 	harness.beats.fail(testOwner+testItem, "heartbeat for session-x failed: it holds no claim row", nil)
 	harness.tick(t)
@@ -461,7 +432,8 @@ func TestRunAgent_AnOrphanPhaseOfALostRunStartsNoAgentWhenANewRunHoldsTheItem(t 
 	// A new run takes the item and holds a trusted claim on it. The orphan phase belongs to the lost run, not to this one.
 	engine.holds.add("item-"+testItem+"-r2", claimHold{project: testProject, owner: testOwner + testItem + "#2", renewed: time.Now()})
 
-	close(briefs.release)
+	close(gated.hold)
+	<-gated.returned
 	eventually(t, func() bool { return phaseCount(t, engine, dbos.WorkflowStatusError) == 1 })
 
 	assert.Empty(t, harness.agents.seen(), "the claim of the new run is not the claim of the orphan")

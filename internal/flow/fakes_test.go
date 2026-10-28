@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -104,26 +105,15 @@ func (a *fakeAgents) seen() []AgentRequest {
 	return append([]AgentRequest(nil), a.requests...)
 }
 
-type fakeBriefs struct {
-	mu       sync.Mutex
-	requests []BriefRequest
-	err      error
-}
+// logins returns the login of each request, in order.
+func (a *fakeAgents) logins() []string {
+	var logins []string
 
-func (b *fakeBriefs) Write(_ context.Context, request BriefRequest) (string, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	for _, request := range a.seen() {
+		logins = append(logins, request.Login)
+	}
 
-	b.requests = append(b.requests, request)
-
-	return "brief-" + string(request.Step), b.err
-}
-
-func (b *fakeBriefs) seen() []BriefRequest {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return append([]BriefRequest(nil), b.requests...)
+	return logins
 }
 
 // fakeGate answers each call from results in order; the last result repeats.
@@ -144,48 +134,11 @@ func (g *fakeGate) Run(_ context.Context, _, _ string) (GateResult, error) {
 	return g.results[index], g.err
 }
 
-// fakeVerdicts answers each call from reviews in order; the last review repeats.
-type fakeVerdicts struct {
-	mu      sync.Mutex
-	reviews []Review
-	rounds  []int
-	err     error
-	// failFirst makes the first reads fail with errFake.
-	failFirst int
-}
-
-func (v *fakeVerdicts) Read(_ context.Context, _, _ string, round int) (Review, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	index := min(len(v.rounds), len(v.reviews)-1)
-	failing := len(v.rounds) < v.failFirst
-	v.rounds = append(v.rounds, round)
-
-	if failing {
-		return Review{}, errFake
-	}
-
-	return v.reviews[index], v.err
-}
-
-func (v *fakeVerdicts) count() int {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	return len(v.rounds)
-}
-
 // fakeLogins picks byItem[item] when set and login otherwise.
 type fakeLogins struct {
 	login  string
 	byItem map[string]string
-	fresh  string
 	err    error
-}
-
-func (l fakeLogins) PickFresh(_ context.Context, _, _ string) (string, error) {
-	return l.fresh, l.err
 }
 
 func (l fakeLogins) Pick(_ context.Context, _, item string) (string, error) {
@@ -196,27 +149,35 @@ func (l fakeLogins) Pick(_ context.Context, _, item string) (string, error) {
 	return l.login, l.err
 }
 
-// loginOnce picks the login for the first call. Every later call returns an empty login and the error in later.
-type loginOnce struct {
-	mu    sync.Mutex
-	calls int
-	later error
+// loginPick is one answer of loginSequence.
+type loginPick struct {
+	login string
+	err   error
 }
 
-func (l *loginOnce) Pick(context.Context, string, string) (string, error) {
+// loginSequence answers each Pick from picks in order. The last answer repeats. It counts the calls.
+type loginSequence struct {
+	mu    sync.Mutex
+	calls int
+	picks []loginPick
+}
+
+func (l *loginSequence) Pick(context.Context, string, string) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	pick := l.picks[min(l.calls, len(l.picks)-1)]
 	l.calls++
 
-	if l.calls == 1 {
-		return testLogin, nil
-	}
-
-	return "", l.later
+	return pick.login, pick.err
 }
 
-func (l *loginOnce) PickFresh(context.Context, string, string) (string, error) { return "", nil }
+func (l *loginSequence) count() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.calls
+}
 
 // fakeLifecycle records each step it runs and fails the steps named in failing.
 type fakeLifecycle struct {
@@ -393,9 +354,7 @@ func (l *fakeLifecycle) seen() []string {
 // harness holds the fakes and the options of one test. Each engine of the test shares one state folder.
 type harness struct {
 	agents   *fakeAgents
-	briefs   *fakeBriefs
 	gate     *fakeGate
-	verdicts *fakeVerdicts
 	logins   fakeLogins
 	picker   logins // replaces logins when set
 	life     *fakeLifecycle
@@ -411,25 +370,50 @@ type harness struct {
 	opts     Options
 }
 
+// defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
+const defaultFlow = "workflow \"w\" {}\nagent \"work\" {\n  prompt = \"prompts/work.md\"\n}\n"
+
+// defaultFlowName is the name of the default workflow file, which sits beside the state folder of the harness.
+const defaultFlowName = "workflow.hcl"
+
+// waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for obee answer after its agent ends.
+const waitFlow = "workflow \"w\" {}\nagent \"work\" {\n  prompt = \"prompts/work.md\"\n}\nwait \"ask\" {\n  question = \"What now?\"\n}\n"
+
+// flowIs replaces the default workflow file of the harness. Call it before the first run.
+func (h *harness) flowIs(t *testing.T, text string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(h.opts.StateDir), defaultFlowName), []byte(text), 0o600))
+}
+
+// Run walks the default workflow file of the harness. It is a helper of the tests: the production engine runs only a file named by the caller.
+func (e *Engine) Run(item, project string) (ItemResult, error) {
+	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName))
+}
+
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
+	tree, _ := gitTree(t)
+	folder := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(folder, "prompts"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, defaultFlowName), []byte(defaultFlow), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "prompts", "work.md"), []byte("Work on the item.\n"), 0o600))
+
 	return &harness{
 		agents:   &fakeAgents{perLogin: map[string]int{}},
-		briefs:   &fakeBriefs{},
 		gate:     &fakeGate{results: []GateResult{{Passed: true}}},
-		verdicts: &fakeVerdicts{reviews: []Review{{Verdict: VerdictApprove}}},
 		logins:   fakeLogins{login: testLogin},
 		life:     &fakeLifecycle{failing: map[string]bool{}},
 		forge:    &fakeForge{state: review.Standing{Number: testPull}},
 		watch:    &fakeWatch{outcomes: []review.Outcome{{Kind: review.Merged}}},
-		trees:    &fakeTrees{},
+		trees:    &fakeTrees{dir: tree},
 		beats:    &fakeBeats{},
 		commands: &fakeCommands{},
 		items:    &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}},
 		ticks:    make(chan time.Time),
 		opts: Options{
-			StateDir:      filepath.Join(t.TempDir(), "state"),
+			StateDir:      filepath.Join(folder, "state"),
 			Version:       testVersion,
 			MaxConcurrent: 2,
 			Env:           map[string]string{},
@@ -439,7 +423,7 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items,
+		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items,
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
 	if h.merge != nil {

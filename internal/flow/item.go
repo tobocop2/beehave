@@ -12,41 +12,26 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// reviewTries is how many reviews an item gets for one verdict when the first leaves none that can be read.
-const reviewTries = 2
-
-// errHeadMoved is returned when the commit changed between the gate, the review and the ready step.
-var errHeadMoved = errors.New("the head of the pull request moved")
-
 // ItemInput starts the workflow of one item.
 type ItemInput struct {
 	Item    string `json:"item"`
 	Project string `json:"project"`
 	File    string `json:"file,omitempty"`
 	Hash    string `json:"hash,omitempty"`
+	// Login is the agent login that handleFor picked before the run started. DBOS stores the input, so a resume keeps it.
+	Login string `json:"login,omitempty"`
 }
 
-// ItemResult is what a finished item workflow reports. FixRounds counts the fix rounds the review asked for.
+// ItemResult is what a finished item workflow reports.
 // SentBack holds the reason when the watch returned the pull request to draft. The run is finished, and the next run of the item starts a new attempt.
 type ItemResult struct {
-	Item      string `json:"item"`
-	FixRounds int    `json:"fix_rounds"`
-	SentBack  string `json:"sent_back,omitempty"`
+	Item     string `json:"item"`
+	SentBack string `json:"sent_back,omitempty"`
 	// Merge is the state that the merge step of a workflow file ended in: merged or sent_back. It is empty when the file has no merge step, or when the step did not run.
 	Merge string `json:"merge,omitempty"`
 }
 
-// loopState is the part of an item the fix loop carries from one round to the next.
-type loopState struct {
-	item     string
-	project  string
-	login    string
-	fixed    int
-	findings string
-	answer   string
-}
-
-// item runs one item: claim, plan, implement, the review and fix rounds, ready, release.
+// item runs one item: claim, the steps of its workflow file, release.
 // The workflow is not queued, so the wait for the owner holds no agent slot.
 func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 	return e.track(parent, in, func(ctx dbos.Context) (ItemResult, error) {
@@ -83,22 +68,13 @@ func (e *Engine) workHolding(ctx dbos.Context, in ItemInput, login string, taken
 		return ItemResult{}, err
 	}
 
-	result, err := e.perform(ctx, in, login)
+	result, err := e.walk(ctx, in, login)
 
 	if lost := e.claimCheck(id, in.Item); lost != nil {
 		return result, lost
 	}
 
 	return result, err
-}
-
-// perform runs the workflow file of the item, or the fixed item loop when the item has none.
-func (e *Engine) perform(ctx dbos.Context, in ItemInput, login string) (ItemResult, error) {
-	if in.File != "" {
-		return e.walk(ctx, in)
-	}
-
-	return e.work(ctx, in, login)
 }
 
 // firstTrust starts the trust in a claim. A take that this run made is trusted from the start of the take. A take of unknown age
@@ -176,18 +152,17 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 	return errors.Join(treeErr, e.lifecycle(ctx, model.StepRelease, releaseClaim, in.Project, in.Item))
 }
 
-// begin picks the login of an item and claims the item. Each is a step.
+// begin claims the item. The login came in the input of the run, so an agent step that names no runner uses it,
+// and a resumed run keeps it, so every agent of a run, and every resume of a session, uses the one login.
+// An input with no login claims nothing.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
-	login, err = runStep(e, ctx, "login", func(c context.Context) (string, error) {
-		return e.deps.Logins.Pick(c, in.Project, in.Item)
-	})
-	if err != nil {
-		return "", "", time.Time{}, fmt.Errorf("pick the login of item %s: %w", in.Item, err)
+	if in.Login == "" {
+		return "", "", time.Time{}, errEmptyLogin
 	}
 
 	owner, took, err = e.claim(ctx, in)
 
-	return login, owner, took, err
+	return in.Login, owner, took, err
 }
 
 // claim takes the claim of an item and returns its owner token and the time the take began. A resumed run replays this step with the token of the old claim,
@@ -219,144 +194,6 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 	}
 
 	return nil
-}
-
-// work runs the plan and the first implement round, then the fix loop.
-func (e *Engine) work(ctx dbos.Context, in ItemInput, login string) (ItemResult, error) {
-	for _, step := range []model.Step{model.StepPlan, model.StepImplement} {
-		if err := e.runPhase(ctx, PhaseInput{Item: in.Item, Project: in.Project, Step: step, Login: login, Fresh: true}); err != nil {
-			return ItemResult{}, err
-		}
-	}
-
-	return e.fixLoop(ctx, loopState{item: in.Item, project: in.Project, login: login})
-}
-
-// fixLoop reviews and fixes until the review approves. Round policy lives in nextRound.
-func (e *Engine) fixLoop(ctx dbos.Context, state loopState) (ItemResult, error) {
-	for {
-		review, err := e.review(ctx, state)
-		if err != nil {
-			return ItemResult{}, err
-		}
-
-		action := nextRound(state.fixed, review.Verdict)
-		if action == actionStop {
-			sentBack, err := e.readyAndWatch(ctx, state, review.Head)
-
-			return ItemResult{Item: state.item, FixRounds: state.fixed, SentBack: sentBack}, err
-		}
-
-		state.findings = review.Findings
-
-		if err := e.advance(ctx, &state, action); err != nil {
-			return ItemResult{}, err
-		}
-	}
-}
-
-// readyAndWatch marks the pull request ready after an approved review, merges it when the build has a merger, and then watches it until it merges or goes back to draft.
-// It returns the reason when the pull request went back to draft.
-func (e *Engine) readyAndWatch(ctx dbos.Context, state loopState, reviewed string) (string, error) {
-	ready := func(c context.Context, project, item string) error { return e.markReady(c, project, item, reviewed) }
-
-	if err := e.lifecycle(ctx, model.StepReady, ready, state.project, state.item); err != nil {
-		return "", err
-	}
-
-	if e.deps.Merge != nil {
-		if err := e.mergeReady(ctx, state.project, state.item, reviewed); err != nil {
-			return "", err
-		}
-	}
-
-	return e.watchReady(ctx, state.project, state.item)
-}
-
-// advance runs the fix round that the round policy chose. It first waits for the owner when the policy asks for it.
-func (e *Engine) advance(ctx dbos.Context, state *loopState, action roundAction) error {
-	if action == actionWaitOwner {
-		answer, err := e.waitOwner(ctx, state.item, state.findings)
-		if err != nil {
-			return err
-		}
-
-		state.answer, action = answer, actionResume
-	}
-
-	return e.fix(ctx, state, action)
-}
-
-// review runs the gate, then the review agent when the gate passes, and reads the verdict.
-func (e *Engine) review(ctx dbos.Context, state loopState) (Review, error) {
-	gate, err := runStep(e, ctx, string(model.StepGate), func(c context.Context) (GateResult, error) {
-		return e.deps.Gate.Run(c, state.project, state.item)
-	})
-	if err != nil {
-		return Review{}, fmt.Errorf("gate of item %s: %w", state.item, err)
-	}
-
-	if !gate.Passed {
-		return Review{Verdict: VerdictChanges, Findings: gate.Report, Head: gate.Head}, nil
-	}
-
-	review, err := e.reviewTries(ctx, state)
-	if err == nil && review.Head != gate.Head {
-		err = fmt.Errorf("%w: item %s: the gate ran on %q and the review read %q", errHeadMoved, state.item, gate.Head, review.Head)
-	}
-
-	return review, err
-}
-
-// reviewTries runs the review phase and reads its verdict. A verdict that cannot be read earns one more review.
-func (e *Engine) reviewTries(ctx dbos.Context, state loopState) (Review, error) {
-	input := PhaseInput{Item: state.item, Project: state.project, Step: model.StepReview, Round: state.fixed, Login: state.login, Fresh: true}
-
-	var err error
-
-	for range reviewTries {
-		if err = e.runPhase(ctx, input); err != nil {
-			return Review{}, err
-		}
-
-		var review Review
-		if review, err = e.readVerdict(ctx, state); err == nil {
-			return review, nil
-		}
-	}
-
-	return Review{}, fmt.Errorf("read the verdict of item %s after %d reviews: %w", state.item, reviewTries, err)
-}
-
-// readVerdict reads the verdict that the review left, as one step.
-func (e *Engine) readVerdict(ctx dbos.Context, state loopState) (Review, error) {
-	return runStep(e, ctx, string(model.StepRecord), func(c context.Context) (Review, error) {
-		return e.deps.Verdicts.Read(c, state.project, state.item, state.fixed)
-	})
-}
-
-// fix runs one fix round: an implement phase that reads the findings and the last answer of the owner.
-func (e *Engine) fix(ctx dbos.Context, state *loopState, action roundAction) error {
-	state.fixed++
-	input := PhaseInput{
-		Item: state.item, Project: state.project, Step: model.StepImplement, Round: state.fixed, Login: state.login,
-		Fresh: action == actionFresh, Findings: state.findings, Answer: state.answer,
-	}
-	state.answer = ""
-
-	if action == actionFresh {
-		fresh, err := runStep(e, ctx, "fresh-login", func(c context.Context) (string, error) {
-			return e.deps.Logins.PickFresh(c, state.project, state.item)
-		})
-		if err != nil {
-			return fmt.Errorf("pick the fresh runner of item %s: %w", state.item, err)
-		}
-
-		state.login = cmp.Or(fresh, state.login)
-		input.Login = state.login
-	}
-
-	return e.runPhase(ctx, input)
 }
 
 // waitOwner blocks until the owner answers through obee answer. The wait holds no queue slot.

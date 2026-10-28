@@ -143,5 +143,6 @@ thing not to redo; and these lines:
 
 {{ .item.body }}
 
-The verdict line is `verdict: approve` when no finding blocks the merge, and `verdict: changes` when one does.
+The verdict is `approve` when no finding blocks the merge, and `changes` when one does.
+Write it to {{ .output_file }} as JSON, for example `{"verdict":"approve"}`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.

@@ -1,30 +1,15 @@
 package main
 
 import (
+	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
 )
-
-func TestNotBuilt_EveryStepSaysThisBuildLacksIt(t *testing.T) {
-	t.Parallel()
-
-	pending := notBuilt{}
-	ctx := t.Context()
-
-	_, briefErr := pending.Write(ctx, flow.BriefRequest{})
-	_, gateErr := gate{}.Run(ctx, "p", "1")
-	_, verdictErr := pending.Read(ctx, "p", "1", 0)
-
-	for _, err := range []error{briefErr, gateErr, verdictErr} {
-		require.ErrorIs(t, err, flow.ErrNotBuilt)
-	}
-}
 
 func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
 	t.Parallel()
@@ -34,48 +19,15 @@ func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing
 	engine, err := flowFactory().Engine(t.Context(), config.Config{Projects: map[string]config.Project{}}, opts)
 	require.NoError(t, err)
 
+	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err = engine.Run("12", "zzz")
+	file := t.TempDir() + "/workflow.hcl"
+	require.NoError(t, os.WriteFile(file, []byte("workflow \"w\" {}\ngate \"check\" {}\n"), 0o600))
+
+	_, err = engine.RunFile("12", "zzz", file)
 
 	require.ErrorContains(t, err, errUnknownProject.Error())
-}
-
-func TestLogins_PickTheRunnersOfTheProjectTheItemBelongsTo(t *testing.T) {
-	t.Parallel()
-
-	steps := config.DefaultSteps()
-	steps[model.StepImplement] = config.StepSettings{Runner: "b", FreshRunner: "c"}
-	other := config.DefaultSteps()
-	other[model.StepImplement] = config.StepSettings{Runner: "d"}
-
-	picked := newLogins(config.Config{
-		Runners:  []model.Runner{{Name: "a"}},
-		Projects: map[string]config.Project{"p": {Steps: steps}, "q": {Steps: other}},
-	}, flow.Options{})
-
-	tests := []struct {
-		project   string
-		wantLogin string
-		wantFresh string
-	}{
-		{"p", "b", "c"},
-		{"q", "d", ""},
-	}
-
-	for _, test := range tests {
-		t.Run(test.project, func(t *testing.T) {
-			t.Parallel()
-
-			login, err := picked.Pick(t.Context(), test.project, "1")
-			require.NoError(t, err)
-			assert.Equal(t, test.wantLogin, login)
-
-			fresh, err := picked.PickFresh(t.Context(), test.project, "1")
-			require.NoError(t, err)
-			assert.Equal(t, test.wantFresh, fresh)
-		})
-	}
 }
 
 func TestLogins_NeverGuessAProjectTheConfigLacks(t *testing.T) {
@@ -84,10 +36,8 @@ func TestLogins_NeverGuessAProjectTheConfigLacks(t *testing.T) {
 	picked := newLogins(config.Config{Runners: []model.Runner{{Name: "a"}}, Projects: map[string]config.Project{}}, flow.Options{})
 
 	_, pickErr := picked.Pick(t.Context(), "zzz", "1")
-	_, freshErr := picked.PickFresh(t.Context(), "zzz", "1")
 
 	require.ErrorIs(t, pickErr, errUnknownProject)
-	require.ErrorIs(t, freshErr, errUnknownProject)
 }
 
 func TestFlowFactory_OpensTheClientAndTheEngineOverTheStateFolder(t *testing.T) {

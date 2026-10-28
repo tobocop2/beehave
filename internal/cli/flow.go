@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -21,22 +22,24 @@ import (
 // maxRunArgs is the item and the optional project.
 const maxRunArgs = 2
 
+// errNoWorkflow is returned by run when no workflow file is named and the current folder holds none.
+var errNoWorkflow = errors.New("the run has no workflow file")
+
 // errInterrupted is returned by run when the user stops the command before the item ends.
 var errInterrupted = errors.New("stopped before the item finished: run obee run again to continue it")
 
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
 	Launch() error
-	Run(item, project string) (flow.ItemResult, error)
 	RunFile(item, project, file string) (flow.ItemResult, error)
-	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
-	PinnedFile(item string) (string, error)
 	Shutdown() error
 }
 
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Status() ([]flow.RunInfo, error)
+	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
+	PinnedFile(item string) (string, error)
 	Answer(item, text string) error
 	Resume(item string) error
 	Cancel(item string) error
@@ -59,15 +62,15 @@ type flowCommands struct {
 }
 
 func (f flowCommands) add(root *cobra.Command) {
-	if f.factory.Engine != nil {
-		root.AddCommand(f.runCommand())
-	}
-
 	if f.factory.Client == nil {
 		return
 	}
 
 	root.AddCommand(f.statusCommand(), f.answerCommand(), f.resumeCommand(), f.cancelCommand())
+
+	if f.factory.Engine != nil {
+		root.AddCommand(f.runCommand())
+	}
 }
 
 // options loads and validates the config folder, then builds the options of the engine and the client.
@@ -125,9 +128,9 @@ func (f flowCommands) runCommand() *cobra.Command {
 		Use:   "run <item> [project]",
 		Short: "Take one item through its workflow",
 		Long: "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
-			"With --workflow, or when " + defaultWorkflowFile + " is in the current folder, the steps of that file run. " +
-			"obee checks the file first and refuses on any problem. Without a file, the item goes through plan, implement, review and fix rounds.\n\n" +
-			"If an earlier run of the item is open, obee run continues it. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
+			"The steps of the workflow file run in file order. Name the file with --workflow, or keep " + defaultWorkflowFile + " in the current folder. " +
+			"obee checks the file first and refuses on any problem. If no file is named and the folder has none, obee run refuses, unless the item has an open run.\n\n" +
+			"If an earlier run of the item is open, obee run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
 			"If the last run failed, obee run refuses and names the step that failed. Run obee resume, then obee run.\n" +
 			"After a finished or a canceled run, obee run starts a new run.",
 		Args: runArgs,
@@ -152,25 +155,31 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	}
 
 	file, err := f.checkedWorkflow(cmd, cfg.Projects[project].Project, workflowFile)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoWorkflow) {
 		return err
 	}
 
+	// A folder without a workflow file may still hold an open run, which continues with the file that it pinned. runItem decides.
 	return f.runItem(cmd.OutOrStdout(), cfg, opts, args[0], project, file)
 }
 
-// checkedWorkflow returns the workflow file that run uses after it passes the check, or an empty name for the fixed item loop.
+// checkedWorkflow returns the workflow file that run uses after it passes the check.
 func (f flowCommands) checkedWorkflow(cmd *cobra.Command, project model.Project, named string) (string, error) {
 	file, err := chooseWorkflow(named)
-	if err != nil || file == "" {
+	if err != nil {
 		return "", err
 	}
 
 	return file, f.checkWorkflow(cmd, project, file)
 }
 
-// chooseWorkflow returns the workflow file that run uses, or an empty name for the fixed item loop.
-// A file named with --workflow must exist. Without the flag, workflow.hcl in the current folder is used when it exists.
+// missingWorkflow is the refusal of a run that has no workflow file to start with.
+func missingWorkflow() error {
+	return fmt.Errorf("%w: %s is not in the current folder. Name a workflow file with --%s", errNoWorkflow, defaultWorkflowFile, workflowFlag)
+}
+
+// chooseWorkflow returns the workflow file that run uses.
+// A file named with --workflow must exist. Without the flag, workflow.hcl in the current folder is used, and a folder without it is refused.
 func chooseWorkflow(named string) (string, error) {
 	if named != "" {
 		if _, err := os.Stat(named); err != nil {
@@ -186,8 +195,7 @@ func chooseWorkflow(named string) (string, error) {
 	case err == nil:
 		return defaultWorkflowFile, nil
 	case errors.Is(err, os.ErrNotExist):
-		// No default file means the fixed item loop, not a failure.
-		return "", nil
+		return "", missingWorkflow()
 	}
 
 	return "", fmt.Errorf("read the workflow file %s: %w. Fix the access to the file, or name another file with --%s", defaultWorkflowFile, err, workflowFlag)
@@ -235,7 +243,18 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 	return "", fmt.Errorf("the config holds %d projects: name one after the item: %s", len(names), strings.Join(names, ", "))
 }
 
+// runItem takes the item to the end of its run. An open run continues with the file that it pinned, so a folder without a workflow file is enough for it.
+// The pinned file is read through the client, which launches nothing: a refused run never opens the engine.
 func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
+	pinned, err := f.openRunFile(stdout, cfg, opts, item)
+	if err != nil {
+		return err
+	}
+
+	if file == "" && pinned == "" {
+		return missingWorkflow()
+	}
+
 	engine, err := f.factory.Engine(f.ctx, cfg, opts)
 	if err != nil {
 		return err
@@ -245,32 +264,38 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	if err := announceOpenRun(stdout, engine, item); err != nil {
-		return errors.Join(err, engine.Shutdown())
-	}
+	return errors.Join(f.continueOrStart(stdout, engine, item, project, cmp.Or(file, pinned)), engine.Shutdown())
+}
 
+func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string) error {
 	result, err := f.await(engine, item, project, file)
 	if err == nil {
 		printResult(stdout, item, result)
 	}
 
-	return errors.Join(err, engine.Shutdown())
+	return err
 }
 
-// announceOpenRun says which file an open run continues with. obee run ignores --workflow when it joins an open run.
-func announceOpenRun(stdout io.Writer, engine Runner, item string) error {
-	pinned, err := engine.PinnedFile(item)
-	if err != nil || pinned == "" {
-		return err
+// openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
+// obee run ignores --workflow when it joins an open run.
+func (f flowCommands) openRunFile(stdout io.Writer, cfg config.Config, opts flow.Options, item string) (string, error) {
+	client, err := f.factory.Client(f.ctx, cfg, opts)
+	if err != nil {
+		return "", err
+	}
+
+	pinned, err := client.PinnedFile(item)
+	if err = errors.Join(err, client.Close()); err != nil || pinned == "" {
+		return "", err
 	}
 
 	// A failed write to stdout has no recovery.
 	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, pinned)
 
-	return nil
+	return pinned, nil
 }
 
-// printResult says how a finished run ended: at the end of the fix rounds, or back at draft.
+// printResult says how a finished run ended: finished, or back at draft.
 func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 	// A failed write to stdout has no recovery.
 	if result.SentBack != "" {
@@ -279,10 +304,10 @@ func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 		return
 	}
 
-	_, _ = fmt.Fprintf(stdout, "item %s finished after %d fix rounds\n", item, result.FixRounds)
+	_, _ = fmt.Fprintf(stdout, "item %s finished\n", item)
 }
 
-// await runs the item and waits for its result. An empty file runs the fixed item loop. An interrupt of the command ends the wait.
+// await runs the item and waits for its result. An interrupt of the command ends the wait.
 func (f flowCommands) await(engine Runner, item, project, file string) (flow.ItemResult, error) {
 	type outcome struct {
 		result flow.ItemResult
@@ -292,7 +317,7 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	done := make(chan outcome, 1)
 
 	go func() {
-		result, err := start(engine, item, project, file)
+		result, err := engine.RunFile(item, project, file)
 		done <- outcome{result: result, err: err}
 	}()
 
@@ -302,15 +327,6 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	case <-f.ctx.Done():
 		return flow.ItemResult{}, errInterrupted
 	}
-}
-
-// start runs the workflow file, or the fixed item loop when the file is empty.
-func start(engine Runner, item, project, file string) (flow.ItemResult, error) {
-	if file == "" {
-		return engine.Run(item, project)
-	}
-
-	return engine.RunFile(item, project, file)
 }
 
 func (f flowCommands) statusCommand() *cobra.Command {

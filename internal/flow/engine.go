@@ -269,13 +269,9 @@ func (e *Engine) oldRuns() ([]string, error) {
 	return ids, nil
 }
 
-// Run takes one item to the end of its workflow and returns the result. It joins the run of the item when one is still open.
+// RunFile takes one item to the end of its workflow file and returns the result. It joins the run of the item when one is still open.
 // The item belongs to the project from this call on; an open run under another project is refused.
-func (e *Engine) Run(item, project string) (ItemResult, error) {
-	return e.run(ItemInput{Item: item, Project: project})
-}
-
-// RunFile is Run for a workflow file. The run pins the SHA-256 of the file, and a replay refuses a changed file.
+// The run pins the SHA-256 of the file, and a replay refuses a changed file.
 func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
 	abs, absErr := filepath.Abs(file)
 
@@ -285,18 +281,6 @@ func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
 	}
 
 	return e.run(ItemInput{Item: item, Project: project, File: abs, Hash: hash})
-}
-
-// PinnedFile returns the workflow file of the open run of the item. It is empty when the item has no open run, or when the open run uses no file.
-func (e *Engine) PinnedFile(item string) (string, error) {
-	last, found, err := latestRun(e.ctx, item)
-	if err != nil || !found || last.terminal() {
-		return "", err
-	}
-
-	in, err := last.input()
-
-	return in.File, err
 }
 
 // check refuses an item that is not a forge number or a beads id, and a missing project.
@@ -332,6 +316,8 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 
 // handleFor joins the open run of the item, or starts the next attempt.
 // A new attempt starts only after a finished or a canceled one: a failed attempt continues with obee resume.
+// A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
+// The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	item, project := in.Item, in.Project
 
@@ -348,26 +334,33 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 		return nil, failedError(last, item)
 	}
 
-	// The login is checked before the run exists, so a missing runner claims nothing and stores no failed attempt.
-	if err := e.checkLogin(item, project); err != nil {
+	return e.start(in, last.Attempt+1)
+}
+
+// start picks the login and starts the attempt. A refused pick starts nothing.
+func (e *Engine) start(in ItemInput, attempt int) (dbos.WorkflowHandle[ItemResult], error) {
+	login, err := e.pickLogin(in)
+	if err != nil {
 		return nil, err
 	}
 
-	return dbos.RunWorkflow(e.ctx, e.item, in, dbos.WithWorkflowID(runID(item, last.Attempt+1)))
+	in.Login = login
+
+	return dbos.RunWorkflow(e.ctx, e.item, in, dbos.WithWorkflowID(runID(in.Item, attempt)))
 }
 
-// checkLogin refuses an item that has no agent login.
-func (e *Engine) checkLogin(item, project string) error {
-	login, err := e.deps.Logins.Pick(e.ctx, project, item)
+// pickLogin reads the pool once for a new run. It refuses an empty pick.
+func (e *Engine) pickLogin(in ItemInput) (string, error) {
+	login, err := e.deps.Logins.Pick(e.ctx, in.Project, in.Item)
 	if err != nil {
-		return fmt.Errorf("pick the login of item %s: %w", item, err)
+		return "", fmt.Errorf("pick the login of item %s: %w", in.Item, err)
 	}
 
 	if login == "" {
-		return errEmptyLogin
+		return "", errEmptyLogin
 	}
 
-	return nil
+	return login, nil
 }
 
 // join returns the handle of an open run. It refuses a run of another project or another version.

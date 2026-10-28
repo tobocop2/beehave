@@ -29,9 +29,10 @@ func Shared(path string) (*Lock, error) {
 	return take(path, syscall.LOCK_SH)
 }
 
-// Release gives the lock back. Closing the file drops the lock.
+// Release gives the lock back. It unlocks first: a lock belongs to the open file, and a child process that forked
+// and did not yet run exec holds a copy of the file, so closing alone would keep the lock until that child execs.
 func (l *Lock) Release() error {
-	return l.file.Close()
+	return errors.Join(flock(l.file, syscall.LOCK_UN), l.file.Close())
 }
 
 func take(path string, how int) (*Lock, error) {
