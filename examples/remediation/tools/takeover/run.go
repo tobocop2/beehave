@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/check"
+	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/internal/model"
 )
 

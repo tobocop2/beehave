@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/check"
+	"github.com/tobocop2/obee/examples/remediation/tools/check"
 )
 
 const (

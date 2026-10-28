@@ -158,7 +158,7 @@ func TestReviews_AStandingChangeRequestRefuses(t *testing.T) {
 	result := w.run(request())
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Equal(t, "REFUSE: changes requested and still standing (an approval or a dismissal lifts one, a comment does not): rev@eeeeeeeee,rev2@ffff. Route the review to a fix lane.", last(result))
+	assert.Equal(t, "REFUSE: changes requested and still standing (an approval or a dismissal lifts one, a comment does not): rev@eeeeeeeee,rev2@ffff. Fix what the review asks for, or get the review dismissed.", last(result))
 	assert.Empty(t, w.writes)
 }
 

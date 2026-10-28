@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const reviewMarker = "What every review here must do"
@@ -22,6 +23,8 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 
 	folder := t.TempDir()
 	require.NoError(t, os.CopyFS(folder, os.DirFS(filepath.Join("..", "..", "examples", "remediation"))))
+
+	skill := exampleSkill(t, folder)
 
 	rig := newAgentRig(t)
 	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head}}
@@ -40,10 +43,41 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 			}
 		}
 
-		return agent.Result{Outcome: agent.OutcomeExited, Session: "sess-1", Transcript: "/t.jsonl", Text: "all done", Skills: []string{"blast-radius-review"}}
+		return agent.Result{Outcome: agent.OutcomeExited, Session: "sess-1", Transcript: "/t.jsonl", Text: "all done", Skills: []string{skill}}
 	}
 
 	return rig, filepath.Join(folder, "workflow.hcl")
+}
+
+// exampleSkill returns the one skill that an agent of the example requires.
+func exampleSkill(t *testing.T, folder string) string {
+	t.Helper()
+
+	flow, err := workflow.Load(os.DirFS(folder), "workflow.hcl")
+	require.NoError(t, err)
+
+	var skills []string
+
+	flow.Walk(func(step workflow.Step, _ int) {
+		agent, ok := step.(*workflow.Agent)
+		if !ok {
+			return
+		}
+
+		value, diags := agent.RequireSkills.Value(nil)
+		require.False(t, diags.HasErrors(), diags.Error())
+
+		if value.IsNull() {
+			return
+		}
+
+		for _, name := range value.AsValueSlice() {
+			skills = append(skills, name.AsString())
+		}
+	})
+	require.Len(t, skills, 1)
+
+	return skills[0]
 }
 
 func (r *agentRig) models() []string {

@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	blast  = "blast-radius-review"
-	oracle = "diff-against-oracle"
+	blast  = "first-skill"
+	oracle = "second-skill"
 )
 
 func TestLine_ReadsTheSessionFromInitAndTheMessageFromResult(t *testing.T) {

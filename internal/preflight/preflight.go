@@ -1,4 +1,4 @@
-// Package preflight asks whether the pull request a caller is about to act on is still the one it was briefed against.
+// Package preflight asks whether the pull request a caller is about to act on is still the one it expects.
 // One read of the pull request and one read of its head branch give a Stop, or none.
 package preflight
 
@@ -67,7 +67,7 @@ func (s Stop) String() string {
 	return "UNKNOWN"
 }
 
-// Request names the pull request. ExpectHead is the full SHA the caller was briefed on, ExpectBase the branch it gated against; an empty one is not checked.
+// Request names the pull request. ExpectHead is the full SHA the caller expects, ExpectBase the branch it gated against; an empty one is not checked.
 type Request struct {
 	PR         int
 	ExpectHead string
@@ -208,7 +208,7 @@ func stateStop(v view) (Stop, []string) {
 		return Closed, []string{
 			fmt.Sprintf("STOP: #%d is CLOSED and not merged. Somebody decided against it while you were working.", v.pr),
 			"  Recovery: read the closing comment before anything else. A close is a decision, and",
-			"  reopening it is the maintainer's call, not the round's.",
+			"  reopening it is the maintainer's call, not the caller's.",
 		}
 	}
 
@@ -260,7 +260,7 @@ func labelStop(v view, hold string) (Stop, []string) {
 	return Unchanged, nil
 }
 
-// expectationStop compares the head and the base with what the caller was briefed on. Only a full SHA is compared:
+// expectationStop compares the head and the base with what the caller expects. Only a full SHA is compared:
 // a short one never equals a full one, and a prefix match would pass a truncated one.
 func expectationStop(v view, req Request) (Stop, []string) {
 	if req.ExpectHead != "" && len(req.ExpectHead) != shaLength {
@@ -269,7 +269,7 @@ func expectationStop(v view, req Request) (Stop, []string) {
 
 	if req.ExpectHead != "" && v.head != req.ExpectHead {
 		return HeadMoved, []string{
-			fmt.Sprintf("STOP: the head moved. You were briefed against %s; the head is now %s.", req.ExpectHead, v.head),
+			fmt.Sprintf("STOP: the head moved. You expected %s; the head is now %s.", req.ExpectHead, v.head),
 			"  Recovery: a review of the old SHA does not describe this one. Re-read the diff between",
 			"  them and review the delta, and re-run any gate whose result named the old SHA.",
 		}

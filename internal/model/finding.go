@@ -1,9 +1,9 @@
 package model
 
-// FindingKind names a rule a lane command broke.
+// FindingKind names a rule a shell command broke.
 type FindingKind string
 
-// The rules a lane command can break.
+// The rules a shell command can break.
 const (
 	FindingBulkStaging  FindingKind = "bulk-staging"
 	FindingRemoteDelete FindingKind = "remote-delete"

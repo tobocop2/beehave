@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/brief"
+	obeecheck "github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
-	obeecheck "github.com/tobocop2/obee/internal/check"
 )
 
 var when = time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)

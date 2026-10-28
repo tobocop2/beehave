@@ -23,7 +23,7 @@ flowchart TD
 
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
-        check["check<br/>shell · transcript"]
+        check["check/shell<br/>shell scan"]
         policy["gate · pool · preflight · review · merge<br/>lane policy"]
     end
 
@@ -91,7 +91,6 @@ flowchart TD
 
     tui -.-> flow
     flow -.-> claim
-    flow -.-> check
     flow -.-> policy
     flow -.-> later
     policy --> model
@@ -227,7 +226,7 @@ Two caps bound the work of the variable lookup. A value longer than 4096 bytes i
 
 ## Lane papers
 
-The package `check` holds only `Refusal`. Each child keeps its own copy of the small text helpers it uses. `check/shell` is the one child that stays in the engine, for the shell scan. The gate list check, the job check, the report check, the papers check, the handoff check, the author check and the spend tables are not part of the engine. They live in `examples/remediation/tools/gate`, `examples/remediation/tools/job`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. They run through `remedy gatelist`, `remedy job`, `remedy report`, `remedy papers`, `remedy handoff`, `remedy authors` and `remedy spend`, see the section on the remediation tools. The packages `gate` and `job` read shell text through `check/shell` (`ParseUnits`, `Scan` and a `Reader` of command words). The package `papers` reads the context of a lane through `transcript.LaneContext` of the tools. Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped. `Report` and `Authors` cannot refuse; `Authors` returns the exit code, because its two refusals (2 and 3) differ.
+The engine has one check package: `check/shell`, for the shell scan. The gate list check, the job check, the report check, the papers check, the handoff check, the author check and the spend tables are not part of the engine. They live in `examples/remediation/tools/gate`, `examples/remediation/tools/job`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. Each keeps its own copy of the small text helpers it uses, and they share only the `Refusal` type of `examples/remediation/tools/check`. They run through `remedy gatelist`, `remedy job`, `remedy report`, `remedy papers`, `remedy handoff`, `remedy authors` and `remedy spend`, see the section on the remediation tools. The packages `gate` and `job` read shell text through `check/shell` (`ParseUnits`, `Scan` and a `Reader` of command words). The package `papers` reads the context of a lane through `transcript.LaneContext` of the tools. Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped. `Report` and `Authors` cannot refuse; `Authors` returns the exit code, because its two refusals (2 and 3) differ.
 
 - The lane report has four sections (Claims, Hunks, Inputs, Siblings), each a table with a fixed column count. A section with nothing to list has one `none: <reason>` row. A claim names the head commit it was verified at, and the report says that no background command is left.
 - The handoff file of a lane that stops early states the regressions so far and the lane context. A handoff written between a launch and its read is refused.
@@ -249,7 +248,7 @@ The exit marker rule finds a print command (`echo`, `printf`, a here-document or
 
 A fix lane is a fix, a rework or a relay. Only a fix lane writes the mechanism, model and round columns. The empty columns at the end of a row are left off. `Rounds` counts the fix and rework rows on one mechanism since the last design row. `Since` returns whole days from the latest row of a kind. A row whose time is not a UTC stamp is refused.
 
-`ledger` imports `check` and `filelock`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
+`ledger` imports `examples/remediation/tools/check` and `filelock`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
 
 The state folder is a flag. Every `remedy ledger` verb and `remedy scope` take `--state <folder>`, and the ledger file is `lane-ledger.tsv` in that folder. The tool does not guess the folder from the working folder, and it reads no environment variable for it. `remedy admit` takes the same flag. The workflow passes the folder that it keeps for the run.
 
@@ -283,7 +282,7 @@ The doctor command lives in `cli`. `BuildInfo.Doctor` holds two function values 
 
 ## Preflight
 
-`preflight` asks whether the pull request a caller is about to act on is still the one it was briefed against. It reads the pull request once and its head branch once, through a two-method `Reader` that the forge fills, and returns a `Result`.
+`preflight` asks whether the pull request a caller is about to act on is still the one it expects. It reads the pull request once and its head branch once, through a two-method `Reader` that the forge fills, and returns a `Result`.
 
 `Stop` is a closed set with a `Code`: 0 unchanged, 2 refused, 3 merged, 4 closed, 5 head moved, 6 base changed, 7 branch gone, 8 draft and 9 held. `Check` tests them in this order: merged, closed, branch gone, hold, draft, head, base. A merged pull request still shows a head that looks fine, so the state comes first. A hold outranks a draft. The expected head must be a full 40-character SHA; any other length is refused and never compared.
 

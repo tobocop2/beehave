@@ -646,7 +646,7 @@ func TestNew_RefusesARepositoryThatIsNotOwnerSlashName(t *testing.T) {
 	for _, name := range []string{"", "owner", "owner/", "/name", "a/b/c", "o wner/name", "owner/na;me", "owner/na me"} {
 		f, err := github.New(name, &proctest.Scripted{})
 		require.Nil(t, f, name)
-		require.EqualError(t, err, "REPO is not set to owner/name. Export it, or put it in round.env.", name)
+		require.EqualError(t, err, "The repository must be written owner/name.", name)
 	}
 
 	f, err := github.New("my-org_1/repo.name", &proctest.Scripted{})

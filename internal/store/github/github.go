@@ -58,7 +58,7 @@ type Store struct {
 func New(repo string, run proc.Runner) (*Store, error) {
 	owner, name, found := strings.Cut(repo, "/")
 	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
-		return nil, store.Refuse("REFUSE: REPO is not set to owner/name. Export it, or put it in round.env.")
+		return nil, store.Refuse("REFUSE: the repository must be written owner/name.")
 	}
 
 	return &Store{repo: repo, owner: owner, name: name, run: run}, nil
