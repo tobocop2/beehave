@@ -83,6 +83,29 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	assert.Nil(t, forge)
 }
 
+func TestAdapters_ItemFieldsAreTheTrackerFieldsThenTheForgeFields(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "p"}
+
+	fields, err := table.itemFields(t.Context(), good)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"id", "title", "body", "branch", "head_sha", "pr", "author"}, fields)
+}
+
+func TestAdapters_ItemFieldsRefuseAProjectWhoseAdapterCannotBeBuilt(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(beadstest.NewBd(t))
+
+	_, err := table.itemFields(t.Context(), model.Project{Name: "p", Tracker: "jira"})
+	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
+
+	_, err = table.itemFields(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: "gitlab"})
+	require.EqualError(t, err, `project p: no forge adapter named "gitlab"`)
+}
+
 func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *testing.T) {
 	t.Parallel()
 

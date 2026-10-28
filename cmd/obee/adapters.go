@@ -138,6 +138,21 @@ func (a adapters) leases(project model.Project) (*beads.Store, error) {
 	return beads.New(a.bd, project.BeadsPrefix)
 }
 
+// itemFields returns the item fields that the tracker and the forge of the project declare, the tracker first.
+func (a adapters) itemFields(_ context.Context, project model.Project) ([]string, error) {
+	tracker, err := a.tracker(project)
+	if err != nil {
+		return nil, err
+	}
+
+	forge, err := a.forge(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(tracker.ItemFields(), forge.ItemFields()...), nil
+}
+
 // check builds the tracker, the forge, the build host (when the project has one) and the claim store of the project and reports why it cannot.
 // The claim store needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
 // `obee check config` calls it for each project.

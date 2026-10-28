@@ -243,12 +243,7 @@ func ids(rows []bdRow) ([]string, error) {
 
 // Show returns the title, description and comments of an item.
 func (s *Store) Show(ctx context.Context, item string) (string, error) {
-	done := s.run.Run(ctx, []string{"show", item, argJSON})
-	if done.ExitCode != 0 {
-		return "", store.Refuse("REFUSE: cannot read item %s in beads", item)
-	}
-
-	row, err := decodeShown(item, done.Stdout)
+	row, err := s.shown(ctx, item)
 	if err != nil {
 		return "", err
 	}
@@ -259,6 +254,39 @@ func (s *Store) Show(ctx context.Context, item string) (string, error) {
 	}
 
 	return s.withComments(ctx, item, head)
+}
+
+// shown runs bd show for an item and decodes its row.
+func (s *Store) shown(ctx context.Context, item string) (bdRow, error) {
+	done := s.run.Run(ctx, []string{"show", item, argJSON})
+	if done.ExitCode != 0 {
+		return bdRow{}, store.Refuse("REFUSE: cannot read item %s in beads", item)
+	}
+
+	return decodeShown(item, done.Stdout)
+}
+
+// ItemFields declares the fields that Item returns.
+func (*Store) ItemFields() []string { return []string{"id", "title", "body"} }
+
+// Item returns the id, title and description of an item.
+func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
+	row, err := s.shown(ctx, item)
+	if err != nil {
+		return nil, err
+	}
+
+	title, err := store.ReadableTitle(row.Title)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := readableID(row.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{"id": id, "title": title, "body": derefText(row.Description)}, nil
 }
 
 func (s *Store) withComments(ctx context.Context, item, head string) (string, error) {

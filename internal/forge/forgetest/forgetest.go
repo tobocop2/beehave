@@ -5,6 +5,8 @@ package forgetest
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/tobocop2/obee/internal/forge"
@@ -55,6 +57,12 @@ const (
 // TestForge runs the conformance suite against the forge that make returns, as golang.org/x/net/nettest.TestConn does for a connection.
 func TestForge(t *testing.T, make Factory) {
 	t.Helper()
+	t.Run("declares_the_item_fields", func(t *testing.T) {
+		CheckItemFields(t, make(t, false))
+	})
+	t.Run("item_returns_the_declared_fields", func(t *testing.T) {
+		CheckItem(t, make(t, false))
+	})
 	t.Run("reads_the_pull_request", func(t *testing.T) {
 		CheckForgeReads(t, make(t, false))
 	})
@@ -231,6 +239,51 @@ func checkLists(c check, target forge.Forge) {
 	c.equal(checks, []model.Check{{Name: SevenCheck, Bucket: model.CheckPass}}, "checks")
 }
 
+// CheckItemFields checks that a forge declares at least one item field.
+func CheckItemFields(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	if len(target.ItemFields()) == 0 {
+		r.Errorf("ItemFields: want at least one declared field, got none")
+	}
+}
+
+// CheckItem checks the success path of Item on a forge that serves pull request 7: the result holds one value for each declared field, and the pr field is the number.
+func CheckItem(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	got, err := target.Item(context.Background(), Seven)
+	if err != nil {
+		r.Errorf("Item: unexpected error: %v", err)
+
+		return
+	}
+
+	declared := target.ItemFields()
+	checkDeclared(r, got, declared)
+
+	if want := strconv.Itoa(Seven); slices.Contains(declared, "pr") && got["pr"] != want {
+		r.Errorf("Item: want pr %q, got %q", want, got["pr"])
+	}
+}
+
+// checkDeclared checks that got holds one value for each declared field and no other field.
+func checkDeclared(r Reporter, got map[string]string, declared []string) {
+	r.Helper()
+
+	for _, name := range declared {
+		if _, found := got[name]; !found {
+			r.Errorf("Item: want a value for the declared field %q, got %v", name, got)
+		}
+	}
+
+	for name := range got {
+		if !slices.Contains(declared, name) {
+			r.Errorf("Item: got the field %q, which ItemFields does not declare (%v)", name, declared)
+		}
+	}
+}
+
 // CheckForgeFails runs every method of a forge whose commands all fail. Each must return an error and never a guess.
 func CheckForgeFails(r Reporter, target forge.Forge) {
 	r.Helper()
@@ -255,11 +308,12 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 	checkStandingFail(r, target)
 }
 
-// checkStandingFail runs the batched read, the title read and the annotation read on a forge whose commands all fail.
+// checkStandingFail runs the batched read, the title read, the annotation read and the item read on a forge whose commands all fail.
 func checkStandingFail(r Reporter, target forge.Forge) {
 	r.Helper()
 
 	check{r: r}.allFail([]call{
+		{"Item", func(ctx context.Context) error { _, err := target.Item(ctx, Seven); return err }},
 		{"Title", func(ctx context.Context) error { _, err := target.Title(ctx, Seven); return err }},
 		{"OwnPulls", func(ctx context.Context) error { _, err := target.OwnPulls(ctx, SearchUser); return err }},
 		{"CheckNotStarted", func(ctx context.Context) error { _, err := target.CheckNotStarted(ctx, SevenRun); return err }},

@@ -23,7 +23,7 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run := &proctest.Scripted{}
 		run.Plan(toJSON(t, []any{[]fields{{"user": fields{"login": forgetest.SevenReviewer}, "state": "APPROVED"}}}), "api", "--paginate", "--slurp", "repos/owner/name/pulls/7/reviews")
 		run.Plan(forgetest.SevenBody, "pr", "view", "7", "-R")
-		run.Plan(toJSON(t, fields{"title": forgetest.SevenTitle}), "pr", "view", "7", "--repo")
+		run.Plan(toJSON(t, fields{"title": forgetest.SevenTitle, "number": forgetest.Seven, "headRefName": forgetest.SevenBranch, "headRefOid": forgetest.SevenTip, "author": fields{"login": forgetest.SevenReviewer}}), "pr", "view", "7", "--repo")
 		run.Plan(toJSON(t, []fields{{"number": forgetest.Seven}}), "pr", "list")
 		run.Plan(toJSON(t, fields{"commits": forgetest.SevenCommits, "changed_files": forgetest.SevenFiles}), "api", "repos/owner/name/pulls/7")
 		run.Plan(toJSON(t, []fields{{"name": forgetest.SevenCheck, "bucket": "pass"}}), "pr", "checks")
