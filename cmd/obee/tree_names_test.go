@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The engine names no method. This test walks the files git lists outside examples/ and fails on a name that belongs to the method of one owner.
+// The engine names no method. This test walks the files git lists, except examples/remediation, and fails on a name that belongs to the method of one owner.
 // Each name is spelled from fragments, so this file does not match itself.
 var forbiddenNames = []*regexp.Regexp{
 	regexp.MustCompile("(?i)blast" + "-radius-" + "review"),
@@ -36,7 +36,16 @@ var forbiddenNames = []*regexp.Regexp{
 	regexp.MustCompile(`[A-Za-z0-9_]\.p` + `y\b`),
 }
 
+// methodExample is the example that holds the method. The guard skips it.
+const methodExample = "examples/remediation"
+
+// localExample is the example for a project with no method. Its files use no word of the method either.
+const localExample = "examples/local/"
+
+var methodWords = regexp.MustCompile(`(?i)\b(rounds?|lanes?|orchestrat\w*|remedia` + `tion|profiles?)\b`)
+
 // namesIn returns one line for each forbidden name that the file holds. A binary file holds none.
+// A file of the local example also holds none of the method words.
 func namesIn(tree fs.FS, rel string) ([]string, error) {
 	data, err := fs.ReadFile(tree, rel)
 	if err != nil {
@@ -50,6 +59,9 @@ func namesIn(tree fs.FS, rel string) ([]string, error) {
 		if name.Match(data) {
 			hits = append(hits, rel+" matches "+name.String())
 		}
+	}
+	if strings.HasPrefix(rel, localExample) && methodWords.Match(data) {
+		hits = append(hits, rel+" matches "+methodWords.String())
 	}
 	return hits, nil
 }
@@ -74,7 +86,39 @@ func TestNamesIn_LeavesPlainWordsAlone(t *testing.T) {
 	require.Empty(t, hits)
 }
 
-// trackedFiles lists the files git tracks, plus the files it would not ignore, outside examples/.
+func TestNamesIn_RefusesMethodWordsOnlyInTheLocalExample(t *testing.T) {
+	t.Parallel()
+
+	for _, word := range []string{"round", "Rounds", "lane", "orchestrator", "remedia" + "tion", "profile"} {
+		tree := fstest.MapFS{
+			"examples/local/workflow.hcl": {Data: []byte("# a " + word + " here")},
+			"examples/config/note.hcl":    {Data: []byte("# a " + word + " here")},
+		}
+		hits, err := namesIn(tree, "examples/local/workflow.hcl")
+		require.NoError(t, err)
+		require.NotEmpty(t, hits, word)
+
+		hits, err = namesIn(tree, "examples/config/note.hcl")
+		require.NoError(t, err)
+		require.Empty(t, hits, word)
+	}
+}
+
+func TestTrackedFiles_CoversTheExamplesButTheMethod(t *testing.T) {
+	t.Parallel()
+
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	files := trackedFiles(t, root)
+
+	require.Contains(t, files, "examples/local/workflow.hcl")
+	require.Contains(t, files, "examples/config/runners.hcl")
+	for _, rel := range files {
+		require.False(t, strings.HasPrefix(rel, "examples/remediation/"), rel)
+	}
+}
+
+// trackedFiles lists the files git tracks, plus the files it would not ignore, except examples/remediation, where the method lives.
 func trackedFiles(t *testing.T, root string) []string {
 	t.Helper()
 	list := exec.CommandContext(t.Context(), "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
@@ -83,7 +127,7 @@ func trackedFiles(t *testing.T, root string) []string {
 	require.NoError(t, err)
 	var files []string
 	for _, rel := range strings.Split(string(out), "\x00") {
-		if rel == "" || rel == "examples" || strings.HasPrefix(rel, "examples/") {
+		if rel == "" || rel == methodExample || strings.HasPrefix(rel, methodExample+"/") {
 			continue
 		}
 		files = append(files, rel)
