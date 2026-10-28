@@ -286,6 +286,7 @@ linters:
             - "**/internal/preflight/**"
             - "**/internal/scope/**"
             - "**/internal/takeover/**"
+            - "**/internal/workflow/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -293,6 +294,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/filelock
+            - github.com/tobocop2/obee/internal/hclfile
             - github.com/tobocop2/obee/internal/check
             - github.com/tobocop2/obee/internal/brief
             - github.com/tobocop2/obee/internal/claim
@@ -304,6 +306,7 @@ linters:
             - github.com/tobocop2/obee/internal/preflight
             - github.com/tobocop2/obee/internal/scope
             - github.com/tobocop2/obee/internal/takeover
+            - github.com/tobocop2/obee/internal/workflow
         layer-3:
           list-mode: lax
           files:
@@ -353,6 +356,7 @@ linters:
             - "!**/internal/preflight/**"
             - "!**/internal/scope/**"
             - "!**/internal/takeover/**"
+            - "!**/internal/workflow/**"
             - "!**/internal/flow/**"
             - "!**/internal/cli/**"
             - "!**/internal/tui/**"

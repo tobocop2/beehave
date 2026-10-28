@@ -353,6 +353,22 @@ In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, t
 
 `config` is the only package that reads the environment. The `OBEE_*` variables override the file values, `OBEE_CONFIG` names the config folder and `OBEE_STATE_DIR` names the state folder. `cmd/obee` sets `umask 077`. `cli.Execute` refuses to start when a `DBOS__*` variable is set. The state folder must be absolute, owned by the user and mode 0700.
 
+## Workflow files
+
+One HCL file is one workflow. A `workflow "<name>"` block holds `method_version` and `require_model`. The step blocks are `agent`, `command`, `gate`, `loop` and `wait`. Steps run in file order, and a `loop` holds its own steps. The schema names the arguments and the built-in outputs of each block. A method value, such as a prompt or a model name, is a value in the file and never a Go constant.
+
+A step reads another step with `<kind>.<name>.<output>`. It reads the work item with `item.<field>`, the environment with `env.<NAME>`, and the round with `loop.round` or `loop.<name>.exhausted`. A step that was skipped has null outputs. `resume_from` names an agent with `agent.<name>`. A step name is unique in the whole file, across all kinds.
+
+`until` of a loop is checked right after the last step it names. It can read any step in the body of the loop, which the walk visits after the loop itself.
+
+`obee check workflow [file]` reads `workflow.hcl` by default and prints one line for each problem as `file:line:col: text`, then the count. It exits 0 for a valid file and 1 for problems. It exits 2 when the file cannot be read or parsed. It checks the structure first. It also checks the steps that loaded, even when the structure has problems, and it does not report a reference to a step that failed to load. It checks that:
+
+- each name in an expression points at a step that exists, runs earlier or encloses the reference, and has that output;
+- no step depends on itself, directly or through other steps (the error shows the path as `a -> b -> a`);
+- each prompt file is a relative path inside the folder of the workflow file, exists there, and parses as a `text/template`.
+
+The check reads the names in an expression and never evaluates it. An `outputs` argument that is not a list of strings, or a `prompt` that an expression computes, switches off the check of the output name or the file. Types are checked at run time.
+
 ## The durable loop
 
 `flow` runs each item as a DBOS workflow. DBOS stores the state of every workflow in SQLite (`dbos.db`) in the state folder. A finished step is never run again, so a crash resumes at the last finished step. The workflows make no outgoing request other than the model call.
