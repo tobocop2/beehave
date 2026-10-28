@@ -1,0 +1,355 @@
+package agent_test
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
+)
+
+const token = "tok-secret-value"
+
+type fixture struct {
+	records string
+	config  string
+	work    string
+	log     *bytes.Buffer
+	spec    agent.Spec
+}
+
+// newFixture installs a fake agent in the given mode and returns a spec that starts it in a temp HOME.
+func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixture {
+	t.Helper()
+
+	records := install(t, name, mode)
+	home := t.TempDir()
+	config := filepath.Join(home, "login")
+	require.NoError(t, os.Mkdir(config, 0o700))
+
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+
+	log := &bytes.Buffer{}
+
+	return &fixture{records: records, config: config, work: work, log: log, spec: agent.Spec{
+		Runner: model.Runner{Name: "main", Agent: kind, ConfigDir: config},
+		Dir:    work,
+		Prompt: "do the step\n",
+		Env: map[string]string{
+			"PATH": records + ":/bin:/usr/bin", "HOME": home, "LC_ALL": "C",
+			"ANTHROPIC_API_KEY": "leak", "GH_TOKEN": "leak", "CLAUDE_CONFIG_DIR": "/other/login",
+		},
+		Token: token,
+		Log:   log,
+	}}
+}
+
+func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited}, got)
+	assert.Equal(t, "-p --output-format stream-json --verbose", record(t, f.records, "args"))
+	assert.Equal(t, "do the step", record(t, f.records, "stdin"))
+	assert.Equal(t, f.work, record(t, f.records, "cwd"))
+
+	env := record(t, f.records, "env")
+	assert.Contains(t, env, "CLAUDE_CONFIG_DIR="+f.config+"\n")
+	assert.Contains(t, env, "CLAUDE_SECURESTORAGE_CONFIG_DIR="+f.config+"\n")
+	assert.Contains(t, env, "CLAUDE_CODE_OAUTH_TOKEN="+token+"\n")
+	assert.Contains(t, env, "LC_ALL=C")
+	assert.NotContains(t, env, "ANTHROPIC_API_KEY")
+	assert.NotContains(t, env, "GH_TOKEN")
+	assert.NotContains(t, env, "/other/login")
+}
+
+func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "secret")
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, 3, got.ExitCode)
+	assert.Equal(t, "err [redacted]\n", got.Stderr)
+	assert.Equal(t, "token is [redacted] and [redacted] here\n", f.log.String())
+	assert.NotContains(t, got.Stderr, token)
+}
+
+func TestRunner_ReportsTheExitCodeAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "fail")
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited, ExitCode: 7, Stderr: "boom\n"}, got)
+}
+
+func TestRunner_WritesTheLastLineThatHasNoNewline(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "partial")
+
+	agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, "no newline at the end", f.log.String())
+}
+
+func TestRunner_AFailingLogEndsTheRunWithTheCause(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "partial")
+	f.spec.Log = failingWriter{}
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Contains(t, got.Note, "disk full")
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestRunner_StopsOnTheTotalTimeout(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f.spec.Timeout = 300 * time.Millisecond
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
+}
+
+// fakeClock stands in for the idle timer: the test decides when it fires.
+type fakeClock struct {
+	mu     sync.Mutex
+	fire   func()
+	limit  time.Duration
+	resets int
+	stops  int
+}
+
+func (c *fakeClock) AfterFunc(limit time.Duration, fire func()) agent.Timer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.limit, c.fire = limit, fire
+
+	return c
+}
+
+func (c *fakeClock) Reset(time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.resets++
+
+	return true
+}
+
+func (c *fakeClock) Stop() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.stops++
+
+	return true
+}
+
+func (c *fakeClock) fireNow() {
+	c.mu.Lock()
+	fire := c.fire
+	c.mu.Unlock()
+
+	fire()
+}
+
+func (c *fakeClock) resetCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.resets
+}
+
+func TestRunner_StopsWhenTheIdleTimerFires(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f.spec.IdleTimeout = 7 * time.Second
+	clock := &fakeClock{}
+
+	go func() {
+		for !fileExists(filepath.Join(f.records, "args")) { // the agent is running
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		clock.fireNow()
+	}()
+
+	got := agent.Runner{AfterFunc: clock.AfterFunc}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeIdle, got.Outcome)
+	assert.Equal(t, 7*time.Second, clock.limit)
+	assert.Equal(t, 1, clock.stops)
+}
+
+func TestRunner_OutputResetsTheIdleTimer(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "chatter")
+	f.spec.IdleTimeout = time.Minute
+	clock := &fakeClock{}
+
+	got := agent.Runner{AfterFunc: clock.AfterFunc}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Positive(t, clock.resetCount())
+	assert.Contains(t, f.log.String(), "tick 6")
+}
+
+func TestRunner_WithoutAnIdleLimitNoTimerStarts(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "chatter")
+	clock := &fakeClock{}
+
+	got := agent.Runner{AfterFunc: clock.AfterFunc}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Nil(t, clock.fire)
+	assert.Zero(t, clock.resetCount())
+}
+
+func TestRunner_TheRealIdleTimerStopsASilentAgent(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f.spec.IdleTimeout = 100 * time.Millisecond
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeIdle, got.Outcome)
+}
+
+func TestRunner_ACancelKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		for !fileExists(filepath.Join(f.records, "grandchild")) {
+			time.Sleep(20 * time.Millisecond)
+		}
+
+		cancel()
+	}()
+
+	got := agent.Runner{}.Run(ctx, f.spec)
+
+	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
+	assertGone(t, f.records)
+}
+
+func TestRunner_ACancelBeforeTheStartReadsAsCancelled(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got := agent.Runner{}.Run(ctx, f.spec)
+
+	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
+}
+
+func TestRunner_ADeadlineOnTheCallerContextReadsAsTimedOut(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	got := agent.Runner{}.Run(ctx, f.spec)
+
+	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
+}
+
+func TestRunner_ChildrenThatOutliveTheAgentAreKilled(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "grand")
+
+	f.spec.Log = nil
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited}, got)
+	assertGone(t, f.records)
+}
+
+func assertGone(t *testing.T, records string) {
+	t.Helper()
+
+	pid, err := strconv.Atoi(record(t, records, "grandchild"))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 30*time.Second, 50*time.Millisecond,
+		"the child %d is still running", pid)
+}
+
+func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	t.Run("unknown_agent", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "claude", model.AgentClaude, "")
+		f.spec.Runner.Agent = model.Agent("pi")
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.Contains(t, got.Note, `agent "pi" cannot be started yet`)
+	})
+
+	t.Run("opencode_is_not_supported_yet", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "opencode", model.AgentOpenCode, "")
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.Contains(t, got.Note, `agent "opencode" cannot be started yet`)
+		assert.NoFileExists(t, filepath.Join(f.records, "args"))
+	})
+
+	t.Run("missing_login_folder_is_not_created", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "claude", model.AgentClaude, "")
+		gone := filepath.Join(t.TempDir(), "no-login")
+		f.spec.Runner.ConfigDir = gone
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.Contains(t, got.Note, "is not a folder")
+		assert.NoDirExists(t, gone)
+		assert.NoFileExists(t, filepath.Join(f.records, "args"))
+	})
+
+	t.Run("login_path_is_a_file", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "claude", model.AgentClaude, "")
+		f.spec.Runner.ConfigDir = filepath.Join(f.records, "mode")
+
+		assert.Equal(t, agent.OutcomeNotStarted, agent.Runner{}.Run(context.Background(), f.spec).Outcome)
+	})
+
+	t.Run("binary_not_on_path", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "other", model.AgentClaude, "")
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.Contains(t, got.Note, "claude is not installed")
+	})
+
+	t.Run("binary_cannot_start", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
+		f := newFixture(t, "claude", model.AgentClaude, "")
+		require.NoError(t, os.WriteFile(filepath.Join(f.records, "claude"), []byte("#!/nonexistent/interpreter\n"), 0o700)) //nolint:gosec // a test script must be executable
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+		assert.NotEmpty(t, got.Note)
+	})
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+
+	return err == nil
+}

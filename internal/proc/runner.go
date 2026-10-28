@@ -49,19 +49,24 @@ func (r ExecRunner) Run(ctx context.Context, args []string) model.CommandResult 
 	return r.execute(ctx, args)
 }
 
-// command builds the process: its own group, killed as a group on cancel.
-func (r ExecRunner) command(ctx context.Context, args []string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, r.Binary, args...) //nolint:gosec // fixed binary name and argument list, no shell
-	cmd.Dir = r.Dir
+// GroupCommand returns a command for a binary found on PATH that runs in its own process group. A canceled context kills the whole group. A binary that is not found is in cmd.Err.
+func GroupCommand(ctx context.Context, binary string, args []string, dir string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, binary, args...) //nolint:gosec // fixed binary name and argument list, no shell
+	cmd.Dir = dir
 	cmd.WaitDelay = time.Second
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.Cancel = func() error { return KillGroup(cmd) }
 
 	return cmd
 }
 
+// KillGroup sends SIGKILL to the process group of a started command. It fails with ESRCH when no member is left.
+func KillGroup(cmd *exec.Cmd) error {
+	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+}
+
 func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandResult {
-	cmd := r.command(ctx, args)
+	cmd := GroupCommand(ctx, r.Binary, args, r.Dir)
 	if cmd.Err != nil {
 		return model.CommandResult{ExitCode: exitNotFound, Stderr: r.Binary + ": command not found"}
 	}
