@@ -40,8 +40,8 @@ const (
 // The second result is true when the file could not be read or parsed, and no other check ran.
 // A file with structural problems still gets the reference, cycle and file checks on the steps that loaded.
 // A reference to a step that failed to load is not reported again.
-// fields lists the names that the tracker and the forge declare for an item. The field `kind` is always valid.
-func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool) {
+// caps says what the project offers: the item fields and whether a forge exists. A step that needs a forge is refused when none exists.
+func Check(fsys fs.FS, file string, caps Capabilities) ([]hclfile.Diagnostic, bool) {
 	body, err := hclfile.Parse(fsys, file)
 	if err != nil {
 		return diagnostics(err), true
@@ -49,10 +49,10 @@ func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool
 
 	flow, names, err := build(file, body)
 
-	valid := append(slices.Clone(fields), "kind")
+	valid := append(slices.Clone(caps.Fields), "kind")
 	slices.Sort(valid)
 
-	c := &checker{fsys: fsys, flow: flow, byName: map[string]*site{}, declared: names, fields: slices.Compact(valid), found: diagnostics(err)}
+	c := &checker{fsys: fsys, flow: flow, byName: map[string]*site{}, declared: names, caps: caps, fields: slices.Compact(valid), found: diagnostics(err)}
 
 	c.index(flow.Steps, nil)
 	c.references()
@@ -61,6 +61,18 @@ func Check(fsys fs.FS, file string, fields []string) ([]hclfile.Diagnostic, bool
 	sortByPosition(c.found)
 
 	return c.found, false
+}
+
+// Capabilities is what a project offers to a workflow.
+type Capabilities struct {
+	// Project is the name of the project, for the text of a refusal.
+	Project string
+	// Fields lists the names that the tracker and the forge declare for an item. The field `kind` is always valid.
+	Fields []string
+	// ForgeOnly lists the item fields that only a forge declares. A project with no forge names them in the hint of an unknown field.
+	ForgeOnly []string
+	// Forge is true when the project has a forge.
+	Forge bool
 }
 
 // site is one step with its place in the walk and the steps it depends on.
@@ -107,6 +119,7 @@ type checker struct {
 	byName map[string]*site
 	// declared holds every step name in the file, including the steps that failed to load.
 	declared map[string]hcl.Range
+	caps     Capabilities
 	// fields holds the sorted names that `item` may read.
 	fields []string
 	found  []hclfile.Diagnostic
@@ -191,8 +204,17 @@ func (c *checker) item(at hcl.Range, field string, named bool) {
 	}
 
 	if !slices.Contains(c.fields, field) {
-		c.add(at, fmt.Sprintf("`item` has no field `%s`.%s", field, hint(field, c.fields)))
+		c.add(at, fmt.Sprintf("`item` has no field `%s`.%s%s", field, c.noForgeHint(field), hint(field, c.fields)))
 	}
+}
+
+// noForgeHint says that the project has no forge when the field is one that only a forge declares.
+func (c *checker) noForgeHint(field string) string {
+	if c.caps.Forge || !slices.Contains(c.caps.ForgeOnly, field) {
+		return ""
+	}
+
+	return fmt.Sprintf(" The project has no forge, and only a forge declares `%s`.", field)
 }
 
 func (c *checker) loop(from *site, tr hcl.Traversal, next string, named, whole bool) {
@@ -701,7 +723,21 @@ func (c *checker) choice(expr hcl.Expression, name string, valid []string) {
 func (c *checker) arguments() {
 	c.prompts()
 	c.forbids()
+	c.forges()
 	c.merges()
+}
+
+// forges refuses each step that needs a forge when the project has none. The refusal comes before the settings of the same step.
+func (c *checker) forges() {
+	if c.caps.Forge {
+		return
+	}
+
+	for _, s := range c.sites {
+		if s.step.NeedsForge() {
+			c.add(s.step.Pos(), fmt.Sprintf("step `%s.%s` needs a forge, and project `%s` has none. Set `forge = \"github\"` in the project file, or remove the step.", s.step.Kind(), s.step.Label(), c.caps.Project))
+		}
+	}
 }
 
 // forbids checks the kinds that each agent lists in `forbid_commands`. A kind that an expression computes is checked when the step runs.

@@ -32,6 +32,8 @@ type Step interface {
 	Label() string
 	// Pos is the range of the block header.
 	Pos() hcl.Range
+	// NeedsForge is true when the step calls a forge. A project with no forge cannot run it.
+	NeedsForge() bool
 	place(name string, pos hcl.Range)
 	arguments() []argument
 }
@@ -83,6 +85,9 @@ type Agent struct {
 // Kind returns KindAgent.
 func (*Agent) Kind() Kind { return KindAgent }
 
+// NeedsForge is false: an agent session calls no forge.
+func (*Agent) NeedsForge() bool { return false }
+
 func (a *Agent) arguments() []argument {
 	return []argument{
 		{expr: a.Prompt},
@@ -115,6 +120,9 @@ type Command struct {
 // Kind returns KindCommand.
 func (*Command) Kind() Kind { return KindCommand }
 
+// NeedsForge is false: a program that a command runs does not use the forge of the project.
+func (*Command) NeedsForge() bool { return false }
+
 func (c *Command) arguments() []argument {
 	return []argument{{expr: c.Run}, {expr: c.Timeout}, {expr: c.Host}, {expr: c.When}}
 }
@@ -132,6 +140,9 @@ type Gate struct {
 // Kind returns KindGate.
 func (*Gate) Kind() Kind { return KindGate }
 
+// NeedsForge is false: a gate runs the check command of the project.
+func (*Gate) NeedsForge() bool { return false }
+
 func (g *Gate) arguments() []argument {
 	return []argument{{expr: g.Run}, {expr: g.Host}, {expr: g.Timeout}, {expr: g.Head}}
 }
@@ -147,6 +158,9 @@ type Loop struct {
 
 // Kind returns KindLoop.
 func (*Loop) Kind() Kind { return KindLoop }
+
+// NeedsForge is false: the steps inside a loop answer for themselves.
+func (*Loop) NeedsForge() bool { return false }
 
 func (l *Loop) arguments() []argument { return []argument{{expr: l.Until}} }
 
@@ -174,6 +188,9 @@ type Merge struct {
 // Kind returns KindMerge.
 func (*Merge) Kind() Kind { return KindMerge }
 
+// NeedsForge is true: a merge step reads and changes a pull request.
+func (*Merge) NeedsForge() bool { return true }
+
 func (m *Merge) arguments() []argument {
 	return []argument{
 		{expr: m.Head},
@@ -199,6 +216,9 @@ type Wait struct {
 
 // Kind returns KindWait.
 func (*Wait) Kind() Kind { return KindWait }
+
+// NeedsForge is false: a wait step asks a person.
+func (*Wait) NeedsForge() bool { return false }
 
 func (w *Wait) arguments() []argument { return []argument{{expr: w.Question}, {expr: w.When}} }
 

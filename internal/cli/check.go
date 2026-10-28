@@ -38,36 +38,45 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, itemFields itemFieldsFunc) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, capabilities capabilitiesFunc) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(env, itemFields))
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(env, capabilities))
 
 	return check
 }
 
-// itemFieldsFunc returns the item fields that the adapters of a project declare.
-type itemFieldsFunc func(context.Context, model.Project) ([]string, error)
+// capabilitiesFunc returns what the adapters of a project offer to a workflow: the item fields and whether a forge exists.
+type capabilitiesFunc func(context.Context, model.Project) (workflow.Capabilities, error)
+
+// projectCapabilities asks the hook for the capabilities of the project. A build with no hook offers the common item fields, and a forge when the project names one.
+func projectCapabilities(ctx context.Context, hook capabilitiesFunc, project model.Project) (workflow.Capabilities, error) {
+	if hook == nil {
+		return workflow.Capabilities{Project: project.Name, Fields: workflow.CommonItemFields(), Forge: project.Forge != ""}, nil
+	}
+
+	return hook(ctx, project)
+}
 
 // workflowCheck holds what `check workflow` reads: the process environment, the adapter hook and the two flags.
 type workflowCheck struct {
-	env        map[string]string
-	itemFields itemFieldsFunc
-	project    string
-	configDir  string
+	env          map[string]string
+	capabilities capabilitiesFunc
+	project      string
+	configDir    string
 }
 
-func newCheckWorkflowCommand(env map[string]string, itemFields itemFieldsFunc) *cobra.Command {
-	w := &workflowCheck{env: env, itemFields: itemFields}
+func newCheckWorkflowCommand(env map[string]string, capabilities capabilitiesFunc) *cobra.Command {
+	w := &workflowCheck{env: env, capabilities: capabilities}
 
 	command := &cobra.Command{
 		Use:   "workflow [file]",
 		Short: "Check a workflow file and print one line for each problem",
 		Long: "Check the structure, the references, the cycles and the prompt files of a workflow file. " +
 			"The default file is " + defaultWorkflowFile + " in the current folder. " +
-			"With --project, the item fields come from the tracker and the forge of that project. Without it, the only item fields are id, title and body. " +
+			"With --project, the item fields come from the tracker and the forge of that project, and a step that needs a forge is refused when the project has none. Without it, the only item fields are id, title and body. " +
 			"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: w.run,
@@ -84,30 +93,26 @@ func (w *workflowCheck) run(cmd *cobra.Command, args []string) error {
 		file = args[0]
 	}
 
-	fields, err := w.fields(cmd.Context())
+	caps, err := w.offered(cmd.Context())
 	if err != nil {
 		return err
 	}
 
-	return runCheckWorkflow(cmd.ErrOrStderr(), file, fields)
+	return runCheckWorkflow(cmd.ErrOrStderr(), file, caps)
 }
 
-// fields returns the item fields of the named project. No project name, or a build with no adapter hook, gives the common fields.
-func (w *workflowCheck) fields(ctx context.Context) ([]string, error) {
+// offered returns the capabilities of the named project. With no project name, the check knows only the common item fields and cannot tell whether a forge exists, so it refuses no step.
+func (w *workflowCheck) offered(ctx context.Context) (workflow.Capabilities, error) {
 	if w.project == "" {
-		return workflow.CommonItemFields(), nil
+		return workflow.Capabilities{Fields: workflow.CommonItemFields(), Forge: true}, nil
 	}
 
 	project, err := w.loadProject()
 	if err != nil {
-		return nil, err
+		return workflow.Capabilities{}, err
 	}
 
-	if w.itemFields == nil {
-		return workflow.CommonItemFields(), nil
-	}
-
-	return w.itemFields(ctx, project)
+	return projectCapabilities(ctx, w.capabilities, project)
 }
 
 func (w *workflowCheck) loadProject() (model.Project, error) {
@@ -129,8 +134,8 @@ func (w *workflowCheck) loadProject() (model.Project, error) {
 	return project.Project, nil
 }
 
-func runCheckWorkflow(stderr io.Writer, file string, fields []string) error {
-	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file), fields)
+func runCheckWorkflow(stderr io.Writer, file string, caps workflow.Capabilities) error {
+	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file), caps)
 	if len(found) == 0 {
 		return nil
 	}
