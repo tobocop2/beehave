@@ -139,6 +139,7 @@ linters:
           files:
             - "**/internal/store/**"
             - "**/internal/forge/**"
+            - "**/internal/proc/**"
             - "**/internal/agent/**"
             - "**/internal/host/**"
           deny:
@@ -149,6 +150,7 @@ linters:
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
+            - github.com/tobocop2/obee/internal/proc
             - github.com/tobocop2/obee/internal/agent
             - github.com/tobocop2/obee/internal/host
         layer-2:
@@ -188,6 +190,7 @@ linters:
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
+            - github.com/tobocop2/obee/internal/proc
             - github.com/tobocop2/obee/internal/agent
             - github.com/tobocop2/obee/internal/host
             - github.com/tobocop2/obee/internal/check
@@ -207,6 +210,7 @@ linters:
             - "!**/internal/config/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
+            - "!**/internal/proc/**"
             - "!**/internal/agent/**"
             - "!**/internal/host/**"
             - "!**/internal/check/**"

@@ -29,6 +29,7 @@ flowchart TD
     subgraph L1[Layer 1: adapters]
         store["store (bd and gh CLIs)"]
         forge["forge (gh CLI)"]
+        proc["proc (command runner)"]
         agent["agent (claude, opencode, pi)"]
         host["host (build host scripts)"]
     end
@@ -58,6 +59,12 @@ Layer 2 packages declare the small interfaces they need (for example `merge` dec
 `store` has two concrete backends: beads through `bd --json` and GitHub issues through `gh`. The CLI is the contract. Each payload decodes once into a named struct, and a payload of another shape is a refusal that names the command. Unknown fields are kept, because `bd` and `gh` send many fields the code does not read. A caller picks the backend, so there is no dispatch by name.
 
 `claim` keeps the claim rows in beads. It declares its own runner interface for `bd` and `gh` and does not import `store`. Both packages share the command result type in `model`.
+
+## Forge and the command runner
+
+`forge` runs `gh` and has one decoder for each payload shape. The pull request, review, comment, thread and check types live in `model`, so layer 2 declares its own interfaces over them without importing `forge`.
+
+`proc` holds the one command runner. `model.Decode` is the one JSON decoder for command answers. `store`, `forge` and `claim` share them. The runner starts each command in its own process group with a timeout, and reports exit code 124 for a deadline, 127 for a missing command and 130 for a cancel.
 
 ## Configuration
 
