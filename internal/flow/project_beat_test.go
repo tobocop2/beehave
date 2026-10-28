@@ -22,13 +22,7 @@ func TestRun_EveryStepOfAnItemReadsTheProjectOfItsRun(t *testing.T) {
 		assert.Equal(t, "alpha", request.Project)
 	}
 
-	require.NotEmpty(t, harness.briefs.seen())
-
-	for _, request := range harness.briefs.seen() {
-		assert.Equal(t, "alpha", request.Project)
-	}
-
-	assert.Equal(t, []string{"alpha", "alpha", "alpha"}, harness.life.projectsSeen())
+	assert.Equal(t, []string{"alpha", "alpha"}, harness.life.projectsSeen())
 }
 
 func TestRun_RefusesAnItemWithoutAProject(t *testing.T) {
@@ -45,7 +39,7 @@ func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testin
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -67,7 +61,7 @@ func TestTick_RenewsTheClaimOfARunThatWaitsForTheOwner(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -100,7 +94,7 @@ func TestRun_ALostClaimEndsTheRunThatWaitsForTheOwnerAndSaysWhy(t *testing.T) {
 			t.Parallel()
 
 			harness := newHarness(t)
-			harness.verdicts.reviews = changes(6)
+			harness.flowIs(t, waitFlow)
 			engine := harness.engine(t)
 
 			done := runInBackground(engine, testItem)

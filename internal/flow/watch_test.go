@@ -11,10 +11,21 @@ import (
 	"github.com/tobocop2/obee/internal/review"
 )
 
+// shipHarness is a harness whose workflow file is one merge step that marks the pull request ready and leaves the merge to the owner.
+func shipHarness(t *testing.T) *harness {
+	t.Helper()
+
+	harness := newHarness(t)
+	harness.flowIs(t, shipFlow(""))
+	harness.forge.state = review.Standing{Number: testPull, Head: gatedHead}
+
+	return harness
+}
+
 func TestRun_TheWatchStepEndsOnMergeAndKeepsTheDraftFlag(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Merged}}
 	engine := harness.engine(t)
 
@@ -40,14 +51,14 @@ func TestRun_TheWatchStepSendsAPullRequestBackToDraftAndEnds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			harness := newHarness(t)
+			harness := shipHarness(t)
 			harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}, {Kind: review.SendBack, Reason: reason}}
 			engine := harness.engine(t)
 
 			result, err := engine.Run(testItem, testProject)
 
 			require.NoError(t, err, "a send back is a finished run")
-			assert.Equal(t, ItemResult{Item: testItem, SentBack: reason}, result)
+			assert.Equal(t, ItemResult{Item: testItem, Merge: "sent_back", SentBack: reason}, result)
 
 			reads, drafts := harness.watch.seen()
 			assert.Equal(t, []int{testPull, testPull}, reads, "the step ends at the send back")
@@ -62,7 +73,7 @@ func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T)
 
 	const reason = "a review asks for changes"
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: reason}, {Kind: review.Merged}}
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
@@ -73,12 +84,12 @@ func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T)
 	infos, err := client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runDone, Version: testVersion, SentBack: reason}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runDone, Version: testVersion, Merge: "sent_back", SentBack: reason}, infos[0])
 	require.ErrorIs(t, client.Resume(testItem), errWrongState, "a sent-back run is finished, so it does not resume")
 
 	result, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
-	assert.Equal(t, ItemResult{Item: testItem}, result)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "merged"}, result)
 
 	infos, err = client.Status()
 	require.NoError(t, err)
@@ -111,7 +122,7 @@ func TestWatchEvery_IsOneHour(t *testing.T) {
 func TestRun_TheWatchStepEndsWithTheLastErrorAfterThreeFailedReadsInARow(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}}
 	harness.watch.err = errFake
 	engine := harness.engine(t)
@@ -128,7 +139,7 @@ func TestRun_TheWatchStepEndsWithTheLastErrorAfterThreeFailedReadsInARow(t *test
 func TestRun_AGoodReadResetsTheCountOfFailedReads(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Merged}}
 	harness.watch.errs = []error{errFake, errFake, nil, errFake, errFake, nil}
 	engine := harness.engine(t)
@@ -144,7 +155,7 @@ func TestRun_AGoodReadResetsTheCountOfFailedReads(t *testing.T) {
 func TestRun_TwoFailedReadsThenAMergeEndWithoutAnError(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}, {Kind: review.Waiting}, {Kind: review.Merged}}
 	harness.watch.errs = []error{errFake, errFake, nil}
 	engine := harness.engine(t)
@@ -157,7 +168,7 @@ func TestRun_TwoFailedReadsThenAMergeEndWithoutAnError(t *testing.T) {
 func TestRun_TheWatchStepEndsWithAnErrorWhenTheNumberOfThePullRequestCannotBeRead(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.forge.failFrom = 2
 	engine := harness.engine(t)
 
@@ -173,7 +184,7 @@ func TestRun_TheWatchStepEndsWithAnErrorWhenTheNumberOfThePullRequestCannotBeRea
 func TestRun_TheWatchStepEndsWithAnErrorWhenTheDraftCallFails(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: "it conflicts with its base branch"}}
 	harness.watch.draftErr = errFake
 	engine := harness.engine(t)
@@ -186,7 +197,7 @@ func TestRun_TheWatchStepEndsWithAnErrorWhenTheDraftCallFails(t *testing.T) {
 func TestCancel_AWatchThatSleepsEndsWithTheCancel(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.sleep = time.Hour
 	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}}
 	engine := harness.engine(t)
@@ -209,8 +220,8 @@ func TestCancel_AWatchThatSleepsEndsWithTheCancel(t *testing.T) {
 func TestRun_TheWatchStepDoesNotStartAfterARefusedReady(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
-	harness.forge.state = review.Standing{Number: testPull, Conflicting: true}
+	harness := shipHarness(t)
+	harness.forge.state = review.Standing{Number: testPull, Head: gatedHead, Conflicting: true}
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)

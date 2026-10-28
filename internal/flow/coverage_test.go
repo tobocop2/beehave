@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
@@ -344,8 +343,8 @@ func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
 	// Outside a workflow the run id is empty: hold a trusted claim under it, so the guard on the phase start passes.
 	engine.holds.add("", claimHold{renewed: time.Now()})
 
-	err = engine.runPhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Step: model.StepPlan, Login: testLogin})
-	require.ErrorContains(t, err, "queue the plan of item 12")
+	_, err = engine.queuePhase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Login: testLogin})
+	require.ErrorContains(t, err, "queue the agent step of item 12")
 
 	_, err = engine.runOpen(testItem)
 	require.ErrorContains(t, err, "read run 12")
@@ -423,45 +422,6 @@ func TestRun_RefusesAnOpenRunOfAnotherVersionAndNamesIt(t *testing.T) {
 
 	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, staleVersion)
-}
-
-func TestRun_AFailedReviewPhaseEndsTheRunAndNamesTheStep(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	engine := launchedWith(t, harness, func(deps *Deps) {
-		deps.Agents = agentFunc(func(ctx context.Context, request AgentRequest) (agent.Result, error) {
-			if request.Step == model.StepReview {
-				return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "review broke"}, nil
-			}
-
-			return harness.agents.Run(ctx, request)
-		})
-	})
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.ErrorContains(t, err, "the review of item 12 ended as exited (exit 3): review broke")
-}
-
-// freshFails picks the login as fakeLogins does and fails when asked for a fresh one.
-type freshFails struct{ fakeLogins }
-
-func (freshFails) PickFresh(context.Context, string, string) (string, error) {
-	return "", errFake
-}
-
-func TestRun_AFreshLoginThatCannotBePickedEndsTheRunAtFixRoundFour(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.verdicts.reviews = changes(freshRound)
-	engine := launchedWith(t, harness, func(deps *Deps) { deps.Logins = freshFails{fakeLogins{login: testLogin}} })
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.ErrorContains(t, err, "pick the fresh runner of item 12")
-	require.ErrorIs(t, err, errFake)
 }
 
 func TestWaitOwner_ReportsAQuestionItCannotShow(t *testing.T) {

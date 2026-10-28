@@ -400,6 +400,19 @@ func (c *Client) giveBack(project, item, id string) error {
 	return forgetRun(c.dir, id)
 }
 
+// PinnedFile returns the workflow file of the open run of the item. It is empty when the item has no open run, or when the open run uses no file.
+// It reads the store and launches nothing.
+func (c *Client) PinnedFile(item string) (string, error) {
+	last, found, err := latestRun(c.flow, item)
+	if err != nil || !found || last.terminal() {
+		return "", err
+	}
+
+	in, err := last.input()
+
+	return in.File, err
+}
+
 // latest returns the newest run of an item, and refuses a run that another version of obee started.
 func (c *Client) latest(item string) (run, error) {
 	if model.ItemKind(item) == "" {

@@ -12,7 +12,7 @@ import (
 
 var standingChanges = []model.ChangeRequest{{Login: "rev", Commit: "ccc"}}
 
-func TestRun_TheReadyStepRefusesAPullRequestThatIsNotReadyAndNamesTheReason(t *testing.T) {
+func TestRun_TheMergeStepRefusesAPullRequestThatIsNotReadyAndNamesTheReason(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -24,30 +24,35 @@ func TestRun_TheReadyStepRefusesAPullRequestThatIsNotReadyAndNamesTheReason(t *t
 		"the_branch_conflicts":          {review.Standing{Number: testPull, Conflicting: true}, "pull request 7: it conflicts with its base branch"},
 		"two_reasons_stand":             {review.Standing{Number: testPull, ChangeRequests: standingChanges, Conflicting: true}, "a review asks for changes, it conflicts with its base branch"},
 		"a_read_of_the_standing_failed": {review.Standing{Number: testPull, Unread: []string{"review threads"}}, "pull request 7: the review threads could not be read"},
+		"a_push_after_the_pinned_head":  {review.Standing{Number: testPull, Head: "ccc"}, `moved to "ccc" after the review read "` + gatedHead + `"`},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			harness := newHarness(t)
+			harness := shipHarness(t)
 			harness.forge.state = tt.state
+
+			if harness.forge.state.Head == "" {
+				harness.forge.state.Head = gatedHead
+			}
+
 			engine := harness.engine(t)
 
 			_, err := engine.Run(testItem, testProject)
 
 			require.ErrorIs(t, err, errNotReady)
-			require.ErrorContains(t, err, "ready of item 12")
 			require.ErrorContains(t, err, tt.reason)
 			assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen(), "the pull request is not marked ready, and the claim is still released")
 		})
 	}
 }
 
-func TestRun_TheReadyStepRefusesWhenTheForgeCannotBeRead(t *testing.T) {
+func TestRun_TheMergeStepRefusesWhenTheForgeCannotBeRead(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	harness.forge.err = errFake
 	engine := harness.engine(t)
 
@@ -58,15 +63,15 @@ func TestRun_TheReadyStepRefusesWhenTheForgeCannotBeRead(t *testing.T) {
 	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen())
 }
 
-func TestRun_TheReadyStepMarksACleanPullRequestReady(t *testing.T) {
+func TestRun_TheMergeStepMarksACleanPullRequestReady(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
+	harness := shipHarness(t)
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
-	assert.Equal(t, []string{testItem, testItem}, harness.forge.asked, "one read for the ready step and one for the number the watch step reads")
+	assert.Equal(t, []string{testItem, testItem}, harness.forge.asked, "one read to mark ready and one for the number the watch reads")
 }

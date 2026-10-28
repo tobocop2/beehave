@@ -8,40 +8,18 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 )
 
-// ErrNotBuilt is returned by a step that this build does not include yet.
-var ErrNotBuilt = errors.New("this step is not in this build yet: update obee")
+// errEmptyLogin is returned when no agent login is set for an agent step.
+var errEmptyLogin = errors.New("no agent login for this step: add a runner to runners.hcl and name it in the step with `runner`")
 
-// errEmptyLogin is returned when no agent login is set for an item.
-var errEmptyLogin = errors.New("no agent login for this item: add a runner to runners.hcl and set the steps to use it")
-
-// BriefRequest asks for the brief of one agent phase. Findings are the open review findings. Answer is the last answer of the owner.
-// Run is the id of the run that queued the phase. A brief path is keyed by it, so the brief of a lost run never replaces the brief of a new run of the item.
-type BriefRequest struct {
-	Run      string     `json:"run"`
-	Item     string     `json:"item"`
-	Project  string     `json:"project"`
-	Step     model.Step `json:"step"`
-	Round    int        `json:"round"`
-	Findings string     `json:"findings"`
-	Answer   string     `json:"answer"`
-}
-
-// AgentRequest asks for one agent run. Fresh starts a new agent session; otherwise the run resumes the session of the item.
+// AgentRequest asks for one agent run. Prompt is the rendered prompt of the agent step.
 // Started receives the pid of the agent process, which leads its own process group, as soon as it runs.
-//
-// A request from an agent step of a workflow file has an empty Step and a Round of zero, and carries the rendered Prompt in place of a Brief.
 // Resume is the session to continue, empty for a fresh session. Model, Timeout and IdleTimeout are zero when the step sets none.
 type AgentRequest struct {
 	Item        string
 	Project     string
-	Step        model.Step
-	Round       int
 	Login       string
-	Fresh       bool
-	Brief       string
 	Prompt      string
 	Resume      string
 	Model       string
@@ -58,18 +36,6 @@ type GateResult struct {
 	Head   string `json:"head"`
 }
 
-// Review is the verdict of one review and the findings behind it. Head is the commit the review read.
-type Review struct {
-	Verdict  Verdict `json:"verdict"`
-	Findings string  `json:"findings"`
-	Head     string  `json:"head"`
-}
-
-// briefs writes the brief that an agent phase reads and returns its path.
-type briefs interface {
-	Write(ctx context.Context, request BriefRequest) (string, error)
-}
-
 // agents runs one agent phase for a login. The context of Run ends when the run loses its claim, as well as when the phase is canceled or times out.
 // Run starts the process of the agent under that context, in its own process group, and the end of the context kills the group.
 // A context that is done before the start means no process starts.
@@ -82,16 +48,9 @@ type gate interface {
 	Run(ctx context.Context, project, item string) (GateResult, error)
 }
 
-// verdicts reads the verdict a review left for an item.
-type verdicts interface {
-	Read(ctx context.Context, project, item string, round int) (Review, error)
-}
-
 // logins picks the agent login for an item of a project and returns its runner name.
-// PickFresh returns the runner of the fresh agent in fix round 4, or an empty name to keep the login of the item.
 type logins interface {
 	Pick(ctx context.Context, project, item string) (string, error)
-	PickFresh(ctx context.Context, project, item string) (string, error)
 }
 
 // lifecycle holds the steps around the work of one item. Claim runs first, Ready after an approved review and the Forge reads are clean, and Release last, on every exit.
@@ -179,13 +138,11 @@ func (c clock) resultOptions() []dbos.GetResultOption {
 	return []dbos.GetResultOption{dbos.WithHandlePollingInterval(c.Poll)}
 }
 
-// Deps holds the collaborators of the workflows. A nil Merge means the build cannot merge: a merge step with `merge = true` fails, and the fixed item loop leaves the merge to the owner.
+// Deps holds the collaborators of the workflows. A nil Merge means the build cannot merge: a merge step with `merge = true` fails.
 type Deps struct {
 	Clock     clock
-	Briefs    briefs
 	Agents    agents
 	Gate      gate
-	Verdicts  verdicts
 	Logins    logins
 	Lifecycle lifecycle
 	Forge     forge

@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -88,7 +89,7 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -97,7 +98,7 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 
 	infos, err := client.Status()
 	require.NoError(t, err)
-	assert.Equal(t, "fix the thing", infos[0].Question, "status shows the question of a paused run")
+	assert.Equal(t, "What now?", infos[0].Question, "status shows the question of a paused run")
 
 	require.NoError(t, client.Cancel(testItem))
 
@@ -133,7 +134,11 @@ func TestLatestRun_SkipsRunsWhoseNameEndsInNoAttemptNumber(t *testing.T) {
 	harness := newHarness(t)
 	engine := harness.engine(t)
 
-	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem}, dbos.WithWorkflowID("item-12-rx"))
+	file := filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName)
+	hash, err := hashFile(file)
+	require.NoError(t, err)
+
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, File: file, Hash: hash, Login: "alice"}, dbos.WithWorkflowID("item-12-rx"))
 	require.NoError(t, err)
 	_, err = handle.GetResult()
 	require.NoError(t, err)

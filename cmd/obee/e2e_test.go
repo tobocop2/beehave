@@ -3,12 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -21,6 +19,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 )
 
@@ -69,8 +68,8 @@ func e2eFlow(dir, path string) cli.Flow {
 			files := e2eFiles{dir: dir}
 
 			engine, err := flow.NewEngine(ctx, opts, flow.Deps{
-				Briefs: files, Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{}, Verdicts: files, Logins: newLogins(cfg, opts),
-				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files,
+				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{},
+				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files, Items: files,
 			})
 			if err != nil {
 				return nil, err
@@ -84,33 +83,9 @@ func e2eFlow(dir, path string) cli.Flow {
 // e2eFiles holds every collaborator that needs no process. It records each lifecycle call in events.log.
 type e2eFiles struct{ dir string }
 
-func (f e2eFiles) Write(_ context.Context, request flow.BriefRequest) (string, error) {
-	folder := filepath.Join(f.dir, "briefs")
-	if err := os.MkdirAll(folder, e2eFolderMode); err != nil {
-		return "", err
-	}
-
-	text := strings.Join([]string{
-		"step=" + string(request.Step), "round=" + strconv.Itoa(request.Round), "findings=" + request.Findings, "answer=" + request.Answer, "",
-	}, "\n")
-	path := filepath.Join(folder, string(request.Step)+"-"+strconv.Itoa(request.Round)+".txt")
-
-	return path, os.WriteFile(path, []byte(text), e2eFileMode)
-}
-
-// Read returns the verdict that the review agent left in the verdict file.
-func (f e2eFiles) Read(_ context.Context, _, _ string, round int) (flow.Review, error) {
-	text, err := os.ReadFile(filepath.Join(f.dir, "verdict"))
-	if err != nil {
-		return flow.Review{}, err
-	}
-
-	verdict := flow.Verdict(strings.TrimSpace(string(text)))
-	if verdict != flow.VerdictApprove && verdict != flow.VerdictChanges {
-		return flow.Review{}, fmt.Errorf("unknown verdict %q", verdict)
-	}
-
-	return flow.Review{Verdict: verdict, Findings: "findings of review " + strconv.Itoa(round)}, nil
+// Fields gives the item the fields that the prompts of the example read.
+func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, error) {
+	return map[string]string{"id": item, "title": "title of " + item, "body": "body of " + item}, nil
 }
 
 func (f e2eFiles) event(name, item string) error {
@@ -134,8 +109,10 @@ func (f e2eFiles) Release(_ context.Context, _, item, _ string) error {
 	return f.event("release", item)
 }
 
-func (e2eFiles) Pull(context.Context, string, string) (review.Standing, error) {
-	return review.Standing{Number: 1}, nil
+func (f e2eFiles) Pull(ctx context.Context, _, _ string) (review.Standing, error) {
+	head, err := e2eHeadOf(ctx, f.dir)
+
+	return review.Standing{Number: 1, Head: head}, err
 }
 
 func (e2eFiles) Watch(context.Context, string, int) (review.Outcome, error) {
@@ -146,7 +123,10 @@ func (e2eFiles) SetDraft(context.Context, string, int, bool) error { return nil 
 
 func (e2eFiles) Path(context.Context, string, string) (string, error) { return "", nil }
 
-func (e2eFiles) Ensure(context.Context, string, string) (string, error) { return "", nil }
+// Ensure gives the git folder that e2eSetup makes. The gate reads the commit of that folder.
+func (f e2eFiles) Ensure(context.Context, string, string) (string, error) {
+	return filepath.Join(f.dir, "tree"), nil
+}
 
 func (e2eFiles) Beat(context.Context, string, string) (string, error) { return "", nil }
 
@@ -158,50 +138,84 @@ func errJoin(first, second error) error {
 	return second
 }
 
-// e2eGate passes every item.
-type e2eGate struct{}
+// e2eHeadOf reads the commit of the git folder that e2eSetup makes. The gate and the pull request show it.
+func e2eHeadOf(ctx context.Context, dir string) (string, error) {
+	result := proc.NewExecRunner("git", filepath.Join(dir, "tree")).Run(ctx, []string{"rev-parse", "HEAD"})
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("git rev-parse: %s", result.Stderr)
+	}
 
-func (e2eGate) Run(context.Context, string, string) (flow.GateResult, error) {
-	return flow.GateResult{Passed: true}, nil
+	return strings.TrimSpace(result.Stdout), nil
+}
+
+// e2eGate passes every item.
+type e2eGate struct{ dir string }
+
+func (g e2eGate) Run(ctx context.Context, _, _ string) (flow.GateResult, error) {
+	head, err := e2eHeadOf(ctx, g.dir)
+
+	return flow.GateResult{Passed: true, Head: head}, err
 }
 
 // e2eAgents starts the claude program of the script PATH through the real agent runner.
 type e2eAgents struct{ dir, path string }
 
+// It describes the run as the real agents do: the session from the output of the program, the skill calls from the transcript that it wrote.
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
-	brief, err := os.ReadFile(request.Brief)
-	if err != nil {
-		return agent.Result{}, err
-	}
-
-	prompt := "login=" + request.Login + "\nfresh=" + strconv.FormatBool(request.Fresh) + "\n" + string(brief)
+	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
+	adapter := newAdapters(nil).agent(model.AgentClaude)
+	runner := model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir}
+	tap := &sessionTap{adapter: adapter}
 
-	return agent.Runner{}.Run(ctx, agent.Spec{
-		Adapter: newAdapters(nil).agent(model.AgentClaude),
-		Runner:  model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir},
-		Dir:     a.dir, Prompt: prompt, Env: env, Log: io.Discard, OnStart: request.Started,
-	}), nil
+	result := agent.Runner{}.Run(ctx, agent.Spec{
+		Adapter: adapter, Runner: runner,
+		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started,
+	})
+
+	reader := agents{skills: func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.SkillCalls(path, "") }}
+
+	return reader.describe(adapter, runner, a.dir, tap, result)
 }
 
 // The agent runs in the work folder of the script and sees no other variable than PATH.
 // The file hang names the step that blocks on its first call; the file started marks that the block began.
 const e2eClaude = `#!/bin/sh
-# The fake claude: one line in calls.log for each call. Fields: step round fresh login answer.
+# The fake claude: one line in calls.log for each call. Fields: step round login ruling.
+# A review writes the next line of the file verdicts to the output file that its prompt names.
 prompt=$(cat)
 field() { printf '%s\n' "$prompt" | sed -n "s/^$1=//p"; }
 step=$(field step)
-echo "$step $(field round) $(field fresh) $(field login) $(field answer)" >> calls.log
+echo "$step $(field round) $(field login) $(field ruling)" >> calls.log
 if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
   : > started
   exec sleep 300
 fi
 if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
-  sed -n "${n}p" verdicts > verdict
+  printf '{"verdict":"%s"}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
-echo '{"type":"result"}'
+# The transcript is where the real claude writes it: <config dir>/projects/<folder with each other character as '-'>/<session>.jsonl.
+# The fake claude calls the skill that the example requires, so the session reports it.
+folder=$(pwd | sed 's/[^A-Za-z0-9]/-/g')
+mkdir -p "projects/$folder"
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"blast-radius-review"}}]}}' > "projects/$folder/s1.jsonl"
+echo '{"type":"result","session_id":"s1","result":"done"}'
 `
+
+// e2eLogins picks the runner "a" of the config, so no script reads the usage of a login.
+type e2eLogins struct{}
+
+func (e2eLogins) Pick(context.Context, string, string) (string, error) { return "a", nil }
+
+// e2ePrompts replace the prompts of the example in the work folder. The workflow file is the example itself.
+var e2ePrompts = map[string]string{
+	"plan":      "step=plan\n",
+	"implement": "step=implement\n",
+	"review":    "step=review\nwrite={{ .output_file }}\n",
+	"fix":       "step=fix\nround={{ .round }}\nfindings={{ .findings }}\n",
+	"settle":    "step=settle\nruling={{ .ruling }}\n",
+}
 
 const e2eRunners = `agents {
   max_concurrent = 2
@@ -226,11 +240,6 @@ forge = "github"
 beads_prefix = "shop"
 base_branch = "main"
 gate = "true"
-
-steps "implement" {
-  runner       = "a"
-  fresh_runner = "b"
-}
 `
 
 // e2eSetup writes the config folder and the fake claude into the work folder of a script.
@@ -245,6 +254,23 @@ func e2eSetup(env *testscript.Env) error {
 		"config/projects/shop.hcl": {e2eProject, e2eFileMode},
 	}
 
+	example, err := os.ReadFile(filepath.Join("..", "..", "examples", "remediation", "workflow.hcl"))
+	if err != nil {
+		return err
+	}
+
+	files["flow/workflow.hcl"] = struct {
+		text string
+		mode os.FileMode
+	}{string(example), e2eFileMode}
+
+	for name, text := range e2ePrompts {
+		files["flow/prompts/"+name+".md"] = struct {
+			text string
+			mode os.FileMode
+		}{text, e2eFileMode}
+	}
+
 	for name, file := range files {
 		path := filepath.Join(work, name)
 		if err := os.MkdirAll(filepath.Dir(path), e2eFolderMode); err != nil {
@@ -253,6 +279,17 @@ func e2eSetup(env *testscript.Env) error {
 
 		if err := os.WriteFile(path, []byte(file.text), file.mode); err != nil {
 			return err
+		}
+	}
+
+	tree := filepath.Join(work, "tree")
+	if err := os.MkdirAll(tree, e2eFolderMode); err != nil {
+		return err
+	}
+
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=e2e", "-c", "user.email=e2e@example.com", "commit", "-q", "--allow-empty", "-m", "start"}} {
+		if result := proc.NewExecRunner("git", tree).Run(context.Background(), args); result.ExitCode != 0 {
+			return fmt.Errorf("git %s: %s", args[0], result.Stderr)
 		}
 	}
 

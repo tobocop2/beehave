@@ -3,7 +3,6 @@ package flow
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"syscall"
 	"testing"
@@ -13,28 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 )
 
 const privateMode = os.FileMode(0o600)
-
-func changes(count int) []Review {
-	reviews := make([]Review, 0, count+1)
-	for range count {
-		reviews = append(reviews, Review{Verdict: VerdictChanges, Findings: "fix the thing"})
-	}
-
-	return append(reviews, Review{Verdict: VerdictApprove})
-}
-
-func stepsOf(requests []AgentRequest) []model.Step {
-	steps := make([]model.Step, 0, len(requests))
-	for _, request := range requests {
-		steps = append(steps, request.Step)
-	}
-
-	return steps
-}
 
 func TestOptions_RefuseEachDBOSVariableTheRuleNames(t *testing.T) {
 	t.Parallel()
@@ -119,7 +99,7 @@ func TestOpenStore_ReportsAnUnwritableLogAndAnUnopenableDatabase(t *testing.T) {
 	}
 }
 
-func TestRun_ApprovedAtTheFirstReviewRunsEveryStepInOrderAndKeepsTheFilesPrivate(t *testing.T) { //nolint:paralleltest // the umask is set for the whole process
+func TestRun_AFileRunClaimsRunsItsStepsReleasesAndKeepsTheFilesPrivate(t *testing.T) { //nolint:paralleltest // the umask is set for the whole process
 	previous := syscall.Umask(0o077) // the composition root sets this umask before it opens the store
 	t.Cleanup(func() { syscall.Umask(previous) })
 
@@ -130,14 +110,10 @@ func TestRun_ApprovedAtTheFirstReviewRunsEveryStepInOrderAndKeepsTheFilesPrivate
 
 	require.NoError(t, err)
 	assert.Equal(t, ItemResult{Item: testItem}, result)
-	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
-	assert.Equal(t, []model.Step{model.StepPlan, model.StepImplement, model.StepReview}, stepsOf(harness.agents.seen()))
-
-	for _, request := range harness.agents.seen() {
-		assert.Equal(t, testLogin, request.Login)
-		assert.True(t, request.Fresh, request.Step)
-		assert.Equal(t, "brief-"+string(request.Step), request.Brief)
-	}
+	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen())
+	require.Len(t, harness.agents.seen(), 1)
+	assert.Equal(t, testLogin, harness.agents.seen()[0].Login)
+	assert.Contains(t, harness.agents.seen()[0].Prompt, "Work on the item.")
 
 	for _, name := range []string{databaseFile, logFileName} {
 		info, statErr := os.Stat(filepath.Join(harness.opts.StateDir, name))
@@ -176,69 +152,6 @@ func TestRun_StartsAnotherAttemptAfterTheRunEnded(t *testing.T) {
 	assert.ElementsMatch(t, []string{"item-12-r1", "item-12-r2"}, ids)
 }
 
-func TestRun_FixRoundsResumeThreeTimesThenStartAFreshAgentThenWaitForTheOwner(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
-	harness.logins.fresh = "bob"
-	engine := harness.engine(t)
-	client := harness.client(t, testVersion)
-
-	done := runInBackground(engine, testItem)
-	waitForTheOwner(t, harness)
-
-	require.NoError(t, client.Answer(testItem, "use option b"))
-
-	outcome := <-done
-	require.NoError(t, outcome.err)
-	assert.Equal(t, ItemResult{Item: testItem, FixRounds: 6}, outcome.result)
-
-	var fresh, logins []string
-
-	for _, request := range harness.agents.seen() {
-		if request.Step == model.StepImplement {
-			fresh = append(fresh, strconv.FormatBool(request.Fresh))
-			logins = append(logins, request.Login)
-		}
-	}
-
-	assert.Equal(t, []string{"true", "false", "false", "false", "true", "false", "false"}, fresh)
-	assert.Equal(t, []string{"alice", "alice", "alice", "alice", "bob", "bob", "bob"}, logins, "round 4 starts on the fresh runner and the later rounds keep it")
-
-	var implement []BriefRequest
-
-	for _, brief := range harness.briefs.seen() {
-		if brief.Step == model.StepImplement {
-			implement = append(implement, brief)
-		}
-	}
-
-	last, before := implement[len(implement)-1], implement[len(implement)-2]
-	assert.Equal(t, "use option b", last.Answer)
-	assert.Equal(t, "fix the thing", last.Findings)
-	assert.Empty(t, before.Answer, "the answer feeds one round only")
-}
-
-func TestRun_AFailedGateSendsItsReportToTheNextRoundWithoutAReview(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.gate.results = []GateResult{{Passed: false, Report: "tests fail"}, {Passed: true}}
-	engine := harness.engine(t)
-
-	result, err := engine.Run(testItem, testProject)
-
-	require.NoError(t, err)
-	assert.Equal(t, 1, result.FixRounds)
-	assert.Equal(t, []model.Step{model.StepPlan, model.StepImplement, model.StepImplement, model.StepReview}, stepsOf(harness.agents.seen()))
-	assert.Equal(t, 1, harness.verdicts.count())
-
-	fix := harness.briefs.seen()[2]
-	assert.Equal(t, "tests fail", fix.Findings)
-	assert.Equal(t, 1, fix.Round)
-}
-
 func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 	t.Parallel()
 
@@ -249,22 +162,18 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 		steps []string
 	}{
 		{"the_login_pick_fails", func(h *harness) { h.logins.err = errFake }, "pick the login of item 12", nil},
-		{"no_login_is_set", func(h *harness) { h.logins.login = "" }, "no agent login for this item", nil},
-		{"the_brief_fails", func(h *harness) { h.briefs.err = errFake }, "write the brief for the plan of item 12", []string{"claim:12", "release:12"}},
+		{"no_login_is_set", func(h *harness) { h.logins.login = "" }, "no agent login for this step", nil},
 		{"the_agent_fails", func(h *harness) { h.agents.err = errFake }, "fake failure", []string{"claim:12", "release:12"}},
 		{"the_agent_exits_nonzero", func(h *harness) {
 			h.agents.result = func(AgentRequest) agent.Result {
 				return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "bad exit"}
 			}
-		}, "the plan of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run obee resume 12", []string{"claim:12", "release:12"}},
+		}, "the agent step of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run obee resume 12", []string{"claim:12", "release:12"}},
 		{"the_agent_times_out", func(h *harness) {
 			h.agents.result = func(AgentRequest) agent.Result { return agent.Result{Outcome: agent.OutcomeTimedOut, ExitCode: -1} }
 		}, "ended as timed-out", []string{"claim:12", "release:12"}},
-		{"the_gate_fails_to_run", func(h *harness) { h.gate.err = errFake }, "gate of item 12", []string{"claim:12", "release:12"}},
-		{"the_verdict_cannot_be_read", func(h *harness) { h.verdicts.err = errFake }, "fake failure", []string{"claim:12", "release:12"}},
 		{"the_claim_fails", func(h *harness) { h.life.failing["claim"] = true }, "claim of item 12", []string{"claim:12"}},
-		{"the_ready_step_fails", func(h *harness) { h.life.failing["ready"] = true }, "ready of item 12", []string{"claim:12", "ready:12", "release:12"}},
-		{"the_release_fails", func(h *harness) { h.life.failing["release"] = true }, "release of item 12", []string{"claim:12", "ready:12", "release:12"}},
+		{"the_release_fails", func(h *harness) { h.life.failing["release"] = true }, "release of item 12", []string{"claim:12", "release:12"}},
 	}
 
 	for _, test := range tests {
@@ -283,22 +192,6 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 	}
 }
 
-func TestRun_AFixedLoopRunWithNoWorkflowFileEndsWithTheNotBuiltErrorAtTheBrief(t *testing.T) {
-	t.Parallel()
-
-	harness := newHarness(t)
-	harness.briefs.err = ErrNotBuilt
-	engine := harness.engine(t)
-
-	require.NotPanics(t, func() {
-		_, err := engine.Run(testItem, testProject)
-
-		require.ErrorContains(t, err, ErrNotBuilt.Error())
-	})
-	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen())
-	assert.Empty(t, harness.agents.requests)
-}
-
 func TestRun_RefusesAnItemThatIsNeitherAForgeNumberNorABeadsID(t *testing.T) {
 	t.Parallel()
 
@@ -313,7 +206,7 @@ func TestRun_AnOpenRunOfTheItemIsJoinedNotStartedAgain(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -391,7 +284,7 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(6)
+	harness.flowIs(t, waitFlow)
 	engine := harness.engine(t)
 	same, other := harness.client(t, testVersion), harness.client(t, "v2")
 
@@ -401,7 +294,7 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	infos, err := other.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runRunning, Version: testVersion, Stranded: true, Question: "fix the thing"}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runRunning, Version: testVersion, Stranded: true, Question: "What now?"}, infos[0])
 
 	infos, err = same.Status()
 	require.NoError(t, err)

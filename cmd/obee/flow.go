@@ -20,32 +20,14 @@ import (
 
 var errUnknownProject = errors.New("the config has no project of this name")
 
-// notBuilt stands in for each collaborator of the workflow that a later milestone adds. Each call names the missing step.
-type notBuilt struct{}
-
-func (notBuilt) Write(context.Context, flow.BriefRequest) (string, error) {
-	return "", flow.ErrNotBuilt
-}
-
-func (notBuilt) Read(context.Context, string, string, int) (flow.Review, error) {
-	return flow.Review{}, flow.ErrNotBuilt
-}
-
-// gate stands in for the gate of the workflow, which a later milestone adds.
-type gate struct{}
-
-func (gate) Run(context.Context, string, string) (flow.GateResult, error) {
-	return flow.GateResult{}, flow.ErrNotBuilt
-}
-
-// logins picks the runner of the implement step of the project an item belongs to. A step with no runner takes the pool pick.
+// logins picks the runner of an agent step that names none, from the pool.
 // pool returns the name of the runner that has room under the usage caps.
 type logins struct {
 	projects map[string]config.Project
 	pool     func(ctx context.Context) (string, error)
 }
 
-// newLogins reads the steps of each project of the config. The pool pick reads the usage of each claude runner.
+// newLogins reads the projects of the config. The pool pick reads the usage of each claude runner.
 func newLogins(cfg config.Config, opts flow.Options) logins {
 	return logins{projects: cfg.Projects, pool: poolPick(cfg, claude.UsageReader{Base: opts.Env}.Read)}
 }
@@ -62,29 +44,13 @@ func poolPick(cfg config.Config, read pool.Reader) func(ctx context.Context) (st
 	}
 }
 
-// implement returns the implement step of the named project. A project that the config lacks is an error: no guess.
-func (l logins) implement(project string) (config.StepSettings, error) {
-	found, ok := l.projects[project]
-	if !ok {
-		return config.StepSettings{}, fmt.Errorf("%w: %q", errUnknownProject, project)
-	}
-
-	return found.Steps[model.StepImplement], nil
-}
-
+// Pick returns the pool pick for an item. A project that the config lacks is an error: no guess.
 func (l logins) Pick(ctx context.Context, project, _ string) (string, error) {
-	step, err := l.implement(project)
-	if err != nil || step.Runner != "" {
-		return step.Runner, err
+	if _, ok := l.projects[project]; !ok {
+		return "", fmt.Errorf("%w: %q", errUnknownProject, project)
 	}
 
 	return l.pool(ctx)
-}
-
-func (l logins) PickFresh(_ context.Context, project, _ string) (string, error) {
-	step, err := l.implement(project)
-
-	return step.FreshRunner, err
 }
 
 // flowFactory builds the engine and the client of the commands. version is the build version.
@@ -113,14 +79,14 @@ func flowFactory() cli.Flow {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	pending := notBuilt{}
 	table := newAdapters(proc.NewExecRunner("bd", ""))
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table)
+	commands := newPrograms(cfg, trees, table)
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Briefs: pending, Agents: newAgents(cfg, opts, trees, table), Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg, opts), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
-		Commands: newPrograms(cfg, trees, table), Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
+		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: newLogins(cfg, opts), Lifecycle: life, Forge: life, Watch: life, Trees: trees, Beats: life,
+		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 	})
 }
 

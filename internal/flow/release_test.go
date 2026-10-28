@@ -198,14 +198,14 @@ func TestRun_AKeptWorktreeDoesNotFailTheRunAndAFailedLookupKeepsTheClaimRelease(
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 	assert.DirExists(t, r.tree)
-	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
+	assert.Equal(t, []string{"claim:12", "release:12"}, harness.life.seen())
 
 	failing := newHarness(t)
 	failing.trees.err = errFake
 	_, err = failing.engine(t).Run(testItem, testProject)
 	require.ErrorIs(t, err, errFake)
 	require.ErrorContains(t, err, "worktree of item 12")
-	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, failing.life.seen())
+	assert.Equal(t, []string{"claim:12", "release:12"}, failing.life.seen())
 }
 
 func TestRun_AnApprovedItemLosesItsPushedWorktree(t *testing.T) {

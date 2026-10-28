@@ -37,38 +37,25 @@ func mergeHarness(t *testing.T, result merge.Result) *harness {
 
 	harness := newHarness(t)
 	harness.gate.results = []GateResult{{Passed: true, Head: gatedHead}}
-	harness.verdicts.reviews = []Review{{Verdict: VerdictApprove, Head: gatedHead}}
 	harness.forge.state = review.Standing{Number: testPull, Head: gatedHead}
 	harness.merge = &fakeMerge{result: result}
 
 	return harness
 }
 
-func TestRun_TheMergeStepPinsTheMergeToTheGatedHead(t *testing.T) {
+func TestRun_AMergeThatCannotBeAskedEndsTheItemAndNamesTheStep(t *testing.T) {
 	t.Parallel()
 
-	harness := mergeHarness(t, merge.Result{Stop: merge.Done})
+	harness := mergeHarness(t, merge.Result{})
+	harness.merge.err = errFake
+	harness.flowIs(t, shipFlow("  merge = true\n"))
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{testProject + " " + testItem + " " + gatedHead}, harness.merge.asked)
-	assert.Equal(t, []int{testPull}, harness.watch.reads, "the watch reads the merged pull request")
-}
-
-func TestRun_AnOwnWorkRefusalLeavesTheMergeToTheOwner(t *testing.T) {
-	t.Parallel()
-
-	harness := mergeHarness(t, merge.Result{Stop: merge.OwnWork, Lines: []string{"REFUSE: #7 holds work of bee"}})
-	engine := harness.engine(t)
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.NoError(t, err)
-	assert.Len(t, harness.merge.asked, 1)
-	assert.Equal(t, []int{testPull}, harness.watch.reads, "the watch waits for the owner to merge")
-	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "merge of item 12")
+	assert.Empty(t, harness.watch.reads, "the watch never starts")
 }
 
 func TestRun_AnyOtherRefusalEndsTheItemWithTheLines(t *testing.T) {
@@ -76,6 +63,7 @@ func TestRun_AnyOtherRefusalEndsTheItemWithTheLines(t *testing.T) {
 
 	for _, stop := range []merge.Stop{merge.Refused, merge.NoWorkflowScope} {
 		harness := mergeHarness(t, merge.Result{Stop: stop, Lines: []string{"REFUSE: checks are not green: ci=fail", "(above refers to #7)"}})
+		harness.flowIs(t, shipFlow("  merge = true\n"))
 		engine := harness.engine(t)
 
 		_, err := engine.Run(testItem, testProject)
@@ -85,18 +73,4 @@ func TestRun_AnyOtherRefusalEndsTheItemWithTheLines(t *testing.T) {
 		assert.Empty(t, harness.watch.reads, "the watch never starts")
 		assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen(), "the claim is released")
 	}
-}
-
-func TestRun_AMergeThatCannotRunEndsTheItem(t *testing.T) {
-	t.Parallel()
-
-	harness := mergeHarness(t, merge.Result{})
-	harness.merge.err = errFake
-	engine := harness.engine(t)
-
-	_, err := engine.Run(testItem, testProject)
-
-	require.ErrorIs(t, err, errFake)
-	require.ErrorContains(t, err, "merge of item 12")
-	assert.Empty(t, harness.watch.reads)
 }

@@ -209,39 +209,25 @@ func TestNewAgents_WiresTheRealRunnerAndTheAdapterTable(t *testing.T) {
 	require.ErrorIs(t, err, agent.ErrUnreadable)
 }
 
-func TestLogins_AStepWithNoRunnerTakesThePoolPick(t *testing.T) {
+func TestLogins_AKnownProjectTakesThePoolPick(t *testing.T) {
 	t.Parallel()
 
-	steps := config.DefaultSteps()
-	steps[model.StepImplement] = config.StepSettings{}
-	named := config.DefaultSteps()
-	named[model.StepImplement] = config.StepSettings{Runner: "fixed"}
-
-	asked := 0
 	picked := logins{
-		projects: map[string]config.Project{"empty": {Steps: steps}, "named": {Steps: named}},
-		pool:     func(context.Context) (string, error) { asked++; return "from-pool", nil },
+		projects: map[string]config.Project{"p": {}},
+		pool:     func(context.Context) (string, error) { return "from-pool", nil },
 	}
 
-	fromPool, err := picked.Pick(t.Context(), "empty", "1")
+	login, err := picked.Pick(t.Context(), "p", "1")
 	require.NoError(t, err)
 
-	fixed, err := picked.Pick(t.Context(), "named", "1")
-	require.NoError(t, err)
-
-	assert.Equal(t, "from-pool", fromPool)
-	assert.Equal(t, "fixed", fixed)
-	assert.Equal(t, 1, asked, "a named runner never reads the usage")
+	assert.Equal(t, "from-pool", login)
 }
 
 func TestLogins_APoolFailureEndsThePick(t *testing.T) {
 	t.Parallel()
 
-	steps := config.DefaultSteps()
-	steps[model.StepImplement] = config.StepSettings{}
-
 	picked := logins{
-		projects: map[string]config.Project{"p": {Steps: steps}},
+		projects: map[string]config.Project{"p": {}},
 		pool:     func(context.Context) (string, error) { return "", errFake },
 	}
 

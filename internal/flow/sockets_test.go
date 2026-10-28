@@ -199,7 +199,6 @@ func watchSockets(t *testing.T, work func()) []string {
 
 func TestRun_OpensNoNetworkSocket(t *testing.T) { //nolint:paralleltest // the test samples the sockets of the whole process
 	harness := newHarness(t)
-	harness.verdicts.reviews = changes(1)
 
 	sockets := watchSockets(t, func() {
 		engine := harness.engine(t)

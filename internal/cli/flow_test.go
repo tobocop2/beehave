@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -25,8 +27,6 @@ const (
 
 type fakeRunner struct {
 	launchErr, runErr error
-	pinnedErr         error
-	pinned            string
 	sentBack          string
 	block             chan struct{}
 	mu                sync.Mutex
@@ -37,26 +37,17 @@ type fakeRunner struct {
 
 func (r *fakeRunner) Launch() error { return r.launchErr }
 
-func (r *fakeRunner) PinnedFile(string) (string, error) { return r.pinned, r.pinnedErr }
-
 func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error) {
 	r.mu.Lock()
-	r.files = append(r.files, item+"@"+project+" "+file)
-	r.mu.Unlock()
-
-	return flow.ItemResult{Item: item, FixRounds: 1}, r.runErr
-}
-
-func (r *fakeRunner) Run(item, project string) (flow.ItemResult, error) {
-	r.mu.Lock()
 	r.items = append(r.items, item+"@"+project)
+	r.files = append(r.files, item+"@"+project+" "+file)
 	r.mu.Unlock()
 
 	if r.block != nil {
 		<-r.block
 	}
 
-	return flow.ItemResult{Item: item, FixRounds: 2, SentBack: r.sentBack}, r.runErr
+	return flow.ItemResult{Item: item, SentBack: r.sentBack}, r.runErr
 }
 
 // Shutdown releases a blocked Run, as a real engine shutdown ends the run it holds.
@@ -80,11 +71,15 @@ func (r *fakeRunner) count() int {
 }
 
 type fakeSteering struct {
-	infos   []flow.RunInfo
-	err     error
-	calls   []string
-	closeOK bool
+	infos     []flow.RunInfo
+	err       error
+	pinned    string
+	pinnedErr error
+	calls     []string
+	closeOK   bool
 }
+
+func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
 
@@ -120,7 +115,11 @@ type flowRig struct {
 	options  flow.Options
 	config   config.Config
 	dir      string
+	engines  int // how many times the run command asked for an engine
 	env      map[string]string
+	// file is a valid workflow file. execute adds it to obee run as --workflow when useFile is set and the arguments name none.
+	file    string
+	useFile bool
 }
 
 func newRig(t *testing.T) *flowRig {
@@ -130,7 +129,11 @@ func newRig(t *testing.T) *flowRig {
 	writeConfig(t, dir, "runners.hcl", validRunners)
 	writeConfig(t, dir, "projects/p.hcl", validProject)
 
+	flowDir := t.TempDir()
+	writeConfig(t, flowDir, "flow.hcl", oneCommandFile)
+
 	return &flowRig{
+		file: filepath.Join(flowDir, "flow.hcl"), useFile: true,
 		runner: &fakeRunner{}, steering: &fakeSteering{}, dir: dir,
 		env: map[string]string{stateDirVariable: t.TempDir() + "/state"},
 	}
@@ -140,6 +143,8 @@ func (rig *flowRig) factory() cli.Flow {
 	return cli.Flow{
 		Engine: func(_ context.Context, cfg config.Config, opts flow.Options) (cli.Runner, error) {
 			rig.config, rig.options = cfg, opts
+			rig.engines++
+
 			if rig.engineOf != nil {
 				return nil, rig.engineOf()
 			}
@@ -159,6 +164,10 @@ func (rig *flowRig) factory() cli.Flow {
 
 func (rig *flowRig) execute(ctx context.Context, args ...string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
+
+	if len(args) > 0 && args[0] == "run" && !slices.Contains(args, "--workflow") && rig.useFile {
+		args = append(args, "--workflow", rig.file)
+	}
 
 	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Version: "v9", Flow: rig.factory()}, rig.env, &stdout, &stderr)
 
@@ -185,7 +194,7 @@ func TestRun_TakesTheItemToTheEndAndPassesTheSettingsOfTheConfig(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "item 12 finished after 2 fix rounds\n", stdout)
+	assert.Equal(t, "item 12 finished\n", stdout)
 	assert.Equal(t, []string{"12@p"}, rig.runner.items)
 	assert.Equal(t, 1, rig.runner.count())
 	assert.Equal(t, "v9", rig.options.Version)

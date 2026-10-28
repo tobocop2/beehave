@@ -8,23 +8,17 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
 )
 
-// PhaseInput describes one agent phase of an item. Findings and Answer feed the brief. Run is the id of the run that queued the phase.
+// PhaseInput describes one agent phase of an item. Run is the id of the run that queued the phase.
+// Prompt is the rendered prompt, which is the whole brief. Resume is the session to continue.
+// Model, Timeout and IdleTimeout go to the agent as they are.
 type PhaseInput struct {
-	Run      string     `json:"run"`
-	Item     string     `json:"item"`
-	Project  string     `json:"project"`
-	Step     model.Step `json:"step"`
-	Round    int        `json:"round"`
-	Login    string     `json:"login"`
-	Fresh    bool       `json:"fresh"`
-	Findings string     `json:"findings"`
-	Answer   string     `json:"answer"`
+	Run     string `json:"run"`
+	Item    string `json:"item"`
+	Project string `json:"project"`
+	Login   string `json:"login"`
 
-	// The phase of an agent step of a workflow file sets Prompt in place of Step and Round: the rendered prompt, which is the whole brief.
-	// Resume is the session to continue. Model, Timeout and IdleTimeout go to the agent as they are.
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
 	Model       string        `json:"model,omitempty"`
@@ -43,7 +37,7 @@ type PhaseOutput struct {
 	Skills     []string      `json:"skills,omitempty"`
 }
 
-// phase waits for the claim of its run, writes the brief, then runs the agent. The brief and the agent are steps, so a restart skips the work that finished.
+// phase waits for the claim of its run, then runs the agent as a step, so a restart skips the work that finished.
 // A phase starts no agent unless the run that queued it holds a trusted claim now, whatever context the phase runs under:
 // the child workflow of a phase outlives the run that queued it, and a later run of the same item holds another claim.
 func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
@@ -52,26 +46,15 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 		return PhaseOutput{}, err
 	}
 
-	brief := ""
-
-	if in.Prompt == "" {
-		brief, err = runStep(e, ctx, "brief", func(c context.Context) (string, error) {
-			return e.deps.Briefs.Write(c, BriefRequest{Run: in.Run, Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Findings: in.Findings, Answer: in.Answer})
-		})
-		if err != nil {
-			return PhaseOutput{}, fmt.Errorf("write the brief for the %s of item %s: %w", in.Step, in.Item, err)
-		}
-	}
-
-	return runStep(e, ctx, orDefault(string(in.Step), "agent"), func(c context.Context) (PhaseOutput, error) {
-		return e.runAgent(c, claim, in, brief)
+	return runStep(e, ctx, "agent", func(c context.Context) (PhaseOutput, error) {
+		return e.runAgent(c, claim, in)
 	})
 }
 
 // runAgent starts the agent of one phase under the context of the claim of its run, and waits for it. The agent dies with its process group when
 // the claim ends, or when the phase is canceled, times out or ends. A loss of the claim either comes first, and the start finds its context done,
 // or comes after, and the end of the context kills the group: no lock and no list of groups to kill on a loss.
-func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput, brief string) (PhaseOutput, error) {
+func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutput, error) {
 	agentCtx, cancel := context.WithCancelCause(claim)
 	defer cancel(nil)
 
@@ -79,7 +62,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput, brief strin
 	defer e.endGroups(in.Run)
 
 	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
-		Item: in.Item, Project: in.Project, Step: in.Step, Round: in.Round, Login: in.Login, Fresh: in.Fresh, Brief: brief, Started: e.recordGroup(ctx, in),
+		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, in),
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
 	})
 
@@ -109,19 +92,8 @@ func (e *Engine) endGroups(run string) {
 	}
 }
 
-// runPhase runs a phase as a child workflow on the agents queue, keyed by the login, and waits for it.
-func (e *Engine) runPhase(ctx dbos.Context, in PhaseInput) error {
-	_, err := e.queuePhase(ctx, in)
-
-	return err
-}
-
-// queuePhase is runPhase that also returns how the agent ended.
+// queuePhase runs a phase as a child workflow on the agents queue, keyed by the login, and waits for it. It returns how the agent ended.
 func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
-	if in.Login == "" {
-		return PhaseOutput{}, errEmptyLogin
-	}
-
 	in.Run = workflowID(ctx)
 
 	if err := e.claimCheck(in.Run, in.Item); err != nil {
@@ -130,7 +102,7 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 
 	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.queue), dbos.WithQueuePartitionKey(in.Login))
 	if err != nil {
-		return PhaseOutput{}, fmt.Errorf("queue the %s of item %s: %w", orDefault(string(in.Step), "agent step"), in.Item, err)
+		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
 
 	return awaitPhase(ctx, handle, e.deps.Clock.resultOptions())
@@ -162,7 +134,7 @@ func awaitPhase(ctx dbos.Context, handle dbos.WorkflowHandle[PhaseOutput], optio
 // phaseEnd turns a phase that did not exit with code 0 into an error that names the step.
 func phaseEnd(in PhaseInput, out PhaseOutput) error {
 	if out.Outcome != agent.OutcomeExited || out.ExitCode != 0 {
-		return fmt.Errorf("the %s of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", orDefault(string(in.Step), "agent step"), in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
+		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
 	}
 
 	return nil

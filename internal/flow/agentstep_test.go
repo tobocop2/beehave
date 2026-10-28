@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -41,29 +40,6 @@ func gitTree(t *testing.T) (dir, head string) {
 
 	return dir, strings.TrimSpace(string(out))
 }
-
-// loginsUntil picks the test login for the first ok calls, which the engine makes before the first step, and fails every call after them.
-type loginsUntil struct {
-	mu    sync.Mutex
-	calls int
-	ok    int
-	later error
-}
-
-func (l *loginsUntil) Pick(context.Context, string, string) (string, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.calls++
-
-	if l.calls <= l.ok {
-		return testLogin, nil
-	}
-
-	return "", l.later
-}
-
-func (l *loginsUntil) PickFresh(context.Context, string, string) (string, error) { return "", nil }
 
 // outputPath returns the path that a rendered prompt names after the words "Write to ".
 func outputPath(prompt string) string {
@@ -222,9 +198,9 @@ func TestAgentStep_ABadTimeoutAndALoginThatCannotBePickedFailTheStep(t *testing.
 	require.ErrorContains(t, err, "must be a string")
 
 	rig = newAgentRig(t)
-	rig.h.picker = &loginsUntil{ok: 2, later: errors.New("login gone")}
+	rig.h.picker = fakeLogins{err: errors.New("login gone")}
 	_, err = rig.run(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/a.md\"\n}\n", "Write to {{ .output_file }}\n")
-	require.ErrorContains(t, err, "pick the agent login for item")
+	require.ErrorContains(t, err, "pick the login of item")
 }
 
 func TestAgentStep_AnArgumentThatCannotBeEvaluatedFailsTheStep(t *testing.T) {

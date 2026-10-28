@@ -66,7 +66,6 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Len(t, cfg.Projects, 1)
 	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
 		cfg.Projects["example"].Project)
-	require.Equal(t, config.DefaultSteps(), cfg.Projects["example"].Steps)
 }
 
 func TestLoadFolder_TheExampleHoldsNoPlaceholderOrOwnerPath(t *testing.T) {
@@ -176,6 +175,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 	}{
 		{"unknown_key", goodProject + "shade = \"red\"\n", "unknown key `shade`. Remove it"},
 		{"unknown_key_gives_the_position", goodProject + "shade = \"red\"\n", "p.hcl:7:1: unknown key `shade`"},
+		{"the_steps_block_is_gone", goodProject + "steps \"gate\" {\ntimeout = \"2h\"\n}\n", "p.hcl:7:1: unknown block `steps`. Remove it."},
 		{"missing_repo", "base_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
 		{"blank_repo", "repo = \" \"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", "repo = [\"o/n\"]\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:"},
@@ -528,7 +528,6 @@ func TestLoadFolder_ARepeatedKeyIsReportedAsSuch(t *testing.T) {
 		words string
 	}{
 		{"repeated_key", goodProject + "repo = \"o/m\"\n", "p.hcl:7:1: `repo` is set twice. Keep one."},
-		{"repeated_block", goodProject + "steps \"gate\" {\n}\nsteps \"gate\" {\n}\n", "p.hcl:9:1: steps \"gate\" appears twice. Keep one."},
 		{"value_then_block", goodProject + "repo {\nx = 1\n}\n", "`repo` is a key, not a block"},
 	}
 

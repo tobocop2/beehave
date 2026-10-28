@@ -9,17 +9,19 @@ workflow "remediation" {
 agent "plan" {
   prompt = "prompts/plan.md"
   model  = "opus"
+  inputs = { item = { id = item.id, title = item.title, body = item.body } }
 }
 
 agent "implement" {
   prompt         = "prompts/implement.md"
   model          = "sonnet"
   require_skills = ["blast-radius-review"]
-  inputs         = { plan = agent.plan.text }
+  inputs         = { item = { id = item.id, title = item.title, body = item.body }, plan = agent.plan.text }
 }
 
+# A round is one fix and one review of it. The loop starts with a review, so five fix rounds need six passes: the sixth reviews the fifth fix.
 loop "review_fix" {
-  max   = 5
+  max   = 6
   until = gate.check.passed && agent.review.verdict == "approve"
 
   # The gate command is the one of the project.
@@ -32,6 +34,10 @@ loop "review_fix" {
     when    = gate.check.passed
     pin     = gate.check.head
     outputs = ["verdict"]
+
+    # A review that writes no verdict file is asked once more.
+    output_tries = 2
+    inputs       = { item = { id = item.id, title = item.title, body = item.body } }
   }
 
   # Rounds 1 to 3 resume the implementer. Rounds 4 and 5 start fresh, one tier up.
@@ -39,8 +45,8 @@ loop "review_fix" {
     prompt      = "prompts/fix.md"
     model       = loop.round <= 3 ? "sonnet" : "opus"
     resume_from = loop.round <= 3 ? agent.implement : null
-    when        = !(gate.check.passed && agent.review.verdict == "approve")
-    inputs      = { findings = gate.check.passed ? agent.review.text : gate.check.report, round = loop.round }
+    when        = loop.round <= 5 && !(gate.check.passed && agent.review.verdict == "approve")
+    inputs      = { item = { id = item.id, title = item.title, body = item.body }, findings = gate.check.passed ? agent.review.text : gate.check.report, round = loop.round }
   }
 }
 

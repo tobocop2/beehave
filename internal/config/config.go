@@ -3,10 +3,8 @@ package config
 import (
 	"errors"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -158,7 +156,7 @@ func overlayPercent(env map[string]string, name string, target *float64) error {
 	return nil
 }
 
-// Validate checks the values that no single file owns: the limits and the runners that steps name.
+// Validate checks the values that no single file owns: the agent limit and the pool caps.
 func (c Config) Validate() Problems {
 	var problems Problems
 
@@ -168,9 +166,7 @@ func (c Config) Validate() Problems {
 		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
 	}
 
-	problems = append(problems, c.poolProblems(runnersPath)...)
-
-	return append(problems, c.stepRunnerProblems(runnersPath)...)
+	return append(problems, c.poolProblems(runnersPath)...)
 }
 
 func (c Config) poolProblems(runnersPath string) Problems {
@@ -187,38 +183,6 @@ func (c Config) poolProblems(runnersPath string) Problems {
 		if !(limit.percent > 0 && limit.percent <= maxPercent) {
 			problems = append(problems, refuse("`%s` in the pool block must be a number above 0 and up to 100. Set it in %s or in %s.",
 				limit.key, runnersPath, limit.variable))
-		}
-	}
-
-	return problems
-}
-
-func (c Config) stepRunnerProblems(runnersPath string) Problems {
-	known := make(map[string]bool, len(c.Runners))
-	for _, runner := range c.Runners {
-		known[runner.Name] = true
-	}
-
-	var problems Problems
-
-	for _, name := range slices.Sorted(maps.Keys(c.Projects)) {
-		problems = append(problems, c.Projects[name].runnerProblems(known, runnersPath)...)
-	}
-
-	return problems
-}
-
-// runnerProblems lists each step of the project that names a runner the runners file does not define.
-func (p Project) runnerProblems(known map[string]bool, runnersPath string) Problems {
-	var problems Problems
-
-	for _, step := range model.Steps() {
-		settings := p.Steps[step]
-		for _, key := range []struct{ name, runner string }{{"runner", settings.Runner}, {"fresh_runner", settings.FreshRunner}} {
-			if key.runner != "" && !known[key.runner] {
-				problems = append(problems, refuse("%s: step `%s` names %s `%s`, which %s does not define. Add the runner there, or fix the name.",
-					p.Path, step, key.name, key.runner, runnersPath))
-			}
 		}
 	}
 
