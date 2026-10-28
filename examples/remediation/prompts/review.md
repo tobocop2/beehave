@@ -189,6 +189,10 @@ thing not to redo; and these lines:
 
 {{ .item.body }}
 
+The commands of the implementer that the workflow forbids, one for each line, or nothing when there were none:
+{{ .violations }}
+Report each one as a finding.
+
 The verdict is `approve` when no finding blocks the merge, and `changes` when one does.
 Write it to {{ .output_file }} as JSON, for example `{"verdict":"approve"}`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.

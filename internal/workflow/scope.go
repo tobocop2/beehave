@@ -23,7 +23,7 @@ type Output struct {
 func KindOutputs(kind Kind) []Output {
 	switch kind {
 	case KindAgent:
-		return []Output{{"head_sha", cty.String}, {"session", cty.String}, {"text", cty.String}, {"transcript", cty.String}}
+		return []Output{{"head_sha", cty.String}, {"session", cty.String}, {"text", cty.String}, {"transcript", cty.String}, {"violations", cty.String}}
 	case KindCommand:
 		return []Output{{"rc", cty.Number}, {"stdout", cty.String}}
 	case KindGate:

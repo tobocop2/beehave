@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/agenttest"
@@ -27,6 +28,8 @@ func (r *recorder) Errorf(format string, args ...any) {
 type fakeAdapter struct {
 	profile agent.Profile
 	readErr error
+	// noBash makes BashCalls a stub that reads nothing and never refuses a missing file.
+	noBash bool
 }
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
@@ -37,7 +40,13 @@ func (fakeAdapter) TranscriptPath(configDir, _, session string) string {
 	return filepath.Join(configDir, session)
 }
 
-func (a fakeAdapter) BashCalls(string) ([]model.Call, error) { return nil, a.readErr }
+func (a fakeAdapter) BashCalls(string) ([]model.Call, error) {
+	if a.noBash {
+		return nil, nil
+	}
+
+	return nil, a.readErr
+}
 
 func (a fakeAdapter) SkillCalls(string, string) ([]model.Call, error) { return nil, a.readErr }
 
@@ -143,6 +152,20 @@ func TestCheckRun(t *testing.T) {
 		assert.Len(t, r.failures, 1)
 		assert.Contains(t, r.failures[0], "cannot write the fake CLI")
 	})
+}
+
+func TestTestAdapter_FailsAnAdapterWhoseBashCallsReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.noBash = true
+
+	var r recorder
+
+	agenttest.CheckUnreadable(&r, a, "none")
+
+	require.Len(t, r.failures, 1)
+	assert.Contains(t, r.failures[0], "BashCalls of a missing file returned <nil>, not agent.ErrUnreadable")
 }
 
 func TestCheckUnreadable(t *testing.T) {

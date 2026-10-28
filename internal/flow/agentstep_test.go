@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // gitTree makes a folder with one commit and returns the folder and the commit.
@@ -680,4 +681,149 @@ func TestAgentStep_AReplayDoesNotReadThePromptFileOrRunTheAgentAgain(t *testing.
 	require.NoError(t, outcome.err)
 	assert.Len(t, rig.h.agents.seen(), 1, "the agent ran once")
 	assert.Equal(t, []string{"after yes sess-1"}, rig.h.commands.ran())
+}
+
+const forbidFlow = `workflow "w" {}
+agent "a" {
+  prompt          = "prompts/a.md"
+  forbid_commands = ["bulk-staging", "local-delete"]
+}
+command "show" {
+  run = ["show", agent.a.violations]
+}
+`
+
+func TestAgentStep_TheKindsOfForbidCommandsGoToTheAgentRequest(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, forbidFlow, "x")
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.Equal(t, []model.FindingKind{model.FindingBulkStaging, model.FindingLocalDelete}, rig.h.agents.seen()[0].Forbid)
+
+	rig = newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err = rig.run(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/a.md\"\n}\n", "x")
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.h.agents.seen()[0].Forbid)
+}
+
+func TestAgentStep_AViolationIsAnOutputAndTheStepStillSucceeds(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	hit := exited
+	hit.Violations = []string{"bulk-staging: git add -A"}
+	rig.reply("", hit)
+
+	_, err := rig.run(t, forbidFlow, "x")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"show bulk-staging: git add -A"}, rig.h.commands.ran())
+}
+
+func TestAgentStep_AReplayAfterTheAgentEndedKeepsTheViolationItRecorded(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	hit := exited
+	hit.Violations = []string{"bulk-staging: git add -A"}
+	rig.reply("", hit)
+
+	file := writeFlow(t, forbidFlow)
+	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Do the work\n"), 0o600))
+
+	// The run reads the result of the phase once an hour, so it is still waiting when the phase has ended and the engine stops.
+	crashed, err := NewEngine(t.Context(), rig.h.opts, rig.h.deps())
+	require.NoError(t, err)
+	require.NoError(t, crashed.Launch())
+
+	crashed.deps.Clock.Poll = time.Hour
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := crashed.RunFile(testItem, testProject, file)
+		ran <- runErr
+	}()
+
+	eventually(t, func() bool { return phaseCount(t, crashed, dbos.WorkflowStatusSuccess) == 1 })
+
+	require.NoError(t, crashed.Shutdown())
+	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
+
+	_, err = rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"show bulk-staging: git add -A"}, rig.h.commands.ran(), "the replay reads the violation from the record")
+	assert.Len(t, rig.h.agents.seen(), 1, "the agent does not run again, so no transcript is read again")
+}
+
+func TestAgentStep_ACleanRunHasEmptyViolations(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, forbidFlow, "x")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"show "}, rig.h.commands.ran())
+}
+
+func TestAgentStep_TheUntilOfALoopReadsTheViolationsOfAnAgent(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	calls := 0
+	rig.h.agents.result = func(AgentRequest) agent.Result {
+		calls++
+
+		out := exited
+		if calls == 1 {
+			out.Violations = []string{"local-delete: rm -rf $d", "bulk-staging: git add ."}
+		}
+
+		return out
+	}
+
+	_, err := rig.run(t, `workflow "w" {}
+loop "l" {
+  max   = 3
+  until = agent.a.violations == ""
+
+  agent "a" {
+    prompt          = "prompts/a.md"
+    forbid_commands = ["bulk-staging", "local-delete"]
+  }
+}
+`, "x")
+
+	require.NoError(t, err)
+	assert.Len(t, rig.h.agents.seen(), 2, "the loop ends in the round that has no violation")
+}
+
+func TestAgentStep_AForbidCommandsKindThatTheFileDoesNotKnowIsRefusedWhenTheStepRuns(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+
+	_, err := rig.run(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/a.md\"\n  forbid_commands = [item.title]\n}\n", "x")
+
+	require.ErrorContains(t, err, "forbid_commands")
+	assert.Empty(t, rig.h.agents.seen())
+
+	rig = newAgentRig(t)
+
+	_, err = rig.run(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt = \"prompts/a.md\"\n  forbid_commands = 3\n}\n", "x")
+
+	require.ErrorContains(t, err, "list of strings")
+	assert.Empty(t, rig.h.agents.seen())
 }

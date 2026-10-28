@@ -5,13 +5,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/check/shell"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
 )
+
+// snippetRunes is the longest command text in one violation line.
+const snippetRunes = 160
+
+// maxViolationLines is the most violation lines that a run records. One more line says how many the run left out.
+const maxViolationLines = 20
 
 var (
 	errNoRunner  = errors.New("the runners file has no runner of this name")
@@ -28,6 +38,7 @@ type agents struct {
 	env     map[string]string
 	run     func(ctx context.Context, spec agent.Spec) agent.Result
 	skills  func(adapter agent.Adapter, path string) ([]model.Call, error)
+	bash    func(adapter agent.Adapter, path string) ([]model.Call, error)
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -39,6 +50,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		env:     opts.Env,
 		run:     func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
 		skills:  func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.SkillCalls(path, "") },
+		bash:    func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.BashCalls(path) },
 	}
 }
 
@@ -58,7 +70,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 		Log: tap, OnStart: request.Started,
 	})
 
-	return a.describe(adapter, runner, dir, tap, result)
+	return a.describe(adapter, runner, dir, tap, result, request.Forbid)
 }
 
 // target returns the runner of the login and the worktree of the item. A request with no prompt, an unknown login or no worktree is refused.
@@ -94,8 +106,9 @@ func (a agents) runnerOf(name string) (model.Runner, bool) {
 	return model.Runner{}, false
 }
 
-// describe adds the session, the transcript, the last message and the skill calls to the result of a run that exited with code 0.
-func (a agents) describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result) (agent.Result, error) {
+// describe adds the session, the transcript, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0.
+// With no forbidden kind it reads no Bash call.
+func (a agents) describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind) (agent.Result, error) {
 	if result.Outcome != agent.OutcomeExited || result.ExitCode != 0 {
 		return result, nil
 	}
@@ -107,6 +120,11 @@ func (a agents) describe(adapter agent.Adapter, runner model.Runner, dir string,
 
 	result.Transcript = adapter.TranscriptPath(runner.ConfigDir, dir, result.Session)
 
+	return a.readTranscript(adapter, result, forbid)
+}
+
+// readTranscript adds the skill calls of the transcript to the result, and its violations when forbid lists a kind.
+func (a agents) readTranscript(adapter agent.Adapter, result agent.Result, forbid []model.FindingKind) (agent.Result, error) {
 	var err error
 
 	result.Skills, err = a.skillNames(adapter, result.Transcript)
@@ -114,7 +132,47 @@ func (a agents) describe(adapter agent.Adapter, runner model.Runner, dir string,
 		return result, fmt.Errorf("read the skill calls of session %s: %w", result.Session, err)
 	}
 
+	if len(forbid) == 0 {
+		return result, nil
+	}
+
+	calls, err := a.bash(adapter, result.Transcript)
+	if err != nil {
+		return result, fmt.Errorf("read the Bash calls of session %s: %w", result.Session, err)
+	}
+
+	result.Violations = violations(calls, forbid)
+
 	return result, nil
+}
+
+// violations scans each Bash call and returns one line for each hit of a listed kind: the kind, a colon and the command that matched.
+// It keeps the first maxViolationLines lines and ends with one line that gives the number left out.
+func violations(calls []model.Call, forbid []model.FindingKind) []string {
+	var lines []string
+
+	for _, call := range calls {
+		for _, finding := range shell.Scan(call.Text) {
+			if slices.Contains(forbid, finding.Kind) {
+				lines = append(lines, fmt.Sprintf("%s: %s", finding.Kind, snippet(finding.Text)))
+			}
+		}
+	}
+
+	if left := len(lines) - maxViolationLines; left == 1 {
+		lines = append(lines[:maxViolationLines], "1 more violation is not shown")
+	} else if left > 1 {
+		lines = append(lines[:maxViolationLines], fmt.Sprintf("%d more violations are not shown", left))
+	}
+
+	return lines
+}
+
+// snippet collapses the white space of a command to single spaces, so a hit stays on one line, and keeps its first runes.
+func snippet(text string) string {
+	collapsed := []rune(strings.Join(strings.FieldsFunc(text, unicode.IsSpace), " "))
+
+	return string(collapsed[:min(len(collapsed), snippetRunes)])
 }
 
 // skillNames returns the name of each skill the transcript shows.

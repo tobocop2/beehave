@@ -21,9 +21,9 @@ type Profile struct {
 	ResumeFlag string
 }
 
-// Adapter is one agent CLI. The runner calls Profile before it starts a run. The check calls the two readers on a finished transcript.
-// An unreadable transcript is an error that wraps ErrUnreadable.
-// Call order for one run: Profile before the CLI starts, Line for each output line while it runs, then TranscriptPath and SkillCalls after it ends.
+// Adapter is one agent CLI. The runner calls Profile before it starts a run. The agent step calls the two readers on a finished transcript: SkillCalls always, and BashCalls when the step sets `forbid_commands`.
+// Every adapter must implement both. An unreadable transcript is an error that wraps ErrUnreadable.
+// Call order for one run: Profile before the CLI starts, Line for each output line while it runs, then TranscriptPath, SkillCalls and BashCalls after it ends.
 // Line never sees a line of an earlier run, and TranscriptPath needs the session id that Line returned.
 type Adapter interface {
 	// Profile returns the command line and the login variables of the CLI.

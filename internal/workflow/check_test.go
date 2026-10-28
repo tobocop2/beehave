@@ -185,7 +185,59 @@ command "use" {
 
 	assert.Contains(t, d.Text, "agent `implement` has no output `txt`")
 	assert.Contains(t, d.Text, "Did you mean `text`?")
-	assert.Contains(t, d.Text, "head_sha, session, text, transcript")
+	assert.Contains(t, d.Text, "head_sha, session, text, transcript, violations")
+}
+
+func TestForbidCommandsWithAnUnknownKindIsRefusedAtItsPosition(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, `workflow "w" {}
+agent "implement" {
+  prompt          = "prompts/fix.md"
+  forbid_commands = ["bulk-staging", "bulk-stagin"]
+}
+`)
+
+	assert.Equal(t, 4, d.Line)
+	assert.Equal(t, 38, d.Col)
+	assert.Contains(t, d.Text, "unknown kind `bulk-stagin`")
+	assert.Contains(t, d.Text, "Did you mean `bulk-staging`?")
+	assert.Contains(t, d.Text, "bulk-staging, delete-text, local-delete, opaque-command, remote-delete, unparsed")
+}
+
+func TestForbidCommandsThatIsNotAListOfKindsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	d := oneProblem(t, `workflow "w" {}
+agent "implement" {
+  prompt          = "prompts/fix.md"
+  forbid_commands = "bulk-staging"
+}
+`)
+
+	assert.Equal(t, 4, d.Line)
+	assert.Contains(t, d.Text, "forbid_commands must be a list of kinds")
+}
+
+func TestForbidCommandsWithKnownKindsAndAComputedListPass(t *testing.T) {
+	t.Parallel()
+
+	found, _ := check(t, `workflow "w" {}
+agent "implement" {
+  prompt          = "prompts/fix.md"
+  forbid_commands = ["bulk-staging", "local-delete"]
+}
+agent "other" {
+  prompt          = "prompts/fix.md"
+  forbid_commands = [env.KIND]
+}
+agent "none" {
+  prompt          = "prompts/fix.md"
+  forbid_commands = []
+}
+`)
+
+	assert.Empty(t, found)
 }
 
 func TestDeclaredOutputsAreValid(t *testing.T) {

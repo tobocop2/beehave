@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,10 @@ type agentFixture struct {
 	agents agents
 	spec   *agent.Spec
 	kind   model.Agent
+	// bash holds the Bash calls that the fake transcript shows. bashReads counts the reads of them.
+	bash      []model.Call
+	bashErr   error
+	bashReads int
 }
 
 func newAgentFixture(output string, result agent.Result) *agentFixture {
@@ -73,9 +78,159 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 		skills: func(agent.Adapter, string) ([]model.Call, error) {
 			return []model.Call{{Line: 1, Text: "blast"}, {Line: 4, Text: "oracle"}}, nil
 		},
+		bash: func(agent.Adapter, string) ([]model.Call, error) {
+			f.bashReads++
+
+			return f.bash, f.bashErr
+		},
 	}
 
 	return f
+}
+
+func TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []model.Call{{Line: 3, Text: "git add -A"}, {Line: 5, Text: "echo   hi"}, {Line: 8, Text: "rm -rf $dir"}}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging, model.FindingLocalDelete}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Equal(t, []string{"bulk-staging: git add -A", "local-delete: rm -rf $dir"}, got.Violations)
+}
+
+func TestAgents_ACleanTranscriptHasNoViolations(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []model.Call{{Line: 3, Text: "go test ./..."}}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Empty(t, got.Violations)
+	assert.Equal(t, 1, f.bashReads)
+}
+
+func TestAgents_ABashCallOfAKindThatIsNotListedIsNotRecorded(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []model.Call{{Line: 3, Text: "git add -A"}}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingRemoteDelete}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Empty(t, got.Violations)
+}
+
+func TestAgents_AStepThatForbidsNothingNeverReadsTheBashCalls(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bashErr = errFake
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Empty(t, got.Violations)
+	assert.Zero(t, f.bashReads)
+}
+
+func TestAgents_AnUnreadableTranscriptFailsAStepThatForbidsCommands(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bashErr = errFake
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	_, err := f.agents.Run(t.Context(), req)
+
+	require.ErrorIs(t, err, errFake)
+	assert.ErrorContains(t, err, "read the Bash calls of session s1")
+}
+
+func TestAgents_AHitIsOneLineWithTheCommandCollapsedAndCut(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []model.Call{{Line: 1, Text: "git   add\t-A " + strings.Repeat("x", 300)}}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.Len(t, got.Violations, 1)
+	assert.NotContains(t, got.Violations[0], "\n")
+	assert.True(t, strings.HasPrefix(got.Violations[0], "bulk-staging: git add -A"))
+	assert.LessOrEqual(t, len(got.Violations[0]), len("bulk-staging: ")+160)
+}
+
+func TestAgents_TheLinesOfViolationsAreBoundedAndOneLineSaysHowManyAreLeftOut(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+
+	for i := range 25 {
+		f.bash = append(f.bash, model.Call{Line: i + 1, Text: "git add -A"})
+	}
+
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.Len(t, got.Violations, maxViolationLines+1)
+	assert.Equal(t, "bulk-staging: git add -A", got.Violations[maxViolationLines-1])
+	assert.Equal(t, "5 more violations are not shown", got.Violations[maxViolationLines])
+}
+
+func TestAgents_OneViolationLeftOutIsCountedInTheSingular(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+
+	for i := range maxViolationLines + 1 {
+		f.bash = append(f.bash, model.Call{Line: i + 1, Text: "git add -A"})
+	}
+
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	require.Len(t, got.Violations, maxViolationLines+1)
+	assert.Equal(t, "1 more violation is not shown", got.Violations[maxViolationLines])
+}
+
+func TestAgents_ExactlyTheMostViolationLinesHaveNoCountLine(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+
+	for i := range maxViolationLines {
+		f.bash = append(f.bash, model.Call{Line: i + 1, Text: "git add -A"})
+	}
+
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Len(t, got.Violations, maxViolationLines)
 }
 
 func request() flow.AgentRequest {
@@ -206,6 +361,9 @@ func TestNewAgents_WiresTheRealRunnerAndTheAdapterTable(t *testing.T) {
 	assert.Contains(t, got.Note, "cannot be started yet")
 
 	_, err = a.skills(claude.New(), t.TempDir()+"/none.jsonl")
+	require.ErrorIs(t, err, agent.ErrUnreadable)
+
+	_, err = a.bash(claude.New(), t.TempDir()+"/none.jsonl")
 	require.ErrorIs(t, err, agent.ErrUnreadable)
 }
 

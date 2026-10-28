@@ -8,11 +8,12 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // PhaseInput describes one agent phase of an item. Run is the id of the run that queued the phase.
 // Prompt is the rendered prompt, which is the whole brief. Resume is the session to continue.
-// Model, Timeout and IdleTimeout go to the agent as they are.
+// Model, Timeout and IdleTimeout go to the agent as they are. Forbid lists the kinds of command that the step forbids.
 type PhaseInput struct {
 	Run     string `json:"run"`
 	Item    string `json:"item"`
@@ -24,9 +25,12 @@ type PhaseInput struct {
 	Model       string        `json:"model,omitempty"`
 	Timeout     time.Duration `json:"timeout,omitempty"`
 	IdleTimeout time.Duration `json:"idle_timeout,omitempty"`
+
+	Forbid []model.FindingKind `json:"forbid,omitempty"`
 }
 
-// PhaseOutput records how the agent of a phase ended. Session, Transcript, Text and Skills describe the session that ended.
+// PhaseOutput records how the agent of a phase ended. Session, Transcript, Text, Skills and Violations describe the session that ended.
+// The phase is a recorded step, so a replay reads Violations from the record and scans no transcript again.
 type PhaseOutput struct {
 	Outcome    agent.Outcome `json:"outcome"`
 	ExitCode   int           `json:"exit_code"`
@@ -35,6 +39,7 @@ type PhaseOutput struct {
 	Transcript string        `json:"transcript,omitempty"`
 	Text       string        `json:"text,omitempty"`
 	Skills     []string      `json:"skills,omitempty"`
+	Violations []string      `json:"violations,omitempty"`
 }
 
 // phase waits for the claim of its run, then runs the agent as a step, so a restart skips the work that finished.
@@ -64,15 +69,24 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
 		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, in),
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
+		Forbid: in.Forbid,
 	})
 
-	out := PhaseOutput{Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note, Session: result.Session, Transcript: result.Transcript, Text: result.Text, Skills: result.Skills}
+	out := phaseOutput(result)
 	if err != nil {
 		return out, err
 	}
 
 	// The end of the phase is judged inside the step, so a phase that did not exit with code 0 is a failed step that obee resume reruns.
 	return out, phaseEnd(in, out)
+}
+
+// phaseOutput records how the agent of a phase ended.
+func phaseOutput(result agent.Result) PhaseOutput {
+	return PhaseOutput{
+		Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note, Session: result.Session, Transcript: result.Transcript,
+		Text: result.Text, Skills: result.Skills, Violations: result.Violations,
+	}
 }
 
 // recordGroup returns the function that writes the process group of an agent to the process file, under the id of the run. A failed write is logged.
