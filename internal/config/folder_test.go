@@ -140,7 +140,12 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 	require.Equal(t, "local", project.BuildHost, "a project without a build host builds locally")
 
 	for _, name := range []string{"gpu-a", "A", "a1-b2-c3", "local"} {
-		project, problems = loadProjectText(t, goodProject+"build_host = \""+name+"\"\n")
+		text := goodProject + "build_host = \"" + name + "\"\n"
+		if name != "local" {
+			text += "[host]\nprovider = \"skypilot\"\ndisk_floor_gb = 50\n"
+		}
+
+		project, problems = loadProjectText(t, text)
 		require.Empty(t, problems, name)
 		require.Equal(t, name, project.BuildHost)
 	}
@@ -170,7 +175,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		words string
 	}{
 		{"unknown_key", goodProject + "shade = \"red\"\n", "unknown key `shade`"},
-		{"unknown_key_lists_the_allowed_ones", goodProject + "shade = \"red\"\n", "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, steps"},
+		{"unknown_key_lists_the_allowed_ones", goodProject + "shade = \"red\"\n", "repo, tracker, forge, beads_prefix, base_branch, gate, build_host, host, steps"},
 		{"missing_repo", "base_branch = \"main\"\ngate = \"g\"\n", "`repo` must be a non-empty string"},
 		{"blank_repo", "repo = \" \"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", "repo = 3\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` has the wrong type"},

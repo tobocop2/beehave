@@ -24,13 +24,14 @@ type rawProject struct {
 	BaseBranch  string             `toml:"base_branch"`
 	Gate        string             `toml:"gate"`
 	BuildHost   *string            `toml:"build_host"`
+	Host        *rawHost           `toml:"host"`
 	Steps       map[string]rawStep `toml:"steps"`
 }
 
 // loadProject reads one project file. The project name is the file name without ".toml".
 func loadProject(path string) (Project, error) {
 	var raw rawProject
-	if err := decodeFile(path, &raw, projectKeys+"; [steps.<name>]: "+stepKeys); err != nil {
+	if err := decodeFile(path, &raw, projectKeys+"; [steps.<name>]: "+stepKeys+"; [host]: "+hostKeys); err != nil {
 		return Project{}, err
 	}
 
@@ -56,9 +57,14 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
+	hostTable, err := hostConfig(path, host, raw.Host)
+	if err != nil {
+		return model.Project{}, err
+	}
+
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo, Tracker: tracker, Forge: forge,
-		BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host,
+		BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable,
 	}, nil
 }
 

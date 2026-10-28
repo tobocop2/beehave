@@ -150,6 +150,8 @@ linters:
               desc: a conformance suite or fake is for tests only
             - pkg: github.com/tobocop2/obee/internal/proc/proctest
               desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/host/hosttest
+              desc: a conformance suite or fake is for tests only
         dbos-only-in-flow:
           files: ["!**/internal/flow/**"]
           deny:
@@ -166,9 +168,15 @@ linters:
               desc: only cmd/obee imports a backend
             - pkg: github.com/tobocop2/obee/internal/agent/claude
               desc: only cmd/obee imports a backend
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: only cmd/obee imports a backend
+        # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
+        # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
         no-backend-to-backend-store-beads:
           files: ["**/internal/store/beads/**"]
           deny:
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/forge/github
@@ -178,6 +186,8 @@ linters:
         no-backend-to-backend-store-github:
           files: ["**/internal/store/github/**"]
           deny:
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/forge/github
@@ -187,15 +197,30 @@ linters:
         no-backend-to-backend-forge-github:
           files: ["**/internal/forge/github/**"]
           deny:
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/agent/claude
               desc: a backend never imports another backend
+        no-backend-to-backend-host-skypilot:
+          files: ["**/internal/host/skypilot/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: a backend never imports another backend
         no-backend-to-backend-agent-claude:
           files: ["**/internal/agent/claude/**"]
           deny:
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
