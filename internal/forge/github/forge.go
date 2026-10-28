@@ -16,6 +16,7 @@ import (
 const (
 	argAPI         = "api"
 	argPR          = "pr"
+	argView        = "view"
 	argRepo        = "--repo"
 	argJSON        = "--json"
 	argPaginate    = "--paginate"
@@ -117,7 +118,7 @@ func integrationAgrees(base, integration string) error {
 
 // PRBody returns the description text of a pull request.
 func (f *Forge) PRBody(ctx context.Context, pr int) (string, error) {
-	done := f.run.Run(ctx, []string{argPR, "view", strconv.Itoa(pr), "-R", f.repo, argJSON, "body", argJQ, ".body"})
+	done := f.run.Run(ctx, []string{argPR, argView, strconv.Itoa(pr), "-R", f.repo, argJSON, "body", argJQ, ".body"})
 	if done.ExitCode != 0 {
 		return "", forge.Refuse("cannot read the body of pull request %d in %s, so the Closes lines at the first review are unknown.", pr, f.repo)
 	}
@@ -129,7 +130,7 @@ func (f *Forge) PRBody(ctx context.Context, pr int) (string, error) {
 func (f *Forge) PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error) {
 	list := strings.Join(fields, ",")
 
-	done := f.run.Run(ctx, []string{argPR, "view", strconv.Itoa(pr), argRepo, f.repo, argJSON, list})
+	done := f.run.Run(ctx, []string{argPR, argView, strconv.Itoa(pr), argRepo, f.repo, argJSON, list})
 	if done.ExitCode != 0 {
 		return model.PullRequest{}, forge.Refuse("cannot read pull request %d (%s)", pr, list)
 	}

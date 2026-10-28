@@ -272,6 +272,7 @@ linters:
             - "**/internal/merge/**"
             - "**/internal/review/**"
             - "**/internal/pool/**"
+            - "**/internal/preflight/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -286,6 +287,7 @@ linters:
             - github.com/tobocop2/obee/internal/merge
             - github.com/tobocop2/obee/internal/review
             - github.com/tobocop2/obee/internal/pool
+            - github.com/tobocop2/obee/internal/preflight
         layer-3:
           list-mode: lax
           files:
@@ -329,6 +331,7 @@ linters:
             - "!**/internal/merge/**"
             - "!**/internal/review/**"
             - "!**/internal/pool/**"
+            - "!**/internal/preflight/**"
             - "!**/internal/flow/**"
             - "!**/internal/cli/**"
             - "!**/internal/tui/**"

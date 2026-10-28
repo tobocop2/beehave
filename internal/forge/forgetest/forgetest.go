@@ -31,6 +31,21 @@ const (
 	SevenCheck    = "build"
 )
 
+// What the fake behind a Factory also serves: the comment and the inline comment of pull request 7, the default branch,
+// the branch of pull request 7 with its tip, and a branch that does not exist.
+const (
+	SevenComment  = "looks good"
+	SevenInline   = "rename this"
+	DefaultBranch = "main"
+	SevenBranch   = "feature"
+	SevenTip      = "0123456789abcdef0123456789abcdef01234567"
+	GoneBranch    = "gone"
+	SearchSince   = "2026-01-01"
+	SearchUser    = "alice"
+	// SevenRun is the link of a check run that the fake serves with no annotation.
+	SevenRun = "https://github.com/owner/name/runs/9"
+)
+
 // TestForge runs the conformance suite against the forge that make returns, as golang.org/x/net/nettest.TestConn does for a connection.
 func TestForge(t *testing.T, make Factory) {
 	t.Helper()
@@ -104,6 +119,77 @@ func CheckForgeReads(r Reporter, target forge.Forge) {
 	c.equal(view.Title, SevenTitle, "title")
 
 	checkLists(c, target)
+	checkConversation(c, target)
+	checkBranches(c, target)
+	checkStanding(c, target)
+}
+
+// checkStanding runs the batched read of our pull requests, the title of an item and the annotations of a check run.
+func checkStanding(c check, target forge.Forge) {
+	c.r.Helper()
+
+	ctx := context.Background()
+
+	title, err := target.Title(ctx, Seven)
+	c.noError(err, "Title")
+	c.equal(title, SevenTitle, "item title")
+
+	own, err := target.OwnPulls(ctx, SearchUser)
+	c.noError(err, "OwnPulls")
+	c.equal(pick(own, func(v model.OwnPull) int { return v.Number }), []int{Seven}, "own numbers")
+
+	notStarted, err := target.CheckNotStarted(ctx, SevenRun)
+	c.noError(err, "CheckNotStarted")
+	c.equal(notStarted, false, "check not started")
+}
+
+func checkConversation(c check, target forge.Forge) {
+	c.r.Helper()
+
+	ctx := context.Background()
+	body := func(v model.Comment) string { return v.Body }
+
+	comments, err := target.Comments(ctx, Seven)
+	c.noError(err, "Comments")
+	c.equal(pick(comments, body), []string{SevenComment}, "comments")
+
+	inline, err := target.ReviewComments(ctx, Seven)
+	c.noError(err, "ReviewComments")
+	c.equal(pick(inline, body), []string{SevenInline}, "review comments")
+
+	found, err := target.Search(ctx, model.SearchRequest{Kind: model.SearchPulls, Involves: SearchUser, Since: SearchSince, Limit: pageSize})
+	c.noError(err, "Search")
+	c.equal(found, []int{Seven}, "searched numbers")
+
+	checkWrites(c, target)
+}
+
+func checkWrites(c check, target forge.Forge) {
+	c.r.Helper()
+
+	ctx := context.Background()
+
+	c.noError(target.PostComment(ctx, Seven, "hello"), "PostComment")
+	c.noError(target.SetDraft(ctx, Seven, true), "SetDraft to draft")
+	c.noError(target.SetDraft(ctx, Seven, false), "SetDraft to ready")
+}
+
+func checkBranches(c check, target forge.Forge) {
+	c.r.Helper()
+
+	ctx := context.Background()
+
+	name, err := target.DefaultBranch(ctx)
+	c.noError(err, "DefaultBranch")
+	c.equal(name, DefaultBranch, "default branch")
+
+	tip, found, err := target.BranchRef(ctx, SevenBranch)
+	c.noError(err, "BranchRef")
+	c.equal([]any{tip, found}, []any{SevenTip, true}, "branch tip")
+
+	tip, found, err = target.BranchRef(ctx, GoneBranch)
+	c.noError(err, "BranchRef of a missing branch")
+	c.equal([]any{tip, found}, []any{"", false}, "missing branch")
 }
 
 func checkLists(c check, target forge.Forge) {
@@ -137,10 +223,41 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 		{"UnresolvedThreads", func(ctx context.Context) error { _, err := target.UnresolvedThreads(ctx, Seven); return err }},
 		{"StackID", func(ctx context.Context) error { _, err := target.StackID(ctx, Seven); return err }},
 		{"ExistingReview", func(ctx context.Context) error { _, err := target.ExistingReview(ctx, Seven); return err }},
+	})
+	checkNewFail(r, target)
+	checkStandingFail(r, target)
+}
+
+// checkStandingFail runs the batched read, the title read and the annotation read on a forge whose commands all fail.
+func checkStandingFail(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
+		{"Title", func(ctx context.Context) error { _, err := target.Title(ctx, Seven); return err }},
+		{"OwnPulls", func(ctx context.Context) error { _, err := target.OwnPulls(ctx, SearchUser); return err }},
+		{"CheckNotStarted", func(ctx context.Context) error { _, err := target.CheckNotStarted(ctx, SevenRun); return err }},
+	})
+}
+
+// checkNewFail runs the overlap, the conversation and the branch methods on a forge whose commands all fail.
+func checkNewFail(r Reporter, target forge.Forge) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
 		{"Overlap", func(ctx context.Context) error {
 			_, err := target.Overlap(ctx, model.OverlapRequest{PR: "7"})
 			return err
 		}},
+		{"Comments", func(ctx context.Context) error { _, err := target.Comments(ctx, Seven); return err }},
+		{"ReviewComments", func(ctx context.Context) error { _, err := target.ReviewComments(ctx, Seven); return err }},
+		{"Search", func(ctx context.Context) error {
+			_, err := target.Search(ctx, model.SearchRequest{Kind: model.SearchIssues, Involves: SearchUser, Since: SearchSince, Limit: pageSize})
+			return err
+		}},
+		{"DefaultBranch", func(ctx context.Context) error { _, err := target.DefaultBranch(ctx); return err }},
+		{"BranchRef", func(ctx context.Context) error { _, _, err := target.BranchRef(ctx, SevenBranch); return err }},
+		{"PostComment", func(ctx context.Context) error { return target.PostComment(ctx, Seven, "hello") }},
+		{"SetDraft", func(ctx context.Context) error { return target.SetDraft(ctx, Seven, true) }},
 	})
 }
 
