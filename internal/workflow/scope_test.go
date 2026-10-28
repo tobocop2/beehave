@@ -81,12 +81,12 @@ func TestScopeReadsTheOutputsOfAStepThatRan(t *testing.T) {
 	t.Parallel()
 
 	scope, steps := newScope(t)
-	scope.Record(steps["check"], map[string]cty.Value{"passed": cty.True, "rc": cty.NumberIntVal(0)})
-	scope.Record(steps["lint"], map[string]cty.Value{"stdout": cty.StringVal("ok")})
+	scope.Record(steps["check"], map[string]cty.Value{"passed": cty.True})
+	scope.Record(steps["lint"], map[string]cty.Value{"stdout": cty.StringVal("ok"), "rc": cty.NumberIntVal(0)})
 	scope.Record(steps["fix"], map[string]cty.Value{"verdict": cty.StringVal("approve"), "text": cty.StringVal("done")})
 	scope.Record(steps["ask"], map[string]cty.Value{"answer": cty.StringVal("go")})
 
-	ok, err := scope.Bool(expression(t, `gate.check.passed && gate.check.rc == 0 && command.lint.stdout == "ok" && agent.fix.verdict == "approve" && wait.ask.answer == "go"`), 0)
+	ok, err := scope.Bool(expression(t, `gate.check.passed && command.lint.rc == 0 && command.lint.stdout == "ok" && agent.fix.verdict == "approve" && wait.ask.answer == "go"`), 0)
 
 	require.NoError(t, err)
 	assert.True(t, ok)
@@ -102,8 +102,8 @@ func TestScopeTypesTheOutputsOfAStep(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, cty.Bool, got.GetAttr("passed").Type())
-	assert.Equal(t, cty.Number, got.GetAttr("rc").Type())
-	assert.True(t, got.GetAttr("rc").IsNull(), "an output the step did not record is a typed null")
+	assert.Equal(t, cty.String, got.GetAttr("report").Type())
+	assert.True(t, got.GetAttr("report").IsNull(), "an output the step did not record is a typed null")
 }
 
 func TestScopeKeepsTheOutputsOfAnAgentWhoseOutputListIsAnExpression(t *testing.T) {
@@ -232,7 +232,7 @@ func TestOutputsDeclareOneListForEachKind(t *testing.T) {
 
 	assert.Equal(t, []string{"head_sha", "session", "text", "transcript"}, names(workflow.KindAgent))
 	assert.Equal(t, []string{"rc", "stdout"}, names(workflow.KindCommand))
-	assert.Equal(t, []string{"head", "passed", "rc", "report"}, names(workflow.KindGate))
+	assert.Equal(t, []string{"head", "passed", "report"}, names(workflow.KindGate))
 	assert.Equal(t, []string{"answer"}, names(workflow.KindWait))
 	assert.Equal(t, []string{"exhausted"}, names(workflow.KindLoop))
 }

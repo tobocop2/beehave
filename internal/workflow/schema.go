@@ -1,6 +1,11 @@
 package workflow
 
-import "github.com/hashicorp/hcl/v2"
+import (
+	"maps"
+	"slices"
+
+	"github.com/hashicorp/hcl/v2"
+)
 
 // Kind names a step block.
 type Kind string
@@ -165,6 +170,23 @@ type header struct {
 // Walk calls visit for each step in file order. A loop is visited before the steps in its body.
 func (w *Workflow) Walk(visit func(step Step, depth int)) {
 	walk(w.Steps, 0, visit)
+}
+
+// EnvNames returns the sorted names that the expressions of the file read from `env`.
+func (w *Workflow) EnvNames() []string {
+	seen := map[string]bool{}
+
+	w.Walk(func(step Step, _ int) {
+		for _, arg := range step.arguments() {
+			for _, tr := range arg.expr.Variables() {
+				if name, named := attribute(tr, 1); named && tr.RootName() == rootEnv {
+					seen[name] = true
+				}
+			}
+		}
+	})
+
+	return slices.Sorted(maps.Keys(seen))
 }
 
 func walk(steps []Step, depth int, visit func(step Step, depth int)) {

@@ -64,6 +64,20 @@ func (gate) Run(context.Context, string, string) (flow.GateResult, error) {
 	return flow.GateResult{}, flow.ErrNotBuilt
 }
 
+// commands is notBuilt under the name of the Commands method.
+type commands struct{ notBuilt }
+
+func (commands) Run(context.Context, flow.CommandRequest) (flow.CommandOutput, error) {
+	return flow.CommandOutput{}, flow.ErrNotBuilt
+}
+
+// items is notBuilt under the name of the Items method.
+type items struct{ notBuilt }
+
+func (items) Fields(context.Context, string, string) (map[string]string, error) {
+	return nil, flow.ErrNotBuilt
+}
+
 // agents is notBuilt under the name of the Agents method.
 type agents struct{ notBuilt }
 
@@ -128,6 +142,6 @@ func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow
 	pending := notBuilt{}
 
 	return flow.NewEngine(ctx, opts, flow.Deps{
-		Briefs: pending, Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Watch: pending, Trees: pending, Beats: pending,
+		Briefs: pending, Agents: agents{}, Gate: gate{}, Verdicts: pending, Logins: newLogins(cfg), Lifecycle: pending, Forge: pending, Watch: pending, Trees: pending, Beats: pending, Commands: commands{}, Items: items{},
 	})
 }

@@ -69,6 +69,11 @@ func Parse(fsys fs.FS, path string) (*hclsyntax.Body, error) {
 	return parseSource(path, src)
 }
 
+// ParseBytes is Parse for a file that the caller has read. path names the file in the diagnostics.
+func ParseBytes(path string, src []byte) (*hclsyntax.Body, error) {
+	return parseSource(path, src)
+}
+
 // DecodeBody decodes one body, such as the body of a block, into target with the rules of Decode.
 func DecodeBody(body *hclsyntax.Body, target any) error {
 	return report(gohcl.DecodeBody(body, nil, target), body)

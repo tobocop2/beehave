@@ -25,8 +25,20 @@ const (
 // the steps in its body. The error holds one hclfile.Diagnostic for each structural problem.
 func Load(fsys fs.FS, path string) (*Workflow, error) {
 	body, err := hclfile.Parse(fsys, path)
-	if err != nil {
-		return nil, err
+
+	return loaded(path, body, err)
+}
+
+// LoadBytes is Load for a file that the caller has read. path names the file in the diagnostics.
+func LoadBytes(path string, src []byte) (*Workflow, error) {
+	body, err := hclfile.ParseBytes(path, src)
+
+	return loaded(path, body, err)
+}
+
+func loaded(path string, body *hclsyntax.Body, parseErr error) (*Workflow, error) {
+	if parseErr != nil {
+		return nil, parseErr
 	}
 
 	flow, _, err := build(path, body)

@@ -405,3 +405,37 @@ func TestAWrongTypeIsReportedWithItsKey(t *testing.T) {
 	assert.Equal(t, 2, d.Line)
 	assert.Contains(t, d.Text, "`require_model` has the wrong type")
 }
+
+func TestLoadBytesReadsTheGivenBytesAndNamesTheFileInItsErrors(t *testing.T) {
+	t.Parallel()
+
+	flow, err := workflow.LoadBytes("w.hcl", []byte("workflow \"w\" {}\ncommand \"a\" {\n  run = [\"a\"]\n}\n"))
+	require.NoError(t, err)
+	require.Len(t, flow.Steps, 1)
+	assert.Equal(t, "w.hcl", flow.File)
+
+	_, err = workflow.LoadBytes("w.hcl", []byte("workflow {{{"))
+	require.ErrorContains(t, err, "w.hcl:1")
+}
+
+func TestEnvNamesListsTheSortedNamesTheFileReadsFromEnv(t *testing.T) {
+	t.Parallel()
+
+	flow, err := workflow.LoadBytes("w.hcl", []byte(`workflow "w" {}
+loop "l" {
+  max   = 2
+  until = env.ZED == "1"
+
+  command "a" {
+    run  = ["a", env.MODE, env.MODE]
+    when = item.id != env.ALPHA
+  }
+}
+command "b" {
+  run = ["b", env]
+}
+`))
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"ALPHA", "MODE", "ZED"}, flow.EnvNames(), "a bare env and a name of another root are left out")
+}

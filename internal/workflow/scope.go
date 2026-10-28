@@ -27,7 +27,7 @@ func KindOutputs(kind Kind) []Output {
 	case KindCommand:
 		return []Output{{"rc", cty.Number}, {"stdout", cty.String}}
 	case KindGate:
-		return []Output{{"head", cty.String}, {"passed", cty.Bool}, {"rc", cty.Number}, {"report", cty.String}}
+		return []Output{{"head", cty.String}, {"passed", cty.Bool}, {"report", cty.String}}
 	case KindWait:
 		return []Output{{"answer", cty.String}}
 	case KindLoop:

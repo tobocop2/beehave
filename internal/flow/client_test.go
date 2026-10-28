@@ -93,7 +93,7 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 	client := harness.client(t, testVersion)
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	infos, err := client.Status()
 	require.NoError(t, err)

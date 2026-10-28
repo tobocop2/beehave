@@ -88,12 +88,19 @@ func latestRun(client dbos.Client, item string) (run, bool, error) {
 
 // project returns the project stored with the run. The store keeps the input of the workflow as JSON.
 func (r run) project() (string, error) {
+	in, err := r.input()
+
+	return in.Project, err
+}
+
+// input returns the input the run started with.
+func (r run) input() (ItemInput, error) {
 	var in ItemInput
 	if err := json.Unmarshal([]byte(fmt.Sprint(r.Status.Input)), &in); err != nil { // WithFilterLoadInput returns the stored JSON as a string
-		return "", fmt.Errorf("read the input of run %s: %w", r.Status.ID, err)
+		return ItemInput{}, fmt.Errorf("read the input of run %s: %w", r.Status.ID, err)
 	}
 
-	return in.Project, nil
+	return in, nil
 }
 
 // conflictError names both projects when run asks for a project the open run of the item does not use.

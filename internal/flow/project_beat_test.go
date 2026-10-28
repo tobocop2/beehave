@@ -50,7 +50,7 @@ func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testin
 	client := harness.client(t, testVersion)
 
 	first := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	_, err := engine.Run(testItem, "other")
 
@@ -72,7 +72,7 @@ func TestTick_RenewsTheClaimOfARunThatWaitsForTheOwner(t *testing.T) {
 	client := harness.client(t, testVersion)
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 	harness.tick(t)
 
 	require.NotEmpty(t, harness.beats.seen())
@@ -104,7 +104,7 @@ func TestRun_ALostClaimEndsTheRunThatWaitsForTheOwnerAndSaysWhy(t *testing.T) {
 			engine := harness.engine(t)
 
 			done := runInBackground(engine, testItem)
-			eventually(t, func() bool { return harness.verdicts.count() == 6 })
+			waitForTheOwner(t, harness)
 
 			before := len(harness.agents.seen())
 

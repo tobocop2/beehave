@@ -78,7 +78,7 @@ loop "rounds" {
     prompt      = "prompts/fix.md"
     resume_from = loop.round <= 3 ? agent.implement : null
     when        = loop.rounds.exhausted
-    inputs      = { head = gate.check.head, rc = gate.check.rc, session = agent.implement.session }
+    inputs      = { head = gate.check.head, report = gate.check.report, session = agent.implement.session }
   }
 }
 command "after" {
@@ -670,7 +670,7 @@ loop "l" {
   }
 }
 command "d" {
-  run = gate.g.rc
+  run = gate.g.passed
 }
 `)
 

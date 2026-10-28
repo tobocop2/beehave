@@ -403,6 +403,8 @@ type harness struct {
 	watch    *fakeWatch
 	trees    *fakeTrees
 	beats    *fakeBeats
+	commands *fakeCommands
+	items    *fakeItems
 	ticks    chan time.Time
 	sleep    time.Duration
 	opts     Options
@@ -422,6 +424,8 @@ func newHarness(t *testing.T) *harness {
 		watch:    &fakeWatch{outcomes: []review.Outcome{{Kind: review.Merged}}},
 		trees:    &fakeTrees{},
 		beats:    &fakeBeats{},
+		commands: &fakeCommands{},
+		items:    &fakeItems{fields: map[string]string{"id": testItem, "title": "a title", "body": "a body"}},
 		ticks:    make(chan time.Time),
 		opts: Options{
 			StateDir:      filepath.Join(t.TempDir(), "state"),
@@ -434,7 +438,7 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats,
+		Briefs: h.briefs, Agents: h.agents, Gate: h.gate, Verdicts: h.verdicts, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items,
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
 	if h.merge != nil {
@@ -484,6 +488,18 @@ func eventually(t *testing.T, check func() bool) {
 	t.Helper()
 
 	require.Eventually(t, check, eventTimeout, pollEvery)
+}
+
+// waitForTheOwner waits until the open run shows its question. The last verdict is recorded before the run asks, so a wait on the verdict count alone can read the run in between.
+func waitForTheOwner(t *testing.T, h *harness) {
+	t.Helper()
+
+	client := h.client(t, testVersion)
+	eventually(t, func() bool {
+		infos, err := client.Status()
+
+		return err == nil && len(infos) == 1 && infos[0].Question != ""
+	})
 }
 
 // runInBackground runs an item on the engine and returns the channel that gets the outcome.

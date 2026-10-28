@@ -186,7 +186,7 @@ func TestRun_FixRoundsResumeThreeTimesThenStartAFreshAgentThenWaitForTheOwner(t 
 	client := harness.client(t, testVersion)
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	require.NoError(t, client.Answer(testItem, "use option b"))
 
@@ -302,7 +302,7 @@ func TestRun_AnOpenRunOfTheItemIsJoinedNotStartedAgain(t *testing.T) {
 	client := harness.client(t, testVersion)
 
 	first := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	second := runInBackground(engine, testItem)
 
@@ -380,7 +380,7 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	same, other := harness.client(t, testVersion), harness.client(t, "v2")
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	infos, err := other.Status()
 	require.NoError(t, err)

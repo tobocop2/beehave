@@ -48,7 +48,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
 	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.ItemFields), newDoctorCommand(ctx, env, info.Doctor))
-	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow}.add(root)
+	flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, itemFields: info.ItemFields}.add(root)
 
 	return root
 }

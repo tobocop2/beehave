@@ -25,6 +25,7 @@ const (
 
 	configFlag          = "config"
 	projectFlag         = "project"
+	workflowFlag        = "workflow"
 	defaultWorkflowFile = "workflow.hcl"
 )
 
