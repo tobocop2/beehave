@@ -490,6 +490,18 @@ func eventually(t *testing.T, check func() bool) {
 	require.Eventually(t, check, eventTimeout, pollEvery)
 }
 
+// waitForTheOwner waits until the open run shows its question. The last verdict is recorded before the run asks, so a wait on the verdict count alone can read the run in between.
+func waitForTheOwner(t *testing.T, h *harness) {
+	t.Helper()
+
+	client := h.client(t, testVersion)
+	eventually(t, func() bool {
+		infos, err := client.Status()
+
+		return err == nil && len(infos) == 1 && infos[0].Question != ""
+	})
+}
+
 // runInBackground runs an item on the engine and returns the channel that gets the outcome.
 func runInBackground(engine *Engine, item string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)

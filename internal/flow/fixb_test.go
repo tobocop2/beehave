@@ -36,7 +36,7 @@ func cancelledRunWaitingForTheOwner(t *testing.T) (*harness, *Engine, *Client) {
 	client := harness.client(t, testVersion)
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	require.NoError(t, client.Cancel(testItem))
 	harness.tick(t)
@@ -378,7 +378,7 @@ func TestRun_TheWaitForTheOwnerHasNoDeadline(t *testing.T) {
 	client := harness.client(t, testVersion)
 
 	done := runInBackground(engine, testItem)
-	eventually(t, func() bool { return harness.verdicts.count() == 6 })
+	waitForTheOwner(t, harness)
 
 	before := len(harness.agents.seen())
 
