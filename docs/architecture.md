@@ -127,7 +127,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check/shell<br/>shell scan"]
-        policy["gate · pool · preflight · review · merge<br/>lane policy"]
+        policy["batch · gate · pool · preflight · review · merge<br/>lane policy"]
     end
 
     subgraph L1["Layer 1: adapters"]
@@ -426,6 +426,24 @@ A request with `GatedTree` set gets a tree proof after the merge. The run reads 
 `review` also holds the verdict of a finding list and the rewrite rule of a standing. `NeedsCommit` is true for a blocking finding, and for any open finding when the `Policy` sets `NoFollowUps`. `Standing.Compare` lets a review of an earlier commit stand for a head that holds the same tree.
 
 The round cut and the merge audit are not part of the engine. They live in `examples/remediation/tools/` and run through the `remedy` binary, see the next section.
+
+## Batch
+
+`batch` lands a set of reviewed pull requests with one gate run for the whole set. It is a layer 2 package. It has no workflow builtin yet: a later change wires it. The gate, the git calls, the forge and the step recorder are the interfaces `Gate`, `Git`, `Base` and `Recorder`. `Run` takes the members, each an item and a head commit, sorts them by item as byte strings, and returns a `Result` with the merged items, the rejected and deferred members with a reason, the last base tip and the number of gate runs.
+
+`batch` needs git 2.38 or newer on the gate host, for `git merge-tree --write-tree`. `CheckGit` reads `git --version` once, before any step, and fails with "git 2.38 or newer is needed for batch_merge". `GitCLI` implements `Git` over any runner with the `Exec` method of `proc.Runner`. No maintained Go library does this fold: go-git has no three-way tree merge, and libgit2 bindings need cgo.
+
+The union folds the members onto the base tip. Each step is a `git merge-tree --write-tree` of the fold so far and the next head, then a `git commit-tree` with both parents, so the next step has a commit to merge into. The union records the tree after each member. A member that conflicts with the base tip alone is rejected with the reason `conflict` before any gate runs. A member that conflicts only with an earlier member is held out.
+
+A red union is split in two halves in item order, and each half is gated on the tip that the earlier half left. A single red member is rejected. The gate runs at most `min(2N - 1, 1 + 2k * ceil(log2 N))` times for N members and k bad members, and `Bound` returns that number. A union with the tree id of a union that was gated red is split without a gate run. A member that fails only on top of merged members is rejected with the reason "red on top of the merged members".
+
+After the first round, each held-out member is folded once on the new tip, and the folded members are landed with the same split. A member that conflicts there is rejected with "conflicts with" and the name of the member or `base`. There is no second retry. Total gate runs are at most `Bound(N - H, k)` plus `Bound(R, k')`, with H held-out members and R retried members. Each member that the merge refuses (own work, hold, checks, review) costs one more gate round on the members left after it, so with r refusals the total can reach about r + 1 times that sum.
+
+Before the fold, one recorded step checks that the head of each member is in the repository (`git cat-file -e <head>^{commit}`). A member with a missing head is rejected with "head X of M is not in the repository; fetch it", because `git merge-tree` exits with the conflict code for an unknown commit.
+
+`Base.Merge` answers with a `MergeOutcome`. A refusal by a guard of the member (own work, hold label, checks, review) rejects that member with the reason, and the members after it are folded and gated again on the tip. An unsettled answer (`mergeable` stayed unknown) defers that member and all members not yet decided, with the reason. An error stops the call. The `Result` that comes with the error still lists the members that landed, and the error names the member where the call stopped. `Merge` is idempotent for one member, because a replay calls it again after a crash; the wiring uses the intent record of `merge.Run`. `Recorder.Step` does not record a failed run. `Gate.Run` gates exactly the commit it gets and reports the tree of that checkout. `GitCLI.NewCommit` needs an author identity in the environment of the runner. `Deps.Name` is not empty, and it is unique for each batch call in a workflow.
+
+Every input that picks a path is a recorded step: `batch:<name>.heads#k`, `.tip#k`, `.union#k` and `.gate#k`. A step records its input with its output, and a replay with other input fails. The gate output carries the tree id the gate ran on. A tree id that differs from the tree of the union is the error "the recorded gate ran on tree X, and the union is tree Y". Before each member merge, the run reads the tip and requires the tree of the members merged so far. Another tree means someone else pushed, and the rest of the members are deferred.
 
 ## Remediation tools
 
