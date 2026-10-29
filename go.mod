@@ -5,7 +5,7 @@ go 1.27
 toolchain go1.27.3
 
 require (
-	github.com/dbos-inc/dbos-transact-golang v1.7.0
+	github.com/dbos-inc/dbos-transact-golang v1.8.0
 	github.com/gobwas/glob v1.0.0
 	github.com/gofrs/flock v0.13.1
 	github.com/rogpeppe/go-internal v1.15.0

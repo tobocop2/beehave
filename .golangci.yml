@@ -118,6 +118,11 @@ linters:
           deny:
             - pkg: go.dbos.dev/dbos-enterprise-go
               desc: the enterprise module opens an outgoing connection; never import it
+        no-http-client:
+          files: ["!$test"]
+          deny:
+            - pkg: net/http
+              desc: obee's own code makes no HTTP calls; gh, bd and the agent CLIs do the network calls
         no-shell-interpreter:
           files: ["$all"]
           deny:

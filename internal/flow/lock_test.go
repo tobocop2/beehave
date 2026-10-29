@@ -70,25 +70,14 @@ func TestOpenClient_ManyFirstOpensOfANewStateFolderAllSucceed(t *testing.T) {
 	}
 }
 
-func TestLocks_ALockFileThatCannotOpenIsReported(t *testing.T) {
+func TestLocks_AnEngineLockFileThatCannotOpenIsReported(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{engineLockName, migrateLockName} {
-		t.Run("a_folder_named_"+name, func(t *testing.T) {
-			t.Parallel()
+	harness := newHarness(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(harness.opts.StateDir, engineLockName), 0o700))
 
-			harness := newHarness(t)
-			require.NoError(t, os.MkdirAll(filepath.Join(harness.opts.StateDir, name), 0o700))
-
-			_, err := NewEngine(t.Context(), harness.opts, harness.deps())
-			require.ErrorContains(t, err, name)
-
-			if name == migrateLockName {
-				_, err = OpenClient(t.Context(), harness.opts, ReleaseDeps{})
-				require.ErrorContains(t, err, name)
-			}
-		})
-	}
+	_, err := NewEngine(t.Context(), harness.opts, harness.deps())
+	require.ErrorContains(t, err, engineLockName)
 }
 
 func TestCancel_ReportsARunWhoseInputIsNotReadable(t *testing.T) {

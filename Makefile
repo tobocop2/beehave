@@ -38,9 +38,9 @@ lint: lint-version  ## Lint the Go code
 vet:
 	go vet ./...
 
-# No package of the module may link DBOS Conductor, the enterprise module, viper, net/http or the shell interpreter. crypto/tls is allowed: DBOS links it through its Postgres driver, and TestRun_OpensNoNetworkSocket proves obee opens no connection.
+# No package of the module may link DBOS Conductor, the enterprise module, viper or the shell interpreter. net/http and crypto/tls are allowed in dependencies: DBOS links both, and TestRun_OpensNoNetworkSocket proves obee opens no connection. The depguard rule no-http-client keeps net/http out of obee's own code.
 deps:  ## Fail if the binary links a forbidden dependency
-	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|net/http$$|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
+	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
 
 # deadcode -test counts the tests as entry points, so it reports a function that nothing calls, not even a test.
 deadcode:  ## Fail if a function is unreachable from main and from the tests
