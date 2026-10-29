@@ -116,6 +116,10 @@ func (f e2eFiles) Pull(ctx context.Context, _, _ string) (review.Standing, error
 	return review.Standing{Number: 1, Head: head}, err
 }
 
+func (f e2eFiles) Reviewed(ctx context.Context, project, item, _ string) (review.Standing, error) {
+	return f.Pull(ctx, project, item)
+}
+
 func (e2eFiles) Watch(context.Context, string, int) (review.Outcome, error) {
 	return review.Outcome{Kind: review.Merged}, nil
 }
@@ -155,7 +159,7 @@ type e2eGate struct{ dir string }
 func (g e2eGate) Run(ctx context.Context, _, _ string) (flow.GateResult, error) {
 	head, err := e2eHeadOf(ctx, g.dir)
 
-	return flow.GateResult{Passed: true, Head: head}, err
+	return flow.GateResult{Passed: true, Head: head, Tree: "tree-of-" + head}, err
 }
 
 // e2eAgents starts the claude program of the script PATH through the real agent runner.
@@ -185,7 +189,7 @@ const e2eClaude = `#!/bin/sh
 # A prompt that carries a seen value adds it as a line of seen.log.
 # A prompt that carries a found value adds its first line to found.log, with the step in front.
 # A fix stages everything when the next line of the file fixhits says hit.
-# A review writes the next line of the file verdicts to the output file that its prompt names.
+# A review writes the next line of the file verdicts to the output file that its prompt names, with no open finding.
 # When the file obey-hook exists, the fake obeys --settings as Claude Code does: it runs the hook command of the settings before each Bash call.
 # A hook that exits with code 2 blocks the call: the fake adds a line to blocked.log and prints the tool_result of the refusal.
 hook=
@@ -218,7 +222,7 @@ if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
 fi
 if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
-  printf '{"verdict":"%s"}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
+  printf '{"verdict":"%s","findings":[]}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.

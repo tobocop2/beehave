@@ -32,11 +32,13 @@ type AgentRequest struct {
 }
 
 // GateResult is the outcome of a gate that ran. Report holds the findings when Passed is false. Head is the commit the gate ran on.
+// Tree is the tree id of that commit, or empty when the gate did not read it. The gate step records it as the output `tree`, and a merge call can pass it on.
 // A gate that could not run returns an error instead: that ends the run and spends no fix round.
 type GateResult struct {
 	Passed bool   `json:"passed"`
 	Report string `json:"report"`
 	Head   string `json:"head"`
+	Tree   string `json:"tree"`
 }
 
 // agents runs one agent phase for a login. The context of Run ends when the run loses its claim, as well as when the phase is canceled or times out.

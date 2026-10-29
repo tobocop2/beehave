@@ -18,6 +18,8 @@ func (a *attempt) checks() *refusal {
 		return refuse(err.Error(), fmt.Sprintf("REFUSE: cannot read the checks for #%d", a.req.PR))
 	}
 
+	a.saveLogs(rows)
+
 	lines, stop := a.judge(rows)
 	if stop != nil {
 		stop.lines = append(stop.lines, fmt.Sprintf("       (above refers to #%d)", a.req.PR))
@@ -47,6 +49,8 @@ func tally(rows []model.Check) buckets {
 			found.running = append(found.running, row.Name)
 		case model.CheckSkipping:
 			found.skipped = append(found.skipped, row.Name)
+		case model.CheckFail, model.CheckCancel:
+			fallthrough
 		default:
 			found.bad = append(found.bad, row.Name+"="+string(row.Bucket))
 		}

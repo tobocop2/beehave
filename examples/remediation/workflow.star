@@ -27,7 +27,8 @@ def main(item):
     # Five fix rounds need six passes: the sixth reviews the fifth fix.
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
     # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md")
+    # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix round.
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid")
 
     # After the last round, a person rules on each open finding. The ruling is applied once. No review follows it.
     if loop.exhausted:
@@ -48,6 +49,8 @@ def main(item):
     # and the owner identity come from the environment, so the file holds no login or address.
     # `base` is the integration branch of the repository, never the default branch.
     # `approved` is the verdict of the review, which is not the agent that wrote the code. Our own pull requests merge only when it is true.
+    # A call that sets `merge = True` also passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. The proof runs after the merge:
+    # a stop does not undo it, and the item ends failed with the pull request merged.
     # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
     merge(
         name = "ship",

@@ -193,6 +193,9 @@ The commands that the workflow forbids in the latest run of the implementer or t
 {{ .violations }}
 Report each one as a finding.
 
-The verdict is `approve` when no finding blocks the merge, and `changes` when one does.
-Write it to {{ .output_file }} as JSON, for example `{"verdict":"approve"}`.
+This method has no follow-ups: every open finding needs a commit. A finding that you leave open gives the verdict `changes`.
+The verdict is `approve` when you have no open finding, and `changes` when you have one.
+Write it to {{ .output_file }} as JSON with the list of your open findings, for example `{"verdict":"approve","findings":[]}`.
+Give each open finding as an object with a `class` and a `text`: `{"class":"blocking","text":"what is wrong and where"}`.
+The class is one of `blocking`, `deferred`, `pre-existing` or `minor`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.

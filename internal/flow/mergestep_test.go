@@ -341,7 +341,7 @@ func TestMergeStep_AComputedChildrenValueThatIsNotRefuseOrRetargetFailsTheStepAn
 func TestMergeStep_ASettingThatIsNotTextFailsTheStep(t *testing.T) {
 	t.Parallel()
 
-	for _, setting := range []string{"repo", "children", "forbid_text", "approved"} {
+	for _, setting := range []string{"repo", "children", "forbid_text", "approved", "tree"} {
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
 		_, err := walkText(t, h, shipFlow("merge = True, "+setting+" = 7, "))

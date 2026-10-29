@@ -92,6 +92,67 @@ func TestPulls_PullReadsThePullRequestOnTheBranchOfTheItem(t *testing.T) {
 	assert.Equal(t, []string{"--head", "bb-1", "--state", "open", "--json", "number"}, f.asked[0])
 }
 
+// treePull is a pullForge that reads the tree of a commit from trees. A commit that trees lacks cannot be read.
+type treePull struct {
+	*pullForge
+
+	trees map[string]string
+}
+
+func (f treePull) CommitTree(_ context.Context, commit string) (string, error) {
+	if tree, ok := f.trees[commit]; ok {
+		return tree, nil
+	}
+
+	return "", errFake
+}
+
+func (treePull) TreeBlobs(context.Context, string) (map[string]string, error) { return nil, errFake }
+
+func TestPulls_ReviewedLetsAReviewStandForAHeadWithTheSameTreeAndNotForAnotherTree(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		trees     map[string]string
+		rewritten string
+		reasons   int
+	}{
+		"the same tree":    {map[string]string{"abc": "t1", "old": "t1"}, "old", 0},
+		"another tree":     {map[string]string{"abc": "t1", "old": "t2"}, "", 1},
+		"a tree not read":  {map[string]string{"abc": "t1"}, "", 2},
+		"the reviewed one": {map[string]string{}, "", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			base := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, state: "OPEN"}
+			p := pulls{
+				projects: map[string]config.Project{"p": {}},
+				forge:    func(model.Project) (forge.Forge, error) { return treePull{base, test.trees}, nil },
+			}
+			reviewed := "old"
+
+			if name == "the reviewed one" {
+				reviewed = "abc"
+			}
+
+			standing, err := p.Reviewed(t.Context(), "p", "bb-1", reviewed)
+
+			require.NoError(t, err)
+			assert.Equal(t, test.rewritten, standing.Rewritten)
+			assert.Len(t, standing.Reasons(reviewed), test.reasons)
+		})
+	}
+}
+
+func TestPulls_ReviewedOfAnUnknownProjectIsAnError(t *testing.T) {
+	t.Parallel()
+
+	_, err := pullsOver(&pullForge{}).Reviewed(t.Context(), "zzz", "bb-1", "old")
+
+	require.ErrorIs(t, err, errUnknownProject)
+}
+
 func TestPulls_PullFindsAMergedPullRequestWhenNoneIsOpen(t *testing.T) {
 	t.Parallel()
 

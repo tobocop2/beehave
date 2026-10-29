@@ -29,6 +29,36 @@ type Standing struct {
 	ChangeRequests    []model.ChangeRequest
 	UnresolvedThreads int
 	Unread            []string
+	// Rewritten is the reviewed commit that Compare found to hold the same tree as Head. A review of that commit stands for Head.
+	Rewritten string
+}
+
+// Compare checks a head that is not the reviewed commit. When the tree of the head equals the tree of the reviewed commit, the history was rewritten
+// and the review stands. A tree that cannot be read goes into Unread. A head that is the reviewed commit needs no read.
+func (s *Standing) Compare(ctx context.Context, trees Trees, reviewed string) {
+	if s.Head == reviewed || s.Head == "" {
+		return
+	}
+
+	was, now := s.tree(ctx, trees, reviewed, "tree of the reviewed commit"), s.tree(ctx, trees, s.Head, "tree of the head")
+	if was != "" && was == now {
+		s.Rewritten = reviewed
+	}
+}
+
+// tree reads the tree of a commit. A tree that cannot be read goes into Unread under name, and the result is empty.
+func (s *Standing) tree(ctx context.Context, trees Trees, commit, name string) string {
+	tree, err := trees.CommitTree(ctx, commit)
+	if err != nil {
+		s.Unread = append(s.Unread, name)
+	}
+
+	return tree
+}
+
+// Trees reads the tree of a commit. The forge backend implements it.
+type Trees interface {
+	CommitTree(ctx context.Context, commit string) (string, error)
 }
 
 // Pull reads the standing of a pull request. It never returns an empty fact for a read that failed: the read goes into Unread.
@@ -75,7 +105,7 @@ func (s Standing) Reasons(reviewed string) []string {
 		reasons = append(reasons, fmt.Sprintf("the %s could not be read", read))
 	}
 
-	if s.Head != reviewed {
+	if s.Head != reviewed && (s.Rewritten == "" || s.Rewritten != reviewed) {
 		reasons = append(reasons, fmt.Sprintf("it moved to %q after the review read %q", s.Head, reviewed))
 	}
 

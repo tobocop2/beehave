@@ -87,10 +87,12 @@ type Forge interface {
 // Hold is the label of a pull request that is never merged; empty means no label holds. ForbidText holds the patterns that no line of the body or of a commit message may match.
 // Retarget moves each child pull request onto the base before the merge, where a child would otherwise block it.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
+// GatedTree is the tree id of the gated head. When it is set, the run reads the tree of the base tip after the merge and stops if it differs; empty asks for no proof.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
 	PR            int
 	Gated         string
+	GatedTree     string
 	Repo          string
 	Base          string
 	OwnLogins     []string

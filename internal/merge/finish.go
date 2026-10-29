@@ -19,9 +19,7 @@ func (a *attempt) conclude() *refusal {
 		return refuse("REFUSE: " + err.Error())
 	}
 
-	a.merged()
-
-	return nil
+	return a.tipTree(a.merged())
 }
 
 // unmoved refuses a pull request whose head moved since the gate, and a base whose tip moved since the start of the run.
@@ -102,20 +100,24 @@ func (a *attempt) ready() *refusal {
 	return nil
 }
 
-// merged says the merge and the tip of the base after it. A tip that cannot be read does not undo the merge.
-func (a *attempt) merged() {
+// merged says the merge and the tip of the base after it, and returns the tip. A tip that cannot be read does not undo the merge: the result is empty.
+func (a *attempt) merged() string {
 	base := a.req.Base
 
 	tip, found, err := a.forge.BranchRef(a.ctx, base)
+	shown := tip
+
 	if err != nil || !found {
-		tip = "unreadable"
+		tip, shown = "", "unreadable"
 	}
 
-	a.say(fmt.Sprintf("MERGED #%d at %s; %s tip is now %s", a.req.PR, a.req.Gated, base, tip))
+	a.say(fmt.Sprintf("MERGED #%d at %s; %s tip is now %s", a.req.PR, a.req.Gated, base, shown))
 
 	if a.req.IntegrationPR != 0 {
 		a.record()
 	}
+
+	return tip
 }
 
 // record adds the row of the merge to the integration pull request, under the lock of its body. A row that cannot be written does not undo the merge.

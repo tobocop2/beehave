@@ -37,6 +37,8 @@ type shipForge struct {
 	// committers are the committers the forge reports. Nil means one unnamed committer, as the pull request has one commit.
 	committers []model.Committer
 	writes     []string
+	// tipTree is the tree of the tip of the base after the merge.
+	tipTree string
 }
 
 func (f *shipForge) PRList(_ context.Context, _ int, args ...string) ([]model.PullRequest, error) {
@@ -90,6 +92,24 @@ func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []stri
 
 func (*shipForge) BranchRef(context.Context, string) (string, bool, error) {
 	return strings.Repeat("c", 40), true, nil
+}
+
+// CommitTree gives the tree of the tip of the base after the merge: tipTree. Any other commit has the tree "gated-tree".
+func (f *shipForge) CommitTree(_ context.Context, commit string) (string, error) {
+	if commit == strings.Repeat("c", 40) {
+		return f.tipTree, nil
+	}
+
+	return "gated-tree", nil
+}
+
+// TreeBlobs lists one file for the gated tree and one more for any other tree.
+func (*shipForge) TreeBlobs(_ context.Context, tree string) (map[string]string, error) {
+	if tree == "gated-tree" {
+		return map[string]string{"a.go": "1"}, nil
+	}
+
+	return map[string]string{"a.go": "2"}, nil
 }
 
 func (f *shipForge) SetBase(_ context.Context, pr int, base string) error {
@@ -180,6 +200,63 @@ func walkExampleMerge(t *testing.T, visit func(map[string]syntax.Expr)) {
 			visit(call.Args)
 		}
 	}
+}
+
+func TestMerge_AGatedTreeReachesTheMergeAndATipWithAnotherTreeStopsTheRunWithTheDifferingPaths(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	settings.GatedTree = "gated-tree"
+	f.tipTree = "other-tree"
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, strings.Join(result.Lines, "\n"), "a.go")
+	assert.Equal(t, []string{"MergePR 5 " + gated}, f.writes, "the merge happened, and the stop comes after it")
+}
+
+func TestMerge_AGatedTreeThatTheTipHoldsPasses(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	settings.GatedTree = "gated-tree"
+	f.tipTree = "gated-tree"
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+}
+
+type noTreeForge struct{ forge.Forge }
+
+func TestOpened_AForgeWithoutTreesOrLogsGivesAnErrorNotAPanic(t *testing.T) {
+	t.Parallel()
+
+	none := opened{noTreeForge{}}
+
+	_, treeErr := none.CommitTree(t.Context(), "x")
+	_, blobErr := none.TreeBlobs(t.Context(), "x")
+	_, logErr := none.FailedLog(t.Context(), "x")
+
+	for _, err := range []error{treeErr, blobErr, logErr} {
+		require.ErrorIs(t, err, errNoOptionalRead)
+	}
+}
+
+type logForge struct{ forge.Forge }
+
+func (logForge) FailedLog(context.Context, string) (string, error) { return "log text", nil }
+
+func TestOpened_ALogOfTheForgeIsPassedThrough(t *testing.T) {
+	t.Parallel()
+
+	text, err := opened{logForge{}}.FailedLog(t.Context(), "link")
+
+	require.NoError(t, err)
+	assert.Equal(t, "log text", text)
 }
 
 func TestMerge_M13_OwnWorkWithoutApprovedIsRefusedWithNoWriteCall(t *testing.T) {
@@ -361,6 +438,8 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 		for _, name := range []string{"repo", "base", "hold", "own", "approved", "forbid_text", "children"} {
 			assert.NotNil(t, ship[name], "%s is set in the example", name)
 		}
+
+		assert.Nil(t, ship["tree"], "the example does not merge, so it passes no tree")
 
 		assert.Equal(t, []string{"BASE"}, workflowtest.Literals(ship["base"]), "base is the integration branch, read from the environment")
 		assert.Equal(t, []string{"REPO"}, workflowtest.Literals(ship["repo"]))

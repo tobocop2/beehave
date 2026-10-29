@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -62,6 +63,67 @@ func TestCheck_ReportsEachProblemWithItsPlace(t *testing.T) {
 			assert.Equal(t, test.unparsed, unparsed)
 		})
 	}
+}
+
+func TestCheck_RefusesABadFollowUpsValueAtItsPlaceAndAcceptsTheListedOnes(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{`"allow"`, `"forbid"`, `mode`} {
+		found, _ := workflow.Check(folder(t, map[string]string{
+			"workflow.star": "mode = \"allow\"\ndef main(item):\n    return agent(model = \"m\", prompt = \"p\", outputs = [\"verdict\"], follow_ups = " + value + ")\n",
+		}, "workflow.star"))
+
+		assert.Empty(t, found, value)
+	}
+
+	for _, value := range []string{`"maybe"`, `3`} {
+		found, unparsed := workflow.Check(folder(t, map[string]string{
+			"workflow.star": "def main(item):\n    return agent(model = \"m\", prompt = \"p\", follow_ups = " + value + ")\n",
+		}, "workflow.star"))
+
+		require.Len(t, found, 1, value)
+		assert.Equal(t, 2, found[0].Line, value)
+		assert.Equal(t, 58, found[0].Col, value)
+		assert.Contains(t, found[0].Text, "follow_ups is "+value+". Use one of: allow, forbid.")
+		assert.False(t, unparsed)
+	}
+}
+
+func TestCheck_ALiteralForbidWhoseLiteralOutputsLackTheVerdictIsRefusedAtTheValue(t *testing.T) {
+	t.Parallel()
+
+	const head = "names = [\"verdict\"]\ndef main(item):\n    return agent(model = \"m\", prompt = \"p\", "
+
+	for _, refused := range []string{`outputs = ["text"], follow_ups = "forbid")`, `outputs = [], follow_ups = "forbid")`, `follow_ups = "forbid")`} {
+		found, _ := workflow.Check(folder(t, map[string]string{"workflow.star": head + refused + "\n"}, "workflow.star"))
+
+		require.Len(t, found, 1, refused)
+		assert.Equal(t, 3, found[0].Line, refused)
+		assert.Equal(t, strings.Index(head[strings.LastIndex(head, "\n")+1:]+refused, `"forbid"`)+1, found[0].Col, refused)
+		assert.Contains(t, found[0].Text, `follow_ups is "forbid", so outputs must list "verdict"`, refused)
+	}
+
+	for _, accepted := range []string{
+		`outputs = ["text", "verdict"], follow_ups = "forbid")`,
+		`outputs = names, follow_ups = "forbid")`,
+		`outputs = ["text"] + names, follow_ups = "forbid")`,
+		`outputs = ["text", names[0]], follow_ups = "forbid")`,
+		`outputs = ["text"], follow_ups = "allow")`,
+	} {
+		found, _ := workflow.Check(folder(t, map[string]string{"workflow.star": head + accepted + "\n"}, "workflow.star"))
+
+		assert.Empty(t, found, accepted)
+	}
+}
+
+func TestCheck_ALiteralFollowUpsInACallThatIsNotAnAgentCallOrIsPositionalIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	found, _ := workflow.Check(folder(t, map[string]string{
+		"workflow.star": "def main(item):\n    struct(follow_ups = \"maybe\")\n    return agent(\"p\", model = \"m\")\n",
+	}, "workflow.star"))
+
+	assert.Empty(t, found)
 }
 
 func TestCheck_ReportsAFileThatDoesNotExist(t *testing.T) {
