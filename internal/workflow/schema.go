@@ -159,6 +159,16 @@ type Loop struct {
 	Max   int            `hcl:"max"`
 	Until hcl.Expression `hcl:"until"`
 	Steps []Step
+	// Locals are the names of the `locals` blocks of the loop. Only the steps and the condition of this loop read them.
+	Locals []Local
+}
+
+// Local is one name of a `locals` block: a lazy name for an expression. It holds no value.
+// Each read evaluates Expr again from the recorded outputs.
+type Local struct {
+	Name  string
+	Expr  hcl.Expression
+	Range hcl.Range
 }
 
 // Kind returns KindLoop.
@@ -234,6 +244,8 @@ type Workflow struct {
 	MethodVersion string
 	RequireModel  bool
 	Steps         []Step
+	// Locals are the names of the `locals` blocks at the top of the file. Every expression of the file reads them.
+	Locals []Local
 }
 
 // header is the decode target of the workflow block.
@@ -253,15 +265,33 @@ func (w *Workflow) EnvNames() []string {
 
 	w.Walk(func(step Step, _ int) {
 		for _, arg := range step.arguments() {
-			for _, tr := range arg.expr.Variables() {
-				if name, named := attribute(tr, 1); named && tr.RootName() == rootEnv {
-					seen[name] = true
-				}
-			}
+			noteEnv(seen, arg.expr)
+		}
+
+		if loop, ok := step.(*Loop); ok {
+			noteEnvOf(seen, loop.Locals)
 		}
 	})
 
+	noteEnvOf(seen, w.Locals)
+
 	return slices.Sorted(maps.Keys(seen))
+}
+
+// noteEnvOf adds the names that the locals read from `env` to seen.
+func noteEnvOf(seen map[string]bool, locals []Local) {
+	for _, l := range locals {
+		noteEnv(seen, l.Expr)
+	}
+}
+
+// noteEnv adds the names that expr reads from `env` to seen.
+func noteEnv(seen map[string]bool, expr hcl.Expression) {
+	for _, tr := range expr.Variables() {
+		if name, named := attribute(tr, 1); named && tr.RootName() == rootEnv {
+			seen[name] = true
+		}
+	}
 }
 
 func walk(steps []Step, depth int, visit func(step Step, depth int)) {

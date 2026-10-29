@@ -176,14 +176,14 @@ func TestScopeTellsAnExpressionThatFailsWithoutParserWords(t *testing.T) {
 	assert.NotContains(t, err.Error(), "Diagnostic")
 }
 
-func TestScopeRefusesAFunctionCallWithAPositionedError(t *testing.T) {
+func TestScopeRefusesAnUnknownFunctionWithAPositionedError(t *testing.T) {
 	t.Parallel()
 
 	scope, _ := newScope(t)
 
 	_, err := scope.Value(expression(t, `upper("x")`), 0)
 
-	require.EqualError(t, err, "w.hcl:3:7: this expression cannot be evaluated: Functions may not be called here. Check the names and the types it uses.")
+	require.EqualError(t, err, "w.hcl:3:7: this expression cannot be evaluated: There is no function named \"upper\". Check the names and the types it uses.")
 }
 
 func TestScopeBoolRefusesANonBoolValue(t *testing.T) {

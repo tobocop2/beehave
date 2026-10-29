@@ -3,20 +3,29 @@
 
 workflow "local" {}
 
+# Every agent gets the same item object. A local names it once and holds no value: each read builds it again.
+locals {
+  item_input = { id = item.id, title = item.title, body = item.body }
+}
+
 agent "plan" {
   prompt = "prompts/plan.md"
-  inputs = { item = { id = item.id, title = item.title, body = item.body } }
+  inputs = { item = local.item_input }
 }
 
 agent "implement" {
   prompt = "prompts/implement.md"
-  inputs = { item = { id = item.id, title = item.title, body = item.body }, plan = agent.plan.text }
+  inputs = { item = local.item_input, plan = agent.plan.text }
 }
 
 # A pass is one gate, one review and, when the head is not approved, one fix. The loop stops at the first approved head.
 loop "review_fix" {
   max   = 3
-  until = gate.check.passed && agent.review.verdict == "approve"
+  until = local.approved
+
+  locals {
+    approved = gate.check.passed && agent.review.verdict == "approve"
+  }
 
   # The gate command is the one in the project file.
   gate "check" {}
@@ -26,14 +35,14 @@ loop "review_fix" {
     when    = gate.check.passed
     pin     = gate.check.head
     outputs = ["verdict"]
-    inputs  = { item = { id = item.id, title = item.title, body = item.body } }
+    inputs  = { item = local.item_input }
   }
 
   agent "fix" {
     prompt = "prompts/fix.md"
-    when   = !(gate.check.passed && agent.review.verdict == "approve")
+    when   = !local.approved
     inputs = {
-      item     = { id = item.id, title = item.title, body = item.body }
+      item     = local.item_input
       findings = gate.check.passed ? agent.review.text : gate.check.report
     }
   }

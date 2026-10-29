@@ -141,7 +141,7 @@ command "use" {
 	assert.Equal(t, "w.hcl", d.File)
 	assert.Contains(t, d.Text, "unknown name `itme`")
 	assert.Contains(t, d.Text, "Did you mean `item`?")
-	assert.Contains(t, d.Text, "agent, command, env, gate, item, loop, merge, wait")
+	assert.Contains(t, d.Text, "agent, command, env, gate, item, local, loop, merge, wait")
 }
 
 func TestUnknownRootWithNothingCloseOffersNoGuess(t *testing.T) {

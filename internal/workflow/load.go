@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"slices"
 
 	"github.com/hashicorp/hcl/v2"
@@ -17,8 +18,9 @@ import (
 
 const (
 	workflowBlock = "workflow"
-	topBlocks     = "workflow, agent, command, gate, loop, merge, wait"
-	loopBlocks    = "agent, command, gate, loop, merge, wait"
+	localsBlock   = "locals"
+	topBlocks     = "workflow, locals, agent, command, gate, loop, merge, wait"
+	loopBlocks    = "locals, agent, command, gate, loop, merge, wait"
 )
 
 // Load reads the workflow file at path from fsys. The steps are in file order, and each loop holds
@@ -52,7 +54,7 @@ func loaded(path string, body *hclsyntax.Body, parseErr error) (*Workflow, error
 // build makes the workflow from a parsed file. The workflow holds the steps that loaded, even
 // when the error is set. The map holds the name of every step in the file, loaded or not.
 func build(path string, body *hclsyntax.Body) (*Workflow, map[string]hcl.Range, error) {
-	b := &builder{path: path, names: map[string]hcl.Range{}, flow: &Workflow{File: path}}
+	b := &builder{path: path, names: map[string]hcl.Range{}, visible: map[string]hcl.Range{}, flow: &Workflow{File: path}}
 
 	b.file(body)
 	b.requireModel()
@@ -68,8 +70,10 @@ func build(path string, body *hclsyntax.Body) (*Workflow, map[string]hcl.Range, 
 type builder struct {
 	path  string
 	names map[string]hcl.Range
-	flow  *Workflow
-	found []hclfile.Diagnostic
+	// visible holds the local names that the block being read can see: those of the file and of the loops around it.
+	visible map[string]hcl.Range
+	flow    *Workflow
+	found   []hclfile.Diagnostic
 }
 
 func (b *builder) file(body *hclsyntax.Body) {
@@ -83,7 +87,64 @@ func (b *builder) file(body *hclsyntax.Body) {
 		b.found = append(b.found, hclfile.Diagnostic{File: b.path, Text: "the file has no `workflow` block. Add `workflow \"name\" { }`."})
 	}
 
+	rest, b.flow.Locals = b.locals(rest)
 	b.flow.Steps = b.steps(rest, topBlocks)
+}
+
+// locals reads the `locals` blocks among blocks. It returns the other blocks in file order and the names that the locals blocks declare.
+func (b *builder) locals(blocks []*hclsyntax.Block) ([]*hclsyntax.Block, []Local) {
+	var (
+		rest  []*hclsyntax.Block
+		found []Local
+	)
+
+	for _, blk := range blocks {
+		if blk.Type == localsBlock {
+			found = append(found, b.localsBlock(blk)...)
+		} else {
+			rest = append(rest, blk)
+		}
+	}
+
+	return rest, found
+}
+
+// inFileOrder returns the attributes of a block in the order of the file.
+func inFileOrder(attrs hclsyntax.Attributes) []*hclsyntax.Attribute {
+	return slices.SortedFunc(maps.Values(attrs), func(a, c *hclsyntax.Attribute) int {
+		return cmp.Compare(a.SrcRange.Start.Byte, c.SrcRange.Start.Byte)
+	})
+}
+
+// localsShape reports a `locals` block that has a name or holds a block.
+func (b *builder) localsShape(blk *hclsyntax.Block) {
+	if len(blk.Labels) > 0 {
+		b.add(blk.DefRange(), "`locals` takes no name. Write `locals { }`.")
+	}
+
+	for _, nested := range blk.Body.Blocks {
+		b.add(nested.TypeRange, "`locals` holds names and no blocks. Move the block out of `locals`.")
+	}
+}
+
+// localsBlock reads the names of one `locals` block in file order. A name that is already visible is reported and dropped.
+func (b *builder) localsBlock(blk *hclsyntax.Block) []Local {
+	b.localsShape(blk)
+
+	var found []Local
+
+	for _, attr := range inFileOrder(blk.Body.Attributes) {
+		if first, used := b.visible[attr.Name]; used {
+			b.add(attr.NameRange, fmt.Sprintf("local `%s` is declared twice; the first is on line %d. Rename one.", attr.Name, first.Start.Line))
+
+			continue
+		}
+
+		b.visible[attr.Name] = attr.NameRange
+		found = append(found, Local{Name: attr.Name, Expr: attr.Expr, Range: attr.NameRange})
+	}
+
+	return found
 }
 
 // headers reads the workflow block. It returns the other blocks in file order and the count of workflow blocks.
@@ -184,9 +245,20 @@ func (b *builder) step(step Step, blk *hclsyntax.Block) bool {
 		return b.decode(step, blk)
 	}
 
-	loop.Steps = b.steps(blk.Body.Blocks, loopBlocks)
+	b.loopBody(loop, blk)
 
 	return b.decodeLoop(loop, blk)
+}
+
+// loopBody reads the locals and the steps of a loop. The locals of the loop are visible only while its steps are read.
+func (b *builder) loopBody(loop *Loop, blk *hclsyntax.Block) {
+	rest, locals := b.locals(blk.Body.Blocks)
+	loop.Locals = locals
+	loop.Steps = b.steps(rest, loopBlocks)
+
+	for _, l := range locals {
+		delete(b.visible, l.Name)
+	}
 }
 
 // decodeLoop decodes a loop and reports whether it is usable. A loop that fails to decode has no condition.

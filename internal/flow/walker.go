@@ -397,6 +397,8 @@ func (e *Engine) walk(ctx dbos.Context, in ItemInput, login string) (ItemResult,
 		return ItemResult{}, err
 	}
 
+	scope.Define(file.Locals)
+
 	w := &walker{e: e, ctx: ctx, in: in, login: login, scope: scope}
 
 	err = w.steps(file.Steps, nil)
@@ -537,7 +539,7 @@ func (w *walker) loop(loop *workflow.Loop, outer rounds) error {
 // rounds runs the rounds of a loop and reports whether the last round ended without until holding.
 // After each round that did not end the loop, the next round reads its outputs as `loop.previous`.
 func (w *walker) rounds(loop *workflow.Loop, outer rounds) (bool, error) {
-	last := lastNamed(loop)
+	last := lastNamed(loop, w.scope)
 	exhausted := false
 
 	for round := 1; round <= loop.Max; round++ {
@@ -578,11 +580,11 @@ func (w *walker) round(loop *workflow.Loop, last int, at rounds) (bool, error) {
 	return false, nil
 }
 
-// lastNamed returns the index of the last step of the body that until names, or the last step.
-func lastNamed(loop *workflow.Loop) int {
+// lastNamed returns the index of the last step of the body that until names, directly or through a local, or the last step.
+func lastNamed(loop *workflow.Loop, scope *workflow.Scope) int {
 	found := -1
 
-	for _, tr := range loop.Until.Variables() {
+	for _, tr := range scope.Reads(loop.Until) {
 		split := tr.SimpleSplit()
 		if len(split.Rel) == 0 {
 			continue
