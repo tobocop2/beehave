@@ -2,13 +2,19 @@ package merge
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
 // conclude readies a draft the owner allowed, reads the head and the base tip once more, moves the children, then merges pinned to the gated head and shows the tip.
 // The head and the tip are read again because a push can land between the guards and the merge. The merge call pins the head on the forge side.
+// A pull request that the intent shows merged by an earlier run of this step skips all of that and goes to the tree proof.
 // The children move last: a pull request that any guard refuses leaves its children where they are.
 func (a *attempt) conclude() *refusal {
+	if a.replayed() {
+		return a.tipTree(a.merged())
+	}
+
 	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.retarget} {
 		if stop := step(); stop != nil {
 			return stop
@@ -120,10 +126,16 @@ func (a *attempt) merged() string {
 	return tip
 }
 
-// record adds the row of the merge to the integration pull request, under the lock of its body. A row that cannot be written does not undo the merge.
+// record adds the row of the merge to the integration pull request, under the lock of its body. A body that already holds the exact row, on a line of its own with either line ending, stays as it is, so a replay writes the row once. A row that cannot be written does not undo the merge.
 func (a *attempt) record() {
 	row := fmt.Sprintf("- #%d merged at %s", a.req.PR, a.req.Gated)
-	add := func(body string) string { return strings.TrimRight(body, "\n") + "\n" + row }
+	add := func(body string) string {
+		if slices.Contains(strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n"), row) {
+			return body
+		}
+
+		return strings.TrimRight(body, "\n") + "\n" + row
+	}
 
 	if err := EditBody(a.ctx, a.req.Dir, a.forge, a.req.IntegrationPR, add); err != nil {
 		a.say(fmt.Sprintf("integration-row: not recorded on #%d: %s. Add the row by hand.", a.req.IntegrationPR, err))

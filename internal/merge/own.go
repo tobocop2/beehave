@@ -48,7 +48,7 @@ func ownRefusal(lines ...string) *refusal {
 // read makes the first read and reads the forge's own counts. A commit list shorter than the count is refused, because a commit of ours could hide in the rest.
 // The count of files is kept for the scope guard.
 func (a *attempt) read() *refusal {
-	view, err := a.forge.PRView(a.ctx, a.req.PR, fields()...)
+	view, err := a.forge.PRView(a.ctx, a.req.PR, a.asked()...)
 	if err != nil {
 		return refuse(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}

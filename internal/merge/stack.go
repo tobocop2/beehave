@@ -14,6 +14,10 @@ const listLimit = 1000
 // A child in the same native stack is a note, not a block: GitHub retargets it when its parent merges.
 // With Retarget set, the guard only records the children. The move happens in conclude, after every other guard.
 func (a *attempt) orphans() *refusal {
+	if a.replayed() {
+		return nil
+	}
+
 	kids, stop := a.children()
 	if stop != nil || len(kids) == 0 {
 		return stop
