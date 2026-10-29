@@ -8,6 +8,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // The values of the `state` output of a merge call. While the call waits for the owner, the run shows mergeOwner.
@@ -46,15 +47,14 @@ type mergeArgs struct {
 
 // mergeCall unpacks the arguments of the merge builtin.
 func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (m mergeArgs, err error) {
-	var (
-		children    = "refuse"
-		own, forbid starlark.Value
-		tree        starlark.Value
-		s           = &m.settings
-	)
+	var own, forbid, tree starlark.Value
 
-	err = starlark.UnpackArgs(b.Name(), args, kwargs, "head", &m.head, "repo?", &s.Repo, "base?", &s.Base, "hold?", &s.Hold, "own?", &own, "approved?", &s.Approved, "tree?", &tree,
-		"forbid_text?", &forbid, "children?", &children, "merge?", &m.merges, "name?", &m.label)
+	children, s := "refuse", &m.settings
+
+	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		headKeyword: &m.head, "repo": &s.Repo, "base": &s.Base, "hold": &s.Hold, "own": &own, "approved": &s.Approved, "tree": &tree,
+		"forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
+	})
 	if err != nil {
 		return m, err
 	}

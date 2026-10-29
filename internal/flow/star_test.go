@@ -17,6 +17,7 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/review"
+	trackerstore "github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -316,7 +317,7 @@ func TestRunStar_AnErrorNamesTheFileTheLineAndTheColumn(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := walkText(t, h, "def main(item):\n    command(run = \"not a list\")\n")
+	_, err := walkText(t, h, "def main(item):\n    command(run = \"not a list\" + \"\")\n")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "workflow.star:2:12")
@@ -361,6 +362,46 @@ func TestPredeclared_NamesTheSameBuiltinsAsTheWorkflowPackage(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, workflow.Builtins(), names)
+}
+
+func TestPredeclared_EveryBuiltinReadsItsKeywordsFromTheSignature(t *testing.T) {
+	t.Parallel()
+
+	table := (&script{}).predeclared()
+
+	for _, name := range workflow.Signed() {
+		fn, ok := table[name].(*starlark.Builtin)
+		require.True(t, ok, name)
+
+		_, err := fn.CallInternal(&starlark.Thread{}, nil, []starlark.Tuple{{starlark.String("zz_unknown"), starlark.MakeInt(1)}})
+
+		require.Error(t, err, name)
+		assert.NotContains(t, err.Error(), "wrong number of destinations", name)
+	}
+}
+
+func TestSignature_ClosedSetsAreTheValuesThatTheRunAccepts(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range workflow.StatusValues() {
+		_, err := trackerstore.ParseStatus(status)
+		require.NoError(t, err, status)
+	}
+
+	_, err := trackerstore.ParseStatus("nope")
+	require.Error(t, err)
+
+	for _, children := range workflow.ChildrenValues() {
+		_, err := retarget(children)
+		require.NoError(t, err, children)
+	}
+
+	_, err = retarget("nope")
+	require.Error(t, err)
+
+	for _, mode := range workflow.FailModes() {
+		assert.Contains(t, []string{failReturn, "raise"}, mode)
+	}
 }
 
 func TestToStarlark_AGoIntAndAJSONFloatGiveTheSameStarlarkInt(t *testing.T) {

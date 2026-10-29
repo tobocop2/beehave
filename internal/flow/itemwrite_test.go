@@ -123,7 +123,7 @@ func TestItemWrite_ABadStatusFailsBeforeAnyWrite(t *testing.T) {
 	w := newFakeWriter()
 	h.writer = w
 
-	_, err := walkBody(t, h, "item_status(id = \"1\", status = \"in_progress\")\n")
+	_, err := walkBody(t, h, "item_status(id = \"1\", status = \"in_\" + \"progress\")\n")
 
 	require.ErrorContains(t, err, `status "in_progress" is not known. Use "open", "closed" or "hold"`)
 	assert.Empty(t, w.statuses)

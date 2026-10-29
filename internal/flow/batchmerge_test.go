@@ -139,6 +139,17 @@ func TestBatchMerge_AMergeableStateThatStaysUnknownDefersTheMemberAfterThreeRead
 	assert.Contains(t, stepNames(t, engine), "batch:b.merge#1@3", "the later reads are named @2 and @3")
 }
 
+func TestBatchMerge_AGateRunThatIsNotAListIsRefused(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+
+	_, err := rig.walk(t, rig.call("1", `gate_run = "x" + "", `))
+
+	require.ErrorContains(t, err, "gate_run must be a list of strings")
+	assert.Empty(t, rig.merger.asked)
+}
+
 func TestBatchMerge_AMemberThatTheMergeRefusesIsRejectedWithItsLastLine(t *testing.T) {
 	t.Parallel()
 
@@ -234,7 +245,7 @@ func TestBatchMerge_ACallThatTheBuildOrTheArgumentsCannotServeFailsWithAFix(t *t
 			return r.call("1", "") + "\n" + r.call("3", "")
 		}, want: `name "b" is used twice`},
 		"empty prs":      {body: func(r *batchRig) string { return bad(r, "[]") }, want: "`prs` is empty"},
-		"prs not a list": {body: func(r *batchRig) string { return bad(r, `"x"`) }, want: "`prs` must be a list"},
+		"prs not a list": {body: func(r *batchRig) string { return bad(r, `"x" + ""`) }, want: "`prs` must be a list"},
 		"member not a struct": {body: func(r *batchRig) string {
 			return bad(r, `["x"]`)
 		}, want: "`prs` holds a string"},

@@ -7,6 +7,7 @@ import (
 	"go.starlark.net/starlark"
 
 	trackerstore "github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // writer changes the items of the tracker of a project. Each method is the method of store.Writer with the project in front.
@@ -53,7 +54,9 @@ func (s *script) write(builtin, label string, fn func(ctx context.Context) (map[
 func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var title, key, body, parent, label string
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "title", &title, "key", &key, "body?", &body, "parent?", &parent, "name?", &label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"title": &title, "key": &key, "body": &body, "parent": &parent, nameKeyword: &label,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +75,9 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var id, text, label string
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "id", &id, "status", &text, "name?", &label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"id": &id, statusKeyword: &text, nameKeyword: &label,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +95,9 @@ func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var id, text, key, label string
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "id", &id, "text", &text, "key", &key, "name?", &label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"id": &id, "text": &text, "key": &key, nameKeyword: &label,
+	}); err != nil {
 		return nil, err
 	}
 

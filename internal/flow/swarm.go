@@ -22,6 +22,12 @@ const (
 	defaultEntry = "main"
 	failReturn   = "return"
 	failRaise    = "raise"
+	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
+	nameKeyword    = "name"
+	runKeyword     = "run"
+	headKeyword    = "head"
+	timeoutKeyword = "timeout"
+	statusKeyword  = "status"
 )
 
 // spawnedRun is what the spawn step records for one item: the run that gather waits for, and whether spawn starts it. A run that finished before is reused, and Start is false.
@@ -54,7 +60,9 @@ type gathered struct {
 func (s *script) spawn(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	call := spawnCall{entry: defaultEntry}
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "items", &call.items, "entry?", &call.entry, "name?", &call.label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"items": &call.items, "entry": &call.entry, nameKeyword: &call.label,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +252,9 @@ type gatherCall struct {
 func unpackGather(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (gatherCall, []spawnedRun, error) {
 	call := gatherCall{fail: failReturn}
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "runs", &call.runs, "fail?", &call.fail, "name?", &call.label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"runs": &call.runs, "fail": &call.fail, nameKeyword: &call.label,
+	}); err != nil {
 		return call, nil, err
 	}
 
