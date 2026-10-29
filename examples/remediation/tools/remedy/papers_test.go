@@ -43,6 +43,16 @@ func TestPapers_ASourcePathIsExitCodeOne(t *testing.T) {
 	assert.Contains(t, out, "crates/a/src/lib.rs")
 }
 
+func TestPapers_AMalformedPatternIsExitCodeTwo(t *testing.T) {
+	t.Parallel()
+
+	code, out, errOut := run(t, changes("src/a.rs\n"), "papers", "A..B", "--globs", "[")
+
+	assert.Equal(t, remedy.ExitRefused, code)
+	assert.Empty(t, out)
+	assert.Contains(t, errOut, `the pattern "[" is not valid`)
+}
+
 func TestPapers_NoGlobsTreatsDocumentsAsPapersAndPasses(t *testing.T) {
 	t.Parallel()
 

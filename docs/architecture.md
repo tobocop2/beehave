@@ -146,7 +146,7 @@ flowchart TD
     subgraph L0["Layer 0: foundation"]
         config["config<br/>settings and state folder"]
         model["model<br/>types, enums, contracts"]
-        filelock["filelock<br/>flock locks"]
+        lockfile["lockfile<br/>file lock opener"]
     end
 
     subgraph LEAF["Leaf: imports no obee package"]
@@ -189,8 +189,7 @@ flowchart TD
     flow --> config
     flow --> proc
     flow --> model
-    flow --> filelock
-    policy --> filelock
+    flow --> lockfile
 
     tui -.-> flow
     flow -.-> claim
@@ -206,7 +205,7 @@ Every package imports `model`, and `model` imports no obee package. Only `proc` 
 
 `hclfile` is the one place that reads an HCL file. It decodes the file into a struct and reports each problem with its file, line and column. It imports no obee package, and `depguard` refuses one. `config` uses it. `config` imports the `hcl` package only for the range types of its decode structs.
 
-`filelock` is the one place that calls `flock`. It gives an exclusive lock that waits, an exclusive lock that fails at once when the file is held, and a shared lock. `flow` and the ledger of the remediation tools (`examples/remediation/tools/ledger`) use it and import no other lock code.
+File locks come from `github.com/gofrs/flock`. `flow`, `merge` and the ledger of the remediation tools (`examples/remediation/tools/ledger`) open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `cmd/obee` passes the transcript readers of the agent adapter to the code that scans a run, as function values. The `Call` type lives in `model`, which both sides import.
 
@@ -343,7 +342,7 @@ The engine has one check package: `check/shell`, for the shell scan. The gate li
 - The lane report has four sections (Claims, Hunks, Inputs, Siblings), each a table with a fixed column count. A section with nothing to list has one `none: <reason>` row. A claim names the head commit it was verified at, and the report says that no background command is left.
 - The handoff file of a lane that stops early states the regressions so far and the lane context. A handoff written between a launch and its read is refused.
 - The burn record reads the transcript of the orchestrator. It counts the main thread calls for each hour and the token count of each lane notice. A token count prints as the transcript wrote it, whole or fractional. The lane cap comes from the `--cap` flag of `remedy spend`, else 150000; the tool reads no environment variable. An empty cap is refused, and a cap above the integer range is the largest cap. A text that is not UTF-8 gets one replacement mark for each cut multi-byte sequence and one for each other bad byte. A transcript line whose `message` or `usage` is not an object is skipped, and so is a line with `NaN` or `Infinity`. A transcript key matches by exact case.
-- The papers check lists the source paths that a revision range changes. A range that starts with `-` is refused, so git never reads it as an option. A lane of proof and papers changes none. The globs match as `fnmatch` does: a malformed `[` is a plain `[`, `^` is a plain `^`, `!` negates, and `*` crosses `/`. The package `papers` declares its own `runner` interface for git, so it does not import `forge`. A git pathspec does not replace the matcher: it reads `^` as a negation, `?` as one byte and a reversed range in a set another way, so the matcher stays.
+- The papers check lists the source paths that a revision range changes. A range that starts with `-` is refused, so git never reads it as an option. A lane of proof and papers changes none. The globs come from `github.com/gobwas/glob`, compiled with no separator, so `*` and `?` cross `/`. A pattern has three forms that `fnmatch` does not have. `[!x]` negates a set. `{a,b}` chooses between patterns, so a literal brace is `\{` or `\}`. `\` escapes the next character, so a literal backslash is `\\` and `\*` is a literal star. A pattern that does not parse is a refusal that names the pattern. Examples are an unclosed `[` or `{`, a lone `[!`, `[]]`, `[!]a]` and a trailing `\`. The package `papers` declares its own `runner` interface for git, so it does not import `forge`.
 - The author check compares the address of a commit with the address of the account. A login with no linked account and a foreign address is refused as well.
 
 The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step, with a `Derived from:` line that ends in a commit. A row with the command `see <file>` is an unstated step: the job passes when it prints `name=<step>`. Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts. A command here is a simple command with its redirects, a pipeline or list (`&&`, `||`, `;`, `|`), a subshell, a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`) with its keyword, or one line of a here-document. A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job. A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip. Words join on blank and tab only, so a no-break space does not join them. A comment at the end of a line is not a command. The skip reason and the fixed-status message print the text of the command, not of its whole line. The rows and sections are read as text with `splitRow`; the job is read with the parser of `shell.ParseUnits`, and the `let` rule parses its arithmetic text with the same parser. A `GATE-SKIP <step>: <reason>` line declares a skip. It needs a reason, a step of the list, a `command -v` check when the reason names a missing tool, and a final marker with `gate=partial`.
@@ -360,7 +359,7 @@ The exit marker rule finds a print command (`echo`, `printf`, a here-document or
 
 A fix lane is a fix, a rework or a relay. Only a fix lane writes the mechanism, model and round columns. The empty columns at the end of a row are left off. `Rounds` counts the fix and rework rows on one mechanism since the last design row. `Since` returns whole days from the latest row of a kind. A row whose time is not a UTC stamp is refused.
 
-`ledger` imports `examples/remediation/tools/check` and `filelock`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
+`ledger` imports `examples/remediation/tools/check` and `github.com/gofrs/flock`. The print lines of a command line are not here: `Add` returns what it did, and the command prints it.
 
 The state folder is a flag. Every `remedy ledger` verb and `remedy scope` take `--state <folder>`, and the ledger file is `lane-ledger.tsv` in that folder. The tool does not guess the folder from the working folder, and it reads no environment variable for it. `remedy admit` takes the same flag. The workflow passes the folder that it keeps for the run.
 
@@ -464,7 +463,7 @@ A child is an open pull request whose base is the branch of the pull request. A 
 
 ### Edit of the shared body
 
-`EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `filelock` on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
+`EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
 
 ### Merge step of the item
 

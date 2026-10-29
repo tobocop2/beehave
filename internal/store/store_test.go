@@ -8,18 +8,14 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 )
 
-func TestDecode_ReadsAPayloadOrRefusesNamingTheCommand(t *testing.T) {
+func TestDecodeRows_ReadsAListOrRefusesNamingTheCommand(t *testing.T) {
 	t.Parallel()
 
-	type row struct {
-		ID string `json:"id"`
-	}
-
-	got, err := store.Decode[row]("bd show", `{"id":"x"}`)
+	got, err := store.DecodeRows[int]("bd show", `[1]`, 3, "bd list")
 	require.NoError(t, err)
-	require.Equal(t, "x", got.ID)
+	require.Equal(t, []int{1}, got)
 
-	_, err = store.Decode[row]("bd show", `[1]`)
+	_, err = store.DecodeRows[int]("bd show", `{"id":"x"}`, 3, "bd list")
 	require.ErrorContains(t, err, "`bd show`")
 
 	var refusal *store.Error

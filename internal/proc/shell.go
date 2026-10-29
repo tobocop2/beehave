@@ -20,7 +20,7 @@ const (
 func RunShell(ctx context.Context, dir, command string) (string, int) {
 	cmd := GroupCommand(ctx, shellBinary, []string{"-c", command}, dir)
 
-	output := &tailWriter{limit: model.ReportLimit}
+	output := NewTail(model.ReportLimit)
 
 	cmd.Stdout, cmd.Stderr = output, output
 
@@ -28,14 +28,14 @@ func RunShell(ctx context.Context, dir, command string) (string, int) {
 
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		return output.text(), shellCode(exit)
+		return output.Text(), shellCode(exit)
 	}
 
 	if err != nil {
 		return err.Error(), exitNotFound
 	}
 
-	return output.text(), 0
+	return output.Text(), 0
 }
 
 func shellCode(exit *exec.ExitError) int {

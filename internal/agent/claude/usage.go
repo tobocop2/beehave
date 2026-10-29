@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/model"
@@ -104,7 +103,7 @@ func (u UsageReader) locate(runner model.Runner) (string, string) {
 func ask(ctx context.Context, binary string, env []string, timeout time.Duration) model.Reading {
 	cmd := proc.GroupCommand(ctx, binary, usageArgs(), "/")
 	cmd.Env = env
-	stderr := &capWriter{limit: maxStderrBytes}
+	stderr := proc.NewTail(maxStderrBytes)
 	cmd.Stderr = stderr
 
 	stdin, _ := cmd.StdinPipe()   //nolint:errcheck // a fresh command always has a stdin to open
@@ -124,7 +123,7 @@ func ask(ctx context.Context, binary string, env []string, timeout time.Duration
 		return reading
 	}
 
-	return unanswered(ctx, waitErr, stderr.text(), timeout)
+	return unanswered(ctx, waitErr, stderr.Text(), timeout)
 }
 
 // unanswered returns the reason a CLI gave no answer.
@@ -228,20 +227,4 @@ func lastLine(text string) string {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 
 	return strings.TrimSpace(lines[len(lines)-1])
-}
-
-// capWriter keeps the first limit bytes written to it and drops the rest.
-type capWriter struct {
-	data  []byte
-	limit int
-}
-
-func (w *capWriter) Write(p []byte) (int, error) {
-	w.data = append(w.data, p[:min(len(p), max(w.limit-len(w.data), 0))]...)
-
-	return len(p), nil
-}
-
-func (w *capWriter) text() string {
-	return strings.ToValidUTF8(string(w.data), string(utf8.RuneError))
 }

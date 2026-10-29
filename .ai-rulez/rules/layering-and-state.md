@@ -18,7 +18,7 @@ The method tools are under `examples/remediation/tools/`, in the same Go module.
 
 | Layer | Packages | Holds |
 |---|---|---|
-| 0 | `model`, `config`, `filelock` | Domain types and enums, the typed config, the file locks. No upward imports. |
+| 0 | `model`, `config`, `lockfile` | Domain types and enums, the typed config, the file lock opener. No upward imports. |
 | leaf | `hclfile` | The HCL file reader. It imports no obee package; `config` imports it. |
 | 1 | `store`, `forge`, `proc`, `agent`, `host` | Adapters for `bd`, `gh`, agent CLIs and build hosts. Each wraps an external shape once. |
 | 2 | `check/shell`, `claim`, `gate`, `merge`, `review`, `pool`, `workflow` | Round policy and the workflow file schema. Declares the small interfaces it needs from layer 1. |

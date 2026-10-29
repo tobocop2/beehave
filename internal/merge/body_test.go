@@ -2,6 +2,8 @@ package merge_test
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/filelock"
+	"github.com/tobocop2/obee/internal/lockfile"
 	"github.com/tobocop2/obee/internal/merge"
 )
 
@@ -78,8 +80,8 @@ func TestEditBody_ALockHeldByAnotherHolderMakesTheCallWait(t *testing.T) {
 	t.Parallel()
 
 	dir, forge := t.TempDir(), &slowBody{}
-	held, err := filelock.Exclusive(filepath.Join(dir, "integration-9.lock"))
-	require.NoError(t, err)
+	held := lockfile.Open(filepath.Join(dir, "integration-9.lock"))
+	require.NoError(t, held.Lock())
 
 	done := make(chan error, 1)
 
@@ -91,7 +93,7 @@ func TestEditBody_ALockHeldByAnotherHolderMakesTheCallWait(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	require.NoError(t, held.Release())
+	require.NoError(t, held.Unlock())
 	select {
 	case err := <-done:
 		require.NoError(t, err)
@@ -109,9 +111,35 @@ func TestEditBody_AFailedWriteReleasesTheLock(t *testing.T) {
 
 	require.ErrorIs(t, merge.EditBody(context.Background(), dir, forge, 9, addRow("x")), errDown)
 
-	again, err := filelock.TryExclusive(filepath.Join(dir, "integration-9.lock"))
+	again := lockfile.Open(filepath.Join(dir, "integration-9.lock"))
+	free, err := again.TryLock()
 	require.NoError(t, err)
-	require.NoError(t, again.Release())
+	require.True(t, free)
+	require.NoError(t, again.Unlock())
+}
+
+func TestEditBody_ALockPathThatIsAFolderIsRefused(t *testing.T) {
+	t.Parallel()
+
+	dir, forge := t.TempDir(), &slowBody{body: "keep"}
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "integration-8.lock"), 0o700))
+
+	require.ErrorContains(t, merge.EditBody(context.Background(), dir, forge, 8, addRow("x")), fmt.Sprintf("lock the body of #%d", 8))
+	assert.Equal(t, "keep", forge.body)
+}
+
+func TestEditBody_AReadOnlyLockFileIsRefused(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a mode 0400 file")
+	}
+
+	dir, forge := t.TempDir(), &slowBody{body: "keep"}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "integration-7.lock"), nil, 0o400))
+
+	require.ErrorContains(t, merge.EditBody(context.Background(), dir, forge, 7, addRow("x")), fmt.Sprintf("lock the body of #%d", 7))
+	assert.Equal(t, "keep", forge.body)
 }
 
 func TestEditBody_AFailedReadWritesNothing(t *testing.T) {

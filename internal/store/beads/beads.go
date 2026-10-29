@@ -191,9 +191,9 @@ func (s *Store) children(ctx context.Context, container string) ([]string, error
 		return nil, store.Refuse("store: cannot read the children of %s; refusing to list work", container)
 	}
 
-	rows, err := store.Decode[[]bdRow]("bd children", done.Stdout)
+	rows, err := model.Decode[[]bdRow]("bd children", done.Stdout)
 	if err != nil {
-		return nil, err
+		return nil, store.Unreadable(err)
 	}
 
 	return ids(rows)
@@ -250,12 +250,14 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 // decodeShown reads the row of bd show, which prints one object or a list of one.
 func decodeShown(item, text string) (bdRow, error) {
 	if !strings.HasPrefix(strings.TrimSpace(text), "[") {
-		return store.Decode[bdRow]("bd show", text)
+		row, err := model.Decode[bdRow]("bd show", text)
+
+		return row, store.Unreadable(err)
 	}
 
-	rows, err := store.Decode[[]bdRow]("bd show", text)
+	rows, err := model.Decode[[]bdRow]("bd show", text)
 	if err != nil {
-		return bdRow{}, err
+		return bdRow{}, store.Unreadable(err)
 	}
 
 	if len(rows) == 0 {

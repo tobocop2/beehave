@@ -189,21 +189,21 @@ func startAndWait(cmd *exec.Cmd, onStart func(pid int)) error {
 }
 
 // newStreams returns the redacting writers for stdout (to the log) and stderr (to a tail buffer).
-func newStreams(spec Spec) (*redactWriter, *redactWriter, *tailBuffer) {
+func newStreams(spec Spec) (*redactWriter, *redactWriter, *proc.Tail) {
 	log := spec.Log
 	if log == nil {
 		log = io.Discard
 	}
 
 	secrets := newRedactor(spec.Token)
-	tail := &tailBuffer{}
+	tail := proc.NewTail(tailBytes)
 
 	return &redactWriter{out: log, redactor: secrets, limit: maxLineBytes},
 		&redactWriter{out: tail, redactor: secrets, limit: maxLineBytes}, tail
 }
 
-func finish(ctx context.Context, cmd *exec.Cmd, runErr, flushErr error, tail *tailBuffer) Result {
-	result := Result{Outcome: OutcomeExited, Stderr: string(tail.data)}
+func finish(ctx context.Context, cmd *exec.Cmd, runErr, flushErr error, tail *proc.Tail) Result {
+	result := Result{Outcome: OutcomeExited, Stderr: tail.Text()}
 
 	switch {
 	case runErr != nil && context.Cause(ctx) != nil:

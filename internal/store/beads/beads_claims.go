@@ -317,9 +317,9 @@ func (s *Store) Reclaim(ctx context.Context, item string) (bool, error) {
 		return false, store.Refuse("store: cannot reclaim the row %s: %s", rowID, stderrText(done))
 	}
 
-	freed, err := store.Decode[reclaimed]("bd reclaim", done.Stdout)
+	freed, err := model.Decode[reclaimed]("bd reclaim", done.Stdout)
 	if err != nil {
-		return false, err
+		return false, store.Unreadable(err)
 	}
 
 	return slices.ContainsFunc(freed.Reclaimed, func(r reclaimedRow) bool { return r.ID == rowID }), nil

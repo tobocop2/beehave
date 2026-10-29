@@ -24,6 +24,39 @@ func TestPublish_AFileThatCannotBeReadOrWrittenIsARefusalThatNamesIt(t *testing.
 	assert.NoFileExists(t, blocked)
 }
 
+func TestLocks_AFolderAsTheLockIsRefused(t *testing.T) {
+	t.Parallel()
+
+	folder := filepath.Join(t.TempDir(), "d.tsv")
+	require.NoError(t, os.Mkdir(folder+lockSuffix, 0o700))
+
+	requireLockRefused(t, folder)
+}
+
+func TestLocks_AReadOnlyFileAsTheLockIsRefused(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a mode 0400 file")
+	}
+
+	readOnly := filepath.Join(t.TempDir(), "ro.tsv")
+	require.NoError(t, os.WriteFile(readOnly+lockSuffix, nil, 0o400))
+
+	requireLockRefused(t, readOnly)
+}
+
+func requireLockRefused(t *testing.T, path string) {
+	t.Helper()
+
+	ran := false
+	run := func() error { ran = true; return nil }
+
+	require.ErrorContains(t, NewTable(path).Hold(run), "cannot lock "+path+lockSuffix, path)
+	require.ErrorContains(t, NewTable(path).Share(run), "cannot lock "+path+lockSuffix, path)
+	assert.False(t, ran, path)
+}
+
 func TestList_AnEmptyFileHasNoRows(t *testing.T) {
 	t.Parallel()
 

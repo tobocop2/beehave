@@ -3,9 +3,7 @@ package agent
 import (
 	"bytes"
 	"errors"
-	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,19 +53,6 @@ func TestRedactWriter_FlushWithNothingPendingWritesNothing(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
-func TestTailBuffer_KeepsTheLastBytesOnly(t *testing.T) {
-	t.Parallel()
-
-	tail := &tailBuffer{}
-	_, err := tail.Write(bytes.Repeat([]byte("a"), tailBytes))
-	require.NoError(t, err)
-	_, err = tail.Write([]byte("end"))
-	require.NoError(t, err)
-
-	assert.Len(t, tail.data, tailBytes)
-	assert.Equal(t, "end", string(tail.data[tailBytes-3:]))
-}
-
 func TestBuildEnv_KeepsOnlyTheAllowlistTheLoginAndTheToken(t *testing.T) {
 	t.Parallel()
 
@@ -114,17 +99,4 @@ func TestRedactWriter_ASinkErrorOnACompleteLineStopsTheWrite(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Zero(t, written)
-}
-
-func TestTailBuffer_NeverStartsInTheMiddleOfACharacter(t *testing.T) {
-	t.Parallel()
-
-	tail := &tailBuffer{}
-	_, err := tail.Write([]byte(strings.Repeat("\u20ac", 2000))) // 6000 bytes; the cut at 4096 lands inside a character
-	require.NoError(t, err)
-
-	assert.True(t, utf8.Valid(tail.data))
-	assert.LessOrEqual(t, len(tail.data), tailBytes)
-	assert.Greater(t, len(tail.data), tailBytes-3)
-	assert.True(t, strings.HasPrefix(string(tail.data), "\u20ac"))
 }
