@@ -1,0 +1,14 @@
+{
+  "name": "obee-local",
+  "description": "The obee plugin, installed from a local checkout",
+  "owner": {
+    "name": "tobocop2"
+  },
+  "plugins": [
+    {
+      "name": "obee",
+      "source": "./",
+      "description": "Drive the obee command line from a Claude Code chat"
+    }
+  ]
+}
