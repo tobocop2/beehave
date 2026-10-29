@@ -10,6 +10,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // ItemInput starts the workflow of one item.
@@ -17,7 +18,8 @@ type ItemInput struct {
 	Item    string `json:"item"`
 	Project string `json:"project"`
 	File    string `json:"file,omitempty"`
-	Hash    string `json:"hash,omitempty"`
+	// Files are the workflow file and every file it loads, with their hashes. A run executes only these bytes.
+	Files []workflow.PinnedFile `json:"files,omitempty"`
 	// Login is the agent login that handleFor picked before the run started. DBOS stores the input, so a resume keeps it.
 	Login string `json:"login,omitempty"`
 }
@@ -77,7 +79,7 @@ func (e *Engine) workHolding(ctx dbos.Context, in ItemInput, login string, taken
 		return ItemResult{}, err
 	}
 
-	result, err := e.walk(ctx, in, login)
+	result, err := e.runStar(ctx, in, login)
 
 	if lost := e.claimCheck(id, in.Item); lost != nil {
 		return result, lost

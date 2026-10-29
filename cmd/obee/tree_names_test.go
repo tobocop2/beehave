@@ -91,10 +91,10 @@ func TestNamesIn_RefusesMethodWordsOnlyInTheLocalExample(t *testing.T) {
 
 	for _, word := range []string{"round", "Rounds", "lane", "orchestrator", "remedia" + "tion", "profile"} {
 		tree := fstest.MapFS{
-			"examples/local/workflow.hcl": {Data: []byte("# a " + word + " here")},
-			"examples/config/note.hcl":    {Data: []byte("# a " + word + " here")},
+			"examples/local/workflow.star": {Data: []byte("# a " + word + " here")},
+			"examples/config/note.hcl":     {Data: []byte("# a " + word + " here")},
 		}
-		hits, err := namesIn(tree, "examples/local/workflow.hcl")
+		hits, err := namesIn(tree, "examples/local/workflow.star")
 		require.NoError(t, err)
 		require.NotEmpty(t, hits, word)
 
@@ -111,7 +111,7 @@ func TestTrackedFiles_CoversTheExamplesButTheMethod(t *testing.T) {
 	require.NoError(t, err)
 	files := trackedFiles(t, root)
 
-	require.Contains(t, files, "examples/local/workflow.hcl")
+	require.Contains(t, files, "examples/local/workflow.star")
 	require.Contains(t, files, "examples/config/runners.hcl")
 	for _, rel := range files {
 		require.False(t, strings.HasPrefix(rel, "examples/remediation/"), rel)

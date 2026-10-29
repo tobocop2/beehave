@@ -21,7 +21,6 @@ import (
 	"github.com/tobocop2/obee/internal/store/beads"
 	storegithub "github.com/tobocop2/obee/internal/store/github"
 	"github.com/tobocop2/obee/internal/store/local"
-	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // adapters is the one place that maps an adapter name to its constructor. No other package dispatches on a name.
@@ -225,39 +224,21 @@ func (a adapters) itemOpener() cli.ItemOpener {
 	}
 }
 
-// capabilities returns what the project offers to a workflow: the item fields that its tracker and its forge declare, the tracker first, and whether it has a forge.
-// A project with no forge has the fields of its tracker only, and the forge fields go in ForgeOnly for the hint of a check.
-// The local tracker declares its fields without opening local.db, so a check leaves the state folder alone.
-func (a adapters) capabilities(ctx context.Context, project model.Project) (workflow.Capabilities, error) {
-	fields, err := a.trackerFields(ctx, project)
-	if err != nil {
-		return workflow.Capabilities{}, err
+// checkTrackerAndForge says why the tracker or the forge of the project cannot be built. The local tracker needs no file, so a check leaves the state folder alone.
+func (a adapters) checkTrackerAndForge(ctx context.Context, project model.Project) error {
+	if project.Tracker != model.TrackerLocal {
+		if _, err := a.tracker(ctx, project); err != nil {
+			return err
+		}
 	}
 
 	if project.Forge == "" {
-		return workflow.Capabilities{Project: project.Name, Fields: fields, ForgeOnly: forgegithub.ItemFields()}, nil
+		return nil
 	}
 
-	built, err := a.forge(project)
-	if err != nil {
-		return workflow.Capabilities{}, err
-	}
+	_, err := a.forge(project)
 
-	return workflow.Capabilities{Project: project.Name, Fields: append(fields, built.ItemFields()...), Forge: true}, nil
-}
-
-// trackerFields returns the item fields that the tracker of the project declares. The local tracker needs no file for them.
-func (a adapters) trackerFields(ctx context.Context, project model.Project) ([]string, error) {
-	if project.Tracker == model.TrackerLocal {
-		return local.ItemFields(), nil
-	}
-
-	tracker, err := a.tracker(ctx, project)
-	if err != nil {
-		return nil, err
-	}
-
-	return tracker.ItemFields(), nil
+	return err
 }
 
 // checkClaims says why the claim store of the project cannot be built. It opens no file.
@@ -278,7 +259,7 @@ func (a adapters) checkClaims(project model.Project) error {
 // A local tracker and a local claim store open no file here. A project that names beads needs a bd that has leases and the guards of bd update, so check also refuses an older bd.
 // A project that names no beads never calls bd. `obee check config` calls check for each project.
 func (a adapters) check(ctx context.Context, project model.Project) error {
-	if _, err := a.capabilities(ctx, project); err != nil {
+	if err := a.checkTrackerAndForge(ctx, project); err != nil {
 		return err
 	}
 

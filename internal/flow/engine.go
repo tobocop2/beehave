@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
@@ -135,7 +137,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	engine := &Engine{
-		deps: deps, env: opts.Env, version: opts.Version, dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}),
 	}
 
@@ -171,10 +173,16 @@ func engineConfig(opts Options, state store, logger *slog.Logger) dbos.Config {
 		AppName:            appName,
 		DatabaseURL:        state.url,
 		Logger:             logger,
-		ApplicationVersion: opts.Version,
+		ApplicationVersion: applicationVersion(opts.Version),
 		ExecutorID:         executorName,
 	}
 }
+
+// applicationVersion is the version that DBOS stores with each run: the build version and the version of the builtin steps.
+func applicationVersion(build string) string { return build + "+" + stepsVersion }
+
+// buildVersion is the version that a user starts: a stored version without the version of the builtin steps.
+func buildVersion(stored string) string { return strings.TrimSuffix(stored, "+"+stepsVersion) }
 
 // register adds the workflows and the agents queue: one agent per login, at most maxConcurrent in all.
 func (e *Engine) register(maxConcurrent int) error {
@@ -284,12 +292,12 @@ func (e *Engine) oldRuns() ([]string, error) {
 func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
 	abs, absErr := filepath.Abs(file)
 
-	hash, hashErr := hashFile(file)
-	if err := errors.Join(hashErr, absErr); err != nil {
+	pinned, pinErr := workflow.Pin(abs)
+	if err := errors.Join(pinErr, absErr); err != nil {
 		return ItemResult{}, err
 	}
 
-	return e.run(ItemInput{Item: item, Project: project, File: abs, Hash: hash})
+	return e.run(ItemInput{Item: item, Project: project, File: abs, Files: pinned})
 }
 
 // check refuses an item that is not an item id, and a missing project.

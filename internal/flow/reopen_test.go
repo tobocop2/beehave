@@ -132,7 +132,7 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.flowIs(t, "workflow \"w\" {}\nagent \"first\" {\n  prompt = \"prompts/work.md\"\n}\nagent \"second\" {\n  prompt = \"prompts/second.md\"\n}\n")
+	harness.flowIs(t, bodyFlow("agent(model = \"m\", prompt = \"prompts/work.md\", name = \"first\")\nagent(model = \"m\", prompt = \"prompts/second.md\", name = \"second\")\n"))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(harness.opts.StateDir), "prompts", "second.md"), []byte("Second.\n"), 0o600))
 
 	harness.agents.result = func(request AgentRequest) agent.Result {

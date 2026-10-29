@@ -1,39 +1,23 @@
 # The implementer stages everything. A step that forbids bulk staging records the hit as the output violations, and the step still succeeds.
 # The next step reads the output. A step that forbids another kind records nothing.
-exec obee run 7 --workflow flow/hit.hcl
+exec obee run 7 --workflow flow/hit.star
 stdout 'item 7 finished'
 
 grep -count=1 '^implement ' calls.log
 grep -count=1 '^audit ' calls.log
 grep -count=1 '^bulk-staging: git add -A$' seen.log
 
-exec obee run 8 --workflow flow/miss.hcl
+exec obee run 8 --workflow flow/miss.star
 stdout 'item 8 finished'
 
 grep -count=2 '^audit ' calls.log
 grep -count=1 'git add' seen.log
 
--- flow/hit.hcl --
-workflow "hit" {}
-
-agent "implement" {
-  prompt          = "prompts/implement.md"
-  forbid_commands = ["bulk-staging", "local-delete"]
-}
-
-agent "audit" {
-  prompt = "prompts/audit.md"
-  inputs = { seen = agent.implement.violations }
-}
--- flow/miss.hcl --
-workflow "miss" {}
-
-agent "implement" {
-  prompt          = "prompts/implement.md"
-  forbid_commands = ["remote-delete"]
-}
-
-agent "audit" {
-  prompt = "prompts/audit.md"
-  inputs = { seen = agent.implement.violations }
-}
+-- flow/hit.star --
+def main(item):
+    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", forbid_commands = ["bulk-staging", "local-delete"])
+    agent(name = "audit", prompt = "prompts/audit.md", model = "sonnet", inputs = {"seen": implement.violations})
+-- flow/miss.star --
+def main(item):
+    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", forbid_commands = ["remote-delete"])
+    agent(name = "audit", prompt = "prompts/audit.md", model = "sonnet", inputs = {"seen": implement.violations})

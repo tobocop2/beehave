@@ -69,7 +69,7 @@ type command struct {
 	run     func(ctx context.Context, deps Deps, s streams, args []string) int
 }
 
-// commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.hcl reads it.
+// commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.star reads it.
 func commands() []command {
 	return slices.Concat(roundCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
 }

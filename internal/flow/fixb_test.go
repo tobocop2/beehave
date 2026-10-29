@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
@@ -318,10 +319,10 @@ func TestItem_ARunWithoutALoginInItsInputFailsBeforeTheClaim(t *testing.T) {
 	engine := harness.engine(t)
 
 	file := filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName)
-	hash, err := hashFile(file)
+	pinned, err := workflow.Pin(file)
 	require.NoError(t, err)
 
-	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, Project: testProject, File: file, Hash: hash}, dbos.WithWorkflowID(runID(testItem, 1)))
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, Project: testProject, File: file, Files: pinned}, dbos.WithWorkflowID(runID(testItem, 1)))
 	require.NoError(t, err)
 
 	_, err = handle.GetResult()
@@ -346,7 +347,7 @@ func TestRun_TheLoginIsPickedOnceForTheRunAndEveryAgentWithoutARunnerUsesIt(t *t
 	harness := newHarness(t)
 	logins := &loginSequence{picks: []loginPick{{login: "alice"}, {login: "bob"}}}
 	harness.picker = logins
-	harness.flowIs(t, "workflow \"w\" {}\nagent \"one\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"two\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"three\" {\n  prompt = \"prompts/a.md\"\n  runner = \"named\"\n}\n")
+	harness.flowIs(t, bodyFlow("agent(model = \"m\", prompt = \"prompts/a.md\", name = \"one\")\nagent(model = \"m\", prompt = \"prompts/a.md\", name = \"two\")\nagent(model = \"m\", prompt = \"prompts/a.md\", runner = \"named\", name = \"three\")\n"))
 	writePrompt(t, harness)
 
 	_, err := harness.engine(t).Run(testItem, testProject)
@@ -362,7 +363,7 @@ func TestResume_AnAgentThatResumesASessionRunsOnTheLoginThatOwnsIt(t *testing.T)
 	harness := newHarness(t)
 	logins := &loginSequence{picks: []loginPick{{login: "alice"}, {login: "bob"}}}
 	harness.picker = logins
-	harness.flowIs(t, "workflow \"w\" {}\nagent \"one\" {\n  prompt = \"prompts/a.md\"\n}\nagent \"two\" {\n  prompt = \"prompts/a.md\"\n  resume_from = agent.one\n}\n")
+	harness.flowIs(t, bodyFlow("one = agent(model = \"m\", prompt = \"prompts/a.md\", name = \"one\")\nagent(model = \"m\", prompt = \"prompts/a.md\", resume = one.session, name = \"two\")\n"))
 	writePrompt(t, harness)
 
 	var calls atomic.Int32

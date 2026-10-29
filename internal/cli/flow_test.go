@@ -131,10 +131,10 @@ func newRig(t *testing.T) *flowRig {
 	writeConfig(t, dir, "projects/p.hcl", validProject)
 
 	flowDir := t.TempDir()
-	writeConfig(t, flowDir, "flow.hcl", oneCommandFile)
+	writeConfig(t, flowDir, "flow.star", oneCommandFile)
 
 	return &flowRig{
-		file: filepath.Join(flowDir, "flow.hcl"), useFile: true,
+		file: filepath.Join(flowDir, "flow.star"), useFile: true,
 		runner: &fakeRunner{}, steering: &fakeSteering{}, dir: dir,
 		env: map[string]string{stateDirVariable: t.TempDir() + "/state"},
 	}
@@ -410,6 +410,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-4-r1", State: "done", SentBack: "a review asks\nfor changes"},
 		{ID: "item-5-r1", State: "running", Merge: "owner_merge"},
 		{ID: "item-6-r1", State: "done", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
+		{ID: "item-7-r1", State: "running", Version: "v1", Stranded: true, OlderSteps: true},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -419,7 +420,8 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
-		"item-6-r1\tdone\tstopped at check rc 2\n", stdout)
+		"item-6-r1\tdone\tstopped at check rc 2\n"+
+		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

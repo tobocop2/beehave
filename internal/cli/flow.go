@@ -53,12 +53,11 @@ type Flow struct {
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
 type flowCommands struct {
-	ctx          context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
-	env          map[string]string
-	version      string
-	factory      Flow
-	capabilities capabilitiesFunc
-	items        ItemOpener
+	ctx     context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
+	env     map[string]string
+	version string
+	factory Flow
+	items   ItemOpener
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -163,7 +162,7 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 		return err
 	}
 
-	file, err := f.checkedWorkflow(cmd, cfg.Projects[project].Project, workflowFile)
+	file, err := f.checkedWorkflow(cmd, workflowFile)
 	if err != nil && !errors.Is(err, errNoWorkflow) {
 		return err
 	}
@@ -173,13 +172,13 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 }
 
 // checkedWorkflow returns the workflow file that run uses after it passes the check.
-func (f flowCommands) checkedWorkflow(cmd *cobra.Command, project model.Project, named string) (string, error) {
+func (f flowCommands) checkedWorkflow(cmd *cobra.Command, named string) (string, error) {
 	file, err := chooseWorkflow(named)
 	if err != nil {
 		return "", err
 	}
 
-	return file, f.checkWorkflow(cmd, project, file)
+	return file, runCheckWorkflow(cmd.ErrOrStderr(), file)
 }
 
 // missingWorkflow is the refusal of a run that has no workflow file to start with.
@@ -188,7 +187,7 @@ func missingWorkflow() error {
 }
 
 // chooseWorkflow returns the workflow file that run uses.
-// A file named with --workflow must exist. Without the flag, workflow.hcl in the current folder is used, and a folder without it is refused.
+// A file named with --workflow must exist. Without the flag, workflow.star in the current folder is used, and a folder without it is refused.
 func chooseWorkflow(named string) (string, error) {
 	if named != "" {
 		if _, err := os.Stat(named); err != nil {
@@ -208,16 +207,6 @@ func chooseWorkflow(named string) (string, error) {
 	}
 
 	return "", fmt.Errorf("read the workflow file %s: %w. Fix the access to the file, or name another file with --%s", defaultWorkflowFile, err, workflowFlag)
-}
-
-// checkWorkflow runs the same check as obee check workflow, and refuses the run on any problem.
-func (f flowCommands) checkWorkflow(cmd *cobra.Command, project model.Project, file string) error {
-	caps, err := projectCapabilities(f.ctx, f.capabilities, project)
-	if err != nil {
-		return err
-	}
-
-	return runCheckWorkflow(cmd.ErrOrStderr(), file, caps)
 }
 
 // runArgs accepts a valid item id and at most one project name.
@@ -398,6 +387,8 @@ func statusLine(info flow.RunInfo) string {
 	line := fmt.Sprintf("%s\t%s", info.ID, info.State)
 
 	switch {
+	case info.OlderSteps:
+		line += "\tstranded: made by an older step format. Start the obee build that made it to finish it"
 	case info.Stranded:
 		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
 	case info.Question != "":

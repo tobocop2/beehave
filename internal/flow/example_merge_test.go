@@ -159,11 +159,11 @@ func mergingExample(t *testing.T, world func(head string) *shipWorld) (*agentRig
 	source, err := folder.ReadFile(filepath.Base(file))
 	require.NoError(t, err)
 
-	const marker = "  head        = gate.check.head\n"
+	const marker = "        head = loop.gate.head,\n"
 
-	require.Contains(t, string(source), marker, "the merge step of the example")
+	require.Contains(t, string(source), marker, "the merge call of the example")
 
-	merging := strings.Replace(string(source), marker, marker+"  merge       = true\n", 1)
+	merging := strings.Replace(string(source), marker, marker+"        merge = True,\n", 1)
 	require.NoError(t, folder.WriteFile(filepath.Base(file), []byte(merging), 0o600))
 
 	built := world(rig.head)

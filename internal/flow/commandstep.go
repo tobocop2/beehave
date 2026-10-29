@@ -1,144 +1,289 @@
 package flow
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"sort"
+	"slices"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
+	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/hclfile"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
-// commandInput evaluates everything a command step needs before its durable step: the request with stdin and environment, and the stop codes.
-func (c *call) commandInput(step *workflow.Command) (CommandRequest, []int, error) {
-	request, err := c.request(step.Run, step.Host, step.Timeout)
+// commandCall unpacks the arguments of the command builtin: the request, the stop codes and the label.
+func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (CommandRequest, []int, string, error) {
+	var c commandRaw
+
+	err := starlark.UnpackArgs(b.Name(), args, kwargs, "run", &c.run, "host?", &c.host, "stdin?", &c.stdin, "env?", &c.own, "timeout?", &c.timeout, "stop_on_rc?", &c.codes, "name?", &c.label)
 	if err != nil {
-		return CommandRequest{}, nil, err
+		return CommandRequest{}, nil, "", err
 	}
 
-	if request.Stdin, err = c.text(step.Stdin); err != nil {
-		return CommandRequest{}, nil, err
+	request, stops, err := s.commandRequest(c)
+
+	return request, stops, c.label, err
+}
+
+// commandRaw are the arguments of a command call as the file wrote them.
+type commandRaw struct {
+	label, timeout, host, stdin string
+	run, own, codes             starlark.Value
+}
+
+// commandRequest checks the arguments of a command call and makes its request and its stop codes.
+func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
+	request, err := s.request(c.run, c.host, c.timeout)
+	if err != nil {
+		return request, nil, err
 	}
 
-	if request.Env, err = c.environment(step, request); err != nil {
-		return CommandRequest{}, nil, err
+	request.Stdin = c.stdin
+
+	if request.Env, err = s.environment(request, c.own); err != nil {
+		return request, nil, err
 	}
 
-	stops, err := c.stopCodes(step.StopOnRC)
+	stops, err := stopCodes(c.codes)
 
 	return request, stops, err
 }
 
-// environment returns the whole environment of the program: the allowed names of the caller, then the variables of the step.
-// No other variable of the caller reaches the program. A step with a host gets none, because a host job takes a command line only.
-func (c *call) environment(step *workflow.Command, request CommandRequest) ([]string, error) {
-	own, err := c.variables(step.Env)
+// request makes the request of a call from its program, host and timeout. The caller adds stdin and the environment.
+func (s *script) request(run starlark.Value, host, timeout string) (CommandRequest, error) {
+	request := CommandRequest{Project: s.in.Project, Item: s.in.Item, Host: host}
+
+	var err error
+	if request.Run, err = words("run", run); err != nil {
+		return request, err
+	}
+
+	request.Timeout, err = duration("timeout", timeout)
+
+	return request, err
+}
+
+// environment returns the whole environment of the program: the allowed names of the caller, then the variables of the call.
+// No other variable of the caller reaches the program. A call with a host gets none, because a host job takes a command line only.
+func (s *script) environment(request CommandRequest, own starlark.Value) ([]string, error) {
+	pairs, err := variables(own)
 	if err != nil {
 		return nil, err
 	}
 
 	if request.Host == "" {
-		return append(agent.LoginEnv(c.w.e.env, agent.Profile{}, ""), own...), nil
+		return append(agent.LoginEnv(s.e.env, agent.Profile{}, ""), pairs...), nil
 	}
 
-	if request.Stdin != "" || len(own) > 0 {
-		return nil, hclfile.At(step.Run.Range(), "stdin and env cannot be used together with host. A host job takes a command line only. Remove them or host.")
+	if request.Stdin != "" || len(pairs) > 0 {
+		return nil, errors.New("stdin and env cannot be used together with host. A host job takes a command line only. Remove them or host")
 	}
 
 	return nil, nil
 }
 
-// variables evaluates an optional `env` argument to NAME=value pairs, sorted by name. An absent argument is empty.
-func (c *call) variables(expr hcl.Expression) ([]string, error) {
-	value, err := c.optional(expr)
-	if err != nil || value.IsNull() {
-		return nil, err
+// variables reads the env dict of a command call as NAME=value pairs, sorted by name. An absent dict is empty.
+func variables(v starlark.Value) ([]string, error) {
+	dict, ok := optional[*starlark.Dict](v)
+	if !ok {
+		return nil, errors.New("env must be a dict of strings. Write env = {\"NAME\": \"value\"}")
 	}
 
-	if kind := value.Type(); !kind.IsObjectType() && !kind.IsMapType() {
-		return nil, hclfile.At(expr.Range(), "env must be a map of strings. Write env = { NAME = \"value\" }.")
+	if dict == nil {
+		return nil, nil
 	}
 
-	return pairsOf(expr, value)
+	return assignments(dict)
 }
 
-// pairsOf returns the NAME=value pairs of a map value, sorted by name.
-func pairsOf(expr hcl.Expression, entries cty.Value) ([]string, error) {
+// assignments makes the sorted NAME=value pairs of an env dict.
+func assignments(dict *starlark.Dict) ([]string, error) {
 	var pairs []string
 
-	for it := entries.ElementIterator(); it.Next(); {
-		key, item := it.Element()
-
-		pair, err := variable(expr, key.AsString(), item)
+	for _, pair := range dict.Items() {
+		assignment, err := assignmentOf(pair[0], pair[1])
 		if err != nil {
 			return nil, err
 		}
 
-		pairs = append(pairs, pair)
+		pairs = append(pairs, assignment)
 	}
 
-	sort.Strings(pairs)
+	slices.Sort(pairs)
 
 	return pairs, nil
 }
 
-// variable returns the NAME=value pair of one entry of `env`. It refuses a reserved name and a value that is not a string.
-func variable(expr hcl.Expression, name string, item cty.Value) (string, error) {
-	if workflow.ReservedEnvName(name) {
-		return "", hclfile.At(expr.Range(), fmt.Sprintf("env cannot set `%s`. %s", name, workflow.ReservedEnvAdvice()))
+// assignmentOf makes one NAME=value pair of the env dict of a command call.
+func assignmentOf(key, val starlark.Value) (string, error) {
+	name, nameOK := starlark.AsString(key)
+	value, valueOK := starlark.AsString(val)
+
+	switch {
+	case !nameOK || !valueOK:
+		return "", fmt.Errorf("env must hold strings only, and %s is not. Write the value in quotes", key)
+	case workflow.ReservedEnvName(name):
+		return "", fmt.Errorf("env cannot set `%s`. %s", name, workflow.ReservedEnvAdvice())
 	}
 
-	if item.IsNull() || item.Type() != cty.String {
-		return "", hclfile.At(expr.Range(), fmt.Sprintf("env must hold strings only, and `%s` is not a string. Write the value in quotes.", name))
-	}
-
-	return name + "=" + item.AsString(), nil
+	return name + "=" + value, nil
 }
 
-// optional evaluates an argument that may be absent. An absent argument is null.
-func (c *call) optional(expr hcl.Expression) (cty.Value, error) {
-	if absent(expr) {
-		return cty.NullVal(cty.DynamicPseudoType), nil
-	}
+// stopCodes reads the stop_on_rc list. Each code must be a whole number from 1 to 255.
+func stopCodes(v starlark.Value) ([]int, error) {
+	return listOfEach(v, func(item starlark.Value) (int, error) {
+		code, isInt := item.(starlark.Int)
+		n, small := code.Int64()
 
-	return c.value(expr)
+		if !isInt || !small || !workflow.StopCode(int(n)) {
+			return 0, errors.New("stop_on_rc must hold whole numbers from 1 to 255. Write each exit code as a number")
+		}
+
+		return int(n), nil
+	}, errors.New("stop_on_rc must be a list of exit codes. Write stop_on_rc = [2]"))
 }
 
-// stopCodes evaluates an optional `stop_on_rc` argument. An absent argument is an empty list.
-func (c *call) stopCodes(expr hcl.Expression) ([]int, error) {
-	if absent(expr) {
-		return nil, nil
-	}
-
-	value, err := c.value(expr)
+// command runs a program. A code in stop_on_rc ends the item: the step records it, so a replay stops at the same call.
+func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	request, stops, label, err := s.commandCall(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
 
-	if kind := value.Type(); value.IsNull() || !kind.IsListType() && !kind.IsTupleType() && !kind.IsSetType() {
-		return nil, hclfile.At(expr.Range(), "stop_on_rc must be a list of exit codes. Write stop_on_rc = [2].")
-	}
-
-	return codesOf(expr, value)
+	return s.durable("command", label, func(ctx context.Context, name string) (stepResult, error) {
+		return s.runCommand(ctx, name, request, stops)
+	})
 }
 
-// codesOf returns the exit codes in a list value. Each must be a whole number from 1 to 255.
-func codesOf(expr hcl.Expression, list cty.Value) ([]int, error) {
-	var codes []int
-
-	for it := list.ElementIterator(); it.Next(); {
-		_, item := it.Element()
-
-		code, valid := workflow.StopCode(item)
-		if !valid {
-			return nil, hclfile.At(expr.Range(), "stop_on_rc must hold whole numbers from 1 to 255. Write each exit code as a number.")
-		}
-
-		codes = append(codes, code)
+// runCommand runs the program of a command call and records its output. A code in stops adds the stop to the record.
+func (s *script) runCommand(ctx context.Context, name string, request CommandRequest, stops []int) (stepResult, error) {
+	out, err := s.e.deps.Commands.Run(ctx, request)
+	if err != nil {
+		return stepResult{}, err
 	}
 
-	return codes, nil
+	recorded := stepResult{Outputs: map[string]any{"stdout": out.Stdout, "rc": out.RC}}
+	if slices.Contains(stops, out.RC) {
+		recorded.Stopped = &Stopped{Step: name, RC: out.RC, Output: out.Stdout}
+	}
+
+	return recorded, nil
+}
+
+// errStopped unwinds the run when a command stops the item. It is not a failure: runStar turns it into a result.
+var errStopped = errors.New("a command stopped the item")
+
+// gateCall unpacks the arguments of the gate builtin: the request, the head and the label.
+func (s *script) gateCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (request CommandRequest, head, label string, err error) {
+	var (
+		host, timeout string
+		run           starlark.Value
+	)
+
+	if err = starlark.UnpackArgs(b.Name(), args, kwargs, "run?", &run, "host?", &host, "timeout?", &timeout, "head?", &head, "name?", &label); err != nil {
+		return request, head, label, err
+	}
+
+	request, err = s.request(run, host, timeout)
+
+	return request, head, label, err
+}
+
+// gate runs the project gate when the call names no program, and the program otherwise. The gate passes when the program exits with zero.
+func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	request, head, label, err := s.gateCall(b, args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.durable("gate", label, func(ctx context.Context, name string) (stepResult, error) {
+		outputs, err := s.gateOutputs(ctx, request, head)
+		if err != nil {
+			return stepResult{}, fmt.Errorf("gate %q could not run: %w", name, err)
+		}
+
+		return stepResult{Outputs: outputs}, nil
+	})
+}
+
+// gateOutputs runs the project gate when the request names no program, and the program otherwise.
+func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+	if len(request.Run) == 0 {
+		gated, err := s.e.deps.Gate.Run(ctx, request.Project, request.Item)
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]any{"passed": gated.Passed, "head": gated.Head, "report": gated.Report}, nil
+	}
+
+	out, err := s.e.deps.Commands.Run(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{"passed": out.RC == 0, "head": head, "report": out.Stdout}, nil
+}
+
+// wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.
+func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	question := "The workflow waits for your answer."
+
+	var label string
+
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "question?", &question, "name?", &label); err != nil {
+		return nil, err
+	}
+
+	answer, err := s.e.waitOwner(s.ctx, s.in.Item, question)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.durable("wait", label, func(context.Context, string) (stepResult, error) {
+		return stepResult{Outputs: map[string]any{"answer": answer}}, nil
+	})
+}
+
+// refuseEnvName returns an error for the name of a variable that a file cannot read: one of the engine, or a secret.
+func refuseEnvName(name string) error {
+	switch {
+	case workflow.ReservedEnvName(name):
+		return fmt.Errorf("env cannot read `%s`. %s", name, workflow.ReservedEnvAdvice())
+	case workflow.SecretEnvName(name):
+		return fmt.Errorf("env cannot read `%s`, because the name is a secret. Pass secrets to the runner, not to the workflow", name)
+	}
+
+	return nil
+}
+
+// variable returns the redacted value of a variable of the engine. A name that is not set is an error that names it.
+func (e *Engine) variable(name string) (string, error) {
+	raw, set := e.env[name]
+	if !set {
+		return "", fmt.Errorf("the environment variable %s is not set. Set it for the engine, or remove env(%q) from the file", name, name)
+	}
+
+	return e.redact(raw), nil
+}
+
+// env reads a variable of the engine in a step, so a replay sees the value of the first run. It refuses the names of secrets and of the engine.
+func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	var name string
+
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "name", &name); err != nil {
+		return nil, err
+	}
+
+	if err := refuseEnvName(name); err != nil {
+		return nil, err
+	}
+
+	value, err := runStep(s.e, s.ctx, s.name("env", name), func(context.Context) (string, error) { return s.e.variable(name) })
+	if err != nil {
+		return nil, err
+	}
+
+	return starlark.String(value), nil
 }

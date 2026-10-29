@@ -9,13 +9,13 @@ subst config/projects/local.hcl
 
 exec obeereal item add local stop-it --title 'Stop it' --body-file body.txt
 
-exitcode 1 obeereal run stop-it local --workflow flow/stop.hcl
-stdout 'item stop-it stopped at step probe with exit code 128'
+exitcode 1 obeereal run stop-it local --workflow flow/stop.star
+stdout 'item stop-it stopped at step command:probe#1 with exit code 128'
 ! stdout 'finished'
 ! stdout 'after'
 
 exec obeereal status
-stdout 'stop-it-r1\tdone\tstopped at probe rc 128'
+stdout 'stop-it-r1\tdone\tstopped at command:probe#1 rc 128'
 
 -- origin/readme.txt --
 The source repository.
@@ -25,12 +25,7 @@ Stop at the probe.
 source      = "@WORK@/origin"
 base_branch = "main"
 gate        = "true"
--- flow/stop.hcl --
-workflow "w" {}
-command "probe" {
-  run        = ["git", "rev-parse", "--verify", "refs/heads/nope"]
-  stop_on_rc = [128]
-}
-command "after" {
-  run = ["git", "--version"]
-}
+-- flow/stop.star --
+def main(item):
+    command(name = "probe", run = ["git", "rev-parse", "--verify", "refs/heads/nope"], stop_on_rc = [128])
+    command(name = "after", run = ["git", "--version"])

@@ -55,7 +55,7 @@ func TestRun_AMergeThatCannotBeAskedEndsTheItemAndNamesTheStep(t *testing.T) {
 
 	harness := mergeHarness(t, merge.Result{})
 	harness.merge.err = errFake
-	harness.flowIs(t, shipFlow("  merge = true\n"))
+	harness.flowIs(t, shipFlow("merge = True, "))
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)
@@ -70,7 +70,7 @@ func TestRun_AnyOtherRefusalEndsTheItemWithTheLines(t *testing.T) {
 
 	for _, stop := range []merge.Stop{merge.Refused, merge.NoWorkflowScope} {
 		harness := mergeHarness(t, merge.Result{Stop: stop, Lines: []string{"REFUSE: checks are not green: ci=fail", "(above refers to #7)"}})
-		harness.flowIs(t, shipFlow("  merge = true\n"))
+		harness.flowIs(t, shipFlow("merge = True, "))
 		engine := harness.engine(t)
 
 		_, err := engine.Run(testItem, testProject)

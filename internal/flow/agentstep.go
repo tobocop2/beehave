@@ -18,14 +18,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/convert"
-	ctyjson "github.com/zclconf/go-cty/cty/json"
+	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/hclfile"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
@@ -33,7 +28,7 @@ const (
 	outputsMode   = 0o700
 )
 
-// agentArgs are the evaluated arguments of an agent step, and the folder and output file of its node.
+// agentArgs are the arguments of an agent call, and the folder and output file of its step.
 type agentArgs struct {
 	prompt        string
 	data          map[string]any
@@ -44,172 +39,99 @@ type agentArgs struct {
 	pin           string
 	requireSkills []string
 	forbid        []model.FindingKind
+	declared      []string
 	resume        string
 	tries         int
 	dir           string
 	file          string
 }
 
-// agentArgs evaluates the arguments of an agent step, in the scope of the node.
-func (c *call) agentArgs(step *workflow.Agent) (agentArgs, error) {
-	a, err := c.agentTexts(step)
-	if err == nil {
-		err = c.agentLimits(step, &a)
+// agentCall unpacks the arguments of the agent builtin. The second result is the label of the call.
+func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (agentArgs, string, error) {
+	a := agentArgs{tries: 1}
+
+	var raw agentRaw
+
+	err := starlark.UnpackArgs(b.Name(), args, kwargs, "prompt", &a.prompt, "model?", &a.model, "runner?", &a.runner, "inputs?", &raw.inputs, "outputs?", &raw.outputs,
+		"pin?", &a.pin, "resume?", &a.resume, "require_skills?", &raw.skills, "forbid_commands?", &raw.kinds, "output_tries?", &a.tries,
+		"timeout?", &raw.timeout, "idle_timeout?", &raw.idle, "name?", &raw.label)
+	if err == nil && a.model == "" {
+		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
 	}
 
-	if err == nil {
-		err = c.agentData(step, &a)
+	if err != nil {
+		return a, "", err
 	}
 
-	return a, err
+	return a, raw.label, a.read(raw)
 }
 
-// agentTexts evaluates the arguments that are text.
-func (c *call) agentTexts(step *workflow.Agent) (agentArgs, error) {
-	var (
-		a   agentArgs
-		err error
-	)
-
-	texts := []struct {
-		expr hcl.Expression
-		into *string
-	}{{step.Prompt, &a.prompt}, {step.Runner, &a.runner}, {step.Model, &a.model}, {step.Pin, &a.pin}}
-
-	for _, t := range texts {
-		if *t.into, err = c.text(t.expr); err != nil {
-			return agentArgs{}, err
-		}
-	}
-
-	return a, nil
+// agentRaw are the arguments of an agent call that need a check before they are used.
+type agentRaw struct {
+	label, timeout, idle           string
+	inputs, outputs, skills, kinds starlark.Value
 }
 
-// agentLimits evaluates the two timeouts and the number of tries.
-func (c *call) agentLimits(step *workflow.Agent, a *agentArgs) error {
-	var err error
+// read checks the raw arguments of an agent call and keeps the result in a.
+func (a *agentArgs) read(raw agentRaw) (err error) {
+	if a.tries < 1 {
+		return errors.New("output_tries must be a whole number of 1 or more")
+	}
 
-	if a.timeout, err = c.duration(step.Timeout); err != nil {
+	if a.timeout, err = duration("timeout", raw.timeout); err != nil {
 		return err
 	}
 
-	if a.idleTimeout, err = c.duration(step.IdleTimeout); err != nil {
+	if a.idleTimeout, err = duration("idle_timeout", raw.idle); err != nil {
 		return err
 	}
 
-	a.tries, err = c.tries(step.OutputTries)
+	if a.data, err = inputMap(raw.inputs); err != nil {
+		return err
+	}
+
+	return a.lists(raw.outputs, raw.skills, raw.kinds)
+}
+
+// lists reads the three list arguments of an agent call.
+func (a *agentArgs) lists(outputs, skills, kinds starlark.Value) (err error) {
+	if a.declared, err = words("outputs", outputs); err != nil {
+		return err
+	}
+
+	if a.requireSkills, err = words("require_skills", skills); err != nil {
+		return err
+	}
+
+	a.forbid, err = findingKinds(kinds)
 
 	return err
 }
 
-// agentData evaluates the required skills, the forbidden kinds of command, the inputs of the prompt and the session to resume.
-func (c *call) agentData(step *workflow.Agent, a *agentArgs) error {
-	var err error
-
-	if a.requireSkills, err = c.words(step.RequireSkills); err != nil {
-		return err
-	}
-
-	if a.forbid, err = c.kinds(step.ForbidCommands); err != nil {
-		return err
-	}
-
-	if a.data, err = c.inputs(step.Inputs); err != nil {
-		return err
-	}
-
-	a.resume, err = c.session(step.ResumeFrom)
-
-	return err
-}
-
-// kinds evaluates `forbid_commands`: a list of finding kinds. A kind that the check of the file could not read is refused here.
-func (c *call) kinds(expr hcl.Expression) ([]model.FindingKind, error) {
-	names, err := c.words(expr)
-	if err != nil {
-		return nil, err
-	}
-
-	var kinds []model.FindingKind
-
-	for _, name := range names {
-		if !slices.Contains(model.FindingKindNames(), name) {
-			return nil, hclfile.At(expr.Range(), fmt.Sprintf("forbid_commands has the unknown kind %q. Use one of: %s.", name, strings.Join(model.FindingKindNames(), ", ")))
+// findingKinds reads the forbid_commands argument: a list of the names of finding kinds.
+func findingKinds(v starlark.Value) ([]model.FindingKind, error) {
+	return listOfEach(v, func(item starlark.Value) (model.FindingKind, error) {
+		name, ok := starlark.AsString(item)
+		if !ok || !slices.Contains(model.FindingKindNames(), name) {
+			return "", fmt.Errorf("forbid_commands has the unknown kind %s. Use one of: %s", item, strings.Join(model.FindingKindNames(), ", "))
 		}
 
-		kinds = append(kinds, model.FindingKind(name))
-	}
-
-	return kinds, nil
+		return model.FindingKind(name), nil
+	}, errors.New("forbid_commands must be a list of strings"))
 }
 
-// inputs evaluates the `inputs` object of an agent step into the data of its prompt template.
-func (c *call) inputs(expr hcl.Expression) (map[string]any, error) {
-	data := map[string]any{}
-
-	if absent(expr) {
-		return data, nil
+// inputMap converts the inputs dict of an agent call into the data of its prompt template. An absent dict is empty.
+func inputMap(v starlark.Value) (map[string]any, error) {
+	dict, ok := optional[*starlark.Dict](v)
+	if !ok {
+		return nil, fmt.Errorf("inputs must be a dict, not a %s. Write inputs = {\"name\": value}", v.Type())
 	}
 
-	value, err := c.value(expr)
-	if err != nil {
-		return nil, err
+	if dict == nil {
+		return map[string]any{}, nil
 	}
 
-	if !value.Type().IsObjectType() && !value.Type().IsMapType() {
-		return nil, hclfile.At(expr.Range(), "inputs must be an object. Write inputs = { name = value }.")
-	}
-
-	// A value of an object or map type always marshals, so both calls succeed; the join keeps one return path.
-	raw, marshalErr := ctyjson.Marshal(value, value.Type())
-
-	return data, errors.Join(marshalErr, json.Unmarshal(raw, &data))
-}
-
-// session evaluates `resume_from`: the session output of the agent it names, or empty for a fresh session.
-func (c *call) session(expr hcl.Expression) (string, error) {
-	if absent(expr) {
-		return "", nil
-	}
-
-	value, err := c.value(expr)
-	if err != nil {
-		return "", err
-	}
-
-	if value.IsNull() || !value.Type().IsObjectType() || !value.Type().HasAttribute("session") {
-		return "", nil
-	}
-
-	if session := value.GetAttr("session"); !session.IsNull() {
-		return session.AsString(), nil
-	}
-
-	return "", nil
-}
-
-// tries evaluates `output_tries`: how many runs the agent gets in all. An absent argument is one.
-func (c *call) tries(expr hcl.Expression) (int, error) {
-	if absent(expr) {
-		return 1, nil
-	}
-
-	value, err := c.value(expr)
-	if err != nil {
-		return 0, err
-	}
-
-	number, convErr := convert.Convert(value, cty.Number)
-	if convErr != nil || number.IsNull() {
-		return 0, hclfile.At(expr.Range(), "output_tries must be a whole number of 1 or more.")
-	}
-
-	tries, accuracy := number.AsBigFloat().Int64()
-	if accuracy != 0 || tries < 1 {
-		return 0, hclfile.At(expr.Range(), "output_tries must be a whole number of 1 or more.")
-	}
-
-	return int(tries), nil
+	return toGo[map[string]any](dict)
 }
 
 // outputFile is the path where the agent of a step writes its declared outputs. It is in the state folder of the engine, named by item and step,
@@ -222,48 +144,61 @@ func outputFile(state, item, step string) string {
 	return filepath.Join(state, outputsFolder, escape(item)+"."+escape(step)+".json")
 }
 
-// runAgent runs an agent step. The prompt is rendered once and recorded as the note of the first step, so a replay never reads the prompt file again.
+// agent runs an agent call. The prompt is rendered once and recorded as the note of the first step, so a replay never reads the prompt file again.
 // Each run of the agent is a phase on the agents queue, keyed by login. After each run a second step reads the output file and checks the skills.
-func runAgent(c *call, step *workflow.Agent) (stepResult, error) {
-	args, err := c.prepare(step)
+func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	a, label, err := agentCall(b, args, kwargs)
 	if err != nil {
-		return stepResult{}, err
+		return nil, err
 	}
 
-	rendered, err := c.durably(func(ctx context.Context) (stepResult, error) {
-		prompt, renderErr := c.render(ctx, args)
+	name := s.name("agent", label)
+
+	prompt, err := s.promptOf(&a, name)
+	if err != nil {
+		return nil, err
+	}
+
+	done, err := s.attempts(name, a, a.phase(s.in, cmp.Or(a.runner, s.login), prompt))
+	if err != nil {
+		return nil, err
+	}
+
+	return result(done.Outputs)
+}
+
+// promptOf finds the folder and the output file of the call, then renders the prompt in a step and returns it.
+func (s *script) promptOf(a *agentArgs, name string) (string, error) {
+	if err := s.prepare(a, name); err != nil {
+		return "", err
+	}
+
+	rendered, err := runStep(s.e, s.ctx, name+"/render", func(ctx context.Context) (stepResult, error) {
+		prompt, renderErr := s.render(ctx, *a)
 
 		return stepResult{Note: prompt}, renderErr
 	})
-	if err != nil {
-		return stepResult{}, err
-	}
 
-	return c.attempts(step, args, args.phase(c.w.in, cmp.Or(args.runner, c.w.login), rendered.Note))
+	return rendered.Note, err
 }
 
-// prepare evaluates the arguments of an agent step and finds its folder and output file.
-func (c *call) prepare(step *workflow.Agent) (agentArgs, error) {
-	args, err := c.agentArgs(step)
-	if err != nil {
-		return agentArgs{}, err
+// prepare finds the folder and the output file of an agent call.
+func (s *script) prepare(a *agentArgs, name string) (err error) {
+	if a.dir, err = s.e.deps.Trees.Ensure(s.ctx, s.in.Project, s.in.Item); err != nil {
+		return fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)
 	}
 
-	if args.dir, err = c.w.e.deps.Trees.Ensure(c.w.ctx, c.w.in.Project, c.w.in.Item); err != nil {
-		return agentArgs{}, fmt.Errorf("find the folder of item %s: %w", c.w.in.Item, err)
+	if a.dir == "" {
+		return fmt.Errorf("item %s of project %s has no folder for the agent", s.in.Item, s.in.Project)
 	}
 
-	if args.dir == "" {
-		return agentArgs{}, fmt.Errorf("item %s of project %s has no folder for the agent", c.w.in.Item, c.w.in.Project)
+	a.file = outputFile(s.e.dir, s.in.Item, name)
+
+	if err = os.MkdirAll(filepath.Dir(a.file), outputsMode); err != nil {
+		return fmt.Errorf("make the folder of the output file: %w", err)
 	}
 
-	args.file = outputFile(c.w.e.dir, c.w.in.Item, c.name)
-
-	if err = os.MkdirAll(filepath.Dir(args.file), outputsMode); err != nil {
-		return agentArgs{}, fmt.Errorf("make the folder of the output file: %w", err)
-	}
-
-	return args, nil
+	return nil
 }
 
 // phase makes the input of the phase that runs the agent.
@@ -275,18 +210,18 @@ func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 }
 
 // render checks the pin, reads the prompt file and fills it. The data are the inputs and output_file.
-func (c *call) render(ctx context.Context, args agentArgs) (string, error) {
-	if err := checkPin(ctx, args.dir, args.pin); err != nil {
+func (s *script) render(ctx context.Context, a agentArgs) (string, error) {
+	if err := checkPin(ctx, a.dir, a.pin); err != nil {
 		return "", err
 	}
 
-	path, text, err := c.promptFile(args.prompt)
+	path, text, err := s.promptFile(a.prompt)
 	if err != nil {
 		return "", err
 	}
 
-	data := maps.Clone(args.data)
-	data["output_file"] = args.file
+	data := maps.Clone(a.data)
+	data["output_file"] = a.file
 
 	filled, err := fill(string(text), data)
 	if err != nil {
@@ -297,9 +232,9 @@ func (c *call) render(ctx context.Context, args agentArgs) (string, error) {
 }
 
 // promptFile reads the prompt file. A relative path starts at the folder of the workflow file.
-func (c *call) promptFile(path string) (string, []byte, error) {
+func (s *script) promptFile(path string) (string, []byte, error) {
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(filepath.Dir(c.w.in.File), path)
+		path = filepath.Join(filepath.Dir(s.in.File), path)
 	}
 
 	text, err := fs.ReadFile(os.DirFS(filepath.Dir(path)), filepath.Base(path))
@@ -342,25 +277,25 @@ func checkPin(ctx context.Context, dir, pin string) error {
 	return nil
 }
 
-// attempts runs the agent up to args.tries times in all. A run that leaves a bad output file is run again.
-func (c *call) attempts(step *workflow.Agent, args agentArgs, in PhaseInput) (stepResult, error) {
+// attempts runs the agent up to a.tries times in all. A run that leaves a bad output file is run again.
+func (s *script) attempts(name string, a agentArgs, in PhaseInput) (stepResult, error) {
 	for try := 1; ; try++ {
-		result, err := c.attempt(step, args, in, try)
-		if err != nil || result.Note == "" {
-			return result, err
+		done, err := s.attempt(name, a, in, try)
+		if err != nil || done.Note == "" {
+			return done, err
 		}
 
-		if try >= args.tries {
-			return stepResult{}, errors.New(result.Note)
+		if try >= a.tries {
+			return stepResult{}, errors.New(done.Note)
 		}
 	}
 }
 
 // attempt removes the old output file in a recorded step, runs the agent once and reads what it left.
 // The removal is recorded, so a replay after the agent finished never removes the file again.
-func (c *call) attempt(step *workflow.Agent, args agentArgs, in PhaseInput, try int) (stepResult, error) {
-	_, err := runStep(c.w.e, c.w.ctx, c.name+"/clear"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
-		if rmErr := os.Remove(args.file); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (stepResult, error) {
+	_, err := runStep(s.e, s.ctx, name+"/clear"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
+		if rmErr := os.Remove(a.file); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 			return stepResult{}, fmt.Errorf("remove the old output file: %w", rmErr)
 		}
 
@@ -370,25 +305,25 @@ func (c *call) attempt(step *workflow.Agent, args agentArgs, in PhaseInput, try 
 		return stepResult{}, err
 	}
 
-	ended, err := c.w.e.queuePhase(c.w.ctx, in)
+	ended, err := s.e.queuePhase(s.ctx, in)
 	if err != nil {
 		return stepResult{}, err
 	}
 
-	return runStep(c.w.e, c.w.ctx, c.name+"/read"+strconv.Itoa(try), func(ctx context.Context) (stepResult, error) {
-		return readAgent(ctx, step, args, ended)
+	return runStep(s.e, s.ctx, name+"/read"+strconv.Itoa(try), func(ctx context.Context) (stepResult, error) {
+		return readAgent(ctx, a, ended)
 	})
 }
 
 // readAgent checks the skills of a finished run, records its violations and reads its declared outputs.
 // A violation does not fail the step: the workflow reads `violations` and decides. A problem with the output file is the Note of the result,
 // so the caller can run the agent again. A missing skill is an error.
-func readAgent(ctx context.Context, step *workflow.Agent, args agentArgs, ended PhaseOutput) (stepResult, error) {
-	if err := missingSkill(args.requireSkills, ended.Skills); err != nil {
+func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult, error) {
+	if err := missingSkill(a.requireSkills, ended.Skills); err != nil {
 		return stepResult{}, err
 	}
 
-	head, err := folderHead(ctx, args.dir)
+	head, err := folderHead(ctx, a.dir)
 	if err != nil {
 		return stepResult{}, err
 	}
@@ -398,7 +333,7 @@ func readAgent(ctx context.Context, step *workflow.Agent, args agentArgs, ended 
 		"violations": strings.Join(ended.Violations, "\n"),
 	}
 
-	if problem := addDeclared(outputs, declaredNames(step), args.file); problem != "" {
+	if problem := addDeclared(outputs, a.declared, a.file); problem != "" {
 		return stepResult{Note: problem}, nil
 	}
 
@@ -414,21 +349,6 @@ func missingSkill(required, called []string) error {
 	}
 
 	return nil
-}
-
-// declaredNames returns the outputs that the step declares in `outputs`, which are the ones that workflow.KindOutputs does not list.
-func declaredNames(step *workflow.Agent) []string {
-	kind := workflow.KindOutputs(workflow.KindAgent)
-
-	var names []string
-
-	for _, o := range workflow.StepOutputs(step) {
-		if !slices.ContainsFunc(kind, func(k workflow.Output) bool { return k.Name == o.Name }) {
-			names = append(names, o.Name)
-		}
-	}
-
-	return names
 }
 
 // addDeclared reads the named outputs from the JSON file the agent wrote and adds them to outputs. It returns what is wrong with the file, or an empty text.

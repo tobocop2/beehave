@@ -11,8 +11,13 @@ import (
 	"github.com/tobocop2/obee/internal/review"
 )
 
+// shipFlow is a workflow file with one merge call at the gated head. extra holds more arguments, each followed by a comma.
 func shipFlow(extra string) string {
-	return "workflow \"w\" {}\nmerge \"ship\" {\n  head = \"" + gatedHead + "\"\n" + extra + "}\n"
+	return bodyFlow(shipCall(extra))
+}
+
+func shipCall(extra string) string {
+	return "merge(head = \"" + gatedHead + "\", " + extra + "name = \"ship\")\n"
 }
 
 func TestMergeStep_AWorkflowThatDoesNotSetMergeMarksReadyAndLeavesTheMergeToTheOwner(t *testing.T) {
@@ -36,11 +41,10 @@ func TestMergeStep_AnEnvNameThatTheEnvironmentLacksFailsTheStepAndNamesTheVariab
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.opts.Env = map[string]string{}
 
-	_, err := walkText(t, h, "workflow \"w\" {}\nmerge \"ship\" {\n  head = env.OWNER_LOGIN\n}\n")
+	_, err := walkText(t, h, shipFlow(`merge = True, repo = env("REPO_X"), `))
 
-	require.Error(t, err)
-	require.ErrorContains(t, err, "OWNER_LOGIN")
-	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
+	require.ErrorContains(t, err, "the environment variable REPO_X is not set")
+	assert.Empty(t, h.merge.given)
 }
 
 func TestMergeStep_MergeTrueMergesAtThePinnedHead(t *testing.T) {
@@ -48,7 +52,7 @@ func TestMergeStep_MergeTrueMergesAtThePinnedHead(t *testing.T) {
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
-	result, err := walkText(t, h, shipFlow("  merge = true\n"))
+	result, err := walkText(t, h, shipFlow("merge = True, "))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{testProject + " " + testItem + " " + gatedHead}, h.merge.asked)
@@ -60,7 +64,7 @@ func TestMergeStep_OurOwnWorkIsLeftToTheOwnerAndTheStepWatches(t *testing.T) {
 
 	h := mergeHarness(t, merge.Result{Stop: merge.OwnWork})
 
-	result, err := walkText(t, h, shipFlow("  merge = true\n"))
+	result, err := walkText(t, h, shipFlow("merge = True, "))
 
 	require.NoError(t, err)
 	assert.Equal(t, []int{testPull}, h.watch.reads)
@@ -72,9 +76,9 @@ func TestMergeStep_ARefusedMergeFailsTheStep(t *testing.T) {
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Refused, Lines: []string{"checks are red"}})
 
-	_, err := walkText(t, h, shipFlow("  merge = true\n"))
+	_, err := walkText(t, h, shipFlow("merge = True, "))
 
-	require.ErrorIs(t, err, errMergeRefused)
+	require.ErrorContains(t, err, errMergeRefused.Error())
 	assert.Empty(t, h.watch.reads)
 }
 
@@ -84,9 +88,9 @@ func TestMergeStep_MergeTrueInABuildWithoutAMergerRefusesAndNeverMarksReady(t *t
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.merge = nil
 
-	_, err := walkText(t, h, shipFlow("  merge = true\n"))
+	_, err := walkText(t, h, shipFlow("merge = True, "))
 
-	require.ErrorIs(t, err, errNoMerger)
+	require.ErrorContains(t, err, errNoMerger.Error())
 	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
 	assert.Empty(t, h.watch.reads)
 }
@@ -97,9 +101,9 @@ func TestMergeStep_APullRequestThatIsNotReadyFailsTheStepBeforeAnyMerge(t *testi
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.forge.state.Head = "moved"
 
-	_, err := walkText(t, h, shipFlow("  merge = true\n"))
+	_, err := walkText(t, h, shipFlow("merge = True, "))
 
-	require.ErrorIs(t, err, errNotReady)
+	require.ErrorContains(t, err, errNotReady.Error())
 	assert.Empty(t, h.merge.asked)
 	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
 }
@@ -126,7 +130,7 @@ func TestMergeStep_TheOutputsFeedLaterSteps(t *testing.T) {
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: "conflict"}}
 
-	_, err := walkText(t, h, shipFlow("")+"command \"after\" {\n  run = [\"echo\", merge.ship.state, merge.ship.reason]\n}\n")
+	_, err := walkBody(t, h, "ship = "+shipCall("")+"command(run = [\"echo\", ship.state, ship.reason])\n")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"echo sent_back conflict"}, h.commands.ran())
@@ -172,7 +176,7 @@ func TestMergeStep_AStepThatMergesNeverShowsThatItWaitsForTheOwner(t *testing.T)
 
 	engine := h.engine(t)
 	client := h.client(t, testVersion)
-	file := writeFlow(t, shipFlow("  merge = true\n"))
+	file := writeFlow(t, shipFlow("merge = True, "))
 	done := make(chan runOutcome, 1)
 
 	go func() {
@@ -222,17 +226,17 @@ func TestMergeStep_AWatchThatCannotReadThePullRequestFailsTheStep(t *testing.T) 
 
 	_, err := walkText(t, h, shipFlow(""))
 
-	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, errFake.Error())
 	require.ErrorContains(t, err, "watch of item 12")
 	assert.Empty(t, h.watch.reads)
 }
 
-func TestMergeStep_AFalseWhenSkipsTheStep(t *testing.T) {
+func TestMergeStep_AMergeCallInAFalseBranchRunsNothing(t *testing.T) {
 	t.Parallel()
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
-	result, err := walkText(t, h, shipFlow("  when = false\n"))
+	result, err := walkBody(t, h, "if False:\n    "+shipCall(""))
 
 	require.NoError(t, err)
 	assert.NotContains(t, h.life.seen(), "ready:"+testItem)
@@ -243,11 +247,11 @@ func TestMergeStep_AFalseWhenSkipsTheStep(t *testing.T) {
 func TestMergeStep_ABadHeadOrMergeArgumentFailsTheStep(t *testing.T) {
 	t.Parallel()
 
-	_, err := walkText(t, mergeHarness(t, merge.Result{}), "workflow \"w\" {}\nmerge \"ship\" {\n  head = 3\n}\n")
-	require.ErrorContains(t, err, "must be a string")
+	_, err := walkBody(t, mergeHarness(t, merge.Result{}), "merge(head = 3)\n")
+	require.ErrorContains(t, err, "head")
 
-	_, err = walkText(t, mergeHarness(t, merge.Result{}), shipFlow("  merge = \"yes\"\n"))
-	require.ErrorContains(t, err, "true or false")
+	_, err = walkText(t, mergeHarness(t, merge.Result{}), shipFlow("merge = \"yes\", "))
+	require.ErrorContains(t, err, "merge")
 }
 
 func TestMergeStep_TheSettingsOfAMergingStepReachTheMerger(t *testing.T) {
@@ -256,14 +260,14 @@ func TestMergeStep_TheSettingsOfAMergingStepReachTheMerger(t *testing.T) {
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.opts.Env = map[string]string{"REPO": "o/r", "LOGIN": "me", "MAIL": "me@x"}
 
-	_, err := walkText(t, h, shipFlow(`  merge = true
-  repo = env.REPO
-  base = "integration"
-  hold = "hold"
-  own = { logins = [env.LOGIN], emails = [env.MAIL] }
-  approved = 1 == 1
-  forbid_text = ["(?i)bad"]
-  children = "retarget"
+	_, err := walkText(t, h, shipFlow(`merge = True,
+repo = env("REPO"),
+base = "integration",
+hold = "hold",
+own = {"logins": [env("LOGIN")], "emails": [env("MAIL")]},
+approved = 1 == 1,
+forbid_text = ["(?i)bad"],
+children = "retarget",
 `))
 
 	require.NoError(t, err)
@@ -278,40 +282,10 @@ func TestMergeStep_ASettingLeftOutIsEmptyAndApprovedIsFalse(t *testing.T) {
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
-	_, err := walkText(t, h, shipFlow("  merge = true\n  own = { logins = [] }\n"))
+	_, err := walkText(t, h, shipFlow("merge = True, own = {\"logins\": []}, "))
 
 	require.NoError(t, err)
 	assert.Equal(t, []MergeSettings{{}}, h.merge.given)
-}
-
-func TestMergeStep_AnUnsetEnvNameInASettingFailsTheStepAndNamesTheVariable(t *testing.T) {
-	t.Parallel()
-
-	for setting, name := range map[string]string{
-		"repo": "REPO_X", "base": "BASE_X", "hold": "HOLD_X", "children": "KIDS_X",
-		"own": "OWN_X", "forbid_text": "FORBID_X", "approved": "OK_X",
-	} {
-		t.Run(setting, func(t *testing.T) {
-			t.Parallel()
-
-			h := mergeHarness(t, merge.Result{Stop: merge.Done})
-			h.opts.Env = map[string]string{}
-			value := "env." + name
-			switch setting {
-			case "own":
-				value = "{ logins = [" + value + "], emails = [] }"
-			case "forbid_text":
-				value = "[" + value + "]"
-			case "approved":
-				value += " == \"yes\""
-			}
-
-			_, err := walkText(t, h, shipFlow("  merge = true\n  "+setting+" = "+value+"\n"))
-
-			require.ErrorContains(t, err, name)
-			assert.Empty(t, h.merge.asked)
-		})
-	}
 }
 
 func TestMergeStep_AnEmptyEnvValueInOwnReachesTheMergerAsAnEmptyIdentity(t *testing.T) {
@@ -320,19 +294,19 @@ func TestMergeStep_AnEmptyEnvValueInOwnReachesTheMergerAsAnEmptyIdentity(t *test
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.opts.Env = map[string]string{"LOGIN": ""}
 
-	_, err := walkText(t, h, shipFlow("  merge = true\n  own = { logins = [env.LOGIN], emails = [\"a@x\"] }\n"))
+	_, err := walkText(t, h, shipFlow("merge = True, own = {\"logins\": [env(\"LOGIN\")], \"emails\": [\"a@x\"]}, "))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{""}, h.merge.given[0].Logins, "the guard of the merge refuses an empty identity")
 }
 
-func TestMergeStep_AnOwnThatIsNotAnObjectOfStringListsFailsTheStep(t *testing.T) {
+func TestMergeStep_AnOwnThatIsNotADictOfStringListsFailsTheStep(t *testing.T) {
 	t.Parallel()
 
-	for _, own := range []string{`"me"`, `{ logins = "me" }`, `{ emails = [1, [2]] }`} {
+	for _, own := range []string{`"me"`, `{"logins": "me"}`, `{"emails": [1, [2]]}`} {
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
-		_, err := walkText(t, h, shipFlow("  merge = true\n  own = "+own+"\n"))
+		_, err := walkText(t, h, shipFlow("merge = True, own = "+own+", "))
 
 		require.Error(t, err, own)
 		assert.Empty(t, h.merge.asked)
@@ -346,7 +320,7 @@ func TestMergeStep_AComputedChildrenValueThatIsNotRefuseOrRetargetFailsTheStepAn
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 		h.opts.Env = map[string]string{"MODE": value}
 
-		_, err := walkText(t, h, shipFlow("  merge = true\n  children = env.MODE\n"))
+		_, err := walkText(t, h, shipFlow("merge = True, children = env(\"MODE\"), "))
 
 		require.ErrorContains(t, err, `"`+value+`"`)
 		require.ErrorContains(t, err, "refuse")
@@ -357,7 +331,7 @@ func TestMergeStep_AComputedChildrenValueThatIsNotRefuseOrRetargetFailsTheStepAn
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 		h.opts.Env = map[string]string{"MODE": value}
 
-		_, err := walkText(t, h, shipFlow("  merge = true\n  children = env.MODE\n"))
+		_, err := walkText(t, h, shipFlow("merge = True, children = env(\"MODE\"), "))
 
 		require.NoError(t, err, value)
 		assert.Equal(t, retarget, h.merge.given[0].Retarget, value)
@@ -370,7 +344,7 @@ func TestMergeStep_ASettingThatIsNotTextFailsTheStep(t *testing.T) {
 	for _, setting := range []string{"repo", "children", "forbid_text", "approved"} {
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 
-		_, err := walkText(t, h, shipFlow("  merge = true\n  "+setting+" = 7\n"))
+		_, err := walkText(t, h, shipFlow("merge = True, "+setting+" = 7, "))
 
 		require.Error(t, err, setting)
 	}

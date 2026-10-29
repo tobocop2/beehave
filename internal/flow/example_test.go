@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,11 +9,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/review"
-	"github.com/tobocop2/obee/internal/workflow"
 )
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+
+	data, err := os.ReadFile(path) //nolint:gosec // the tests name their own example files
+	require.NoError(t, err)
+
+	return data
+}
 
 const reviewMarker = "What every review here must do"
 
@@ -27,6 +37,7 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 	skill := exampleSkill(t, folder)
 
 	rig := newAgentRig(t)
+	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com"}
 	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head}}
 	rig.h.forge.state = review.Standing{Number: testPull, Head: rig.head}
 
@@ -46,34 +57,32 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 		return agent.Result{Outcome: agent.OutcomeExited, Session: "sess-1", Transcript: "/t.jsonl", Text: "all done", Skills: []string{skill}}
 	}
 
-	return rig, filepath.Join(folder, "workflow.hcl")
+	return rig, filepath.Join(folder, "workflow.star")
 }
 
 // exampleSkill returns the one skill that an agent of the example requires.
 func exampleSkill(t *testing.T, folder string) string {
 	t.Helper()
 
-	flow, err := workflow.Load(os.DirFS(folder), "workflow.hcl")
+	parsed, err := (&syntax.FileOptions{}).Parse("workflow.star", mustRead(t, filepath.Join(folder, "workflow.star")), 0)
 	require.NoError(t, err)
 
 	var skills []string
 
-	flow.Walk(func(step workflow.Step, _ int) {
-		agent, ok := step.(*workflow.Agent)
-		if !ok {
-			return
+	syntax.Walk(parsed, func(n syntax.Node) bool {
+		if pair, ok := n.(*syntax.BinaryExpr); ok && pair.Op == syntax.EQ {
+			if name, isName := pair.X.(*syntax.Ident); isName && name.Name == "require_skills" {
+				syntax.Walk(pair.Y, func(m syntax.Node) bool {
+					if lit, isLit := m.(*syntax.Literal); isLit {
+						skills = append(skills, fmt.Sprint(lit.Value))
+					}
+
+					return true
+				})
+			}
 		}
 
-		value, diags := agent.RequireSkills.Value(nil)
-		require.False(t, diags.HasErrors(), diags.Error())
-
-		if value.IsNull() {
-			return
-		}
-
-		for _, name := range value.AsValueSlice() {
-			skills = append(skills, name.AsString())
-		}
+		return true
 	})
 	require.Len(t, skills, 1)
 

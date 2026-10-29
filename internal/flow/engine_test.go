@@ -320,7 +320,7 @@ func TestEngine_PinsTheApplicationVersionToTheBuildVersion(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	assert.Equal(t, "v1.2.3-pinned", dbos.GetApplicationVersion(engine.ctx))
+	assert.Equal(t, "v1.2.3-pinned+"+stepsVersion, dbos.GetApplicationVersion(engine.ctx), "the build version and the version of the builtin steps")
 
 	infos, err := harness.client(t, "v1.2.3-pinned").Status()
 	require.NoError(t, err)
@@ -374,7 +374,7 @@ func TestResult_ARunThatCompletedInTheInstantTheEngineStoppedReportsItsResult(t 
 
 	harness := newHarness(t)
 	engine := harness.engine(t)
-	file := writeFlow(t, "workflow \"w\" {}\ncommand \"c\" {\n  run = [\"c\"]\n}\n")
+	file := writeFlow(t, bodyFlow("command(run = [\"c\"])\n"))
 
 	want, err := engine.RunFile(testItem, testProject, file)
 	require.NoError(t, err)

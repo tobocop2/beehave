@@ -22,8 +22,8 @@ func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	file := t.TempDir() + "/workflow.hcl"
-	require.NoError(t, os.WriteFile(file, []byte("workflow \"w\" {}\ngate \"check\" {}\n"), 0o600))
+	file := t.TempDir() + "/workflow.star"
+	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    gate(name = \"check\", run = [\"true\"])\n"), 0o600))
 
 	_, err = engine.RunFile("12", "zzz", file)
 

@@ -110,7 +110,7 @@ func prepare(spec Spec) (Profile, string) {
 	}
 
 	if spec.Resume != "" && p.ResumeFlag == "" {
-		return p, p.Binary + " has no option to resume a session, so the run does not start. Remove resume_from from the step."
+		return p, p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
 	}
 
 	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {

@@ -8,16 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/obee/internal/workflow/workflowtest"
 )
 
 const (
@@ -159,32 +159,27 @@ func exampleForbidText(t *testing.T) []string {
 
 	var patterns []string
 
-	walkExampleMerge(t, func(ship *workflow.Merge) {
-		items, diags := hcl.ExprList(ship.ForbidText)
-		require.False(t, diags.HasErrors(), "%v", diags)
-
-		for _, item := range items {
-			value, diags := item.Value(nil)
-			require.False(t, diags.HasErrors(), "%v", diags)
-
-			patterns = append(patterns, value.AsString())
-		}
+	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
+		patterns = append(patterns, workflowtest.Literals(ship["forbid_text"])...)
 	})
 
 	return patterns
 }
 
-func walkExampleMerge(t *testing.T, visit func(*workflow.Merge)) {
+func walkExampleMerge(t *testing.T, visit func(map[string]syntax.Expr)) {
 	t.Helper()
 
-	flowFile, err := workflow.Load(os.DirFS("../../examples/remediation"), "workflow.hcl")
+	text, err := os.ReadFile("../../examples/remediation/workflow.star")
 	require.NoError(t, err)
 
-	flowFile.Walk(func(step workflow.Step, _ int) {
-		if ship, ok := step.(*workflow.Merge); ok {
-			visit(ship)
+	calls, err := workflowtest.Calls("workflow.star", text)
+	require.NoError(t, err)
+
+	for _, call := range calls {
+		if call.Builtin == "merge" {
+			visit(call.Args)
 		}
-	})
+	}
 }
 
 func TestMerge_M13_OwnWorkWithoutApprovedIsRefusedWithNoWriteCall(t *testing.T) {
@@ -360,33 +355,23 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 
 	var seen bool
 
-	walkExampleMerge(t, func(ship *workflow.Merge) {
+	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
 		seen = true
 
-		for name, expr := range map[string]hcl.Expression{
-			"repo": ship.Repo, "base": ship.Base, "hold": ship.Hold, "own": ship.Own,
-			"approved": ship.Approved, "forbid_text": ship.ForbidText, "children": ship.Children,
-		} {
-			assert.NotNil(t, expr, name)
-			assert.NotEmpty(t, expr.Range().Filename, "%s is set in the example", name)
+		for _, name := range []string{"repo", "base", "hold", "own", "approved", "forbid_text", "children"} {
+			assert.NotNil(t, ship[name], "%s is set in the example", name)
 		}
 
-		assert.Equal(t, "env.BASE", sourceOf(t, ship.Base), "base is the integration branch")
-		assert.Equal(t, "env.REPO", sourceOf(t, ship.Repo))
-		assert.Equal(t, `"retarget"`, sourceOf(t, ship.Children))
-		assert.Equal(t, `"hold"`, sourceOf(t, ship.Hold))
-		assert.NotContains(t, sourceOf(t, ship.Own), "@", "the file holds no address")
-		assert.Contains(t, sourceOf(t, ship.Approved), "agent.review.verdict")
+		assert.Equal(t, []string{"BASE"}, workflowtest.Literals(ship["base"]), "base is the integration branch, read from the environment")
+		assert.Equal(t, []string{"REPO"}, workflowtest.Literals(ship["repo"]))
+		assert.Equal(t, []string{"retarget"}, workflowtest.Literals(ship["children"]))
+		assert.Equal(t, []string{"hold"}, workflowtest.Literals(ship["hold"]))
+
+		for _, text := range workflowtest.Literals(ship["own"]) {
+			assert.NotContains(t, text, "@", "the file holds no address")
+		}
+
+		assert.Equal(t, []string{"approve"}, workflowtest.Literals(ship["approved"]))
 	})
 	assert.True(t, seen)
-}
-
-// sourceOf returns the text of the expression in the example file.
-func sourceOf(t *testing.T, expr hcl.Expression) string {
-	t.Helper()
-
-	text, err := os.ReadFile("../../examples/remediation/" + expr.Range().Filename)
-	require.NoError(t, err)
-
-	return strings.TrimSpace(string(text[expr.Range().Start.Byte:expr.Range().End.Byte]))
 }

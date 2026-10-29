@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/obee/internal/workflow/workflowtest"
 )
 
 var (
@@ -22,7 +22,7 @@ const (
 	conformanceColumns = 7
 	exampleDir         = "../../examples/remediation"
 	repoRoot           = "../.."
-	// whereWords is the form of Where: the file, the block kind and the block name.
+	// whereWords is the form of Where: the file, the builtin and the name of the call.
 	whereWords = 3
 	// noTest is the Test cell of a row that names no test.
 	noTest = "-"
@@ -103,18 +103,26 @@ func readConformance(t *testing.T, text string) []conformanceRow {
 	return rows
 }
 
-// blocks lists the blocks of the example as "<kind> <name>".
-func blocks(t *testing.T) map[string]bool {
+// calls lists the calls of the example as "<file> <builtin> <name>": the main file, and the review loop that it loads.
+// A call is found by its keyword `name = "<label>"`.
+func calls(t *testing.T) map[string]bool {
 	t.Helper()
 
-	flow, err := workflow.Load(os.DirFS(exampleDir), "workflow.hcl")
-	require.NoError(t, err)
+	found := map[string]bool{}
 
-	found := map[string]bool{"workflow " + flow.Name: true}
+	for file, path := range map[string]string{"workflow.star": filepath.Join(exampleDir, "workflow.star"), "review_fix.star": "lib/review_fix.star"} {
+		text, err := os.ReadFile(path) //nolint:gosec // the test names its own example files
+		require.NoError(t, err)
 
-	flow.Walk(func(step workflow.Step, _ int) {
-		found[string(step.Kind())+" "+step.Label()] = true
-	})
+		listed, err := workflowtest.Calls(file, text)
+		require.NoError(t, err)
+
+		for _, call := range listed {
+			for _, label := range workflowtest.Literals(call.Args["name"]) {
+				found[file+" "+call.Builtin+" "+label] = true
+			}
+		}
+	}
 
 	return found
 }
@@ -128,7 +136,7 @@ func TestConformance_EachRowIsWellFormed(t *testing.T) {
 	rows := readConformance(t, string(text))
 	require.NotEmpty(t, rows)
 
-	have := blocks(t)
+	have := calls(t)
 	tests := testNames(t)
 	seen := map[string]bool{}
 
@@ -151,8 +159,7 @@ func TestConformance_EachRowIsWellFormed(t *testing.T) {
 		}
 
 		words := strings.Fields(row.where)
-		require.Len(t, words, whereWords, "Where of %s is `workflow.hcl <kind> <name>`", row.id)
-		require.Equal(t, "workflow.hcl", words[0], "the file of %s", row.id)
-		require.True(t, have[words[1]+" "+words[2]], "%s names the block `%s %s`, which the example does not hold", row.id, words[1], words[2])
+		require.Len(t, words, whereWords, "Where of %s is `<file> <builtin> <name>`", row.id)
+		require.True(t, have[row.where], "%s names the call `%s`, which the example does not hold", row.id, row.where)
 	}
 }
