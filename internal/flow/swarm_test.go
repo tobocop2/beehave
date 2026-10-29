@@ -534,7 +534,7 @@ func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 		"bad id":          {bodyFlow(`spawn(items = ["!!"])`), "invalid item"},
 		"itself":          {bodyFlow(`spawn(items = ["12"])`), "item 12 cannot spawn itself. Leave it out of items"},
 		"twice":           {bodyFlow(`spawn(items = ["21", "21"])`), "item 21 is in items twice. List each item once"},
-		"not a list":      {bodyFlow(`spawn(items = 7)`), "items must be a list of strings"},
+		"not a list":      {bodyFlow(`spawn(items = 7 + 0)`), "items must be a list of strings"},
 		"not strings":     {bodyFlow(`spawn(items = [7])`), "items must hold strings only"},
 		"no such entry":   {bodyFlow("name = \"no\" + \"pe\"\nspawn(items = [\"21\"], entry = name)"), "entry \"nope\" is not a function of the workflow file. Add def nope(item)"},
 		"bad fail":        {bodyFlow("mode = \"x\" + \"\"\ngather([], fail = mode)"), "`fail` is \"x\". Use \"return\" or \"raise\""},
@@ -770,7 +770,7 @@ func TestSpawnGather_AChildWhoseInputCannotBeReadTakesNoClaim(t *testing.T) {
 func TestSpawnGather_ACallWithNoArgumentsNamesTheMissingOne(t *testing.T) {
 	t.Parallel()
 
-	for call, want := range map[string]string{"spawn()": "spawn: missing argument for items", "gather()": "gather: missing argument for runs"} {
+	for call, want := range map[string]string{"spawn(*[])": "spawn: missing argument for items", "gather(*[])": "gather: missing argument for runs"} {
 		_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(call)))
 
 		require.ErrorContains(t, err, want)

@@ -258,7 +258,7 @@ func TestAgentStep_AMissingPromptFileAndABadPromptArgumentAreRefused(t *testing.
 	require.ErrorContains(t, err, "none.md")
 
 	rig = newAgentRig(t)
-	_, err = rig.run(t, bodyFlow("agent(model = \"m\", prompt = 3, name = \"a\")\n"), writeTo)
+	_, err = rig.run(t, bodyFlow("agent(model = \"m\", prompt = 3 + 0, name = \"a\")\n"), writeTo)
 	require.ErrorContains(t, err, "want string")
 
 	rig = newAgentRig(t)
@@ -300,7 +300,7 @@ func TestAgentStep_ABadTimeoutAndALoginThatCannotBePickedFailTheStep(t *testing.
 	require.ErrorContains(t, err, "not a duration")
 
 	rig = newAgentRig(t)
-	_, err = rig.run(t, agentFlow("model = 4, "), "x")
+	_, err = rig.run(t, agentFlow("model = 4 + 0, "), "x")
 	require.ErrorContains(t, err, "want string")
 
 	rig = newAgentRig(t)
@@ -553,7 +553,7 @@ func TestAgentStep_ARequiredSkillThatTheRunDidNotCallFailsTheStepAndNamesIt(t *t
 	require.NoError(t, err)
 
 	rig = newAgentRig(t)
-	_, err = rig.run(t, agentFlow("require_skills = 3, "), "x")
+	_, err = rig.run(t, agentFlow("require_skills = 3 + 0,"), "x")
 	require.ErrorContains(t, err, "list of strings")
 }
 
@@ -835,7 +835,7 @@ func TestAgentStep_AForbidCommandsKindThatTheFileDoesNotKnowIsRefusedWhenTheStep
 
 	rig = newAgentRig(t)
 
-	_, err = rig.run(t, agentFlow("forbid_commands = 3, "), "x")
+	_, err = rig.run(t, agentFlow("forbid_commands = 3 + 0,"), "x")
 
 	require.ErrorContains(t, err, "list of strings")
 	assert.Empty(t, rig.h.agents.seen())

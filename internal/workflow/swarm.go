@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	agentName      = "agent"
 	spawnName      = "spawn"
 	gatherName     = "gather"
 	batchMergeName = "batch_merge"
@@ -28,42 +29,36 @@ type entryRef struct {
 	name string
 }
 
-// swarm checks every spawn and gather call in a parsed file: a keyword that the call does not take, a fail value that is not listed,
-// and a literal entry, which it keeps for the check against the functions of the workflow file.
+// swarm checks every call of a builtin in a parsed file against the signature of the builtin, and keeps the literal entry of each spawn call
+// for the check against the functions of the workflow file. A name that the file defines or loads is not the builtin, so its calls are left alone.
 func (g *graph) swarm(parsed *syntax.File) {
+	shadowed := definedNames(parsed)
+
 	syntax.Walk(parsed, func(n syntax.Node) bool {
 		if call, ok := n.(*syntax.CallExpr); ok {
-			g.swarmCall(call)
+			g.builtinCall(call, shadowed)
 		}
 
 		return true
 	})
 }
 
-// swarmCall checks one call when it calls spawn or gather by name. The arguments are listed in the order of their positions, and a call may name only these.
-func (g *graph) swarmCall(call *syntax.CallExpr) {
+// builtinCall checks one call when it calls a builtin by name. The arguments are listed in the order of their positions, and a call may name only these.
+func (g *graph) builtinCall(call *syntax.CallExpr, shadowed []string) {
 	fn, isName := call.Fn.(*syntax.Ident)
-	if !isName {
+	if !isName || slices.Contains(shadowed, fn.Name) {
 		return
 	}
 
-	switch fn.Name {
-	case spawnName:
-		g.keywords(call, spawnName, []string{"items", "entry", nameKeyword})
-		g.entry(call)
-	case gatherName:
-		g.keywords(call, gatherName, []string{"runs", "fail", nameKeyword})
-		g.failMode(call)
-	case batchMergeName:
-		g.keywords(call, batchMergeName, []string{"prs", "base", "repo", "hold", "own", "forbid_text", "gate_run", nameKeyword})
-		g.batchName(call)
+	params, signed := Signature(fn.Name)
+	if !signed {
+		return
 	}
-}
 
-// batchName reports a batch_merge call with no `name` keyword. The name makes the step names of the call unique, and the run refuses the call without it.
-func (g *graph) batchName(call *syntax.CallExpr) {
-	if argument(call, nameKeyword, len(call.Args)) == nil {
-		g.report(placeOf(call.Lparen), batchMergeName+" needs a `name` keyword. Add name = \"...\", one for each call of the run.")
+	g.signature(call, fn.Name, params)
+
+	if fn.Name == spawnName {
+		g.entry(call)
 	}
 }
 
@@ -92,7 +87,7 @@ func argument(call *syntax.CallExpr, keyword string, index int) syntax.Expr { //
 	}
 
 	if index < len(call.Args) {
-		if _, isPair := call.Args[index].(*syntax.BinaryExpr); !isPair {
+		if pair, isPair := call.Args[index].(*syntax.BinaryExpr); !isPair || pair.Op != syntax.EQ {
 			return call.Args[index]
 		}
 	}
@@ -121,18 +116,6 @@ func (g *graph) entry(call *syntax.CallExpr) {
 
 	if name, ok := literal(value); ok {
 		g.entries = append(g.entries, entryRef{at: placeOf(syntax.Start(value)), name: name})
-	}
-}
-
-// failMode reports a fail value that is a literal and is not listed.
-func (g *graph) failMode(call *syntax.CallExpr) {
-	value := argument(call, failKeyword, secondArgument)
-	if value == nil {
-		return
-	}
-
-	if mode, ok := literal(value); ok && !slices.Contains(FailModes(), mode) {
-		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("fail is %q. Use one of: %s.", mode, strings.Join(FailModes(), ", ")))
 	}
 }
 

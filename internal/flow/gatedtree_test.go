@@ -90,6 +90,17 @@ func TestMergeStep_AnEmptyTreeIsNotReadWhenTheCallDoesNotMerge(t *testing.T) {
 	assert.Empty(t, h.merge.given)
 }
 
+func TestMergeStep_ATreeThatIsNotTextIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	_, err := walkText(t, h, shipFlow(`tree = 1 + 0, merge = True, `))
+
+	require.ErrorContains(t, err, "`tree` must be text, not int")
+	assert.Empty(t, h.merge.given)
+}
+
 func TestMergeStep_AGateThatRecordedNoTreeDoesNotStopACallThatDoesNotMerge(t *testing.T) {
 	t.Parallel()
 

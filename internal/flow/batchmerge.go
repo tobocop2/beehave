@@ -14,6 +14,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // unknownReads is the number of reads of a pull request whose mergeable state stays UNKNOWN before the batch defers it.
@@ -94,8 +95,10 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		set                       = &call.settings
 	)
 
-	err := starlark.UnpackArgs(b.Name(), args, kwargs, "prs", &prs, "base", &set.Base, "repo", &set.Repo, "hold?", &set.Hold,
-		"own?", &own, "forbid_text?", &forbid, "gate_run?", &gateRun, "name?", &call.name)
+	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"prs": &prs, "base": &set.Base, "repo": &set.Repo, "hold": &set.Hold, "own": &own, "forbid_text": &forbid, "gate_run": &gateRun,
+		nameKeyword: &call.name,
+	})
 	if err != nil {
 		return call, err
 	}

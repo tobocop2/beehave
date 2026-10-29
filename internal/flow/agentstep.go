@@ -53,9 +53,11 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	a := agentArgs{tries: 1}
 	raw := agentRaw{followUps: workflow.FollowUpsAllow}
 
-	err := starlark.UnpackArgs(b.Name(), args, kwargs, "prompt", &a.prompt, "model?", &a.model, "runner?", &a.runner, "inputs?", &raw.inputs, "outputs?", &raw.outputs,
-		"pin?", &a.pin, "resume?", &a.resume, "require_skills?", &raw.skills, "forbid_commands?", &raw.kinds, "output_tries?", &a.tries,
-		"follow_ups?", &raw.followUps, "timeout?", &raw.timeout, "idle_timeout?", &raw.idle, "name?", &raw.label)
+	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
+		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "output_tries": &a.tries,
+		"follow_ups": &raw.followUps, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
+	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
 	}

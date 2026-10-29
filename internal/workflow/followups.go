@@ -2,8 +2,6 @@ package workflow
 
 import (
 	"fmt"
-	"slices"
-	"strings"
 
 	"go.starlark.net/syntax"
 )
@@ -17,23 +15,7 @@ const (
 // FollowUpModes lists the values that follow_ups takes.
 func FollowUpModes() []string { return []string{FollowUpsAllow, FollowUpsForbid} }
 
-// followUpProblem says what is wrong with the follow_ups argument of an agent call in the text of a file, or returns an empty text.
-// It reads only a string literal: a value that the check cannot see is left to the run.
-func followUpProblem(value syntax.Expr) string {
-	lit, ok := value.(*syntax.Literal)
-	if !ok {
-		return ""
-	}
-
-	mode, isText := lit.Value.(string)
-	if isText && slices.Contains(FollowUpModes(), mode) {
-		return ""
-	}
-
-	return fmt.Sprintf("follow_ups is %s. Use one of: %s.", lit.Raw, strings.Join(FollowUpModes(), ", "))
-}
-
-// arguments reports each wrong follow_ups argument of an agent call in the file, at the place of the value.
+// arguments reports each agent call in the file whose follow_ups is "forbid" and whose outputs lack the verdict, at the place of the value.
 func (g *graph) arguments(parsed *syntax.File) {
 	syntax.Walk(parsed, func(n syntax.Node) bool {
 		if call, ok := n.(*syntax.CallExpr); ok && isAgentCall(call) {
@@ -47,26 +29,17 @@ func (g *graph) arguments(parsed *syntax.File) {
 func isAgentCall(call *syntax.CallExpr) bool {
 	fn, isName := call.Fn.(*syntax.Ident)
 
-	return isName && fn.Name == "agent"
+	return isName && fn.Name == agentName
 }
 
-// followUps reports the follow_ups argument of one agent call when its value is a literal that is not listed,
-// or is "forbid" and the literal outputs of the call lack the verdict. An outputs value that is not a list of literals is left to the run.
+// followUps reports the follow_ups argument of one agent call when it is "forbid" and the literal outputs of the call lack the verdict.
+// An outputs value that is not a list of literals is left to the run. A value outside the listed modes is reported by the signature check.
 func (g *graph) followUps(call *syntax.CallExpr) {
 	args := followUpArguments(call)
 	value, outputs := args.value, args.outputs
 
-	if value == nil {
-		return
-	}
-
-	text := followUpProblem(value)
-	if text == "" && isForbid(value) && !mayListVerdict(outputs) {
-		text = fmt.Sprintf("follow_ups is %q, so outputs must list %q", FollowUpsForbid, "verdict")
-	}
-
-	if text != "" {
-		g.report(placeOf(syntax.Start(value)), text)
+	if value != nil && isForbid(value) && !mayListVerdict(outputs) {
+		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("follow_ups is %q, so outputs must list %q", FollowUpsForbid, "verdict"))
 	}
 }
 

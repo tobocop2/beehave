@@ -16,7 +16,9 @@ import (
 func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (CommandRequest, []int, string, error) {
 	var c commandRaw
 
-	err := starlark.UnpackArgs(b.Name(), args, kwargs, "run", &c.run, "host?", &c.host, "stdin?", &c.stdin, "env?", &c.own, "timeout?", &c.timeout, "stop_on_rc?", &c.codes, "name?", &c.label)
+	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		runKeyword: &c.run, "host": &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+	})
 	if err != nil {
 		return CommandRequest{}, nil, "", err
 	}
@@ -181,7 +183,9 @@ func (s *script) gateCall(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 		run           starlark.Value
 	)
 
-	if err = starlark.UnpackArgs(b.Name(), args, kwargs, "run?", &run, "host?", &host, "timeout?", &timeout, "head?", &head, "name?", &label); err != nil {
+	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		runKeyword: &run, "host": &host, timeoutKeyword: &timeout, headKeyword: &head, nameKeyword: &label,
+	}); err != nil {
 		return request, head, label, err
 	}
 
@@ -232,7 +236,9 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 
 	var label string
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "question?", &question, "name?", &label); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"question": &question, nameKeyword: &label,
+	}); err != nil {
 		return nil, err
 	}
 
@@ -272,7 +278,9 @@ func (e *Engine) variable(name string) (string, error) {
 func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var name string
 
-	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "name", &name); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		nameKeyword: &name,
+	}); err != nil {
 		return nil, err
 	}
 
