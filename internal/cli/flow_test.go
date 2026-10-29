@@ -409,7 +409,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-3-r1", State: "running", Version: "v1", Stranded: true},
 		{ID: "item-4-r1", State: "done", SentBack: "a review asks\nfor changes"},
 		{ID: "item-5-r1", State: "running", Merge: "owner_merge"},
-		{ID: "item-6-r1", State: "done", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
+		{ID: "item-6-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
 		{ID: "item-7-r1", State: "running", Version: "v1", Stranded: true, OlderSteps: true},
 	}
 
@@ -420,7 +420,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
-		"item-6-r1\tdone\tstopped at check rc 2\n"+
+		"item-6-r1\tstopped\tstopped at check rc 2\n"+
 		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }

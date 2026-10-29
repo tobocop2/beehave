@@ -31,6 +31,7 @@ const (
 	runQueued    runState = "queued"
 	runDone      runState = "done"
 	runFailed    runState = "failed"
+	runStopped   runState = "stopped"
 	runCancelled runState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
 )
 
@@ -48,7 +49,7 @@ type RunInfo struct {
 	SentBack string
 	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged or sent_back. It is empty for a run with no merge step.
 	Merge string
-	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did.
+	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did. A run with a Stopped has the state stopped.
 	Stopped *Stopped
 }
 
@@ -152,6 +153,11 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 
 		result, err = resultOf(row)
 		info.SentBack, info.Merge, info.Stopped = result.SentBack, result.Merge, result.Stopped
+
+		// The workflow returns a stop as a result, so the store records success. The result tells the two apart.
+		if info.Stopped != nil {
+			info.State = runStopped
+		}
 	}
 
 	return err
