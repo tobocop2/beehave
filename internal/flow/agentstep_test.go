@@ -113,36 +113,73 @@ func (r *agentRig) run(t *testing.T, flow, prompt string) (ItemResult, error) {
 // crashAfterThePhaseEnded runs the flow on an engine that stops after the phase of the agent ended and before the read step is recorded.
 // The read step runs git rev-parse HEAD in the item folder. The folder config includes a named pipe, so git blocks on the pipe until a writer opens it:
 // the open of the writer returns only when the read is in flight. The phase has ended by then. The engine stops while the read waits.
+//
+// Every resource has a cleanup registered before it exists, so a failed assertion or a timeout leaves nothing running or open.
+// The cleanups run in reverse order: the engine stops first, then the cleanup releases the pipe and waits for the goroutines.
 func (r *agentRig) crashAfterThePhaseEnded(t *testing.T, file string) {
+	t.Helper()
+
+	r.crashItemAfterThePhaseEnded(t, testItem, file)
+}
+
+// crashItemAfterThePhaseEnded is crashAfterThePhaseEnded for one named item.
+func (r *agentRig) crashItemAfterThePhaseEnded(t *testing.T, item, file string) {
 	t.Helper()
 
 	gate := filepath.Join(t.TempDir(), "gate")
 	require.NoError(t, syscall.Mkfifo(gate, 0o600))
 
+	var (
+		routines sync.WaitGroup
+		held     = make(chan *os.File, 1)
+	)
+
+	// A writer blocked in its open returns when a reader opens the pipe. A non-blocking read open does that and never blocks itself.
+	t.Cleanup(func() {
+		if reader, err := os.OpenFile(filepath.Clean(gate), os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = reader.Close()
+		}
+
+		routines.Wait()
+
+		select {
+		case pipe := <-held:
+			_ = pipe.Close()
+		default:
+		}
+	})
+
 	gitIn(t, r.dir, "config", "--local", "include.path", gate)
 
 	crashed, err := NewEngine(t.Context(), r.h.opts, r.h.deps())
 	require.NoError(t, err)
+
+	t.Cleanup(func() { assert.NoError(t, crashed.Shutdown()) })
+
 	require.NoError(t, crashed.Launch())
 
 	ran := make(chan error, 1)
 
+	routines.Add(2)
+
 	go func() {
-		_, runErr := crashed.RunFile(testItem, testProject, file)
+		defer routines.Done()
+
+		_, runErr := crashed.RunFile(item, testProject, file)
 		ran <- runErr
 	}()
 
-	reading := make(chan *os.File, 1)
-
 	go func() {
+		defer routines.Done()
+
 		pipe, openErr := os.OpenFile(filepath.Clean(gate), os.O_WRONLY, 0)
 		assert.NoError(t, openErr)
-		reading <- pipe
+		held <- pipe
 	}()
 
 	var pipe *os.File
 	select {
-	case pipe = <-reading:
+	case pipe = <-held:
 	case <-time.After(eventTimeout):
 		require.FailNow(t, "the read step did not start")
 	}
@@ -150,7 +187,14 @@ func (r *agentRig) crashAfterThePhaseEnded(t *testing.T, file string) {
 	require.Equal(t, 1, phaseCount(t, crashed, dbos.WorkflowStatusSuccess), "the phase ended before the read step started")
 
 	require.NoError(t, crashed.Shutdown())
-	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
+
+	select {
+	case runErr := <-ran:
+		require.Error(t, runErr, "the stopped engine ends the run before it records the read step")
+	case <-time.After(eventTimeout):
+		require.FailNow(t, "the stopped engine did not end the run")
+	}
+
 	require.NoError(t, pipe.Close())
 	require.NoError(t, os.Remove(gate), "the replay reads HEAD with no gate")
 }
