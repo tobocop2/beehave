@@ -1,25 +1,25 @@
 package config
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
-
-	"github.com/tobocop2/obee/internal/hclfile"
+	"go.starlark.net/syntax"
 )
 
 const (
 	// runnersFileName is the file with the agent logins, the agent limit and the pool caps.
-	runnersFileName = "runners.hcl"
-	// projectsDirName is the folder with one HCL file for each project.
+	runnersFileName = "runners.star"
+	// oldRunnersFileName is the name that the runners file had before the config files became Starlark.
+	oldRunnersFileName = "runners.hcl"
+	// projectsDirName is the folder with one Starlark file for each project.
 	projectsDirName = "projects"
 	// projectExt is the file extension of a project file.
-	projectExt = ".hcl"
+	projectExt = ".star"
+	// oldProjectExt is the extension that a project file had before the config files became Starlark.
+	oldProjectExt = ".hcl"
 	// LocalHost is the build host that means this machine.
 	LocalHost = "local"
 )
@@ -33,36 +33,18 @@ func isFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// decodeFile reads an HCL file into target and reports each problem with its position.
-func decodeFile(path string, target any) error {
-	if err := hclfile.Decode(path, target); err != nil {
-		return refusal{err: err}
-	}
-
-	return nil
+// refuseOld refuses a file in the old format. obee does not read it.
+func refuseOld(path, name string) error {
+	return refuse("%s: obee no longer reads HCL config files. Rewrite the file as %s.", path, name)
 }
 
 // refuseAt returns a refusal that starts with the file, line and column of at.
 // An %w cause stays reachable with errors.Is.
-func refuseAt(at hcl.Range, format string, args ...any) error {
-	err := fmt.Errorf(format, args...)
-	diag := hclfile.At(at, err.Error())
-	diag.Cause = errors.Unwrap(err)
-
-	return refusal{err: diag}
+func refuseAt(at syntax.Position, format string, args ...any) error {
+	return refuse("%s: "+format, append([]any{at}, args...)...)
 }
 
-// keyAt returns the range of a key. A key that is not in the file has no range, so the range of
-// the block that should hold it stands in.
-func keyAt(key, holder hcl.Range) hcl.Range {
-	if key.Filename == "" {
-		return holder
-	}
-
-	return key
-}
-
-func requireText(at hcl.Range, key, value string) error {
+func requireText(at syntax.Position, key, value string) error {
 	if strings.TrimSpace(value) == "" {
 		return refuseAt(at, "`%s` must be a non-empty string. Set it.", key)
 	}

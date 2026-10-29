@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/hclfile"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -85,7 +84,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 	command := &cobra.Command{
 		Use:   "config",
 		Short: "Check the config folder and print one line for each problem",
-		Long:  "Check runners.hcl and projects/*.hcl. Exit 0 when the folder is valid, 2 when it has problems.",
+		Long:  "Check runners.star and projects/*.star. Exit 0 when the folder is valid, 2 when it has problems.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, flag)
@@ -121,7 +120,7 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 
 // printProblems prints one line for each problem and then the count. The check reads the file by
 // its name inside its folder, and each line shows the path that the user typed.
-func printProblems(stderr io.Writer, file string, found []hclfile.Diagnostic) {
+func printProblems(stderr io.Writer, file string, found []workflow.Diagnostic) {
 	for _, problem := range found {
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintln(stderr, problem)

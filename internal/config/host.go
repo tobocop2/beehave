@@ -3,7 +3,8 @@ package config
 import (
 	"time"
 
-	"github.com/hashicorp/hcl/v2"
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -11,38 +12,56 @@ import (
 const (
 	defaultIdleMins  = 60
 	maxCount         = model.MaxDiskFloorGB
-	defaultMaxRun    = 24 * time.Hour
+	defaultMaxRun    = "24h"
 	hostTableMessage = "the `host` block %s. %s"
 )
 
-// rawHost is a host block as written. Each key has a range for the refusals that come after the decode.
-// A key that is not in the block has an empty range.
+// rawHost is a host block as written. At is the position of its call.
 type rawHost struct {
-	At              hcl.Range    `hcl:",def_range"`
-	Provider        string       `hcl:"provider,optional"`
-	ProviderAt      hcl.Range    `hcl:"provider,attr_name_range"`
-	IdleMinutes     *int         `hcl:"idle_minutes,optional"`
-	IdleMinutesAt   hcl.Range    `hcl:"idle_minutes,attr_name_range"`
-	MaxRun          *string      `hcl:"max_run,optional"`
-	MaxRunAt        hcl.Range    `hcl:"max_run,attr_name_range"`
-	DiskFloorGB     *int         `hcl:"disk_floor_gb,optional"`
-	DiskFloorGBAt   hcl.Range    `hcl:"disk_floor_gb,attr_name_range"`
-	PrivateRemote   string       `hcl:"private_remote,optional"`
-	PrivateRemoteAt hcl.Range    `hcl:"private_remote,attr_name_range"`
-	SkyPilot        *rawSkyPilot `hcl:"skypilot,block"`
+	At            syntax.Position
+	Provider      string
+	IdleMinutes   int
+	MaxRun        string
+	DiskFloorGB   int
+	PrivateRemote string
+	SkyPilot      *rawSkyPilot
 }
 
-// at returns the range of a key, or the start of the block when the key is not in it.
-func (h rawHost) at(key hcl.Range) hcl.Range { return keyAt(key, h.At) }
-
 type rawSkyPilot struct {
-	Cloud        string `hcl:"cloud,optional"`
-	Region       string `hcl:"region,optional"`
-	InstanceType string `hcl:"instance_type,optional"`
+	Cloud        string
+	Region       string
+	InstanceType string
+}
+
+// The schemas of the host and skypilot constructors.
+func hostSpec() spec {
+	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "max_run?", "private_remote?", "skypilot?"}}
+}
+
+func skypilotSpec() spec { return spec{"skypilot", []string{"cloud?", "region?", "instance_type?"}} }
+
+// newHost is the constructor of the host block. A key that the call leaves out keeps its default.
+func newHost(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
+	raw := &rawHost{At: at, IdleMinutes: defaultIdleMins, MaxRun: defaultMaxRun}
+
+	skypilot := nested[rawSkyPilot]{want: skypilotSpec().name}
+
+	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.MaxRun, &raw.PrivateRemote, &skypilot)
+	raw.SkyPilot = skypilot.block
+
+	return raw, err
+}
+
+// newSkyPilot is the constructor of the skypilot block.
+func newSkyPilot(at syntax.Position, kwargs []starlark.Tuple) (*rawSkyPilot, error) {
+	raw := &rawSkyPilot{}
+	err := skypilotSpec().unpack(at, kwargs, &raw.Cloud, &raw.Region, &raw.InstanceType)
+
+	return raw, err
 }
 
 // hostConfig checks the host block against build_host and returns it. A project that builds locally has none.
-// A block that must go points at itself. A block that is missing points at the build_host line.
+// A block that must go points at itself. A block that is missing points at the project call.
 func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error) {
 	raw := project.Host
 
@@ -52,20 +71,20 @@ func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error)
 	case buildHost == LocalHost:
 		return nil, refuseAt(raw.At, hostTableMessage, "is not allowed when `build_host` is \"local\"", "Remove the block, or set `build_host` to a cluster name.")
 	case raw == nil:
-		return nil, refuseAt(project.BuildHostAt, hostTableMessage, "is required when `build_host` is a cluster name", "Add a `host` block with `provider` and `disk_floor_gb`.")
+		return nil, refuseAt(project.At, hostTableMessage, "is required when `build_host` is a cluster name", "Add a `host` block with `provider` and `disk_floor_gb`.")
 	}
 
 	return buildHostConfig(*raw)
 }
 
 func buildHostConfig(raw rawHost) (*model.HostConfig, error) {
-	if err := requireText(raw.at(raw.ProviderAt), "host.provider", raw.Provider); err != nil {
+	if err := requireText(raw.At, "host.provider", raw.Provider); err != nil {
 		return nil, err
 	}
 
 	provider, err := model.ParseHostProvider(raw.Provider)
 	if err != nil {
-		return nil, refuseAt(raw.ProviderAt, "`host.provider`: %w. Fix the value.", err)
+		return nil, refuseAt(raw.At, "`host.provider`: %w. Fix the value.", err)
 	}
 
 	host := model.HostConfig{Provider: provider, PrivateRemote: raw.PrivateRemote}
@@ -86,47 +105,35 @@ func fillKeys(raw rawHost, host *model.HostConfig) error {
 	var err error
 
 	if raw.PrivateRemote != "" && !model.RemoteHasHost(raw.PrivateRemote) {
-		return refuseAt(raw.PrivateRemoteAt, "`host.private_remote` must name a machine, such as git@host:org/repo.git; a path or a file URL does not count. Fix the value.")
+		return refuseAt(raw.At, "`host.private_remote` must name a machine, such as git@host:org/repo.git; a path or a file URL does not count. Fix the value.")
 	}
 
-	if host.IdleMinutes, err = positive(raw.at(raw.IdleMinutesAt), "host.idle_minutes", raw.IdleMinutes, defaultIdleMins); err != nil {
+	if host.IdleMinutes, err = positive(raw.At, "host.idle_minutes", raw.IdleMinutes); err != nil {
 		return err
 	}
 
-	if host.DiskFloorGB, err = positive(raw.at(raw.DiskFloorGBAt), "host.disk_floor_gb", raw.DiskFloorGB, 0); err != nil {
+	if host.DiskFloorGB, err = positive(raw.At, "host.disk_floor_gb", raw.DiskFloorGB); err != nil {
 		return err
 	}
 
-	host.MaxRun, err = maxRun(raw.MaxRunAt, raw.MaxRun)
+	host.MaxRun, err = maxRun(raw.At, raw.MaxRun)
 
 	return err
 }
 
-// positive returns the value of an integer key. A missing key reads as fallback; a fallback of 0 makes the key required.
-func positive(at hcl.Range, key string, value *int, fallback int) (int, error) {
-	if value == nil && fallback > 0 {
-		return fallback, nil
+// positive checks the value of an integer key.
+func positive(at syntax.Position, key string, value int) (int, error) {
+	if value <= 0 || value > maxCount {
+		return 0, refuseAt(at, "`%s` must be above zero and at most %d; got %d. Fix the value.", key, maxCount, value)
 	}
 
-	if value == nil {
-		return 0, refuseAt(at, "`%s` is required. Add it.", key)
-	}
-
-	if *value <= 0 || *value > maxCount {
-		return 0, refuseAt(at, "`%s` must be above zero and at most %d; got %d. Fix the value.", key, maxCount, *value)
-	}
-
-	return *value, nil
+	return value, nil
 }
 
-func maxRun(at hcl.Range, text *string) (time.Duration, error) {
-	if text == nil {
-		return defaultMaxRun, nil
-	}
-
-	parsed, err := time.ParseDuration(*text)
+func maxRun(at syntax.Position, text string) (time.Duration, error) {
+	parsed, err := time.ParseDuration(text)
 	if err != nil || parsed <= 0 {
-		return 0, refuseAt(at, "`host.max_run` must be a duration above zero, such as \"24h\"; got `%s`. Fix the value.", *text)
+		return 0, refuseAt(at, "`host.max_run` must be a duration above zero, such as \"24h\"; got `%s`. Fix the value.", text)
 	}
 
 	return parsed, nil

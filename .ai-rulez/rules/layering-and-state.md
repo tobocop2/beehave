@@ -19,7 +19,6 @@ The method tools are under `examples/remediation/tools/`, in the same Go module.
 | Layer | Packages | Holds |
 |---|---|---|
 | 0 | `model`, `config`, `lockfile` | Domain types and enums, the typed config, the file lock opener. No upward imports. |
-| leaf | `hclfile` | The HCL file reader. It imports no obee package; `config` imports it. |
 | 1 | `store`, `forge`, `proc`, `agent`, `host` | Adapters for `bd`, `gh`, agent CLIs and build hosts. Each wraps an external shape once. |
 | 2 | `check/shell`, `claim`, `gate`, `merge`, `review`, `pool`, `workflow` | Round policy and the workflow file schema. Declares the small interfaces it needs from layer 1. |
 | 3 | `flow` | DBOS workflows and steps that call layer 2. |
@@ -38,7 +37,7 @@ The service graph is a plain struct built once in `cmd/obee/main.go`. Constructo
 ## Configuration and state
 
 - No mutable package-level state. No `init()` functions. `gochecknoglobals` and `gochecknoinits` enforce this. The build-time variable `version` in `cmd/obee`, set by `-ldflags`, is the only exception; the linter allows that name.
-- One HCL config, decoded strictly into a typed struct. Unknown keys are errors. `OBEE_*` environment variables override the file; the flags override both.
+- One Starlark config, read through one constructor for each block. Unknown arguments are errors. `OBEE_*` environment variables override the file; the flags override both.
 - Read the environment only in the `config` package. `forbidigo` bans `os.Getenv` elsewhere.
 - Canonicalize a value once, at the write boundary (`Config.Validate`, `ParseX`). Do not add alias fallbacks to a resolver.
 - A default must pass the validator. Test `DefaultConfig().Validate()`.

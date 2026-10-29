@@ -17,7 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 )
 
-const localProjectConfig = "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n"
 
 var errNoItem = store.Refuse("no item fix-login in project p. Add it: obee item add")
 
@@ -65,7 +65,7 @@ func newItemRig(t *testing.T) *itemRig {
 
 	rig := &itemRig{flowRig: newRig(t), items: &fakeItems{}, bodyFile: filepath.Join(t.TempDir(), "body.md")}
 	require.NoError(t, os.WriteFile(rig.bodyFile, []byte("Fix the login form.\n"), 0o600))
-	writeConfig(t, rig.dir, "projects/p.hcl", localProjectConfig)
+	writeConfig(t, rig.dir, "projects/p.star", localProjectConfig)
 
 	return rig
 }
@@ -110,7 +110,7 @@ func TestItemAdd_RefusesAProjectWhoseTrackerIsNotLocalAndOpensNoStore(t *testing
 	t.Parallel()
 
 	rig := newItemRig(t)
-	writeConfig(t, rig.dir, "projects/q.hcl", validProject)
+	writeConfig(t, rig.dir, "projects/q.star", validProject)
 
 	code, _, stderr := rig.run(t.Context(), "item", "add", "q", "fix-login", "--title", "t", "--body-file", rig.bodyFile)
 
@@ -168,7 +168,7 @@ func TestItem_AConfigThatDoesNotLoadIsRefusedBeforeAnyStoreOpens(t *testing.T) {
 	t.Parallel()
 
 	rig := newItemRig(t)
-	writeConfig(t, rig.dir, "projects/bad.hcl", "unknown_key = 1\n")
+	writeConfig(t, rig.dir, "projects/bad.star", "project(unknown_key = 1)\n")
 
 	code, _, stderr := rig.run(t.Context(), "item", "list", "p")
 
@@ -272,7 +272,7 @@ func TestRun_AProjectWithAnotherTrackerNeverOpensTheLocalStore(t *testing.T) {
 	t.Parallel()
 
 	rig := newItemRig(t)
-	writeConfig(t, rig.dir, "projects/q.hcl", validProject)
+	writeConfig(t, rig.dir, "projects/q.star", validProject)
 
 	code, _, stderr := rig.run(t.Context(), "run", "12", "q", "--workflow", rig.file)
 

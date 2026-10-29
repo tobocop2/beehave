@@ -54,7 +54,7 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadFolder loads runners.hcl and every projects/*.hcl of a config folder, applies the OBEE_*
+// LoadFolder loads runners.star and every projects/*.star of a config folder, applies the OBEE_*
 // variables of env, and validates the result. It reports every problem it finds, one for each file.
 func LoadFolder(dir string, env map[string]string) (Config, Problems) {
 	cfg := DefaultConfig()
@@ -87,6 +87,10 @@ func (c *Config) loadFiles() Problems {
 }
 
 func (c *Config) loadRunners() error {
+	if old := filepath.Join(c.Dir, oldRunnersFileName); isFile(old) {
+		return refuseOld(old, runnersFileName)
+	}
+
 	path := filepath.Join(c.Dir, runnersFileName)
 	if !isFile(path) {
 		return nil
@@ -98,7 +102,7 @@ func (c *Config) loadRunners() error {
 	return err
 }
 
-// loadProjects reads projects/*.hcl in name order. A missing projects folder holds no project.
+// loadProjects reads projects/*.star in name order, and refuses a projects/*.hcl file. A missing projects folder holds no project.
 func (c *Config) loadProjects() Problems {
 	dir := filepath.Join(c.Dir, projectsDirName)
 
@@ -110,15 +114,22 @@ func (c *Config) loadProjects() Problems {
 	var problems Problems
 
 	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) == projectExt {
-			problems = c.addProject(problems, filepath.Join(dir, entry.Name()))
-		}
+		problems = c.addProject(problems, filepath.Join(dir, entry.Name()))
 	}
 
 	return problems
 }
 
+// addProject loads one file of the projects folder. A file of another kind is not a project.
 func (c *Config) addProject(problems Problems, path string) Problems {
+	switch filepath.Ext(path) {
+	case oldProjectExt:
+		return append(problems, refuseOld(path, strings.TrimSuffix(filepath.Base(path), oldProjectExt)+projectExt))
+	case projectExt:
+	default:
+		return problems
+	}
+
 	project, err := loadProject(path)
 	if err != nil {
 		return append(problems, err)

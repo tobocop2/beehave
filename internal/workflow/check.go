@@ -12,8 +12,25 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/hclfile"
+	"github.com/tobocop2/obee/internal/model"
 )
+
+// Diagnostic is one problem in a file. It renders as file:line:col: text. A problem with the whole file has line 0 and renders as file: text.
+type Diagnostic struct {
+	File string
+	Line int
+	Col  int
+	Text string
+}
+
+// Error renders the position and the text.
+func (d Diagnostic) Error() string {
+	if d.Line == 0 {
+		return fmt.Sprintf("%s: %s", d.File, d.Text)
+	}
+
+	return fmt.Sprintf("%s:%d:%d: %s", d.File, d.Line, d.Col, d.Text)
+}
 
 const (
 	minStopCode = 1
@@ -55,7 +72,7 @@ type graph struct {
 	main     string
 	units    map[string]*unit
 	stack    []string
-	found    []hclfile.Diagnostic
+	found    []Diagnostic
 	unparsed bool
 }
 
@@ -64,9 +81,9 @@ func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
 // scan reads the workflow file and the files it loads, once each, with no run of code.
 func scan(file string) *graph {
 	g := &graph{dir: filepath.Dir(file), main: filepath.Base(file), units: map[string]*unit{}}
-	g.visit(g.main, hclfile.Diagnostic{File: file})
+	g.visit(g.main, Diagnostic{File: file})
 
-	slices.SortStableFunc(g.found, func(a, b hclfile.Diagnostic) int {
+	slices.SortStableFunc(g.found, func(a, b Diagnostic) int {
 		return cmp.Or(cmp.Compare(a.File, b.File), cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 
@@ -82,12 +99,12 @@ func (g *graph) display(name string) string {
 	return filepath.Join(g.dir, name)
 }
 
-func (g *graph) report(at hclfile.Diagnostic, text string) {
+func (g *graph) report(at Diagnostic, text string) {
 	at.Text = text
 	g.found = append(g.found, at)
 }
 
-func (g *graph) visit(name string, at hclfile.Diagnostic) {
+func (g *graph) visit(name string, at Diagnostic) {
 	if i := slices.Index(g.stack, name); i >= 0 {
 		g.report(at, "files load each other: "+strings.Join(append(slices.Clone(g.stack[i:]), name), " -> ")+". Remove one load.")
 
@@ -112,7 +129,7 @@ func (g *graph) visit(name string, at hclfile.Diagnostic) {
 
 // parse reads the text of a file, then visits the files it loads. A file that does not parse is a problem.
 func (g *graph) parse(name string, data []byte) {
-	parsed, _, err := starlark.SourceProgramOptions(options(), g.display(name), data, predeclared)
+	parsed, _, err := starlark.SourceProgramOptions(model.StarlarkFileOptions(), g.display(name), data, predeclared)
 	if err != nil {
 		g.unparsed = true
 		g.problems(err)
@@ -125,7 +142,7 @@ func (g *graph) parse(name string, data []byte) {
 	g.stack = g.stack[:len(g.stack)-1]
 
 	if name == g.main && !definesMain(parsed) {
-		g.report(hclfile.Diagnostic{File: g.display(name)}, "the file defines no function main. Add def main(item):")
+		g.report(Diagnostic{File: g.display(name)}, "the file defines no function main. Add def main(item):")
 	}
 }
 
@@ -137,7 +154,7 @@ func (g *graph) loads(parsed *syntax.File) {
 			continue
 		}
 
-		at := hclfile.Diagnostic{File: load.Load.Filename(), Line: int(load.Load.Line), Col: int(load.Load.Col)}
+		at := Diagnostic{File: load.Load.Filename(), Line: int(load.Load.Line), Col: int(load.Load.Col)}
 
 		name, err := resolveModule(load.ModuleName())
 		if err != nil {
@@ -173,19 +190,19 @@ func (g *graph) problems(err error) {
 			g.report(placeOf(one.Pos), sentence(one.Msg))
 		}
 	default:
-		g.report(hclfile.Diagnostic{}, err.Error())
+		g.report(Diagnostic{}, err.Error())
 	}
 }
 
-func placeOf(pos syntax.Position) hclfile.Diagnostic {
-	return hclfile.Diagnostic{File: pos.Filename(), Line: int(pos.Line), Col: int(pos.Col)}
+func placeOf(pos syntax.Position) Diagnostic {
+	return Diagnostic{File: pos.Filename(), Line: int(pos.Line), Col: int(pos.Col)}
 }
 
 func sentence(text string) string { return strings.TrimRight(text, ".") + "." }
 
 // Check reads the workflow file and the files it loads and returns one diagnostic for each problem: a syntax error, a name that is not defined,
 // a load that cannot be read or loops, and a missing main. unparsed is true when a file cannot be read or parsed. It runs no workflow code.
-func Check(file string) (found []hclfile.Diagnostic, unparsed bool) {
+func Check(file string) (found []Diagnostic, unparsed bool) {
 	g := scan(file)
 
 	return g.found, g.unparsed

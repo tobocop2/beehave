@@ -6,6 +6,7 @@ import (
 
 	"go.starlark.net/syntax"
 
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -17,7 +18,7 @@ type Call struct {
 
 // Calls lists the calls of the builtins in the text of a workflow file, in the order of the text. It reads the syntax only and runs nothing.
 func Calls(name string, text []byte) ([]Call, error) {
-	parsed, err := (&syntax.FileOptions{}).Parse(name, text, 0)
+	parsed, err := model.StarlarkFileOptions().Parse(name, text, 0)
 	if err != nil {
 		return nil, err
 	}

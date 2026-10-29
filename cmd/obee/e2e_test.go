@@ -239,30 +239,22 @@ var e2ePrompts = map[string]string{
 	"audit":     "step=audit\nseen={{ .seen }}\n",
 }
 
-const e2eRunners = `agents {
-  max_concurrent = 2
-}
+const e2eRunners = `agents(max_concurrent = 2)
 
-runner {
-  name       = "a"
-  agent      = "claude"
-  config_dir = "%DIR%"
-}
+runner(name = "a", agent = "claude", config_dir = "%DIR%")
 
-runner {
-  name       = "b"
-  agent      = "claude"
-  config_dir = "%DIR%"
-}
+runner(name = "b", agent = "claude", config_dir = "%DIR%")
 `
 
-const e2eProject = `repo = "example/shop"
-tracker = "github"
-forge = "github"
-claims = "beads"
-beads_prefix = "shop"
-base_branch = "main"
-gate = "true"
+const e2eProject = `project(
+    repo = "example/shop",
+    tracker = "github",
+    forge = "github",
+    claims = "beads",
+    beads_prefix = "shop",
+    base_branch = "main",
+    gate = "true",
+)
 `
 
 // exampleSkill returns the one skill that an agent of examples/remediation/workflow.star requires.
@@ -304,9 +296,9 @@ func e2eSetup(env *testscript.Env) error {
 		text string
 		mode os.FileMode
 	}{
-		"bin/claude":               {strings.ReplaceAll(e2eClaude, "%SKILL%", skill), e2eScriptMode},
-		"config/runners.hcl":       {strings.ReplaceAll(e2eRunners, "%DIR%", work), e2eFileMode},
-		"config/projects/shop.hcl": {e2eProject, e2eFileMode},
+		"bin/claude":                {strings.ReplaceAll(e2eClaude, "%SKILL%", skill), e2eScriptMode},
+		"config/runners.star":       {strings.ReplaceAll(e2eRunners, "%DIR%", work), e2eFileMode},
+		"config/projects/shop.star": {e2eProject, e2eFileMode},
 	}
 
 	example, err := os.ReadFile(filepath.Join("..", "..", "examples", "remediation", "workflow.star"))

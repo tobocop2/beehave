@@ -21,8 +21,8 @@ var errFake = errors.New("fake failure")
 
 const (
 	stateDirVariable = "OBEE_STATE_DIR"
-	validRunners     = "runner {\nname = \"a\"\nagent = \"claude\"\n}\n"
-	validProject     = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+	validRunners     = "runner(name = \"a\", agent = \"claude\")\n"
+	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\")\n"
 )
 
 type fakeRunner struct {
@@ -127,8 +127,8 @@ func newRig(t *testing.T) *flowRig {
 	t.Helper()
 
 	dir := t.TempDir()
-	writeConfig(t, dir, "runners.hcl", validRunners)
-	writeConfig(t, dir, "projects/p.hcl", validProject)
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/p.star", validProject)
 
 	flowDir := t.TempDir()
 	writeConfig(t, flowDir, "flow.star", oneCommandFile)
@@ -247,7 +247,7 @@ func TestRun_TheProjectIsNamedOrTheOnlyOneAndNeverGuessed(t *testing.T) {
 			rig := newRig(t)
 
 			if test.extra != "" {
-				writeConfig(t, rig.dir, "projects/"+test.extra+".hcl", validProject)
+				writeConfig(t, rig.dir, "projects/"+test.extra+".star", validProject)
 			}
 
 			code, _, stderr := rig.execute(t.Context(), test.args...)
@@ -274,7 +274,7 @@ func TestRun_RefusesAConfigWithoutAProject(t *testing.T) {
 
 	rig := newRig(t)
 	rig.dir = t.TempDir()
-	writeConfig(t, rig.dir, "runners.hcl", validRunners)
+	writeConfig(t, rig.dir, "runners.star", validRunners)
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
@@ -377,7 +377,7 @@ func TestCommands_RefuseAnUnusableConfigAndAnUnknownStateFolder(t *testing.T) {
 			t.Parallel()
 
 			rig := newRig(t)
-			writeConfig(t, rig.dir, "runners.hcl", "agents {\nmax_concurrent = 0\n}\n"+validRunners)
+			writeConfig(t, rig.dir, "runners.star", "agents(max_concurrent = 0)\n"+validRunners)
 
 			code, _, stderr := rig.execute(t.Context(), command...)
 

@@ -43,7 +43,7 @@ type Runner struct {
 	Keychain  string
 }
 
-// Project is one project profile, from projects/<name>.hcl. Forge is empty for a project with no forge.
+// Project is one project profile, from projects/<name>.star. Forge is empty for a project with no forge.
 // Source is a git URL or an absolute path, and is empty for a project that gets its clone URL from its forge.
 type Project struct {
 	Name        string

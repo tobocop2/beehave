@@ -11,7 +11,7 @@ import (
 	"github.com/tobocop2/obee/internal/lease"
 )
 
-const project = "repo = \"owner/name\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const project = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\")\n"
 
 // configFolder writes a config folder with one project file and gives the environment that names it.
 func configFolder(t *testing.T, text string) map[string]string {
@@ -19,7 +19,7 @@ func configFolder(t *testing.T, text string) map[string]string {
 
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.hcl"), []byte(text), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte(text), 0o600))
 
 	return map[string]string{"OBEE_CONFIG": dir}
 }
@@ -46,7 +46,7 @@ func TestProjectOf_FindsTheProjectThatOwnsTheRepository(t *testing.T) {
 func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {
 	t.Parallel()
 
-	env := configFolder(t, "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+	env := configFolder(t, "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n")
 
 	found, err := lease.ProjectOf(env, "/srv/repo")
 
@@ -61,7 +61,7 @@ func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {
 func TestProjectOf_FindsTheProjectThatOwnsAUrlSourceByExactText(t *testing.T) {
 	t.Parallel()
 
-	env := configFolder(t, "source = \"git@host:o/n.git\"\nbase_branch = \"main\"\ngate = \"make check\"\n")
+	env := configFolder(t, "project(source = \"git@host:o/n.git\", base_branch = \"main\", gate = \"make check\")\n")
 
 	found, err := lease.ProjectOf(env, "git@host:o/n.git")
 
@@ -86,7 +86,7 @@ func TestProjectOf_RepositoryInTwoProjectsIsRefusedAndNamesBoth(t *testing.T) {
 	t.Parallel()
 
 	env := configFolder(t, project)
-	require.NoError(t, os.WriteFile(filepath.Join(env["OBEE_CONFIG"], "projects", "q.hcl"), []byte(project), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(env["OBEE_CONFIG"], "projects", "q.star"), []byte(project), 0o600))
 
 	_, err := lease.ProjectOf(env, "owner/name")
 

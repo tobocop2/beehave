@@ -16,7 +16,8 @@ import (
 	"strings"
 
 	"go.starlark.net/starlark"
-	"go.starlark.net/syntax"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -39,9 +40,6 @@ type PinnedFile struct {
 func Builtins() []string {
 	return []string{"agent", "command", "env", "gate", "merge", "struct", "wait"}
 }
-
-// options returns the file options of every workflow file: the zero value, so no while, no recursion and no top-level control flow.
-func options() *syntax.FileOptions { return &syntax.FileOptions{} }
 
 // resolveModule turns the argument of a load into a file name: a path in the folder of the workflow, or a library in the binary.
 func resolveModule(module string) (string, error) {
@@ -178,7 +176,7 @@ func (s *Sources) load(thread *starlark.Thread, module string, predeclared starl
 }
 
 func (s *Sources) exec(thread *starlark.Thread, name string, predeclared starlark.StringDict) (starlark.StringDict, error) {
-	globals, err := starlark.ExecFileOptions(options(), thread, name, s.data[name], predeclared)
+	globals, err := starlark.ExecFileOptions(model.StarlarkFileOptions(), thread, name, s.data[name], predeclared)
 	if err != nil {
 		return nil, err
 	}
