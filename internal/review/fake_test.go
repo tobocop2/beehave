@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ type world struct {
 	defaultBranch  string
 	fails          map[string]bool
 	asked          []model.SearchRequest
+	lookups        atomic.Int32 // the calls of DefaultBranch
 }
 
 func newWorld() *world {
@@ -119,6 +121,8 @@ func (w *world) StackID(_ context.Context, pr int) (string, error) {
 }
 
 func (w *world) DefaultBranch(context.Context) (string, error) {
+	w.lookups.Add(1)
+
 	return w.defaultBranch, w.fail("DefaultBranch")
 }
 

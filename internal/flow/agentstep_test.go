@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -107,6 +108,51 @@ func (r *agentRig) run(t *testing.T, flow, prompt string) (ItemResult, error) {
 	require.NoError(t, errors.Join(r.failed...), "the fake agent writes its output file")
 
 	return result, err
+}
+
+// crashAfterThePhaseEnded runs the flow on an engine that stops after the phase of the agent ended and before the read step is recorded.
+// The read step runs git rev-parse HEAD in the item folder. The folder config includes a named pipe, so git blocks on the pipe until a writer opens it:
+// the open of the writer returns only when the read is in flight. The phase has ended by then. The engine stops while the read waits.
+func (r *agentRig) crashAfterThePhaseEnded(t *testing.T, file string) {
+	t.Helper()
+
+	gate := filepath.Join(t.TempDir(), "gate")
+	require.NoError(t, syscall.Mkfifo(gate, 0o600))
+
+	gitIn(t, r.dir, "config", "--local", "include.path", gate)
+
+	crashed, err := NewEngine(t.Context(), r.h.opts, r.h.deps())
+	require.NoError(t, err)
+	require.NoError(t, crashed.Launch())
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := crashed.RunFile(testItem, testProject, file)
+		ran <- runErr
+	}()
+
+	reading := make(chan *os.File, 1)
+
+	go func() {
+		pipe, openErr := os.OpenFile(filepath.Clean(gate), os.O_WRONLY, 0)
+		assert.NoError(t, openErr)
+		reading <- pipe
+	}()
+
+	var pipe *os.File
+	select {
+	case pipe = <-reading:
+	case <-time.After(eventTimeout):
+		require.FailNow(t, "the read step did not start")
+	}
+
+	require.Equal(t, 1, phaseCount(t, crashed, dbos.WorkflowStatusSuccess), "the phase ended before the read step started")
+
+	require.NoError(t, crashed.Shutdown())
+	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
+	require.NoError(t, pipe.Close())
+	require.NoError(t, os.Remove(gate), "the replay reads HEAD with no gate")
 }
 
 const writeTo = "Write to {{ .output_file }}\nFix {{ .what }}.\n"
@@ -569,27 +615,10 @@ func TestAgentStep_AReplayAfterTheAgentEndedButBeforeTheReadReadsTheFileTheAgent
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
 
-	// The run reads the result of the phase once an hour, so it is still waiting when the phase has ended and the engine stops.
-	crashed, err := NewEngine(t.Context(), rig.h.opts, rig.h.deps())
-	require.NoError(t, err)
-	require.NoError(t, crashed.Launch())
-
-	crashed.deps.Clock.Poll = time.Hour
-
-	ran := make(chan error, 1)
-
-	go func() {
-		_, runErr := crashed.RunFile(testItem, testProject, file)
-		ran <- runErr
-	}()
-
-	eventually(t, func() bool { return phaseCount(t, crashed, dbos.WorkflowStatusSuccess) == 1 })
-
-	require.NoError(t, crashed.Shutdown())
-	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
+	rig.crashAfterThePhaseEnded(t, file)
 	require.FileExists(t, outputFile(rig.h.opts.StateDir, testItem, "a#1"))
 
-	_, err = rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the agent left")
@@ -740,26 +769,9 @@ func TestAgentStep_AReplayAfterTheAgentEndedKeepsTheViolationItRecorded(t *testi
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Do the work\n"), 0o600))
 
-	// The run reads the result of the phase once an hour, so it is still waiting when the phase has ended and the engine stops.
-	crashed, err := NewEngine(t.Context(), rig.h.opts, rig.h.deps())
-	require.NoError(t, err)
-	require.NoError(t, crashed.Launch())
+	rig.crashAfterThePhaseEnded(t, file)
 
-	crashed.deps.Clock.Poll = time.Hour
-
-	ran := make(chan error, 1)
-
-	go func() {
-		_, runErr := crashed.RunFile(testItem, testProject, file)
-		ran <- runErr
-	}()
-
-	eventually(t, func() bool { return phaseCount(t, crashed, dbos.WorkflowStatusSuccess) == 1 })
-
-	require.NoError(t, crashed.Shutdown())
-	require.Error(t, <-ran, "the stopped engine ends the run before it records the read step")
-
-	_, err = rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"show bulk-staging: git add -A"}, rig.h.commands.ran(), "the replay reads the violation from the record")

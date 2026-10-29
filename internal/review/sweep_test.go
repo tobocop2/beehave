@@ -119,23 +119,23 @@ func TestSweep_TheDefaultBranchIsLookedUpOnlyWhenNeeded(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
-		s      review.Settings
-		lookup bool
+		s       review.Settings
+		lookups int32
 	}{
-		"named":                {review.Settings{DefaultBranch: "main"}, false},
-		"a base and no round":  {review.Settings{Base: "dev"}, false},
-		"an integration":       {review.Settings{Integration: "round", IntegrationSet: true}, true},
-		"neither base nor one": {review.Settings{}, true},
+		"named":                {review.Settings{DefaultBranch: "main"}, 0},
+		"a base and no round":  {review.Settings{Base: "dev"}, 0},
+		"an integration":       {review.Settings{Integration: "round", IntegrationSet: true}, 1},
+		"neither base nor one": {review.Settings{}, 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			w := swept("feat", nil)
 			w.defaultBranch = "main"
-			w.fails["DefaultBranch"] = !tc.lookup // a lookup that is not needed must not run
 
 			got := sweepOf(t, w, tc.s)
 			assert.Len(t, got.Rows, 1)
+			assert.Equal(t, tc.lookups, w.lookups.Load(), "the forge is asked for the default branch only when the check needs it")
 		})
 	}
 }

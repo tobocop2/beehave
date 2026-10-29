@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	conformanceStatuses = []string{"gap", "expressed", "proven", "n/a"}
+	conformanceStatuses = []string{"gap", "expressed", "partly", "proven", "n/a"}
 	conformanceHomes    = []string{"core", "file", "skill", "drop"}
 )
 

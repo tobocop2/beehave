@@ -67,7 +67,7 @@ func runID(item string, attempt int) string {
 func latestRun(client dbos.Client, item string) (run, bool, error) {
 	prefix := runPrefix + item + attemptMarker
 
-	rows, err := dbos.ListWorkflows(client, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
+	rows, err := dbos.ListWorkflows(client, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return run{}, false, fmt.Errorf("list the runs of item %s: %w", item, err)
 	}

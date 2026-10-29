@@ -13,6 +13,7 @@ Status says how far the example goes:
 
 - `gap`: the example does not hold the rule yet.
 - `expressed`: `workflow.hcl` holds the rule and `obee check workflow` passes on it.
+- `partly`: a behavior test runs one part of the rule. Where says what the test proves and what it does not.
 - `proven`: a behavior test runs the rule.
 - `n/a`: the rule does not apply to the engine.
 
@@ -144,7 +145,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-G-44 | Each profile states its gate command and the commands never run here | file | gap | - | - | S1-G-44, S1-G-45, S1-PS-03, S1-PS-14 |
 | S1-G-48 | Route a gate red the lane did not cause before a merge | core | gap | - | - | S1-G-48, S1-R-49 |
 | S1-P-04 | A reviewer builds its own tables and does not fix, commit or push | core | gap | - | - | S1-P-04, S1-R-59 |
-| S1-P-05 | Run the transcript check before accepting a report | core | proven | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run, read with loop.previous, forces a fix round and keeps the loop open | TestScripts | S1-P-05 |
+| S1-P-05 | Run the transcript check before accepting a report | core | partly | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run, read with loop.previous, forces a fix round and keeps the loop open. Proven: TestScripts shows the detection of a forbidden command. Not proven: no test runs the fix round that a hit forces | TestScripts | S1-P-05 |
 | S1-P-06 | A handoff that launched a job needs the unread-job reason | core | gap | tools/remedy handoff (F2 landed; no step yet) | TestHandoff_ALaunchedJobThatNobodyReadIsExitCodeOneAndNamesTheCap | S1-P-06 |
 | S1-P-07 | Report length limits per item and per batch | core | gap | F2 landed; no step yet | - | S1-P-07, S1-P-08 |
 | S1-P-09 | Dump issue and PR threads into files and name them in the brief | core | gap | - | - | S1-P-09 |
@@ -209,7 +210,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-X-15 | Check the forge head against the worktree head before each dispatch | core | gap | - | - | S1-X-15 |
 | S1-X-18 | After an interrupted action, ask the provider what exists | core | gap | - | - | S1-X-18, S1-X-23, S1-X-21 |
 | S1-X-19 | Resume a lane after a stop; refuse an over-cap resume | core | gap | - | - | S1-X-19 |
-| S1-S-01 | No delete from shell variables; no bulk staging; no remote delete | core | proven | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run forces a fix round | TestScripts | S1-S-01, S1-S-02, S1-S-03, S1-S-05, S1-S-06, S1-S-07, S1-S-16 |
+| S1-S-01 | No delete from shell variables; no bulk staging; no remote delete | core | partly | forbid_commands on workflow.hcl agents implement and fix; a hit in the latest lane run forces a fix round. Proven: TestScripts shows the detection of a forbidden command. Not proven: no test runs the fix round that a hit forces | TestScripts | S1-S-01, S1-S-02, S1-S-03, S1-S-05, S1-S-06, S1-S-07, S1-S-16 |
 | S1-S-04 | Never pass a script string to a shell | core | expressed | workflow.hcl agent implement | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-04 |
 | S1-S-08 | A call-time hook refuses bulk staging, deletes and unparseable quoting | core | gap | forbid_commands on workflow.hcl agent implement records a hit after the run and forces a fix round; no hook refuses a call at call time | TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds | S1-S-08 |
 | S1-S-09 | No startup-hook files or search-path overrides in a lane | core | gap | - | - | S1-S-09 |
