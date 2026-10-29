@@ -85,16 +85,14 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 func (c *Client) connect(ctx context.Context, state store) error {
 	c.logger = newLogger(state.log)
 
-	return migrating(state.dir, func() error {
-		if err := dbos.Migrate(ctx, state.url, dbos.WithMigrateLogger(c.logger)); err != nil {
-			return err
-		}
-
-		flow, err := dbos.NewClient(ctx, dbos.ClientConfig{DatabaseURL: state.url, AppName: appName, Logger: c.logger})
-		c.flow = flow
-
+	if err := dbos.Migrate(ctx, state.url, dbos.WithMigrateLogger(c.logger)); err != nil {
 		return err
-	})
+	}
+
+	flow, err := dbos.NewClient(ctx, dbos.ClientConfig{DatabaseURL: state.url, AppName: appName, Logger: c.logger})
+	c.flow = flow
+
+	return err
 }
 
 // Close closes the store and the log.

@@ -599,7 +599,7 @@ Each run pins the build version that started it. `obee status` lists every run w
 
 ### One engine for each state folder
 
-`obee run` takes an exclusive lock on `engine.lock` in the state folder and holds it until the command ends. A second `obee run` on the same state folder refuses and tells the owner to wait or to run `obee status`. The client commands do not take this lock. Every open of the store also takes the lock `migrate.lock` for the time of the database migration, because the migration of the workflow library has no lock of its own.
+`obee run` takes an exclusive lock on `engine.lock` in the state folder and holds it until the command ends. A second `obee run` on the same state folder refuses and tells the owner to wait or to run `obee status`. The client commands do not take this lock. Several processes can open a new state folder at the same time: the migration of the workflow library is safe for that.
 
 An item belongs to the project that `run` names. `run` refuses an item that has an open run under another project.
 
@@ -659,7 +659,7 @@ The DBOS rules live in `.ai-rulez/rules/dbos-and-secrets.md`. In short:
 - A custom `slog` logger writes to a 0600 file and redacts every record when it writes it. DBOS stores the text of a step error as it is, so each step error passes through the same redactor before it returns to DBOS.
 - No secret passes through a workflow input, a step output, an event or a message.
 - At each start, `obee run` deletes the finished runs that are older than seven days, with their phases, using `DeleteWorkflows`. Failed and cancelled runs stay, because `obee resume` can reopen them.
-- The enterprise DBOS module is never imported, and DBOS is imported only in `flow` (both `depguard` rules). `make deps` checks that `go list -deps ./...` has no `go.dbos.dev`, viper or `net/http`. `crypto/tls` is allowed because DBOS links it through its Postgres driver; `TestRun_OpensNoNetworkSocket` proves that `obee` opens no network connection. cobra is allowed (its core imports neither). `make vuln` runs govulncheck, and `go.mod` pins `toolchain go1.27.3` or later.
+- The enterprise DBOS module is never imported, and DBOS is imported only in `flow` (both `depguard` rules). `make deps` checks that `go list -deps ./...` has no `go.dbos.dev` or viper. DBOS links `crypto/tls` through its Postgres driver and `net/http` through an enterprise entitlement check that runs only when auto-upgrade is on, so both are allowed in dependencies; the `depguard` rule `no-http-client` keeps `net/http` out of obee's own code, and `TestRun_OpensNoNetworkSocket` proves that `obee` opens no network connection. cobra is allowed (its core imports neither). `make vuln` runs govulncheck, and `go.mod` pins `toolchain go1.27.3` or later.
 
 ## Decisions
 

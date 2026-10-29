@@ -157,14 +157,12 @@ func (e *Engine) registered(err error) (*Engine, error) {
 	return nil, errors.Join(err, e.Shutdown())
 }
 
-// open opens the workflow store under the migrate lock. The engine does not take the cancel of ctx.
+// open opens the workflow store. The engine does not take the cancel of ctx.
 func (e *Engine) open(ctx context.Context, opts Options, state store) error {
-	return migrating(state.dir, func() error {
-		flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
-		e.ctx = flowCtx
+	flowCtx, err := dbos.NewContext(context.WithoutCancel(ctx), engineConfig(opts, state, e.logger))
+	e.ctx = flowCtx
 
-		return err
-	})
+	return err
 }
 
 // engineConfig is the setup of the workflow engine for one state folder.
