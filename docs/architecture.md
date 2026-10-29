@@ -399,7 +399,9 @@ The program of a `command` step gets a small environment: the names that an agen
 
 - each name in an expression points at a step that exists, runs earlier or encloses the reference, and has that output;
 - no step depends on itself, directly or through other steps (the error shows the path as `a -> b -> a`);
-- each prompt file is a relative path inside the folder of the workflow file, exists there, and parses as a `text/template`.
+- each prompt file is a relative path inside the folder of the workflow file, exists there, and parses as a `text/template`;
+- each function call names a known function (see Functions and locals below);
+- each `local.<name>` names a local that the reading place can see, and no local reads itself, directly or through other locals (the error shows the path as `a -> b -> a`).
 
 The names after `item.` come from the adapters. Each tracker and each forge declares its item fields (`ItemFields`): beads and GitHub issues declare `id`, `title` and `body`, and the forge declares `branch`, `head_sha`, `pr` and `author`. The core adds `kind`. `obee check workflow --project <name>` reads the fields from the adapters of that project (`--config` names the config folder). Without `--project`, the fields are `id`, `title`, `body` and `kind`. A reference to any other field gives an error with the position and the declared names. In a project with no forge, the error for `branch`, `head_sha`, `pr` or `author` also says that the project has no forge.
 
@@ -407,7 +409,24 @@ Each step kind answers `NeedsForge`. Only `merge` answers true. If the project h
 
 The check reads the names in an expression and never evaluates it. An `outputs` argument that is not a list of strings, or a `prompt` that an expression computes, switches off the check of the output name or the file. Types are checked at run time.
 
-At run time, an expression sees one scope. The scope holds `item`, `env`, `loop`, and one object for each step kind, with the outputs of every step that has run. A step that was skipped has an empty value of the right type for each output. An expression fails with the file, the line and the column when it names a step that has not run, uses a function, or has the wrong type. A condition fails when its value is empty or is not true or false.
+At run time, an expression sees one scope. The scope holds `item`, `env`, `loop`, and one object for each step kind, with the outputs of every step that has run. A step that was skipped has an empty value of the right type for each output. An expression fails with the file, the line and the column when it names a step that has not run, calls a function that does not exist, or has the wrong type. A condition fails when its value is empty or is not true or false.
+
+### Functions and locals
+
+An expression may call eight functions: `contains`, `length`, `lower`, `join`, `split`, `regex_match`, `coalesce` and `format`. Seven come from the go-cty `function/stdlib` package. `regex_match` is true when an RE2 pattern matches anywhere in a string, and it calls the `regexall` function of the same package. `coalesce` returns the first argument that is not null. `workflow.Functions` is the only list of functions: the scope reads it, and the check reads it. `obee check workflow` refuses a call of any other function at the position of its name, and lists the known functions. A function is pure, so a replay of the same recorded outputs computes the same value.
+
+A `locals` block sits at the top of a workflow file or inside a `loop`. Each argument of the block is a local: a name for an expression. An expression reads it as `local.<name>`. A local of the file is visible everywhere. A local of a loop is visible to the steps of that loop, to its nested loops, and to its `until`. A local is evaluated in the loop that declares it: `loop.round`, `loop.previous` and the step outputs in a local mean the values of that loop, also when a nested loop reads the local. A local of the file sees no loop.
+
+A local holds no value. Each read evaluates the expression of the local again, with the outputs that the scope holds at that time. The scope evaluates only the locals that the expression reads, directly or through other locals, each after the locals it reads. A replay rebuilds the scope from the recorded outputs, so it gives the same value for a local as the first run. The `until` of a loop follows the last step that it names, also through a local.
+
+`obee check workflow` refuses:
+- a name declared twice in the same file, also when a loop local has the name of a local of the file or of a loop around it;
+- a local that reads itself, directly or through other locals;
+- a `local.x` that names no local, with the nearest name and the visible names;
+- a loop local that is read outside its loop;
+- a local that reads a step that runs later than the place that reads the local. The refusal is at the `local.x` that reads it. A loop `until` may read the steps of its body through a local, as it may read them directly.
+
+The check reads the expression of a local once, at its declaration, for the names, the outputs and the functions. A `locals` block takes no name and holds no block.
 
 `examples/remediation/` is one workflow written in this schema: a plan, an implement step, a review and fix loop of up to five fix rounds (six passes, so the sixth reviews the fifth fix), a wait for the owner, a settle step and a merge step, with five prompt files. The method lives in that folder and never in Go. `examples/remediation/CONFORMANCE.md` has one row for each rule of the method, with its home (`core`, `file`, `skill` or `drop`) and its status (`gap`, `expressed`, `proven` or `n/a`). A test in the `workflow` package fails when an ID repeats, when a home or status is not one of the allowed words, or when an `expressed` row names a block that the example does not hold. A row moves to `proven` when a behavior test runs it.
 

@@ -206,7 +206,7 @@ func TestUnknownTopLevelBlockNamesTheValidBlocks(t *testing.T) {
 	assert.Equal(t, 2, d.Line)
 	assert.Equal(t, 1, d.Col)
 	assert.Contains(t, d.Text, "`ship`")
-	assert.Contains(t, d.Text, "workflow, agent, command, gate, loop, merge, wait")
+	assert.Contains(t, d.Text, "workflow, locals, agent, command, gate, loop, merge, wait")
 }
 
 func TestUnknownBlockInALoopExcludesTheWorkflowBlock(t *testing.T) {

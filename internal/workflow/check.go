@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	rootItem = "item"
-	rootEnv  = "env"
+	rootItem  = "item"
+	rootEnv   = "env"
+	rootLocal = "local"
 
 	roundName    = "round"
 	previousName = "previous"
@@ -54,13 +55,20 @@ func Check(fsys fs.FS, file string, caps Capabilities) ([]hclfile.Diagnostic, bo
 
 	c := &checker{fsys: fsys, flow: flow, byName: map[string]*site{}, declared: names, caps: caps, fields: slices.Compact(valid), found: diagnostics(err)}
 
-	c.index(flow.Steps, nil)
+	c.run()
+
+	return c.found, false
+}
+
+// run does every check and sorts the problems by position.
+func (c *checker) run() {
+	c.index(c.flow.Steps, nil)
+	c.indexLocals(c.flow.Locals)
 	c.references()
+	c.localDeclarations()
 	c.cycles()
 	c.arguments()
 	sortByPosition(c.found)
-
-	return c.found, false
 }
 
 // Capabilities is what a project offers to a workflow.
@@ -81,12 +89,17 @@ type site struct {
 	index     int
 	ancestors []Step
 	edges     []*site
+	// local is true for the place of a local. It has no step, and its ancestors are the loops that can see the local, the loop that holds it last.
+	local bool
 }
 
 // inLoop reports whether `loop.round` has a meaning for the step. The condition of a loop is inside it.
 func (s *site) inLoop() bool {
-	return len(s.ancestors) > 0 || s.step.Kind() == KindLoop
+	return len(s.ancestors) > 0 || s.isLoop()
 }
+
+// isLoop is true for the site of a loop block.
+func (s *site) isLoop() bool { return !s.local && s.step.Kind() == KindLoop }
 
 // container returns the name of the closest loop around the step, or "" for a step outside every loop. A step name is unique in the file.
 func (s *site) container() string {
@@ -99,7 +112,7 @@ func (s *site) container() string {
 
 // home returns the name of the loop that `loop.previous` reads for the step: the loop itself for its condition, the closest loop around it otherwise.
 func (s *site) home() string {
-	if s.step.Kind() == KindLoop {
+	if s.isLoop() {
 		return s.step.Label()
 	}
 
@@ -120,6 +133,8 @@ type checker struct {
 	// declared holds every step name in the file, including the steps that failed to load.
 	declared map[string]hcl.Range
 	caps     Capabilities
+	// locals holds every local of the file, in file order.
+	locals []*localSite
 	// fields holds the sorted names that `item` may read.
 	fields []string
 	found  []hclfile.Diagnostic
@@ -149,7 +164,16 @@ func (c *checker) references() {
 			for _, tr := range arg.expr.Variables() {
 				c.resolve(from, tr, arg.whole)
 			}
+
+			c.functions(arg.expr)
 		}
+	}
+}
+
+// functions reports each call of a function that the language does not offer.
+func (c *checker) functions(expr hcl.Expression) {
+	for _, d := range unknownFunctions(expr) {
+		c.add(*d.Subject, d.Summary)
 	}
 }
 
@@ -166,6 +190,8 @@ func (c *checker) resolve(from *site, tr hcl.Traversal, whole bool) {
 		}
 	case Kind(root) == KindLoop:
 		c.loop(from, tr, name, named, whole)
+	case root == rootLocal:
+		c.read(from, tr, name, named)
 	default:
 		c.plain(tr.SourceRange(), root, name, named)
 	}
@@ -312,13 +338,23 @@ func (c *checker) unknown(at hcl.Range, kind Kind, name string) {
 // order records that from depends on target and reports a target that runs later. A loop that
 // encloses from is no dependency, and the condition of a loop may read the steps in its body.
 func (c *checker) order(from, target *site, at hcl.Range) {
+	if reaches(from, target) {
+		c.add(at, fmt.Sprintf("`%s.%s` runs later than this reference. Move the step up or remove the reference.", target.step.Kind(), target.step.Label()))
+	}
+}
+
+// reaches records that from depends on target, and reports whether target runs later than from.
+// A local has no place in the order. Each site that reads it is checked against the steps it reads.
+func reaches(from, target *site) bool {
+	if from.local {
+		return false
+	}
+
 	if !slices.Contains(from.ancestors, target.step) {
 		from.depend(target)
 	}
 
-	if target.index > from.index && !slices.Contains(target.ancestors, from.step) {
-		c.add(at, fmt.Sprintf("`%s.%s` runs later than this reference. Move the step up or remove the reference.", target.step.Kind(), target.step.Label()))
-	}
+	return target.index > from.index && !slices.Contains(target.ancestors, from.step)
 }
 
 func (c *checker) unknownStep(at hcl.Range, kind Kind, name string) {
@@ -420,7 +456,7 @@ func literalString(expr hcl.Expression) (string, bool) {
 }
 
 func roots() []string {
-	return []string{"agent", "command", rootEnv, "gate", rootItem, "loop", "merge", "wait"}
+	return []string{"agent", "command", rootEnv, "gate", rootItem, rootLocal, "loop", "merge", "wait"}
 }
 
 // CommonItemFields returns the item fields that every tracker declares. A check without a project uses them.
@@ -486,37 +522,43 @@ const (
 
 // cycles finds each loop of references, with a depth-first walk over the steps in file order.
 func (c *checker) cycles() {
-	w := &walker{c: c, state: map[*site]int{}}
+	findCycles(c.sites, func(s *site) []*site { return s.edges }, c.cycle)
+}
 
-	for _, s := range c.sites {
-		if w.state[s] == 0 {
-			w.visit(s)
+// findCycles walks nodes depth first, in order, and calls report with the chain above a node and the node it points back at.
+func findCycles[T comparable](nodes []T, edges func(T) []T, report func(chain []T, entry T)) {
+	w := &walker[T]{state: map[T]int{}, edges: edges, report: report}
+
+	for _, n := range nodes {
+		if w.state[n] == 0 {
+			w.visit(n)
 		}
 	}
 }
 
-// walker holds the state of the depth-first walk: the step being visited and the steps above it.
-type walker struct {
-	c     *checker
-	state map[*site]int
-	chain []*site
+// walker holds the state of the depth-first walk: the node being visited and the nodes above it.
+type walker[T comparable] struct {
+	state  map[T]int
+	chain  []T
+	edges  func(T) []T
+	report func(chain []T, entry T)
 }
 
-func (w *walker) visit(s *site) {
-	w.state[s] = onChain
-	w.chain = append(w.chain, s)
+func (w *walker[T]) visit(n T) {
+	w.state[n] = onChain
+	w.chain = append(w.chain, n)
 
-	for _, next := range s.edges {
+	for _, next := range w.edges(n) {
 		switch w.state[next] {
 		case 0:
 			w.visit(next)
 		case onChain:
-			w.c.cycle(w.chain, next)
+			w.report(w.chain, next)
 		}
 	}
 
 	w.chain = w.chain[:len(w.chain)-1]
-	w.state[s] = finished
+	w.state[n] = finished
 }
 
 // cycle reports the part of chain that starts at entry, closed back to entry.
