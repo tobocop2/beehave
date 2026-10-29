@@ -87,7 +87,7 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
 	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "command": s.command, "env": s.env, "gate": s.gate, "merge": s.merge, "wait": s.wait,
+		"agent": s.agent, "command": s.command, "env": s.env, "gate": s.gate, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "wait": s.wait,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

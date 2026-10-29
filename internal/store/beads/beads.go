@@ -40,18 +40,19 @@ func derefText(text *string) string {
 }
 
 type bdRow struct {
-	ID          string  `json:"id"`
-	Title       *string `json:"title"`
-	IssueType   string  `json:"issue_type"`
-	Priority    *int    `json:"priority"`
-	Assignee    string  `json:"assignee"`
-	Description *string `json:"description"`
-	Status      string  `json:"status"`
+	ID          string   `json:"id"`
+	Title       *string  `json:"title"`
+	IssueType   string   `json:"issue_type"`
+	Priority    *int     `json:"priority"`
+	Assignee    string   `json:"assignee"`
+	Description *string  `json:"description"`
+	Status      string   `json:"status"`
+	Labels      []string `json:"labels"`
 
 	LeaseExpiresAt string `json:"lease_expires_at"`
 }
 
-// Store is one beads database, read and written through bd. It implements store.Tracker.
+// Store is one beads database, read and written through bd. It implements store.Tracker and store.Writer.
 type Store struct {
 	run    proc.Runner
 	prefix string

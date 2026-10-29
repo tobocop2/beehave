@@ -136,7 +136,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		}
 
 		if err == nil {
-			_, err = tx.ExecContext(ctx, schema)
+			_, err = tx.ExecContext(ctx, schema+writerSchema)
 		}
 
 		return err
@@ -211,14 +211,18 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 	return map[string]string{"id": id, "title": title, "body": body}, nil
 }
 
-// OpenItems lists the open items of the project in the order they were added. A local item has no severity.
+// OpenItems lists the open items and the held items of the project in the order they were added. A local item has no severity.
+// An item with state hold has Hold set, as a beads item with the hold label has. A closed item is not listed.
 func (s *Store) OpenItems(ctx context.Context) ([]model.Item, error) {
 	return list(ctx, s.db, "the open items", func(rows *sql.Rows) (model.Item, error) {
 		item := model.Item{Severity: model.SeverityUnknown}
-		err := rows.Scan(&item.ID, &item.Title)
+		var state string
+		err := rows.Scan(&item.ID, &item.Title, &state, &item.Parent)
+		item.Hold = state == string(store.StatusHold)
 
 		return item, err
-	}, `SELECT id, title FROM items WHERE project = ? AND state = ? ORDER BY rowid`, s.project, stateOpen)
+	}, `SELECT i.id, i.title, i.state, COALESCE(l.parent, '') FROM items i LEFT JOIN item_links l ON l.project = i.project AND l.id = i.id
+		WHERE i.project = ? AND i.state IN (?, ?) ORDER BY i.rowid`, s.project, stateOpen, string(store.StatusHold))
 }
 
 // HeldRows returns the claim rows that have a holder, with the end of each lease.

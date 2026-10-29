@@ -185,4 +185,5 @@ type Deps struct {
 	Merge     merger
 	Commands  commands
 	Items     items
+	Writer    writer
 }

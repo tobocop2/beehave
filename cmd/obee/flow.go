@@ -107,6 +107,7 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 	return flow.NewEngine(ctx, opts, flow.Deps{
 		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: loginsReading(cfg, read), Lifecycle: life, Forge: life, Watch: life, Merge: life, Trees: trees, Beats: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
+		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker},
 	})
 }
 
