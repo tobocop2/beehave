@@ -347,7 +347,7 @@ func TestAdd_AModelAndARoundAreStoredWithTheLane(t *testing.T) {
 	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "fix-1", Kind: ledger.KindFix, Model: "sonnet-4.5", Round: 2, At: at})
 	require.NoError(t, err)
 
-	_, err = h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("")})
+	_, err = h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: body("")})
 	require.NoError(t, err)
 
 	db, err := sql.Open("sqlite", h.file())

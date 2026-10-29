@@ -62,6 +62,14 @@ type pullReview struct {
 	SubmittedAt *string     `json:"submittedAt"`
 }
 
+// ClosingRefs is what one forge read tells about the issues a pull request closes: the issues the forge lists, the base branch of the pull request and the default branch of the repository.
+// An empty BaseBranch or DefaultBranch means the answer held none, so a caller must not guess.
+type ClosingRefs struct {
+	BaseBranch    string
+	DefaultBranch string
+	Issues        []int
+}
+
 // PullRequest holds the fields of gh pr list and gh pr view that obee reads.
 // A pointer field is one a gate decides on: nil means gh sent null or the call did not ask for it, so a gate must not read nil as false or empty.
 type PullRequest struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/model"
@@ -21,6 +22,9 @@ const (
 		"comments(first:1){nodes{author{login} body}}}}}}}"
 	stackQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(" +
 		"number:$p){stack{id}}}}"
+	closingQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){defaultBranchRef{name} pullRequest(" +
+		"number:$p){baseRefName baseRepository{nameWithOwner} " +
+		"closingIssuesReferences(first:100){totalCount nodes{number repository{nameWithOwner}}}}}}"
 )
 
 type envelope[T any] struct {
@@ -173,6 +177,124 @@ func unresolved(nodes []threadNode) []model.ReviewThread {
 	}
 
 	return open
+}
+
+type closingNode struct {
+	Number     int `json:"number"`
+	Repository struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+type closingPage struct {
+	TotalCount int           `json:"totalCount"`
+	Nodes      []closingNode `json:"nodes"`
+}
+
+type closingAnswer struct {
+	Data *struct {
+		Repository *closingRepository `json:"repository"`
+	} `json:"data"`
+}
+
+type closingRepository struct {
+	DefaultBranchRef *struct {
+		Name string `json:"name"`
+	} `json:"defaultBranchRef"`
+	PullRequest *struct {
+		BaseRefName    *string `json:"baseRefName"`
+		BaseRepository *struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"baseRepository"`
+		Closing *closingPage `json:"closingIssuesReferences"`
+	} `json:"pullRequest"`
+}
+
+// repository returns the repository of the answer when it holds a pull request with an issue list, and nil otherwise.
+func (a closingAnswer) repository() *closingRepository {
+	if a.Data == nil || a.Data.Repository == nil || a.Data.Repository.PullRequest == nil || a.Data.Repository.PullRequest.Closing == nil {
+		return nil
+	}
+
+	return a.Data.Repository
+}
+
+// ClosingRefs reads, in one call, what the scope check needs: the issues that merging a pull request closes as GitHub lists them,
+// the base branch of the pull request and the default branch of the repository. The list holds the keywords of the body and the issues linked in the sidebar.
+// An issue is kept when its repository is the base repository of the same answer, so a renamed repository still works.
+// More issues than one page, a list whose every issue is dropped, or a failed read, is a refusal.
+func (f *Forge) ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, error) {
+	base := fmt.Sprintf("cannot read the issues that pull request %d closes", pr)
+
+	done := f.graphql(ctx, pr, closingQuery)
+	if done.ExitCode != 0 {
+		return model.ClosingRefs{}, forge.Refuse("%s", base)
+	}
+
+	answer, err := model.Decode[closingAnswer](cmdGraphQL, done.Stdout)
+	if err != nil {
+		return model.ClosingRefs{}, forge.Refusal(base, err)
+	}
+
+	repository := answer.repository()
+	if repository == nil {
+		return model.ClosingRefs{}, forge.Refuse("%s: the answer holds none", base)
+	}
+
+	return closingRefsOf(repository, pr, base)
+}
+
+// closingRefsOf checks the answer and builds the refs. It refuses a list of more than one page, an answer with no base repository,
+// and a non-empty list whose every issue is in another repository.
+func closingRefsOf(repository *closingRepository, pr int, base string) (model.ClosingRefs, error) {
+	pull := repository.PullRequest
+
+	more := fmt.Sprintf("pull request %d closes %d issues, more than one page; the rest are unknown", pr, pull.Closing.TotalCount)
+	if err := fullPage(pull.Closing.Nodes, pull.Closing.TotalCount, base, "issue list", more); err != nil {
+		return model.ClosingRefs{}, err
+	}
+
+	if pull.BaseRepository == nil {
+		return model.ClosingRefs{}, forge.Refuse("%s: the answer holds no base repository", base)
+	}
+
+	issues := ownNumbers(pull.Closing.Nodes, pull.BaseRepository.NameWithOwner)
+	if len(issues) == 0 && len(pull.Closing.Nodes) > 0 {
+		return model.ClosingRefs{}, forge.Refuse("pull request %d lists %d closing issues, and none is in %s; the answer cannot be trusted", pr, len(pull.Closing.Nodes), pull.BaseRepository.NameWithOwner)
+	}
+
+	return model.ClosingRefs{Issues: issues, BaseBranch: repository.baseBranch(), DefaultBranch: repository.defaultBranch()}, nil
+}
+
+// baseBranch is the base branch of the pull request, or empty when the answer holds null.
+func (r *closingRepository) baseBranch() string {
+	if r.PullRequest.BaseRefName == nil {
+		return ""
+	}
+
+	return *r.PullRequest.BaseRefName
+}
+
+// defaultBranch is the default branch of the repository, or empty when the answer holds null.
+func (r *closingRepository) defaultBranch() string {
+	if r.DefaultBranchRef == nil {
+		return ""
+	}
+
+	return r.DefaultBranchRef.Name
+}
+
+// ownNumbers keeps the issues of the repository. An issue of another repository has a number of its own, and the ledger holds only this one's.
+func ownNumbers(nodes []closingNode, repository string) []int {
+	numbers := make([]int, 0, len(nodes))
+
+	for _, node := range nodes {
+		if strings.EqualFold(node.Repository.NameWithOwner, repository) {
+			numbers = append(numbers, node.Number)
+		}
+	}
+
+	return numbers
 }
 
 // StackID returns the native stack a pull request belongs to, or an empty string when it is in none.

@@ -39,7 +39,7 @@ func (h *harness) file() string { return filepath.Join(h.dir, ledger.FileName) }
 func (h *harness) add(key, lane string, kind ledger.Kind, mechanism string) ledger.Added {
 	h.t.Helper()
 
-	added, err := h.ledger.Add(ledger.Request{Key: key, Lane: lane, Kind: kind, Mechanism: mechanism, At: at, Body: body("")})
+	added, err := h.ledger.Add(ledger.Request{Key: key, Lane: lane, Kind: kind, Mechanism: mechanism, At: at, Closing: body("")})
 	require.NoError(h.t, err)
 
 	return added
@@ -72,8 +72,8 @@ func (h *harness) prior(key, lane string) int {
 	return n
 }
 
-func body(text string) func() (string, error) {
-	return func() (string, error) { return text, nil }
+func body(text string) func() ([]string, error) {
+	return func() ([]string, error) { return ledger.ClosingNumbers(text), nil }
 }
 
 func TestAdd_OneRowForEachLaneFixLanesCountedAndASecondAddAddsNothing(t *testing.T) {
@@ -274,7 +274,7 @@ func TestAdd_TheFirstReviewRecordsTheIssuesTheBodyCloses(t *testing.T) {
 		{"closes_fixes_resolves_sorted_once", "Closes #12\nFixes #7 and resolves #12", []string{"7", "12"}},
 		{"every_verb_form", "closed #3, FIXED #4, resolved: #5", []string{"3", "4", "5"}},
 		{"fix_with_and_without_colon", "Fix #1\nFix: #2", []string{"1", "2"}},
-		{"verb_inside_a_word", "prefix #9 disclose #8", []string{"8", "9"}},
+		{"verb_inside_a_word_is_not_a_keyword", "prefix #9 disclose #8", nil},
 		{"long_s_does_not_fold", "cloſes #5 and reſolved #6", nil},
 		{"first_spelling_of_a_number_wins", "Closes #012 and closes #12", []string{"012"}},
 		{"several_blanks", "Closes   #6", []string{"6"}},
@@ -290,7 +290,7 @@ func TestAdd_TheFirstReviewRecordsTheIssuesTheBodyCloses(t *testing.T) {
 			t.Parallel()
 
 			h := newHarness(t)
-			added, err := h.ledger.Add(ledger.Request{Key: "792", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body(tc.body)})
+			added, err := h.ledger.Add(ledger.Request{Key: "792", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: body(tc.body)})
 			require.NoError(t, err)
 
 			assert.Equal(t, ledger.Added{FirstReview: true, Closes: tc.recorded}, added)
@@ -312,10 +312,10 @@ func TestAdd_ASecondReviewReadsNothing(t *testing.T) {
 
 	h := newHarness(t)
 	calls := 0
-	read := func() (string, error) { calls++; return "Closes #5", nil }
+	read := func() ([]string, error) { calls++; return []string{"5"}, nil }
 
 	for _, lane := range []string{"rev-1", "rev-2"} {
-		_, err := h.ledger.Add(ledger.Request{Key: "h2m-spacing", Lane: lane, Kind: ledger.KindReview, At: at, Body: read})
+		_, err := h.ledger.Add(ledger.Request{Key: "h2m-spacing", Lane: lane, Kind: ledger.KindReview, At: at, Closing: read})
 		require.NoError(t, err)
 	}
 
@@ -335,7 +335,7 @@ func TestAdd_ABodyThatCannotBeReadWritesNothing(t *testing.T) {
 
 	h := newHarness(t)
 	failure := errors.New("no body")
-	_, err := h.ledger.Add(ledger.Request{Key: "792", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: func() (string, error) { return "", failure }})
+	_, err := h.ledger.Add(ledger.Request{Key: "792", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: func() ([]string, error) { return nil, failure }})
 
 	require.ErrorIs(t, err, failure)
 	assert.NoFileExists(t, h.file())
@@ -350,7 +350,7 @@ func TestAdd_AReviewWithNoBodyReaderIsARefusal(t *testing.T) {
 	var refusal *check.Refusal
 
 	require.ErrorAs(t, err, &refusal)
-	assert.Contains(t, err.Error(), "the first review of '792' needs the pull request body.")
+	assert.Contains(t, err.Error(), "the first review of '792' needs the issues the pull request closes.")
 }
 
 func TestAdd_AFolderThatDoesNotExistIsARefusalThatNamesTheFile(t *testing.T) {
@@ -429,7 +429,7 @@ func TestAdd_ANonAsciiDigitIsNotAPullRequestKey(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.ledger.Add(ledger.Request{Key: "٣", Lane: "rv-1", Kind: ledger.KindReview, At: at, Body: body("")})
+	_, err := h.ledger.Add(ledger.Request{Key: "٣", Lane: "rv-1", Kind: ledger.KindReview, At: at, Closing: body("")})
 
 	var refusal *check.Refusal
 
@@ -472,7 +472,7 @@ func TestAdd_TheFileIsCreatedWithMode0600(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #1")})
+	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: body("Closes #1")})
 	require.NoError(t, err)
 
 	info, err := os.Stat(h.file())
@@ -625,7 +625,7 @@ func TestAdd_AFailedWriteLeavesNeitherTheLaneRowNorTheCloses(t *testing.T) {
 			h := newHarness(t)
 			h.breakWith(table)
 
-			request := ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #3")}
+			request := ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: body("Closes #3")}
 
 			var refusal *check.Refusal
 
@@ -645,13 +645,13 @@ func TestAdd_ACloseRecordedWhileTheBodyWasReadWinsOverTheLaterWriter(t *testing.
 	t.Parallel()
 
 	h := newHarness(t)
-	other := func() (string, error) {
-		_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-2", Kind: ledger.KindReview, At: at, Body: body("Closes #1")})
+	other := func() ([]string, error) {
+		_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-2", Kind: ledger.KindReview, At: at, Closing: body("Closes #1")})
 
-		return "Closes #3", err
+		return []string{"3"}, err
 	}
 
-	added, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: other})
+	added, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Closing: other})
 	require.NoError(t, err)
 	assert.Equal(t, ledger.Added{}, added)
 

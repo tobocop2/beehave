@@ -119,7 +119,8 @@ func (k Kind) fixLane() bool {
 
 // Request is one lane to record. Mechanism, Model and Round name the code path, the model and the round of the lane; the ledger stores them for any kind.
 // Words belongs to an owner-add row, which names the issue in Lane and the words of the owner in Words.
-// Body returns the pull request body; the first review of a key reads it for the issues it closes.
+// Closing returns the issue numbers that merging the pull request closes; the first review of a key records them.
+// The caller gives the same read that the scope check uses, so the two lists agree.
 type Request struct {
 	Key       string
 	Lane      string
@@ -129,7 +130,7 @@ type Request struct {
 	Round     int
 	Words     string
 	At        time.Time
-	Body      func() (string, error)
+	Closing   func() ([]string, error)
 }
 
 // Added says what an Add did. Closes holds the issues the first review recorded.
@@ -372,14 +373,14 @@ func mechanismOK(mechanism string) error {
 	return refuse("the mechanism '%s' is not one token. Name the code path in letters, digits, dot, dash and underscore, such as robots-classifier.", mechanism)
 }
 
-// Add records the lane unless its key already has a row for it. The first review of a key also records the issues its pull request body closes.
+// Add records the lane unless its key already has a row for it. The first review of a key also records the issues its pull request closes.
 // The lane row and the closes go in one transaction, so a reader sees both or neither.
 func (l *Ledger) Add(request Request) (Added, error) {
 	if err := request.check(); err != nil {
 		return Added{}, err
 	}
 
-	// The body is read before the transaction, so a slow forge holds no lock.
+	// The issues are read before the transaction, so a slow forge holds no lock.
 	numbers, first, err := l.firstReview(request)
 	if err != nil {
 		return Added{}, err
@@ -448,7 +449,7 @@ func write(ctx context.Context, tx *sql.Tx, request Request, numbers []string, f
 		request.Key, request.Lane, string(request.Kind), request.At.Truncate(time.Minute).Unix(), request.Words, request.Mechanism, request.Model, request.Round)
 	added.FixLanes = run.count(`SELECT count(*) FROM lanes WHERE key = ? AND kind IN ('fix', 'rework', 'relay')`, request.Key)
 
-	// Another writer may have recorded the closes since the body was read; the first one to commit wins.
+	// Another writer may have recorded the closes since the issues were read; the first one to commit wins.
 	if first && run.count(`SELECT count(*) FROM closes WHERE key = ?`, request.Key) == 0 {
 		for _, issue := range orNoIssue(numbers) {
 			run.exec(`INSERT INTO closes (key, issue) VALUES (?, ?)`, request.Key, issue)
@@ -469,7 +470,7 @@ func orNoIssue(numbers []string) []string {
 	return numbers
 }
 
-// firstReview reads the issues the body closes when the request is the first review of its key. It writes nothing.
+// firstReview reads the issues the pull request closes when the request is the first review of its key. It writes nothing.
 func (l *Ledger) firstReview(request Request) ([]string, bool, error) {
 	if request.Kind != KindReview {
 		return nil, false, nil
@@ -485,15 +486,13 @@ func (l *Ledger) firstReview(request Request) ([]string, bool, error) {
 	return numbers, err == nil, err
 }
 
-// closing returns the issue numbers that the pull request body of the request closes.
+// closing returns the issue numbers that the pull request of the request closes.
 func (r Request) closing() ([]string, error) {
-	if r.Body == nil {
-		return nil, refuse("the first review of '%s' needs the pull request body.", r.Key)
+	if r.Closing == nil {
+		return nil, refuse("the first review of '%s' needs the issues the pull request closes.", r.Key)
 	}
 
-	text, err := r.Body()
-
-	return ClosingNumbers(text), err
+	return r.Closing()
 }
 
 // tally counts the rows whose kind is one of kinds, written as a list with a bar between kinds.
