@@ -114,18 +114,40 @@ type Request struct {
 
 // Result is the verdict. A Done result merged the pull request. Lines are the lines to show, a refusal last.
 type Result struct {
-	Stop  Stop
-	Lines []string
+	Stop   Stop
+	Reason Reason
+	Lines  []string
 }
+
+// Reason is why a refusal happened, for a caller that acts on the cause and not on the text of a line.
+type Reason uint8
+
+// The closed set of reasons. Plain is a refusal that has no cause for a caller to act on.
+const (
+	Plain Reason = iota
+	// Unsettled is a pull request whose mergeable state the forge has not computed yet. A later read can settle it.
+	Unsettled
+	// TreeProof is a merge whose tree proof failed: the tree of the base tip is not the gated tree, or it could not be compared.
+	TreeProof
+	// Transient is a refusal with a cause that can pass by itself: a failed read of the forge, checks that still run, a head or a base that moved
+	// while the run prepared, or an error of the merge call. The pull request itself is not at fault, so a caller defers it and does not reject it.
+	Transient
+)
 
 // refusal is a guard that said no. The lines come after the lines the guards already said.
 type refusal struct {
-	stop  Stop
-	lines []string
+	stop   Stop
+	reason Reason
+	lines  []string
 }
 
 func refuse(lines ...string) *refusal {
 	return &refusal{stop: Refused, lines: lines}
+}
+
+// transient is a refusal for a cause that can pass by itself.
+func transient(lines ...string) *refusal {
+	return &refusal{stop: Refused, reason: Transient, lines: lines}
 }
 
 // attempt is one run: the request, the first read and the lines said so far.
@@ -162,12 +184,12 @@ func Run(ctx context.Context, forge Forge, req Request) Result {
 
 	for _, guard := range guards() {
 		if stop := guard(run); stop != nil {
-			return Result{Stop: stop.stop, Lines: append(run.lines, stop.lines...)}
+			return Result{Stop: stop.stop, Reason: stop.reason, Lines: append(run.lines, stop.lines...)}
 		}
 	}
 
 	if stop := run.conclude(); stop != nil {
-		return Result{Stop: stop.stop, Lines: append(run.lines, stop.lines...)}
+		return Result{Stop: stop.stop, Reason: stop.reason, Lines: append(run.lines, stop.lines...)}
 	}
 
 	return Result{Stop: Done, Lines: run.lines}

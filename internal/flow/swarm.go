@@ -205,7 +205,7 @@ func runsValue(plan []spawnedRun) *starlarkstruct.Struct {
 	runs := make([]starlark.Value, len(plan))
 
 	for i, one := range plan {
-		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"item": starlark.String(one.Item), "run": starlark.String(one.Run)})
+		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(one.Item), "run": starlark.String(one.Run)})
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"runs": starlark.NewList(runs)})
@@ -275,7 +275,7 @@ func oneRef(v starlark.Value) (spawnedRun, error) {
 		return spawnedRun{}, fmt.Errorf("runs must hold the runs that spawn returned, and %s is a %s", v, v.Type())
 	}
 
-	item, run := textAttr(holder, "item"), textAttr(holder, "run")
+	item, run := textAttr(holder, itemName), textAttr(holder, "run")
 	if item == "" || run == "" {
 		return spawnedRun{}, fmt.Errorf("runs must hold the runs that spawn returned, and %s has no item and run", v)
 	}
@@ -309,7 +309,7 @@ func outcomesValue(outcomes []childOutcome) *starlarkstruct.Struct {
 		}
 
 		results[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-			"item": starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
+			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
 			"merge": starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "stopped": stopped,
 		})
 	}

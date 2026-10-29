@@ -215,7 +215,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 			return nil, err
 		}
 
-		return map[string]any{"passed": gated.Passed, "head": gated.Head, "tree": gated.Tree, "report": gated.Report}, nil
+		return map[string]any{"passed": gated.Passed, "head": gated.Head, treeName: gated.Tree, "report": gated.Report}, nil
 	}
 
 	out, err := s.e.deps.Commands.Run(ctx, request)
@@ -223,7 +223,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 		return nil, err
 	}
 
-	return map[string]any{"passed": out.RC == 0, "head": head, "tree": "", "report": out.Stdout}, nil
+	return map[string]any{"passed": out.RC == 0, "head": head, treeName: "", "report": out.Stdout}, nil
 }
 
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.

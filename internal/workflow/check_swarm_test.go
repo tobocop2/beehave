@@ -76,6 +76,16 @@ func TestCheck_AnUnknownKeywordOfSpawnOrGatherIsAProblemAtTheKeyword(t *testing.
 	assert.Contains(t, got[1], "3:18 gather takes no argument wait. Use one of: runs, fail, name.")
 }
 
+func TestCheck_ABatchMergeCallWithNoNameIsAProblemAtTheCall(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    batch_merge(prs = [], base = \"main\", repo = \"o/r\")\n    batch_merge([], limit = 2, name = \"b\")\n    batch_merge(prs = [], name = \"c\")\n")
+
+	require.Len(t, got, 2)
+	assert.Contains(t, got[0], "2:16 batch_merge needs a `name` keyword.")
+	assert.Contains(t, got[1], "3:21 batch_merge takes no argument limit. Use one of: prs, base, repo, hold, own, forbid_text, gate_run, name.")
+}
+
 func TestCheck_AFailValueThatIsNotListedIsAProblemAtTheValue(t *testing.T) {
 	t.Parallel()
 

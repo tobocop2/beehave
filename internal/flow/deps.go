@@ -84,6 +84,7 @@ type beats interface {
 // After replaces the timer that ends the trust in a claim: it starts f once d has passed, and the function it returns stops the timer.
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
 // Watch replaces the time of the durable sleep between two reads of a ready pull request.
+// Settle replaces the time of the durable sleep between two reads of a batch member whose mergeable state is UNKNOWN.
 type clock struct {
 	Tick      <-chan time.Time
 	Poll      time.Duration
@@ -96,6 +97,7 @@ type clock struct {
 	After     func(d time.Duration, f func()) (stop func())
 	Grace     time.Duration
 	Watch     time.Duration
+	Settle    time.Duration
 }
 
 // now reads the clock of the process. The reading carries the monotonic clock, so a difference of two readings counts the time that the machine ran.
@@ -186,4 +188,6 @@ type Deps struct {
 	Commands  commands
 	Items     items
 	Writer    writer
+	// Batch serves batch_merge. A nil Batch means the build cannot run it.
+	Batch batchHost
 }

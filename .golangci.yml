@@ -314,6 +314,7 @@ linters:
             - github.com/tobocop2/obee/internal/host
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
+            - github.com/tobocop2/obee/internal/batch
             - github.com/tobocop2/obee/internal/merge
             - github.com/tobocop2/obee/internal/review
             - github.com/tobocop2/obee/internal/pool

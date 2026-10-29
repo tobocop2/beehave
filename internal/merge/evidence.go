@@ -92,13 +92,13 @@ func (a *attempt) mismatch(trees Trees, tip, tree string) *refusal {
 		lines = append(lines, indent+path)
 	}
 
-	return refuse(lines...)
+	return &refusal{stop: Refused, reason: TreeProof, lines: lines}
 }
 
 func stopped(lines ...string) *refusal {
 	lines[0] = "STOP: " + lines[0]
 
-	return refuse(lines...)
+	return &refusal{stop: Refused, reason: TreeProof, lines: lines}
 }
 
 // differing lists the paths whose file differs between two trees, or exists in only one. The list is sorted.

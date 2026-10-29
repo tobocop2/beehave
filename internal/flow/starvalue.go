@@ -40,6 +40,9 @@ type script struct {
 	// merge and sentBack are what a merge builtin reported. They go into the result of the item.
 	mergeState, sentBack string
 
+	// batches holds the names of the batch_merge calls of this run, so that a name is never used twice.
+	batches map[string]bool
+
 	// stopped is the command that ended the item on a code of its stop_on_rc.
 	stopped *Stopped
 }

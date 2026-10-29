@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"go.starlark.net/starlark"
+
+	"github.com/tobocop2/obee/internal/merge"
 )
 
 // The values of the `state` output of a merge call. While the call waits for the owner, the run shows mergeOwner.
@@ -31,6 +33,8 @@ type MergeSettings struct {
 	Retarget   bool
 	// GatedTree is the tree id that the gate recorded for the head. When it is set, the merge compares the tree of the base tip with it.
 	GatedTree string
+	// Intent is the record that batch_merge wrote before the merge. It lets a pull request that is already merged count as done.
+	Intent *merge.Intent
 }
 
 // mergeArgs are the arguments of a merge call: the head to merge, whether to merge, the label of the call and the settings of a merge.

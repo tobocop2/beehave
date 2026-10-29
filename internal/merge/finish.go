@@ -22,7 +22,7 @@ func (a *attempt) conclude() *refusal {
 	}
 
 	if err := a.forge.MergePR(a.ctx, a.req.PR, a.req.Gated); err != nil {
-		return refuse("REFUSE: " + err.Error())
+		return transient("REFUSE: " + err.Error())
 	}
 
 	return a.tipTree(a.merged())
@@ -32,7 +32,7 @@ func (a *attempt) conclude() *refusal {
 func (a *attempt) unmoved() *refusal {
 	again, err := a.forge.PRView(a.ctx, a.req.PR, "headRefOid")
 	if err != nil {
-		return refuse(fmt.Sprintf("REFUSE: cannot read the head of #%d again", a.req.PR))
+		return transient(fmt.Sprintf("REFUSE: cannot read the head of #%d again", a.req.PR))
 	}
 
 	if head := text(again.HeadRefOid); head != a.req.Gated {
@@ -45,7 +45,7 @@ func (a *attempt) unmoved() *refusal {
 	}
 
 	if tip != a.tip {
-		return refuse(fmt.Sprintf("REFUSE: %s moved from %s to %s while preparing. Merge the new tip into the branch and gate it again.", a.req.Base, a.tip, tip))
+		return transient(fmt.Sprintf("REFUSE: %s moved from %s to %s while preparing. Merge the new tip into the branch and gate it again.", a.req.Base, a.tip, tip))
 	}
 
 	return nil
@@ -63,7 +63,7 @@ func (a *attempt) start() *refusal {
 func (a *attempt) baseTip() (string, *refusal) {
 	tip, found, err := a.forge.BranchRef(a.ctx, a.req.Base)
 	if err != nil || !found {
-		return "", refuse(fmt.Sprintf("REFUSE: cannot read the tip of %s, so a move of the base cannot be ruled out", a.req.Base))
+		return "", transient(fmt.Sprintf("REFUSE: cannot read the tip of %s, so a move of the base cannot be ruled out", a.req.Base))
 	}
 
 	return tip, nil
