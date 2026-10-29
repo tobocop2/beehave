@@ -3,6 +3,7 @@ package flow
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -113,8 +114,10 @@ type Engine struct {
 	procs   *groups
 	tickEnd chan struct{}
 	tickRun sync.WaitGroup
-	down    sync.Once
-	downErr error
+	// launched is the time of the last Launch. A run that was open then and ended after it was resumed by this engine.
+	launched time.Time
+	down     sync.Once
+	downErr  error
 }
 
 // NewEngine opens the state folder and registers the workflows and the agents queue. Nothing runs until Launch.
@@ -208,16 +211,23 @@ func (e *Engine) Launch() error {
 		e.logger.Warn("stopped agent processes that a crashed worker left", "groups", killed)
 	}
 
+	e.launched = time.Now()
+
 	if err := dbos.Launch(e.ctx); err != nil {
 		return fmt.Errorf("start the workflow engine: %w", err)
 	}
 
+	e.tidy()
+
+	return nil
+}
+
+// tidy applies the retention, finishes the cancels that a crash cut short, and starts the tick.
+func (e *Engine) tidy() {
 	e.retain()
 	e.sweepCancels()
 
 	e.tickRun.Go(func() { e.tick(tickInterval, e.tickEnd) })
-
-	return nil
 }
 
 // retain applies the retention. A store that cannot delete does not stop the engine: the next Launch tries again.
@@ -305,12 +315,39 @@ func (e *Engine) run(in ItemInput) (ItemResult, error) {
 		return ItemResult{}, err
 	}
 
+	return e.result(handle, in.Item)
+}
+
+// result waits for the run and returns its result.
+func (e *Engine) result(handle dbos.WorkflowHandle[ItemResult], item string) (ItemResult, error) {
 	result, err := handle.GetResult(e.deps.Clock.resultOptions()...)
 	if err != nil {
-		return ItemResult{}, fmt.Errorf("item %s: %w", in.Item, err)
+		// The library selects between the outcome and the stop of the engine, so a stop that lands in the instant the run completes hides the result.
+		if finished, ok := e.finishedResult(item); ok {
+			return finished, nil
+		}
+
+		return ItemResult{}, fmt.Errorf("item %s: %w", item, err)
 	}
 
 	return result, nil
+}
+
+// finishedResult reads the result of the latest run of the item once from the store. ok is false when the run did not end with success.
+// The read ignores the stop of the engine: the store is still open while the stopped runs drain.
+func (e *Engine) finishedResult(item string) (ItemResult, bool) {
+	ctx := dbos.WithoutCancel(e.ctx)
+
+	last, found, err := latestRun(ctx, item)
+	if err != nil || !found || last.Status.Status != dbos.WorkflowStatusSuccess {
+		return ItemResult{}, false
+	}
+
+	var result ItemResult
+
+	err = json.Unmarshal([]byte(fmt.Sprint(last.Status.Output)), &result) // WithFilterLoadOutput returns the stored JSON as a string
+
+	return result, err == nil
 }
 
 // handleFor joins the open run of the item, or starts the next attempt.
@@ -329,11 +366,21 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 		return e.join(last, item, project)
 	}
 
+	if found && e.resumedByLaunch(last) {
+		return dbos.RetrieveWorkflow[ItemResult](e.ctx, last.Status.ID)
+	}
+
 	if found && last.failed() {
 		return nil, failedError(last, item)
 	}
 
 	return e.start(in, last.Attempt+1)
+}
+
+// resumedByLaunch reports whether the Launch of this engine resumed the run and the run ended since.
+// The caller asked for the item while the run was open, so the result of that run answers the call: a second attempt would do the work twice.
+func (e *Engine) resumedByLaunch(last run) bool {
+	return last.Status.Status == dbos.WorkflowStatusSuccess && last.Status.CreatedAt.Before(e.launched) && !last.Status.CompletedAt.Before(e.launched)
 }
 
 // start picks the login and starts the attempt. A refused pick starts nothing.

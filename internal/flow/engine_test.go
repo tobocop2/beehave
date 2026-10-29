@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -355,4 +356,41 @@ func TestRegister_ReportsAQueueThatTheStoreRefuses(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	require.ErrorContains(t, engine.registerQueue(-1), "register the agents queue")
+}
+
+// stoppedHandle is a run handle whose wait returns the stop cause of the engine, as the library does when the engine stops in the instant the run completes.
+type stoppedHandle struct {
+	dbos.WorkflowHandle[ItemResult]
+}
+
+func (stoppedHandle) GetResult(...dbos.GetResultOption) (ItemResult, error) {
+	return ItemResult{}, errEngineStopped
+}
+
+var errEngineStopped = errors.New("the engine stopped")
+
+func TestResult_ARunThatCompletedInTheInstantTheEngineStoppedReportsItsResult(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+	file := writeFlow(t, "workflow \"w\" {}\ncommand \"c\" {\n  run = [\"c\"]\n}\n")
+
+	want, err := engine.RunFile(testItem, testProject, file)
+	require.NoError(t, err)
+
+	got, err := engine.result(stoppedHandle{}, testItem)
+
+	require.NoError(t, err, "the run row is SUCCESS, so the stop is not the answer")
+	assert.Equal(t, want, got)
+}
+
+func TestResult_ARunThatIsNotFinishedReportsTheStop(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+
+	_, err := engine.result(stoppedHandle{}, testItem)
+
+	require.ErrorIs(t, err, errEngineStopped)
 }

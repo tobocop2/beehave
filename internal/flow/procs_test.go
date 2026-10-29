@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -307,7 +308,13 @@ func TestEndGroups_LogsAFileThatCannotBeWritten(t *testing.T) {
 	engine := newProcEngine(t, nil)
 	engine.procs.path = filepath.Join(t.TempDir(), "missing", pgidFileName)
 
+	var logged bytes.Buffer
+
+	engine.logger = newLogger(&logged)
+
 	engine.endGroups("x")
+
+	assert.Contains(t, logged.String(), "cannot update the agent process file")
 }
 
 type agentFunc func(context.Context, AgentRequest) (agent.Result, error)
