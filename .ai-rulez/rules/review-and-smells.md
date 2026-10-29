@@ -57,6 +57,6 @@ Layering: `depguard` in `.golangci.yml` is the check. Run `go list -deps ./inter
 Adding an enum constant, a config field or an entry point means a blast-radius pass before the code.
 
 - Grep every `switch` and map keyed by the type (`grep -rn "model\.Verdict" internal/`). Update every site in the same commit. `exhaustive` catches switches; maps need the grep.
-- A validation at one entry point (CLI flag, env var, HCL key, workflow input) is mirrored at every sibling entry point.
+- A validation at one entry point (CLI flag, env var, config argument, workflow input) is mirrored at every sibling entry point.
 - A trait-like interface documents the call order of its methods (which runs first, which can run at the same time).
 - Error text from an entry point names the problem and the fix.

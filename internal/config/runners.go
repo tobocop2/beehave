@@ -2,8 +2,10 @@ package config
 
 import (
 	"errors"
+	"slices"
 
-	"github.com/hashicorp/hcl/v2"
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -28,124 +30,112 @@ type agents struct {
 	MaxConcurrent int
 }
 
-// rawRunner is a runner block as written. Each key has a range for the refusals that come after the decode.
-// A key that is not in the block has an empty range.
-type rawRunner struct {
-	At          hcl.Range `hcl:",def_range"`
-	Name        string    `hcl:"name,optional"`
-	NameAt      hcl.Range `hcl:"name,attr_name_range"`
-	Agent       string    `hcl:"agent,optional"`
-	AgentAt     hcl.Range `hcl:"agent,attr_name_range"`
-	ConfigDir   *string   `hcl:"config_dir,optional"`
-	ConfigDirAt hcl.Range `hcl:"config_dir,attr_name_range"`
-	Keychain    *string   `hcl:"keychain,optional"`
-	KeychainAt  hcl.Range `hcl:"keychain,attr_name_range"`
+// runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
+type runnersFile struct {
+	*loader
+
+	agents  agents
+	pool    Pool
+	runners []model.Runner
 }
 
-// at returns the range of a key, or the start of the block when the key is not in it.
-func (r rawRunner) at(key hcl.Range) hcl.Range { return keyAt(key, r.At) }
+// The schemas of the constructors of the runners file.
+func agentsSpec() spec { return spec{"agents", []string{"max_concurrent?"}} }
 
-type rawPool struct {
-	FiveHourMax *float64 `hcl:"five_hour_max,optional"`
-	SevenDayMax *float64 `hcl:"seven_day_max,optional"`
-}
+func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
 
-type rawAgents struct {
-	MaxConcurrent *int `hcl:"max_concurrent,optional"`
-}
+func runnerSpec() spec { return spec{"runner", []string{"name", "agent", "config_dir?", "keychain?"}} }
 
-type rawRunnersFile struct {
-	Agents *rawAgents  `hcl:"agents,block"`
-	Pool   *rawPool    `hcl:"pool,block"`
-	Runner []rawRunner `hcl:"runner,block"`
-}
+func runnersSpecs() []spec { return []spec{agentsSpec(), poolSpec(), runnerSpec()} }
 
 func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
-	var raw rawRunnersFile
-	if err := decodeFile(path, &raw); err != nil {
+	file := &runnersFile{loader: newLoader(path, runnersSpecs()), agents: DefaultConfig().Agents, pool: DefaultConfig().Pool}
+
+	err := file.run(
+		file.constructor(agentsSpec(), true, file.addAgents),
+		file.constructor(poolSpec(), true, file.addPool),
+		file.constructor(runnerSpec(), false, file.addRunner),
+	)
+	if err != nil {
 		return agents{}, Pool{}, nil, err
 	}
 
-	runners, err := buildRunners(raw.Runner)
-
-	return buildAgents(raw.Agents), buildPool(raw.Pool), runners, err
+	return file.agents, file.pool, file.runners, nil
 }
 
-func buildAgents(raw *rawAgents) agents {
-	if raw != nil && raw.MaxConcurrent != nil {
-		return agents{MaxConcurrent: *raw.MaxConcurrent}
-	}
-
-	return DefaultConfig().Agents
+func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
+	return agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent)
 }
 
-func buildPool(raw *rawPool) Pool {
-	pool := DefaultConfig().Pool
-	if raw == nil {
-		return pool
+func (f *runnersFile) addPool(at syntax.Position, kwargs []starlark.Tuple) error {
+	five, seven := number(f.pool.FiveHourMax), number(f.pool.SevenDayMax)
+
+	if err := poolSpec().unpack(at, kwargs, &five, &seven); err != nil {
+		return err
 	}
 
-	if raw.FiveHourMax != nil {
-		pool.FiveHourMax = *raw.FiveHourMax
-	}
+	f.pool.FiveHourMax, f.pool.SevenDayMax = float64(five), float64(seven)
 
-	if raw.SevenDayMax != nil {
-		pool.SevenDayMax = *raw.SevenDayMax
-	}
-
-	return pool
+	return nil
 }
 
-func buildRunners(raws []rawRunner) ([]model.Runner, error) {
-	seen := make(map[string]bool, len(raws))
-	runners := make([]model.Runner, 0, len(raws))
-
-	for _, raw := range raws {
-		runner, err := buildRunner(raw)
-		if err != nil {
-			return nil, err
-		}
-
-		if seen[runner.Name] {
-			return nil, refuseAt(raw.At, "runner `%s` appears twice. Give each runner its own name.", runner.Name)
-		}
-
-		seen[runner.Name] = true
-		runners = append(runners, runner)
+func (f *runnersFile) addRunner(at syntax.Position, kwargs []starlark.Tuple) error {
+	runner, err := readRunner(at, kwargs)
+	if err != nil {
+		return err
 	}
 
-	return runners, nil
+	if slices.ContainsFunc(f.runners, func(seen model.Runner) bool { return seen.Name == runner.Name }) {
+		return refuseAt(at, "runner `%s` appears twice. Give each runner its own name.", runner.Name)
+	}
+
+	f.runners = append(f.runners, runner)
+
+	return nil
 }
 
-func buildRunner(raw rawRunner) (model.Runner, error) {
-	if err := errors.Join(requireText(raw.at(raw.NameAt), "name", raw.Name), requireText(raw.at(raw.AgentAt), "agent", raw.Agent)); err != nil {
+func readRunner(at syntax.Position, kwargs []starlark.Tuple) (model.Runner, error) {
+	var (
+		name, agent         string
+		configDir, keychain text
+	)
+
+	if err := runnerSpec().unpack(at, kwargs, &name, &agent, &configDir, &keychain); err != nil {
 		return model.Runner{}, err
 	}
 
-	agent, err := model.ParseAgent(raw.Agent)
-	if err != nil {
-		return model.Runner{}, refuseAt(raw.AgentAt, "runner `%s`: %w.", raw.Name, err)
+	return buildRunner(at, name, agent, configDir, keychain)
+}
+
+func buildRunner(at syntax.Position, name, agent string, configDir, keychain text) (model.Runner, error) {
+	if err := errors.Join(requireText(at, "name", name), requireText(at, "agent", agent)); err != nil {
+		return model.Runner{}, err
 	}
 
-	configDir, err := optionalText(raw.ConfigDirAt, "config_dir", raw.ConfigDir, expandHome)
+	parsed, err := model.ParseAgent(agent)
+	if err != nil {
+		return model.Runner{}, refuseAt(at, "runner `%s`: %w.", name, err)
+	}
+
+	dir, err := optionalText(at, "config_dir", configDir, expandHome)
 	if err != nil {
 		return model.Runner{}, err
 	}
 
-	keychain, err := optionalText(raw.KeychainAt, "keychain", raw.Keychain, func(text string) (string, error) { return text, nil })
+	login, err := optionalText(at, "keychain", keychain, func(value string) (string, error) { return value, nil })
 
-	return model.Runner{Name: raw.Name, Agent: agent, ConfigDir: configDir, Keychain: keychain}, err
+	return model.Runner{Name: name, Agent: parsed, ConfigDir: dir, Keychain: login}, err
 }
 
 // optionalText returns "" for an absent key, and the converted text for a present one.
-func optionalText(at hcl.Range, key string, value *string, convert func(string) (string, error)) (string, error) {
-	if value == nil {
+func optionalText(at syntax.Position, key string, value text, convert func(string) (string, error)) (string, error) {
+	if !value.Set {
 		return "", nil
 	}
 
-	if err := requireText(at, key, *value); err != nil {
+	if err := requireText(at, key, value.Value); err != nil {
 		return "", err
 	}
 
-	return convert(*value)
+	return convert(value.Value)
 }

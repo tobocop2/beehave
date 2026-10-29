@@ -26,7 +26,7 @@ func mustRead(t *testing.T, path string) []byte {
 
 const reviewMarker = "What every review here must do"
 
-// exampleRig runs examples/remediation/workflow.hcl, copied with its prompts, over the fake collaborators.
+// exampleRig runs examples/remediation/workflow.star, copied with its prompts, over the fake collaborators.
 // A review whose verdict is the empty string writes no output file.
 func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, string) {
 	t.Helper()

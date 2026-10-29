@@ -4,11 +4,11 @@ obee takes a backlog of issues to reviewed, gated pull requests with any coding 
 
 ## Why DBOS and Starlark
 
-This section records the choice of engine and workflow language, the options that obee rejected, and the reason for each verdict. The code still runs HCL workflows. The move to Starlark is issue #72. Until it lands, the Starlark binding does not exist, and the rest of this document describes the code as it is today.
+This section records the choice of engine and workflow language, the options that obee rejected, and the reason for each verdict. obee first wrote workflows and config files in HCL. It now reads Starlark for both, and the code no longer reads HCL. An old `.hcl` config file is refused with the name of the file.
 
 ### The decision
 
-- DBOS is the engine. Starlark will be the workflow language, through a thin binding (issue #72).
+- DBOS is the engine. Starlark is the workflow language and the config language, through a thin binding (issue #72).
 - obee owns the method and its adapters (see "What obee owns" below).
 - Every licence is permissive (MIT, BSD, Apache). No dependency is GPL.
 
@@ -61,14 +61,14 @@ starlark-go publishes no tags, so obee pins it by version and hash (a pseudo-ver
 
 Uber's `cadence-workflow/starlark-worker` (Apache-2.0) runs Starlark on Cadence and Temporal. The script re-runs inside the workflow function, and each side effect is an activity. The research found none for DBOS, so obee writes a thin binding of the same shape.
 
-The cost: a wrong step reference or a bad argument is a run-time error with the file, line and column. `obee check workflow` will report syntax and name errors before a run.
+The cost: a wrong step reference or a bad argument is a run-time error with the file, line and column. `obee check workflow` reports syntax and name errors before a run.
 
 ### Languages compared
 
 | Language | What it is | Why not |
 |---|---|---|
 | YAML | A data format | It has no loops or conditions of its own, so obee writes the interpreter and schema for them (fails Q6): a parser layer of about 2,900 to 3,300 lines against about 2,200 to 2,300 with HCL |
-| HCL | A configuration language (`hashicorp/hcl/v2`) | It evaluates expressions but has no loop over steps, so obee writes the step interpreter and schema (fails Q6): about 2,200 to 2,300 lines in all, of which the interpreter is about 600. Starlark removes about 2,400 lines of obee code |
+| HCL | A configuration language (`hashicorp/hcl/v2`); obee used it before Starlark | It evaluates expressions but has no loop over steps, so obee wrote the step interpreter and schema (fails Q6): about 2,200 to 2,300 lines in all, of which the interpreter is about 600. Starlark removes about 2,400 lines of obee code |
 | CUE | A constraint language | Fails Q8: it has no statements and no sequenced host calls with early return, so a step sequence cannot be written in it |
 | CEL | An expression language | Fails Q7: no commit for 47 days at the time of the research. obee must also declare a type for every step output |
 | Go as the workflow language | Plain Go on DBOS (v1.8.0, MIT) | Fails Q1: a change to a workflow needs a rebuild, and the per-file hash pin of a workflow changes meaning. The compiler does check step references |
@@ -149,10 +149,6 @@ flowchart TD
         lockfile["lockfile<br/>file lock opener"]
     end
 
-    subgraph LEAF["Leaf: imports no obee package"]
-        hclfile["hclfile<br/>HCL files with positions"]
-    end
-
     main --> cli
     main --> config
     main --> store
@@ -174,7 +170,6 @@ flowchart TD
     ghissues --> store
     ghforge --> forge
     config --> model
-    config --> hclfile
     proc --> model
     store --> model
     forge --> model
@@ -203,8 +198,6 @@ flowchart TD
 
 Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
 
-`hclfile` is the one place that reads an HCL file. It decodes the file into a struct and reports each problem with its file, line and column. It imports no obee package, and `depguard` refuses one. `config` uses it. `config` imports the `hcl` package only for the range types of its decode structs.
-
 File locks come from `github.com/gofrs/flock`. `flow` and `merge` open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors. `cmd/obee` passes the transcript readers of the agent adapter to the code that scans a run, as function values. The `Call` type lives in `model`, which both sides import.
@@ -227,7 +220,7 @@ Each contract has an exported conformance suite, in `internal/store/storetest`, 
 
 ```mermaid
 flowchart LR
-    project["projects/&lt;name&gt;.hcl<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads_prefix = …"]
+    project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads_prefix = …"]
     table["cmd/obee/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]
@@ -449,7 +442,7 @@ The prompts of the example hold the text that a lane reads: `examples/remediatio
 
 ### Own work merges only after another step approved it
 
-Nobody merges their own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, any author of any commit, or the committer of any commit, has a login or address equal to an owner login, an owner address or the login of a runner in `runners.hcl`, the stop is `OwnWork`, unless the request has `Approved`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
+Nobody merges their own work. Guard 0 runs before any other read or refusal. It reads the pull request once. If the author of the pull request, any author of any commit, or the committer of any commit, has a login or address equal to an owner login, an owner address or the login of a runner in `runners.star`, the stop is `OwnWork`, unless the request has `Approved`. Case does not count. A third party's pull request with one commit of ours is refused too, because the rule is about the work and not the opener. The text names the login and says that the owner merges it in the forge.
 
 Only `Approved` lifts this rule, and it lifts only this rule. `AllowOrphans`, `AllowNoChecks` and `AllowReady` do not reach it, and `auto_merge` covers only the pull request of a contributor. A missing owner login or address, or an empty one, is a refusal, because the rule cannot tell whose work it is. The scopes of the token and every later read run after guard 0, so a refused pull request has had no write.
 
@@ -471,7 +464,7 @@ A merge step with `merge = true` evaluates its settings and merges through the f
 
 ## Configuration
 
-In the config folder, `runners.hcl` holds an `agents` block (`max_concurrent`, the global limit on agent processes), a `pool` block and the `runner` blocks with the logins. `projects/<name>.hcl` holds the project keys (`repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`) and a `host` block for a project with a build host. The limits and the runner of a step are keys of its block in the workflow file. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
+In the config folder, `runners.star` calls `agents(...)` (`max_concurrent`, the global limit on agent processes), `pool(...)` and one `runner(...)` for each login. `projects/<name>.star` calls `project(...)` once, with the project arguments (`repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `build_host` and `beads_prefix`) and a `host(...)` value for a project with a build host. Each file is Starlark with the step limit of the workflow files. A config file keeps no top-level variable except a `def` function and a name that starts with `_`: the loader refuses any other name with its position, because a config value belongs inside a constructor call. It refuses a `host(...)` or `skypilot(...)` call that no argument holds, and it refuses `print`. An old `.hcl` file is refused with the name of the file. The limits and the runner of a step are keys of its block in the workflow file. `obee check config` loads the folder, prints one line for each problem with the file path, and exits 2 when it finds any.
 
 `config` is the only package that reads the environment. The `OBEE_*` variables override the file values, `OBEE_CONFIG` names the config folder and `OBEE_STATE_DIR` names the state folder. `cmd/obee` sets `umask 077`. `cli.Execute` refuses to start when a `DBOS__*` variable is set. The state folder must be absolute, owned by the user and mode 0700.
 
@@ -672,7 +665,7 @@ The DBOS rules live in `.ai-rulez/rules/dbos-and-secrets.md`. In short:
 
 - **Interfaces at the consumer.** A package states what it needs, so a fake needs few methods and an adapter can change without edits in policy code.
 - **CLI as contract for `gh` and `bd`.** The `gh` and `bd` commands are what the owner runs by hand. `bd` has a public Go package, but it needs cgo or a Dolt backend and pulls its whole tree. Revisit when `bd` ships a slim client module.
-- **No framework for config.** `hclfile` decodes an HCL file into a struct with `gohcl`, rejects unknown keys and reports each problem with `file:line:col`. The overlay is explicit code in one package.
+- **No framework for config.** A config file is a Starlark file. `starlark.UnpackArgs` rejects unknown arguments, and each problem carries `file:line:col`. The overlay is explicit code in one package.
 - **Make, not Task.** A single Makefile holds the targets: `check`, `lint`, `test`, `format`, `vet` and `coverage`.
 - **Coverage exclusion.** Only `cmd/obee/main.go` is excluded from the 100% gate. The smoke step runs the built binary.
 - **Agent rules from `.ai-rulez/`.** Generated files (`AGENTS.md`, `CLAUDE.md` and the preset folders) are ignored by git.

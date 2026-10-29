@@ -13,9 +13,13 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const goodProject = "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+// goodProject is the argument list of a project call that loads. A test adds arguments after it.
+const goodProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
 
-const goodRunner = "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \"~/c\"\n}\n"
+const goodRunner = "runner(name = \"a\", agent = \"claude\", config_dir = \"~/c\")\n"
+
+// call is a project file with one project call and the given arguments.
+func call(args string) string { return "project(" + args + ")\n" }
 
 func readFixture(path string) ([]byte, error) {
 	return os.ReadFile(path) //nolint:gosec // fixture paths are constants in this file
@@ -34,7 +38,7 @@ func loadProjectText(t *testing.T, text string) (config.Project, config.Problems
 	t.Helper()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "projects", "p.hcl"), text)
+	writeFile(t, filepath.Join(dir, "projects", "p.star"), text)
 	cfg, problems := config.LoadFolder(dir, nil)
 
 	return cfg.Projects["p"], problems
@@ -44,7 +48,7 @@ func loadRunnersText(t *testing.T, text string) (config.Config, config.Problems)
 	t.Helper()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "runners.hcl"), text)
+	writeFile(t, filepath.Join(dir, "runners.star"), text)
 
 	return config.LoadFolder(dir, nil)
 }
@@ -68,10 +72,24 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 		cfg.Projects["example"].Project)
 }
 
+func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralleltest // sets HOME
+	home := homeDir(t)
+
+	text, err := readFixture(filepath.Join("..", "..", "examples", "local", "project.star"))
+	require.NoError(t, err)
+
+	project, problems := loadProjectText(t, string(text))
+
+	require.Empty(t, problems)
+	require.Equal(t, model.Project{
+		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: filepath.Join(home, "work/your-repo"), BaseBranch: "main", Gate: "make check", BuildHost: "local",
+	}, project.Project)
+}
+
 func TestLoadFolder_TheExampleHoldsNoPlaceholderOrOwnerPath(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"runners.hcl", "projects/example.hcl"} {
+	for _, name := range []string{"runners.star", "projects/example.star"} {
 		text, err := readFixture(filepath.Join(exampleConfig, name))
 		require.NoError(t, err)
 		require.NotContains(t, string(text), "decided in step")
@@ -118,8 +136,8 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "projects", "b.hcl"), goodProject)
-	writeFile(t, filepath.Join(dir, "projects", "a.hcl"), "repo = \"o/a\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	writeFile(t, filepath.Join(dir, "projects", "b.star"), call(goodProject))
+	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "g"`))
 	writeFile(t, filepath.Join(dir, "projects", "notes.md"), "not a project")
 
 	cfg, problems := config.LoadFolder(dir, nil)
@@ -128,23 +146,23 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 	require.Len(t, cfg.Projects, 2)
 	require.Equal(t, "o/a", cfg.Projects["a"].Repo)
 	require.Equal(t, "o/n", cfg.Projects["b"].Repo)
-	require.Equal(t, filepath.Join(dir, "projects", "a.hcl"), cfg.Projects["a"].Path)
+	require.Equal(t, filepath.Join(dir, "projects", "a.star"), cfg.Projects["a"].Path)
 }
 
 func TestLoadFolder_BuildHost(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, goodProject)
+	project, problems := loadProjectText(t, call(goodProject))
 	require.Empty(t, problems)
 	require.Equal(t, "local", project.BuildHost, "a project without a build host builds locally")
 
 	for _, name := range []string{"gpu-a", "A", "a1-b2-c3", "local"} {
-		text := goodProject + "build_host = \"" + name + "\"\n"
+		args := goodProject + `, build_host = "` + name + `"`
 		if name != "local" {
-			text += hostBlock("")
+			args += ", host = " + hostCall("")
 		}
 
-		project, problems = loadProjectText(t, text)
+		project, problems = loadProjectText(t, call(args))
 		require.Empty(t, problems, name)
 		require.Equal(t, name, project.BuildHost)
 	}
@@ -153,56 +171,64 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 func TestLoadFolder_TheBuildHostRefusalNamesTheKeyAndBothForms(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadProjectText(t, goodProject+"build_host = \"a b\"\n")
+	_, problems := loadProjectText(t, call(goodProject+`, build_host = "a b"`))
 
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "`build_host`")
 	require.ErrorContains(t, problems[0], `"local"`)
 	require.ErrorContains(t, problems[0], "SkyPilot cluster name")
 	require.ErrorContains(t, problems[0], "`a b`")
-	require.ErrorContains(t, problems[0], "p.hcl")
+	require.ErrorContains(t, problems[0], "p.star")
 }
 
 func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 	t.Parallel()
 
-	const hostWords = "p.hcl:7:1: `build_host` must be \"local\" or a SkyPilot cluster name"
+	const (
+		hostWords = "p.star:1:8: `build_host` must be \"local\" or a SkyPilot cluster name"
+		local     = `base_branch = "m", gate = "g"`
+		github    = `tracker = "github", forge = "github", ` + local
+	)
 
 	tests := []struct {
 		name  string
 		text  string
 		words string
 	}{
-		{"unknown_key", goodProject + "shade = \"red\"\n", "unknown key `shade`. Remove it"},
-		{"unknown_key_gives_the_position", goodProject + "shade = \"red\"\n", "p.hcl:7:1: unknown key `shade`"},
-		{"the_steps_block_is_gone", goodProject + "steps \"gate\" {\ntimeout = \"2h\"\n}\n", "p.hcl:7:1: unknown block `steps`. Remove it."},
-		{"missing_repo", "tracker = \"github\"\nbase_branch = \"main\"\ngate = \"g\"\nsource = \"/s\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
-		{"blank_repo", "repo = \" \"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be a non-empty string"},
-		{"repo_of_the_wrong_type", "repo = [\"o/n\"]\nbase_branch = \"main\"\ngate = \"g\"\n", "p.hcl:1:"},
-		{"repo_of_the_wrong_type_names_the_key", "repo = [\"o/n\"]\nbase_branch = \"main\"\ngate = \"g\"\n", "`repo` has the wrong type"},
-		{"repo_without_owner", "repo = \"justname\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
-		{"repo_with_three_parts", "repo = \"a/b/c\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
-		{"repo_without_owner_text", "repo = \"/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
-		{"repo_without_name", "repo = \"o/\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `repo` must be written owner/name"},
-		{"unknown_tracker", "repo = \"o/n\"\ntracker = \"jira\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:2:1: `tracker`: unknown tracker \"jira\": use one of local, beads, github"},
-		{"unknown_forge", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"gitlab\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:3:1: `forge`: unknown forge \"gitlab\": use one of github"},
-		{"beads_without_a_prefix", "repo = \"o/n\"\ntracker = \"beads\"\nforge = \"github\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `beads_prefix` must be a non-empty string"},
-		{"beads_claims_without_a_prefix", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbase_branch = \"m\"\ngate = \"g\"\n", "p.hcl:1:1: `beads_prefix` must be a non-empty string"},
-		{"missing_gate", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\n", "p.hcl:1:1: `gate` must be"},
-		{"missing_base_branch", "repo = \"o/n\"\ntracker = \"github\"\nforge = \"github\"\nbeads_prefix = \"p\"\ngate = \"g\"\n", "p.hcl:1:1: `base_branch` must be"},
-		{"blank_tracker", strings.Replace(goodProject, `tracker = "github"`, `tracker = " "`, 1), "p.hcl:2:1: `tracker` must be a non-empty string"},
-		{"blank_forge", strings.Replace(goodProject, `forge = "github"`, `forge = " "`, 1), "p.hcl:3:1: `forge` must be a non-empty string"},
-		{"blank_beads_prefix", strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + "claims = \"beads\"\n", "p.hcl:4:1: `beads_prefix` must be a non-empty string"},
-		{"blank_base_branch", strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1), "p.hcl:5:1: `base_branch` must be a non-empty string"},
-		{"blank_gate", strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1), "p.hcl:6:1: `gate` must be a non-empty string"},
-		{"empty_build_host", goodProject + "build_host = \"\"\n", "p.hcl:7:1: `build_host` must be"},
-		{"build_host_starts_with_a_digit", goodProject + "build_host = \"1gpu\"\n", hostWords},
-		{"build_host_with_underscore", goodProject + "build_host = \"gpu_a\"\n", hostWords},
-		{"build_host_with_space", goodProject + "build_host = \"gpu a\"\n", hostWords},
-		{"build_host_with_shell_text", goodProject + "build_host = \"gpu;id\"\n", hostWords},
-		{"build_host_with_newline", goodProject + "build_host = \"gpu\\n\"\n", hostWords},
-		{"build_host_starts_with_hyphen", goodProject + "build_host = \"-gpu\"\n", hostWords},
-		{"bad_syntax", goodProject + "{", "Fix the syntax of the file"},
+		{"unknown_argument", call(goodProject + `, shade = "red"`), `project: unexpected keyword argument "shade"`},
+		{"unknown_argument_gives_the_position", call(goodProject + `, shade = "red"`), "p.star:1:8: project: unexpected keyword argument"},
+		{"positional_argument", call(`"o/n"`), "p.star:1:8: `project` takes keyword arguments only"},
+		{"missing_repo", call(`tracker = "github", base_branch = "main", gate = "g", source = "/s"`), "p.star:1:8: `repo` must be a non-empty string"},
+		{"blank_repo", call(`repo = " ", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be a non-empty string"},
+		{"repo_of_the_wrong_type", call(`repo = ["o/n"], base_branch = "main", gate = "g"`), `for parameter "repo": got list, want string`},
+		{"repo_without_owner", call(`repo = "justname", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_with_three_parts", call(`repo = "a/b/c", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_owner_text", call(`repo = "/n", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_name", call(`repo = "o/", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"unknown_tracker", call(`repo = "o/n", tracker = "jira", forge = "github", ` + local), "p.star:1:8: `tracker`: unknown tracker \"jira\": use one of local, beads, github"},
+		{"unknown_forge", call(`repo = "o/n", tracker = "github", forge = "gitlab", ` + local), "p.star:1:8: `forge`: unknown forge \"gitlab\": use one of github"},
+		{"beads_without_a_prefix", call(`repo = "o/n", tracker = "beads", forge = "github", ` + local), "p.star:1:8: `beads_prefix` must be a non-empty string"},
+		{"beads_claims_without_a_prefix", call(`repo = "o/n", claims = "beads", ` + github), "p.star:1:8: `beads_prefix` must be a non-empty string"},
+		{"missing_gate", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main"`), "project: missing argument for gate"},
+		{"missing_base_branch", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", gate = "g"`), "project: missing argument for base_branch"},
+		{"blank_tracker", call(strings.Replace(goodProject, `tracker = "github"`, `tracker = " "`, 1)), "p.star:1:8: `tracker` must be a non-empty string"},
+		{"blank_forge", call(strings.Replace(goodProject, `forge = "github"`, `forge = " "`, 1)), "p.star:1:8: `forge` must be a non-empty string"},
+		{"blank_beads_prefix", call(strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + `, claims = "beads"`), "p.star:1:8: `beads_prefix` must be a non-empty string"},
+		{"blank_base_branch", call(strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1)), "p.star:1:8: `base_branch` must be a non-empty string"},
+		{"blank_gate", call(strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1)), "p.star:1:8: `gate` must be a non-empty string"},
+		{"empty_build_host", call(goodProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
+		{"build_host_starts_with_a_digit", call(goodProject + `, build_host = "1gpu"`), hostWords},
+		{"build_host_with_underscore", call(goodProject + `, build_host = "gpu_a"`), hostWords},
+		{"build_host_with_space", call(goodProject + `, build_host = "gpu a"`), hostWords},
+		{"build_host_with_shell_text", call(goodProject + `, build_host = "gpu;id"`), hostWords},
+		{"build_host_with_newline", call(goodProject + `, build_host = "gpu\n"`), hostWords},
+		{"build_host_starts_with_hyphen", call(goodProject + `, build_host = "-gpu"`), hostWords},
+		{"bad_syntax", call(goodProject) + "{", "Fix the syntax of the file"},
+		{"undefined_name", "projet()\n", "p.star:1:1: undefined: projet"},
+		{"no_project_call", "# none\n", "the file does not call `project`"},
+		{"second_project_call", call(goodProject) + call(goodProject), "p.star:2:8: block `project` appears twice. Keep one."},
+		{"a_loop_is_refused", "for x in [1]:\n  pass\n", "Fix the syntax of the file"},
+		{"a_load_is_refused", "load(\"x.star\", \"y\")\n", "load not implemented by this application"},
 	}
 
 	for _, tc := range tests {
@@ -214,7 +240,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 			require.Len(t, problems, 1)
 			require.ErrorIs(t, problems[0], config.ErrRefused)
 			require.ErrorContains(t, problems[0], tc.words)
-			require.ErrorContains(t, problems[0], "p.hcl")
+			require.ErrorContains(t, problems[0], "p.star")
 		})
 	}
 }
@@ -222,7 +248,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "repo = \"o/n\"\ntracker = \"beads\"\nforge = \"github\"\nbeads_prefix = \"proj\"\nbase_branch = \"main\"\ngate = \"g\"\n")
+	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g"`))
 
 	require.Empty(t, problems)
 	require.Equal(t, model.TrackerBeads, project.Tracker)
@@ -232,26 +258,17 @@ func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "repo = \"o/n\"\r\ntracker = \"github\"\r\nforge = \"github\"\r\nbeads_prefix = \"p\"\r\nbase_branch = \"main\"\r\ngate = \"make check\"\r\n")
+	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\", beads_prefix = \"p\",\r\n  base_branch = \"main\", gate = \"make check\",\r\n)\r\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)
-}
-
-func TestLoadFolder_AProjectFileWithALoneCarriageReturnIsRefused(t *testing.T) {
-	t.Parallel()
-
-	_, problems := loadProjectText(t, "repo = \"o/n\"\rtracker = \"github\"\rforge = \"github\"\rbeads_prefix = \"p\"\rbase_branch = \"main\"\rgate = \"g\"\r")
-
-	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "Fix the syntax of the file")
 }
 
 func TestLoadFolder_AProjectPathThatIsNotAFileIsReported(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects", "d.hcl"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects", "d.star"), 0o700))
 
 	_, problems := config.LoadFolder(dir, nil)
 
@@ -263,21 +280,39 @@ func TestLoadFolder_EveryBadFileIsReportedOnce(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "runners.hcl"), "bogus = 1\n")
-	writeFile(t, filepath.Join(dir, "projects", "a.hcl"), "x = 1\n")
-	writeFile(t, filepath.Join(dir, "projects", "b.hcl"), "y = 1\n")
+	writeFile(t, filepath.Join(dir, "runners.star"), "bogus()\n")
+	writeFile(t, filepath.Join(dir, "projects", "a.star"), "x()\n")
+	writeFile(t, filepath.Join(dir, "projects", "b.star"), "y()\n")
 
 	_, problems := config.LoadFolder(dir, nil)
 
 	require.Len(t, problems, 3)
-	require.Contains(t, problems.Error(), "runners.hcl")
+	require.Contains(t, problems.Error(), "runners.star")
 	require.Equal(t, 2, strings.Count(problems.Error(), "\n"))
+}
+
+func TestLoadFolder_AnOldHCLFileIsRefusedByName(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	old := writeFile(t, filepath.Join(dir, "runners.hcl"), "runner {\n}\n")
+	writeFile(t, filepath.Join(dir, "runners.star"), goodRunner)
+	oldProject := writeFile(t, filepath.Join(dir, "projects", "demo.hcl"), "source = \"/s\"\n")
+
+	_, problems := config.LoadFolder(dir, nil)
+
+	require.Len(t, problems, 2)
+	require.ErrorIs(t, problems[0], config.ErrRefused)
+	require.ErrorContains(t, problems[0], old)
+	require.ErrorContains(t, problems[0], "Rewrite the file as runners.star")
+	require.ErrorContains(t, problems[1], oldProject)
+	require.ErrorContains(t, problems[1], "Rewrite the file as demo.star")
 }
 
 func TestLoadFolder_Runners(t *testing.T) { //nolint:paralleltest // sets HOME
 	home := homeDir(t)
 
-	cfg, problems := loadRunnersText(t, goodRunner+"runner {\nname = \"b\"\nagent = \"opencode\"\nkeychain = \"svc\"\n}\n")
+	cfg, problems := loadRunnersText(t, goodRunner+"runner(name = \"b\", agent = \"opencode\", keychain = \"svc\")\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, []model.Runner{
@@ -303,22 +338,21 @@ func TestLoadFolder_ABadRunnersFileIsRefused(t *testing.T) {
 		text  string
 		words string
 	}{
-		{"duplicate_name", goodRunner + goodRunner, "runners.hcl:6:1: runner `a` appears twice"},
-		{"unknown_agent", "runner {\nname = \"a\"\nagent = \"gpt\"\n}\n", "runners.hcl:3:1: runner `a`: unknown agent \"gpt\": use one of claude, opencode"},
-		{"unknown_key", "runner {\nname = \"a\"\nagent = \"claude\"\ntoken = \"x\"\n}\n", "runners.hcl:4:1: unknown key `token`. Remove it"},
-		{"missing_name", "runner {\nagent = \"claude\"\n}\n", "runners.hcl:1:1: `name` must be"},
-		{"missing_agent", "runner {\nname = \"a\"\n}\n", "runners.hcl:1:1: `agent` must be"},
-		{"blank_name", "runner {\nname = \" \"\nagent = \"claude\"\n}\n", "runners.hcl:2:1: `name` must be"},
-		{"blank_agent", "runner {\nname = \"a\"\nagent = \" \"\n}\n", "runners.hcl:3:1: `agent` must be"},
-		{"config_dir_of_the_wrong_type", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = [\"x\"]\n}\n", "runners.hcl:4:"},
-		{"config_dir_of_the_wrong_type_names_the_key", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = [\"x\"]\n}\n", "`config_dir` has the wrong type"},
-		{"empty_config_dir", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \"\"\n}\n", "runners.hcl:4:1: `config_dir` must be"},
-		{"runner_is_not_a_block", "runner = 3\n", "`runner` is a block, not a key"},
-		{"keychain_of_the_wrong_type", "runner {\nname = \"a\"\nagent = \"claude\"\nkeychain = [\"x\"]\n}\n", "`keychain` has the wrong type"},
-		{"empty_keychain", "runner {\nname = \"a\"\nagent = \"claude\"\nkeychain = \"\"\n}\n", "runners.hcl:4:1: `keychain` must be a non-empty string"},
-		{"repeated_runner_key", "runner {\nname = \"a\"\nname = \"b\"\nagent = \"claude\"\n}\n", "runners.hcl:3:1: `name` is set twice"},
-		{"unknown_top_level_key", "shade = 1\n", "runners.hcl:1:1: unknown key `shade`"},
-		{"bad_syntax", "runner {\n", "Fix the syntax of the file"},
+		{"duplicate_name", goodRunner + goodRunner, "runners.star:2:7: runner `a` appears twice"},
+		{"unknown_agent", `runner(name = "a", agent = "gpt")`, "runners.star:1:7: runner `a`: unknown agent \"gpt\": use one of claude, opencode"},
+		{"unknown_argument", `runner(name = "a", agent = "claude", token = "x")`, `runner: unexpected keyword argument "token"`},
+		{"missing_name", `runner(agent = "claude")`, "runner: missing argument for name"},
+		{"missing_agent", `runner(name = "a")`, "runner: missing argument for agent"},
+		{"blank_name", `runner(name = " ", agent = "claude")`, "runners.star:1:7: `name` must be"},
+		{"blank_agent", `runner(name = "a", agent = " ")`, "runners.star:1:7: `agent` must be"},
+		{"config_dir_of_the_wrong_type", `runner(name = "a", agent = "claude", config_dir = ["x"])`, `for parameter "config_dir": got list, want string`},
+		{"empty_config_dir", `runner(name = "a", agent = "claude", config_dir = "")`, "runners.star:1:7: `config_dir` must be"},
+		{"keychain_of_the_wrong_type", `runner(name = "a", agent = "claude", keychain = ["x"])`, `for parameter "keychain": got list, want string`},
+		{"empty_keychain", `runner(name = "a", agent = "claude", keychain = "")`, "runners.star:1:7: `keychain` must be a non-empty string"},
+		{"repeated_runner_argument", `runner(name = "a", name = "b", agent = "claude")`, "Fix the syntax of the file"},
+		{"unknown_constructor", "shade()\n", "runners.star:1:1: undefined: shade"},
+		{"bad_syntax", "runner(\n", "Fix the syntax of the file"},
+		{"positional_argument", `runner("a")`, "runners.star:1:7: `runner` takes keyword arguments only"},
 	}
 
 	for _, tc := range tests {
@@ -330,7 +364,7 @@ func TestLoadFolder_ABadRunnersFileIsRefused(t *testing.T) {
 			require.Len(t, problems, 1)
 			require.ErrorIs(t, problems[0], config.ErrRefused)
 			require.ErrorContains(t, problems[0], tc.words)
-			require.ErrorContains(t, problems[0], "runners.hcl")
+			require.ErrorContains(t, problems[0], "runners.star")
 		})
 	}
 }
@@ -338,13 +372,23 @@ func TestLoadFolder_ABadRunnersFileIsRefused(t *testing.T) {
 func TestLoadFolder_ARunnerConfigDirExpandsTheHomeFolderOnlyAtTheStart(t *testing.T) { //nolint:paralleltest // sets HOME
 	home := homeDir(t)
 
-	cfg, problems := loadRunnersText(t, "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \"~\"\n}\n"+
-		"runner {\nname = \"b\"\nagent = \"claude\"\nconfig_dir = \"/x/~/y\"\n}\n"+
-		"runner {\nname = \"c\"\nagent = \"claude\"\nconfig_dir = \"~other/y\"\n}\n")
+	cfg, problems := loadRunnersText(t, `runner(name = "a", agent = "claude", config_dir = "~")
+runner(name = "b", agent = "claude", config_dir = "/x/~/y")
+runner(name = "c", agent = "claude", config_dir = "~other/y")
+`)
 
 	require.Empty(t, problems)
 	require.Equal(t, []string{home, "/x/~/y", "~other/y"},
 		[]string{cfg.Runners[0].ConfigDir, cfg.Runners[1].ConfigDir, cfg.Runners[2].ConfigDir})
+}
+
+func TestLoadFolder_AVariableNamedLikeABlockIsRefused(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadRunnersText(t, "runner = 3\nshade = 1\n")
+
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "runners.star:1:1: `runner` is a variable, and a config file takes none.")
 }
 
 func TestLoadFolder_ARunnerConfigDirNeedsAHomeFolderForTilde(t *testing.T) {
@@ -359,15 +403,15 @@ func TestLoadFolder_ARunnerConfigDirNeedsAHomeFolderForTilde(t *testing.T) {
 func TestLoadFolder_Pool(t *testing.T) {
 	t.Parallel()
 
-	cfg, problems := loadRunnersText(t, "pool {\nfive_hour_max = 50\nseven_day_max = 100\n}\n")
+	cfg, problems := loadRunnersText(t, "pool(five_hour_max = 50, seven_day_max = 100)\n")
 	require.Empty(t, problems)
 	require.Equal(t, config.Pool{FiveHourMax: 50, SevenDayMax: 100}, cfg.Pool)
 
-	cfg, problems = loadRunnersText(t, "pool {\nfive_hour_max = 12.5\n}\n")
+	cfg, problems = loadRunnersText(t, "pool(five_hour_max = 12.5)\n")
 	require.Empty(t, problems)
-	require.Equal(t, config.Pool{FiveHourMax: 12.5, SevenDayMax: 95}, cfg.Pool, "a missing key keeps its default")
+	require.Equal(t, config.Pool{FiveHourMax: 12.5, SevenDayMax: 95}, cfg.Pool, "a missing argument keeps its default")
 
-	cfg, problems = loadRunnersText(t, "pool {\nseven_day_max = 10\n}\n")
+	cfg, problems = loadRunnersText(t, "pool(seven_day_max = 10)\n")
 	require.Empty(t, problems)
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 10}, cfg.Pool)
 }
@@ -380,14 +424,14 @@ func TestLoadFolder_ABadPoolIsRefused(t *testing.T) {
 		text  string
 		words string
 	}{
-		{"zero", "pool {\nfive_hour_max = 0\n}\n", "`five_hour_max` in the pool block must be a number above 0 and up to 100"},
-		{"negative", "pool {\nseven_day_max = -1\n}\n", "`seven_day_max` in the pool block"},
-		{"over_one_hundred", "pool {\nfive_hour_max = 100.5\n}\n", "`five_hour_max` in the pool block"},
-		{"a_string", "pool {\nfive_hour_max = \"high\"\n}\n", "`five_hour_max` has the wrong type"},
-		{"a_boolean", "pool {\nfive_hour_max = true\n}\n", "runners.hcl:2:17: `five_hour_max` has the wrong type"},
-		{"unknown_key", "pool {\nthree_hour_max = 5\n}\n", "runners.hcl:2:1: unknown key `three_hour_max`"},
-		{"repeated_pool_block", "pool {\n}\npool {\n}\n", "block `pool` appears twice"},
-		{"not_a_block", "pool = 3\n", "`pool` is a block, not a key"},
+		{"zero", "pool(five_hour_max = 0)\n", "`five_hour_max` in the pool block must be a number above 0 and up to 100"},
+		{"negative", "pool(seven_day_max = -1)\n", "`seven_day_max` in the pool block"},
+		{"over_one_hundred", "pool(five_hour_max = 100.5)\n", "`five_hour_max` in the pool block"},
+		{"a_string", "pool(five_hour_max = \"high\")\n", `for parameter "five_hour_max": got string, want int or float`},
+		{"a_boolean", "pool(five_hour_max = True)\n", `runners.star:1:5: pool: for parameter "five_hour_max": got bool`},
+		{"unknown_argument", "pool(three_hour_max = 5)\n", `pool: unexpected keyword argument "three_hour_max"`},
+		{"repeated_pool_call", "pool()\npool()\n", "runners.star:2:5: block `pool` appears twice"},
+		{"not_a_call", "pool = 3\n", "runners.star:1:1: `pool` is a variable, and a config file takes none."},
 	}
 
 	for _, tc := range tests {
@@ -405,7 +449,7 @@ func TestLoadFolder_ABadPoolIsRefused(t *testing.T) {
 func TestLoadFolder_PoolCapOfExactlyOneHundredPasses(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadRunnersText(t, "pool {\nfive_hour_max = 100\nseven_day_max = 0.1\n}\n")
+	_, problems := loadRunnersText(t, "pool(five_hour_max = 100, seven_day_max = 0.1)\n")
 
 	require.Empty(t, problems)
 }
@@ -413,37 +457,37 @@ func TestLoadFolder_PoolCapOfExactlyOneHundredPasses(t *testing.T) {
 func TestLoadFolder_AgentsMaxConcurrent(t *testing.T) {
 	t.Parallel()
 
-	cfg, problems := loadRunnersText(t, "agents {\nmax_concurrent = 6\n}\n")
+	cfg, problems := loadRunnersText(t, "agents(max_concurrent = 6)\n")
 	require.Empty(t, problems)
 	require.Equal(t, 6, cfg.Agents.MaxConcurrent)
 
-	cfg, problems = loadRunnersText(t, "agents {\n}\n")
+	cfg, problems = loadRunnersText(t, "agents()\n")
 	require.Empty(t, problems)
-	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "a block without the key keeps the default")
+	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "a call without the argument keeps the default")
 
-	_, problems = loadRunnersText(t, "agents {\nmax_concurrent = 0\n}\n")
+	_, problems = loadRunnersText(t, "agents(max_concurrent = 0)\n")
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "agents.max_concurrent must be 1 or more")
-	require.ErrorContains(t, problems[0], "runners.hcl")
+	require.ErrorContains(t, problems[0], "runners.star")
 	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_CONCURRENT")
 
-	_, problems = loadRunnersText(t, "agents {\nmax_concurrent = 1\n}\n")
+	_, problems = loadRunnersText(t, "agents(max_concurrent = 1)\n")
 	require.Empty(t, problems)
 
-	_, problems = loadRunnersText(t, "agents {\nmax_threads = 1\n}\n")
-	require.ErrorContains(t, problems[0], "runners.hcl:2:1: unknown key `max_threads`")
-	_, problems = loadRunnersText(t, "agents {\nmax_concurrent = \"many\"\n}\n")
-	require.ErrorContains(t, problems[0], "runners.hcl:2:19: `max_concurrent` has the wrong type")
+	_, problems = loadRunnersText(t, "agents(max_threads = 1)\n")
+	require.ErrorContains(t, problems[0], `runners.star:1:7: agents: unexpected keyword argument "max_threads"`)
+	_, problems = loadRunnersText(t, "agents(max_concurrent = \"many\")\n")
+	require.ErrorContains(t, problems[0], `runners.star:1:7: agents: for parameter "max_concurrent": got string, want int`)
 
-	_, problems = loadRunnersText(t, "agents {\nmax_concurrent = 1\nmax_concurrent = 2\n}\n")
-	require.ErrorContains(t, problems[0], "runners.hcl:3:1: `max_concurrent` is set twice")
+	_, problems = loadRunnersText(t, "agents(max_concurrent = 1)\nagents(max_concurrent = 2)\n")
+	require.ErrorContains(t, problems[0], "runners.star:2:7: block `agents` appears twice. Keep one.")
 }
 
 func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "runners.hcl"), "agents {\nmax_concurrent = 2\n}\npool {\nfive_hour_max = 50\n}\n")
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_concurrent = 2)\npool(five_hour_max = 50)\n")
 
 	cfg, problems := config.LoadFolder(dir, map[string]string{
 		"OBEE_AGENTS_MAX_CONCURRENT": "6", "OBEE_POOL_FIVE_HOUR_MAX": "70", "OBEE_POOL_SEVEN_DAY_MAX": "80.5", "REPO": "ignored",
@@ -501,7 +545,7 @@ func TestLoadFolder_ARefusalKeepsItsCause(t *testing.T) {
 
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
-	require.NoError(t, os.Symlink(filepath.Join(dir, "missing.hcl"), filepath.Join(dir, "projects", "p.hcl")))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "missing.star"), filepath.Join(dir, "projects", "p.star")))
 
 	_, problems := config.LoadFolder(dir, nil)
 
@@ -517,29 +561,23 @@ func TestLoadFolder_ARefusalKeepsItsCause(t *testing.T) {
 	require.Len(t, problems, 1)
 }
 
-func TestLoadFolder_ARepeatedKeyIsReportedAsSuch(t *testing.T) {
+func TestLoadFolder_ARepeatedArgumentIsRefused(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name  string
-		text  string
-		words string
-	}{
-		{"repeated_key", goodProject + "repo = \"o/m\"\n", "p.hcl:7:1: `repo` is set twice. Keep one."},
-		{"value_then_block", goodProject + "repo {\nx = 1\n}\n", "`repo` is a key, not a block"},
-	}
+	_, problems := loadProjectText(t, call(goodProject+`, repo = "o/m"`))
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "Fix the syntax of the file")
+	require.ErrorContains(t, problems[0], "repo")
+}
 
-			_, problems := loadProjectText(t, tc.text)
+func TestLoadFolder_RecursionIsRefused(t *testing.T) {
+	t.Parallel()
 
-			require.Len(t, problems, 1)
-			require.ErrorContains(t, problems[0], tc.words)
-			require.NotContains(t, problems[0].Error(), "wrong type")
-		})
-	}
+	_, problems := loadRunnersText(t, "def f(n):\n  return f(n)\nf(1)\n")
+
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "runners.star:")
 }
 
 func TestLoadFolder_ANotANumberPoolCapIsRefused(t *testing.T) {
@@ -562,6 +600,6 @@ func TestLoadFolder_ABadPoolCapNamesTheFileAndTheVariable(t *testing.T) {
 	require.Len(t, problems, 2)
 
 	text := problems.Error()
-	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.hcl")+" or in OBEE_POOL_FIVE_HOUR_MAX.")
-	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.hcl")+" or in OBEE_POOL_SEVEN_DAY_MAX.")
+	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in OBEE_POOL_FIVE_HOUR_MAX.")
+	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in OBEE_POOL_SEVEN_DAY_MAX.")
 }

@@ -242,15 +242,6 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
-            - github.com/tobocop2/obee/internal/hclfile
-        hclfile-imports-no-obee-package:
-          list-mode: lax
-          files: ["**/internal/hclfile/**"]
-          deny:
-            - pkg: github.com/tobocop2/obee/internal
-              desc: hclfile imports no obee package (docs/architecture.md)
-          allow:
-            - github.com/tobocop2/obee/internal/hclfile
         layer-1:
           list-mode: lax
           files:
@@ -289,7 +280,6 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
-            - github.com/tobocop2/obee/internal/hclfile
             - github.com/tobocop2/obee/internal/check/shell
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
@@ -321,7 +311,6 @@ linters:
             - github.com/tobocop2/obee/internal/review
             - github.com/tobocop2/obee/internal/pool
             - github.com/tobocop2/obee/internal/workflow
-            - github.com/tobocop2/obee/internal/hclfile
             - github.com/tobocop2/obee/internal/flow
         unlisted-package:
           list-mode: lax
@@ -331,7 +320,6 @@ linters:
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/lockfile/**"
-            - "!**/internal/hclfile/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
             - "!**/internal/proc/**"

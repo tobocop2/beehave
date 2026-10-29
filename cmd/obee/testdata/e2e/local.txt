@@ -16,8 +16,8 @@ example local/prompts/plan.md
 example local/prompts/implement.md
 example local/prompts/review.md
 example local/prompts/fix.md
-example local/project.hcl config/projects/local.hcl
-replace config/projects/local.hcl '~/work/your-repo' $WORK/origin
+example local/project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
 subst fake/claude
 chmod 755 fake/claude
 

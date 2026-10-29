@@ -13,7 +13,7 @@ import (
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
-const claimProject = "repo = \"owner/name\"\ntracker = \"github\"\nforge = \"github\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const claimProject = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\")\n"
 
 // configEnv writes a config folder with one project file and gives the environment that names it.
 func configEnv(t *testing.T) map[string]string {
@@ -21,7 +21,7 @@ func configEnv(t *testing.T) map[string]string {
 
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), treeFolderMode))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.hcl"), []byte(claimProject), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte(claimProject), 0o600))
 
 	return map[string]string{"OBEE_CONFIG": dir}
 }
@@ -99,7 +99,7 @@ func TestOpenClaims_OpensTheLocalClaimsOfALocalProjectInTheStateFolder(t *testin
 
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), treeFolderMode))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.hcl"), []byte("source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte("project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n"), 0o600))
 	state := filepath.Join(t.TempDir(), "state")
 
 	claims, err := openClaims(map[string]string{"OBEE_CONFIG": dir, "OBEE_STATE_DIR": state}, proctest.Always(model.CommandResult{}))("/srv/repo")

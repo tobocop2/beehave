@@ -9,11 +9,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
-
-// maxSteps is the number of Starlark instructions that one run may execute. The count is the same on a replay, so a run that hits it hits it every time.
-const maxSteps = 1_000_000
 
 // builtinFile is the file name that starlark-go gives to the frame of a Go builtin.
 const builtinFile = "<builtin>"
@@ -42,10 +40,10 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 	return ItemResult{Item: in.Item, Merge: s.mergeState, SentBack: s.sentBack, Stopped: s.stopped}, err
 }
 
-// thread makes the thread of a run. It logs print at the debug level and stops after maxSteps instructions.
+// thread makes the thread of a run. It logs print at the debug level and stops after model.StarlarkMaxSteps instructions.
 func (e *Engine) thread(item string) *starlark.Thread {
 	thread := &starlark.Thread{Name: item, Print: func(_ *starlark.Thread, msg string) { e.logger.Debug(msg) }}
-	thread.SetMaxExecutionSteps(maxSteps)
+	thread.SetMaxExecutionSteps(model.StarlarkMaxSteps)
 
 	return thread
 }

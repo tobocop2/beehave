@@ -12,7 +12,7 @@ import (
 )
 
 // errEmptyLogin is returned when no agent login is set for an agent step.
-var errEmptyLogin = errors.New("no agent login for this step: add a runner to runners.hcl and name it in the step with `runner`")
+var errEmptyLogin = errors.New("no agent login for this step: add a runner to runners.star and name it in the step with `runner`")
 
 // AgentRequest asks for one agent run. Prompt is the rendered prompt of the agent step.
 // Started receives the pid of the agent process, which leads its own process group, as soon as it runs.

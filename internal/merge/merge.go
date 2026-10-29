@@ -81,7 +81,7 @@ type Forge interface {
 	Body
 }
 
-// Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.hcl.
+// Request is one merge. Gated is the full commit id the reviewers gated. Runners are the logins of runners.star.
 // Repo and Base name the repository and the base. OwnLogins and OwnEmails are the identities of the owner; both lists need an entry, and no entry may be empty.
 // Approved is true when a step other than the author accepted the head: work of an own identity merges only then.
 // Hold is the label of a pull request that is never merged; empty means no label holds. ForbidText holds the patterns that no line of the body or of a commit message may match.

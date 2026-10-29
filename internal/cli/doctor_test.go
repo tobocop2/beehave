@@ -25,9 +25,9 @@ func newMachine(t *testing.T) machine {
 	t.Helper()
 
 	m := machine{config: t.TempDir(), login: t.TempDir(), bin: t.TempDir()}
-	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\nconfig_dir = \""+m.login+"\"\nkeychain = \"obee-a\"\n}\n")
+	writeConfig(t, m.config, "runners.star", "runner(name = \"a\", agent = \"claude\", config_dir = \""+m.login+"\", keychain = \"obee-a\")\n")
 
-	writeConfig(t, m.config, "projects/p.hcl", validProject)
+	writeConfig(t, m.config, "projects/p.star", validProject)
 
 	for _, tool := range []string{"bd", "gh", "git"} {
 		require.NoError(t, os.WriteFile(filepath.Join(m.bin, tool), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a fake program must be executable
@@ -83,13 +83,13 @@ func TestDoctor_EveryCheckPassesOnAGoodMachine(t *testing.T) {
 	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
 }
 
-const localProjectFile = "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
+const localProjectFile = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n"
 
 func TestDoctor_AProjectWithNoBeadsAndNoGithubNeedsOnlyGit(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "projects/p.hcl", localProjectFile)
+	writeConfig(t, m.config, "projects/p.star", localProjectFile)
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "bd")))
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
@@ -103,7 +103,7 @@ func TestDoctor_GitIsRequiredEvenWhenTheConfigHasNoProject(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	require.NoError(t, os.Remove(filepath.Join(m.config, "projects", "p.hcl")))
+	require.NoError(t, os.Remove(filepath.Join(m.config, "projects", "p.star")))
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "git")))
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
@@ -117,7 +117,7 @@ func TestDoctor_OnlyTheBeadsProjectNeedsBdAndOnlyTheGithubProjectNeedsGh(t *test
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "projects/p.hcl", "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\nclaims = \"beads\"\nbeads_prefix = \"p\"\n")
+	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", claims = \"beads\", beads_prefix = \"p\")\n")
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
@@ -131,7 +131,7 @@ func TestDoctor_AConfigThatDoesNotLoadFailsWithTheFix(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"nobody\"\n}\n")
+	writeConfig(t, m.config, "runners.star", "runner(name = \"a\", agent = \"nobody\")\n")
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
 
@@ -189,7 +189,7 @@ func TestDoctor_ARunnerWithoutAConfigDirIsNotReadForUsage(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
+	writeConfig(t, m.config, "runners.star", validRunners)
 
 	read := func(context.Context, model.Runner) model.Reading { return model.Unknown("never asked") }
 
@@ -236,7 +236,7 @@ func TestDoctor_ARunnerWithoutAKeychainEntryHasNoTokenCheck(t *testing.T) {
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
+	writeConfig(t, m.config, "runners.star", validRunners)
 
 	_, out := runDoctor(t, m, cli.Doctor{TokenReadable: func(context.Context, string) bool { return false }}, m.env())
 

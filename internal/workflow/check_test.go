@@ -7,11 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/hclfile"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
-func problems(found []hclfile.Diagnostic) []string {
+func problems(found []workflow.Diagnostic) []string {
 	out := make([]string, len(found))
 	for i, d := range found {
 		out[i] = fmt.Sprintf("%d:%d %s", d.Line, d.Col, d.Text)

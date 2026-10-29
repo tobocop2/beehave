@@ -10,23 +10,24 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const clusterProject = goodProject + "build_host = \"gpu\"\n"
+const clusterProject = goodProject + `, build_host = "gpu"`
 
-// hostBlock returns a valid host block with extra lines added inside it.
-func hostBlock(extra string) string {
-	return "host {\nprovider = \"skypilot\"\ndisk_floor_gb = 50\n" + extra + "}\n"
+// hostCall returns a valid host call with extra arguments added after the two required ones. Each extra starts with ", ".
+func hostCall(extra string) string {
+	return `host(provider = "skypilot", disk_floor_gb = 50` + extra + ")"
 }
 
 func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, clusterProject+hostBlock(""))
+	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall("")))
 
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 24 * time.Hour, DiskFloorGB: 50}, project.Host)
 
-	project, problems = loadProjectText(t, clusterProject+"host {\nprovider = \"skypilot\"\nidle_minutes = 30\nmax_run = \"12h\"\ndisk_floor_gb = 20\n"+
-		"private_remote = \"git@example.com:org/repo.git\"\nskypilot {\ncloud = \"gcp\"\nregion = \"us-central1\"\ninstance_type = \"n2-standard-8\"\n}\n}\n")
+	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, max_run = "12h", disk_floor_gb = 20,
+  private_remote = "git@example.com:org/repo.git",
+  skypilot = skypilot(cloud = "gcp", region = "us-central1", instance_type = "n2-standard-8"))`))
 
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{
@@ -38,7 +39,7 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 func TestLoadFolder_ALocalProjectHasNoHostTable(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, goodProject)
+	project, problems := loadProjectText(t, call(goodProject))
 
 	require.Empty(t, problems)
 	require.Nil(t, project.Host)
@@ -52,25 +53,28 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 		text  string
 		words string
 	}{
-		{"table_with_local_build", goodProject + "build_host = \"local\"\n" + hostBlock(""), "p.hcl:8:1: the `host` block is not allowed when `build_host` is \"local\""},
-		{"table_with_default_build", goodProject + hostBlock(""), "p.hcl:7:1: the `host` block is not allowed when `build_host` is \"local\""},
-		{"cluster_without_table", clusterProject, "p.hcl:7:1: the `host` block is required when `build_host` is a cluster name"},
-		{"missing_provider", clusterProject + "host {\ndisk_floor_gb = 50\n}\n", "p.hcl:8:1: `host.provider` must be a non-empty string"},
-		{"blank_provider", clusterProject + "host {\nprovider = \" \"\ndisk_floor_gb = 50\n}\n", "p.hcl:9:1: `host.provider` must be a non-empty string"},
-		{"unknown_provider", clusterProject + "host {\nprovider = \"ssh\"\ndisk_floor_gb = 50\n}\n", "p.hcl:9:1: `host.provider`: unknown host provider \"ssh\": use one of skypilot"},
-		{"missing_disk_floor", clusterProject + "host {\nprovider = \"skypilot\"\n}\n", "p.hcl:8:1: `host.disk_floor_gb` is required"},
-		{"zero_disk_floor", clusterProject + "host {\nprovider = \"skypilot\"\ndisk_floor_gb = 0\n}\n", "p.hcl:10:1: `host.disk_floor_gb` must be above zero"},
-		{"huge_disk_floor", clusterProject + "host {\nprovider = \"skypilot\"\ndisk_floor_gb = 17179869184\n}\n", "p.hcl:10:1: `host.disk_floor_gb` must be above zero and at most 1048576; got 17179869184"},
-		{"dash_private_remote", clusterProject + hostBlock("private_remote = \"--upload-pack=x:y\"\n"), "p.hcl:11:1: `host.private_remote` must name a machine"},
-		{"negative_idle", clusterProject + hostBlock("idle_minutes = -1\n"), "p.hcl:11:1: `host.idle_minutes` must be above zero"},
-		{"bad_max_run", clusterProject + hostBlock("max_run = \"soon\"\n"), "p.hcl:11:1: `host.max_run` must be a duration above zero"},
-		{"zero_max_run", clusterProject + hostBlock("max_run = \"0s\"\n"), "p.hcl:11:1: `host.max_run` must be a duration above zero"},
-		{"path_private_remote", clusterProject + hostBlock("private_remote = \"/srv/repo.git\"\n"), "p.hcl:11:1: `host.private_remote` must name a machine"},
-		{"table_of_another_provider", clusterProject + hostBlock("gcloud {\ncloud = \"gcp\"\n}\n"), "unknown block `gcloud`. Remove it"},
-		{"unknown_host_key", clusterProject + hostBlock("shade = 1\n"), "unknown key `shade`. Remove it"},
-		{"unknown_provider_key", clusterProject + hostBlock("skypilot {\nzone = \"a\"\n}\n"), "unknown key `zone`. Remove it"},
-		{"host_key_of_the_wrong_type", clusterProject + hostBlock("idle_minutes = \"soon\"\n"), "p.hcl:"},
-		{"repeated_host_block", clusterProject + hostBlock("") + hostBlock(""), "p.hcl:12:1: block `host` appears twice"},
+		{"table_with_local_build", call(goodProject + `, build_host = "local", host = ` + hostCall("")), "p.star:1:"},
+		{"table_with_local_build_names_the_block", call(goodProject + `, build_host = "local", host = ` + hostCall("")), "the `host` block is not allowed when `build_host` is \"local\""},
+		{"table_with_default_build", call(goodProject + ", host = " + hostCall("")), "the `host` block is not allowed when `build_host` is \"local\""},
+		{"cluster_without_table", call(clusterProject), "p.star:1:8: the `host` block is required when `build_host` is a cluster name"},
+		{"missing_provider", call(clusterProject + ", host = host(disk_floor_gb = 50)"), "host: missing argument for provider"},
+		{"blank_provider", call(clusterProject + `, host = host(provider = " ", disk_floor_gb = 50)`), "`host.provider` must be a non-empty string"},
+		{"unknown_provider", call(clusterProject + `, host = host(provider = "ssh", disk_floor_gb = 50)`), "`host.provider`: unknown host provider \"ssh\": use one of skypilot"},
+		{"missing_disk_floor", call(clusterProject + `, host = host(provider = "skypilot")`), "host: missing argument for disk_floor_gb"},
+		{"zero_disk_floor", call(clusterProject + `, host = host(provider = "skypilot", disk_floor_gb = 0)`), "`host.disk_floor_gb` must be above zero"},
+		{"huge_disk_floor", call(clusterProject + `, host = host(provider = "skypilot", disk_floor_gb = 17179869184)`), "`host.disk_floor_gb` must be above zero and at most 1048576; got 17179869184"},
+		{"dash_private_remote", call(clusterProject + ", host = " + hostCall(`, private_remote = "--upload-pack=x:y"`)), "`host.private_remote` must name a machine"},
+		{"negative_idle", call(clusterProject + ", host = " + hostCall(", idle_minutes = -1")), "`host.idle_minutes` must be above zero"},
+		{"bad_max_run", call(clusterProject + ", host = " + hostCall(`, max_run = "soon"`)), "`host.max_run` must be a duration above zero"},
+		{"zero_max_run", call(clusterProject + ", host = " + hostCall(`, max_run = "0s"`)), "`host.max_run` must be a duration above zero"},
+		{"path_private_remote", call(clusterProject + ", host = " + hostCall(`, private_remote = "/srv/repo.git"`)), "`host.private_remote` must name a machine"},
+		{"unknown_host_argument", call(clusterProject + ", host = " + hostCall(", shade = 1")), `host: unexpected keyword argument "shade"`},
+		{"unknown_skypilot_argument", call(clusterProject + ", host = " + hostCall(`, skypilot = skypilot(zone = "a")`)), `skypilot: unexpected keyword argument "zone"`},
+		{"host_argument_of_the_wrong_type", call(clusterProject + ", host = " + hostCall(`, idle_minutes = "soon"`)), "p.star:1:"},
+		{"host_that_is_not_a_block", call(clusterProject + `, host = "gpu"`), `for parameter "host": got string, want host(...)`},
+		{"skypilot_that_is_not_a_block", call(clusterProject + ", host = " + hostCall(`, skypilot = "gcp"`)), `for parameter "skypilot": got string, want skypilot(...)`},
+		{"repeated_host_call", call(clusterProject+", host = "+hostCall("")) + "host(provider = \"skypilot\", disk_floor_gb = 1)\n", "p.star:2:5: block `host` appears twice"},
+		{"repeated_skypilot_call", "skypilot()\nskypilot()\n" + call(clusterProject), "p.star:2:9: block `skypilot` appears twice"},
 	}
 
 	for _, tc := range tests {
@@ -84,4 +88,20 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 			require.ErrorContains(t, problems[0], tc.words)
 		})
 	}
+}
+
+func TestLoadFolder_ABlockValueIsAnOpaqueValue(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadProjectText(t, "x = {host(provider = \"skypilot\", disk_floor_gb = 1): 1}\n"+call(goodProject))
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "p.star:1:")
+
+	_, problems = loadProjectText(t, "_h = host(provider = \"skypilot\", disk_floor_gb = 1)\n"+call(clusterProject+", host = _h"))
+	require.Empty(t, problems, "a global block value is frozen at the end of the file")
+
+	project, problems := loadProjectText(t,
+		"def f():\n  h = host(provider = \"skypilot\", disk_floor_gb = 1)\n  _ = [bool(h), str(h), type(h)]\n  return h\n"+call(clusterProject+", host = f()"))
+	require.Empty(t, problems)
+	require.NotNil(t, project.Host)
 }
