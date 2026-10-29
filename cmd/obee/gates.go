@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,8 @@ import (
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
 const gateTimeout = time.Hour
+
+var errNoGateFolder = errors.New("the item has no worktree for the gate of the project to judge. Make the worktree of the item first, or give the gate call a program")
 
 // headAndTree is the number of lines that `git rev-parse HEAD HEAD^{tree}` prints.
 const headAndTree = 2
@@ -54,6 +57,10 @@ func (g projectGate) request(ctx context.Context, project, item string) (gate.Re
 	dir, err := g.programs.trees.Path(ctx, project, item)
 	if err != nil {
 		return gate.Request{}, fmt.Errorf("find the folder of item %s: %w", item, err)
+	}
+
+	if dir == "" {
+		return gate.Request{}, fmt.Errorf("%w: item %s of project %s", errNoGateFolder, item, project)
 	}
 
 	url, err := g.cloneURL(found)
