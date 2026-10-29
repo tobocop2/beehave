@@ -663,7 +663,15 @@ func TestSpawnGather_CancelOfTheParentWhileItGathersEndsTheChildren(t *testing.T
 		done <- err
 	}()
 
+	// Cancel ends the parent at its next step, so a spawn still creating children would leave the last one without a run.
+	// Wait until every child has a run, and child 22 still runs, so the cancel lands while the parent gathers.
 	eventually(t, func() bool {
+		for _, item := range []string{"21", "23"} {
+			if _, found, err := latestRun(engine.ctx, item); err != nil || !found {
+				return false
+			}
+		}
+
 		last, found, err := latestRun(engine.ctx, "22")
 
 		return err == nil && found && last.Status.Status == dbos.WorkflowStatusPending
