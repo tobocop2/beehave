@@ -43,13 +43,13 @@ func (a *attempt) state() *refusal {
 	a.say("before: " + tsvLine(state, strconv.FormatBool(*view.IsDraft), base, head, mergeable))
 
 	switch {
-	case state != "OPEN":
+	case state != "OPEN" && !a.replayed():
 		return refuse("REFUSE: state is " + state)
 	case base != a.req.Base:
 		return refuse(fmt.Sprintf("REFUSE: base is %s, expected %s", base, a.req.Base))
 	case head != a.req.Gated:
 		return refuse(fmt.Sprintf("REFUSE: head %s is not the gated %s. Re-gate.", head, a.req.Gated))
-	case mergeable != "MERGEABLE":
+	case mergeable != "MERGEABLE" && !a.replayed():
 		return refuse("REFUSE: mergeable is " + mergeable)
 	}
 
@@ -82,7 +82,7 @@ func tsvLine(values ...string) string {
 
 // draft refuses a draft unless the owner allowed readying it. A draft skips its checks, so the checks guard judged nothing.
 func (a *attempt) draft() *refusal {
-	if !*a.view.IsDraft || a.req.AllowReady {
+	if !*a.view.IsDraft || a.req.AllowReady || a.replayed() {
 		return nil
 	}
 

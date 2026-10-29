@@ -467,6 +467,14 @@ The guards refuse in this order: the repository and the base branch of the merge
 
 A child is an open pull request whose base is the branch of the pull request. A merge orphans it, unless it is in the same native stack, which GitHub retargets. That child is a note. `AllowOrphans` lets the merge go on and says that this is a stated decision. A list of 1000 pull requests is refused as cut off. A check that skipped is not a pass: with no pass the merge refuses unless `AllowNoChecks` is set.
 
+### Replay of a merged pull request
+
+A caller that writes an intent before the merge can ask `Run` to count a `MERGED` pull request as done. The `Intent` holds the pull request, the head, the base, the base tip tree, the time, and the state of the read (it must be `OPEN`). The run accepts a `MERGED` read only when the intent names this pull request, head and base, the merge time is not before the intent time minus the skew margin (a zero `Skew` means the default of two minutes), and the tree proof passes. A request with no intent still refuses `MERGED`.
+
+A replay keeps the own-work, hold, checks, file list, workflow scope, review, forbidden text and author guards. It skips the `OPEN` and mergeable checks, the draft rule, the orphans guard and the steps before the merge call. On a replay the orphans guard does not run, because a merged pull request cannot be un-orphaned. A hand merge at the same head inside the window passes the same checks, and the design accepts that.
+
+A refusal on a replay means a person must look. It does not mean that the pull request did not merge. A hold label, a review thread, a change request or a running check that appears after the merge refuses the replay, and so does a push to the base by someone else. `BaseTipTree` is read by the batch merge, not by `Run`. A replay with an integration pull request writes the row `- #N merged at SHA` once, because `Run` skips the append when that exact row is already in the body.
+
 ### Edit of the shared body
 
 `EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.

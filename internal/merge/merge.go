@@ -88,8 +88,11 @@ type Forge interface {
 // Retarget moves each child pull request onto the base before the merge, where a child would otherwise block it.
 // IntegrationPR is the pull request that holds the row of the merge, or 0 for none. Dir is the state folder for its lock.
 // GatedTree is the tree id of the gated head. When it is set, the run reads the tree of the base tip after the merge and stops if it differs; empty asks for no proof.
+// Intent is the record of a caller that wrote it before the merge. With an intent, a pull request in state MERGED counts as done
+// when the intent ties the merge to this run (see Intent) and the guards that still apply to a merged pull request pass. Without one, MERGED refuses.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
+	Intent        *Intent
 	PR            int
 	Gated         string
 	GatedTree     string
@@ -148,7 +151,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).state, (*attempt).held, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }
