@@ -145,3 +145,12 @@ func TestClosingNumbers_ListsEachIssueOnceInNumericOrder(t *testing.T) {
 	assert.Equal(t, []string{"7", "012", "100"}, ledger.ClosingNumbers("Closes #100, fixes #012, Closes #12, resolved #7"))
 	assert.Empty(t, ledger.ClosingNumbers("no keyword #5"))
 }
+
+// GitHub: a keyword counts as a word of its own. "unfixed #3" and "prefix #4" close nothing.
+func TestClosingNumbers_AKeywordInsideAWordIsNotAKeyword(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, ledger.ClosingNumbers("unfixed #3, prefix #4, disclosed #5, reclose #6, foo_fixes #7, 9fixes #8"))
+	assert.Equal(t, []string{"1", "2", "3"}, ledger.ClosingNumbers("unfixed #9\nFixes #1; (closes #2) - resolved #3"))
+	assert.Equal(t, []string{"1"}, ledger.ClosingNumbers("Fixes #1"), "a keyword at the start of the body")
+}

@@ -24,16 +24,24 @@ func (r records) Closes(key string) ([]string, error) { return r.closes[key], r.
 func (r records) OwnerAdds(key string) ([]string, error) { return r.adds[key], r.addsErr }
 
 type forge struct {
-	body  string
-	err   error
-	asked []int
+	closing []int
+	err     error
+	asked   []int
 }
 
-func (f *forge) PRBody(_ context.Context, pr int) (string, error) {
+func (f *forge) ClosingIssues(_ context.Context, pr int) ([]int, error) {
 	f.asked = append(f.asked, pr)
 
-	return f.body, f.err
+	return f.closing, f.err
 }
+
+// bodyForge is a forge with no closing-reference read: only the body of the pull request.
+type bodyForge struct {
+	body string
+	err  error
+}
+
+func (f bodyForge) PRBody(context.Context, int) (string, error) { return f.body, f.err }
 
 func run(t *testing.T, recs records, f *forge, req scope.Request) scope.Result {
 	t.Helper()
@@ -48,7 +56,7 @@ func TestCheck_AnIssueClosedOnlyAfterTheFirstReviewIsRefusedWithoutAnOwnerRow(t 
 	t.Parallel()
 
 	recs := records{closes: map[string][]string{"792": {"751", "762", "778"}}}
-	got := run(t, recs, &forge{body: "Closes #751\ncloses #795, Fixes #800\n"}, scope.Request{PR: "792"})
+	got := run(t, recs, &forge{closing: []int{800, 751, 795}}, scope.Request{PR: "792"})
 
 	assert.Equal(t, scope.CodeRefused, got.Code)
 	require.Len(t, got.Lines, 4)
@@ -60,7 +68,7 @@ func TestCheck_AnOwnerRowThatNamesTheIssueLetsItStay(t *testing.T) {
 	t.Parallel()
 
 	recs := records{closes: map[string][]string{"792": {"751"}}, adds: map[string][]string{"792": {"795"}}}
-	got := run(t, recs, &forge{body: "Closes #751\nCloses #795\nCloses #800"}, scope.Request{PR: "792"})
+	got := run(t, recs, &forge{closing: []int{751, 795, 800}}, scope.Request{PR: "792"})
 
 	assert.Equal(t, scope.CodeRefused, got.Code)
 	assert.Contains(t, got.Lines[0], "closes #800 now")
@@ -71,7 +79,7 @@ func TestCheck_EveryNewIssueWithAnOwnerRowIsOK(t *testing.T) {
 	t.Parallel()
 
 	recs := records{closes: map[string][]string{"792": {"751"}}, adds: map[string][]string{"792": {"795"}}}
-	got := run(t, recs, &forge{body: "Closes #751\nCloses #795"}, scope.Request{PR: "792"})
+	got := run(t, recs, &forge{closing: []int{751, 795}}, scope.Request{PR: "792"})
 
 	assert.Equal(t, scope.Result{Lines: []string{"OK: pull request 792 closes no issue that is new since its first review without an owner row."}}, got)
 }
@@ -80,7 +88,7 @@ func TestCheck_AFirstReviewWithNoClosesLineFixesTheScopeUnderTheKey(t *testing.T
 	t.Parallel()
 
 	recs := records{closes: map[string][]string{"h2m-spacing": {"-"}}}
-	got := run(t, recs, &forge{body: "Closes #803"}, scope.Request{PR: "792", Key: "h2m-spacing"})
+	got := run(t, recs, &forge{closing: []int{803}}, scope.Request{PR: "792", Key: "h2m-spacing"})
 
 	assert.Equal(t, scope.CodeRefused, got.Code)
 	assert.Contains(t, got.Lines[0], "closes #803 now")
@@ -91,7 +99,7 @@ func TestCheck_AFirstReviewWithNoClosesLineFixesTheScopeUnderTheKey(t *testing.T
 func TestCheck_APullRequestTheLedgerHasNotReviewedHasNoScopeYet(t *testing.T) {
 	t.Parallel()
 
-	f := &forge{body: "Closes #1"}
+	f := &forge{closing: []int{1}}
 	got := run(t, records{}, f, scope.Request{PR: "792", Key: "other"})
 
 	assert.Equal(t, scope.Result{Lines: []string{"OK: the ledger holds no review row for other, so its scope is not fixed yet."}}, got)
@@ -131,14 +139,14 @@ func TestCheck_ABodyThatCannotBeReadNamesThePullRequest(t *testing.T) {
 	var refusal *check.Refusal
 
 	require.ErrorAs(t, err, &refusal)
-	assert.Equal(t, "cannot read the body of pull request 792 in owner/name.", refusal.Message)
+	assert.Equal(t, "cannot read the issues that pull request 792 closes in owner/name.", refusal.Message)
 	require.ErrorIs(t, err, errDown)
 }
 
 func TestCheck_ALeadingZeroPullRequestIsAskedWithoutIt(t *testing.T) {
 	t.Parallel()
 
-	f := &forge{body: "Closes #1"}
+	f := &forge{closing: []int{1}}
 	got := run(t, records{closes: map[string][]string{"007": {"1"}}}, f, scope.Request{PR: "007"})
 
 	assert.Equal(t, 0, got.Code)
@@ -149,7 +157,7 @@ func TestCheck_TwoSpellingsOfOneIssueAreOneIssue(t *testing.T) {
 	t.Parallel()
 
 	recs := records{closes: map[string][]string{"792": {"012"}}}
-	got := run(t, recs, &forge{body: "Closes #12"}, scope.Request{PR: "792"})
+	got := run(t, recs, &forge{closing: []int{12}}, scope.Request{PR: "792"})
 
 	assert.Equal(t, 0, got.Code)
 }
@@ -159,10 +167,31 @@ func TestCheck_AnOwnerRowCountsOnlyForTheWholeIssueNumber(t *testing.T) {
 
 	for name, adds := range map[string][]string{"longer number": {"55"}, "other issue": {"6"}, "none": nil} {
 		recs := records{closes: map[string][]string{"1": {"1"}}, adds: map[string][]string{"1": adds}}
-		got := run(t, recs, &forge{body: "Closes #5"}, scope.Request{PR: "1"})
+		got := run(t, recs, &forge{closing: []int{5}}, scope.Request{PR: "1"})
 
 		assert.Equal(t, scope.CodeRefused, got.Code, name)
 	}
+}
+
+func TestFromBody_AForgeWithNoClosingReferencesIsReadByTheClosingKeywordsOfTheBody(t *testing.T) {
+	t.Parallel()
+
+	recs := records{closes: map[string][]string{"792": {"751"}}}
+	got, err := scope.Check(t.Context(), recs, scope.FromBody(bodyForge{body: "Closes #751\ncloses #795, Fixes #800\nnot a keyword #9"}), scope.Request{PR: "792"})
+
+	require.NoError(t, err)
+	assert.Equal(t, scope.CodeRefused, got.Code)
+	assert.Contains(t, got.Lines[0], "closes #795 #800 now")
+}
+
+func TestCheck_AnIssueClosedOnlyBySidebarLinkIsSeenLikeOneInTheBody(t *testing.T) {
+	t.Parallel()
+
+	recs := records{closes: map[string][]string{"792": {"751"}}}
+	got := run(t, recs, &forge{closing: []int{751, 900}}, scope.Request{PR: "792"})
+
+	assert.Equal(t, scope.CodeRefused, got.Code)
+	assert.Contains(t, got.Lines[0], "closes #900 now")
 }
 
 func TestCheck_ALedgerThatCannotBeReadStopsTheCheck(t *testing.T) {
@@ -172,7 +201,7 @@ func TestCheck_ALedgerThatCannotBeReadStopsTheCheck(t *testing.T) {
 		"closes": {closesErr: errDown},
 		"adds":   {closes: map[string][]string{"1": {"1"}}, addsErr: errDown},
 	} {
-		_, err := scope.Check(t.Context(), recs, &forge{body: "Closes #5"}, scope.Request{PR: "1"})
+		_, err := scope.Check(t.Context(), recs, &forge{closing: []int{5}}, scope.Request{PR: "1"})
 
 		require.ErrorIs(t, err, errDown, name)
 	}

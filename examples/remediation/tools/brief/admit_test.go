@@ -16,12 +16,12 @@ import (
 
 var when = time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
 
-func noBody() (string, error) { return "", nil }
+func noBody() ([]string, error) { return nil, nil }
 
 func addRow(t *testing.T, book *ledger.Ledger, key, lane string, kind ledger.Kind, mechanism string) {
 	t.Helper()
 
-	_, err := book.Add(ledger.Request{Key: key, Lane: lane, Kind: kind, Mechanism: mechanism, At: when, Body: noBody})
+	_, err := book.Add(ledger.Request{Key: key, Lane: lane, Kind: kind, Mechanism: mechanism, At: when, Closing: noBody})
 	require.NoError(t, err)
 }
 

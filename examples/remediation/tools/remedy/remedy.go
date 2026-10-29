@@ -25,10 +25,11 @@ const (
 )
 
 // Forge is the forge of every subcommand: the calls of the round cut, the calls of the takeover and the body read of the scope check and of the first review row.
+// A forge that also has the closing-reference read of scope.Listing gives both of them the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
 type Forge interface {
 	roundcut.Forge
 	takeover.Reader
-	scope.Reader
+	scope.BodyReader
 }
 
 // Book is the lane ledger of the subcommands: the reads and the write of admission, and the reads of the scope check.
@@ -80,7 +81,7 @@ func ledgerCommands() []command {
 		{
 			name:    "ledger",
 			usage:   ledgerSyntax,
-			summary: "add a lane row to the ledger, or count its rows, patch rounds, earlier lanes and closed issues; the first review of a key records the issues its pull request body closes",
+			summary: "add a lane row to the ledger, or count its rows, patch rounds, earlier lanes and closed issues; the first review of a key records the issues its pull request closes",
 			run:     ledgerCommand,
 		},
 		{

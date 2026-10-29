@@ -5,10 +5,14 @@ import (
 	"os"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/obee/examples/remediation/tools/scope"
 	"github.com/tobocop2/obee/internal/config"
 	forgegithub "github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/proc"
 )
+
+// The GitHub forge gives the closing references; without this line a drift would fall back to the body parse.
+var _ scope.Listing = (*forgegithub.Forge)(nil)
 
 func main() {
 	claims := remedy.OpenClaims(openClaims(config.ProcessEnv(), proc.NewExecRunner("bd", "")))

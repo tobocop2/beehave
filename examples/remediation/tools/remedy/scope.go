@@ -55,7 +55,7 @@ func scopeRun(ctx context.Context, deps Deps, request scope.Request, state strin
 
 	request.Repo = repo
 
-	return scope.Check(ctx, deps.Book(state), forge, request)
+	return scope.Check(ctx, deps.Book(state), scope.ReaderOf(forge), request)
 }
 
 // parseScope reads the pull request and the flags of scope. It shows the usage and gives false for a bad argument.

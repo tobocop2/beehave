@@ -6,10 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/brief"
 	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
+	"github.com/tobocop2/obee/examples/remediation/tools/scope"
 )
 
 const ledgerSyntax = "ledger add <key> <lane> <kind> --state <folder> [--mechanism <token>] [--model <token>] [--round <n>] [--words <text>] [--body-file <path> | --pr <number>] | ledger count <key> <kinds> --state <folder> | ledger rounds <key> <mechanism> --state <folder> | ledger prior <key> <lane> --state <folder> | ledger closes <key> --state <folder>"
@@ -153,45 +155,61 @@ func ledgerAdd(ctx context.Context, deps Deps, book Book, pos []string, given le
 		return nil, err
 	}
 
-	body, err := given.bodyReader(ctx, deps)
+	closing, err := given.closingReader(ctx, deps)
 	if err != nil {
 		return nil, err
 	}
 
 	added, err := book.Add(ledger.Request{
 		Key: pos[0], Lane: pos[1], Kind: kind, Mechanism: given.mechanism, Model: given.model, Round: given.round,
-		Words: given.words, At: deps.Now(), Body: body,
+		Words: given.words, At: deps.Now(), Closing: closing,
 	})
 
 	return added.Closes, err
 }
 
-// bodyReader gives the reader of the pull request body: the file of --body-file, else the pull request of --pr, else none.
-// The pull request is read only when the ledger asks for the body, so a row that needs no body opens no forge.
-func (f ledgerFlags) bodyReader(ctx context.Context, deps Deps) (read func() (string, error), err error) {
+// closingReader gives the read of the issues the pull request closes: the closing keywords of the file of --body-file, else the read of the pull request of --pr, else none.
+// The pull request is read only when the ledger asks for it, so a row that needs no issues opens no forge.
+func (f ledgerFlags) closingReader(ctx context.Context, deps Deps) (read func() ([]string, error), err error) {
 	switch {
 	case f.bodyFile != "" && f.pr != 0:
 		err = errors.New("give --body-file or --pr, not both")
 	case f.bodyFile != "":
-		read = func() (string, error) { return brief.ReadText(f.bodyFile) }
+		read = func() ([]string, error) {
+			text, err := brief.ReadText(f.bodyFile)
+
+			return ledger.ClosingNumbers(text), err
+		}
 	case f.pr != 0:
-		read = func() (string, error) { return pullBody(ctx, deps, f.pr) }
+		read = func() ([]string, error) { return pullClosing(ctx, deps, f.pr) }
 	}
 
 	return read, err
 }
 
-// pullBody reads the body of a pull request of the origin repository.
-func pullBody(ctx context.Context, deps Deps, pr int) (string, error) {
+// pullClosing reads the issues a pull request of the origin repository closes, with the read that the scope check uses.
+func pullClosing(ctx context.Context, deps Deps, pr int) ([]string, error) {
 	repo, err := originRepo(ctx, deps)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	forge, err := deps.Forge(repo)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return forge.PRBody(ctx, pr)
+	numbers, err := scope.ReaderOf(forge).ClosingIssues(ctx, pr)
+
+	return texts(numbers), err
+}
+
+// texts spells issue numbers in numeric order.
+func texts(numbers []int) []string {
+	spelled := make([]string, 0, len(numbers))
+	for _, number := range slices.Sorted(slices.Values(numbers)) {
+		spelled = append(spelled, strconv.Itoa(number))
+	}
+
+	return spelled
 }
