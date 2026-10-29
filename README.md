@@ -27,6 +27,10 @@ obee item add <name> fix-login --title "Fix the login" --body-file task.md
 obee run fix-login <name> --workflow examples/local/workflow.star
 ```
 
+## Claude Code plugin
+
+`plugins/claude-code` adds five slash commands to Claude Code: `/obee:queue`, `/obee:run`, `/obee:status`, `/obee:answer` and `/obee:cancel`. Each one runs an obee command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.
+
 ## Design
 
 `docs/architecture.md` describes the packages, their layers and the durable loop. The loop runs on DBOS Transact Go with SQLite. The terminal screens use Bubble Tea.

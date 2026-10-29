@@ -1,0 +1,11 @@
+{
+  "name": "obee",
+  "version": "0.1.0",
+  "description": "Drive the obee command line from a Claude Code chat: queue an item, run it, show status, answer a question, cancel a run.",
+  "author": {
+    "name": "tobocop2"
+  },
+  "icon": "./logo.svg",
+  "repository": "https://github.com/tobocop2/obee",
+  "keywords": ["obee", "backlog", "runs"]
+}
