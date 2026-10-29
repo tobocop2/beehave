@@ -1,9 +1,9 @@
 package gate
 
 import (
+	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -12,8 +12,14 @@ import (
 
 type chainShape struct{ name, term, head, join, tail string }
 
-// readChain builds a chain of the given number of terms and reads it. It returns the bytes kept, the length of the job and the time to read.
-func readChain(t *testing.T, shape chainShape, terms int) (kept, size int, took time.Duration) {
+// chainRead is what one read of a chain cost: the bytes the read kept, the bytes it allocated, and the allocations it made.
+type chainRead struct {
+	kept, size        int
+	allocated, allocs uint64
+}
+
+// readChain builds a chain of the given number of terms and reads it. The count covers the read only, not the build of the job or its parse.
+func readChain(t *testing.T, shape chainShape, terms int) chainRead {
 	t.Helper()
 
 	list := repeat(shape.term, terms)
@@ -27,26 +33,38 @@ func readChain(t *testing.T, shape chainShape, terms int) (kept, size int, took 
 
 	job := strings.Join(list, shape.join) + "\n"
 	units, bad := shell.ParseUnits(job)
-	begin := time.Now()
-
-	for _, call := range readGateScript(units).calls {
-		kept += len(call)
-	}
-
 	assert.Empty(t, bad)
 
-	return kept, len(job), time.Since(begin)
+	var before, after runtime.MemStats
+
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	script := readGateScript(units)
+
+	runtime.ReadMemStats(&after)
+
+	read := chainRead{
+		size:      len(job),
+		allocated: after.TotalAlloc - before.TotalAlloc,
+		allocs:    after.Mallocs - before.Mallocs,
+	}
+
+	for _, call := range script.calls {
+		read.kept += len(call)
+	}
+
+	return read
 }
 
-// TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime bounds two costs of the step rules. A chain of n terms must keep about one copy of its text, not n copies. Reading a chain of 4n terms must take less than 8 times as long as reading n terms (linear is 4, quadratic is 16), where a read of n terms counts as at least the floor. Without the race detector the n-term read is under the floor, so the check is then an absolute bound of 8 times the floor. The shapes run one after the other, so that they share no CPU, and each time is the fastest of three reads, so that load from other tests does not count.
-func TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime(t *testing.T) {
-	t.Parallel()
-
+// TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime bounds two costs of the step rules by counting, so that the load of the machine cannot change the result.
+// A chain of n terms must keep about one copy of its text, not n copies. The read of a chain of 4n terms must allocate less than 8 times the bytes, and make less than 8 times the allocations, of the read of n terms (linear is 4, quadratic is 16).
+// A read that walks the chain once for each term allocates for each walk, so a quadratic read shows as quadratic counts.
+// The test runs alone: the counts are those of the whole process, and another test that allocates at the same time would add to them.
+func TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime(t *testing.T) { //nolint:paralleltest // the allocation counts are those of the process
 	const (
 		terms = 5000
 		grow  = 4
-		// The floor keeps a fast read from failing the ratio on timer noise.
-		floor = 50 * time.Millisecond
 	)
 
 	const skip = `echo "GATE-SKIP s: x"`
@@ -65,26 +83,13 @@ func TestReadGateScript_AChainKeepsNoMoreBytesThanTheJobAndIsReadInLinearTime(t 
 	}
 
 	for _, test := range tests {
-		_, _, small := fastestRead(t, test, terms)
-		kept, size, large := fastestRead(t, test, terms*grow)
+		small := readChain(t, test, terms)
+		large := readChain(t, test, terms*grow)
 
-		assert.LessOrEqual(t, kept, size, test.name)
-		assert.Less(t, large, 2*grow*max(small, floor), "%s: the cost of reading a chain is linear in its length", test.name)
+		assert.LessOrEqual(t, large.kept, large.size, "%s: the read keeps no more bytes than the job", test.name)
+		assert.Less(t, large.allocated, 2*grow*max(small.allocated, 1), "%s: the bytes allocated by a read are linear in the length of the chain", test.name)
+		assert.Less(t, large.allocs, 2*grow*max(small.allocs, 1), "%s: the allocations of a read are linear in the length of the chain", test.name)
 	}
-}
-
-// fastestRead reads the chain three times and keeps the fastest time. Load from other tests only makes a read slower, so the fastest of three is the closest to the cost of the read itself.
-func fastestRead(t *testing.T, shape chainShape, terms int) (kept, size int, took time.Duration) {
-	t.Helper()
-
-	kept, size, took = readChain(t, shape, terms)
-
-	for range 2 {
-		_, _, again := readChain(t, shape, terms)
-		took = min(took, again)
-	}
-
-	return kept, size, took
 }
 
 func repeat(term string, count int) []string {
