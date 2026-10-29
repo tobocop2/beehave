@@ -270,6 +270,7 @@ linters:
           list-mode: lax
           files:
             - "**/internal/check/shell/**"
+            - "**/internal/batch/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
             - "**/internal/lease/**"
@@ -286,6 +287,7 @@ linters:
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
             - github.com/tobocop2/obee/internal/check/shell
+            - github.com/tobocop2/obee/internal/batch
             - github.com/tobocop2/obee/internal/claim
             - github.com/tobocop2/obee/internal/gate
             - github.com/tobocop2/obee/internal/lease
@@ -331,6 +333,7 @@ linters:
             - "!**/internal/agent/**"
             - "!**/internal/host/**"
             - "!**/internal/check/**"
+            - "!**/internal/batch/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
             - "!**/internal/lease/**"
