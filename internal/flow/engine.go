@@ -101,21 +101,23 @@ func openStore(opts Options) (store, error) {
 
 // Engine runs the item workflows. Call NewEngine, then Launch, then Run for each item, then Shutdown.
 type Engine struct {
-	ctx     dbos.Context
-	queue   dbos.Queue
-	deps    Deps
-	version string
-	dir     string
-	log     io.Closer
-	lock    *flock.Flock
-	logger  *slog.Logger
-	env     map[string]string
-	redact  func(string) string
-	cancels cancels
-	holds   holds
-	procs   *groups
-	tickEnd chan struct{}
-	tickRun sync.WaitGroup
+	ctx   dbos.Context
+	queue dbos.Queue
+	// itemQueue is the queue of the runs that spawn starts.
+	itemQueue dbos.Queue
+	deps      Deps
+	version   string
+	dir       string
+	log       io.Closer
+	lock      *flock.Flock
+	logger    *slog.Logger
+	env       map[string]string
+	redact    func(string) string
+	cancels   cancels
+	holds     holds
+	procs     *groups
+	tickEnd   chan struct{}
+	tickRun   sync.WaitGroup
 	// launched is the time of the last Launch. A run that was open then and ended after it was resumed by this engine.
 	launched time.Time
 	down     sync.Once
@@ -182,12 +184,12 @@ func applicationVersion(build string) string { return build + "+" + stepsVersion
 // buildVersion is the version that a user starts: a stored version without the version of the builtin steps.
 func buildVersion(stored string) string { return strings.TrimSuffix(stored, "+"+stepsVersion) }
 
-// register adds the workflows and the agents queue: one agent per login, at most maxConcurrent in all.
+// register adds the workflows, the agents queue (one agent per login, at most maxConcurrent in all) and the items queue of spawn.
 func (e *Engine) register(maxConcurrent int) error {
 	dbos.RegisterWorkflow(e.ctx, e.item, dbos.WithWorkflowName(itemName))
 	dbos.RegisterWorkflow(e.ctx, e.phase, dbos.WithWorkflowName(phaseName))
 
-	return e.registerQueue(maxConcurrent)
+	return errors.Join(e.registerQueue(maxConcurrent), e.registerItemQueue(maxConcurrent))
 }
 
 func (e *Engine) registerQueue(maxConcurrent int) error {
@@ -202,6 +204,23 @@ func (e *Engine) registerQueue(maxConcurrent int) error {
 	}
 
 	e.queue = queue
+
+	return nil
+}
+
+// registerItemQueue adds the queue of the runs that spawn starts. It has no partition: the agents queue and the one run per login stay the real limit.
+func (e *Engine) registerItemQueue(maxConcurrent int) error {
+	options := []dbos.QueueOption{dbos.WithGlobalConcurrency(maxConcurrent)}
+	if poll := e.deps.Clock.Poll; poll > 0 {
+		options = append(options, dbos.WithQueueBasePollingInterval(poll))
+	}
+
+	queue, err := dbos.RegisterQueue(e.ctx, itemsQueueName, options...)
+	if err != nil {
+		return fmt.Errorf("register the items queue: %w", err)
+	}
+
+	e.itemQueue = queue
 
 	return nil
 }
@@ -391,7 +410,7 @@ func (e *Engine) resumedByLaunch(last run) bool {
 
 // start picks the login and starts the attempt. A refused pick starts nothing.
 func (e *Engine) start(in ItemInput, attempt int) (dbos.WorkflowHandle[ItemResult], error) {
-	login, err := e.pickLogin(in)
+	login, err := e.pickLogin(e.ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -402,8 +421,8 @@ func (e *Engine) start(in ItemInput, attempt int) (dbos.WorkflowHandle[ItemResul
 }
 
 // pickLogin reads the pool once for a new run. It refuses an empty pick.
-func (e *Engine) pickLogin(in ItemInput) (string, error) {
-	login, err := e.deps.Logins.Pick(e.ctx, in.Project, in.Item)
+func (e *Engine) pickLogin(ctx context.Context, in ItemInput) (string, error) {
+	login, err := e.deps.Logins.Pick(ctx, in.Project, in.Item)
 	if err != nil {
 		return "", fmt.Errorf("pick the login of item %s: %w", in.Item, err)
 	}

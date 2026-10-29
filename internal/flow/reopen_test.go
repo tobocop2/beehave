@@ -82,9 +82,60 @@ func TestReopen_ReportsAStoreThatCannotBeRead(t *testing.T) {
 
 	require.ErrorContains(t, client.reopen("item-1-r1"), "read the steps of item-1-r1")
 
-	_, err = client.reopenChild("child")
+	_, err = client.reopenChild("child", nil)
 	require.ErrorContains(t, err, "read workflow child")
 	require.ErrorContains(t, client.rewind("item-1-r1", 0), "read workflow item-1-r1")
+}
+
+func TestRaised_SkipsAGatherRecordThatIsNotJSON(t *testing.T) {
+	t.Parallel()
+
+	steps := []dbos.StepInfo{
+		{StepName: "gather:a#1", Output: "not json"},
+		{StepName: "gather:b#2", Output: `{"canceled":["item-1-r1"]}`},
+	}
+
+	assert.Equal(t, map[string]bool{"item-1-r1": true}, raised(steps))
+}
+
+func TestReopen_ReportsACanceledItemWhoseStepsCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	client, err := OpenClient(t.Context(), newHarness(t).opts, ReleaseDeps{})
+	require.NoError(t, err)
+	require.NoError(t, client.Close())
+
+	require.ErrorContains(t, client.reopenCanceledPhases("item-1-r1"), "read the steps of item-1-r1")
+	require.ErrorContains(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-1-r1", Status: dbos.WorkflowStatusCancelled}), "read the steps of item-1-r1")
+}
+
+func TestReopen_ReportsACanceledItemWhoseCanceledPhaseIsGone(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.agents.err = errFake
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	_, err := engine.Run(testItem, testProject)
+	require.Error(t, err)
+
+	steps, err := dbos.GetWorkflowSteps(client.flow, "item-12-r1")
+	require.NoError(t, err)
+
+	var children []string
+
+	for _, step := range steps {
+		if step.ChildWorkflowID != "" {
+			children = append(children, step.ChildWorkflowID)
+		}
+	}
+
+	require.NotEmpty(t, children)
+	require.NoError(t, dbos.DeleteWorkflows(client.flow, children))
+
+	require.ErrorIs(t, client.reopenCanceledPhases("item-12-r1"), errNoRow)
+	require.ErrorIs(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-12-r1", Status: dbos.WorkflowStatusCancelled}), errNoRow)
 }
 
 func TestReopen_ReportsAPhaseWhoseInputIsNotReadable(t *testing.T) {

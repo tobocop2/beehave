@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
@@ -11,12 +12,12 @@ import (
 // reopen puts a failed run back in the queue at its first failed step. The steps before it keep their results.
 // A phase that failed is reopened first, so the rerun of the item joins it instead of reading its old error.
 func (c *Client) reopen(id string) error {
-	steps, err := dbos.GetWorkflowSteps(c.flow, id)
+	steps, err := dbos.GetWorkflowSteps(c.flow, id, dbos.WithStepsLoadOutput(true)) // the output of the gather step names the runs that its raise canceled
 	if err != nil {
 		return fmt.Errorf("read the steps of %s: %w", id, err)
 	}
 
-	from, err := c.failedStep(steps)
+	from, err := c.failedStep(steps, raised(steps))
 	if err != nil {
 		return err
 	}
@@ -24,24 +25,53 @@ func (c *Client) reopen(id string) error {
 	return c.rewind(id, from)
 }
 
-// failedStep returns the first step that failed or that started a phase that failed. A run with no such step replays from the end of its history.
-func (c *Client) failedStep(steps []dbos.StepInfo) (int, error) {
+// raised returns the ids of the runs that a gather step of the run canceled when its raise fired. It reads the record before the rewind drops the step.
+// The store keeps the output of a step as JSON text; a step that failed or that holds no record adds nothing.
+func raised(steps []dbos.StepInfo) map[string]bool {
+	ids := map[string]bool{}
+
 	for _, step := range steps {
-		child, err := c.reopenChild(step.ChildWorkflowID)
+		text, ok := step.Output.(string)
+		if !ok || step.Error != nil || !strings.HasPrefix(step.StepName, "gather") {
+			continue
+		}
+
+		var done gathered
+		if json.Unmarshal([]byte(text), &done) != nil {
+			continue
+		}
+
+		for _, id := range done.Canceled {
+			ids[id] = true
+		}
+	}
+
+	return ids
+}
+
+// failedStep returns the first step that failed or that started a child that ended without success. A run with no such step replays from the end of its history.
+// It reopens every such child, not only the first: a gather that raised canceled the children that were still open, and each of them must run again.
+func (c *Client) failedStep(steps []dbos.StepInfo, canceled map[string]bool) (int, error) {
+	first := len(steps)
+
+	for _, step := range steps {
+		child, err := c.reopenChild(step.ChildWorkflowID, canceled)
 		if err != nil {
 			return 0, err
 		}
 
-		if child || step.Error != nil {
-			return step.StepID, nil
+		if (child || step.Error != nil) && step.StepID < first {
+			first = step.StepID
 		}
 	}
 
-	return len(steps), nil
+	return first, nil
 }
 
-// reopenChild reopens the child workflow of a step when it failed, and reports whether it did. An empty id is a step with no child.
-func (c *Client) reopenChild(id string) (bool, error) {
+// reopenChild reopens the child workflow of a step when it failed, or when it is an item run that the raise of a gather canceled, and reports whether it did.
+// A parent that raised after a gather canceled its open children, so a resume of the parent must reopen them with the failed one.
+// A child that a user canceled by hand is not in canceled and stays canceled. An empty id is a step with no child.
+func (c *Client) reopenChild(id string, canceled map[string]bool) (bool, error) {
 	if id == "" {
 		return false, nil
 	}
@@ -51,11 +81,90 @@ func (c *Client) reopenChild(id string) (bool, error) {
 		return false, err
 	}
 
-	if stateOf(row.Status) != runFailed {
+	state := stateOf(row.Status)
+	if state != runFailed && (state != runCancelled || row.Name != itemName || !canceled[id]) {
 		return false, nil
 	}
 
-	return true, c.reopen(id)
+	return true, c.reopenClaimed(row)
+}
+
+// reopenClaimed reopens a failed or canceled child with a fresh claim. The claim goes back when the child does not reopen.
+func (c *Client) reopenClaimed(row dbos.WorkflowStatus) error {
+	project, item, owner, err := c.childClaim(row)
+	if err != nil {
+		return err
+	}
+
+	if err := c.reopenAgain(row); err != nil {
+		return errors.Join(err, c.dropClaim(project, item, owner))
+	}
+
+	return nil
+}
+
+// reopenAgain puts one child back to work. DBOS resumes a canceled run, on the items queue so that the parent can start it again by the same id, and rewinds a failed one.
+func (c *Client) reopenAgain(row dbos.WorkflowStatus) error {
+	if row.Status != dbos.WorkflowStatusCancelled {
+		return c.reopen(row.ID)
+	}
+
+	if err := c.reopenCanceledPhases(row.ID); err != nil {
+		return err
+	}
+
+	_, err := dbos.ResumeWorkflow[ItemResult](c.flow, row.ID, dbos.WithResumeQueue(itemsQueueName))
+
+	return err
+}
+
+// reopenCanceledPhases puts back to work each phase of a canceled item that the cancel reached. The item replays its steps, and a phase that stays canceled would fail it again.
+func (c *Client) reopenCanceledPhases(id string) error {
+	steps, err := dbos.GetWorkflowSteps(c.flow, id)
+	if err != nil {
+		return fmt.Errorf("read the steps of %s: %w", id, err)
+	}
+
+	for _, step := range steps {
+		if step.ChildWorkflowID == "" {
+			continue
+		}
+
+		if err := c.reopenCanceledPhase(step.ChildWorkflowID); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// reopenCanceledPhase puts one child back to work when it is a phase that was canceled.
+func (c *Client) reopenCanceledPhase(id string) error {
+	phase, err := c.row(id)
+	if err != nil || phase.Name != phaseName || stateOf(phase.Status) != runCancelled {
+		return err
+	}
+
+	return c.reopen(id)
+}
+
+// childClaim takes a fresh claim for a failed item run that the parent started, as Resume does for the run it reopens: the child replays its recorded claim step,
+// whose claim was released. A child that is not an item run takes none, and its owner is empty.
+func (c *Client) childClaim(row dbos.WorkflowStatus) (project, item, owner string, err error) {
+	if row.Name != itemName {
+		return "", "", "", nil
+	}
+
+	child := run{Status: row}
+
+	in, err := child.input()
+	if err != nil {
+		return "", "", "", err
+	}
+
+	project, owner, err = c.takeClaim(in.Item, child)
+
+	return project, in.Item, owner, err
 }
 
 // rewind drops the history of the run from one step on and queues the run again. A phase goes back to the agents queue, in the partition of its login.
@@ -65,20 +174,32 @@ func (c *Client) rewind(id string, from int) error {
 		return err
 	}
 
-	options := []dbos.RewindWorkflowOption{dbos.WithRewindStartStep(uint(from))}
-
-	if row.Name == phaseName {
-		var in PhaseInput
-		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
-			return fmt.Errorf("read the input of %s: %w", id, err)
-		}
-
-		options = append(options, dbos.WithRewindQueue(queueName), dbos.WithRewindQueuePartitionKey(in.Login))
+	queued, err := rewindQueue(row)
+	if err != nil {
+		return err
 	}
 
-	_, err = dbos.RewindWorkflow[any](c.flow, id, options...)
+	_, err = dbos.RewindWorkflow[any](c.flow, id, append(queued, dbos.WithRewindStartStep(uint(from)))...)
 
 	return err
+}
+
+// rewindQueue names the queue that a rewound run goes back to. A phase goes to the agents queue, in the partition of its login.
+// A run that spawn started goes back to the items queue: the parent starts it again by the same id, and the library refuses an id that moved to another queue.
+func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
+	switch {
+	case row.Name == phaseName:
+		var in PhaseInput
+		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
+			return nil, fmt.Errorf("read the input of %s: %w", row.ID, err)
+		}
+
+		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queueName), dbos.WithRewindQueuePartitionKey(in.Login)}, nil
+	case row.QueueName == itemsQueueName:
+		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(itemsQueueName)}, nil
+	}
+
+	return nil, nil
 }
 
 // errNoRow is returned when a workflow the store listed is gone.

@@ -38,7 +38,7 @@ type PinnedFile struct {
 
 // Builtins returns the names that the engine predeclares in every workflow file. All are steps or helpers except json, the module of the Starlark library.
 func Builtins() []string {
-	return []string{"agent", "command", "env", "gate", "item_comment", "item_create", "item_status", "json", "merge", "struct", "wait"}
+	return []string{"agent", "command", "env", "gate", "gather", "item_comment", "item_create", "item_status", "json", "merge", "spawn", "struct", "wait"}
 }
 
 // resolveModule turns the argument of a load into a file name: a path in the folder of the workflow, or a library in the binary.
@@ -139,8 +139,9 @@ func Open(file string, pinned []PinnedFile) (*Sources, error) {
 	return s, nil
 }
 
-// Main runs the top level of the workflow file on thread and returns its function main. Loads are served from the pinned bytes.
-func (s *Sources) Main(thread *starlark.Thread, predeclared starlark.StringDict) (starlark.Value, error) { //nolint:ireturn // a global of a file can be any value
+// Entry runs the top level of the workflow file on thread and returns its function name, which is main for an item that a user started
+// and the entry of a spawn call for an item that spawn started. Loads are served from the pinned bytes.
+func (s *Sources) Entry(thread *starlark.Thread, predeclared starlark.StringDict, name string) (starlark.Value, error) { //nolint:ireturn // a global of a file can be any value
 	thread.Load = func(t *starlark.Thread, module string) (starlark.StringDict, error) {
 		return s.load(t, module, predeclared)
 	}
@@ -150,12 +151,19 @@ func (s *Sources) Main(thread *starlark.Thread, predeclared starlark.StringDict)
 		return nil, err
 	}
 
-	main, ok := globals["main"]
+	entry, ok := globals[name]
 	if !ok {
-		return nil, fmt.Errorf("%s defines no function main; add def main(item)", s.main)
+		return nil, fmt.Errorf("%s defines no function %s; add def %s(item)", s.main, name, name)
 	}
 
-	return main, nil
+	return entry, nil
+}
+
+// Defines reports whether the workflow file has a function of that name at the top level. It reads the globals that Entry made, so it is false before Entry ran.
+func (s *Sources) Defines(name string) bool {
+	_, ok := s.modules[s.main][name].(starlark.Callable)
+
+	return ok
 }
 
 func (s *Sources) load(thread *starlark.Thread, module string, predeclared starlark.StringDict) (starlark.StringDict, error) {

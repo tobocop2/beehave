@@ -12,6 +12,8 @@ import (
 	starjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // stepResult is what a builtin records in its DBOS step. Outputs become the fields of the struct the builtin returns.
@@ -28,6 +30,9 @@ type script struct {
 	ctx   dbos.Context
 	in    ItemInput
 	login string
+
+	// sources are the pinned files of the run. spawn asks them whether its entry is a function of the workflow file.
+	sources *workflow.Sources
 
 	// counts holds the number of calls so far of each builtin, which numbers its steps.
 	counts map[string]int

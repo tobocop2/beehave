@@ -25,9 +25,17 @@ type fakeCommands struct {
 	mu       sync.Mutex
 	requests []CommandRequest
 	reply    func(CommandRequest) (CommandOutput, error)
+	// before runs ahead of the lock, so it may wait for the context or for a signal of the test. A non-nil error fails the command.
+	before func(ctx context.Context, request CommandRequest) error
 }
 
-func (c *fakeCommands) Run(_ context.Context, request CommandRequest) (CommandOutput, error) {
+func (c *fakeCommands) Run(ctx context.Context, request CommandRequest) (CommandOutput, error) {
+	if c.before != nil {
+		if err := c.before(ctx, request); err != nil {
+			return CommandOutput{}, err
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

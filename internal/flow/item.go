@@ -22,6 +22,9 @@ type ItemInput struct {
 	Files []workflow.PinnedFile `json:"files,omitempty"`
 	// Login is the agent login that handleFor picked before the run started. DBOS stores the input, so a resume keeps it.
 	Login string `json:"login,omitempty"`
+	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
+	// A run that spawn started has it set to the entry of the spawn call, and such a run cannot spawn.
+	Entry string `json:"entry,omitempty"`
 }
 
 // ItemResult is what a finished item workflow reports.
