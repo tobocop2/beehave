@@ -32,8 +32,11 @@ const (
 	e2eModeBits   = 32
 )
 
-// e2eTools are the programs that the scripts of the local example find on PATH. Nothing else is there: no bd and no gh.
-func e2eTools() []string { return []string{"sh", "git", "sed", "mkdir", "make"} }
+// e2eTools are the programs that the scripts of the examples find on PATH. Nothing else is there: no bd and no gh.
+// The local example needs sh, git, sed, mkdir and make. The check and report scripts of the research example also use grep, sort, cat, dirname, curl and date.
+func e2eTools() []string {
+	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date"}
+}
 
 // e2eReal is the obeereal command of the scripts.
 func e2eReal() {

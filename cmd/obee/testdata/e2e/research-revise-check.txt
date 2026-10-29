@@ -1,0 +1,57 @@
+# The first review asks for changes. The revise step breaks the notes of sub-question 2: its claim has no source.
+# The check runs again after the revise step, names the file, and the item goes back to the research step for it. The second review approves.
+# The claim with no source does not reach the report.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+example research/workflow.star
+example research/project.star config/projects/research.star
+example research/prompts/scope.md
+example research/prompts/research.md
+example research/prompts/review.md
+example research/prompts/revise.md
+example research/prompts/conclude.md
+example research/tools/check.sh
+example research/tools/report.sh
+replace config/projects/research.star '~/work/your-repo' $WORK/origin
+fakeclaude
+serve
+
+env RESEARCH_TOOLS=$WORK/research/tools
+env RESEARCH_OUT=$WORK/out
+
+exec obeereal item add research weigh-ab --title 'Compare A and B' --body-file body.txt
+
+exec obeereal run weigh-ab research --workflow research/workflow.star
+stdout 'item weigh-ab finished'
+
+cmp calls.log expected-calls.log
+cmp found.log expected-found.log
+
+grep '^- Claim 2\. ' out/weigh-ab.md
+! grep 'was revised' out/weigh-ab.md
+! exists out/weigh-ab-unreviewed.md
+
+-- body.txt --
+Compare A and B.
+-- origin/readme.txt --
+The source repository.
+-- revise-breaks --
+-- verdicts --
+changes
+approve
+-- expected-calls.log --
+scope
+research 1
+research 2
+summary
+review
+revise
+research 2
+summary
+review
+-- expected-found.log --
+FAIL notes/2.md: the claim has no source: - Claim 2 was revised and has no source.
