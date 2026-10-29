@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/cli"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // machine is a config folder, a login folder and a PATH folder with fake bd and gh files.
@@ -53,6 +54,10 @@ func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string
 		doctor.BdVersion = currentBd
 	}
 
+	if doctor.ReadUsage == nil {
+		doctor.ReadUsage = func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+	}
+
 	code, stdout, stderr := execDoctor(m, doctor, env)
 	require.Empty(t, stderr)
 
@@ -75,7 +80,7 @@ func TestDoctor_EveryCheckPassesOnAGoodMachine(t *testing.T) {
 	code, out := runDoctor(t, m, cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}, m.env())
 
 	require.Equal(t, 0, code)
-	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   token of a readable\n", out)
+	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
 }
 
 const localProjectFile = "source = \"/srv/repo\"\nbase_branch = \"main\"\ngate = \"make check\"\n"
@@ -91,7 +96,7 @@ func TestDoctor_AProjectWithNoBeadsAndNoGithubNeedsOnlyGit(t *testing.T) {
 	code, out := runDoctor(t, m, cli.Doctor{BdVersion: func(context.Context) error { return errors.New("never asked") }}, m.env())
 
 	require.Equal(t, 0, code)
-	require.Equal(t, "ok   config readable\nok   git on the path\nok   config_dir of a exists\nok   token of a readable\n", out)
+	require.Equal(t, "ok   config readable\nok   git on the path\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
 }
 
 func TestDoctor_GitIsRequiredEvenWhenTheConfigHasNoProject(t *testing.T) {
@@ -146,6 +151,52 @@ func TestDoctor_AMissingConfigDirFailsWithTheLoginCommand(t *testing.T) {
 
 	require.Equal(t, 1, code)
 	require.Contains(t, out, "FAIL config_dir of a exists\n     fix: Log in to it: CLAUDE_CONFIG_DIR="+m.login+" claude\n")
+}
+
+func TestDoctor_ARunnerWithNoPlanLimitsFailsWithTheLoginFix(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+
+	var asked []string
+
+	read := func(_ context.Context, runner model.Runner) model.Reading {
+		asked = append(asked, runner.Name+" "+runner.ConfigDir)
+
+		return model.UnknownLogin("runner a has no Claude plan limits. Log in with `CLAUDE_CONFIG_DIR=" + runner.ConfigDir + " claude` and run /login")
+	}
+
+	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+
+	require.Equal(t, 1, code)
+	require.Equal(t, []string{"a " + m.login}, asked)
+	require.Contains(t, out, "FAIL login of a has plan limits\n     fix: runner a has no Claude plan limits. Log in with `CLAUDE_CONFIG_DIR="+m.login+" claude` and run /login\n")
+}
+
+func TestDoctor_AUsageThatCannotBeReadFailsWithTheReason(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	read := func(context.Context, model.Runner) model.Reading { return model.Unknown("claude is not installed") }
+
+	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+
+	require.Equal(t, 1, code)
+	require.Contains(t, out, "FAIL login of a has plan limits\n     fix: claude is not installed\n")
+}
+
+func TestDoctor_ARunnerWithoutAConfigDirIsNotReadForUsage(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	writeConfig(t, m.config, "runners.hcl", "runner {\nname = \"a\"\nagent = \"claude\"\n}\n")
+
+	read := func(context.Context, model.Runner) model.Reading { return model.Unknown("never asked") }
+
+	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+
+	require.Equal(t, 0, code)
+	require.NotContains(t, out, "login of")
 }
 
 func TestDoctor_AConfigDirThatIsAFileFails(t *testing.T) {
@@ -239,13 +290,16 @@ func TestDoctor_AnOldBdFailsWithTheMessageOfTheVersionCheck(t *testing.T) {
 func TestDoctor_ADoctorWithoutAReaderIsRefusedAndNoCheckRuns(t *testing.T) {
 	t.Parallel()
 
+	usage := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+
 	cases := map[string]struct {
 		doctor cli.Doctor
 		fields []string
 	}{
-		"both":  {cli.Doctor{}, []string{"TokenReadable", "BdVersion"}},
-		"token": {cli.Doctor{BdVersion: currentBd}, []string{"TokenReadable"}},
-		"bd":    {cli.Doctor{TokenReadable: readableTokens}, []string{"BdVersion"}},
+		"all":   {cli.Doctor{}, []string{"TokenReadable", "BdVersion", "ReadUsage"}},
+		"token": {cli.Doctor{BdVersion: currentBd, ReadUsage: usage}, []string{"TokenReadable"}},
+		"bd":    {cli.Doctor{TokenReadable: readableTokens, ReadUsage: usage}, []string{"BdVersion"}},
+		"usage": {cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}, []string{"ReadUsage"}},
 	}
 
 	for name, tc := range cases {
@@ -282,7 +336,7 @@ func TestDoctor_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd, ReadUsage: func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }}}, map[string]string{}, &stdout, &stderr)
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr.String(), "obee: cannot find the home folder")

@@ -69,14 +69,29 @@ func readingOf(subtype string, failure any, body json.RawMessage) model.Reading 
 	}
 
 	var inner struct {
+		Available  *bool                      `json:"rate_limits_available"`
 		RateLimits map[string]json.RawMessage `json:"rate_limits"`
 	}
 
-	if err := decode(body, &inner); err != nil || inner.RateLimits == nil {
+	if err := decode(body, &inner); err != nil {
+		return model.Unknown("the reply is not an object")
+	}
+
+	return readingOfLimits(inner.Available, inner.RateLimits)
+}
+
+// readingOfLimits returns the reading of the rate_limits of a success reply.
+// The CLI says available is false when plan limits do not apply: no login, an API key, Bedrock or Vertex.
+func readingOfLimits(available *bool, limits map[string]json.RawMessage) model.Reading {
+	if available != nil && !*available {
+		return model.UnknownLogin(noPlanLimits)
+	}
+
+	if limits == nil {
 		return model.Unknown("the reply has no rate_limits")
 	}
 
-	usage, reason := usageOf(inner.RateLimits)
+	usage, reason := usageOf(limits)
 	if reason != "" {
 		return model.Unknown(reason)
 	}

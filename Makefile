@@ -5,7 +5,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke mutation \
+.PHONY: setup lint-version deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent mutation \
 	governance-generate governance-validate governance-verify clean check
 
 setup:  ## Install the Go tools and generate the agent files
@@ -58,6 +58,9 @@ coverage:  ## Enforce the coverage gate on coverage.out (run make test first)
 smoke: build  ## Run the built binary: --version prints and exits 0
 	$(BIN) --version | grep -q '^obee '
 	$(REMEDY) --help | grep -q '^usage: remedy '
+
+smoke-agent: build  ## Run examples/local once with the real claude CLI (costs an agent run; not part of check)
+	sh scripts/smoke-agent.sh
 
 # Run on one package: make mutation PKG=./internal/cli/...
 mutation:

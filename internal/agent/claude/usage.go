@@ -30,6 +30,7 @@ const (
 	usageRequestID = "obee-usage"
 	answerMark     = "control_response"
 	noAnswer       = "the CLI ended without answering get_usage"
+	noPlanLimits   = "the reply has no Claude plan limits (rate_limits_available is false)"
 	maxPercent     = 100.0
 	maxOutputBytes = 4 << 20
 	readChunk      = 64 << 10
@@ -67,7 +68,13 @@ func (u UsageReader) Read(ctx context.Context, runner model.Runner) model.Readin
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errReadTimeout)
 	defer cancel()
 
-	return ask(ctx, found, agent.LoginEnv(u.Base, New().Profile(), runner.ConfigDir), timeout)
+	reading := ask(ctx, found, agent.LoginEnv(u.Base, New().Profile(), runner.ConfigDir), timeout)
+	if reading.NeedsLogin() {
+		return model.UnknownLogin(fmt.Sprintf("runner %s has no Claude plan limits, so it is not logged in or it uses an API key. Log in with `CLAUDE_CONFIG_DIR=%s claude` and run /login",
+			runner.Name, runner.ConfigDir))
+	}
+
+	return reading
 }
 
 // locate returns the path of the CLI, or the reason the runner cannot be read.

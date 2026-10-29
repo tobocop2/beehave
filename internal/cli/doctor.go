@@ -15,15 +15,17 @@ import (
 	"github.com/tobocop2/obee/internal/proc"
 )
 
-// ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Both fields are required.
+// ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Every field is required.
 var ErrDoctorIncomplete = errors.New("the doctor is missing a reader")
 
-// Doctor holds the checks that need a program outside the process. Both fields are required: a check that is left out would read as a pass.
+// Doctor holds the checks that need a program outside the process. Every field is required: a check that is left out would read as a pass.
 type Doctor struct {
 	// TokenReadable says whether the Keychain entry holds a token. It never returns the token.
 	TokenReadable func(ctx context.Context, entry string) bool
 	// BdVersion returns why the installed bd is too old to use for claims.
 	BdVersion func(ctx context.Context) error
+	// ReadUsage reads the usage of a runner. Its reading says whether the login of the runner has plan limits.
+	ReadUsage func(ctx context.Context, runner model.Runner) model.Reading
 }
 
 // complete returns an error that names each field that has no value.
@@ -36,6 +38,10 @@ func (d Doctor) complete() error {
 
 	if d.BdVersion == nil {
 		missing = append(missing, "BdVersion")
+	}
+
+	if d.ReadUsage == nil {
+		missing = append(missing, "ReadUsage")
 	}
 
 	if len(missing) == 0 {
@@ -140,6 +146,10 @@ func runnerChecks(ctx context.Context, doctor Doctor, runner model.Runner) []che
 
 	if runner.ConfigDir != "" {
 		checks = append(checks, configDirCheck(runner))
+
+		if runner.Agent == model.AgentClaude {
+			checks = append(checks, loginCheck(ctx, doctor.ReadUsage, runner))
+		}
 	}
 
 	if runner.Keychain != "" {
@@ -156,6 +166,18 @@ func configDirCheck(runner model.Runner) check {
 		}
 
 		return fix("Log in to it: CLAUDE_CONFIG_DIR=" + runner.ConfigDir + " claude")
+	}}
+}
+
+// loginCheck fails when the usage of the runner cannot be read. The reason of the reading is the fix.
+func loginCheck(ctx context.Context, read func(context.Context, model.Runner) model.Reading, runner model.Runner) check {
+	return check{"login of " + runner.Name + " has plan limits", func() error {
+		reading := read(ctx, runner)
+		if _, known := reading.Usage(); known {
+			return nil
+		}
+
+		return fix(reading.Reason())
 	}}
 }
 

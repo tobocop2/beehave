@@ -19,6 +19,8 @@ type Reading struct {
 	usage  Usage
 	reason string
 	known  bool
+
+	needsLogin bool
 }
 
 // Known returns a reading that holds usage.
@@ -29,6 +31,16 @@ func Known(usage Usage) Reading {
 // Unknown returns a reading that holds the reason the usage could not be read.
 func Unknown(reason string) Reading {
 	return Reading{reason: reason}
+}
+
+// UnknownLogin returns an unknown reading for a runner that has no usable login. The reason says how to log in. Waiting does not fix it.
+func UnknownLogin(reason string) Reading {
+	return Reading{reason: reason, needsLogin: true}
+}
+
+// NeedsLogin says whether the usage is unknown because the runner has no usable login.
+func (r Reading) NeedsLogin() bool {
+	return r.needsLogin
 }
 
 // Usage returns the usage and whether the reading holds one.
