@@ -2,12 +2,14 @@ package papers_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/papers"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -90,17 +92,15 @@ var globCases = []globCase{
 	{"bang_negates_other", "x.d", "x.[!c]", true},
 	{"caret_is_literal", "x.^", "x.[^c]", true},
 	{"caret_does_not_negate", "x.d", "x.[^c]", false},
-	{"unclosed_bracket_is_literal", "x[a", "x[a", true},
-	{"unclosed_bracket_matches_nothing_else", "xa", "x[a", false},
-	{"bang_then_close_unclosed", "[!", "[!", true},
-	{"leading_close_is_a_member", "]", "[]a]", true},
-	{"empty_bracket_is_literal", "[]", "[]", true},
-	{"reversed_range_holds_nothing", "b", "[b-a]", false},
-	{"negated_reversed_range_holds_all", "b", "[!b-a]", true},
-	{"trailing_dash_is_literal", "-", "[a-]", true},
 	{"leading_dash_is_literal", "-", "[-a]", true},
-	{"dash_after_range_is_literal", "-", "[a-c-]", true},
-	{"backslash_is_literal", `a\b`, `a\b`, true},
+	{"backslash_escapes_the_next_character", "ab", `a\b`, true},
+	{"backslash_pattern_does_not_match_the_backslash", `a\b`, `a\b`, false},
+	{"braces_choose_between_patterns", "b.go", "{a,b}.go", true},
+	{"braces_with_one_choice_match_it", "x.rs", "{x}.rs", true},
+	{"braces_with_one_choice_are_not_literal", "{x}.rs", "{x}.rs", false},
+	{"escaped_braces_are_literal", "{x}.rs", `\{x\}.rs`, true},
+	{"escaped_star_is_a_star_only", "a*", `a\*`, true},
+	{"escaped_star_does_not_cross", "ab", `a\*`, false},
 	{"case_sensitive", "CRATES/a/src/x", "crates/*/src/*", false},
 	{"star_matches_empty", "a", "a*", true},
 	{"star_backtracks", "abcabd", "*abd", true},
@@ -110,7 +110,20 @@ var globCases = []globCase{
 	{"form_feed_separates", "b.go", "a.go\fb.go", true},
 }
 
-func TestPapers_GlobsMatchAsFnmatchDoes(t *testing.T) {
+func TestPapers_AMalformedPatternIsARefusalThatNamesIt(t *testing.T) {
+	t.Parallel()
+
+	for _, bad := range []string{"x[a", "[!", "[]", "[]a]", "[b-a]", "[!b-a]", "[a-]", "[a-c-]", "[]]", "[!]a]", `a\`, "{", "[!"} {
+		_, err := papers.SourcePaths(t.Context(), diffRunner{model.CommandResult{Stdout: "src/a.rs\n"}}, "A..B", "src/* "+bad)
+
+		var refusal *check.Refusal
+
+		require.ErrorAs(t, err, &refusal, bad)
+		require.ErrorContains(t, err, fmt.Sprintf("the pattern %q is not valid", bad), bad)
+	}
+}
+
+func TestPapers_GlobsMatchTheCasesOfTheTable(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range globCases {

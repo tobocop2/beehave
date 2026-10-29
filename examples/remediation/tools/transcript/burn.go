@@ -18,6 +18,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	xunicode "golang.org/x/text/encoding/unicode"
+
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -195,71 +197,9 @@ func splitLine(data []byte, atEOF bool) (int, []byte, error) {
 
 // replaceBadBytes puts one U+FFFD in the place of each run of bytes that is not valid UTF-8: a cut multi-byte sequence is one run, and any other bad byte is a run of its own.
 func replaceBadBytes(line string) string {
-	if utf8.ValidString(line) {
-		return line
-	}
+	text, _ := xunicode.UTF8.NewDecoder().String(line) //nolint:errcheck // the decoder replaces bad bytes and never fails
 
-	var out strings.Builder
-
-	for rest := line; rest != ""; {
-		char, width := utf8.DecodeRuneInString(rest)
-		if char == utf8.RuneError && width == 1 {
-			width = cutSequence(rest)
-			out.WriteRune(utf8.RuneError)
-		} else {
-			out.WriteString(rest[:width])
-		}
-
-		rest = rest[width:]
-	}
-
-	return out.String()
-}
-
-// cutSequence returns the length of the bytes at the start of text that are the start of a valid multi-byte character, or 1 if the first byte starts none.
-func cutSequence(text string) int {
-	for _, form := range sequences() {
-		if inRange(text[0], form.lead) {
-			return form.cut(text)
-		}
-	}
-
-	return 1
-}
-
-// sequence is the form of a multi-byte UTF-8 character: the range of its lead byte, the range of its second byte, and the count of plain bytes after the second.
-type sequence struct {
-	lead, second [2]byte
-	rest         int
-}
-
-func plainBytes() [2]byte { return [2]byte{0x80, 0xBF} }
-
-func sequences() []sequence {
-	return []sequence{
-		{[2]byte{0xC2, 0xDF}, plainBytes(), 0},
-		{[2]byte{0xE0, 0xE0}, [2]byte{0xA0, 0xBF}, 1},
-		{[2]byte{0xE1, 0xEC}, plainBytes(), 1},
-		{[2]byte{0xED, 0xED}, [2]byte{0x80, 0x9F}, 1},
-		{[2]byte{0xEE, 0xEF}, plainBytes(), 1},
-		{[2]byte{0xF0, 0xF0}, [2]byte{0x90, 0xBF}, 2},
-		{[2]byte{0xF1, 0xF3}, plainBytes(), 2},
-		{[2]byte{0xF4, 0xF4}, [2]byte{0x80, 0x8F}, 2},
-	}
-}
-
-func inRange(char byte, bounds [2]byte) bool { return char >= bounds[0] && char <= bounds[1] }
-
-// cut returns the length of the longest start of the form that text holds.
-func (f sequence) cut(text string) int {
-	width, bounds := 1, f.second
-
-	for step := 0; step < f.rest && width < len(text) && inRange(text[width], bounds); step++ {
-		width++
-		bounds = plainBytes()
-	}
-
-	return width
+	return text
 }
 
 // decodeUsage reads a line that holds exactly one JSON object. Keys match by exact case, and the last of a repeated key wins.

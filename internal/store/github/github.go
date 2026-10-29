@@ -124,9 +124,9 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 		return nil, store.Refuse("REFUSE: cannot read item %s in %s", item, s.repo)
 	}
 
-	issue, err := store.Decode[ghView](viewCommand, done.Stdout)
+	issue, err := model.Decode[ghView](viewCommand, done.Stdout)
 	if err != nil {
-		return nil, err
+		return nil, store.Unreadable(err)
 	}
 
 	title, number, err := ghIssue{Number: issue.Number, Title: issue.Title}.identity()

@@ -2,25 +2,32 @@ package proc
 
 import "strings"
 
-// tailWriter keeps the last limit bytes written to it. It holds at most twice the limit, so an endless output stays bounded.
-type tailWriter struct {
+// Tail is a writer that keeps the last limit bytes written to it. It holds at most twice the limit, so an endless output stays bounded.
+// Make one with NewTail; a Tail from the zero value keeps nothing.
+type Tail struct {
 	data  []byte
 	limit int
 }
 
-func (w *tailWriter) Write(p []byte) (int, error) {
-	w.data = append(w.data, p...)
+// NewTail returns a Tail that keeps the last limit bytes.
+func NewTail(limit int) *Tail {
+	return &Tail{limit: limit}
+}
 
-	if len(w.data) > 2*w.limit {
-		w.data = append(w.data[:0], w.data[len(w.data)-w.limit:]...)
+// Write adds p to the tail and always accepts all of it.
+func (t *Tail) Write(p []byte) (int, error) {
+	t.data = append(t.data, p...)
+
+	if len(t.data) > 2*t.limit {
+		t.data = append(t.data[:0], t.data[len(t.data)-t.limit:]...)
 	}
 
 	return len(p), nil
 }
 
-// text returns the last limit bytes, without a cut character at the start.
-func (w *tailWriter) text() string {
-	data := w.data[max(len(w.data)-w.limit, 0):]
+// Text returns the last limit bytes, without a cut character at the start.
+func (t *Tail) Text() string {
+	data := t.data[max(len(t.data)-t.limit, 0):]
 
 	return strings.ToValidUTF8(string(data), "")
 }

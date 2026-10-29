@@ -16,10 +16,10 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	// The sqlite driver registers itself with the workflow store.
 	_ "github.com/dbos-inc/dbos-transact-golang/dbos/driver/sqlite"
+	"github.com/gofrs/flock"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/filelock"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -105,7 +105,7 @@ type Engine struct {
 	version string
 	dir     string
 	log     io.Closer
-	lock    *filelock.Lock
+	lock    *flock.Flock
 	logger  *slog.Logger
 	env     map[string]string
 	redact  func(string) string
@@ -140,7 +140,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Release(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts.MaxConcurrent))
@@ -451,5 +451,5 @@ func (e *Engine) shutdown() error {
 
 	e.holds.clear()
 
-	return errors.Join(killed, waited, e.log.Close(), e.lock.Release())
+	return errors.Join(killed, waited, e.log.Close(), e.lock.Unlock())
 }

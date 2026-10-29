@@ -9,28 +9,20 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-func TestRefuseDecode_KeepsTheCauseOfEitherKindOfError(t *testing.T) {
+func TestUnreadable_KeepsTheCauseOfADecodeErrorAndPassesAnyOtherErrorThrough(t *testing.T) {
 	t.Parallel()
 
 	other := errors.New("not a decode error")
 
-	tests := []struct {
-		name string
-		err  error
-		want error
-	}{
-		{"decode_error_gives_its_cause", &model.DecodeError{Command: "bd x", Cause: model.ErrNullAnswer}, model.ErrNullAnswer},
-		{"any_other_error_is_the_cause", other, other},
-	}
+	got := Unreadable(&model.DecodeError{Command: "bd x", Cause: model.ErrNullAnswer})
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	var refusal *Error
 
-			got := refuseDecode("bd x", tc.err)
-			require.ErrorIs(t, got, tc.want)
-			require.Equal(t, CodeRefused, got.Code)
-			require.ErrorContains(t, got, "`bd x`")
-		})
-	}
+	require.ErrorAs(t, got, &refusal)
+	require.ErrorIs(t, got, model.ErrNullAnswer)
+	require.Equal(t, CodeRefused, refusal.Code)
+	require.ErrorContains(t, got, "`bd x`")
+
+	require.Equal(t, other, Unreadable(other))
+	require.NoError(t, Unreadable(nil))
 }

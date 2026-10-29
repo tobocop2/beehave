@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/filelock"
+	"github.com/gofrs/flock"
+
+	"github.com/tobocop2/obee/internal/lockfile"
 )
 
 const (
@@ -98,23 +100,23 @@ func (t Table) Publish(text string) error {
 
 // Hold runs the function under an exclusive lock that the system drops when the process ends.
 func (t Table) Hold(run func() error) error {
-	return t.locked(filelock.Exclusive, run)
+	return t.locked((*flock.Flock).Lock, run)
 }
 
 // Share runs the function under a shared lock: other sharers run with it, and a holder does not.
 func (t Table) Share(run func() error) error {
-	return t.locked(filelock.Shared, run)
+	return t.locked((*flock.Flock).RLock, run)
 }
 
-func (t Table) locked(take func(path string) (*filelock.Lock, error), run func() error) error {
+func (t Table) locked(take func(*flock.Flock) error, run func() error) error {
 	lockPath := t.path + lockSuffix
+	held := lockfile.Open(lockPath)
 
-	held, err := take(lockPath)
-	if err != nil {
+	if err := take(held); err != nil {
 		return fail("lock", lockPath, err)
 	}
 
-	return errors.Join(run(), held.Release())
+	return errors.Join(run(), held.Unlock())
 }
 
 // fail returns a refusal that names the file and the cause, or nil for a nil error.

@@ -5,7 +5,6 @@ import (
 	"io"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 )
 
 const (
@@ -110,22 +109,4 @@ func (w *redactWriter) flush() error {
 	}
 
 	return w.emit(rest)
-}
-
-// tailBuffer keeps the last tailBytes bytes written to it, cut on a rune boundary.
-type tailBuffer struct {
-	data []byte
-}
-
-func (t *tailBuffer) Write(data []byte) (int, error) {
-	t.data = append(t.data, data...)
-	if over := len(t.data) - tailBytes; over > 0 {
-		t.data = t.data[over:]
-	}
-
-	for len(t.data) > 0 && !utf8.RuneStart(t.data[0]) {
-		t.data = t.data[1:]
-	}
-
-	return len(data), nil
 }

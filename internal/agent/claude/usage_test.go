@@ -645,6 +645,16 @@ func TestUsageReader_ACLIThatQuitsWithoutReadingTheRequestIsUnknown(t *testing.T
 	}
 }
 
+func TestUsageReader_ANonzeroExitNamesTheLastStderrLineEvenPastTheCap(t *testing.T) {
+	t.Parallel()
+
+	cli := fake(t, "head -c 200000 /dev/zero | tr '\\0' x >&2\necho >&2\necho last >&2\nexit 4\n")
+
+	if reading := cli.read(t, login(t)); reading.Reason() != "claude exited 4: last" {
+		t.Fatalf("reason = %q", reading.Reason())
+	}
+}
+
 func TestUsageReader_ANonzeroExitWithoutAnAnswerIsUnknownWithTheExitCode(t *testing.T) {
 	t.Parallel()
 

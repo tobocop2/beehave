@@ -3,9 +3,9 @@ package beads
 import (
 	"context"
 	"regexp"
-	"slices"
-	"strconv"
 	"strings"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store"
@@ -14,7 +14,7 @@ import (
 // minBd is the oldest bd that has what the claim rows need: the leases with bd heartbeat and bd reclaim, and the guards bd update --if-assignee and --if-status with exit code 13 for a mismatch.
 const minBd = "1.3.2"
 
-var bdVersion = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?`)
+var bdVersion = regexp.MustCompile(`\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?`)
 
 // requireGuards refuses an old bd before a lease write. It asks bd once; a bd that passed is not asked again.
 // Every method that writes a claim row calls it first, so no path reaches a guard flag that the bd does not have.
@@ -42,55 +42,14 @@ func RequireBd(ctx context.Context, run proc.Runner) error {
 		return store.Refuse("store: cannot run `bd --version`: %s. obee needs bd %s or newer for claims", firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes), minBd)
 	}
 
-	found := bdVersion.FindStringSubmatch(done.Stdout)
-	have, readable := versionOf(found)
-
-	if !readable {
+	found := bdVersion.FindString(done.Stdout)
+	if !semver.IsValid("v" + found) {
 		return store.Refuse("obee needs bd %s or newer for claims; cannot read a version from %q", minBd, firstRunes(strings.TrimSpace(done.Stdout), maxStderrRunes))
 	}
 
-	if olderThanMin(have) {
-		return store.Refuse("obee needs bd %s or newer for claims; found %s", minBd, found[0])
+	if semver.Compare("v"+found, "v"+minBd) < 0 {
+		return store.Refuse("obee needs bd %s or newer for claims; found %s", minBd, found)
 	}
 
 	return nil
-}
-
-// version is the numbers of a bd version and whether it is a pre-release.
-type version struct {
-	numbers    [3]int
-	prerelease bool
-}
-
-// versionOf reads a match of bdVersion. It reports false for no match or for a number that is too large.
-func versionOf(found []string) (version, bool) {
-	var have version
-
-	if found == nil {
-		return have, false
-	}
-
-	for i := range have.numbers {
-		number, err := strconv.Atoi(found[i+1])
-		if err != nil {
-			return have, false
-		}
-
-		have.numbers[i] = number
-	}
-
-	have.prerelease = found[4] != ""
-
-	return have, true
-}
-
-// olderThanMin compares a version with minBd. A pre-release is older than its release.
-func olderThanMin(have version) bool {
-	want, _ := versionOf(bdVersion.FindStringSubmatch(minBd))
-
-	if have.numbers != want.numbers {
-		return slices.Compare(have.numbers[:], want.numbers[:]) < 0
-	}
-
-	return have.prerelease
 }
