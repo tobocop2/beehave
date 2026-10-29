@@ -30,6 +30,7 @@ const (
 	executorName = "local"
 	queueName    = "agents"
 	itemName     = "item"
+	treeName     = "tree"
 	phaseName    = "phase"
 	ownerTopic   = "owner"
 	databaseFile = "dbos.db"

@@ -15,7 +15,7 @@ const workflowDir = ".github/workflows/"
 func (a *attempt) checks() *refusal {
 	rows, err := a.forge.PRChecks(a.ctx, a.req.PR)
 	if err != nil {
-		return refuse(err.Error(), fmt.Sprintf("REFUSE: cannot read the checks for #%d", a.req.PR))
+		return transient(err.Error(), fmt.Sprintf("REFUSE: cannot read the checks for #%d", a.req.PR))
 	}
 
 	a.saveLogs(rows)
@@ -67,7 +67,7 @@ func (a *attempt) judge(rows []model.Check) ([]string, *refusal) {
 	case len(found.bad) > 0:
 		return nil, refuse("REFUSE: checks are not green: " + strings.Join(found.bad, ","))
 	case len(found.running) > 0:
-		return nil, refuse(fmt.Sprintf("REFUSE: checks still running: %s. Wait for them.", strings.Join(found.running, ",")))
+		return nil, transient(fmt.Sprintf("REFUSE: checks still running: %s. Wait for them.", strings.Join(found.running, ",")))
 	case found.green == 0 && !a.req.AllowNoChecks:
 		return nil, refuse(
 			fmt.Sprintf("REFUSE: no check passed (%d reported, 0 passed). CI did not run on this head.", len(rows)),

@@ -31,10 +31,10 @@ func (e *Engine) scrub(err error) error {
 }
 
 // runStep runs fn as the step name. An error of the step passes through the redactor before it returns to DBOS.
-func runStep[T any](e *Engine, ctx dbos.Context, name string, fn func(context.Context) (T, error)) (T, error) { //nolint:ireturn // the step returns the caller's own type
+func runStep[T any](e *Engine, ctx dbos.Context, name string, fn func(context.Context) (T, error), opts ...dbos.StepOption) (T, error) { //nolint:ireturn // the step returns the caller's own type
 	return dbos.RunAsStep(ctx, func(c context.Context) (T, error) {
 		out, err := fn(c)
 
 		return out, e.scrub(err)
-	}, dbos.WithStepName(name))
+	}, append([]dbos.StepOption{dbos.WithStepName(name)}, opts...)...)
 }

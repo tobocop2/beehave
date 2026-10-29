@@ -68,10 +68,10 @@ func e2eFlow(dir, path string) cli.Flow {
 		Engine: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Runner, error) {
 			files := e2eFiles{dir: dir}
 
-			engine, err := flow.NewEngine(ctx, opts, flow.Deps{
+			engine, err := flow.NewEngine(ctx, opts, withBatch(flow.Deps{
 				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{},
 				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files, Items: files,
-			})
+			}, dir, cfg))
 			if err != nil {
 				return nil, err
 			}
@@ -429,7 +429,7 @@ func TestScripts(t *testing.T) {
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
 			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus,
 			"example": cmdExample, "subst": cmdSubst, "isolate": cmdIsolate, "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
-			"replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude,
+			"batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude,
 		},
 	})
 }

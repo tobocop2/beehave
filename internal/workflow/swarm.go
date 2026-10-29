@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	spawnName    = "spawn"
-	gatherName   = "gather"
-	entryKeyword = "entry"
-	failKeyword  = "fail"
+	spawnName      = "spawn"
+	gatherName     = "gather"
+	batchMergeName = "batch_merge"
+	entryKeyword   = "entry"
+	failKeyword    = "fail"
+	nameKeyword    = "name"
 	// secondArgument is the position of entry in a spawn call and of fail in a gather call.
 	secondArgument = 1
 )
@@ -47,11 +49,21 @@ func (g *graph) swarmCall(call *syntax.CallExpr) {
 
 	switch fn.Name {
 	case spawnName:
-		g.keywords(call, spawnName, []string{"items", "entry", "name"})
+		g.keywords(call, spawnName, []string{"items", "entry", nameKeyword})
 		g.entry(call)
 	case gatherName:
-		g.keywords(call, gatherName, []string{"runs", "fail", "name"})
+		g.keywords(call, gatherName, []string{"runs", "fail", nameKeyword})
 		g.failMode(call)
+	case batchMergeName:
+		g.keywords(call, batchMergeName, []string{"prs", "base", "repo", "hold", "own", "forbid_text", "gate_run", nameKeyword})
+		g.batchName(call)
+	}
+}
+
+// batchName reports a batch_merge call with no `name` keyword. The name makes the step names of the call unique, and the run refuses the call without it.
+func (g *graph) batchName(call *syntax.CallExpr) {
+	if argument(call, nameKeyword, len(call.Args)) == nil {
+		g.report(placeOf(call.Lparen), batchMergeName+" needs a `name` keyword. Add name = \"...\", one for each call of the run.")
 	}
 }
 

@@ -50,7 +50,7 @@ func ownRefusal(lines ...string) *refusal {
 func (a *attempt) read() *refusal {
 	view, err := a.forge.PRView(a.ctx, a.req.PR, a.asked()...)
 	if err != nil {
-		return refuse(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
+		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}
 
 	a.view = view

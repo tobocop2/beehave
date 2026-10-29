@@ -36,12 +36,17 @@ func (a *attempt) pin() *refusal {
 func (a *attempt) state() *refusal {
 	view := a.view
 	if view.IsDraft == nil {
-		return refuse(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
+		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}
 
 	state, base, head, mergeable := text(view.State), text(view.BaseRefName), text(view.HeadRefOid), text(view.Mergeable)
 	a.say("before: " + tsvLine(state, strconv.FormatBool(*view.IsDraft), base, head, mergeable))
 
+	return a.readRefusal(state, base, head, mergeable)
+}
+
+// readRefusal refuses a first read whose state, base, head or mergeable value is not the one the merge needs.
+func (a *attempt) readRefusal(state, base, head, mergeable string) *refusal {
 	switch {
 	case state != "OPEN" && !a.replayed():
 		return refuse("REFUSE: state is " + state)
@@ -49,6 +54,8 @@ func (a *attempt) state() *refusal {
 		return refuse(fmt.Sprintf("REFUSE: base is %s, expected %s", base, a.req.Base))
 	case head != a.req.Gated:
 		return refuse(fmt.Sprintf("REFUSE: head %s is not the gated %s. Re-gate.", head, a.req.Gated))
+	case mergeable == "UNKNOWN" && !a.replayed():
+		return &refusal{stop: Refused, reason: Unsettled, lines: []string{"REFUSE: mergeable is UNKNOWN"}}
 	case mergeable != "MERGEABLE" && !a.replayed():
 		return refuse("REFUSE: mergeable is " + mergeable)
 	}

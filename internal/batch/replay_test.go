@@ -21,6 +21,21 @@ func TestRun_GateOutputWithAnotherTreeFailsLoudly(t *testing.T) {
 	require.EqualError(t, err, "the recorded gate ran on tree t:zzz, and the union is tree t:a")
 }
 
+func TestRun_TheRecordedGateInputHoldsTheTreeOfTheUnion(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	_, err := Run(context.Background(), w.deps(), members("a"))
+	require.NoError(t, err)
+
+	var env struct {
+		Input gateInput `json:"input"`
+	}
+	require.NoError(t, json.Unmarshal(w.store.data["batch:q.gate#1"], &env))
+
+	assert.Equal(t, "t:a", env.Input.Tree, "a gate record names the union it gated")
+}
+
 func TestRun_RecordedGateOutputWithAnotherTreeFailsOnReplay(t *testing.T) {
 	t.Parallel()
 
