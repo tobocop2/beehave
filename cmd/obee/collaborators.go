@@ -236,7 +236,7 @@ type treeFinder interface {
 	Path(ctx context.Context, project, item string) (string, error)
 }
 
-// programs runs the programs of command steps. A step with no host runs in the worktree of the item, or in the folder of the process when the item has none.
+// programs runs the programs of command steps. A step with no host runs in the worktree of the item, or in a new empty folder that obee removes afterwards when the item has none.
 // A step with a host runs as one job on the host of the project. A host job has no output to read: its stdout is empty and its code is 0 or 1.
 type programs struct {
 	trees treeFinder
@@ -262,10 +262,37 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
 	}
 
+	return p.inFolder(ctx, request, dir)
+}
+
+// inFolder runs the program of the request in dir, or in a new empty folder when dir is empty.
+func (p programs) inFolder(ctx context.Context, request flow.CommandRequest, dir string) (flow.CommandOutput, error) {
+	dir, cleanup, err := commandFolder(dir, request.Item)
+	if err != nil {
+		return flow.CommandOutput{}, err
+	}
+
+	defer cleanup()
+
 	spec := proc.ExecRunner{Binary: request.Run[0], Dir: dir, Timeout: request.Timeout, Only: request.Env, Stdin: request.Stdin}
 	result := p.exec(spec).Run(ctx, request.Run[1:])
 
 	return flow.CommandOutput{Stdout: result.Stdout, RC: result.ExitCode}, nil
+}
+
+// commandFolder returns dir, or a new empty folder when dir is empty because the item has no worktree. The program then never touches the folder where obee started.
+// The returned function removes a new folder, and does nothing for dir.
+func commandFolder(dir, item string) (string, func(), error) {
+	if dir != "" {
+		return dir, func() {}, nil
+	}
+
+	scratch, err := os.MkdirTemp("", "obee-command-")
+	if err != nil {
+		return "", nil, fmt.Errorf("make an empty folder for the command of item %s: %w", item, err)
+	}
+
+	return scratch, func() { _ = os.RemoveAll(scratch) }, nil
 }
 
 func (p programs) onHost(ctx context.Context, request flow.CommandRequest) (flow.CommandOutput, error) {
