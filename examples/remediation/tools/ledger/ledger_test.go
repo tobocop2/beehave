@@ -1,25 +1,21 @@
 package ledger_test
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
-)
-
-const (
-	tab   = "\t"
-	stamp = "2026-10-10T12:30Z"
 )
 
 var at = time.Date(2026, 10, 10, 12, 30, 0, 0, time.UTC)
@@ -39,22 +35,6 @@ func newHarness(t *testing.T) *harness {
 }
 
 func (h *harness) file() string { return filepath.Join(h.dir, ledger.FileName) }
-
-func (h *harness) closesFile() string { return h.file() + ".closes" }
-
-func (h *harness) write(path, text string) {
-	h.t.Helper()
-	require.NoError(h.t, os.WriteFile(path, []byte(text), 0o600))
-}
-
-func (h *harness) text(path string) string {
-	h.t.Helper()
-
-	data, err := os.ReadFile(path) //nolint:gosec // a file inside the temporary folder of the test
-	require.NoError(h.t, err)
-
-	return string(data)
-}
 
 func (h *harness) add(key, lane string, kind ledger.Kind, mechanism string) ledger.Added {
 	h.t.Helper()
@@ -112,20 +92,7 @@ func TestAdd_OneRowForEachLaneFixLanesCountedAndASecondAddAddsNothing(t *testing
 	assert.Equal(t, 1, h.count("792", "rework"))
 	assert.Equal(t, 1, h.count("792", "design"))
 	assert.Equal(t, 2, h.prior("792", "fix-3"))
-	assert.Equal(t, "792"+tab+"fix-1"+tab+"fix"+tab+stamp, h.text(h.file())[:len("792"+tab+"fix-1"+tab+"fix"+tab+stamp)])
-	assert.Equal(t, 5, countLines(h.text(h.file())))
-}
-
-func countLines(text string) int {
-	n := 0
-
-	for _, r := range text {
-		if r == '\n' {
-			n++
-		}
-	}
-
-	return n
+	assert.Equal(t, 5, h.count("792", "fix|rework|relay|design")+h.count("790", ""))
 }
 
 func TestAdd_APapersRowIsRecordedAndCountsAsNoFixLane(t *testing.T) {
@@ -144,11 +111,10 @@ func TestAdd_ADesignRowIgnoresTheMechanismAndAReviewRowIsNotAFixLane(t *testing.
 	t.Parallel()
 
 	h := newHarness(t)
-	h.write(h.closesFile(), "792"+tab+"-\n")
-	h.add("792", "des-1", ledger.KindDesign, "robots")
-	h.add("792", "rev-1", ledger.KindReview, "robots")
-
-	assert.Equal(t, "792"+tab+"des-1"+tab+"design"+tab+stamp+"\n792"+tab+"rev-1"+tab+"review"+tab+stamp+"\n", h.text(h.file()))
+	assert.Equal(t, ledger.Added{}, h.add("792", "des-1", ledger.KindDesign, "robots"))
+	assert.Equal(t, ledger.Added{FirstReview: true}, h.add("792", "rev-1", ledger.KindReview, "robots"))
+	assert.Equal(t, 0, h.count("792", ""))
+	assert.Equal(t, ledger.Rounds{}, h.rounds("792", "robots"))
 }
 
 func TestAdd_ABadAddIsARefusalThatNamesTheFixAndWritesNothing(t *testing.T) {
@@ -225,7 +191,6 @@ func TestRounds_CountPatchRoundsOnAMechanismSinceTheLastDesignRow(t *testing.T) 
 	t.Parallel()
 
 	h := newHarness(t)
-	h.write(h.closesFile(), "792"+tab+"-\n")
 
 	assert.Equal(t, ledger.Rounds{}, h.rounds("792", "robots"))
 
@@ -259,7 +224,6 @@ func TestRounds_AReworkRowAloneOpensARoundAndARelayRowDoesNot(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.write(h.closesFile(), "792"+tab+"-\n")
 	h.add("792", "rev-1", ledger.KindReview, "")
 	h.add("792", "fix-1", ledger.KindRework, "robots")
 
@@ -281,40 +245,7 @@ func TestAdd_TheSameLaneNameUnderTwoKeysHasARowUnderEach(t *testing.T) {
 
 	assert.Equal(t, ledger.Added{FixLanes: 1}, h.add("792", "fix-1", ledger.KindFix, ""))
 	assert.Equal(t, 1, h.count("792", ""))
-	assert.Equal(t, 2, countLines(h.text(h.file())))
-}
-
-func TestReads_ARowEndingInACarriageReturnKeepsItInTheLastColumn(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.file(), "792\tfix-1\tfix\tT\trobots\r\n792\tfix-2\tfix\tT\trobots\r\n")
-
-	assert.Equal(t, ledger.Rounds{}, h.rounds("792", "robots"), "the mechanism column reads robots with the carriage return")
-	assert.Equal(t, 2, h.count("792", ""))
-
-	h.write(h.file(), "792\tfix-1\tfix\tT\rx\n")
-	assert.Equal(t, 1, h.count("792", ""), "a lone carriage return does not split a row")
-}
-
-func TestCloses_AFileWithCarriageReturnsPrintsThem(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.closesFile(), "792\t41\r\n792\t42\n")
-
-	got, err := h.ledger.Closes("792")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"41\r", "42"}, got)
-}
-
-func TestCount_ALastRowWithNoNewlineIsStillARow(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.file(), "1\ta\tfix\tT")
-
-	assert.Equal(t, 1, h.count("1", ""))
+	assert.Equal(t, 1, h.count("790", ""))
 }
 
 func TestCount_MatchesAKindListByBarsAroundEachKind(t *testing.T) {
@@ -328,21 +259,8 @@ func TestCount_MatchesAKindListByBarsAroundEachKind(t *testing.T) {
 	assert.Equal(t, 0, h.count("1", "pap"))
 	assert.Equal(t, 0, h.count("1", "ix"))
 	assert.Equal(t, 1, h.count("1", ""))
-
-	h.write(h.file(), "1\n")
-	assert.Equal(t, 1, h.count("1", "fix|"), "a list that ends in a bar also matches a row with no kind")
-	assert.Equal(t, 0, h.count("1", "fix"))
-}
-
-func TestReads_AShortRowHasEmptyColumnsAndCountsAsNothing(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.file(), "1\n\n1\ta\n")
-
-	assert.Equal(t, 0, h.count("1", ""))
-	assert.Equal(t, 0, h.prior("1", "z"))
-	assert.Equal(t, ledger.Rounds{}, h.rounds("1", "m"))
+	assert.Equal(t, 1, h.count("1", "fix|"))
+	assert.Equal(t, 1, h.count("1", "fix"))
 }
 
 func TestAdd_TheFirstReviewRecordsTheIssuesTheBodyCloses(t *testing.T) {
@@ -377,16 +295,14 @@ func TestAdd_TheFirstReviewRecordsTheIssuesTheBodyCloses(t *testing.T) {
 
 			assert.Equal(t, ledger.Added{FirstReview: true, Closes: tc.recorded}, added)
 
-			var want strings.Builder
-			for _, number := range tc.recorded {
-				want.WriteString("792" + tab + number + "\n")
+			want := tc.recorded
+			if len(want) == 0 {
+				want = []string{"-"}
 			}
 
-			if want.Len() == 0 {
-				want.WriteString("792" + tab + "-\n")
-			}
-
-			assert.Equal(t, want.String(), h.text(h.closesFile()))
+			got, err := h.ledger.Closes("792")
+			require.NoError(t, err)
+			assert.Equal(t, want, got)
 		})
 	}
 }
@@ -423,7 +339,6 @@ func TestAdd_ABodyThatCannotBeReadWritesNothing(t *testing.T) {
 
 	require.ErrorIs(t, err, failure)
 	assert.NoFileExists(t, h.file())
-	assert.NoFileExists(t, h.closesFile())
 }
 
 func TestAdd_AReviewWithNoBodyReaderIsARefusal(t *testing.T) {
@@ -438,36 +353,7 @@ func TestAdd_AReviewWithNoBodyReaderIsARefusal(t *testing.T) {
 	assert.Contains(t, err.Error(), "the first review of '792' needs the pull request body.")
 }
 
-func TestAdd_AClosesRowWithAnEmptyIssueColumnIsNotAFirstReview(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.closesFile(), "12"+tab+"\n")
-
-	added, err := h.ledger.Add(ledger.Request{Key: "12", Lane: "rv-1", Kind: ledger.KindReview, At: at, Body: body("Closes #5")})
-	require.NoError(t, err)
-	assert.Equal(t, ledger.Added{FirstReview: true, Closes: []string{"5"}}, added)
-
-	got, err := h.ledger.Closes("12")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"", "5"}, got)
-}
-
-func TestAdd_ALedgerThatCannotBeWrittenIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	require.NoError(t, os.Symlink(filepath.Join(h.dir, "gone", "x"), h.file()))
-
-	_, err := h.ledger.Add(ledger.Request{Key: "1", Lane: "a", Kind: ledger.KindFix, At: at})
-
-	var refusal *check.Refusal
-
-	require.ErrorAs(t, err, &refusal)
-	assert.Contains(t, err.Error(), "cannot write "+h.file()+": no such file or directory")
-}
-
-func TestAdd_AFolderThatDoesNotExistIsARefusalThatNamesTheLock(t *testing.T) {
+func TestAdd_AFolderThatDoesNotExistIsARefusalThatNamesTheFile(t *testing.T) {
 	t.Parallel()
 
 	missing := filepath.Join(t.TempDir(), "gone")
@@ -476,36 +362,51 @@ func TestAdd_AFolderThatDoesNotExistIsARefusalThatNamesTheLock(t *testing.T) {
 	var refusal *check.Refusal
 
 	require.ErrorAs(t, err, &refusal)
-	assert.Contains(t, err.Error(), "cannot lock "+filepath.Join(missing, ledger.FileName)+".lock: no such file or directory")
+	assert.Contains(t, err.Error(), "cannot open "+filepath.Join(missing, ledger.FileName)+": ")
+	assert.Contains(t, err.Error(), "no such file or directory")
+	assert.NotContains(t, err.Error(), "open "+filepath.Join(missing, ledger.FileName)+": open")
 }
 
-func TestReads_AFileThatCannotBeReadIsARefusalThatNamesIt(t *testing.T) {
+func TestReads_AFolderThatDoesNotExistIsARefusalAndAMissingFileHasNoRows(t *testing.T) {
 	t.Parallel()
 
-	for _, which := range []string{"ledger", "closes"} {
-		t.Run(which, func(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "gone")
+	_, err := ledger.Open(missing).Count("1", "")
+
+	var refusal *check.Refusal
+
+	require.ErrorAs(t, err, &refusal)
+	assert.Contains(t, err.Error(), "cannot read "+filepath.Join(missing, ledger.FileName)+": no such file or directory")
+
+	count, err := ledger.Open(t.TempDir()).Count("1", "")
+	require.NoError(t, err)
+	assert.Zero(t, count)
+}
+
+func TestReads_AFileThatIsNotALedgerIsARefusalThatNamesIt(t *testing.T) {
+	t.Parallel()
+
+	for name, prepare := range map[string]func(h *harness){
+		"a directory": func(h *harness) { require.NoError(t, os.Mkdir(h.file(), 0o700)) },
+		"not sqlite":  func(h *harness) { require.NoError(t, os.WriteFile(h.file(), []byte("792\tfix-1\tfix\n"), 0o600)) },
+	} {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			h := newHarness(t)
-			target := h.file()
-
-			if which == "closes" {
-				target = h.closesFile()
-			}
-
-			require.NoError(t, os.Mkdir(target, 0o700))
-
-			var err error
-			if which == "ledger" {
-				_, err = h.ledger.Count("792", "")
-			} else {
-				_, err = h.ledger.Closes("792")
-			}
+			prepare(h)
 
 			var refusal *check.Refusal
 
+			_, err := h.ledger.Count("792", "")
 			require.ErrorAs(t, err, &refusal)
-			assert.Contains(t, err.Error(), "cannot read "+target+": is a directory")
+			assert.Contains(t, err.Error(), h.file())
+
+			_, err = h.ledger.Closes("792")
+			require.ErrorAs(t, err, &refusal)
+
+			_, err = h.ledger.Add(ledger.Request{Key: "1", Lane: "a", Kind: ledger.KindFix, At: at})
+			require.ErrorAs(t, err, &refusal)
 		})
 	}
 }
@@ -537,17 +438,18 @@ func TestAdd_ANonAsciiDigitIsNotAPullRequestKey(t *testing.T) {
 	assert.NoFileExists(t, h.file())
 }
 
-func TestAdd_TheRowTimeIsUTCToTheMinuteWithAColon(t *testing.T) {
+func TestSince_TheRowTimeIsUTCToTheMinute(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name string
 		when time.Time
-		want string
+		now  time.Time
+		days int
 	}{
-		{"utc", at, "2026-10-10T12:30Z"},
-		{"seconds_dropped", time.Date(2026, 1, 2, 3, 4, 59, 0, time.UTC), "2026-01-02T03:04Z"},
-		{"zone_converted", time.Date(2026, 1, 2, 3, 4, 0, 0, time.FixedZone("plus-two", 2*60*60)), "2026-01-02T01:04Z"},
+		{"utc", at, at.Add(48 * time.Hour), 2},
+		{"seconds_dropped", time.Date(2026, 1, 2, 3, 4, 59, 0, time.UTC), time.Date(2026, 1, 3, 3, 4, 0, 0, time.UTC), 1},
+		{"zone_converted", time.Date(2026, 1, 2, 3, 4, 0, 0, time.FixedZone("plus-two", 2*60*60)), time.Date(2026, 1, 3, 1, 4, 0, 0, time.UTC), 1},
 	}
 
 	for _, tc := range cases {
@@ -557,61 +459,25 @@ func TestAdd_TheRowTimeIsUTCToTheMinuteWithAColon(t *testing.T) {
 			h := newHarness(t)
 			_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "fix-1", Kind: ledger.KindFix, At: tc.when})
 			require.NoError(t, err)
-			assert.Equal(t, "7"+tab+"fix-1"+tab+"fix"+tab+tc.want+"\n", h.text(h.file()))
-		})
-	}
-}
 
-func TestAdd_ALaneRowKeepsTheMechanismTheModelAndTheRoundInOrder(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name    string
-		request ledger.Request
-		want    string
-	}{
-		{"all_three", ledger.Request{Mechanism: "robots", Model: "sonnet", Round: 2}, tab + "robots" + tab + "sonnet" + tab + "2"},
-		{"mechanism_only", ledger.Request{Mechanism: "robots"}, tab + "robots"},
-		{"model_without_mechanism", ledger.Request{Model: "sonnet"}, tab + tab + "sonnet"},
-		{"round_without_the_rest", ledger.Request{Round: 3}, tab + tab + tab + "3"},
-		{"none", ledger.Request{}, ""},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := newHarness(t)
-			tc.request.Key, tc.request.Lane, tc.request.Kind, tc.request.At = "7", "fix-1", ledger.KindRework, at
-			_, err := h.ledger.Add(tc.request)
+			days, found, err := h.ledger.Since("7", ledger.KindFix, tc.now)
 			require.NoError(t, err)
-			assert.Equal(t, "7"+tab+"fix-1"+tab+"rework"+tab+stamp+tc.want+"\n", h.text(h.file()))
+			assert.True(t, found)
+			assert.Equal(t, tc.days, days)
 		})
 	}
 }
 
-func TestAdd_AReviewRowKeepsNoLaneColumns(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.closesFile(), "7"+tab+"-\n")
-	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, Mechanism: "m", Model: "opus", Round: 4, At: at})
-	require.NoError(t, err)
-	assert.Equal(t, "7"+tab+"rev-1"+tab+"review"+tab+stamp+"\n", h.text(h.file()))
-}
-
-func TestAdd_FilesAreCreatedWithMode0600(t *testing.T) {
+func TestAdd_TheFileIsCreatedWithMode0600(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #1")})
 	require.NoError(t, err)
 
-	for _, path := range []string{h.file(), h.closesFile()} {
-		info, err := os.Stat(path)
-		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), path)
-	}
+	info, err := os.Stat(h.file())
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestAdd_TwoHundredConcurrentAddsWriteEachLaneOnce(t *testing.T) {
@@ -619,7 +485,15 @@ func TestAdd_TwoHundredConcurrentAddsWriteEachLaneOnce(t *testing.T) {
 
 	h := newHarness(t)
 
-	const lanes = 200
+	const (
+		lanes    = 200
+		inFlight = 8
+	)
+
+	// An Add waits at most 30 seconds for the lock, then returns the locked error. SQLite polls the lock with a sleep, so 400 Adds
+	// that all wait at once starve each other, and the last ones come close to the 30 seconds on a loaded machine.
+	// The semaphore bounds the Adds in flight; every lane still gets both of its writers.
+	slots := make(chan struct{}, inFlight)
 
 	var group sync.WaitGroup
 
@@ -632,6 +506,9 @@ func TestAdd_TwoHundredConcurrentAddsWriteEachLaneOnce(t *testing.T) {
 			go func() {
 				defer group.Done()
 
+				slots <- struct{}{}
+				defer func() { <-slots }()
+
 				_, err := ledger.Open(h.dir).Add(ledger.Request{Key: "9", Lane: "fix-" + strconv.Itoa(i), Kind: ledger.KindFix, At: at})
 				failures <- err
 			}()
@@ -641,22 +518,33 @@ func TestAdd_TwoHundredConcurrentAddsWriteEachLaneOnce(t *testing.T) {
 	group.Wait()
 	close(failures)
 
+	adds := 0
+
 	for err := range failures {
 		require.NoError(t, err)
+
+		adds++
 	}
 
+	assert.Equal(t, 2*lanes, adds)
 	assert.Equal(t, lanes, h.count("9", ""))
-	assert.Equal(t, lanes, countLines(h.text(h.file())))
+}
+
+func (h *harness) addAt(key, lane string, kind ledger.Kind, when time.Time) {
+	h.t.Helper()
+
+	_, err := h.ledger.Add(ledger.Request{Key: key, Lane: lane, Kind: kind, At: when})
+	require.NoError(h.t, err)
 }
 
 func TestSince_CountsWholeDaysFromTheLatestRowOfAKind(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.write(h.file(), "792\tm-1\tpapers\t2026-10-01T00:00Z\n"+
-		"792\tm-2\tpapers\t2026-10-05T10:00Z\n"+
-		"792\tf-1\tfix\t2026-10-09T00:00Z\n"+
-		"790\tm-3\tpapers\t2026-10-09T00:00Z\n")
+	h.addAt("792", "m-1", ledger.KindPapers, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
+	h.addAt("792", "m-2", ledger.KindPapers, time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC))
+	h.addAt("792", "f-1", ledger.KindFix, time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC))
+	h.addAt("790", "m-3", ledger.KindPapers, time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC))
 
 	now := time.Date(2026, 10, 10, 9, 59, 0, 0, time.UTC)
 	days, found, err := h.ledger.Since("792", ledger.KindPapers, now)
@@ -674,25 +562,11 @@ func TestSince_CountsWholeDaysFromTheLatestRowOfAKind(t *testing.T) {
 	assert.False(t, found)
 }
 
-func TestSince_ARowWithATimeThatIsNotUTCIsARefusal(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.write(h.file(), "792\tm-1\tpapers\tyesterday\n")
-
-	_, _, err := h.ledger.Since("792", ledger.KindPapers, at)
-
-	var refusal *check.Refusal
-
-	require.ErrorAs(t, err, &refusal)
-	assert.Contains(t, err.Error(), "'yesterday'")
-}
-
 func TestSince_ATimeInTheFutureIsZeroDays(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.write(h.file(), "792\tm-1\tpapers\t2027-01-01T00:00Z\n")
+	h.addAt("792", "m-1", ledger.KindPapers, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	days, found, err := h.ledger.Since("792", ledger.KindPapers, at)
 	require.NoError(t, err)
@@ -723,177 +597,112 @@ func TestParseKind(t *testing.T) {
 	require.EqualError(t, err, "'survey' is not a lane kind. Use fix, rework, relay, review, design, papers or owner-add.")
 }
 
-type failingRows struct {
-	listErr, appendErr, holdErr error
-}
+// breakWith adds a trigger to the ledger file that fails every insert into the table.
+func (h *harness) breakWith(table string) {
+	h.t.Helper()
 
-func (f failingRows) List() ([][]string, error) { return nil, f.listErr }
+	h.add("0", "seed", ledger.KindPapers, "")
 
-func (f failingRows) Append(string) error { return f.appendErr }
+	db, err := sql.Open("sqlite", h.file())
+	require.NoError(h.t, err)
 
-func (f failingRows) Publish(string) error { return f.appendErr }
-
-func (f failingRows) Hold(run func() error) error {
-	if f.holdErr != nil {
-		return f.holdErr
+	triggers := map[string]string{
+		"lanes":  "CREATE TRIGGER broken BEFORE INSERT ON lanes BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+		"closes": "CREATE TRIGGER broken BEFORE INSERT ON closes BEGIN SELECT RAISE(ABORT, 'disk full'); END",
 	}
 
-	return run()
+	_, err = db.ExecContext(h.t.Context(), triggers[table])
+	require.NoError(h.t, errors.Join(err, db.Close()))
 }
 
-func (f failingRows) Share(run func() error) error { return f.Hold(run) }
-
-// flakyRows is a table whose publish fails while fail is set.
-type flakyRows struct {
-	ledger.Rows
-	fail *bool
-}
-
-func (f flakyRows) Publish(text string) error {
-	if *f.fail {
-		return errors.New("disk full")
-	}
-
-	return f.Rows.Publish(text)
-}
-
-func TestAdd_TheLaneRowIsWrittenBeforeTheClosesSoARetryIsComplete(t *testing.T) {
+func TestAdd_AFailedWriteLeavesNeitherTheLaneRowNorTheCloses(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	fail := true
-	flaky := ledger.New(ledger.NewTable(h.file()), flakyRows{Rows: ledger.NewTable(h.closesFile()), fail: &fail})
-	request := ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #3")}
-
-	_, err := flaky.Add(request)
-	require.ErrorContains(t, err, "disk full")
-	assert.Equal(t, "7"+tab+"rev-1"+tab+"review"+tab+stamp+"\n", h.text(h.file()))
-
-	fail = false
-
-	added, err := flaky.Add(request)
-	require.NoError(t, err)
-	assert.Equal(t, ledger.Added{FirstReview: true, Closes: []string{"3"}}, added)
-	assert.Equal(t, "7"+tab+"3\n", h.text(h.closesFile()))
-}
-
-func TestAdd_TheClosesFileIsReplacedByRenameNotAppendedInPlace(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #3")})
-	require.NoError(t, err)
-
-	before, err := os.Stat(h.closesFile())
-	require.NoError(t, err)
-
-	_, err = h.ledger.Add(ledger.Request{Key: "8", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #4")})
-	require.NoError(t, err)
-
-	after, err := os.Stat(h.closesFile())
-	require.NoError(t, err)
-	assert.False(t, os.SameFile(before, after), "the second write made a new file")
-	assert.Equal(t, "7"+tab+"3\n8"+tab+"4\n", h.text(h.closesFile()))
-
-	entries, err := os.ReadDir(h.dir)
-	require.NoError(t, err)
-
-	var names []string
-	for _, entry := range entries {
-		names = append(names, entry.Name())
-	}
-
-	assert.ElementsMatch(t, []string{ledger.FileName, ledger.FileName + ".closes", ledger.FileName + ".lock"}, names)
-}
-
-func TestReads_WaitForAWriterThatHoldsTheLock(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.add("7", "fix-1", ledger.KindFix, "")
-
-	reads := map[string]func() error{
-		"closes": func() error { _, err := h.ledger.Closes("7"); return err },
-		"count":  func() error { _, err := h.ledger.Count("7", ""); return err },
-		"rounds": func() error { _, err := h.ledger.Rounds("7", "m"); return err },
-		"prior":  func() error { _, err := h.ledger.Prior("7", "x"); return err },
-		"since":  func() error { _, _, err := h.ledger.Since("7", ledger.KindFix, at); return err },
-	}
-
-	for name, read := range reads {
-		t.Run(name, func(t *testing.T) {
+	for _, table := range []string{"lanes", "closes"} {
+		t.Run(table, func(t *testing.T) {
 			t.Parallel()
 
-			done := make(chan error, 1)
+			h := newHarness(t)
+			h.breakWith(table)
 
-			err := ledger.NewTable(h.file()).Hold(func() error {
-				go func() { done <- read() }()
+			request := ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: body("Closes #3")}
 
-				time.Sleep(150 * time.Millisecond)
-				assert.Empty(t, done, "the read did not wait for the writer")
+			var refusal *check.Refusal
 
-				return nil
-			})
+			_, err := h.ledger.Add(request)
+			require.ErrorAs(t, err, &refusal)
+			assert.Contains(t, err.Error(), "disk full")
+			assert.Equal(t, 0, h.count("7", "review"))
+
+			closes, err := h.ledger.Closes("7")
 			require.NoError(t, err)
-			require.NoError(t, within(t, done, "the read after the writer let go"))
+			assert.Empty(t, closes)
 		})
 	}
 }
 
-// within returns what arrives on the channel and fails the test when nothing arrives in two seconds.
-func within[T any](t *testing.T, got <-chan T, what string) T {
-	t.Helper()
-
-	select {
-	case value := <-got:
-		return value
-	case <-time.After(2 * time.Second):
-		require.FailNow(t, "timed out after 2 s: "+what)
-	}
-
-	var none T
-
-	return none
-}
-
-func TestShare_ReadersRunAtTheSameTimeAndAWriterWaitsForThem(t *testing.T) {
+func TestAdd_ACloseRecordedWhileTheBodyWasReadWinsOverTheLaterWriter(t *testing.T) {
 	t.Parallel()
 
-	table := ledger.NewTable(filepath.Join(t.TempDir(), "rows.tsv"))
-	inside := make(chan struct{})
-	release := make(chan struct{})
-	shared := make(chan error, 1)
+	h := newHarness(t)
+	other := func() (string, error) {
+		_, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-2", Kind: ledger.KindReview, At: at, Body: body("Closes #1")})
 
-	go func() {
-		shared <- table.Share(func() error {
-			close(inside)
-			<-release
-
-			return nil
-		})
-	}()
-
-	within(t, inside, "the first reader to hold the lock")
-
-	second := make(chan error, 1)
-
-	go func() { second <- table.Share(func() error { return nil }) }()
-
-	require.NoError(t, within(t, second, "a second reader does not wait for the first"))
-
-	written := make(chan error, 1)
-
-	go func() { written <- table.Hold(func() error { return nil }) }()
-
-	select {
-	case err := <-written:
-		t.Fatalf("the writer did not wait for the reader: %v", err)
-	case <-time.After(150 * time.Millisecond):
+		return "Closes #3", err
 	}
 
-	close(release)
-	require.NoError(t, within(t, shared, "the first reader to finish"))
-	require.NoError(t, within(t, written, "the writer after the readers let go"))
+	added, err := h.ledger.Add(ledger.Request{Key: "7", Lane: "rev-1", Kind: ledger.KindReview, At: at, Body: other})
+	require.NoError(t, err)
+	assert.Equal(t, ledger.Added{}, added)
+
+	closes, err := h.ledger.Closes("7")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"1"}, closes)
+	assert.Equal(t, 2, h.count("7", "review"))
+}
+
+func TestReads_AQueryThatFailsIsARefusalThatNamesTheFile(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	db, err := sql.Open("sqlite", h.file())
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(t.Context(), "CREATE VIEW closes AS SELECT key, issue FROM gone")
+	require.NoError(t, errors.Join(err, db.Close()))
+
+	var refusal *check.Refusal
+
+	_, err = h.ledger.Closes("7")
+	require.ErrorAs(t, err, &refusal)
+	assert.Contains(t, err.Error(), "cannot read "+h.file())
+}
+
+func TestReads_OfAFileThatDoesNotExistFindNothingAndCreateNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	assert.Equal(t, 0, h.count("7", ""))
+
+	closes, err := h.ledger.Closes("7")
+	require.NoError(t, err)
+	assert.Empty(t, closes)
+	assert.NoFileExists(t, h.file())
+}
+
+func TestReads_OfAFileWithNoBytesFindNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	require.NoError(t, os.WriteFile(h.file(), nil, 0o600))
+
+	assert.Equal(t, 0, h.count("7", ""))
+
+	closes, err := h.ledger.Closes("7")
+	require.NoError(t, err)
+	assert.Empty(t, closes)
 }
 
 func TestAdd_ARequestWithNoTimeIsRefused(t *testing.T) {
@@ -907,34 +716,4 @@ func TestAdd_ARequestWithNoTimeIsRefused(t *testing.T) {
 	require.ErrorAs(t, err, &refusal)
 	assert.Contains(t, err.Error(), "name the time of the lane")
 	assert.NoFileExists(t, h.file())
-}
-
-func TestAdd_AFailureOfTheRowStoreIsReturned(t *testing.T) {
-	t.Parallel()
-
-	failure := errors.New("disk full")
-	request := ledger.Request{Key: "1", Lane: "a", Kind: ledger.KindFix, At: at}
-	review := ledger.Request{Key: "1", Lane: "a", Kind: ledger.KindReview, At: at, Body: body("Closes #1")}
-
-	cases := []struct {
-		name    string
-		rows    failingRows
-		closes  failingRows
-		request ledger.Request
-	}{
-		{"hold", failingRows{holdErr: failure}, failingRows{}, request},
-		{"list_before_the_row", failingRows{listErr: failure}, failingRows{}, request},
-		{"append_the_row", failingRows{appendErr: failure}, failingRows{}, request},
-		{"list_the_closes", failingRows{}, failingRows{listErr: failure}, review},
-		{"append_the_closes", failingRows{}, failingRows{appendErr: failure}, review},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := ledger.New(tc.rows, tc.closes).Add(tc.request)
-			require.ErrorIs(t, err, failure)
-		})
-	}
 }
