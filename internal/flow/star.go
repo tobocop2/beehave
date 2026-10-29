@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	starjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
@@ -15,6 +16,9 @@ import (
 
 // builtinFile is the file name that starlark-go gives to the frame of a Go builtin.
 const builtinFile = "<builtin>"
+
+// jsonModule is the one name of workflow.Builtins that is a module of the Starlark library, not a step.
+const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
 const stepsVersion = "star2"
@@ -80,19 +84,28 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 	return err
 }
 
-// predeclared returns the builtins of a workflow file, one for each name of workflow.Builtins.
-func (s *script) predeclared() starlark.StringDict {
-	table := map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
+// steps maps the name of each builtin that is a Go function to that function.
+func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
+	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
 		"agent": s.agent, "command": s.command, "env": s.env, "gate": s.gate, "merge": s.merge, "wait": s.wait,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},
 	}
+}
 
-	out := starlark.StringDict{}
+// predeclared returns the builtins of a workflow file, one for each name of workflow.Builtins.
+func (s *script) predeclared() starlark.StringDict {
+	table := s.steps()
+	out := starlark.StringDict{jsonModule: starjson.Module}
 
 	for _, name := range workflow.Builtins() {
+		if name == jsonModule {
+			continue
+		}
+
 		fn := table[name]
+
 		out[name] = starlark.NewBuiltin(name, func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return fn(b, args, kwargs)
 		})
