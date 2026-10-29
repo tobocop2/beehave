@@ -2,6 +2,7 @@
 package claude
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 
@@ -25,6 +26,38 @@ func (Adapter) Profile() agent.Profile {
 		ModelFlag:  "--model",
 		ResumeFlag: "--resume",
 	}
+}
+
+// hookSettings is the settings of one run: a PreToolUse hook on the Bash tool.
+type hookSettings struct {
+	Hooks struct {
+		PreToolUse []hookGroup `json:"PreToolUse"`
+	} `json:"hooks"`
+}
+
+type hookGroup struct {
+	Matcher string        `json:"matcher"`
+	Hooks   []hookHandler `json:"hooks"`
+}
+
+type hookHandler struct {
+	Type      string `json:"type"`
+	Command   string `json:"command"`
+	OnFailure string `json:"onFailure"`
+}
+
+// Guard returns `--settings` with inline JSON that adds a PreToolUse hook with matcher Bash for this run.
+// Claude Code merges hook entries across settings sources, so no settings file of the user changes.
+// The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
+// "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
+func (Adapter) Guard(command string) []string {
+	var settings hookSettings
+
+	settings.Hooks.PreToolUse = []hookGroup{{Matcher: bashTool, Hooks: []hookHandler{{Type: "command", Command: command, OnFailure: "block"}}}}
+
+	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
+
+	return []string{"--settings", string(raw)}
 }
 
 // streamLine is the part of a stream-json line that names the session and holds the last message.

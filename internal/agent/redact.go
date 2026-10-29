@@ -7,9 +7,12 @@ import (
 	"strings"
 )
 
+// DroppedLine is the text that replaces an output line which is longer than the limit.
+const DroppedLine = "[line dropped: longer than the limit]"
+
 const (
 	redacted     = "[redacted]"
-	droppedLine  = "[line dropped: longer than the limit]\n"
+	droppedLine  = DroppedLine + "\n"
 	maxLineBytes = 16 << 20
 	tailBytes    = 4 << 10
 )

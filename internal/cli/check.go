@@ -39,7 +39,7 @@ func newCheckCommand(ctx context.Context, env map[string]string, adapters func(c
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(), newCheckCommandCommand())
 
 	return check
 }

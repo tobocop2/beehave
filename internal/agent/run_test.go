@@ -93,6 +93,21 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 	assert.Equal(t, "-p --output-format stream-json --verbose --model opus --resume sess-1", record(t, f.records, "args"))
 }
 
+func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.Guard = "obee check command"
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Contains(t, record(t, f.records, "args"), `--settings {"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"obee check command","onFailure":"block"}]}]}}`)
+
+	f.spec.Guard = ""
+	agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.NotContains(t, record(t, f.records, "args"), "--settings")
+}
+
 func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}

@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"s1","tools":["Bash","Skill","Task"],"model":"claude-opus"}
+{"type":"assistant","message":{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"I will plan first."},{"type":"tool_use","id":"toolu_1","name":"Skill","input":{"skill":"first-skill"}}]},"parent_tool_use_id":null,"session_id":"s1"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"Launching skill: first-skill"}]},"parent_tool_use_id":null,"session_id":"s1"}
+{"type":"assistant","message":{"id":"msg_2","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"git status","description":"Show status"}}]},"parent_tool_use_id":null,"session_id":"s1"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":"On branch main git add -A"}]},"parent_tool_use_id":null,"session_id":"s1"}
+{"type":"assistant","message":{"id":"msg_3","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Task","input":{"description":"review","prompt":"review it"}}]},"parent_tool_use_id":null,"session_id":"s1"}
+{"type":"assistant","message":{"id":"msg_4","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_4","name":"Bash","input":{"command":"git add -A"}},{"type":"tool_use","id":"toolu_5","name":"Skill","input":{"skill":"second-skill"}}]},"parent_tool_use_id":"toolu_3","session_id":"s1"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"s1","result":"done","permission_denials":[]}

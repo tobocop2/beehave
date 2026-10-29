@@ -161,25 +161,21 @@ func (g e2eGate) Run(ctx context.Context, _, _ string) (flow.GateResult, error) 
 // e2eAgents starts the claude program of the script PATH through the real agent runner.
 type e2eAgents struct{ dir, path string }
 
-// It describes the run as the real agents do: the session from the output of the program, the skill calls from the transcript that it wrote.
+// It describes the run as the real agents do: the session from the output of the program, the skill calls from the tool_use lines that it printed.
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
 	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
 	adapter := newAdapters(nil, nil).agent(model.AgentClaude)
 	runner := model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir}
-	tap := &sessionTap{adapter: adapter}
+	tap := newSessionTap(adapter)
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
 		Adapter: adapter, Runner: runner,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started,
+		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid),
 	})
 
-	reader := agents{
-		skills: func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.SkillCalls(path, "") },
-		bash:   func(adapter agent.Adapter, path string) ([]model.Call, error) { return adapter.BashCalls(path) },
-	}
-
-	return reader.describe(adapter, runner, a.dir, tap, result, request.Forbid)
+	return describe(adapter, runner, a.dir, tap, result, request.Forbid)
 }
 
 // The agent runs in the work folder of the script and sees no other variable than PATH.
@@ -190,6 +186,24 @@ const e2eClaude = `#!/bin/sh
 # A prompt that carries a found value adds its first line to found.log, with the step in front.
 # A fix stages everything when the next line of the file fixhits says hit.
 # A review writes the next line of the file verdicts to the output file that its prompt names.
+# When the file obey-hook exists, the fake obeys --settings as Claude Code does: it runs the hook command of the settings before each Bash call.
+# A hook that exits with code 2 blocks the call: the fake adds a line to blocked.log and prints the tool_result of the refusal.
+hook=
+while [ $# -gt 0 ]; do
+  if [ "$1" = --settings ]; then hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/'); fi
+  shift
+done
+bash_call() {
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"'"$1"'","name":"Bash","input":{"command":"'"$2"'"}}]}}'
+  if [ -e obey-hook ] && [ -n "$hook" ]; then
+    out=$(printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"%s"}}' "$2" | ( eval "$hook" ) 2>&1 >/dev/null)
+    code=$?
+    if [ "$code" = 2 ]; then
+      echo "blocked $2" >> blocked.log
+      echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"'"$1"'","is_error":true,"content":"PreToolUse:Bash hook error: '"$(printf '%s\n' "$out" | sed -n 1p)"'"}]}}'
+    fi
+  fi
+}
 prompt=$(cat)
 field() { printf '%s\n' "$prompt" | sed -n "s/^$1=//p"; }
 step=$(field step)
@@ -206,19 +220,17 @@ if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
   printf '{"verdict":"%s"}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
-# The transcript is where the real claude writes it: <config dir>/projects/<folder with each other character as '-'>/<session>.jsonl.
+# The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
-folder=$(pwd | sed 's/[^A-Za-z0-9]/-/g')
-mkdir -p "projects/$folder"
-echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}' > "projects/$folder/s1.jsonl"
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}'
 # The implementer stages everything, the command that the example forbids.
 if [ "$step" = implement ]; then
-  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
+  bash_call toolu_impl "git add -A"
 fi
 if [ "$step" = fix ]; then
   n=$(grep -c '^fix ' calls.log)
   if [ "$(sed -n "${n}p" fixhits 2>/dev/null)" = hit ]; then
-    echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git add -A"}}]}}' >> "projects/$folder/s1.jsonl"
+    bash_call "toolu_fix$n" "git add -A"
   fi
 fi
 echo '{"type":"result","session_id":"s1","result":"done"}'

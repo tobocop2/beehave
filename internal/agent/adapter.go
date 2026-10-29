@@ -1,14 +1,5 @@
-// Package agent starts coding-agent CLIs. An Adapter supplies the profile of one CLI and reads its transcript.
+// Package agent starts coding-agent CLIs. An Adapter supplies the profile of one CLI and reads its output stream.
 package agent
-
-import (
-	"errors"
-
-	"github.com/tobocop2/obee/internal/model"
-)
-
-// ErrUnreadable is the cause when a transcript file cannot be read.
-var ErrUnreadable = errors.New("cannot read the transcript")
 
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
 // ModelFlag and ResumeFlag are the flags that take a model name and a session id. An empty flag means the CLI has no such option.
@@ -21,19 +12,36 @@ type Profile struct {
 	ResumeFlag string
 }
 
-// Adapter is one agent CLI. The runner calls Profile before it starts a run. The agent step calls the two readers on a finished transcript: SkillCalls always, and BashCalls when the step sets `forbid_commands`.
-// Every adapter must implement both. An unreadable transcript is an error that wraps ErrUnreadable.
-// Call order for one run: Profile before the CLI starts, Line for each output line while it runs, then TranscriptPath, SkillCalls and BashCalls after it ends.
-// Line never sees a line of an earlier run, and TranscriptPath needs the session id that Line returned.
+// Call is one shell call: the id that the CLI gave the call, and its command. The id is empty when the line has none.
+type Call struct {
+	ID   string
+	Text string
+}
+
+// Seen is what one output line holds.
+// Refused lists the ids of calls that the CLI refused before they ran, so those calls never ran.
+// Result is true for the line that ends a run. Invalid is true for a line that the adapter cannot read; an empty line is not invalid.
+type Seen struct {
+	Shell   []Call
+	Skills  []string
+	Refused []string
+	Result  bool
+	Invalid bool
+}
+
+// Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.
+// Call order for one run: Profile and Guard before the CLI starts, then Line and Calls for each output line while it runs, then TranscriptPath after it ends.
+// Line and Calls never see a line of an earlier run, and TranscriptPath needs the session id that Line returned.
 type Adapter interface {
 	// Profile returns the command line and the login variables of the CLI.
 	Profile() Profile
+	// Guard returns the arguments that make the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
+	// It returns nil when the CLI has no such option.
+	Guard(command string) []string
 	// Line reads one line of the output of the CLI. It returns the session id and the message text that the line holds, or empty strings.
 	Line(line string) (session, text string)
-	// TranscriptPath returns where the CLI keeps the transcript of a session that ran in dir with the login folder configDir.
+	// Calls reads one line of the output of the CLI and returns what it holds.
+	Calls(line string) Seen
+	// TranscriptPath returns where the CLI keeps the transcript of a session that ran in dir with the login folder configDir. Nothing reads the file.
 	TranscriptPath(configDir, dir, session string) string
-	// BashCalls returns the command of each Bash call in the transcript at path.
-	BashCalls(path string) ([]model.Call, error)
-	// SkillCalls returns the name of each Skill call in the transcript at path. With agentID, calls of other agents are skipped.
-	SkillCalls(path, agentID string) ([]model.Call, error)
 }
