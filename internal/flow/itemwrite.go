@@ -1,0 +1,104 @@
+package flow
+
+import (
+	"context"
+	"errors"
+
+	"go.starlark.net/starlark"
+
+	trackerstore "github.com/tobocop2/obee/internal/store"
+)
+
+// writer changes the items of the tracker of a project. Each method is the method of store.Writer with the project in front.
+// The tracker adapter must make Create and Comment safe to repeat for one key. A step runs at least once, so a crash between the write and the step record runs the call again.
+type writer interface {
+	Create(ctx context.Context, project, key string, item trackerstore.NewItem) (id string, created bool, err error)
+	SetStatus(ctx context.Context, project, id string, status trackerstore.Status) error
+	Comment(ctx context.Context, project, id, key, text string) error
+}
+
+var errNoWriter = errors.New("this build cannot write to a tracker. Use a build that sets a tracker writer")
+
+// scoped joins the key of a file to the run id, so two runs never share a key. The run id is the id of the DBOS workflow, which a replay keeps.
+func (s *script) scoped(key string) string { return workflowID(s.ctx) + ":" + key }
+
+// need returns an error that names the argument when its value is empty.
+func need(name, value string) error {
+	if value == "" {
+		return errors.New(name + " must not be empty")
+	}
+
+	return nil
+}
+
+// check returns the first problem of a write call before the step starts: an empty argument, a status that is not known, or a build with no writer.
+func (s *script) check(problems ...error) error {
+	if s.e.deps.Writer == nil {
+		problems = append(problems, errNoWriter)
+	}
+
+	return errors.Join(problems...)
+}
+
+// write records one call of a write builtin as a step. fn returns the outputs of the call.
+func (s *script) write(builtin, label string, fn func(ctx context.Context) (map[string]any, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	return s.durable(builtin, label, func(ctx context.Context, _ string) (stepResult, error) {
+		outputs, err := fn(ctx)
+
+		return stepResult{Outputs: outputs}, err
+	})
+}
+
+// itemCreate files an item in the tracker of the project. The key makes the call safe to repeat: the same key gives the same item and created = False.
+func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	var title, key, body, parent, label string
+
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "title", &title, "key", &key, "body?", &body, "parent?", &parent, "name?", &label); err != nil {
+		return nil, err
+	}
+
+	if err := s.check(need("title", title), need("key", key)); err != nil {
+		return nil, err
+	}
+
+	return s.write("item_create", label, func(ctx context.Context) (map[string]any, error) {
+		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent})
+
+		return map[string]any{"id": id, "created": created}, err
+	})
+}
+
+// itemStatus sets the status of an item to open, closed or hold. The same status again changes nothing.
+func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	var id, text, label string
+
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "id", &id, "status", &text, "name?", &label); err != nil {
+		return nil, err
+	}
+
+	status, parseErr := trackerstore.ParseStatus(text)
+	if err := s.check(need("id", id), parseErr); err != nil {
+		return nil, err
+	}
+
+	return s.write("item_status", label, func(ctx context.Context) (map[string]any, error) {
+		return map[string]any{"id": id, "status": string(status)}, s.e.deps.Writer.SetStatus(ctx, s.in.Project, id, status)
+	})
+}
+
+// itemComment adds a comment to an item. The key makes the call safe to repeat: the same key on the same item adds one comment.
+func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	var id, text, key, label string
+
+	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "id", &id, "text", &text, "key", &key, "name?", &label); err != nil {
+		return nil, err
+	}
+
+	if err := s.check(need("id", id), need("text", text), need("key", key)); err != nil {
+		return nil, err
+	}
+
+	return s.write("item_comment", label, func(ctx context.Context) (map[string]any, error) {
+		return map[string]any{"id": id}, s.e.deps.Writer.Comment(ctx, s.in.Project, id, s.scoped(key), text)
+	})
+}

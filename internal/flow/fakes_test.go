@@ -361,6 +361,7 @@ type harness struct {
 	beats    *fakeBeats
 	commands *fakeCommands
 	items    *fakeItems
+	writer   writer // nil unless a test sets it
 	ticks    chan time.Time
 	sleep    time.Duration
 	opts     Options
@@ -421,7 +422,7 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items,
+		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer,
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond)},
 	}
 	if h.merge != nil {

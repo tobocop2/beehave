@@ -197,7 +197,7 @@ func CheckItemFields(r Reporter, tracker store.Tracker) {
 
 	declared := tracker.ItemFields()
 
-	for _, want := range []string{"id", "title", "body"} {
+	for _, want := range []string{"id", "title", fieldBody} {
 		if !slices.Contains(declared, want) {
 			r.Errorf("ItemFields: want %q among the declared fields, got %v", want, declared)
 		}

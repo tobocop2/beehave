@@ -16,6 +16,8 @@ const (
 	argRepo     = "--repo"
 	argJSON     = "--json"
 	argList     = "list"
+	argState    = "--state"
+	argLimit    = "--limit"
 	ghPage      = 1000
 	epicPrefix  = "epic:"
 	holdLabel   = "hold"
@@ -38,13 +40,13 @@ type ghUser struct {
 	Login string `json:"login"`
 }
 
-// Store is the issues of one repository, read and written through gh. It implements store.Tracker.
+// Store is the issues of one repository, read and written through gh. It implements store.Tracker and store.Writer.
 type Store struct {
 	repo string
 	run  proc.Runner
 }
 
-// New returns the store of repo, written owner/name. It reads issues only. The claim rows live in beads.
+// New returns the store of repo, written owner/name. It reads issues, and it writes them through the store.Writer methods. The claim rows live in beads.
 func New(repo string, run proc.Runner) (*Store, error) {
 	owner, name, found := strings.Cut(repo, "/")
 	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
@@ -119,7 +121,7 @@ func (*Store) ItemFields() []string { return []string{"id", "title", "body"} }
 
 // Item returns the number, title and body of an issue. An unreadable issue is a refusal with code 2.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
-	done := s.run.Run(ctx, []string{argIssue, "view", item, argRepo, s.repo, argJSON, "number,title,body"})
+	done := s.run.Run(ctx, []string{argIssue, argView, item, argRepo, s.repo, argJSON, "number,title,body"})
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("REFUSE: cannot read item %s in %s", item, s.repo)
 	}
@@ -148,8 +150,8 @@ func derefText(text *string) string {
 // openPage reads one page of open issues. A full page may be cut off, so it is a refusal, in every read.
 func (s *Store) openPage(ctx context.Context) ([]ghIssue, error) {
 	done := s.run.Run(ctx, []string{
-		argIssue, argList, argRepo, s.repo, "--state", "open",
-		"--limit", strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees",
+		argIssue, argList, argRepo, s.repo, argState, "open",
+		argLimit, strconv.Itoa(ghPage), argJSON, "number,title,labels,assignees",
 	})
 	if done.ExitCode != 0 {
 		return nil, store.Refuse("store: cannot list the open issues; refusing")
