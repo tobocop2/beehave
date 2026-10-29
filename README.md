@@ -27,6 +27,8 @@ obee item add <name> fix-login --title "Fix the login" --body-file task.md
 obee run fix-login <name> --workflow examples/local/workflow.star
 ```
 
+`examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
+
 ## Claude Code plugin
 
 `plugins/claude-code` adds five slash commands to Claude Code: `/obee:queue`, `/obee:run`, `/obee:status`, `/obee:answer` and `/obee:cancel`. Each one runs an obee command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.

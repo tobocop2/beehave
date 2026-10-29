@@ -429,7 +429,7 @@ func TestScripts(t *testing.T) {
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
 			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus,
 			"example": cmdExample, "subst": cmdSubst, "isolate": cmdIsolate, "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
-			"replace": cmdReplace,
+			"replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude,
 		},
 	})
 }

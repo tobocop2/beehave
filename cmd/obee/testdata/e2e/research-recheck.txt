@@ -1,0 +1,56 @@
+# The first notes of sub-question 2 hold a claim with no source. The check names the file, the item goes back to the research step for it, and the next check passes.
+# Only the notes of sub-question 2 are researched again, and the research agent gets the line of the check.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+example research/workflow.star
+example research/project.star config/projects/research.star
+example research/prompts/scope.md
+example research/prompts/research.md
+example research/prompts/review.md
+example research/prompts/revise.md
+example research/prompts/conclude.md
+example research/tools/check.sh
+example research/tools/report.sh
+replace config/projects/research.star '~/work/your-repo' $WORK/origin
+fakeclaude
+serve
+
+env RESEARCH_TOOLS=$WORK/research/tools
+env RESEARCH_OUT=$WORK/out
+
+exec obeereal item add research weigh-ab --title 'Compare A and B' --body-file body.txt
+
+exec obeereal run weigh-ab research --workflow research/workflow.star
+stdout 'item weigh-ab finished'
+
+exec obeereal status
+stdout 'weigh-ab-r1\tdone'
+
+cmp calls.log expected-calls.log
+cmp found.log expected-found.log
+
+# The notes that the second research step wrote are in the report.
+grep '^- Claim 2\. ' out/weigh-ab.md
+! grep 'has no source' out/weigh-ab.md
+
+-- body.txt --
+Compare A and B.
+-- origin/readme.txt --
+The source repository.
+-- bad --
+1
+-- verdicts --
+approve
+-- expected-calls.log --
+scope
+research 1
+research 2
+research 2
+summary
+review
+-- expected-found.log --
+FAIL notes/2.md: the claim has no source: - Claim 2 has no source.

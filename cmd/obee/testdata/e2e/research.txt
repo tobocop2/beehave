@@ -1,0 +1,78 @@
+# A research item with no tracker and no forge. The command is obeereal, the real composition root.
+# The only programs on PATH are the fake claude, git, sh and the small tools of the check. There is no bd and no gh.
+# The scope agent writes six sub-questions and the workflow keeps five. The research agent writes one notes file for each, the check passes,
+# a summary agent writes the summary, the first review approves the notes and the summary, and the report step writes the report into the folder out.
+isolate
+exec git --version
+! exec bd version
+! exec gh version
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+# The files of examples/research are the files of the example. Only the source of the project differs.
+example research/workflow.star
+example research/project.star config/projects/research.star
+example research/prompts/scope.md
+example research/prompts/research.md
+example research/prompts/review.md
+example research/prompts/revise.md
+example research/prompts/conclude.md
+example research/tools/check.sh
+example research/tools/report.sh
+replace config/projects/research.star '~/work/your-repo' $WORK/origin
+fakeclaude
+serve
+
+env RESEARCH_TOOLS=$WORK/research/tools
+env RESEARCH_OUT=$WORK/out
+
+exec obeereal check workflow research/workflow.star
+! stdout .
+! stderr .
+
+exec obeereal item add research weigh-ab --title 'Compare A and B' --body-file body.txt
+stdout 'added item weigh-ab to project research'
+
+exec obeereal run weigh-ab research --workflow research/workflow.star
+stdout 'item weigh-ab finished'
+
+exec obeereal status
+stdout 'weigh-ab-r1\tdone'
+
+# The steps ran in order: the scope, one research step for each of the first five sub-questions and none for the sixth, the summary, one review.
+cmp calls.log expected-calls.log
+
+# The report starts with the summary, then holds the notes and the list of sources, and no open findings.
+grep '^# Compare A and B$' out/weigh-ab.md
+grep '^## Summary$' out/weigh-ab.md
+grep '^A and B are compared in the notes\.$' out/weigh-ab.md
+grep '^# What is A\?$' out/weigh-ab.md
+grep '^# What is E\?$' out/weigh-ab.md
+! grep 'What is F' out/weigh-ab.md
+grep '^## Sources$' out/weigh-ab.md
+grep -count=1 '^- http://127.0.0.1:[0-9]+/ok$' out/weigh-ab.md
+! grep 'Open findings' out/weigh-ab.md
+! exists out/weigh-ab-unreviewed.md
+
+# The agents wrote notes in the work folder of the item. The checkout of the user has no change.
+exec git -C origin status --porcelain
+! stdout .
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Compare A and B.
+-- six --
+-- verdicts --
+approve
+-- expected-calls.log --
+scope
+research 1
+research 2
+research 3
+research 4
+research 5
+summary
+review
