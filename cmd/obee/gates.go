@@ -16,6 +16,9 @@ import (
 // gateTimeout is the time that the gate command of a project may run on this machine.
 const gateTimeout = time.Hour
 
+// headAndTree is the number of lines that `git rev-parse HEAD HEAD^{tree}` prints.
+const headAndTree = 2
+
 // projectGate gives the gate step of the workflow to internal/gate, with the worktree of the item, the host of the project and the clone URL of its forge.
 type projectGate struct {
 	projects map[string]config.Project
@@ -38,7 +41,7 @@ func (g projectGate) Run(ctx context.Context, project, item string) (flow.GateRe
 		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
 	}
 
-	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head}, nil
+	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
 }
 
 // request names the project, the worktree of the item and, for a project with a build host, the URL that the host clones the repository from.
@@ -82,19 +85,27 @@ func (g projectGate) shell(ctx context.Context, dir, command string) (string, in
 	return result.Stdout + result.Stderr, result.ExitCode
 }
 
-// tree reads the head of the worktree in dir and whether it has no uncommitted change.
+// tree reads the head of the worktree in dir, the tree of that head and whether it has no uncommitted change.
 func (g projectGate) tree(ctx context.Context, dir string) (gate.State, error) {
-	head, err := g.git(ctx, dir, "rev-parse", "HEAD")
+	// One call reads both, so the tree always belongs to the head.
+	ids, err := g.git(ctx, dir, "rev-parse", "HEAD", "HEAD^{tree}")
 	if err != nil {
 		return gate.State{}, err
 	}
+
+	lines := strings.Split(ids, "\n")
+	if len(lines) != headAndTree {
+		return gate.State{}, fmt.Errorf("git rev-parse in %s printed %d lines, and the head and the tree make %d", dir, len(lines), headAndTree)
+	}
+
+	head, tree := lines[0], lines[1]
 
 	changes, err := g.git(ctx, dir, "status", "--porcelain")
 	if err != nil {
 		return gate.State{}, err
 	}
 
-	return gate.State{Head: head, Clean: changes == ""}, nil
+	return gate.State{Head: head, Tree: tree, Clean: changes == ""}, nil
 }
 
 // git runs git in dir and returns what it printed, without the space at both ends.

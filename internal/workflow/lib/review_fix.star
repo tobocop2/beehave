@@ -4,8 +4,12 @@
 
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
 
-def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6):
-    """Runs the loop and returns a struct with exhausted, gate and review."""
+def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow"):
+    """Runs the loop and returns a struct with exhausted, gate and review.
+
+    follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
+    and the review prompt must ask the agent to write a `findings` list beside the verdict.
+    """
     violations = impl.violations
     check = None
     review = None
@@ -21,6 +25,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6):
                 model = "opus",
                 pin = check.head,
                 outputs = ["verdict"],
+                follow_ups = follow_ups,
                 output_tries = 2,
                 inputs = {"item": item, "violations": violations},
             )

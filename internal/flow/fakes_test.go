@@ -513,6 +513,8 @@ type fakeForge struct {
 	state review.Standing
 	err   error
 	asked []string
+	// rewritten makes Reviewed report a head other than the reviewed commit as a rewrite of it.
+	rewritten bool
 	// failFrom, when above zero, makes the read of that number and every later read fail with errFake.
 	failFrom int
 }
@@ -528,6 +530,16 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 	}
 
 	return f.state, f.err
+}
+
+// Reviewed answers as Pull does. When rewritten is set and the head is not the reviewed commit, the standing says the head is a rewrite of it.
+func (f *fakeForge) Reviewed(ctx context.Context, project, item, reviewed string) (review.Standing, error) {
+	standing, err := f.Pull(ctx, project, item)
+	if f.rewritten && standing.Head != reviewed {
+		standing.Rewritten = reviewed
+	}
+
+	return standing, err
 }
 
 // Ready records the call in the log of the lifecycle fake, and fails when a test sets failing["ready"].

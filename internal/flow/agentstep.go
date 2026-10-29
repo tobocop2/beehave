@@ -21,6 +21,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
@@ -41,6 +42,7 @@ type agentArgs struct {
 	forbid        []model.FindingKind
 	declared      []string
 	resume        string
+	noFollowUps   bool
 	tries         int
 	dir           string
 	file          string
@@ -49,12 +51,11 @@ type agentArgs struct {
 // agentCall unpacks the arguments of the agent builtin. The second result is the label of the call.
 func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (agentArgs, string, error) {
 	a := agentArgs{tries: 1}
-
-	var raw agentRaw
+	raw := agentRaw{followUps: workflow.FollowUpsAllow}
 
 	err := starlark.UnpackArgs(b.Name(), args, kwargs, "prompt", &a.prompt, "model?", &a.model, "runner?", &a.runner, "inputs?", &raw.inputs, "outputs?", &raw.outputs,
 		"pin?", &a.pin, "resume?", &a.resume, "require_skills?", &raw.skills, "forbid_commands?", &raw.kinds, "output_tries?", &a.tries,
-		"timeout?", &raw.timeout, "idle_timeout?", &raw.idle, "name?", &raw.label)
+		"follow_ups?", &raw.followUps, "timeout?", &raw.timeout, "idle_timeout?", &raw.idle, "name?", &raw.label)
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
 	}
@@ -68,8 +69,8 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 // agentRaw are the arguments of an agent call that need a check before they are used.
 type agentRaw struct {
-	label, timeout, idle           string
-	inputs, outputs, skills, kinds starlark.Value
+	label, timeout, idle, followUps string
+	inputs, outputs, skills, kinds  starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -90,20 +91,24 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 		return err
 	}
 
-	return a.lists(raw.outputs, raw.skills, raw.kinds)
+	return a.lists(raw)
 }
 
-// lists reads the three list arguments of an agent call.
-func (a *agentArgs) lists(outputs, skills, kinds starlark.Value) (err error) {
-	if a.declared, err = words("outputs", outputs); err != nil {
+// lists reads the three list arguments of an agent call, then the follow_ups option, which needs the declared outputs.
+func (a *agentArgs) lists(raw agentRaw) (err error) {
+	if a.declared, err = words("outputs", raw.outputs); err != nil {
 		return err
 	}
 
-	if a.requireSkills, err = words("require_skills", skills); err != nil {
+	if a.requireSkills, err = words("require_skills", raw.skills); err != nil {
 		return err
 	}
 
-	a.forbid, err = findingKinds(kinds)
+	if a.forbid, err = findingKinds(raw.kinds); err != nil {
+		return err
+	}
+
+	a.noFollowUps, err = followUps(raw.followUps, a.declared)
 
 	return err
 }
@@ -333,11 +338,34 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		"violations": strings.Join(ended.Violations, "\n"),
 	}
 
-	if problem := addDeclared(outputs, a.declared, a.file); problem != "" {
+	if problem := a.readOutputs(outputs); problem != "" {
 		return stepResult{Note: problem}, nil
 	}
 
 	return stepResult{Outputs: outputs}, nil
+}
+
+// readOutputs reads the output file when the call declares outputs, adds them to outputs, then applies the follow_ups option.
+// A call that forbids follow-ups declares the output verdict, so it always has an output file. It returns what is wrong with the file, or an empty text.
+func (a agentArgs) readOutputs(outputs map[string]any) string {
+	if len(a.declared) == 0 {
+		return ""
+	}
+
+	written, problem := writtenObject(a.file)
+	if problem != "" {
+		return problem
+	}
+
+	if problem := addDeclared(outputs, a.declared, written); problem != "" {
+		return problem
+	}
+
+	if a.noFollowUps {
+		return applyFollowUps(outputs, written)
+	}
+
+	return ""
 }
 
 // missingSkill returns an error that names the first required skill that the run did not call.
@@ -351,17 +379,8 @@ func missingSkill(required, called []string) error {
 	return nil
 }
 
-// addDeclared reads the named outputs from the JSON file the agent wrote and adds them to outputs. It returns what is wrong with the file, or an empty text.
-func addDeclared(outputs map[string]any, names []string, file string) string {
-	if len(names) == 0 {
-		return ""
-	}
-
-	written, problem := writtenObject(file)
-	if problem != "" {
-		return problem
-	}
-
+// addDeclared adds the named outputs from the JSON object the agent wrote to outputs. It returns what is wrong with the object, or an empty text.
+func addDeclared(outputs map[string]any, names []string, written map[string]any) string {
 	for _, name := range names {
 		text, problem := stringOutput(written, name)
 		if problem != "" {

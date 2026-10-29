@@ -137,6 +137,8 @@ func (g *graph) parse(name string, data []byte) {
 		return
 	}
 
+	g.arguments(parsed)
+
 	g.stack = append(g.stack, name)
 	g.loads(parsed)
 	g.stack = g.stack[:len(g.stack)-1]

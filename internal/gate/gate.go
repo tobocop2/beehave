@@ -37,6 +37,7 @@ type Shell func(ctx context.Context, dir, command string) (string, int)
 // State is the commit of a tree and whether the tree has no uncommitted change.
 type State struct {
 	Head  string
+	Tree  string
 	Clean bool
 }
 
@@ -53,10 +54,12 @@ type Remote interface {
 type Hosts func(project model.Project) (Remote, error)
 
 // Result is the outcome of a gate that ran. Report is the tail of its output. Head is the commit the gate judged.
+// Tree is the tree id of that commit, or empty when the run did not read the tree of the commit it judged.
 type Result struct {
 	Passed bool
 	Report string
 	Head   string
+	Tree   string
 }
 
 // Request is one gate run. Resume names a host job that an earlier run submitted; the run reads that job again and submits none.
@@ -96,6 +99,10 @@ func (g Gate) Run(ctx context.Context, request Request) (Result, error) {
 	result, err := g.execute(ctx, request, before.Head)
 	if err != nil {
 		return Result{}, err
+	}
+
+	if result.Head == before.Head {
+		result.Tree = before.Tree
 	}
 
 	return result, g.unchanged(ctx, request.Dir, before)

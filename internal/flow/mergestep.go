@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"go.starlark.net/starlark"
-
-	"github.com/tobocop2/obee/internal/model"
 )
 
 // The values of the `state` output of a merge call. While the call waits for the owner, the run shows mergeOwner.
@@ -31,6 +29,8 @@ type MergeSettings struct {
 	ForbidText []string
 	Approved   bool
 	Retarget   bool
+	// GatedTree is the tree id that the gate recorded for the head. When it is set, the merge compares the tree of the base tip with it.
+	GatedTree string
 }
 
 // mergeArgs are the arguments of a merge call: the head to merge, whether to merge, the label of the call and the settings of a merge.
@@ -45,16 +45,43 @@ func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	var (
 		children    = "refuse"
 		own, forbid starlark.Value
+		tree        starlark.Value
 		s           = &m.settings
 	)
 
-	err = starlark.UnpackArgs(b.Name(), args, kwargs, "head", &m.head, "repo?", &s.Repo, "base?", &s.Base, "hold?", &s.Hold, "own?", &own, "approved?", &s.Approved,
+	err = starlark.UnpackArgs(b.Name(), args, kwargs, "head", &m.head, "repo?", &s.Repo, "base?", &s.Base, "hold?", &s.Hold, "own?", &own, "approved?", &s.Approved, "tree?", &tree,
 		"forbid_text?", &forbid, "children?", &children, "merge?", &m.merges, "name?", &m.label)
 	if err != nil {
 		return m, err
 	}
 
+	if m.merges {
+		if s.GatedTree, err = gatedTree(tree); err != nil {
+			return m, err
+		}
+	}
+
 	return m, s.read(children, forbid, own)
+}
+
+// gatedTree reads the `tree` argument of a merge call. A call that leaves it out asks for no proof. A call that sets it to the empty text is refused:
+// a program gate, or a resumed host job, records no tree, and the proof would be skipped without a word.
+func gatedTree(v starlark.Value) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+
+	tree, isText := starlark.AsString(v)
+	if !isText {
+		return "", fmt.Errorf("`tree` must be text, not %s", v.Type())
+	}
+
+	if tree == "" {
+		return "", errors.New("`tree` is empty. The gate recorded no tree for this head (a gate that runs a program, or a resumed host job, records none). " +
+			"Leave out `tree` to merge without the proof")
+	}
+
+	return tree, nil
 }
 
 // read checks the `children`, `forbid_text` and `own` arguments of a merge call and keeps them in s.
@@ -139,8 +166,8 @@ func (s *script) merge(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 
 // readyAndMerge marks the pull request ready at head. It merges the pull request only when merges is true.
 func (s *script) readyAndMerge(head string, merges bool, settings MergeSettings) error {
-	ready := func(ctx context.Context, project, item string) error { return s.e.markReady(ctx, project, item, head) }
-	if err := s.e.lifecycle(s.ctx, model.StepReady, ready, s.in.Project, s.in.Item); err != nil {
+	pinned, err := s.e.readyStep(s.ctx, s.in.Project, s.in.Item, head)
+	if err != nil {
 		return err
 	}
 
@@ -148,7 +175,7 @@ func (s *script) readyAndMerge(head string, merges bool, settings MergeSettings)
 		return nil
 	}
 
-	return s.e.mergeReady(s.ctx, s.in.Project, s.in.Item, head, settings)
+	return s.e.mergeReady(s.ctx, s.in.Project, s.in.Item, pinned, settings)
 }
 
 // awaitOwner reads the pull request until the owner merges it or sends it back. When ownerMerges is true, the run first shows that it waits for the owner.

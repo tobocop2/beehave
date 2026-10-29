@@ -162,7 +162,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-R-08 | Review at a pinned SHA | core | expressed | review_fix.star agent review | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-08, S1-M-07 |
 | S1-R-09 | An implementer must call the review skill before it reports | skill | expressed | workflow.star agent implement | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-R-09, S1-R-10, S1-R-12, S1-R-16 |
 | S1-R-17 | A verdict blocks when the change caused the defect or lost data | skill | gap | - | - | S1-R-17, S1-R-19, S1-R-20, S1-R-21, S1-R-23, S1-R-25, S1-R-29, S1-R-37, S1-R-39, S1-R-56 |
-| S1-R-18 | Verdict values accept, needs a commit, reject; clean or findings for merged work | core | gap | - | - | S1-R-18 |
+| S1-R-18 | Verdict values accept, needs a commit, reject; clean or findings for merged work | core | partly | the option follow_ups = "forbid" of an agent call that declares verdict and findings: any open finding turns the verdict into changes (review.NeedsCommit). The example sets it on its review calls through the review loop. Not covered: the reject verdict and the clean-or-findings audit of merged work | TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix | S1-R-18 |
 | S1-R-22 | A reviewer is finished when idle, not when it sends a verdict | drop | n/a | - | - | S1-R-22 |
 | S1-R-24 | Read the existing review first; label each finding new or already raised | core | gap | - | - | S1-R-24 |
 | S1-R-51 | Review sweep: open PRs, latest review per reviewer, unresolved threads | core | gap | - | - | S1-R-51, S1-R-52, S1-M-27 |

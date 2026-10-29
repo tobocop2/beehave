@@ -17,7 +17,7 @@ import (
 const builtinFile = "<builtin>"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star1"
+const stepsVersion = "star2"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.

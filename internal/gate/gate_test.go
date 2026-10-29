@@ -244,6 +244,24 @@ func TestRun_AResumedHostGateJudgesTheHeadItWasSubmittedWithNotTheHeadOfTheTree(
 	assert.Equal(t, gate.Result{Passed: true, Head: headB}, got)
 }
 
+func TestRun_TheResultHoldsTheTreeOfTheGatedHeadAndNoTreeForAHeadItDidNotRead(t *testing.T) {
+	t.Parallel()
+
+	local := build(&fakeShell{}, &fakeTree{states: []gate.State{{Head: headA, Tree: "tree-a", Clean: true}}}, &fakeRemote{})
+	got, err := local.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/work/tree"})
+	require.NoError(t, err)
+	assert.Equal(t, gate.Result{Passed: true, Head: headA, Tree: "tree-a"}, got)
+
+	remote := &fakeRemote{state: model.JobSucceeded}
+	resumed := build(&fakeShell{}, &fakeTree{states: []gate.State{{Head: headA, Tree: "tree-a", Clean: true}}}, remote)
+	request := hostRequest(project("gpu-a"))
+	request.Resume, request.ResumeHead = "job-3", headB
+
+	got, err = resumed.Run(context.Background(), request)
+	require.NoError(t, err)
+	assert.Equal(t, gate.Result{Passed: true, Head: headB}, got, "the tree of another head is not the tree that the job judged")
+}
+
 func TestRun_AResumeWithoutTheHeadItWasSubmittedWithIsRefusedAndReadsNoJob(t *testing.T) {
 	t.Parallel()
 

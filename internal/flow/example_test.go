@@ -31,6 +31,16 @@ const reviewMarker = "What every review here must do"
 func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, string) {
 	t.Helper()
 
+	return exampleRigWithFindings(t, verdicts, func(int) string { return "[]" })
+}
+
+// exampleTree is the tree that the gate of the example rig records for every head.
+const exampleTree = "tree-of-the-gated-head"
+
+// exampleRigWithFindings is exampleRig with the findings (a JSON list) that each review writes beside its verdict.
+func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) string) (*agentRig, string) {
+	t.Helper()
+
 	folder := t.TempDir()
 	require.NoError(t, os.CopyFS(folder, os.DirFS(filepath.Join("..", "..", "examples", "remediation"))))
 
@@ -38,7 +48,7 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 
 	rig := newAgentRig(t)
 	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com"}
-	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head}}
+	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head, Tree: exampleTree}}
 	rig.h.forge.state = review.Standing{Number: testPull, Head: rig.head}
 
 	reviews := 0
@@ -50,7 +60,7 @@ func exampleRig(t *testing.T, verdicts func(review int) string) (*agentRig, stri
 			_, rest, _ := strings.Cut(request.Prompt, "Write it to ")
 			path, _, _ := strings.Cut(rest, " as JSON")
 			if verdict := verdicts(reviews); verdict != "" {
-				rig.put(path, `{"verdict":"`+verdict+`"}`)
+				rig.put(path, `{"verdict":"`+verdict+`","findings":`+findings(reviews)+`}`)
 			}
 		}
 
@@ -111,6 +121,56 @@ func TestExample_AnApprovedFirstReviewMarksTheHeadReadyWithoutAFix(t *testing.T)
 	assert.Equal(t, "merged", result.Merge)
 }
 
+func TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
+		if review == 1 {
+			return `[{"class":"minor","text":"rename x"}]`
+		}
+
+		return "[]"
+	})
+
+	result, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"opus", "sonnet", "opus", "sonnet", "opus"}, rig.models(), "the follow-up of review 1 was fixed, and review 2 approved")
+	assert.Equal(t, "merged", result.Merge)
+}
+
+// libraryLoop is a workflow that runs the review loop of the library with the extra arguments.
+func libraryLoop(extra string) string {
+	return "load(\"@obee//review_fix.star\", \"review_fix\")\n" +
+		"def main(item):\n" +
+		"    impl = struct(violations = \"\", session = \"\")\n" +
+		"    review_fix(item, impl, \"prompts/review.md\", \"prompts/fix.md\"" + extra + ")\n"
+}
+
+func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t *testing.T) {
+	t.Parallel()
+
+	for extra, want := range map[string][]string{
+		"":                        {"opus"},
+		`, follow_ups = "allow"`:  {"opus"},
+		`, follow_ups = "forbid"`: {"opus", "sonnet", "opus"},
+	} {
+		rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
+			if review == 1 {
+				return `[{"class":"deferred","text":"later"}]`
+			}
+
+			return "[]"
+		})
+		require.NoError(t, os.WriteFile(file, []byte(libraryLoop(extra)), 0o600))
+
+		_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+		require.NoError(t, err, extra)
+		assert.Equal(t, want, rig.models(), extra)
+	}
+}
+
 func TestExample_FiveFixRoundsAreEachFollowedByAReviewAndTheSixthReviewIsTheLast(t *testing.T) {
 	t.Parallel()
 
@@ -145,13 +205,24 @@ func TestExample_AReviewIsOnlyReadAgainstTheHeadTheGatePassed(t *testing.T) {
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
-	rig.h.gate.results = []GateResult{{Passed: true, Head: "0000000000000000000000000000000000000000"}}
+	rig.h.gate.results = []GateResult{{Passed: true, Head: "0000000000000000000000000000000000000000", Tree: exampleTree}}
 
 	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
 	require.ErrorContains(t, err, "0000000000000000000000000000000000000000")
 	require.ErrorContains(t, err, rig.head)
 	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "the review agent never started")
+}
+
+func TestExample_AGateThatRecordedNoTreeStillReachesTheMergeCallBecauseTheExampleNeverMerges(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head}}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err, "the example passes no tree, so a gate that records none stops nothing")
 }
 
 func TestExample_AReviewThatWritesNoVerdictFileIsAskedOnceMore(t *testing.T) {
@@ -176,7 +247,7 @@ func TestExample_AFailedGateSkipsTheReviewAndSendsItsReportToTheFix(t *testing.T
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
-	rig.h.gate.results = []GateResult{{Passed: false, Head: rig.head, Report: "lint: unused variable x"}, {Passed: true, Head: rig.head}}
+	rig.h.gate.results = []GateResult{{Passed: false, Head: rig.head, Report: "lint: unused variable x"}, {Passed: true, Head: rig.head, Tree: exampleTree}}
 
 	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 

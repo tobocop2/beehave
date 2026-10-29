@@ -44,9 +44,60 @@ func gateRunner(calls *gateCalls, head, gate model.CommandResult) func(string, s
 				return model.CommandResult{Stdout: calls.status}
 			}
 
-			return head
+			if head.ExitCode != 0 {
+				return head
+			}
+
+			// One `git rev-parse HEAD HEAD^{tree}` prints the head, then the tree.
+			name := strings.TrimSpace(head.Stdout)
+
+			return model.CommandResult{Stdout: name + "\ntree-of-" + name + "\n"}
 		}}
 	}
+}
+
+func TestProjectGate_TheHeadAndItsTreeAreReadByOneGitCall(t *testing.T) {
+	t.Parallel()
+
+	calls := &gateCalls{}
+	gate := projectGate{
+		projects: localProject(),
+		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
+	}
+
+	_, err := gate.Run(t.Context(), "p", "1")
+
+	require.NoError(t, err)
+
+	var reads [][]string
+
+	for i, binary := range calls.binaries {
+		if binary == "git" && calls.args[i][0] == "rev-parse" {
+			reads = append(reads, calls.args[i])
+		}
+	}
+
+	assert.Contains(t, reads, []string{"rev-parse", "HEAD", "HEAD^{tree}"})
+	assert.Len(t, reads, 2, "one read before the gate and one after it, never a head and a tree apart")
+}
+
+func TestProjectGate_AnAnswerWithoutTheHeadAndTheTreeFailsTheGateBeforeItRuns(t *testing.T) {
+	t.Parallel()
+
+	calls := &gateCalls{}
+	local := func(binary, _ string, _ time.Duration) proc.Runner {
+		return recording{run: func(args []string) model.CommandResult {
+			calls.binaries = append(calls.binaries, binary)
+
+			return model.CommandResult{Stdout: "abc123\n"}
+		}}
+	}
+	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: local}}
+
+	_, err := gate.Run(t.Context(), "p", "1")
+
+	require.ErrorContains(t, err, "git rev-parse in /tree printed 1 lines, and the head and the tree make 2")
+	assert.NotContains(t, calls.binaries, "sh")
 }
 
 type recording struct {
@@ -89,7 +140,7 @@ func TestProjectGate_ALocalGateReportsAPassOnTheHeadOfTheWorktree(t *testing.T) 
 	got, err := gate.Run(t.Context(), "p", "1")
 
 	require.NoError(t, err)
-	assert.Equal(t, flow.GateResult{Passed: true, Report: "ok", Head: "abc123"}, got)
+	assert.Equal(t, flow.GateResult{Passed: true, Report: "ok", Head: "abc123", Tree: "tree-of-abc123"}, got)
 	assert.Equal(t, []string{"git", "git", "sh", "git", "git"}, calls.binaries, "the tree is read before the gate runs and again after it")
 	assert.Equal(t, []string{"-c", "make check"}, calls.args[2])
 	assert.Equal(t, "/tree", calls.dirs[2])
@@ -129,6 +180,29 @@ func TestProjectGate_ALocalGateThatFailsKeepsTheTailOfItsOutput(t *testing.T) {
 	assert.True(t, strings.HasSuffix(got.Report, "the findings and more"), "the tail holds the findings")
 }
 
+func TestProjectGate_ATreeThatCannotBeReadFailsTheGateBeforeItRuns(t *testing.T) {
+	t.Parallel()
+
+	calls := &gateCalls{}
+	local := func(binary, _ string, _ time.Duration) proc.Runner {
+		return recording{run: func(args []string) model.CommandResult {
+			calls.binaries = append(calls.binaries, binary)
+
+			if args[0] == "rev-parse" {
+				return model.CommandResult{Stderr: "fatal: no tree\n", ExitCode: 128}
+			}
+
+			return model.CommandResult{Stdout: "abc123"}
+		}}
+	}
+	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: local}}
+
+	_, err := gate.Run(t.Context(), "p", "1")
+
+	require.ErrorContains(t, err, "git rev-parse in /tree: fatal: no tree")
+	assert.NotContains(t, calls.binaries, "sh")
+}
+
 func TestProjectGate_AHostGateChecksOutTheHeadItReportsAndRunsNothingHere(t *testing.T) {
 	t.Parallel()
 
@@ -161,7 +235,7 @@ func TestProjectGate_AHostGateChecksOutTheHeadItReportsAndRunsNothingHere(t *tes
 			got, err := gate.Run(t.Context(), "p", "1")
 
 			require.NoError(t, err)
-			assert.Equal(t, flow.GateResult{Passed: test.want, Report: test.report, Head: "abc123"}, got)
+			assert.Equal(t, flow.GateResult{Passed: test.want, Report: test.report, Head: "abc123", Tree: "tree-of-abc123"}, got)
 			assert.NotContains(t, calls.binaries, "sh", "the gate runs on the host and never here")
 			assert.Contains(t, hosted.spec.Command, "git clone -- https://example.test/repo.git tree")
 			assert.Contains(t, hosted.spec.Command, "git checkout --detach abc123")
@@ -256,7 +330,7 @@ func TestProjectGate_AStatusThatGitCannotReadEndsTheGate(t *testing.T) {
 				return model.CommandResult{Stderr: "fatal: not a repository\n", ExitCode: 128}
 			}
 
-			return model.CommandResult{Stdout: "abc"}
+			return model.CommandResult{Stdout: "abc\ntree-of-abc\n"}
 		}}
 	}
 	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: runner}}

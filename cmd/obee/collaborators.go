@@ -367,8 +367,41 @@ type pulls struct {
 	runners  []string
 }
 
-// opened is the forge of one project.
+// opened is the forge of one project. It passes the optional reads of the merge (trees and failed logs) to the forge when the forge has them:
+// an embedded interface hides every method that it does not list, so the merge would not see them without these methods.
 type opened struct{ forge.Forge }
+
+var errNoOptionalRead = errors.New("this forge cannot read it")
+
+// CommitTree returns the tree id of a commit, when the forge reads trees.
+func (o opened) CommitTree(ctx context.Context, commit string) (string, error) {
+	trees, ok := o.Forge.(merge.Trees)
+	if !ok {
+		return "", fmt.Errorf("%w: trees", errNoOptionalRead)
+	}
+
+	return trees.CommitTree(ctx, commit)
+}
+
+// TreeBlobs returns the files of a tree, when the forge reads trees.
+func (o opened) TreeBlobs(ctx context.Context, tree string) (map[string]string, error) {
+	trees, ok := o.Forge.(merge.Trees)
+	if !ok {
+		return nil, fmt.Errorf("%w: trees", errNoOptionalRead)
+	}
+
+	return trees.TreeBlobs(ctx, tree)
+}
+
+// FailedLog returns the log of a failed check, when the forge reads logs.
+func (o opened) FailedLog(ctx context.Context, link string) (string, error) {
+	logs, ok := o.Forge.(merge.Logs)
+	if !ok {
+		return "", fmt.Errorf("%w: logs", errNoOptionalRead)
+	}
+
+	return logs.FailedLog(ctx, link)
+}
 
 // forgeOf builds the forge of the named project.
 func (p pulls) forgeOf(name string) (opened, error) {
@@ -433,6 +466,19 @@ func (p pulls) Pull(ctx context.Context, project, item string) (review.Standing,
 	return review.Pull(ctx, built, number), nil
 }
 
+// Reviewed reads the standing as Pull does, then lets a review of the commit reviewed stand for a head that holds the same tree.
+func (p pulls) Reviewed(ctx context.Context, project, item, reviewed string) (review.Standing, error) {
+	built, number, err := p.find(ctx, project, item)
+	if err != nil {
+		return review.Standing{}, err
+	}
+
+	standing := review.Pull(ctx, built, number)
+	standing.Compare(ctx, built, reviewed)
+
+	return standing, nil
+}
+
 // Ready takes the pull request of the item out of draft.
 func (p pulls) Ready(ctx context.Context, project, item string) error {
 	built, number, err := p.find(ctx, project, item)
@@ -480,7 +526,7 @@ func (p pulls) request(number int, head string, settings flow.MergeSettings, rul
 	return merge.Request{
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
-		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
+		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree,
 	}
 }
 
