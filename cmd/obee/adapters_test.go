@@ -15,7 +15,6 @@ import (
 	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store/beads/beadstest"
-	"github.com/tobocop2/obee/internal/workflow"
 )
 
 func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T) {
@@ -88,26 +87,24 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	assert.Nil(t, forge)
 }
 
-func TestAdapters_CapabilitiesAreTheTrackerFieldsThenTheForgeFieldsAndAForge(t *testing.T) {
+func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil)
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
-	caps, err := table.capabilities(t.Context(), good)
-	require.NoError(t, err)
-	assert.Equal(t, workflow.Capabilities{Project: "p", Fields: []string{"id", "title", "body", "branch", "head_sha", "pr", "author"}, Forge: true}, caps)
+	require.NoError(t, table.checkTrackerAndForge(t.Context(), good))
 }
 
-func TestAdapters_CapabilitiesRefuseAProjectWhoseAdapterCannotBeBuilt(t *testing.T) {
+func TestAdapters_CheckTrackerAndForgeRefusesAProjectWhoseAdapterCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil)
 
-	_, err := table.capabilities(t.Context(), model.Project{Name: "p", Tracker: "jira"})
+	err := table.checkTrackerAndForge(t.Context(), model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
 
-	_, err = table.capabilities(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: "gitlab"})
+	err = table.checkTrackerAndForge(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: "gitlab"})
 	require.EqualError(t, err, `project p: no forge adapter named "gitlab"`)
 }
 
@@ -216,12 +213,8 @@ func TestAdapters_ALocalProjectNeedsNoBdAndCheckBuildsNothingOnDisk(t *testing.T
 
 	require.NoError(t, table.check(t.Context(), project))
 
-	caps, err := table.capabilities(t.Context(), project)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"id", "title", "body"}, caps.Fields)
-
-	_, err = os.Stat(state)
-	require.ErrorIs(t, err, os.ErrNotExist, "check and the item fields leave the state folder alone")
+	_, err := os.Stat(state)
+	require.ErrorIs(t, err, os.ErrNotExist, "check leaves the state folder alone")
 }
 
 func TestAdapters_CheckRefusesABeadsClaimStoreWithNoPrefixEvenWhenTheTrackerIsLocal(t *testing.T) {
@@ -247,10 +240,6 @@ func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testin
 	require.EqualError(t, err, `project p: no forge; set forge = "github" in the project file`)
 	require.ErrorIs(t, err, forge.ErrNoForge)
 	assert.Nil(t, built)
-
-	caps, err := table.capabilities(t.Context(), noForge)
-	require.NoError(t, err)
-	assert.Equal(t, workflow.Capabilities{Project: "p", Fields: []string{"id", "title", "body"}, ForgeOnly: []string{"branch", "head_sha", "pr", "author"}}, caps)
 
 	require.NoError(t, table.check(t.Context(), noForge))
 }

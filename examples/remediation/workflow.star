@@ -1,0 +1,62 @@
+# The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
+# Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
+
+load("@obee//review_fix.star", "review_fix")
+
+# A command of these kinds in the transcript is recorded in the violations of the agent. The step does not fail.
+# The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
+FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
+
+def main(item):
+    plan = agent(
+        name = "plan",
+        prompt = "prompts/plan.md",
+        model = "opus",
+        inputs = {"item": item},
+    )
+
+    implement = agent(
+        name = "implement",
+        prompt = "prompts/implement.md",
+        model = "sonnet",
+        require_skills = ["blast-radius-review"],
+        forbid_commands = FORBID,
+        inputs = {"item": item, "plan": plan.text},
+    )
+
+    # Five fix rounds need six passes: the sixth reviews the fifth fix.
+    # The reviewer starts fresh in each round and judges the commit the gate ran on.
+    # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md")
+
+    # After the last round, a person rules on each open finding. The ruling is applied once. No review follows it.
+    if loop.exhausted:
+        ruling = wait(
+            "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",
+            name = "adjudicate",
+        )
+        agent(
+            name = "settle",
+            prompt = "prompts/settle.md",
+            model = "sonnet",
+            inputs = {"ruling": ruling.answer},
+        )
+        return
+
+    # An approved head is marked ready and then left to the owner: this call does not set `merge`, so it never merges.
+    # The settings for a merge are present, so the call can set `merge = True` once the engine has a merger. The repository, the base
+    # and the owner identity come from the environment, so the file holds no login or address.
+    # `base` is the integration branch of the repository, never the default branch.
+    # `approved` is the verdict of the review, which is not the agent that wrote the code. Our own pull requests merge only when it is true.
+    # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
+    merge(
+        name = "ship",
+        head = loop.gate.head,
+        repo = env("REPO"),
+        base = env("BASE"),
+        hold = "hold",
+        own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
+        approved = loop.review.verdict == "approve",
+        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"],
+        children = "retarget",
+    )

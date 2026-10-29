@@ -24,7 +24,7 @@ make build    # write bin/obee
 
 ```bash
 obee item add <name> fix-login --title "Fix the login" --body-file task.md
-obee run fix-login <name> --workflow examples/local/workflow.hcl
+obee run fix-login <name> --workflow examples/local/workflow.star
 ```
 
 ## Design

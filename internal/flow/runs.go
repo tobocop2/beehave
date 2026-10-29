@@ -109,7 +109,15 @@ func conflictError(item, held, asked string) error {
 		errProjectConflict, item, held, asked, item, item, asked)
 }
 
+// strandedError names the version that a run was stored under. When only the version of the steps differs, no build of this version can finish the run.
 func strandedError(stranded run, version string) error {
+	stored := stranded.Status.ApplicationVersion
+
+	if buildVersion(stored) == buildVersion(version) {
+		return fmt.Errorf("%w: %s was made by an older step format, stored as version %s, and this is %s. Start the build that made it to finish it",
+			errStranded, stranded.Status.ID, stored, version)
+	}
+
 	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it",
-		errStranded, stranded.Status.ID, stranded.Status.ApplicationVersion, version, stranded.Status.ApplicationVersion)
+		errStranded, stranded.Status.ID, stored, version, buildVersion(stored))
 }

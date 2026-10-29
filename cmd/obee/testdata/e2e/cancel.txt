@@ -1,5 +1,5 @@
 # Cancel stops a run while its agent works. status shows the run as cancelled.
-! exec obee run 7 --workflow flow/workflow.hcl &
+! exec obee run 7 --workflow flow/workflow.star &
 waitfile started
 
 exec obee cancel 7

@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +23,7 @@ const (
 	configFlag          = "config"
 	projectFlag         = "project"
 	workflowFlag        = "workflow"
-	defaultWorkflowFile = "workflow.hcl"
+	defaultWorkflowFile = "workflow.star"
 )
 
 // ExitError carries the exit code of a command that failed on purpose.
@@ -38,104 +35,37 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, capabilities capabilitiesFunc) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(env, capabilities))
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand())
 
 	return check
 }
 
-// capabilitiesFunc returns what the adapters of a project offer to a workflow: the item fields and whether a forge exists.
-type capabilitiesFunc func(context.Context, model.Project) (workflow.Capabilities, error)
-
-// projectCapabilities asks the hook for the capabilities of the project. A build with no hook offers the common item fields, and a forge when the project names one.
-func projectCapabilities(ctx context.Context, hook capabilitiesFunc, project model.Project) (workflow.Capabilities, error) {
-	if hook == nil {
-		return workflow.Capabilities{Project: project.Name, Fields: workflow.CommonItemFields(), Forge: project.Forge != ""}, nil
-	}
-
-	return hook(ctx, project)
-}
-
-// workflowCheck holds what `check workflow` reads: the process environment, the adapter hook and the two flags.
-type workflowCheck struct {
-	env          map[string]string
-	capabilities capabilitiesFunc
-	project      string
-	configDir    string
-}
-
-func newCheckWorkflowCommand(env map[string]string, capabilities capabilitiesFunc) *cobra.Command {
-	w := &workflowCheck{env: env, capabilities: capabilities}
-
-	command := &cobra.Command{
+func newCheckWorkflowCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "workflow [file]",
 		Short: "Check a workflow file and print one line for each problem",
-		Long: "Check the structure, the references, the cycles and the prompt files of a workflow file. " +
+		Long: "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
 			"The default file is " + defaultWorkflowFile + " in the current folder. " +
-			"With --project, the item fields come from the tracker and the forge of that project, and a step that needs a forge is refused when the project has none. Without it, the only item fields are id, title and body. " +
 			"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.",
 		Args: cobra.MaximumNArgs(1),
-		RunE: w.run,
-	}
-	command.Flags().StringVar(&w.project, projectFlag, "", "the project whose adapters declare the item fields (default: id, title and body only)")
-	command.Flags().StringVar(&w.configDir, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			file := defaultWorkflowFile
+			if len(args) > 0 {
+				file = args[0]
+			}
 
-	return command
+			return runCheckWorkflow(cmd.ErrOrStderr(), file)
+		},
+	}
 }
 
-func (w *workflowCheck) run(cmd *cobra.Command, args []string) error {
-	file := defaultWorkflowFile
-	if len(args) > 0 {
-		file = args[0]
-	}
-
-	caps, err := w.offered(cmd.Context())
-	if err != nil {
-		return err
-	}
-
-	return runCheckWorkflow(cmd.ErrOrStderr(), file, caps)
-}
-
-// offered returns the capabilities of the named project. With no project name, the check knows only the common item fields and cannot tell whether a forge exists, so it refuses no step.
-func (w *workflowCheck) offered(ctx context.Context) (workflow.Capabilities, error) {
-	if w.project == "" {
-		return workflow.Capabilities{Fields: workflow.CommonItemFields(), Forge: true}, nil
-	}
-
-	project, err := w.loadProject()
-	if err != nil {
-		return workflow.Capabilities{}, err
-	}
-
-	return projectCapabilities(ctx, w.capabilities, project)
-}
-
-func (w *workflowCheck) loadProject() (model.Project, error) {
-	dir, err := config.FolderPath(w.env, w.configDir)
-	if err != nil {
-		return model.Project{}, err
-	}
-
-	cfg, problems := config.LoadFolder(dir, w.env)
-	if len(problems) > 0 {
-		return model.Project{}, problems
-	}
-
-	project, found := cfg.Projects[w.project]
-	if !found {
-		return model.Project{}, fmt.Errorf("no project named %q. Use one of: %s", w.project, strings.Join(slices.Sorted(maps.Keys(cfg.Projects)), ", "))
-	}
-
-	return project.Project, nil
-}
-
-func runCheckWorkflow(stderr io.Writer, file string, caps workflow.Capabilities) error {
-	found, unparsed := workflow.Check(os.DirFS(filepath.Dir(file)), filepath.Base(file), caps)
+func runCheckWorkflow(stderr io.Writer, file string) error {
+	found, unparsed := workflow.Check(file)
 	if len(found) == 0 {
 		return nil
 	}
@@ -193,7 +123,6 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 // its name inside its folder, and each line shows the path that the user typed.
 func printProblems(stderr io.Writer, file string, found []hclfile.Diagnostic) {
 	for _, problem := range found {
-		problem.File = file
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintln(stderr, problem)
 	}

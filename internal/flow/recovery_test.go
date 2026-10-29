@@ -19,7 +19,7 @@ func TestRunFile_ASuccessRunOfAnotherItemThatTheLaunchResumedIsNotJoined(t *test
 	rig := newAgentRig(t)
 	rig.reply(`{"verdict":"ok"}`, exited)
 
-	file := writeFlow(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt  = \"prompts/a.md\"\n  outputs = [\"verdict\"]\n}\ncommand \"after\" {\n  run = [\"after\", agent.a.verdict]\n}\n")
+	file := writeFlow(t, afterVerdictFlow)
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
 
@@ -48,7 +48,7 @@ func TestRunFile_ARunThatTheLaunchResumedAndEndedIsNotRunAgain(t *testing.T) {
 	rig := newAgentRig(t)
 	rig.reply(`{"verdict":"ok"}`, exited)
 
-	file := writeFlow(t, "workflow \"w\" {}\nagent \"a\" {\n  prompt  = \"prompts/a.md\"\n  outputs = [\"verdict\"]\n}\ncommand \"after\" {\n  run = [\"after\", agent.a.verdict]\n}\n")
+	file := writeFlow(t, afterVerdictFlow)
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
 

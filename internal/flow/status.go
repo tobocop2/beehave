@@ -40,6 +40,8 @@ type RunInfo struct {
 	State    runState
 	Version  string
 	Stranded bool
+	// OlderSteps marks a stranded run that has the build version of this client, but was made by an older step format.
+	OlderSteps bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
 	Question string
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
@@ -71,7 +73,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 		return nil, err
 	}
 
-	client := &Client{version: opts.Version, dir: state.dir, give: give, log: state.log}
+	client := &Client{version: applicationVersion(opts.Version), dir: state.dir, give: give, log: state.log}
 	if err := client.connect(ctx, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), state.log.Close())
 	}
@@ -124,9 +126,11 @@ func (c *Client) Status() ([]RunInfo, error) {
 // info describes one run of the store. An open run also carries the question it asks the owner.
 func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
 	info := RunInfo{
-		ID: row.ID, State: stateOf(row.Status), Version: row.ApplicationVersion,
+		ID: row.ID, State: stateOf(row.Status), Version: buildVersion(row.ApplicationVersion),
 		Stranded: !run{Status: row}.terminal() && row.ApplicationVersion != c.version,
 	}
+
+	info.OlderSteps = info.Stranded && info.Version == buildVersion(c.version)
 
 	if err := c.details(row, &info); err != nil {
 		return RunInfo{}, err

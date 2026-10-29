@@ -140,6 +140,35 @@ func (c clock) resultOptions() []dbos.GetResultOption {
 	return []dbos.GetResultOption{dbos.WithHandlePollingInterval(c.Poll)}
 }
 
+// CommandRequest is one program that a command call or a gate call runs. Host is empty for the item folder.
+type CommandRequest struct {
+	Project string
+	Item    string
+	Run     []string
+	Host    string
+	Timeout time.Duration
+	// Stdin is the text that the program reads. It is empty when the call sets none.
+	Stdin string
+	// Env is the whole environment of the program as NAME=value pairs. It is nil for a request that keeps the environment of the process.
+	Env []string
+}
+
+// CommandOutput is what a program printed and its exit code. A non-zero RC is data, not an error.
+type CommandOutput struct {
+	Stdout string
+	RC     int
+}
+
+// commands runs the programs of command calls.
+type commands interface {
+	Run(ctx context.Context, request CommandRequest) (CommandOutput, error)
+}
+
+// items reads the fields of an item, which are the `item` argument of main in a workflow file.
+type items interface {
+	Fields(ctx context.Context, project, item string) (map[string]string, error)
+}
+
 // Deps holds the collaborators of the workflows. A nil Merge means the build cannot merge: a merge step with `merge = true` fails.
 type Deps struct {
 	Clock     clock

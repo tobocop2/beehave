@@ -10,7 +10,7 @@ import (
 func TestCheckWorkflow_ExitsZeroForTheRemediationExample(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, stderr := runCheckWorkflow(t, filepath.Join("..", "..", "examples", "remediation", "workflow.hcl"))
+	code, stdout, stderr := runCheckWorkflow(t, filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 
 	require.Equal(t, 0, code, stderr)
 	require.Empty(t, stdout)

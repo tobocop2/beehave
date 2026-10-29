@@ -521,7 +521,7 @@ func TestClient_StatusReportsAQuestionThatIsNotText(t *testing.T) {
 	t.Cleanup(func() { _ = state.log.Close() })
 
 	flowCtx, err := dbos.NewContext(t.Context(), dbos.Config{
-		AppName: appName, DatabaseURL: state.url, ApplicationVersion: testVersion, ExecutorID: executorName,
+		AppName: appName, DatabaseURL: state.url, ApplicationVersion: applicationVersion(testVersion), ExecutorID: executorName,
 	})
 	require.NoError(t, err)
 
@@ -566,7 +566,7 @@ func TestClient_StatusReportsAMergeStateThatIsNotText(t *testing.T) {
 	t.Cleanup(func() { _ = state.log.Close() })
 
 	flowCtx, err := dbos.NewContext(t.Context(), dbos.Config{
-		AppName: appName, DatabaseURL: state.url, ApplicationVersion: testVersion, ExecutorID: executorName,
+		AppName: appName, DatabaseURL: state.url, ApplicationVersion: applicationVersion(testVersion), ExecutorID: executorName,
 	})
 	require.NoError(t, err)
 

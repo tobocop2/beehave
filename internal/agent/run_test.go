@@ -106,7 +106,8 @@ func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //n
 	assert.Equal(t, agent.OutcomeNotStarted, named.Outcome)
 	assert.Contains(t, named.Note, `no option to set a model, so model "opus" is not used`)
 	assert.Equal(t, agent.OutcomeNotStarted, resume.Outcome)
-	assert.Contains(t, resume.Note, "no option to resume a session")
+	assert.Contains(t, resume.Note, "no option to resume a session, so the run does not start. Remove resume from the step.")
+	assert.Contains(t, named.Note, "Remove the model from the step.")
 }
 
 // noFlags is an adapter whose CLI has no model or resume option.

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 func TestStateOf_MapsEveryStoreStatusToARunState(t *testing.T) {
@@ -136,10 +137,10 @@ func TestLatestRun_SkipsRunsWhoseNameEndsInNoAttemptNumber(t *testing.T) {
 	engine := harness.engine(t)
 
 	file := filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName)
-	hash, err := hashFile(file)
+	pinned, err := workflow.Pin(file)
 	require.NoError(t, err)
 
-	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, File: file, Hash: hash, Login: "alice"}, dbos.WithWorkflowID("item-12-rx"))
+	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, File: file, Files: pinned, Login: "alice"}, dbos.WithWorkflowID("item-12-rx"))
 	require.NoError(t, err)
 	_, err = handle.GetResult()
 	require.NoError(t, err)

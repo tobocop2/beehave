@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run examples/local/workflow.hcl once with the real claude CLI and check that the run finishes.
+# Run examples/local/workflow.star once with the real claude CLI and check that the run finishes.
 # This costs a real agent run, so `make check` never runs it. Run it with `make smoke-agent`.
 #
 # SMOKE_CLAUDE_CONFIG_DIR is the Claude profile that the run uses. The default is ~/.claude.
@@ -30,6 +30,6 @@ export OBEE_CONFIG="$work/config" OBEE_STATE_DIR="$work/state"
 echo "smoke-agent: the files of this run are in $work"
 
 "$root/bin/obee" item add demo fix-login --title "Add hello.txt" --body-file "$work/task.md"
-"$root/bin/obee" run fix-login demo --workflow "$root/examples/local/workflow.hcl"
+"$root/bin/obee" run fix-login demo --workflow "$root/examples/local/workflow.star"
 
 echo "smoke-agent: the run finished"

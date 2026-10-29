@@ -367,13 +367,13 @@ type harness struct {
 }
 
 // defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
-const defaultFlow = "workflow \"w\" {}\nagent \"work\" {\n  prompt = \"prompts/work.md\"\n}\n"
+const defaultFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prompts/work.md\", model = \"m\")\n"
 
 // defaultFlowName is the name of the default workflow file, which sits beside the state folder of the harness.
-const defaultFlowName = "workflow.hcl"
+const defaultFlowName = "workflow.star"
 
 // waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for obee answer after its agent ends.
-const waitFlow = "workflow \"w\" {}\nagent \"work\" {\n  prompt = \"prompts/work.md\"\n}\nwait \"ask\" {\n  question = \"What now?\"\n}\n"
+const waitFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prompts/work.md\", model = \"m\")\n    wait(name = \"ask\", question = \"What now?\")\n"
 
 // flowIs replaces the default workflow file of the harness. Call it before the first run.
 func (h *harness) flowIs(t *testing.T, text string) {

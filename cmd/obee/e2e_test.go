@@ -21,7 +21,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/obee/internal/workflow/workflowtest"
 )
 
 // These tests run the obee commands as separate processes, as testscript does for any command line tool.
@@ -265,40 +265,24 @@ base_branch = "main"
 gate = "true"
 `
 
-// exampleSkill returns the one skill that an agent of examples/remediation/workflow.hcl requires.
+// exampleSkill returns the one skill that an agent of examples/remediation/workflow.star requires.
 func exampleSkill() (string, error) {
-	flow, err := workflow.Load(os.DirFS(filepath.Join("..", "..", "examples", "remediation")), "workflow.hcl")
+	text, err := os.ReadFile(filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+	if err != nil {
+		return "", err
+	}
+
+	calls, err := workflowtest.Calls("workflow.star", text)
 	if err != nil {
 		return "", err
 	}
 
 	var skills []string
 
-	var evalErr error
-
-	flow.Walk(func(step workflow.Step, _ int) {
-		agent, ok := step.(*workflow.Agent)
-		if !ok {
-			return
+	for _, call := range calls {
+		if call.Builtin == "agent" {
+			skills = append(skills, workflowtest.Literals(call.Args["require_skills"])...)
 		}
-
-		value, diags := agent.RequireSkills.Value(nil)
-		if diags.HasErrors() {
-			evalErr = diags
-			return
-		}
-
-		if value.IsNull() {
-			return
-		}
-
-		for _, name := range value.AsValueSlice() {
-			skills = append(skills, name.AsString())
-		}
-	})
-
-	if evalErr != nil {
-		return "", evalErr
 	}
 
 	if len(skills) != 1 {
@@ -325,12 +309,12 @@ func e2eSetup(env *testscript.Env) error {
 		"config/projects/shop.hcl": {e2eProject, e2eFileMode},
 	}
 
-	example, err := os.ReadFile(filepath.Join("..", "..", "examples", "remediation", "workflow.hcl"))
+	example, err := os.ReadFile(filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 	if err != nil {
 		return err
 	}
 
-	files["flow/workflow.hcl"] = struct {
+	files["flow/workflow.star"] = struct {
 		text string
 		mode os.FileMode
 	}{string(example), e2eFileMode}

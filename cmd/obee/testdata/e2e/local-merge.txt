@@ -1,31 +1,33 @@
-# A project with no forge refuses a workflow with a merge step, at the position of the step, and the run starts nothing.
+# A project with no forge runs a workflow that calls merge(). The run refuses at the call: stderr names the file and the line of the call and says that the project has no forge.
 isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
 
 subst config/projects/local.hcl
 
-exitcode 1 obeereal check workflow --project local flow/merge.hcl
-stderr 'merge\.hcl:3:1: step `merge\.ship` needs a forge, and project `local` has none\. Set `forge = "github"` in the project file, or remove the step\.'
-
 exec obeereal item add local ship-it --title 'Ship it' --body-file body.txt
 
-exitcode 1 obeereal run ship-it local --workflow flow/merge.hcl
-stderr 'merge\.hcl:3:1: step `merge\.ship` needs a forge'
+exitcode 1 obeereal run ship-it local --workflow flow/merge.star
+stderr 'merge\.star:3:'
+stderr 'project local: no forge; set forge = "github" in the project file'
+! stdout 'finished'
 
-# The refusal comes before the claim: no claim row, no run, and no folder of the engine.
+# The claim of the item is released, and the run ends as failed.
 noclaims local
-! exists state/dbos.db
-! exists state/engine.lock
+exec obeereal status
+stdout '^item-ship-it-r1\tfailed$'
 
+-- origin/readme.txt --
+The source repository.
 -- body.txt --
 Ship the change.
 -- config/projects/local.hcl --
 source      = "@WORK@/origin"
 base_branch = "main"
 gate        = "true"
--- flow/merge.hcl --
-workflow "w" {}
-gate "check" {}
-merge "ship" {
-  head  = gate.check.head
-  merge = false
-}
+-- flow/merge.star --
+def main(item):
+    command(name = "before", run = ["git", "--version"])
+    merge(head = "abc123", merge = False)
