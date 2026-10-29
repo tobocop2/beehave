@@ -15,7 +15,7 @@ stdout 'item stop-it stopped at step command:probe#1 with exit code 128'
 ! stdout 'after'
 
 exec obeereal status
-stdout 'stop-it-r1\tdone\tstopped at command:probe#1 rc 128'
+stdout 'stop-it-r1\tstopped\tstopped at command:probe#1 rc 128'
 
 -- origin/readme.txt --
 The source repository.

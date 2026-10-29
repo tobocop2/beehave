@@ -33,7 +33,7 @@ stdout 'weigh-ab-unreviewed\.md'
 ! stdout 'finished'
 
 exec obeereal status
-stdout 'weigh-ab-r1\tdone\tstopped at command:report#[0-9]+ rc 3'
+stdout 'weigh-ab-r1\tstopped\tstopped at command:report#[0-9]+ rc 3'
 
 # Three reviews, two revise steps between them, no fourth review. The summary is written again after each revise step, so each review reads a summary of the notes it reviews.
 cmp calls.log expected-calls.log

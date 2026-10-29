@@ -30,7 +30,7 @@ stdout 'FAIL notes/2.md: the claim has no source'
 ! stdout 'finished'
 
 exec obeereal status
-stdout 'weigh-ab-r1\tdone\tstopped at command:check#3 rc 1'
+stdout 'weigh-ab-r1\tstopped\tstopped at command:check#3 rc 1'
 
 cmp calls.log expected-calls.log
 ! exists out
