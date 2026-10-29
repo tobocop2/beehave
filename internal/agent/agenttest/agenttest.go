@@ -5,7 +5,6 @@ package agenttest
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,8 +43,8 @@ func TestAdapter(t *testing.T, make Factory) {
 	t.Run("a_run_follows_the_profile", func(t *testing.T) {
 		CheckRun(t, make(), t.TempDir())
 	})
-	t.Run("an_unreadable_transcript_is_an_error", func(t *testing.T) {
-		CheckUnreadable(t, make(), filepath.Join(t.TempDir(), "none.jsonl"))
+	t.Run("a_line_with_no_call_holds_no_call", func(t *testing.T) {
+		CheckCalls(t, make())
 	})
 }
 
@@ -117,15 +116,15 @@ func checkSeen(r Reporter, profile agent.Profile, dir string, seen []string) {
 	expect(r, !hasPrefix(seen, leakName+"="), "the CLI saw %s, a variable of the caller", leakName)
 }
 
-// CheckUnreadable checks that both readers refuse the transcript at missing, a path with no file, with an error that wraps agent.ErrUnreadable.
-func CheckUnreadable(r Reporter, adapter agent.Adapter, missing string) {
+// CheckCalls checks that a line which is not a tool call holds no call.
+func CheckCalls(r Reporter, adapter agent.Adapter) {
 	r.Helper()
 
-	_, bashErr := adapter.BashCalls(missing)
-	_, skillErr := adapter.SkillCalls(missing, "")
+	seen := adapter.Calls("not a line of the output")
 
-	expect(r, errors.Is(bashErr, agent.ErrUnreadable), "BashCalls of a missing file returned %v, not agent.ErrUnreadable", bashErr)
-	expect(r, errors.Is(skillErr, agent.ErrUnreadable), "SkillCalls of a missing file returned %v, not agent.ErrUnreadable", skillErr)
+	expect(r, len(seen.Shell) == 0, "a line with no call holds the shell calls %v", seen.Shell)
+	expect(r, len(seen.Skills) == 0, "a line with no call holds the skill calls %q", seen.Skills)
+	expect(r, len(seen.Refused) == 0 && !seen.Result, "a line with no call holds a refusal or a result: %+v", seen)
 }
 
 func hasPrefix(lines []string, prefix string) bool {

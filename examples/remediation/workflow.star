@@ -3,7 +3,7 @@
 
 load("@obee//review_fix.star", "review_fix")
 
-# A command of these kinds in the transcript is recorded in the violations of the agent. The step does not fail.
+# A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
 

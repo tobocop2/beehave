@@ -13,6 +13,16 @@ stdout 'item 8 finished'
 grep -count=2 '^audit ' calls.log
 grep -count=1 'git add' seen.log
 
+# The fake claude now obeys --settings and runs the hook before the Bash call, as Claude Code does. The hook is `obee check command`.
+# It exits 2 on the bulk staging, so the call is blocked and never ran: the output violations stay empty.
+cp flow/hit.star obey-hook
+exec obee run 9 --workflow flow/hit.star
+stdout 'item 9 finished'
+
+grep -count=1 '^blocked git add -A$' blocked.log
+grep -count=3 '^audit ' calls.log
+grep -count=1 'git add' seen.log
+
 -- flow/hit.star --
 def main(item):
     implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", forbid_commands = ["bulk-staging", "local-delete"])

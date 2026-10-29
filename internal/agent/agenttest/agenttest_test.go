@@ -10,7 +10,6 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/agenttest"
-	"github.com/tobocop2/obee/internal/model"
 )
 
 // recorder is a Reporter that keeps the failures instead of failing the test.
@@ -27,12 +26,13 @@ func (r *recorder) Errorf(format string, args ...any) {
 // fakeAdapter is a correct adapter. Each field of a flawed one switches on one wrong behavior.
 type fakeAdapter struct {
 	profile agent.Profile
-	readErr error
-	// noBash makes BashCalls a stub that reads nothing and never refuses a missing file.
-	noBash bool
+	// invent makes Calls report a call on every line.
+	invent bool
 }
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
+
+func (fakeAdapter) Guard(string) []string { return nil }
 
 func (fakeAdapter) Line(string) (string, string) { return "", "" }
 
@@ -40,20 +40,17 @@ func (fakeAdapter) TranscriptPath(configDir, _, session string) string {
 	return filepath.Join(configDir, session)
 }
 
-func (a fakeAdapter) BashCalls(string) ([]model.Call, error) {
-	if a.noBash {
-		return nil, nil
+func (a fakeAdapter) Calls(string) agent.Seen {
+	if a.invent {
+		return agent.Seen{Shell: []agent.Call{{Text: "ls"}}, Skills: []string{"s"}}
 	}
 
-	return nil, a.readErr
+	return agent.Seen{}
 }
-
-func (a fakeAdapter) SkillCalls(string, string) ([]model.Call, error) { return nil, a.readErr }
 
 func good() fakeAdapter {
 	return fakeAdapter{
 		profile: agent.Profile{Binary: "fake-cli", Args: []string{"-p", "--json"}, ConfigVars: []string{"FAKE_CONFIG_DIR"}, TokenVar: "FAKE_TOKEN"},
-		readErr: fmt.Errorf("%w x", agent.ErrUnreadable),
 	}
 }
 
@@ -154,35 +151,21 @@ func TestCheckRun(t *testing.T) {
 	})
 }
 
-func TestTestAdapter_FailsAnAdapterWhoseBashCallsReadsNothing(t *testing.T) {
-	t.Parallel()
-
-	a := good()
-	a.noBash = true
-
-	var r recorder
-
-	agenttest.CheckUnreadable(&r, a, "none")
-
-	require.Len(t, r.failures, 1)
-	assert.Contains(t, r.failures[0], "BashCalls of a missing file returned <nil>, not agent.ErrUnreadable")
-}
-
-func TestCheckUnreadable(t *testing.T) {
+func TestCheckCalls(t *testing.T) {
 	t.Parallel()
 
 	var r recorder
 
-	agenttest.CheckUnreadable(&r, good(), "none")
+	agenttest.CheckCalls(&r, good())
 
 	assert.Empty(t, r.failures)
 
 	a := good()
-	a.readErr = nil
+	a.invent = true
 
-	agenttest.CheckUnreadable(&r, a, "none")
+	agenttest.CheckCalls(&r, a)
 
-	assert.Len(t, r.failures, 2)
-	assert.Contains(t, r.failures[0], "BashCalls of a missing file returned <nil>")
-	assert.Contains(t, r.failures[1], "SkillCalls of a missing file returned <nil>")
+	require.Len(t, r.failures, 2)
+	assert.Contains(t, r.failures[0], "shell calls")
+	assert.Contains(t, r.failures[1], "skill calls")
 }

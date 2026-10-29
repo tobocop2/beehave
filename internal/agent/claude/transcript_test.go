@@ -1,9 +1,9 @@
 package claude_test
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +13,6 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/agenttest"
 	"github.com/tobocop2/obee/internal/agent/claude"
-	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -73,218 +72,168 @@ func toJSON(t *testing.T, value any) string {
 	return string(raw)
 }
 
-func toolUse(tool, key, value string) map[string]any {
+func toolUse(tool, key string, value any) map[string]any {
 	return map[string]any{"type": "tool_use", "id": "toolu_1", "name": tool, "input": map[string]any{key: value}}
 }
 
-// skillLine is an assistant line holding one Skill call.
-func skillLine(t *testing.T, skill string) string {
+func assistant(t *testing.T, blocks ...any) string {
 	t.Helper()
 
-	return toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "content": []any{toolUse("Skill", "skill", skill)}}})
+	return toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"role": "assistant", "content": blocks}})
 }
 
-// blobLine is the second copy of a call that Claude Code writes in a request blob.
-func blobLine(t *testing.T, skill, agentID string) string {
-	t.Helper()
-
-	return toJSON(t, map[string]any{"type": "api-request-blob", "agentId": agentID, "message": map[string]any{"content": []any{toolUse("Skill", "skill", skill)}}})
-}
-
-func agentSkillLine(t *testing.T, skill, agentID string) string {
-	t.Helper()
-
-	return toJSON(t, map[string]any{"type": "assistant", "isSidechain": true, "agentId": agentID, "message": map[string]any{"content": []any{toolUse("Skill", "skill", skill)}}})
-}
-
-func bashLine(t *testing.T, command string) string {
-	t.Helper()
-
-	return toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Bash", "command", command)}}})
-}
-
-// lines joins transcript lines with a newline after each.
-func lines(parts ...string) string {
-	return strings.Join(parts, "\n") + "\n"
-}
-
-func writeFile(t *testing.T, content string) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "lane.jsonl")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
-
-	return path
-}
-
-func TestBashCalls_ReadsOnlyBashCommandsAndNumbersTheLines(t *testing.T) {
+func TestCalls_ReadTheStreamOfOneRun(t *testing.T) {
 	t.Parallel()
 
+	file, err := os.Open("testdata/stream.jsonl")
+	require.NoError(t, err)
+
+	defer file.Close()
+
+	var shell, skills []string
+
+	results := 0
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		seen := claude.New().Calls(scanner.Text())
+		shell, skills = append(shell, texts(seen.Shell)...), append(skills, seen.Skills...)
+
+		assert.False(t, seen.Invalid, scanner.Text())
+		assert.Empty(t, seen.Refused, scanner.Text())
+
+		if seen.Result {
+			results++
+		}
+	}
+
+	require.NoError(t, scanner.Err())
+	assert.Equal(t, []string{"git status", "git add -A"}, shell, "the sub-agent call counts and the text of a tool_result does not")
+	assert.Equal(t, []string{blast, oracle}, skills)
+	assert.Equal(t, 1, results, "one line ends the run")
+}
+
+func texts(calls []agent.Call) []string {
+	var out []string
+	for _, call := range calls {
+		out = append(out, call.Text)
+	}
+
+	return out
+}
+
+// The fixture of the reviewer: a Bash call, then the tool_result that the PreToolUse hook produced when it refused the call.
+const (
+	refusedCall   = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_9","name":"Bash","input":{"command":"git add -A"}}]}}`
+	refusedResult = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":"PreToolUse:Bash hook error: [obee check command]: obee refused the command: bulk-staging: git add -A"}]}}`
+)
+
+func TestCalls_ACallCarriesItsIdAndAHookRefusalNamesTheSameId(t *testing.T) {
+	t.Parallel()
+
+	call := claude.New().Calls(refusedCall)
+	assert.Equal(t, []agent.Call{{ID: "toolu_9", Text: "git add -A"}}, call.Shell)
+	assert.Empty(t, call.Refused)
+
+	refusal := claude.New().Calls(refusedResult)
+	assert.Equal(t, []string{"toolu_9"}, refusal.Refused)
+	assert.Empty(t, refusal.Shell)
+}
+
+func TestCalls_OnlyAnErrorResultOfAHookIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	block := func(isError bool, content any) string {
+		return toJSON(t, map[string]any{"type": "user", "message": map[string]any{"content": []any{
+			map[string]any{"type": "tool_result", "tool_use_id": "t1", "is_error": isError, "content": content},
+		}}})
+	}
+	listed := []any{map[string]any{"type": "text", "text": "PreToolUse:Bash hook error: no"}}
+
+	assert.Equal(t, []string{"t1"}, claude.New().Calls(block(true, listed)).Refused, "a list of text blocks")
+
+	for name, line := range map[string]string{
+		"no error":        block(false, "PreToolUse:Bash hook error"),
+		"other error":     block(true, "exit status 1"),
+		"empty list":      block(true, []any{}),
+		"not text":        block(true, []any{map[string]any{"type": "image"}, "x"}),
+		"number":          block(true, 5),
+		"assistant line":  strings.Replace(block(true, "PreToolUse:x"), `"user"`, `"assistant"`, 1),
+		"no tool_use_id":  strings.Replace(block(true, "PreToolUse:x"), `"tool_use_id":"t1",`, "", 1),
+		"no message":      `{"type":"user"}`,
+		"content a plain": `{"type":"user","message":{"content":"PreToolUse:x"}}`,
+		"block a string":  `{"type":"user","message":{"content":["PreToolUse:x"]}}`,
+	} {
+		assert.Empty(t, claude.New().Calls(line).Refused, name)
+	}
+}
+
+func TestCalls_OnlyTheResultLineEndsTheRun(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, claude.New().Calls(`{"type":"result","subtype":"success","session_id":"s1"}`).Result)
+	assert.False(t, claude.New().Calls(`{"type":"assistant"}`).Result)
+	assert.False(t, claude.New().Calls(`[1]`).Result)
+}
+
+func TestCalls_ALineThatIsNotJSONIsInvalidAndAnEmptyLineIsNot(t *testing.T) {
+	t.Parallel()
+
+	for _, line := range []string{"plain text", "{broken", `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git ad`} {
+		assert.True(t, claude.New().Calls(line).Invalid, line)
+	}
+
+	for _, line := range []string{"", "  ", "[1]", `"text"`, `{}`} {
+		assert.False(t, claude.New().Calls(line).Invalid, line)
+	}
+}
+
+func TestCalls_ABashCallCountsOnEveryLineShapeAndKeepsItsOrder(t *testing.T) {
+	t.Parallel()
+
+	first := toolUse("Bash", "command", "first")
+	second := toolUse("Bash", "command", "second")
+	bare := toJSON(t, map[string]any{"message": map[string]any{"content": []any{first, second}}})
 	other := toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Read", "command", "git add -A")}}})
-	noString := toJSON(t, map[string]any{"message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "Bash", "input": map[string]any{"command": nil}}}}})
-	noInput := toJSON(t, map[string]any{"name": "Bash"})
-	text := toJSON(t, map[string]any{"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "git add -A"}}}})
-	array := toJSON(t, []any{map[string]any{"name": "Bash", "input": map[string]any{"command": "git status"}}})
-	path := writeFile(t, lines("not json", "", `{"type":"user","message":{"content":"git add -A"}}`, other, noString, noInput, text, "[1,2]", "{broken", bashLine(t, "ls"), array))
+	noString := toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Bash", "command", nil)}}})
 
-	got, err := claude.New().BashCalls(path)
+	seen := claude.New().Calls(bare)
+	assert.Equal(t, []string{"first", "second"}, texts(seen.Shell))
+	assert.Empty(t, seen.Skills)
 
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 10, Text: "ls"}, {Line: 11, Text: "git status"}}, got)
-}
-
-func TestBashCalls_CountsLoneCarriageReturnsAndCRLFAsLineEnds(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]string{
-		"lf":                    bashLine(t, "a") + "\n" + bashLine(t, "b") + "\n",
-		"crlf":                  bashLine(t, "a") + "\r\n" + bashLine(t, "b") + "\r\n",
-		"lone_cr":               bashLine(t, "a") + "\r" + bashLine(t, "b") + "\r",
-		"no_final_newline":      bashLine(t, "a") + "\n" + bashLine(t, "b"),
-		"cr_then_lf_in_a_chunk": bashLine(t, "a") + "\r\n" + bashLine(t, "b"),
-	}
-
-	for name, content := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := claude.New().BashCalls(writeFile(t, content))
-
-			require.NoError(t, err)
-			assert.Equal(t, []model.Call{{Line: 1, Text: "a"}, {Line: 2, Text: "b"}}, got)
-		})
+	for _, line := range []string{other, noString} {
+		assert.Empty(t, claude.New().Calls(line).Shell, line)
 	}
 }
 
-func TestBashCalls_ABlankLineBetweenTwoCRsStillCountsAsALine(t *testing.T) {
+func TestCalls_ALineThatIsNotAJSONObjectHoldsNoCall(t *testing.T) {
 	t.Parallel()
 
-	got, err := claude.New().BashCalls(writeFile(t, "\r\r"+bashLine(t, "x")))
+	for _, line := range []string{"", "plain text", "{broken", "[1]", `"text"`, `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git ad`} {
+		seen := claude.New().Calls(line)
 
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 3, Text: "x"}}, got)
-}
-
-func TestBashCalls_TwoCallsOnOneLineKeepTheirOrder(t *testing.T) {
-	t.Parallel()
-
-	line := toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Bash", "command", "first"), toolUse("Bash", "command", "second")}}})
-
-	got, err := claude.New().BashCalls(writeFile(t, line+"\n"))
-
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 1, Text: "first"}, {Line: 1, Text: "second"}}, got)
-}
-
-func TestReadCalls_RefuseAnUnreadableFile(t *testing.T) {
-	t.Parallel()
-
-	missing := filepath.Join(t.TempDir(), "none.jsonl")
-
-	_, bashErr := claude.New().BashCalls(missing)
-	_, skillErr := claude.New().SkillCalls(missing, "")
-
-	for _, err := range []error{bashErr, skillErr} {
-		require.ErrorIs(t, err, agent.ErrUnreadable)
-		assert.Contains(t, err.Error(), missing+": no such file or directory")
+		assert.Empty(t, seen.Shell, line)
+		assert.Empty(t, seen.Skills, line)
 	}
 }
 
-func TestReadCalls_RefuseALineLongerThanTheReadLimit(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "long.jsonl")
-	file, err := os.Create(path) //nolint:gosec // a path inside the test folder
-	require.NoError(t, err)
-	require.NoError(t, file.Truncate(300<<20)) // a sparse file of NUL bytes with no line end
-	require.NoError(t, file.Close())
-
-	_, err = claude.New().BashCalls(path)
-
-	require.ErrorIs(t, err, agent.ErrUnreadable)
-	assert.Contains(t, err.Error(), "token too long")
-}
-
-func TestReadCalls_AcceptOneObjectLineAmongBrokenOnes(t *testing.T) {
-	t.Parallel()
-
-	path := writeFile(t, lines("{broken", "{}", "[1]"))
-
-	bash, bashErr := claude.New().BashCalls(path)
-	skills, skillErr := claude.New().SkillCalls(path, "")
-
-	require.NoError(t, bashErr)
-	require.NoError(t, skillErr)
-	assert.Empty(t, bash)
-	assert.Empty(t, skills)
-}
-
-func TestReadCalls_RefuseAFileWithNoJSONObjectLine(t *testing.T) {
-	t.Parallel()
-
-	cases := map[string]string{
-		"empty":           "",
-		"only_newlines":   "\n\n\n",
-		"not_json":        "plain text\nmore text\n",
-		"truncated":       `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git ad`,
-		"only_non_object": "[1,2]\n\"text\"\n42\n",
-	}
-
-	for name, content := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			path := writeFile(t, content)
-			_, bashErr := claude.New().BashCalls(path)
-			_, skillErr := claude.New().SkillCalls(path, "")
-
-			for _, err := range []error{bashErr, skillErr} {
-				require.ErrorIs(t, err, agent.ErrUnreadable)
-				assert.Contains(t, err.Error(), "no line is a JSON object")
-			}
-		})
-	}
-}
-
-func TestSkillCalls_CountOnlyToolUseBlocksOfAssistantLines(t *testing.T) {
+func TestCalls_ASkillCountsOnlyAsAToolUseBlockOfAnAssistantLine(t *testing.T) {
 	t.Parallel()
 
 	shaped := toolUse("Skill", "skill", blast)
 	result := toJSON(t, map[string]any{"type": "user", "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "content": []any{shaped}}}}})
 	extra := toJSON(t, map[string]any{"type": "user", "toolUseResult": shaped})
-	text := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "I used " + blast}}}})
+	text := assistant(t, map[string]any{"type": "text", "text": "I used " + blast})
 	noContent := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": "plain"}})
 	noMessage := toJSON(t, map[string]any{"type": "assistant"})
-	notBlock := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": []any{"text", 5}}})
-	wrongTool := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": []any{toolUse("Read", "skill", blast)}}})
-	notToolUse := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "name": "Skill", "input": map[string]any{"skill": blast}}}}})
-	notString := toJSON(t, map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "Skill", "input": map[string]any{"skill": 5}}}}})
-	path := writeFile(t, lines(result, extra, text, noContent, noMessage, notBlock, wrongTool, notToolUse, notString, "[1]", skillLine(t, oracle)))
+	notBlock := assistant(t, "text", 5)
+	wrongTool := assistant(t, toolUse("Read", "skill", blast))
+	notToolUse := assistant(t, map[string]any{"type": "tool_result", "name": "Skill", "input": map[string]any{"skill": blast}})
+	notString := assistant(t, toolUse("Skill", "skill", 5))
 
-	got, err := claude.New().SkillCalls(path, "")
+	for _, line := range []string{result, extra, text, noContent, noMessage, notBlock, wrongTool, notToolUse, notString} {
+		assert.Empty(t, claude.New().Calls(line).Skills, line)
+	}
 
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 11, Text: oracle}}, got)
-}
-
-func TestSkillCalls_ACallHeldTwiceInTheTranscriptCountsOnce(t *testing.T) {
-	t.Parallel()
-
-	path := writeFile(t, lines(agentSkillLine(t, blast, "a1"), blobLine(t, blast, "a1"), blobLine(t, blast, "a1")))
-
-	got, err := claude.New().SkillCalls(path, "")
-
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 1, Text: blast}}, got)
-}
-
-func TestSkillCalls_WithAnAgentIDOnlyThatAgentCounts(t *testing.T) {
-	t.Parallel()
-
-	path := writeFile(t, lines(agentSkillLine(t, blast, "a1"), agentSkillLine(t, oracle, "a2"), skillLine(t, "main-line")))
-
-	got, err := claude.New().SkillCalls(path, "a2")
-
-	require.NoError(t, err)
-	assert.Equal(t, []model.Call{{Line: 2, Text: oracle}}, got)
+	assert.Equal(t, []string{oracle}, claude.New().Calls(assistant(t, toolUse("Skill", "skill", oracle))).Skills)
 }
