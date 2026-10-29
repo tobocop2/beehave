@@ -137,7 +137,7 @@ func call(t *testing.T, sources *workflow.Sources) (starlark.Value, error) {
 		predeclared[name] = starlark.NewBuiltin(name, nil)
 	}
 
-	main, err := sources.Main(thread, predeclared)
+	main, err := sources.Entry(thread, predeclared, "main")
 	if err != nil {
 		return nil, err
 	}
@@ -232,9 +232,38 @@ func TestSourcesMain_RefusesAFileWithoutMainThatIsPinned(t *testing.T) {
 	sources, err := workflow.Open(file, []workflow.PinnedFile{{Path: "workflow.star", SHA256: hex.EncodeToString(sum[:])}})
 	require.NoError(t, err)
 
-	_, err = sources.Main(&starlark.Thread{Name: "test"}, starlark.StringDict{})
+	_, err = sources.Entry(&starlark.Thread{Name: "test"}, starlark.StringDict{}, "main")
 
 	require.ErrorContains(t, err, "defines no function main")
+}
+
+func TestSourcesEntry_NamesAFunctionOtherThanMainAndDefinesSeesOnlyFunctions(t *testing.T) {
+	t.Parallel()
+
+	file := folder(t, map[string]string{"workflow.star": "x = 1\ndef main(item):\n    return 1\ndef worker(item):\n    return 2\n"}, "workflow.star")
+	pinned, err := workflow.Pin(file)
+	require.NoError(t, err)
+
+	sources, err := workflow.Open(file, pinned)
+	require.NoError(t, err)
+
+	assert.False(t, sources.Defines("worker"), "nothing ran yet")
+
+	thread := &starlark.Thread{Name: "test"}
+	entry, err := sources.Entry(thread, starlark.StringDict{}, "worker")
+	require.NoError(t, err)
+
+	got, err := starlark.Call(thread, entry, starlark.Tuple{starlark.MakeInt(0)}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, starlark.MakeInt(2), got)
+
+	assert.True(t, sources.Defines("worker"))
+	assert.True(t, sources.Defines("main"))
+	assert.False(t, sources.Defines("x"), "a number is not a function")
+	assert.False(t, sources.Defines("absent"))
+
+	_, err = sources.Entry(thread, starlark.StringDict{}, "absent")
+	require.ErrorContains(t, err, "defines no function absent; add def absent(item)")
 }
 
 func TestSourcesMain_ReportsAFailureInALoadedFile(t *testing.T) {
@@ -261,7 +290,7 @@ func TestSourcesMain_RefusesALoadOfAnUnknownPath(t *testing.T) {
 	require.NoError(t, err)
 
 	thread := &starlark.Thread{Name: "test"}
-	_, err = sources.Main(thread, starlark.StringDict{})
+	_, err = sources.Entry(thread, starlark.StringDict{}, "main")
 	require.NoError(t, err)
 
 	_, err = thread.Load(thread, "../x.star")

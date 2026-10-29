@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -9,10 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +40,7 @@ func TestHelperProcess(t *testing.T) {
 	require.Len(t, args, 3, "helper arguments: mode, state folder, index")
 
 	mode, stateDir, index := args[0], args[1], args[2]
-	require.Contains(t, []string{"client", "engine", "hang", "stall"}, mode, "unknown helper mode")
+	require.Contains(t, []string{"client", "engine", "hang", "stall", swarmFirst, swarmSecond}, mode, "unknown helper mode")
 
 	opts := Options{StateDir: stateDir, Version: testVersion, MaxConcurrent: 2, Env: map[string]string{}}
 
@@ -67,7 +71,120 @@ func TestHelperProcess(t *testing.T) {
 		engine, err := NewEngine(t.Context(), opts, Deps{})
 		require.NoError(t, err)
 		require.NoError(t, engine.Shutdown())
+	case swarmFirst, swarmSecond:
+		swarmHelper(t, mode, stateDir)
 	}
+}
+
+// The swarm helpers run the parent of stopSwarm in two processes over one state folder. The first starts the parent and its children, holds child 22, and
+// reports when 21 and 23 finished; the test kills it with SIGKILL. The second recovers the runs and writes what the parent gathered and what ran.
+const (
+	swarmFirst  = "swarm-first"
+	swarmSecond = "swarm-second"
+	swarmMid    = "swarm-mid-gather"
+	swarmResult = "swarm-result.json"
+	swarmRan    = "swarm-ran"
+	swarmFlow   = "swarm.star"
+)
+
+// finished reports whether the latest run of an item ended with success. A run that does not exist yet is not finished.
+func finished(engine *Engine, item string) bool {
+	last, found, err := latestRun(engine.ctx, item)
+
+	return err == nil && found && last.Status.Status == dbos.WorkflowStatusSuccess
+}
+
+func swarmHelper(t *testing.T, mode, stateDir string) {
+	t.Helper()
+
+	h := newHarness(t)
+	h.opts.StateDir = stateDir
+	h.commands.reply = ownOutput
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		if mode == swarmFirst && request.Item == "22" {
+			<-ctx.Done()
+
+			return ctx.Err()
+		}
+
+		return nil
+	}
+
+	engine := h.engine(t)
+
+	if mode == swarmFirst {
+		go func() {
+			if _, err := engine.RunFile(testItem, testProject, filepath.Join(filepath.Dir(stateDir), swarmFlow)); err != nil {
+				println("the parent ended with an error:", err.Error())
+			}
+		}()
+
+		require.Eventually(t, func() bool {
+			return finished(engine, "21") && finished(engine, "23")
+		}, time.Minute, 10*time.Millisecond)
+		// The parent has seen both rows or will on its next poll: it waits for 22 in the gather step.
+		time.Sleep(200 * time.Millisecond)
+		require.NoError(t, os.WriteFile(filepath.Join(stateDir, swarmMid), nil, 0o600))
+		time.Sleep(time.Hour)
+
+		return
+	}
+
+	require.Eventually(t, func() bool {
+		last, found, err := latestRun(engine.ctx, testItem)
+
+		return err == nil && found && last.Status.Status == dbos.WorkflowStatusSuccess
+	}, time.Minute, 10*time.Millisecond)
+	require.NoError(t, os.WriteFile(filepath.Join(stateDir, swarmResult), []byte(gatherJSON(t, engine)), 0o600))
+
+	var ran []string
+
+	h.commands.mu.Lock()
+	for _, line := range h.commands.requests {
+		ran = append(ran, line.Item+" "+strings.Join(line.Run, " "))
+	}
+	h.commands.mu.Unlock()
+
+	require.NoError(t, os.WriteFile(filepath.Join(stateDir, swarmRan), []byte(strings.Join(ran, "\n")), 0o600))
+}
+
+func TestSpawnGather_AParentKilledMidGatherIsRecoveredByANewProcessAndEachOutputIsItsOwn(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.MkdirAll(stateDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(stateDir), swarmFlow), []byte(stopSwarm), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(stateDir, goFile), nil, 0o600))
+
+	var output bytes.Buffer
+
+	first := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestHelperProcess$", "--", swarmFirst, stateDir, "0") //nolint:gosec // the test starts its own binary
+	first.Stdout, first.Stderr = &output, &output
+	require.NoError(t, first.Start())
+
+	midGather := filepath.Join(stateDir, swarmMid)
+	reached := assert.Eventually(t, func() bool {
+		_, err := os.Stat(midGather)
+
+		return err == nil
+	}, helperDeadline, 10*time.Millisecond)
+
+	require.NoError(t, first.Process.Kill(), "SIGKILL")
+	require.Error(t, first.Wait(), "the process ended by the signal")
+	require.True(t, reached, "the first process never reached the gather:\n%s", output.String())
+
+	require.NoError(t, runHelpers(stateDir, []string{swarmSecond}, helperDeadline))
+
+	result, err := os.ReadFile(filepath.Join(stateDir, swarmResult)) //nolint:gosec // the file is in the folder of the test
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"outcomes":[`+
+		`{"item":"21","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
+		`{"item":"22","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
+		`{"item":"23","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, string(result))
+
+	ran, err := os.ReadFile(filepath.Join(stateDir, swarmRan)) //nolint:gosec // the file is in the folder of the test
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"22 w", "12 after 21:out-21 22:out-22 23:out-23"}, strings.Split(string(ran), "\n"), "the second process runs only what the first did not finish")
 }
 
 type helperResult struct {

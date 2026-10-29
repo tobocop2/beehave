@@ -74,6 +74,9 @@ type graph struct {
 	stack    []string
 	found    []Diagnostic
 	unparsed bool
+	// entries are the literal entries of the spawn calls, and mainNames the functions that the workflow file binds at the top level.
+	entries   []entryRef
+	mainNames []string
 }
 
 func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
@@ -82,6 +85,7 @@ func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
 func scan(file string) *graph {
 	g := &graph{dir: filepath.Dir(file), main: filepath.Base(file), units: map[string]*unit{}}
 	g.visit(g.main, Diagnostic{File: file})
+	g.entriesDefined()
 
 	slices.SortStableFunc(g.found, func(a, b Diagnostic) int {
 		return cmp.Or(cmp.Compare(a.File, b.File), cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
@@ -137,7 +141,7 @@ func (g *graph) parse(name string, data []byte) {
 		return
 	}
 
-	g.arguments(parsed)
+	g.inspect(name, parsed)
 
 	g.stack = append(g.stack, name)
 	g.loads(parsed)
@@ -145,6 +149,16 @@ func (g *graph) parse(name string, data []byte) {
 
 	if name == g.main && !definesMain(parsed) {
 		g.report(Diagnostic{File: g.display(name)}, "the file defines no function main. Add def main(item):")
+	}
+}
+
+// inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
+func (g *graph) inspect(name string, parsed *syntax.File) {
+	g.arguments(parsed)
+	g.swarm(parsed)
+
+	if name == g.main {
+		g.mainNames = definedNames(parsed)
 	}
 }
 

@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -64,9 +65,11 @@ func (s *script) end(err error) error {
 	return where(err)
 }
 
-// main loads the file and calls its function main with the item.
+// main loads the file and calls its entry with the item: the function main, or the entry that the spawn call named for an item that spawn started.
 func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields map[string]string) error {
-	main, err := sources.Main(thread, s.predeclared())
+	s.sources = sources
+
+	main, err := sources.Entry(thread, s.predeclared(), cmp.Or(s.in.Entry, defaultEntry))
 	if err != nil {
 		return err
 	}
@@ -87,7 +90,7 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
 	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "command": s.command, "env": s.env, "gate": s.gate, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "wait": s.wait,
+		"agent": s.agent, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "spawn": s.spawn, "wait": s.wait,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},
