@@ -1,6 +1,8 @@
 package ledger_test
 
 import (
+	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,7 +28,31 @@ func TestKinds_ListOwnerAddLast(t *testing.T) {
 	assert.Equal(t, ledger.KindOwnerAdd, got)
 }
 
-func TestAdd_OwnerAddWritesKeyIssueKindTimeAndWords(t *testing.T) {
+// words returns the words of every owner-add row of the ledger file, read with SQL because the ledger gives no way to read them.
+func (h *harness) words() []string {
+	h.t.Helper()
+
+	db, err := sql.Open("sqlite", h.file())
+	require.NoError(h.t, err)
+
+	rows, err := db.QueryContext(h.t.Context(), "SELECT words FROM lanes WHERE kind = 'owner-add' ORDER BY rowid")
+	require.NoError(h.t, err)
+
+	var got []string
+
+	for rows.Next() {
+		var words string
+
+		require.NoError(h.t, rows.Scan(&words))
+		got = append(got, words)
+	}
+
+	require.NoError(h.t, errors.Join(rows.Err(), rows.Close(), db.Close()))
+
+	return got
+}
+
+func TestAdd_OwnerAddKeepsTheWordsOfTheOwner(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -34,7 +60,7 @@ func TestAdd_OwnerAddWritesKeyIssueKindTimeAndWords(t *testing.T) {
 	added, err := h.approve("792", "795", "yes, keep it")
 	require.NoError(t, err)
 	assert.Equal(t, ledger.Added{}, added)
-	assert.Equal(t, "792\t795\towner-add\t"+stamp+"\tyes, keep it\n", h.text(h.file()))
+	assert.Equal(t, []string{"yes, keep it"}, h.words())
 }
 
 func TestAdd_OwnerAddForOneIssueTwiceWritesOneRow(t *testing.T) {
@@ -46,7 +72,7 @@ func TestAdd_OwnerAddForOneIssueTwiceWritesOneRow(t *testing.T) {
 	_, err = h.approve("792", "795", "second")
 	require.NoError(t, err)
 
-	assert.Equal(t, "792\t795\towner-add\t"+stamp+"\tfirst\n", h.text(h.file()))
+	assert.Equal(t, []string{"first"}, h.words())
 }
 
 func TestAdd_OwnerAddRefusesAnIssueOrWordsThatBreakTheRow(t *testing.T) {

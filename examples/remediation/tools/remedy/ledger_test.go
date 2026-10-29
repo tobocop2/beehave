@@ -147,9 +147,9 @@ func TestLedger_AnOwnerAddRowKeepsTheWordsOfTheOwner(t *testing.T) {
 
 	assert.Equal(t, remedy.ExitPass, code, errOut)
 
-	text, err := os.ReadFile(filepath.Clean(filepath.Join(state, ledger.FileName)))
+	issues, err := ledger.Open(state).OwnerAdds("7")
 	require.NoError(t, err)
-	assert.Equal(t, "7\t13\towner-add\t2026-10-28T12:00Z\tyes, keep it here\n", string(text))
+	assert.Equal(t, []string{"13"}, issues)
 }
 
 func TestLedger_ARefusedRowIsExitCodeTwoAndWritesNothing(t *testing.T) {

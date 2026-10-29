@@ -1,45 +1,79 @@
 // Package ledger keeps one row for each lane of each pull request and counts them.
-// The rows are a TSV file with a sidecar for the issues the first review recorded. Add holds an exclusive lock and every read shares it.
+// The rows are a SQLite file with a table for the lanes and a table for the issues the first review recorded.
+// Add writes in one BEGIN IMMEDIATE transaction, so two writers never lose a row.
 package ledger
 
 import (
 	"cmp"
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"io/fs"
+	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
+
+	// The driver registers itself under the name sqlite, as it does for the workflow store.
+	"modernc.org/sqlite"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
 )
 
+// access is how a connection opens the file.
+type access int
+
+const (
+	reading    access = iota // read-only: writes nothing, works in a folder that cannot be written
+	recovering               // read-write without the right to make the file: rolls a hot journal back
+	writing                  // makes the file if it is missing and starts transactions with BEGIN IMMEDIATE
+)
+
+// readOnlyRollback is the extended result code SQLITE_READONLY_ROLLBACK (8 | 2<<8): the file has a hot journal and the connection may not roll it back.
+const readOnlyRollback = 776
+
 const (
 	// FileName is the ledger file in the state folder.
-	FileName = "lane-ledger.tsv"
+	FileName = "lane-ledger.db"
 
-	closesSuffix = ".closes"
-	stampLayout  = "2006-01-02T15:04Z"
-	fixKinds     = "fix|rework|relay"
-	blanks       = " \t\n\r\f\v"
-	day          = 24 * time.Hour
-	noIssue      = "-"
+	fileMode      fs.FileMode = 0o600
+	busyTimeoutMs             = 30000
+	fixKinds                  = "fix|rework|relay"
+	blanks                    = " \t\n\r\f\v"
+	day                       = 24 * time.Hour
+	noIssue                   = "-"
 )
 
-// The columns of a row. The last three belong to a fix lane.
-const (
-	colKey = iota
-	colLane
-	colKind
-	colWhen
-	colMechanism
-	colModel
-	colRound
-)
+// The first write of a transaction makes the tables, so a reader never finds one table without the other.
+const schema = `
+CREATE TABLE IF NOT EXISTS lanes (
+	key TEXT NOT NULL, lane TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
+	words TEXT NOT NULL DEFAULT '', mechanism TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '', round INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (key, lane)
+);
+CREATE TABLE IF NOT EXISTS closes (key TEXT NOT NULL, issue TEXT NOT NULL);
+`
 
-// colIssue is the issue number column of a row in the closes file.
-const colIssue = 1
+// codePattern matches the numeric codes that the driver puts after its messages, such as " (5) (SQLITE_BUSY)".
+var codePattern = regexp.MustCompile(`\s\(\d+\)(\s\(SQLITE_[A-Z_0-9]+\))?`)
+
+// driverWords says in plain words what a driver message that a caller can meet means. Another message stays as the driver wrote it.
+func driverWords(text string) string {
+	switch text {
+	case "database is locked":
+		return "the ledger is locked by another process"
+	case "unable to open database file":
+		return "the file cannot be opened"
+	case "file is not a database":
+		return "the file is not a database"
+	}
+
+	return text
+}
 
 var (
 	tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
@@ -83,7 +117,7 @@ func (k Kind) fixLane() bool {
 	return k == KindFix || k == KindRework || k == KindRelay
 }
 
-// Request is one lane to record. Mechanism, Model and Round belong to a fix lane and are ignored for another kind.
+// Request is one lane to record. Mechanism, Model and Round name the code path, the model and the round of the lane; the ledger stores them for any kind.
 // Words belongs to an owner-add row, which names the issue in Lane and the words of the owner in Words.
 // Body returns the pull request body; the first review of a key reads it for the issues it closes.
 type Request struct {
@@ -113,32 +147,141 @@ type Rounds struct {
 
 // Ledger reads and writes the rows of the lanes.
 type Ledger struct {
-	rows   Rows
-	closes Rows
+	path   string
+	busyMs int
 }
 
-// New returns a ledger over a table of lane rows and a table of closed issues.
-func New(rows, closes Rows) *Ledger {
-	return &Ledger{rows: rows, closes: closes}
-}
-
-// Open returns the ledger in the state folder dir.
+// Open returns the ledger in the state folder dir. The file is made by the first Add.
 func Open(dir string) *Ledger {
-	path := filepath.Join(dir, FileName)
-
-	return New(NewTable(path), NewTable(path+closesSuffix))
+	return &Ledger{path: filepath.Join(dir, FileName), busyMs: busyTimeoutMs}
 }
 
 func refuse(format string, args ...any) error {
 	return &check.Refusal{Message: fmt.Sprintf(format, args...)}
 }
 
-func col(row []string, index int) string {
-	if index < len(row) {
-		return row[index]
+// laneRow is one lane row as the reads see it.
+type laneRow struct {
+	lane, kind, mechanism string
+	at                    time.Time
+}
+
+// connect opens the file. A writer makes the file, and the tables in its first transaction; a reader opens the file read-only and writes nothing, so it works in a folder that cannot be written.
+// The journal is SQLite's default rollback journal: the ledger is small and written rarely, and the rollback journal needs no shared memory file.
+// Each connection waits for a lock; a writer starts a transaction with BEGIN IMMEDIATE.
+// A reader that meets a hot journal (see readOnlyRollback) opens again with mode rw, which rolls the journal back and makes no file and no table.
+func (l *Ledger) connect(access access) (*sql.DB, error) {
+	query := url.Values{}
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", l.busyMs))
+
+	switch access {
+	case writing:
+		if err := l.touch(); err != nil {
+			return nil, err
+		}
+
+		query.Set("_txlock", "immediate")
+	case recovering:
+		query.Set("mode", "rw")
+	case reading:
+		query.Set("mode", "ro")
 	}
 
-	return ""
+	return sql.Open("sqlite", (&url.URL{Scheme: "file", Path: l.path, RawQuery: query.Encode()}).String())
+}
+
+// touch makes the file at mode 0600 if it is missing, so SQLite does not make it with a wider mode.
+func (l *Ledger) touch() error {
+	file, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY, fileMode)
+	if err != nil {
+		return err
+	}
+
+	return file.Close()
+}
+
+// fail returns a refusal that names the file and the cause, or nil for a nil error.
+func (l *Ledger) fail(verb string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var pathErr *fs.PathError
+
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+
+	return refuse("cannot %s %s: %s", verb, l.path, driverWords(codePattern.ReplaceAllString(err.Error(), "")))
+}
+
+// read runs a query on the file. A file that does not exist has no rows.
+func (l *Ledger) read(query string, args []any, scan func(*sql.Rows) error) error {
+	ctx := context.Background()
+
+	info, err := os.Stat(l.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		// A missing file has no rows; a missing state folder is a mistake in the caller's path.
+		_, err = os.Stat(filepath.Dir(l.path))
+
+		return l.fail("read", err)
+	}
+
+	// A file with no bytes is a ledger that a writer has made and not yet filled: it has no rows.
+	if err == nil && info.Size() == 0 {
+		return nil
+	}
+
+	return l.fail("read", l.scanReading(ctx, query, args, scan))
+}
+
+// errCrashed is the refusal when a crash left a hot journal and the folder does not let a read-write connection roll it back.
+var errCrashed = errors.New("a crash left the ledger half written, and the folder cannot be written to repair it")
+
+// scanReading runs the query on a read-only connection. A crash can leave a journal that a read-only connection cannot roll back:
+// the read then runs once more on a read-write connection, which rolls it back. If that fails too, the folder cannot be written.
+func (l *Ledger) scanReading(ctx context.Context, query string, args []any, scan func(*sql.Rows) error) error {
+	err := l.scanWith(ctx, reading, query, args, scan)
+	if !hotJournal(err) {
+		return err
+	}
+
+	if l.scanWith(ctx, recovering, query, args, scan) != nil {
+		return errCrashed
+	}
+
+	return nil
+}
+
+// scanWith opens the file with the access, runs the query on it and closes it.
+func (l *Ledger) scanWith(ctx context.Context, access access, query string, args []any, scan func(*sql.Rows) error) error {
+	db, err := l.connect(access)
+	if err == nil {
+		err = errors.Join(each(ctx, db, query, args, scan), db.Close())
+	}
+
+	return err
+}
+
+// hotJournal says whether the error is the refusal of SQLite to read a file that needs a rollback it may not do.
+func hotJournal(err error) bool {
+	var driverErr *sqlite.Error
+
+	return errors.As(err, &driverErr) && driverErr.Code() == readOnlyRollback
+}
+
+// each calls scan for every row the query finds and stops at the first error.
+func each(ctx context.Context, db *sql.DB, query string, args []any, scan func(*sql.Rows) error) error {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	for err == nil && rows.Next() {
+		err = scan(rows)
+	}
+
+	return errors.Join(err, rows.Err(), rows.Close())
 }
 
 func keyOK(key string) error {
@@ -229,108 +372,117 @@ func mechanismOK(mechanism string) error {
 	return refuse("the mechanism '%s' is not one token. Name the code path in letters, digits, dot, dash and underscore, such as robots-classifier.", mechanism)
 }
 
-// line is the row of the request. Only a fix lane writes the lane columns, and the empty ones at the end are left out.
-func (r Request) line() string {
-	cells := []string{r.Key, r.Lane, string(r.Kind), r.At.UTC().Format(stampLayout)}
-
-	if r.Kind == KindOwnerAdd {
-		cells = append(cells, r.Words)
-	}
-
-	if r.Kind.fixLane() {
-		round := ""
-		if r.Round > 0 {
-			round = strconv.Itoa(r.Round)
-		}
-
-		cells = append(cells, r.Mechanism, r.Model, round)
-
-		for len(cells) > colMechanism && cells[len(cells)-1] == "" {
-			cells = cells[:len(cells)-1]
-		}
-	}
-
-	return strings.Join(cells, "\t") + "\n"
-}
-
 // Add records the lane unless its key already has a row for it. The first review of a key also records the issues its pull request body closes.
+// The lane row and the closes go in one transaction, so a reader sees both or neither.
 func (l *Ledger) Add(request Request) (Added, error) {
 	if err := request.check(); err != nil {
 		return Added{}, err
 	}
 
+	// The body is read before the transaction, so a slow forge holds no lock.
+	numbers, first, err := l.firstReview(request)
+	if err != nil {
+		return Added{}, err
+	}
+
+	ctx := context.Background()
+
+	db, err := l.connect(writing)
+	if err != nil {
+		return Added{}, l.fail("open", err)
+	}
+
+	added, err := l.insert(ctx, db, request, numbers, first)
+
+	return added, l.fail("write", errors.Join(err, db.Close()))
+}
+
+// insert writes the lane row and, for a first review that is still first, its closes.
+func (l *Ledger) insert(ctx context.Context, db *sql.DB, request Request, numbers []string, first bool) (Added, error) {
 	var added Added
 
-	err := l.rows.Hold(func() error {
-		var err error
+	tx, err := db.BeginTx(ctx, nil)
+	if err == nil {
+		added, err = write(ctx, tx, request, numbers, first)
+		if err == nil {
+			err = tx.Commit()
+		} else {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}
 
-		added, err = l.write(request)
-
-		return err
-	})
-
-	return added, err
-}
-
-// write appends the lane row, and then publishes the closes of a first review. A retry after a failed publish
-// finds the lane row and no closes, so it publishes them again and returns them.
-func (l *Ledger) write(request Request) (Added, error) {
-	added, closes, err := l.firstReview(request)
 	if err != nil {
-		return added, err
+		return Added{}, err
 	}
 
-	added.FixLanes, err = l.appendLane(request)
-	if err != nil || closes == "" {
-		return added, err
-	}
-
-	return added, l.closes.Publish(closes)
+	return added, nil
 }
 
-// appendLane writes the row unless the key has one for the lane. It returns the fix lanes of the key.
-func (l *Ledger) appendLane(request Request) (int, error) {
-	rows, err := l.rows.List()
-	if err != nil {
-		return 0, err
-	}
-
-	lanes := tally(rows, request.Key, fixKinds)
-	if hasLane(rows, request) {
-		return lanes, nil
-	}
-
-	if request.Kind.fixLane() {
-		lanes++
-	}
-
-	return lanes, l.rows.Append(request.line())
+// steps runs statements in one transaction and keeps the first error, so a failed statement skips the rest.
+type steps struct {
+	ctx context.Context //nolint:containedctx // the value lives for one transaction
+	tx  *sql.Tx
+	err error
 }
 
-func hasLane(rows [][]string, request Request) bool {
-	return slices.ContainsFunc(rows, func(row []string) bool {
-		return col(row, colKey) == request.Key && col(row, colLane) == request.Lane
-	})
+func (s *steps) exec(query string, args ...any) {
+	if s.err == nil {
+		_, s.err = s.tx.ExecContext(s.ctx, query, args...)
+	}
 }
 
-// firstReview reads the issues the body closes when the request is the first review of its key. It returns them and the text of their rows.
-// It writes nothing.
-func (l *Ledger) firstReview(request Request) (Added, string, error) {
+func (s *steps) count(query string, args ...any) (found int) {
+	if s.err == nil {
+		s.err = s.tx.QueryRowContext(s.ctx, query, args...).Scan(&found)
+	}
+
+	return found
+}
+
+func write(ctx context.Context, tx *sql.Tx, request Request, numbers []string, first bool) (Added, error) {
+	var added Added
+
+	run := &steps{ctx: ctx, tx: tx}
+	run.exec(schema)
+	run.exec(`INSERT OR IGNORE INTO lanes (key, lane, kind, at, words, mechanism, model, round) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		request.Key, request.Lane, string(request.Kind), request.At.Truncate(time.Minute).Unix(), request.Words, request.Mechanism, request.Model, request.Round)
+	added.FixLanes = run.count(`SELECT count(*) FROM lanes WHERE key = ? AND kind IN ('fix', 'rework', 'relay')`, request.Key)
+
+	// Another writer may have recorded the closes since the body was read; the first one to commit wins.
+	if first && run.count(`SELECT count(*) FROM closes WHERE key = ?`, request.Key) == 0 {
+		for _, issue := range orNoIssue(numbers) {
+			run.exec(`INSERT INTO closes (key, issue) VALUES (?, ?)`, request.Key, issue)
+		}
+
+		added.FirstReview, added.Closes = true, numbers
+	}
+
+	return added, run.err
+}
+
+// orNoIssue returns the issues, or the one mark that says the first review closed none.
+func orNoIssue(numbers []string) []string {
+	if len(numbers) == 0 {
+		return []string{noIssue}
+	}
+
+	return numbers
+}
+
+// firstReview reads the issues the body closes when the request is the first review of its key. It writes nothing.
+func (l *Ledger) firstReview(request Request) ([]string, bool, error) {
 	if request.Kind != KindReview {
-		return Added{}, "", nil
+		return nil, false, nil
 	}
 
-	seen, err := l.closesOf(request.Key)
-	if err != nil || slices.ContainsFunc(seen, func(issue string) bool { return issue != "" }) {
-		return Added{}, "", err
+	seen, err := l.Closes(request.Key)
+	if err != nil || len(seen) > 0 {
+		return nil, false, err
 	}
 
 	numbers, err := request.closing()
-	if err != nil {
-		return Added{}, "", err
-	}
 
-	return Added{FirstReview: true, Closes: numbers}, closesText(request.Key, numbers), nil
+	return numbers, err == nil, err
 }
 
 // closing returns the issue numbers that the pull request body of the request closes.
@@ -344,28 +496,14 @@ func (r Request) closing() ([]string, error) {
 	return ClosingNumbers(text), err
 }
 
-func closesText(key string, numbers []string) string {
-	if len(numbers) == 0 {
-		return key + "\t" + noIssue + "\n"
-	}
-
-	var text strings.Builder
-
-	for _, number := range numbers {
-		text.WriteString(key + "\t" + number + "\n")
-	}
-
-	return text.String()
-}
-
-// tally counts the rows of key whose kind is one of kinds, written as a list with a bar between kinds.
-// The match is on the kind with a bar on each side, so a list that ends in a bar also matches a row with no kind.
-func tally(rows [][]string, key, kinds string) int {
+// tally counts the rows whose kind is one of kinds, written as a list with a bar between kinds.
+// The match is on the kind with a bar on each side.
+func tally(rows []laneRow, kinds string) int {
 	wanted := "|" + kinds + "|"
 	count := 0
 
 	for _, row := range rows {
-		if col(row, colKey) == key && strings.Contains(wanted, "|"+col(row, colKind)+"|") {
+		if strings.Contains(wanted, "|"+row.kind+"|") {
 			count++
 		}
 	}
@@ -377,21 +515,26 @@ func tally(rows [][]string, key, kinds string) int {
 func (l *Ledger) Count(key, kinds string) (int, error) {
 	rows, err := l.keyRows(key)
 
-	return tally(rows, key, cmp.Or(kinds, fixKinds)), err
+	return tally(rows, cmp.Or(kinds, fixKinds)), err
 }
 
-// keyRows reads every row under a shared lock, so a read never sees part of a write.
-func (l *Ledger) keyRows(key string) ([][]string, error) {
+// keyRows reads the rows of key in the order they were written. A read sees a whole transaction or none of it.
+func (l *Ledger) keyRows(key string) ([]laneRow, error) {
 	if err := keyOK(key); err != nil {
 		return nil, err
 	}
 
-	var rows [][]string
+	var rows []laneRow
 
-	err := l.rows.Share(func() error {
-		var err error
+	err := l.read(`SELECT lane, kind, mechanism, at FROM lanes WHERE key = ? ORDER BY rowid`, []any{key}, func(found *sql.Rows) error {
+		var (
+			row  laneRow
+			unix int64
+		)
 
-		rows, err = l.rows.List()
+		err := found.Scan(&row.lane, &row.kind, &row.mechanism, &unix)
+		row.at = time.Unix(unix, 0).UTC()
+		rows = append(rows, row)
 
 		return err
 	})
@@ -410,22 +553,20 @@ func (l *Ledger) Rounds(key, mechanism string) (Rounds, error) {
 	var got Rounds
 
 	for _, row := range rows {
-		if col(row, colKey) == key {
-			got = advance(got, row, mechanism)
-		}
+		got = advance(got, row, mechanism)
 	}
 
 	return got, err
 }
 
-func advance(got Rounds, row []string, mechanism string) Rounds {
-	switch col(row, colKind) {
+func advance(got Rounds, row laneRow, mechanism string) Rounds {
+	switch row.kind {
 	case string(KindDesign):
 		return Rounds{}
 	case string(KindReview):
 		got.Open = false
 	case string(KindFix), string(KindRework):
-		if col(row, colMechanism) == mechanism {
+		if row.mechanism == mechanism {
 			if !got.Open {
 				got.Count++
 			}
@@ -447,7 +588,7 @@ func (l *Ledger) Prior(key, lane string) (int, error) {
 	count := 0
 
 	for _, row := range rows {
-		if col(row, colKey) == key && col(row, colLane) != lane && Kind(col(row, colKind)).fixLane() {
+		if row.lane != lane && Kind(row.kind).fixLane() {
 			count++
 		}
 	}
@@ -455,36 +596,22 @@ func (l *Ledger) Prior(key, lane string) (int, error) {
 	return count, err
 }
 
-// Closes returns the issues the first review of key recorded. It reads under a shared lock, so it never sees part of a write.
+// Closes returns the issues the first review of key recorded, or "-" when it recorded none.
 func (l *Ledger) Closes(key string) ([]string, error) {
-	var issues []string
-
-	err := l.rows.Share(func() error {
-		var err error
-
-		issues, err = l.closesOf(key)
-
-		return err
-	})
-
-	return issues, err
-}
-
-// closesOf is Closes with no lock: the caller holds the ledger or shares it.
-func (l *Ledger) closesOf(key string) ([]string, error) {
 	if err := keyOK(key); err != nil {
 		return nil, err
 	}
 
-	rows, err := l.closes.List()
-
 	var issues []string
 
-	for _, row := range rows {
-		if col(row, colKey) == key {
-			issues = append(issues, col(row, colIssue))
-		}
-	}
+	err := l.read(`SELECT issue FROM closes WHERE key = ? ORDER BY rowid`, []any{key}, func(found *sql.Rows) error {
+		var issue string
+
+		err := found.Scan(&issue)
+		issues = append(issues, issue)
+
+		return err
+	})
 
 	return issues, err
 }
@@ -496,8 +623,8 @@ func (l *Ledger) OwnerAdds(key string) ([]string, error) {
 	var issues []string
 
 	for _, row := range rows {
-		if col(row, colKey) == key && Kind(col(row, colKind)) == KindOwnerAdd {
-			issues = append(issues, col(row, colLane))
+		if Kind(row.kind) == KindOwnerAdd {
+			issues = append(issues, row.lane)
 		}
 	}
 
@@ -511,33 +638,19 @@ func (l *Ledger) Since(key string, kind Kind, now time.Time) (int, bool, error) 
 		return 0, false, err
 	}
 
-	latest, found, err := latestOf(rows, key, kind)
-	if err != nil || !found {
-		return 0, false, err
-	}
-
-	return max(0, int(now.Sub(latest)/day)), true, nil
-}
-
-func latestOf(rows [][]string, key string, kind Kind) (time.Time, bool, error) {
 	var latest time.Time
 
 	found := false
 
 	for _, row := range rows {
-		if col(row, colKey) != key || Kind(col(row, colKind)) != kind {
-			continue
-		}
-
-		when, err := time.Parse(stampLayout, col(row, colWhen))
-		if err != nil {
-			return latest, false, refuse("the time '%s' of a %s row of '%s' is not a UTC stamp such as 2026-10-10T12:30Z.", col(row, colWhen), kind, key)
-		}
-
-		if !found || when.After(latest) {
-			latest, found = when, true
+		if Kind(row.kind) == kind && (!found || row.at.After(latest)) {
+			latest, found = row.at, true
 		}
 	}
 
-	return latest, found, nil
+	if !found {
+		return 0, false, nil
+	}
+
+	return max(0, int(now.Sub(latest)/day)), true, nil
 }

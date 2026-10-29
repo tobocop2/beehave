@@ -35,7 +35,6 @@ var (
 	noRedTest      = regexp.MustCompile(`(uncovered|not run|(^|[^a-z_])green([^a-z_]|$))`)
 	siblingUpdated = regexp.MustCompile(`^(yes|no: *[^ ])`)
 	tableLine      = regexp.MustCompile(`^[ \t]*\|`)
-	leadingPipe    = regexp.MustCompile(`^[ \t]*\|`)
 	trailingPipe   = regexp.MustCompile(`\|[ \t]*$`)
 	backtickSpan   = regexp.MustCompile("`[^`]*`")
 	quotedSpan     = regexp.MustCompile(`"[^"]*"`)
@@ -81,7 +80,7 @@ func (r ReportResult) Summary(head string) string {
 // splitRow splits a Markdown table row into trimmed cells; a pipe written as `\|` stays in its cell.
 func splitRow(line string) []string {
 	row := strings.ReplaceAll(line, `\|`, pipeMark)
-	row = trailingPipe.ReplaceAllString(leadingPipe.ReplaceAllString(row, ""), "")
+	row = trailingPipe.ReplaceAllString(tableLine.ReplaceAllString(row, ""), "")
 
 	if row == "" {
 		return nil
