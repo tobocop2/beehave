@@ -24,6 +24,8 @@ const (
 	finishEntry = "finish"
 	failReturn  = "return"
 	failRaise   = "raise"
+	untilAll    = "all"
+	untilAny    = "any"
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
 	nameKeyword    = "name"
 	runKeyword     = "run"
@@ -235,7 +237,7 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	}
 
 	done, err := runStep(s.e, s.ctx, s.name("gather", call.label), func(c context.Context) (gathered, error) {
-		return s.e.gather(c, s.in, refs, call.fail == failRaise)
+		return s.e.gather(c, s.in, refs, call.fail == failRaise, call.until == untilAny)
 	})
 	if err != nil {
 		return nil, err
@@ -250,18 +252,22 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 
 // gatherCall is the arguments of a gather call.
 type gatherCall struct {
-	runs        starlark.Value
-	fail, label string
+	runs               starlark.Value
+	fail, until, label string
 }
 
 // unpackGather reads and checks the arguments of a gather call, and returns the runs it names.
 func unpackGather(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (gatherCall, []spawnedRun, error) {
-	call := gatherCall{fail: failReturn}
+	call := gatherCall{fail: failReturn, until: untilAll}
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"runs": &call.runs, "fail": &call.fail, nameKeyword: &call.label,
+		"runs": &call.runs, "fail": &call.fail, "until": &call.until, nameKeyword: &call.label,
 	}); err != nil {
 		return call, nil, err
+	}
+
+	if !slices.Contains(workflow.UntilModes(), call.until) {
+		return call, nil, fmt.Errorf("`until` is %q. Use \"all\" or \"any\"", call.until)
 	}
 
 	if !slices.Contains(workflow.FailModes(), call.fail) {
@@ -343,7 +349,8 @@ type look struct {
 
 // gather waits until every run ended, or until ctx ends. It reads the rows of the runs once for each poll.
 // The first read that shows a failed run, with raise set, cancels the runs that are still open. The wait goes on until they ended, so the outcomes are final.
-func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, raise bool) (gathered, error) {
+// With first set, the wait ends at the first read that shows a run no longer open, and the outcomes are those of the runs that ended. A raise that fired overrides it.
+func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, raise, first bool) (gathered, error) {
 	fired := raiseResult{trigger: -1}
 
 	for {
@@ -356,13 +363,29 @@ func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, ra
 			return gathered{}, err
 		}
 
-		if !slices.ContainsFunc(looks, func(l look) bool { return l.open }) {
-			return settled(in.Item, looks, fired), nil
+		if done, finished := finish(in.Item, looks, fired, first); finished {
+			return done, nil
 		}
 
 		if err := pause(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
 			return gathered{}, err
 		}
+	}
+}
+
+// finish reports whether the wait of gather is over, and the output of the step when it is. It is over when no run is open. With first set and no raise fired,
+// it is also over when one run is no longer open, and the output holds only the runs that ended.
+func finish(parent string, looks []look, fired raiseResult, first bool) (gathered, bool) {
+	open := func(l look) bool { return l.open }
+	ended := func(l look) bool { return !l.open }
+
+	switch {
+	case !slices.ContainsFunc(looks, open):
+		return settled(parent, looks, fired), true
+	case first && fired.trigger < 0 && slices.ContainsFunc(looks, ended):
+		return settled(parent, slices.DeleteFunc(slices.Clone(looks), open), fired), true
+	default:
+		return gathered{}, false
 	}
 }
 
