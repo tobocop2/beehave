@@ -124,11 +124,18 @@ type fakeGate struct {
 	results []GateResult
 	calls   int
 	err     error
+	via     gate
 }
 
-func (g *fakeGate) Run(_ context.Context, _, _ string) (GateResult, error) {
+func (g *fakeGate) Run(ctx context.Context, project, item string) (GateResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	if g.via != nil {
+		g.calls++
+
+		return g.via.Run(ctx, project, item)
+	}
 
 	index := min(g.calls, len(g.results)-1)
 	g.calls++

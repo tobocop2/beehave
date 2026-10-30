@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,9 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/config"
+	gatepkg "github.com/tobocop2/obee/internal/gate"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/review"
 )
 
@@ -199,6 +203,37 @@ func TestExample_AGateThatCannotRunEndsTheRunBeforeAnyReviewOrFix(t *testing.T) 
 
 	require.ErrorIs(t, err, errFake)
 	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "only the plan and the implement agents ran")
+	assert.Equal(t, 1, rig.h.gate.calls, "no second round")
+}
+
+// packageGate runs the real gate package on a local project whose gate command is killed by a signal.
+type packageGate struct{ head, tree string }
+
+func (g packageGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
+	shell := func(context.Context, string, string) (string, int) { return "partial output", 128 + 15 }
+	tree := func(context.Context, string) (gatepkg.State, error) {
+		return gatepkg.State{Head: g.head, Tree: g.tree, Clean: true}, nil
+	}
+
+	result, err := gatepkg.New(shell, tree, nil).Run(ctx, gatepkg.Request{Project: model.Project{Name: "demo", Gate: "make check", BuildHost: config.LocalHost}, Dir: "/w"})
+	if err != nil {
+		return GateResult{}, err
+	}
+
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
+}
+
+func TestExample_AGateKilledByASignalIsUnresolvedAndEveryLaterStepDoesNotRun(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.h.gate.via = packageGate{head: rig.head, tree: exampleTree}
+	rig.h.opts.Env["MERGE"] = "true"
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.ErrorIs(t, err, gatepkg.ErrNoVerdict)
+	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "no fix round, no review, no settle: they stay unknown")
 	assert.Equal(t, 1, rig.h.gate.calls, "no second round")
 }
 
