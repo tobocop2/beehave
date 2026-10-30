@@ -31,7 +31,7 @@ obee run fix-login <name> --workflow examples/local/workflow.star
 
 `examples/swarm` splits a job into tasks, runs one agent for each task, and lands the pull requests with one `batch_merge` and one gate run. Put one task on each line of the body of the parent item. Set `REPO`, `BASE`, `OWNER_LOGIN` and `OWNER_EMAIL` to name your repository and your identity. A pull request that the gate or a guard rejects gets a comment and the status `hold`.
 
-`examples/queue` runs the open items of a project until no work remains. The parent reads `queue`, starts the ready items in the free slots, and starts the next item when any run ends. A failed item gets a comment and the status `hold`, and the loop goes on. Set `BASE` to the integration branch. The free slots run in parallel only when each item gets its own login. The pick of a login chooses by usage and ignores busy logins, so items can share a login and run one at a time.
+`examples/queue` runs the open items of a project until no work remains. The parent reads `queue`, starts the ready items in the free slots, and starts the next item when any run ends. A failed item gets a comment and the status `hold`, and the loop goes on. Set `BASE` to the integration branch. One login runs one agent step at a time. The pick of a login prefers a login with no agent step running or queued, so the items spread over your logins. The parent run holds no login. With one login, the items run one at a time.
 
 ## Claude Code plugin
 

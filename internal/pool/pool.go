@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -56,8 +57,25 @@ func OverCap(usage model.Usage, caps config.Pool) []model.Window {
 }
 
 // Choose returns the runner with room: the lowest seven-day use, then the lowest five-hour use, then the first in config order.
-// A runner with unknown usage is never chosen.
-func Choose(runners []model.Runner, readings map[string]model.Reading, caps config.Pool) (model.Runner, bool) {
+// A runner with unknown usage is never chosen. A runner that busy names is chosen only when no other runner has room.
+func Choose(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, busy ...string) (model.Runner, bool) {
+	free := make([]model.Runner, 0, len(runners))
+
+	for _, runner := range runners {
+		if !slices.Contains(busy, runner.Name) {
+			free = append(free, runner)
+		}
+	}
+
+	if chosen, found := lowest(free, readings, caps); found {
+		return chosen, true
+	}
+
+	return lowest(runners, readings, caps)
+}
+
+// lowest returns the runner under both caps with the lowest use.
+func lowest(runners []model.Runner, readings map[string]model.Reading, caps config.Pool) (model.Runner, bool) {
 	var (
 		chosen model.Runner
 		found  bool
@@ -209,7 +227,8 @@ func unknownUsage(runners []model.Runner, readings map[string]model.Reading) (st
 
 // Select returns the runner of the agent to use. It returns ErrNoRunner when the config has none of that agent.
 // When runners exist and none has room, it returns a NoneQualifiesError: the run stops and never moves to another agent.
-func Select(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader) (model.Runner, error) {
+// busy names the runners that have work now. Select prefers a runner that is not in it, as Choose does.
+func Select(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader, busy ...string) (model.Runner, error) {
 	mine := ofAgent(runners, agent)
 	if len(mine) == 0 {
 		return model.Runner{}, ErrNoRunner
@@ -217,7 +236,7 @@ func Select(ctx context.Context, runners []model.Runner, caps config.Pool, agent
 
 	readings := ReadAll(ctx, mine, read)
 
-	picked, ok := Choose(mine, readings, caps)
+	picked, ok := Choose(mine, readings, caps, busy...)
 	if !ok {
 		return model.Runner{}, &NoneQualifiesError{Message: Refusal(mine, readings, caps, agent)}
 	}

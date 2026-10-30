@@ -35,7 +35,7 @@ func TestLogins_NeverGuessAProjectTheConfigLacks(t *testing.T) {
 
 	picked := newLogins(config.Config{Runners: []model.Runner{{Name: "a"}}, Projects: map[string]config.Project{}}, flow.Options{})
 
-	_, pickErr := picked.Pick(t.Context(), "zzz", "1")
+	_, pickErr := picked.Pick(t.Context(), "zzz", "1", nil)
 
 	require.ErrorIs(t, pickErr, errUnknownProject)
 }

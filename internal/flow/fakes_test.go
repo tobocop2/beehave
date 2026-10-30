@@ -150,7 +150,7 @@ type fakeLogins struct {
 	err    error
 }
 
-func (l fakeLogins) Pick(_ context.Context, _, item string) (string, error) {
+func (l fakeLogins) Pick(_ context.Context, _, item string, _ []string) (string, error) {
 	if login, ok := l.byItem[item]; ok {
 		return login, l.err
 	}
@@ -171,7 +171,7 @@ type loginSequence struct {
 	picks []loginPick
 }
 
-func (l *loginSequence) Pick(context.Context, string, string) (string, error) {
+func (l *loginSequence) Pick(context.Context, string, string, []string) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

@@ -249,7 +249,7 @@ echo '{"type":"result","session_id":"s1","result":"done"}'
 // e2eLogins picks the runner "a" of the config, so no script reads the usage of a login.
 type e2eLogins struct{}
 
-func (e2eLogins) Pick(context.Context, string, string) (string, error) { return "a", nil }
+func (e2eLogins) Pick(context.Context, string, string, []string) (string, error) { return "a", nil }
 
 // e2ePrompts replace the prompts of the example in the work folder. The workflow file is the example itself.
 var e2ePrompts = map[string]string{

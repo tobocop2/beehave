@@ -55,7 +55,7 @@ type gate interface {
 
 // logins picks the agent login for an item of a project and returns its runner name.
 type logins interface {
-	Pick(ctx context.Context, project, item string) (string, error)
+	Pick(ctx context.Context, project, item string, busy []string) (string, error)
 }
 
 // lifecycle holds the claim of one item. Claim runs first and Release last, on every exit.

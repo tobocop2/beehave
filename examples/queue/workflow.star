@@ -9,7 +9,7 @@
 #   4. The loop removes the ended runs from its list, and it holds each failed item with a comment.
 # The loop ends when no item is ready and no run is open.
 #
-# The free slots run in parallel only when each item gets its own login. The pick of a login chooses by usage and ignores busy logins, so items can share a login and run one at a time.
+# One login runs one agent step at a time. The pick of a login prefers a login with no agent step running or queued, so the items spread over your logins. The parent run holds no login. With one login, the items run one at a time.
 #
 # This file is separate from examples/remediation because main is the entry of the parent and of a child alike.
 # The child function `work` is the one place to put the pipeline of one item: replace its agent call with the steps of the remediation example.
