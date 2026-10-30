@@ -22,3 +22,8 @@ style = 'minimal'
 
 [defaults]
 effort = 'medium'
+
+# Claude Code names a plugin skill with the plugin first (/obee:run,
+# /obee:status), so these skills do not replace the built-in commands.
+[lint]
+allow_overrides = ['claude:run', 'claude:status']
