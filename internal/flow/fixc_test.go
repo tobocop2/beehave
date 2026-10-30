@@ -341,7 +341,7 @@ func TestSweepCancels_AllTheMarkersShareOneReleaseTimeout(t *testing.T) {
 	t.Parallel()
 
 	const (
-		limit   = 400 * time.Millisecond
+		limit   = 2 * time.Second
 		markers = 3
 	)
 

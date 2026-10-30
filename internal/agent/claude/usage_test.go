@@ -549,7 +549,7 @@ func TestUsageReader_AChildThatOutlivesTheAnswerIsKilled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(lingerTimeout)
 	for syscall.Kill(pid, 0) == nil && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -572,7 +572,7 @@ func TestUsageReader_AChildOfACLIThatClosedOutputAndExitedInsideTheGraceTimeIsKi
 		t.Fatal(err)
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(lingerTimeout)
 	for syscall.Kill(pid, 0) == nil && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}

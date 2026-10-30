@@ -340,6 +340,9 @@ func TestRunner_ACancelBeforeTheStartReadsAsCancelled(t *testing.T) { //nolint:p
 	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
 }
 
+// runnerWaitDelay is the wait delay of the command that proc.GroupCommand builds. A kill by the wait delay cannot come sooner than this.
+const runnerWaitDelay = time.Second
+
 // The cancel kills the group at once, through the cancel function of the command. The wait delay of the command (one second) and the sweep after the wait
 // would also end the group, but later: the child must be gone well before the wait delay.
 func TestRunner_ACancelInsideOnStartKillsTheGroupBeforeTheWaitDelay(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -375,7 +378,7 @@ func TestRunner_ACancelInsideOnStartKillsTheGroupBeforeTheWaitDelay(t *testing.T
 
 	assert.Equal(t, agent.OutcomeCancelled, got.Outcome)
 	require.NotZero(t, started, "the agent started before the cancel")
-	assert.Less(t, <-goneAfter, 500*time.Millisecond, "the child of the agent dies with the cancel, not with the wait delay")
+	assert.Less(t, <-goneAfter, runnerWaitDelay, "the child of the agent dies with the cancel, not with the wait delay")
 	assertGone(t, f.records)
 }
 

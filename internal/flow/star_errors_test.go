@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
@@ -186,7 +187,10 @@ func TestRunStar_ACancelDuringAWaitShowsTheRunAsCancelled(t *testing.T) {
 
 	select {
 	case outcome := <-done:
-		require.ErrorIs(t, outcome.err, context.Canceled)
+		// The library returns the cancel in one of two forms, by which side sees it first: the step's own context error, or the cancel row that the result poll reads.
+		// Only the form with the context error carries context.Canceled, so both count as the cancel.
+		require.Error(t, outcome.err)
+		assert.True(t, errors.Is(outcome.err, context.Canceled) || errors.Is(outcome.err, dbos.ErrWorkflowCancelled), "the run ended with %v, not a cancel", outcome.err)
 	case <-time.After(eventTimeout):
 		t.Fatal("the run did not end after the cancel")
 	}

@@ -2,8 +2,12 @@ package proc_test
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -59,11 +63,18 @@ func TestRunShell_ACancelKillsTheCommandAndItsChildren(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(150*time.Millisecond, cancel)
 
-	start := time.Now()
-	_, code := proc.RunShell(ctx, t.TempDir(), "sleep 30 & sleep 30")
+	pidFile := filepath.Join(t.TempDir(), "child")
+	_, code := proc.RunShell(ctx, t.TempDir(), "sleep 30 & echo $! > "+pidFile+"; sleep 30")
 
 	assert.Equal(t, 128+9, code)
-	assert.Less(t, time.Since(start), 10*time.Second)
+
+	text, err := os.ReadFile(pidFile) //nolint:gosec // the test names its own file
+	require.NoError(t, err)
+
+	child, err := strconv.Atoi(strings.TrimSpace(string(text)))
+	require.NoError(t, err)
+	// The background sleep dies with the group. The wait is for the signal to land, and it ends at once when the child is gone.
+	assert.Eventually(t, func() bool { return errors.Is(syscall.Kill(child, 0), syscall.ESRCH) }, 20*time.Second, 10*time.Millisecond, "the background sleep is still alive")
 }
 
 func TestRunShell_KeepsTheLastBytesOfAnOutputPastTheCap(t *testing.T) {
