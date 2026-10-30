@@ -1,5 +1,6 @@
 # Five fix rounds do not satisfy the review. The item pauses and asks the owner to rule on the open findings.
 # After the answer, the settle step applies the ruling once and the run ends. The pull request is not marked ready.
+env OWNER_LOGIN=owner
 exec obee run 7 --workflow flow/workflow.star &
 
 # The run has opened the store once the first agent call is in the record.

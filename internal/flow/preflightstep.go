@@ -34,9 +34,8 @@ func preflightOutputs(result preflight.Result) map[string]any {
 // preflight reads the pull request of the item and returns the first stop in the fixed order of the preflight package.
 // A read that fails ends the step with an error, because the call then knows nothing.
 func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var head, base, hold, label string
-
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{headKeyword: &head, baseKeyword: &base, holdKeyword: &hold, nameKeyword: &label}); err != nil {
+	req, hold, label, err := preflightArgs(b, args, kwargs)
+	if err != nil {
 		return nil, err
 	}
 
@@ -44,12 +43,27 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, errNoPreflight
 	}
 
-	value, err := s.durable("preflight", label, s.ask(preflight.Request{ExpectHead: head, ExpectBase: base}, hold))
+	value, err := s.durable("preflight", label, s.ask(req, hold))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}
 
 	return value, err
+}
+
+// preflightArgs reads the keywords of a preflight call: the request, the hold label and the name of the step.
+func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, hold, label string, err error) {
+	var own starlark.Value
+
+	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label,
+	}); err != nil {
+		return req, "", "", err
+	}
+
+	req.Own, _, err = ownerIdentity(own)
+
+	return req, hold, label, err
 }
 
 // ask is the recorded read of one preflight call.
