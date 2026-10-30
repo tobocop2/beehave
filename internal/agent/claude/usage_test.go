@@ -84,6 +84,26 @@ func startOnce(t *testing.T, path string) {
 	}
 }
 
+// lingerTimeout is the read timeout for a fake that sleeps 30 seconds. It is under the sleep, so a reader that waits for the sleep
+// ends with the timeout reason. The tests check the reason and that the process is gone, not how long the read took:
+// a clock span includes the time a busy machine takes to start a process.
+const lingerTimeout = 20 * time.Second
+
+// wantGone checks that the process the fake recorded in its pid file is dead. A finished read has waited for it.
+func (f fakeCLI) wantGone(t *testing.T) {
+	t.Helper()
+
+	var pid int
+
+	if err := json.Unmarshal([]byte(f.lines(t, "pid")[0]), &pid); err != nil {
+		t.Fatal(err)
+	}
+
+	if syscall.Kill(pid, 0) == nil {
+		t.Fatalf("the process %d is still running after the read", pid)
+	}
+}
+
 // fakeCLI is a claude script on its own PATH folder.
 type fakeCLI struct {
 	dir  string
@@ -489,12 +509,12 @@ func TestUsageReader_EndlessOutputStopsAtTheSizeCap(t *testing.T) {
 			t.Parallel()
 
 			cli := fake(t, flood)
-			start := time.Now()
 
-			reading := claude.UsageReader{Base: cli.base, Timeout: 10 * time.Second}.Read(t.Context(), login(t))
+			// A read that ran to its timeout would give a different reason, so the reason alone proves the cap ended it.
+			reading := claude.UsageReader{Base: cli.base, Timeout: lingerTimeout}.Read(t.Context(), login(t))
 
-			if reading.Reason() != "the CLI printed more than 4 MB" || time.Since(start) > 8*time.Second {
-				t.Fatalf("reason = %q after %v", reading.Reason(), time.Since(start))
+			if reading.Reason() != "the CLI printed more than 4 MB" {
+				t.Fatalf("reason = %q", reading.Reason())
 			}
 		})
 	}
@@ -503,13 +523,16 @@ func TestUsageReader_EndlessOutputStopsAtTheSizeCap(t *testing.T) {
 func TestUsageReader_StopsAtTheAnswerAndDoesNotWaitForTheCLI(t *testing.T) {
 	t.Parallel()
 
-	cli := fake(t, answer+"sleep 30\n")
+	cli := fake(t, "echo $$ > \"$d/pid\"\n"+answer+"exec sleep 30\n")
 	start := time.Now()
 
-	usageOf(t, claude.UsageReader{Base: cli.base, Timeout: 10 * time.Second}.Read(t.Context(), login(t)))
+	usageOf(t, claude.UsageReader{Base: cli.base, Timeout: lingerTimeout}.Read(t.Context(), login(t)))
+	cli.wantGone(t)
 
-	if time.Since(start) > 5*time.Second {
-		t.Fatalf("the read took %v", time.Since(start))
+	// An answer read at the timeout is still an answer, so only the time tells a reader that waited for the CLI apart.
+	// Such a reader ends at the timeout; one that stops at the answer ends well before it, however busy the machine.
+	if time.Since(start) >= lingerTimeout {
+		t.Fatalf("the read took %v, so it waited for the CLI", time.Since(start))
 	}
 }
 
@@ -570,14 +593,10 @@ func TestUsageReader_AReplyLineWithoutANewlineAtTheEndOfOutputIsRead(t *testing.
 func TestUsageReader_ACLIThatClosesOutputAndLingersIsKilledAtOnce(t *testing.T) {
 	t.Parallel()
 
-	cli := fake(t, "exec 1>&-\nsleep 30\n")
-	start := time.Now()
+	cli := fake(t, "echo $$ > \"$d/pid\"\nexec 1>&-\nexec sleep 30\n")
 
-	wantUnknown(t, claude.UsageReader{Base: cli.base, Timeout: 10 * time.Second}.Read(t.Context(), login(t)), "ended without answering")
-
-	if time.Since(start) > 5*time.Second {
-		t.Fatalf("the read took %v", time.Since(start))
-	}
+	wantUnknown(t, claude.UsageReader{Base: cli.base, Timeout: lingerTimeout}.Read(t.Context(), login(t)), "ended without answering")
+	cli.wantGone(t)
 }
 
 func TestUsageReader_AnEnvironmentWithANullByteIsUnknownNotAnError(t *testing.T) {
