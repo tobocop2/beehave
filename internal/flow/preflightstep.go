@@ -34,16 +34,20 @@ func preflightOutputs(result preflight.Result) map[string]any {
 // preflight reads the pull request of the item and returns the first stop in the fixed order of the preflight package.
 // A read that fails ends the step with an error, because the call then knows nothing.
 func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	req, hold, label, err := preflightArgs(b, args, kwargs)
+	req, hold, label, id, err := preflightArgs(b, args, kwargs)
 	if err != nil {
 		return nil, err
+	}
+
+	if id == "" {
+		id = s.in.Item
 	}
 
 	if s.e.deps.Preflight == nil {
 		return nil, errNoPreflight
 	}
 
-	value, err := s.durable("preflight", label, s.ask(req, hold))
+	value, err := s.durable("preflight", label, s.ask(id, req, hold))
 	if stop := stopOf(label, value); err == nil && stop != nil {
 		s.stopped = stop
 	}
@@ -51,25 +55,26 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	return value, err
 }
 
-// preflightArgs reads the keywords of a preflight call: the request, the hold label and the name of the step.
-func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, hold, label string, err error) {
+// preflightArgs reads the keywords of a preflight call: the request, the hold label, the name of the step and the id of the item to read.
+// The id is empty when the call leaves it out, and the call then reads the item of the run.
+func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, hold, label, id string, err error) {
 	var own starlark.Value
 
 	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label,
+		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label, "id": &id,
 	}); err != nil {
-		return req, "", "", err
+		return req, "", "", "", err
 	}
 
 	req.Own, _, err = ownerIdentity(own)
 
-	return req, hold, label, err
+	return req, hold, label, id, err
 }
 
-// ask is the recorded read of one preflight call.
-func (s *script) ask(req preflight.Request, hold string) func(context.Context, string) (stepResult, error) {
+// ask is the recorded read of one preflight call, on the pull request of the item with the id.
+func (s *script) ask(id string, req preflight.Request, hold string) func(context.Context, string) (stepResult, error) {
 	return func(ctx context.Context, _ string) (stepResult, error) {
-		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, s.in.Item, req, hold)
+		result, err := s.e.deps.Preflight.Preflight(ctx, s.in.Project, id, req, hold)
 
 		return stepResult{Outputs: preflightOutputs(result)}, err
 	}

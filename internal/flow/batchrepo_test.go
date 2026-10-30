@@ -233,6 +233,7 @@ type landMerger struct {
 
 	mu     sync.Mutex
 	asked  []string
+	pins   []string // the head each call was pinned to
 	given  []MergeSettings
 	script map[string][]merge.Result
 	err    error
@@ -247,9 +248,10 @@ type landMerger struct {
 	cancel   func()
 }
 
-func (m *landMerger) Merge(ctx context.Context, _, item, _ string, settings MergeSettings) (merge.Result, error) {
+func (m *landMerger) Merge(ctx context.Context, _, item, head string, settings MergeSettings) (merge.Result, error) {
 	m.mu.Lock()
 	m.asked = append(m.asked, item)
+	m.pins = append(m.pins, head)
 	m.given = append(m.given, settings)
 
 	if queue := m.script[item]; len(queue) > 0 {
@@ -308,6 +310,13 @@ func (m *landMerger) cancelHere(ctx context.Context, item string) {
 		case <-time.After(time.Minute):
 		}
 	}
+}
+
+func (m *landMerger) pinned() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]string(nil), m.pins...)
 }
 
 func (m *landMerger) landed() []string {

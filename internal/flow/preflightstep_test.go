@@ -113,6 +113,19 @@ func TestPreflight_TheOwnLoginsGoToTheReader(t *testing.T) {
 	assert.Equal(t, []preflight.Request{{Own: []string{"owner", "bot"}}}, fake.asked)
 }
 
+func TestPreflight_TheIdKeywordNamesTheItemToRead(t *testing.T) {
+	t.Parallel()
+
+	h, fake, _ := preflightHarness(t, preflight.Result{})
+
+	_, err := walkBody(t, h, `preflight(name = "a", id = "7", hold = "hold")
+preflight(name = "b", hold = "hold")
+`)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testProject + "/7/hold", testProject + "/" + testItem + "/hold"}, fake.holds)
+}
+
 func TestPreflight_AReadThatFailsEndsTheItemWithAnError(t *testing.T) {
 	t.Parallel()
 

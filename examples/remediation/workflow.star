@@ -7,7 +7,60 @@ load("@obee//review_fix.star", "review_fix")
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
 
+def land(pins):
+    """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
+    Each entry of `pins` is id=sha: the item and the full SHA the owner reviewed, as EXPECT_HEAD is for one item.
+    The MERGE switch, the stops before the work and the guards are those of the pipeline of one item. The branch of each pull request has the id of its item."""
+    if env("MERGE") != "true":
+        return
+
+    prs = []
+    stopped = []
+
+    for pin in pins:
+        pair = pin.split("=")
+        if len(pair) != 2 or pair[0] == "" or pair[1] == "":
+            fail("LAND entry %r is not id=sha. Give the full SHA that the owner reviewed for each item" % pin)
+
+        id, head = pair[0], pair[1]
+
+        # The stops of the pipeline of one item, for each item: merged, closed, branch gone, hold, draft, base, and a head that is not the reviewed one.
+        # An item that stops is reported with its reason, and the other items still land.
+        check = preflight(name = "intake-" + id, id = id, head = head, base = env("BASE"), hold = "hold", own = {"logins": [env("OWNER_LOGIN")]})
+        if check.ok:
+            prs.append(struct(item = id, head = head))
+        else:
+            stopped.append(struct(item = id, reason = check.reason))
+
+    for skipped in stopped:
+        item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason)
+        item_status(name = "stop-hold-" + skipped.item, id = skipped.item, status = "hold")
+
+    if len(prs) == 0:
+        return
+
+    out = batch_merge(
+        name = "land",
+        prs = prs,
+        base = env("BASE"),
+        repo = env("REPO"),
+        hold = "hold",
+        own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
+        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"],
+    )
+
+    # A rejected item gets the reason as a comment and the hold status, so it does not come back until a person reads it.
+    for rejected in out.rejected:
+        item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason)
+        item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
+
 def main(item):
+    # LAND lists ready items as id=sha, split by spaces. A run with LAND set starts no agent: it lands those items with one batch_merge. Without LAND, the run is the pipeline of one item.
+    ready = env("LAND", default = "").split()
+    if len(ready) > 0:
+        land(ready)
+        return
+
     # Before any agent starts, the pull request of the item must be as the owner left it: not merged, not closed, its branch still on the remote,
     # no hold label, not a draft, the head the owner named in EXPECT_HEAD (a full SHA; when it is not set, no head is checked), and the base BASE.
     # A stop is a result: the run ends here and starts no agent. The result of the run holds the stop as `stopped`: the step, the exit code and the reason.
