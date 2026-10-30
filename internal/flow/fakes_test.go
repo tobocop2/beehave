@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
@@ -476,6 +478,17 @@ func eventually(t *testing.T, check func() bool) {
 	t.Helper()
 
 	require.Eventually(t, check, eventTimeout, pollEvery)
+}
+
+// waitForTheSleep waits until the run has started a durable sleep. The sleep records its step when it starts, so a cancel sent after this lands inside the sleep and not in the step before it.
+func waitForTheSleep(t *testing.T, engine *Engine) {
+	t.Helper()
+
+	eventually(t, func() bool {
+		steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
+
+		return err == nil && slices.ContainsFunc(steps, func(s dbos.StepInfo) bool { return s.StepName == "DBOS.sleep" })
+	})
 }
 
 // waitForTheOwner waits until the open run shows its question. The last verdict is recorded before the run asks, so a wait on the verdict count alone can read the run in between.

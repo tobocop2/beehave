@@ -330,9 +330,10 @@ func TestBatchMerge_ACanceledRunStopsTheWaitBetweenReadsOfAnUnknownMergeableStat
 	rig.h.sleep = time.Hour
 	unknown := merge.Result{Stop: merge.Refused, Reason: merge.Unsettled, Lines: []string{"REFUSE: mergeable is UNKNOWN"}}
 	rig.merger.script["1"] = []merge.Result{unknown, unknown, unknown}
-	done := runInBackground2(rig.engine(t), writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	engine := rig.engine(t)
+	done := runInBackground2(engine, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
 
-	eventually(t, func() bool { return len(rig.merger.landed()) == 1 })
+	waitForTheSleep(t, engine)
 	require.NoError(t, rig.h.client(t, testVersion).Cancel(testItem))
 	rig.h.tick(t)
 
