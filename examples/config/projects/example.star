@@ -12,7 +12,8 @@ project(
     beads_prefix = "proj",     # the id prefix of the beads database; required when tracker or claims is "beads"
     base_branch = "main",
     gate = "make check",       # the same command that your CI runs
-    build_host = "local",      # "local", or the name of a SkyPilot cluster (not a Slurm partition)
+    # test_report = "reports/*.xml",  # optional; a glob for JUnit XML files, relative to the work tree. A local gate that exits 0 fails when no new file matches, a file does not parse, or the files hold 0 tests. A file that the gate leaves unchanged (same modification time and size) does not count. The key needs build_host = "local"
+    build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
     #     provider = "skypilot",   # the host adapter
