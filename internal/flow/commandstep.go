@@ -165,7 +165,7 @@ func (s *script) runCommand(ctx context.Context, name string, request CommandReq
 		return stepResult{}, err
 	}
 
-	recorded := stepResult{Outputs: map[string]any{"stdout": out.Stdout, "rc": out.RC}}
+	recorded := stepResult{Outputs: commandOutputs(out.Stdout, out.RC)}
 	if slices.Contains(stops, out.RC) {
 		recorded.Stopped = &Stopped{Step: name, RC: out.RC, Output: out.Stdout}
 	}
@@ -219,7 +219,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 			return nil, err
 		}
 
-		return map[string]any{"passed": gated.Passed, "head": gated.Head, treeName: gated.Tree, "report": gated.Report}, nil
+		return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report), nil
 	}
 
 	out, err := s.e.deps.Commands.Run(ctx, request)
@@ -227,7 +227,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 		return nil, err
 	}
 
-	return map[string]any{"passed": out.RC == 0, "head": head, treeName: "", "report": out.Stdout}, nil
+	return gateOutputs(out.RC == 0, head, "", out.Stdout), nil
 }
 
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.
@@ -248,7 +248,7 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	}
 
 	return s.durable("wait", label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: map[string]any{"answer": answer}}, nil
+		return stepResult{Outputs: answerOutputs(answer)}, nil
 	})
 }
 

@@ -198,7 +198,7 @@ func (s *script) awaitOwner(label string, ownerMerges bool) (starlark.Value, err
 	s.mergeState, s.sentBack = state, reason
 
 	return s.durable("merge", label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: map[string]any{"state": state, "reason": reason}}, nil
+		return stepResult{Outputs: mergeOutputs(state, reason)}, nil
 	})
 }
 
