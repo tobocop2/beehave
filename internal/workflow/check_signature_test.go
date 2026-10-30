@@ -47,6 +47,9 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"merge missing head", `merge(repo = "r")`, "merge needs the `head` keyword"},
 		{"merge bad children", `merge("h", children = "drop")`, `children is "drop". Use one of: refuse, retarget.`},
 		{"merge text for a bool", `merge("h", merge = "yes")`, "merge must be a bool, not a text."},
+		{"preflight unknown keyword", `preflight(state = "open")`, "preflight takes no argument state"},
+		{"preflight number for head", `preflight(head = 3)`, "head must be a text, not an int."},
+		{"preflight list for hold", `preflight(hold = ["hold"])`, "hold must be a text, not a list."},
 		{"spawn unknown keyword", `spawn([], limit = 2)`, "spawn takes no argument limit"},
 		{"spawn missing items", `spawn(name = "n")`, "spawn needs the `items` keyword"},
 		{"spawn text for a list", `spawn("1")`, "items must be a list, not a text."},
@@ -80,6 +83,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`item_create("t", "k", body = "b")`,
 		`item_status("1", "hold")`,
 		`merge("h", children = "retarget", approved = True, own = {"logins": []})`,
+		`preflight(head = "h", base = "b", hold = "hold", name = "intake")`,
 		`spawn(["1"], name = "n")`,
 		`wait()`,
 	}

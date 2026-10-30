@@ -10,6 +10,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/obee/internal/batch"
+	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -45,6 +46,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"item_create":  keysOf(createOutputs("", true)),
 		"item_status":  keysOf(statusOutputs("", "")),
 		"merge":        keysOf(mergeOutputs("", "")),
+		"preflight":    keysOf(preflightOutputs(preflight.Result{})),
 		"wait":         keysOf(answerOutputs("")),
 	}
 

@@ -236,6 +236,7 @@ func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T)
 		{"hold_over_draft", heldDraft, preflight.Request{PR: 1}, preflight.Held},
 		{"draft_over_head", draftMoved, preflight.Request{PR: 1, ExpectHead: other}, preflight.Draft},
 		{"head_over_base", moved, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.HeadMoved},
+		{"base_alone", moved, preflight.Request{PR: 1, ExpectBase: "main"}, preflight.BaseChanged},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

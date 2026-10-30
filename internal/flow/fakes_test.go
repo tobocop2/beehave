@@ -351,22 +351,23 @@ func (l *fakeLifecycle) seen() []string {
 
 // harness holds the fakes and the options of one test. Each engine of the test shares one state folder.
 type harness struct {
-	agents   *fakeAgents
-	gate     *fakeGate
-	logins   fakeLogins
-	picker   logins // replaces logins when set
-	life     *fakeLifecycle
-	merge    *fakeMerge
-	forge    *fakeForge
-	watch    *fakeWatch
-	trees    *fakeTrees
-	beats    *fakeBeats
-	commands *fakeCommands
-	items    *fakeItems
-	writer   writer // nil unless a test sets it
-	ticks    chan time.Time
-	sleep    time.Duration
-	opts     Options
+	agents    *fakeAgents
+	gate      *fakeGate
+	logins    fakeLogins
+	picker    logins // replaces logins when set
+	life      *fakeLifecycle
+	merge     *fakeMerge
+	preflight preflighter // nil unless a test sets it
+	forge     *fakeForge
+	watch     *fakeWatch
+	trees     *fakeTrees
+	beats     *fakeBeats
+	commands  *fakeCommands
+	items     *fakeItems
+	writer    writer // nil unless a test sets it
+	ticks     chan time.Time
+	sleep     time.Duration
+	opts      Options
 }
 
 // defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
@@ -430,6 +431,8 @@ func (h *harness) deps() Deps {
 	if h.merge != nil {
 		deps.Merge = h.merge
 	}
+
+	deps.Preflight = h.preflight
 
 	if h.picker != nil {
 		deps.Logins = h.picker

@@ -274,13 +274,24 @@ func (e *Engine) variable(name string) (string, error) {
 	return e.redact(raw), nil
 }
 
+// variableOr returns the variable, or the default text of the call when the variable is not set. A call with no default gets the error of variable.
+func (e *Engine) variableOr(name string, fallback starlark.Value) (string, error) {
+	if text, given := starlark.AsString(fallback); given {
+		if _, set := e.env[name]; !set {
+			return text, nil
+		}
+	}
+
+	return e.variable(name)
+}
+
 // env reads a variable of the engine in a step, so a replay sees the value of the first run. It refuses the names of secrets and of the engine.
 func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var name string
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		nameKeyword: &name,
-	}); err != nil {
+	var fallback starlark.Value
+
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{nameKeyword: &name, "default": &fallback}); err != nil {
 		return nil, err
 	}
 
@@ -288,7 +299,7 @@ func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark
 		return nil, err
 	}
 
-	value, err := runStep(s.e, s.ctx, s.name("env", name), func(context.Context) (string, error) { return s.e.variable(name) })
+	value, err := runStep(s.e, s.ctx, s.name("env", name), func(context.Context) (string, error) { return s.e.variableOr(name, fallback) })
 	if err != nil {
 		return nil, err
 	}

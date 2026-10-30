@@ -96,7 +96,7 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	)
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"prs": &prs, "base": &set.Base, "repo": &set.Repo, "hold": &set.Hold, "own": &own, "forbid_text": &forbid, "gate_run": &gateRun,
+		"prs": &prs, baseKeyword: &set.Base, "repo": &set.Repo, holdKeyword: &set.Hold, "own": &own, "forbid_text": &forbid, "gate_run": &gateRun,
 		nameKeyword: &call.name,
 	})
 	if err != nil {
@@ -221,7 +221,7 @@ func batchResult(done batch.Result) starlark.Value { //nolint:ireturn // the bui
 func outcomes(list []batch.Outcome) *starlark.List {
 	out := make([]starlark.Value, len(list))
 	for i, o := range list {
-		out[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(o.Item), "reason": starlark.String(o.Reason)})
+		out[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(o.Item), reasonKey: starlark.String(o.Reason)})
 	}
 
 	return starlark.NewList(out)

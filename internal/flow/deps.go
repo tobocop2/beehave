@@ -185,6 +185,8 @@ type Deps struct {
 	Trees     treeMaker
 	Beats     beats
 	Merge     merger
+	// Preflight serves preflight. A nil Preflight means the build cannot run it: a preflight call fails.
+	Preflight preflighter
 	Commands  commands
 	Items     items
 	Writer    writer

@@ -14,7 +14,7 @@ func gateOutputs(passed bool, head, tree, report string) map[string]any {
 func answerOutputs(answer string) map[string]any { return map[string]any{"answer": answer} }
 
 func mergeOutputs(state, reason string) map[string]any {
-	return map[string]any{"state": state, "reason": reason}
+	return map[string]any{"state": state, reasonKey: reason}
 }
 
 func createOutputs(id string, created bool) map[string]any {

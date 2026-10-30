@@ -19,6 +19,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 	"github.com/tobocop2/obee/internal/workflow/workflowtest"
@@ -70,7 +71,7 @@ func e2eFlow(dir, path string) cli.Flow {
 
 			engine, err := flow.NewEngine(ctx, opts, withBatch(flow.Deps{
 				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{},
-				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files, Items: files,
+				Lifecycle: files, Forge: files, Watch: files, Trees: files, Beats: files, Items: files, Preflight: files,
 			}, dir, cfg))
 			if err != nil {
 				return nil, err
@@ -87,6 +88,11 @@ type e2eFiles struct{ dir string }
 // Fields gives the item the fields that the prompts of the example read.
 func (e2eFiles) Fields(_ context.Context, _, item string) (map[string]string, error) {
 	return map[string]string{"id": item, "title": "title of " + item, "body": "body of " + item}, nil
+}
+
+// Preflight finds nothing changed: the scripts own no pull request before the first agent.
+func (e2eFiles) Preflight(context.Context, string, string, preflight.Request, string) (preflight.Result, error) {
+	return preflight.Result{}, nil
 }
 
 func (f e2eFiles) event(name, item string) error {
@@ -362,6 +368,9 @@ func e2eSetup(env *testscript.Env) error {
 	env.Setenv(e2eDirVariable, work)
 	// The example merges only when MERGE is "true". The scripts run it as a dry run: the owner merges, and no merge guard runs.
 	env.Setenv("MERGE", "false")
+	// The preflight call of the example reads these before the first agent. The fake preflight finds nothing changed, so the values only have to exist.
+	env.Setenv("EXPECT_HEAD", "")
+	env.Setenv("BASE", "integration")
 
 	return nil
 }

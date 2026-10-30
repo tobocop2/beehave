@@ -158,7 +158,7 @@ func mergingExample(t *testing.T, world func(head string) *shipWorld) (*agentRig
 
 	built := world(rig.head)
 	rig.h.merge = &fakeMerge{over: mergerOver(built)}
-	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": shipBase, "OWNER_LOGIN": shipOwner, "OWNER_EMAIL": shipMail, "MERGE": "true"}
+	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": shipBase, "OWNER_LOGIN": shipOwner, "OWNER_EMAIL": shipMail, "MERGE": "true", "EXPECT_HEAD": ""}
 
 	return rig, file, built
 }

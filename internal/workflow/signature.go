@@ -70,7 +70,7 @@ func stepSignatures() map[string][]Param {
 		commandName: {
 			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), label,
 		},
-		"env": {req(nameKeyword, KindText)},
+		"env": {req(nameKeyword, KindText), opt("default", KindText)},
 		gateName: {
 			opt("run", KindList), opt("host", KindText), opt("timeout", KindText), opt("head", KindText), label,
 		},
@@ -105,6 +105,7 @@ func itemSignatures() map[string][]Param {
 			req("title", KindText), req("key", KindText), opt("body", KindText), opt("parent", KindText), label,
 		},
 		itemStatusName: {req("id", KindText), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
+		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("approved", KindBool),
 			opt("tree", KindText), opt("forbid_text", KindList), one("children", ChildrenValues()), opt("merge", KindBool), label,
