@@ -26,7 +26,7 @@ fail) exit 7 ;;
 half) printf partial >&2; exec sleep 5 ;;
 line) printf 'partial\n' >&2; exec sleep 5 ;;
 crlf) printf 'a\r\nb' ; printf 'e\r\n' >&2; exit 3 ;;
-grand) sleep 30 & echo $! > "$2"; wait ;;
+grand) sleep 120 & echo $! > "$2"; wait ;;
 slow) exec sleep 5 ;;
 dir) pwd ;;
 esac
@@ -195,8 +195,10 @@ func TestExecRunner_ATimeoutKillsTheGrandchildToo(t *testing.T) { //nolint:paral
 
 	pidFile := filepath.Join(t.TempDir(), "pid")
 
-	done := proc.ExecRunner{Binary: "bd", Timeout: 700 * time.Millisecond}.Run(context.Background(), []string{"grand", pidFile})
+	// The timeout must outlast the start of the script, which writes the pid file. A loaded machine starts it late.
+	done := proc.ExecRunner{Binary: "bd", Timeout: 5 * time.Second}.Run(context.Background(), []string{"grand", pidFile})
 	assert.Equal(t, 124, done.ExitCode)
+	require.FileExists(t, pidFile, "the script did not start before the timeout")
 
 	text, err := os.ReadFile(pidFile) //nolint:gosec // a path the test made
 	require.NoError(t, err)

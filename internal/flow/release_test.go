@@ -3,6 +3,7 @@ package flow
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,12 @@ import (
 
 	"github.com/tobocop2/obee/internal/proc"
 )
+
+// remoteSleepSeconds is how long the fake remote of the timeout test stays silent. A call that waits for the remote ends no sooner than this.
+const remoteSleepSeconds = 60
+
+// releaseSlack is the time that a loaded machine may add to a call that has a short limit. It stays below releaseTimeout.
+const releaseSlack = 20 * time.Second
 
 // gitIn runs git in dir with a fixed identity and no user config, and returns the trimmed output.
 func gitIn(t *testing.T, dir string, args ...string) string {
@@ -140,14 +147,17 @@ func TestRemoveTree_KeepsTheTreeWhenTheRemoteDoesNotAnswerInTime(t *testing.T) {
 
 	r := newRepos(t)
 	gitIn(t, r.tree, "config", "protocol.ext.allow", "always")
-	gitIn(t, r.tree, "remote", "set-url", "origin", "ext::sleep 60")
+	gitIn(t, r.tree, "remote", "set-url", "origin", "ext::sleep "+strconv.Itoa(remoteSleepSeconds))
+
+	const limit = 300 * time.Millisecond
 
 	started := time.Now()
-	kept, err := removeTreeOf(t, r.tree, 300*time.Millisecond)
+	kept, err := removeTreeOf(t, r.tree, limit)
 
 	require.NoError(t, err)
 	assert.Contains(t, kept, "in time")
-	assert.Less(t, time.Since(started), 20*time.Second, "the call ends at the limit, not when the remote answers")
+	// A call that ignores the clock limit ends at releaseTimeout, so the slack must stay below it.
+	assert.Less(t, time.Since(started), limit+releaseSlack, "the call ends at the clock limit, not at the default timeout or when the remote answers")
 	assert.DirExists(t, r.tree)
 }
 

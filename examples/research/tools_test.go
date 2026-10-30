@@ -335,10 +335,14 @@ func TestCheck_RefusesAValueThatIsNotAnInteger(t *testing.T) {
 func TestCheck_PrintsTheFailuresFoundWhenTheTimeRunsOut(t *testing.T) {
 	t.Parallel()
 
-	// A curl that takes one second and fails stands in for a slow network. The limit of one second passes after the first fetch.
+	// The check reads the time with date, in whole seconds. A date that reads 0 until curl has run and 1000 after puts the limit of one second
+	// between the first fetch and the second on any machine. No real second passes, so a busy machine cannot pass the limit before the first fetch.
 	bin := t.TempDir()
-	script := "#!/bin/sh\nsleep 1\nexit 22\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "curl"), []byte(script), 0o700)) //nolint:gosec // an executable test double
+	ran := filepath.Join(bin, "curl-ran")
+	curl := "#!/bin/sh\ntouch " + ran + "\nexit 22\n"
+	date := "#!/bin/sh\nif [ -e " + ran + " ]; then echo 1000; else echo 0; fi\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "curl"), []byte(curl), 0o700)) //nolint:gosec // an executable test double
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "date"), []byte(date), 0o700)) //nolint:gosec // an executable test double
 
 	folder := notes(t, "# Q\n\n- One. [source: http://example.test/a]\n- Two. [source: http://example.test/b]\n")
 	out, code := run(t, []string{"PATH=" + bin + ":/usr/bin:/bin", "CHECK_TOTAL_TIME=1"}, "check.sh", folder)
