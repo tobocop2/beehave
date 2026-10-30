@@ -103,13 +103,27 @@ func TestRun_ALocalGateRunsTheProjectGateInTheTreeAndPassesOnExitZero(t *testing
 func TestRun_ALocalGateThatExitsNonZeroFailsWithItsOutput(t *testing.T) {
 	t.Parallel()
 
-	for _, code := range []int{1, 2, 7, 128 + 15} {
+	for _, code := range []int{1, 2, 7, 128} {
 		shell := &fakeShell{output: "lint: 3 problems\n", code: code}
 		g := build(shell, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
 
 		got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
 		require.NoError(t, err)
 		assert.Equal(t, gate.Result{Report: "lint: 3 problems\n", Head: headA}, got, "exit %d", code)
+	}
+}
+
+func TestRun_ALocalGateThatASignalKilledIsAnErrorNeverAPassOrAFail(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{128 + 9, 128 + 15} {
+		shell := &fakeShell{output: "partial output\n", code: code}
+		g := build(shell, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
+
+		got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
+		require.ErrorIs(t, err, gate.ErrNoVerdict, "exit %d", code)
+		assert.Contains(t, err.Error(), "killed")
+		assert.Equal(t, gate.Result{}, got, "exit %d", code)
 	}
 }
 

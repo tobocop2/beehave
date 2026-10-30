@@ -15,6 +15,9 @@ const (
 	// reportLimit is the most bytes of output that a Result keeps. The tail holds the findings.
 	reportLimit = model.ReportLimit
 
+	// signalBase is the exit code that a shell reports for a command that a signal ended: 128 plus the signal number.
+	signalBase = 128
+
 	// safeWordRune holds the characters that a shell word may hold without a quote.
 	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
 )
@@ -22,7 +25,7 @@ const (
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
 var ErrTreeChanged = errors.New("the tree is not the commit the gate judges")
 
-// ErrNoVerdict is the cause when a host job ends in a state that is neither passed nor failed.
+// ErrNoVerdict is the cause when a host job ends in a state that is neither passed nor failed, or a signal kills a local gate command.
 var ErrNoVerdict = errors.New("the gate job gave no verdict")
 
 // ErrNoHead is the cause when a resumed host job comes without the head it was submitted with.
@@ -141,6 +144,9 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 	}
 
 	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
+	if code > signalBase {
+		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
+	}
 
 	return Result{Passed: code == 0, Report: tail(output), Head: head}, nil
 }
