@@ -1,0 +1,10 @@
+# The project file for examples/queue/workflow.star. Copy it to <config folder>/projects/<name>.star and change the values that name your repository.
+# The loop reads the open items of the tracker and the open pull requests of the forge, so the project needs both.
+
+project(
+    repo = "your-org/your-repo",  # owner/name; the same value as the variable REPO of the run
+    tracker = "github",           # "github" or "beads"; the loop reads its open items. For "beads", add beads_prefix.
+    forge = "github",
+    base_branch = "main",         # the variable BASE of the run names the integration branch that receives the pull requests
+    gate = "make check",
+)
