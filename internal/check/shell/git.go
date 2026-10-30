@@ -171,7 +171,7 @@ func splitAtDashes(args []string) ([]string, []string) {
 func subcommandAt(head []string) int {
 	i := 1
 	for i < len(head) && strings.HasPrefix(head[i], "-") {
-		i += optionWidth(slices.Contains([]string{"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}, head[i]))
+		i += optionWidth(slices.Contains([]string{"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", configEnv}, head[i]))
 	}
 
 	return i
@@ -191,7 +191,7 @@ func bulkHit(head []string) string {
 	switch head[i] {
 	case "add", "stage":
 		return addHit(head[i], head[i+1:])
-	case "commit":
+	case subCommit:
 		return commitHit(head[i+1:])
 	}
 

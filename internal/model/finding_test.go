@@ -9,12 +9,12 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-func TestFindingKinds_ListsTheSixKindsSortedByName(t *testing.T) {
+func TestFindingKinds_ListsTheTenKindsSortedByName(t *testing.T) {
 	t.Parallel()
 
 	kinds := model.FindingKinds()
 
-	assert.Len(t, kinds, 6)
+	assert.Len(t, kinds, 10)
 	assert.True(t, slices.IsSorted(kinds), "%v", kinds)
 	assert.Contains(t, kinds, model.FindingBulkStaging)
 	assert.Contains(t, kinds, model.FindingOpaque)
