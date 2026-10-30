@@ -33,6 +33,7 @@ type rawProject struct {
 	Gate        string
 	BuildHost   string
 	Host        *rawHost
+	TestReport  text
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -55,7 +56,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?"}}
+	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -87,7 +88,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport)
 	raw.Host = host.block
 
 	return raw, err
@@ -112,7 +113,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable,
+		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
 	}, nil
 }
 
@@ -132,7 +133,20 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return "", "", err
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host))
+}
+
+// testReport refuses a test_report that is set and empty, or set for a gate on a build host. An unset key is allowed.
+func testReport(raw rawProject, host string) error {
+	if !raw.TestReport.Set {
+		return nil
+	}
+
+	if host != LocalHost {
+		return refuseAt(raw.At, "`test_report` is set with `build_host = %q`. The report is read only from a local gate. Remove `test_report` or set `build_host = %q`.", host, LocalHost)
+	}
+
+	return requireText(raw.At, "test_report", raw.TestReport.Value)
 }
 
 func buildHost(raw rawProject) (string, error) {

@@ -143,12 +143,22 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 		return g.remote(ctx, request, head)
 	}
 
+	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
 	if code > signalBase {
 		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
 	}
 
-	return Result{Passed: code == 0, Report: tail(output), Head: head}, nil
+	result := Result{Passed: code == 0, Report: tail(output), Head: head}
+
+	if result.Passed && request.Project.TestReport != "" {
+		if reason := judge(request.Dir, request.Project.TestReport, before); reason != "" {
+			result.Passed = false
+			result.Report = tail(output + "\n" + reason + "\n")
+		}
+	}
+
+	return result, nil
 }
 
 func (g Gate) remote(ctx context.Context, request Request, head string) (Result, error) {

@@ -55,6 +55,7 @@ type Project struct {
 	BeadsPrefix string
 	BaseBranch  string
 	Gate        string
+	TestReport  string
 	BuildHost   string
 	Host        *HostConfig
 }

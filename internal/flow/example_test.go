@@ -223,6 +223,57 @@ func (g packageGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
 	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
 }
 
+// zeroTestGate runs the real gate package on a local project that sets test_report. The gate command exits 0 and writes a report with no test.
+// The first run writes a report with 0 tests; every later run writes one with 3.
+type zeroTestGate struct {
+	head, tree, dir string
+	runs            *int
+}
+
+func (g zeroTestGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
+	*g.runs++
+	runs := *g.runs
+
+	shell := func(context.Context, string, string) (string, int) {
+		report := `<testsuites><testsuite tests="0"/></testsuites>`
+		if runs > 1 {
+			report = `<testsuites><testsuite tests="3"/></testsuites>`
+		}
+
+		if err := os.WriteFile(filepath.Join(g.dir, "report.xml"), []byte(report), 0o600); err != nil {
+			return err.Error(), 1
+		}
+
+		return "ok", 0
+	}
+	tree := func(context.Context, string) (gatepkg.State, error) {
+		return gatepkg.State{Head: g.head, Tree: g.tree, Clean: true}, nil
+	}
+	project := model.Project{Name: "demo", Gate: "go test ./nothing", TestReport: "report.xml", BuildHost: config.LocalHost}
+
+	result, err := gatepkg.New(shell, tree, nil).Run(ctx, gatepkg.Request{Project: project, Dir: g.dir})
+	if err != nil {
+		return GateResult{}, err
+	}
+
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
+}
+
+func TestExample_AGateThatExitsZeroWithZeroTestsDoesNotPassAndTheFixGetsTheReason(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	runs := 0
+	rig.h.gate.via = zeroTestGate{head: rig.head, tree: exampleTree, dir: t.TempDir(), runs: &runs}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"opus", "sonnet", "sonnet", "opus"}, rig.models(), "round 1 runs the fix and no review: the gate did not pass")
+	assert.Contains(t, rig.h.agents.requests[2].Prompt, "hold 0 tests", "the reason reaches the fix")
+	assert.Equal(t, 2, runs)
+}
+
 func TestExample_AGateKilledByASignalIsUnresolvedAndEveryLaterStepDoesNotRun(t *testing.T) {
 	t.Parallel()
 

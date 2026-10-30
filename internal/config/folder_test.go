@@ -264,6 +264,37 @@ func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	require.Equal(t, "make check", project.Gate)
 }
 
+func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
+	t.Parallel()
+
+	base := `repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g"`
+
+	project, problems := loadProjectText(t, "project("+base+", test_report = \"out/*.xml\")\n")
+	require.Empty(t, problems)
+	require.Equal(t, "out/*.xml", project.TestReport)
+
+	project, problems = loadProjectText(t, "project("+base+")\n")
+	require.Empty(t, problems)
+	require.Empty(t, project.TestReport)
+
+	_, problems = loadProjectText(t, "project("+base+", test_report = \"\")\n")
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "`test_report` must be a non-empty string")
+}
+
+func TestLoadFolder_ATestReportOnABuildHostIsRefusedAndNamesTheKeyAndTheReason(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadProjectText(t, call(goodProject+`, build_host = "gpu-a", host = `+hostCall("")+`, test_report = "out/*.xml"`))
+
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "`test_report`")
+	require.Contains(t, problems[0].Error(), "read only from a local gate")
+
+	_, problems = loadProjectText(t, call(goodProject+`, test_report = "out/*.xml"`))
+	require.Empty(t, problems)
+}
+
 func TestLoadFolder_AProjectPathThatIsNotAFileIsReported(t *testing.T) {
 	t.Parallel()
 
