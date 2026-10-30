@@ -44,6 +44,7 @@ func TestCheck_ReportsEachProblemWithItsPlace(t *testing.T) {
 		"a syntax error":        {map[string]string{"workflow.star": "def main(item:\n"}, "1:", true},
 		"a name not defined":    {map[string]string{"workflow.star": "def main(item):\n    return nothing(1)\n"}, "2:12 undefined: nothing.", true},
 		"a missing main":        {map[string]string{"workflow.star": "x = 1\n"}, "0:0 the file defines no function main", false},
+		"a finish with no item": {map[string]string{"workflow.star": "def main(item):\n    pass\ndef finish():\n    pass\n"}, "0:0 finish takes the item. Write def finish(item):", false},
 		"a load of a bad path":  {map[string]string{"workflow.star": "load(\"lib.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 cannot load \"lib.star\"", false},
 		"a load of no file":     {map[string]string{"workflow.star": "load(\"//lib.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 cannot read lib.star", true},
 		"an unknown library":    {map[string]string{"workflow.star": "load(\"@obee//nothing.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 the binary has no library", false},
@@ -63,6 +64,14 @@ func TestCheck_ReportsEachProblemWithItsPlace(t *testing.T) {
 			assert.Equal(t, test.unparsed, unparsed)
 		})
 	}
+}
+
+func TestCheck_AcceptsAFinishThatTakesTheItem(t *testing.T) {
+	t.Parallel()
+
+	found, _ := workflow.Check(folder(t, map[string]string{"workflow.star": "def main(item):\n    pass\ndef finish(item):\n    pass\n"}, "workflow.star"))
+
+	assert.Empty(t, found)
 }
 
 func TestCheck_RefusesABadFollowUpsValueAtItsPlaceAndAcceptsTheListedOnes(t *testing.T) {

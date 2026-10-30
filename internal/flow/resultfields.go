@@ -11,6 +11,10 @@ func gateOutputs(passed bool, head, tree, report string) map[string]any {
 	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report}
 }
 
+func teardownOutputs(down bool, reason string) map[string]any {
+	return map[string]any{"down": down, reasonKey: reason}
+}
+
 func answerOutputs(answer string) map[string]any { return map[string]any{"answer": answer} }
 
 func mergeOutputs(state, reason string) map[string]any {

@@ -109,6 +109,7 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker},
 		Batch:  batchHost{pulls: life.pulls, programs: commands},
+		Hosts:  hostStop{programs: commands},
 	})
 }
 

@@ -39,15 +39,16 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 	t.Parallel()
 
 	got := map[string][]string{
-		"agent":        keysOf(agentOutputs("", "", "", "", "")),
-		"command":      keysOf(commandOutputs("", 0)),
-		"gate":         keysOf(gateOutputs(true, "", "", "")),
-		"item_comment": keysOf(commentOutputs("")),
-		"item_create":  keysOf(createOutputs("", true)),
-		"item_status":  keysOf(statusOutputs("", "")),
-		"merge":        keysOf(mergeOutputs("", "")),
-		"preflight":    keysOf(preflightOutputs(preflight.Result{})),
-		"wait":         keysOf(answerOutputs("")),
+		"agent":         keysOf(agentOutputs("", "", "", "", "")),
+		"command":       keysOf(commandOutputs("", 0)),
+		"gate":          keysOf(gateOutputs(true, "", "", "")),
+		"item_comment":  keysOf(commentOutputs("")),
+		"item_create":   keysOf(createOutputs("", true)),
+		"item_status":   keysOf(statusOutputs("", "")),
+		"merge":         keysOf(mergeOutputs("", "")),
+		"host_teardown": keysOf(teardownOutputs(true, "")),
+		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
+		"wait":          keysOf(answerOutputs("")),
 	}
 
 	for builtin, keys := range got {

@@ -371,7 +371,8 @@ type harness struct {
 	beats     *fakeBeats
 	commands  *fakeCommands
 	items     *fakeItems
-	writer    writer // nil unless a test sets it
+	writer    writer      // nil unless a test sets it
+	hosts     hostStopper // nil unless a test sets it
 	ticks     chan time.Time
 	sleep     time.Duration
 	opts      Options
@@ -440,6 +441,7 @@ func (h *harness) deps() Deps {
 	}
 
 	deps.Preflight = h.preflight
+	deps.Hosts = h.hosts
 
 	if h.picker != nil {
 		deps.Logins = h.picker

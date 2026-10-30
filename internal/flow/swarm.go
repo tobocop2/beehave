@@ -20,8 +20,10 @@ const (
 	itemsQueueName = "items"
 	// defaultEntry is the function that runs an item: main for an item that a user started, and the default entry of spawn.
 	defaultEntry = "main"
-	failReturn   = "return"
-	failRaise    = "raise"
+	// finishEntry is the optional function that the engine calls after main on every end of the run except a cancel.
+	finishEntry = "finish"
+	failReturn  = "return"
+	failRaise   = "raise"
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
 	nameKeyword    = "name"
 	runKeyword     = "run"

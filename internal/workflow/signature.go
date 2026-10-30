@@ -74,7 +74,8 @@ func stepSignatures() map[string][]Param {
 		gateName: {
 			opt("run", KindList), opt("host", KindText), opt("timeout", KindText), opt("head", KindText), label,
 		},
-		waitName: {opt("question", KindText), label},
+		waitName:         {opt("question", KindText), label},
+		hostTeardownName: {label},
 	}
 }
 

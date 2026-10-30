@@ -318,6 +318,12 @@ func (h *Host) WorkRoot(ctx context.Context) (string, error) {
 	return lines[0], nil
 }
 
+// Teardown banks the work of the head node to `host.private_remote` and then deletes the cluster. It is host.Teardown with git and find on the head node.
+// A head node with unbanked work, or one whose work cannot be read, stays up, and the error says why.
+func (h *Host) Teardown(ctx context.Context) error {
+	return host.Teardown(ctx, h, remoteRunner{h: h, binary: "git"}, remoteRunner{h: h, binary: "find"}, h.config.PrivateRemote)
+}
+
 // bankWork banks the work of the head node. git and find run on the head node through ssh, from the work root.
 func (h *Host) bankWork(ctx context.Context) error {
 	root, err := h.WorkRoot(ctx)

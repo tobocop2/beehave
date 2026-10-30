@@ -55,6 +55,21 @@ def land(pins):
         item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
 
 def main(item):
+    pipeline(item)
+
+def finish(item):
+    """The engine calls finish after main on every end of the run except a cancel: success, error and command stop.
+    It stops the build host when HOST_TEARDOWN is "true". A run with no host sets nothing and calls nothing.
+    HOST_TEARDOWN is for a run with one item on the host: the stop deletes the host, so a second item on it would lose its agent. Teardown for a shared host is not done.
+    The stop banks the work on the host first. A host that cannot bank its work stays up, and the item gets a comment with the reason, so the cost is not silent."""
+    if env("HOST_TEARDOWN", default = "") != "true":
+        return
+
+    stop = host_teardown(name = "teardown")
+    if not stop.down:
+        item_comment(name = "host-stays-up", id = item.id, key = "host-stays-up", text = "The build host stays up. " + stop.reason)
+
+def pipeline(item):
     # LAND lists ready items as id=sha, split by spaces. A run with LAND set starts no agent: it lands those items with one batch_merge. Without LAND, the run is the pipeline of one item.
     ready = env("LAND", default = "").split()
     if len(ready) > 0:
