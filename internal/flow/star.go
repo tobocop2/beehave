@@ -42,6 +42,10 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 	s := &script{e: e, ctx: ctx, in: in, login: login, counts: map[string]int{}}
 	err = s.end(s.main(e.thread(in.Item), sources, fields))
 
+	if finishErr := s.finish(e.thread(in.Item), sources, fields); finishErr != nil {
+		err = errors.Join(err, finishErr)
+	}
+
 	return ItemResult{Item: in.Item, Merge: s.mergeState, SentBack: s.sentBack, Stopped: s.stopped}, err
 }
 
@@ -74,6 +78,33 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 		return err
 	}
 
+	_, err = starlark.Call(thread, main, starlark.Tuple{itemArg(fields)}, nil)
+
+	return err
+}
+
+// finish calls the optional function finish of the workflow file after main, on every end of the run except a cancel.
+// It runs for an item that a user started, not for an item that spawn started. A file with no finish, and a canceled run, call nothing.
+// The error that it returns is its own: the caller keeps the error of main next to it.
+func (s *script) finish(thread *starlark.Thread, sources *workflow.Sources, fields map[string]string) error {
+	if s.ctx.Err() != nil || s.in.Entry != "" || !sources.Defines(finishEntry) {
+		return nil
+	}
+
+	finish, err := sources.Entry(thread, s.predeclared(), finishEntry)
+	if err == nil {
+		_, err = starlark.Call(thread, finish, starlark.Tuple{itemArg(fields)}, nil)
+	}
+
+	if err = s.end(err); err != nil {
+		return fmt.Errorf("%s: %w", finishEntry, err)
+	}
+
+	return nil
+}
+
+// itemArg builds the argument of main and finish from the fields of the item.
+func itemArg(fields map[string]string) *starlarkstruct.Struct {
 	item := starlark.StringDict{}
 	for name, value := range fields {
 		item[name] = starlark.String(value)
@@ -82,15 +113,13 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 	arg := starlarkstruct.FromStringDict(starlarkstruct.Default, item)
 	arg.Freeze()
 
-	_, err = starlark.Call(thread, main, starlark.Tuple{arg}, nil)
-
-	return err
+	return arg
 }
 
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
 	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "spawn": s.spawn, "wait": s.wait,
+		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "spawn": s.spawn, "wait": s.wait,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

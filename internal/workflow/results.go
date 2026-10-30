@@ -10,14 +10,17 @@ import (
 
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.
 const (
-	commandName     = "command"
-	gateName        = "gate"
-	waitName        = "wait"
-	mergeName       = "merge"
-	preflightName   = "preflight"
-	itemCommentName = "item_comment"
-	itemCreateName  = "item_create"
-	itemStatusName  = "item_status"
+	commandName = "command"
+	gateName    = "gate"
+
+	hostTeardownName = "host_teardown"
+	reasonField      = "reason"
+	waitName         = "wait"
+	mergeName        = "merge"
+	preflightName    = "preflight"
+	itemCommentName  = "item_comment"
+	itemCreateName   = "item_create"
+	itemStatusName   = "item_status"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -27,18 +30,19 @@ const (
 // come in addition to the fields listed here.
 func resultFields() map[string][]string {
 	return map[string][]string{
-		agentName:       {"text", "session", "transcript", "head_sha", "violations"},
-		batchMergeName:  {"merged", "rejected", "deferred", "tip", "tree", "gates"},
-		commandName:     {"stdout", "rc"},
-		gateName:        {"passed", "head", "tree", "report"},
-		gatherName:      {"results"},
-		itemCommentName: {"id"},
-		itemCreateName:  {"id", "created"},
-		itemStatusName:  {"id", "status"},
-		mergeName:       {"state", "reason"},
-		preflightName:   {"ok", "stop", "code", "reason"},
-		spawnName:       {"runs"},
-		waitName:        {"answer"},
+		agentName:        {"text", "session", "transcript", "head_sha", "violations"},
+		batchMergeName:   {"merged", "rejected", "deferred", "tip", "tree", "gates"},
+		commandName:      {"stdout", "rc"},
+		gateName:         {"passed", "head", "tree", "report"},
+		gatherName:       {"results"},
+		hostTeardownName: {"down", reasonField},
+		itemCommentName:  {"id"},
+		itemCreateName:   {"id", "created"},
+		itemStatusName:   {"id", "status"},
+		mergeName:        {"state", reasonField},
+		preflightName:    {"ok", "stop", "code", reasonField},
+		spawnName:        {"runs"},
+		waitName:         {"answer"},
 	}
 }
 

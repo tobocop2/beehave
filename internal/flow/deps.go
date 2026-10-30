@@ -192,4 +192,6 @@ type Deps struct {
 	Writer    writer
 	// Batch serves batch_merge. A nil Batch means the build cannot run it.
 	Batch batchHost
+	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
+	Hosts hostStopper
 }

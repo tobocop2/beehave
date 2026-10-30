@@ -152,6 +152,15 @@ func (g *graph) parse(name string, data []byte) {
 	}
 }
 
+// finishTakesNoItem reports whether the file defines finish with a number of parameters other than one.
+func finishTakesNoItem(parsed *syntax.File) bool {
+	return slices.ContainsFunc(parsed.Stmts, func(stmt syntax.Stmt) bool {
+		def, ok := stmt.(*syntax.DefStmt)
+
+		return ok && def.Name.Name == "finish" && len(def.Params) != 1
+	})
+}
+
 // inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
@@ -160,6 +169,10 @@ func (g *graph) inspect(name string, parsed *syntax.File) {
 
 	if name == g.main {
 		g.mainNames = definedNames(parsed)
+
+		if finishTakesNoItem(parsed) {
+			g.report(Diagnostic{File: g.display(name)}, "finish takes the item. Write def finish(item):")
+		}
 	}
 }
 
