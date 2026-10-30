@@ -28,6 +28,7 @@ const (
 	headKeyword    = "head"
 	baseKeyword    = "base"
 	holdKeyword    = "hold"
+	ownKeyword     = "own"
 	reasonKey      = "reason"
 	timeoutKeyword = "timeout"
 	statusKeyword  = "status"

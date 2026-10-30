@@ -101,6 +101,11 @@ func ourNames(logins, emails, runners []string) map[string]bool {
 	return own
 }
 
+// IsOwn reports whether the name is one of the logins, with the case rule of the own-work guard: forge logins ignore case. An empty name is never own.
+func IsOwn(name string, logins []string) bool {
+	return ours(ourNames(logins, nil, nil), name) != ""
+}
+
 // owner returns the first login or address of the pull request that is ours, and whose it is.
 // It looks at the author of the pull request, the authors of the commits, then the committers.
 func owner(view model.PullRequest, committers []model.Committer, own map[string]bool) (who, role string) {

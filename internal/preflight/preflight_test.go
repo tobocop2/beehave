@@ -54,6 +54,7 @@ type pull struct {
 	labels []string
 	base   string
 	gone   bool
+	author string
 }
 
 func open() pull { return pull{state: "OPEN", base: "main"} }
@@ -68,7 +69,7 @@ func (p pull) fake(t *testing.T) *fake {
 
 	data, err := json.Marshal(map[string]any{
 		"number": 1, "state": p.state, "isDraft": p.draft, "mergedAt": nil,
-		"headRefOid": head, "headRefName": "feature", "baseRefName": p.base, "labels": labels,
+		"headRefOid": head, "headRefName": "feature", "baseRefName": p.base, "labels": labels, "author": map[string]string{"login": p.author},
 	})
 	require.NoError(t, err)
 
@@ -104,6 +105,43 @@ func TestCheck_HoldsOnTheLabelItIsGiven(t *testing.T) {
 	assert.True(t, other.OK(), "the label hold is not the label blocked")
 }
 
+func TestCheck_AnOpenPullRequestOfAnotherAuthorClaimsTheItem(t *testing.T) {
+	t.Parallel()
+
+	p := open()
+	p.author = "someone"
+
+	claimed := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"owner"}})
+	assert.Equal(t, preflight.Claimed, claimed.Stop)
+	assert.Equal(t, 10, claimed.Stop.Code())
+	assert.Contains(t, claimed.Lines[0], "someone")
+
+	mine := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"someone", "owner"}})
+	assert.True(t, mine.OK(), "a pull request of an own login claims nothing")
+
+	unchecked := check(t, p.fake(t), preflight.Request{PR: 1})
+	assert.True(t, unchecked.OK(), "an empty own list checks no author")
+}
+
+func TestCheck_TheAuthorMatchIgnoresCase(t *testing.T) {
+	t.Parallel()
+
+	p := open()
+	p.author = "owner"
+
+	result := check(t, p.fake(t), preflight.Request{PR: 1, Own: []string{"Owner"}})
+
+	assert.True(t, result.OK(), "forge logins ignore case, so Owner is owner")
+}
+
+func TestCheck_AnAuthorWithNoLoginIsNotOwn(t *testing.T) {
+	t.Parallel()
+
+	result := check(t, open().fake(t), preflight.Request{PR: 1, Own: []string{"owner"}})
+
+	assert.Equal(t, preflight.Claimed, result.Stop, "a missing login cannot be shown to be ours")
+}
+
 func TestCheck_AnEmptyHoldLabelHoldsNothing(t *testing.T) {
 	t.Parallel()
 
@@ -123,7 +161,7 @@ func TestCheck_ReadsThePullRequestOnceWithTheFieldsTheChecksNeed(t *testing.T) {
 	f := open().fake(t)
 	check(t, f, preflight.Request{PR: 1})
 
-	assert.Equal(t, []string{"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository"}, f.fields)
+	assert.Equal(t, []string{"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository", "author"}, f.fields)
 	assert.Equal(t, []string{"feature"}, f.branches)
 }
 
@@ -220,6 +258,8 @@ func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T)
 	all := pull{state: "MERGED", draft: true, labels: []string{"hold"}, base: "other", gone: true}
 	heldDraft := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main"}
 	goneHeld := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main", gone: true}
+	foreignHeld := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main", author: "someone"}
+	foreignGone := pull{state: "OPEN", base: "main", author: "someone", gone: true}
 	closedGone := pull{state: "CLOSED", base: "main", gone: true}
 	moved := pull{state: "OPEN", base: "other"}
 	draftMoved := pull{state: "OPEN", draft: true, base: "main"}
@@ -233,6 +273,8 @@ func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T)
 		{"merged_over_everything", all, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.Merged},
 		{"closed_over_branch", closedGone, preflight.Request{PR: 1}, preflight.Closed},
 		{"branch_over_hold_and_draft", goneHeld, preflight.Request{PR: 1}, preflight.BranchGone},
+		{"claim_over_hold_and_draft", foreignHeld, preflight.Request{PR: 1, Own: []string{"owner"}}, preflight.Claimed},
+		{"branch_over_claim", foreignGone, preflight.Request{PR: 1, Own: []string{"owner"}}, preflight.BranchGone},
 		{"hold_over_draft", heldDraft, preflight.Request{PR: 1}, preflight.Held},
 		{"draft_over_head", draftMoved, preflight.Request{PR: 1, ExpectHead: other}, preflight.Draft},
 		{"head_over_base", moved, preflight.Request{PR: 1, ExpectHead: other, ExpectBase: "main"}, preflight.HeadMoved},
@@ -338,7 +380,7 @@ func TestStop_IsAClosedSetWithTheCodesACallerBranchesOn(t *testing.T) {
 
 	codes := map[preflight.Stop]int{
 		preflight.Unchanged: 0, preflight.Refused: 2, preflight.Merged: 3, preflight.Closed: 4, preflight.HeadMoved: 5,
-		preflight.BaseChanged: 6, preflight.BranchGone: 7, preflight.Draft: 8, preflight.Held: 9,
+		preflight.BaseChanged: 6, preflight.BranchGone: 7, preflight.Draft: 8, preflight.Held: 9, preflight.Claimed: 10,
 	}
 	for stop, code := range codes {
 		assert.Equal(t, code, stop.Code(), stop.String())

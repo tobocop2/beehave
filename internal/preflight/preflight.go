@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -16,7 +17,7 @@ const shaLength = 40
 
 // fields returns what the checks read from the pull request.
 func fields() []string {
-	return []string{"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository"}
+	return []string{"number", "state", "isDraft", "mergedAt", "headRefOid", "headRefName", "baseRefName", "labels", "headRepository", "author"}
 }
 
 // Reader is the part of the forge that preflight reads. The caller passes the forge of the project.
@@ -39,11 +40,12 @@ const (
 	BranchGone  Stop = 7
 	Draft       Stop = 8
 	Held        Stop = 9
+	Claimed     Stop = 10
 )
 
 // Stops returns every value of Stop.
 func Stops() []Stop {
-	return []Stop{Unchanged, Refused, Merged, Closed, HeadMoved, BaseChanged, BranchGone, Draft, Held}
+	return []Stop{Unchanged, Refused, Merged, Closed, HeadMoved, BaseChanged, BranchGone, Draft, Held, Claimed}
 }
 
 // Code returns the exit code of the stop. A value outside the set is Refused.
@@ -58,7 +60,7 @@ func (s Stop) Code() int {
 func (s Stop) String() string {
 	names := map[Stop]string{
 		Unchanged: "UNCHANGED", Refused: "REFUSED", Merged: "MERGED", Closed: "CLOSED", HeadMoved: "HEAD MOVED",
-		BaseChanged: "BASE CHANGED", BranchGone: "BRANCH GONE", Draft: "DRAFT", Held: "HELD",
+		BaseChanged: "BASE CHANGED", BranchGone: "BRANCH GONE", Draft: "DRAFT", Held: "HELD", Claimed: "CLAIMED",
 	}
 	if name, ok := names[s]; ok {
 		return name
@@ -68,10 +70,12 @@ func (s Stop) String() string {
 }
 
 // Request names the pull request. ExpectHead is the full SHA the caller expects, ExpectBase the branch it gated against; an empty one is not checked.
+// Own lists the logins of the caller. An open pull request by any other login claims the item. An empty list checks no author.
 type Request struct {
 	PR         int
 	ExpectHead string
 	ExpectBase string
+	Own        []string
 }
 
 // Result is the verdict: the stop, a one-line summary of the pull request, and the lines to show.
@@ -111,9 +115,10 @@ type view struct {
 	ref    string
 	base   string
 	labels string
+	author string
 }
 
-// Check judges the pull request against the request. The order is the state, the branch, the labels, the draft flag, then the head and the base.
+// Check judges the pull request against the request. The order is the state, the branch, the author, the labels, the draft flag, then the head and the base.
 // A merged pull request still shows a head that looks fine, so the state comes first.
 // A pull request that carries the whole label hold is held. An empty hold holds nothing.
 func Check(ctx context.Context, r Reader, req Request, hold string) (Result, error) {
@@ -147,6 +152,10 @@ func judge(ctx context.Context, r Reader, v view, req Request, hold string) (Sto
 		return stop, lines, err
 	}
 
+	if stop, lines := claimStop(v, req.Own); stop != Unchanged {
+		return stop, lines, nil
+	}
+
 	if stop, lines := labelStop(v, hold); stop != Unchanged {
 		return stop, lines, nil
 	}
@@ -175,6 +184,7 @@ func read(ctx context.Context, r Reader, pr int) (view, error) {
 		ref:    *pull.HeadRefName,
 		base:   model.OrNull(text(pull.BaseRefName)),
 		labels: labelNames(pull),
+		author: pull.Author.Login,
 	}, nil
 }
 
@@ -237,6 +247,18 @@ func branchStop(v view) (Stop, []string) {
 		fmt.Sprintf("STOP: the head branch '%s' no longer exists on the remote.", v.ref),
 		"  Recovery: do NOT push, which would recreate it silently. Branch from the current tip of",
 		fmt.Sprintf("  '%s', re-apply the work, and open a new pull request.", v.base),
+	}
+}
+
+// claimStop is the stop for an open pull request of a login that is not in own. Somebody else is already on the item.
+func claimStop(v view, own []string) (Stop, []string) {
+	if len(own) == 0 || merge.IsOwn(v.author, own) {
+		return Unchanged, nil
+	}
+
+	return Claimed, []string{
+		fmt.Sprintf("STOP: #%d is open and its author is '%s', who is not on the list of own logins. The item is claimed.", v.pr, model.OrNull(v.author)),
+		"  Recovery: leave the item to its author and move to the next item.",
 	}
 }
 

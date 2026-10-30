@@ -9,6 +9,19 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
+func TestIsOwn_MatchesALoginInAnyCaseAndNeverAnEmptyName(t *testing.T) {
+	t.Parallel()
+
+	logins := []string{"Owner", "bot"}
+
+	assert.True(t, merge.IsOwn("owner", logins))
+	assert.True(t, merge.IsOwn("BOT", logins))
+	assert.False(t, merge.IsOwn("someone", logins))
+	assert.False(t, merge.IsOwn("", logins))
+	assert.False(t, merge.IsOwn("", []string{""}), "an empty login is dropped, so an empty name is not own")
+	assert.False(t, merge.IsOwn("owner", nil))
+}
+
 // ownWorkCases are the pull requests that obee must never merge. Each one refuses before the first write.
 func ownWorkCases() map[string]map[string]any {
 	return map[string]map[string]any{
