@@ -67,7 +67,7 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	return s.write("item_create", label, func(ctx context.Context) (map[string]any, error) {
 		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent})
 
-		return map[string]any{"id": id, "created": created}, err
+		return createOutputs(id, created), err
 	})
 }
 
@@ -87,7 +87,7 @@ func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	}
 
 	return s.write("item_status", label, func(ctx context.Context) (map[string]any, error) {
-		return map[string]any{"id": id, "status": string(status)}, s.e.deps.Writer.SetStatus(ctx, s.in.Project, id, status)
+		return statusOutputs(id, string(status)), s.e.deps.Writer.SetStatus(ctx, s.in.Project, id, status)
 	})
 }
 
@@ -106,6 +106,6 @@ func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []
 	}
 
 	return s.write("item_comment", label, func(ctx context.Context) (map[string]any, error) {
-		return map[string]any{"id": id}, s.e.deps.Writer.Comment(ctx, s.in.Project, id, s.scoped(key), text)
+		return commentOutputs(id), s.e.deps.Writer.Comment(ctx, s.in.Project, id, s.scoped(key), text)
 	})
 }

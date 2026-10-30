@@ -67,14 +67,14 @@ func stepSignatures() map[string][]Param {
 			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("output_tries", KindInt),
 			one("follow_ups", FollowUpModes()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
-		"command": {
+		commandName: {
 			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), label,
 		},
 		"env": {req(nameKeyword, KindText)},
-		"gate": {
+		gateName: {
 			opt("run", KindList), opt("host", KindText), opt("timeout", KindText), opt("head", KindText), label,
 		},
-		"wait": {opt("question", KindText), label},
+		waitName: {opt("question", KindText), label},
 	}
 }
 
@@ -98,14 +98,14 @@ func itemSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
 
 	return map[string][]Param{
-		"item_comment": {
+		itemCommentName: {
 			req("id", KindText), req("text", KindText), req("key", KindText), label,
 		},
-		"item_create": {
+		itemCreateName: {
 			req("title", KindText), req("key", KindText), opt("body", KindText), opt("parent", KindText), label,
 		},
-		"item_status": {req("id", KindText), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
-		"merge": {
+		itemStatusName: {req("id", KindText), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
+		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("approved", KindBool),
 			opt("tree", KindText), opt("forbid_text", KindList), one("children", ChildrenValues()), opt("merge", KindBool), label,
 		},

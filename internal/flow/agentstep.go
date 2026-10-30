@@ -335,10 +335,7 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	outputs := map[string]any{
-		"text": ended.Text, "session": ended.Session, "transcript": ended.Transcript, "head_sha": head,
-		"violations": strings.Join(ended.Violations, "\n"),
-	}
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"))
 
 	if problem := a.readOutputs(outputs); problem != "" {
 		return stepResult{Note: problem}, nil

@@ -156,6 +156,7 @@ func (g *graph) parse(name string, data []byte) {
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
 	g.swarm(parsed)
+	g.results(parsed)
 
 	if name == g.main {
 		g.mainNames = definedNames(parsed)
