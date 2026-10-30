@@ -15,6 +15,7 @@ const (
 	batchMergeName = "batch_merge"
 	entryKeyword   = "entry"
 	failKeyword    = "fail"
+	untilKeyword   = "until"
 	nameKeyword    = "name"
 	// secondArgument is the position of entry in a spawn call and of fail in a gather call.
 	secondArgument = 1
@@ -22,6 +23,9 @@ const (
 
 // FailModes lists the values of the fail argument of a gather call.
 func FailModes() []string { return []string{"return", "raise"} }
+
+// UntilModes lists the values of the until argument of a gather call: wait for every run, or return when one run is no longer open.
+func UntilModes() []string { return []string{"all", "any"} }
 
 // entryRef is the literal entry of a spawn call and where it stands. The function it names is looked up in the workflow file after the scan.
 type entryRef struct {

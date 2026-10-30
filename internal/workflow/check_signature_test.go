@@ -35,6 +35,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"gather unknown keyword", `gather([], wait = True)`, "gather takes no argument wait"},
 		{"gather missing runs", `gather(fail = "raise")`, "gather needs the `runs` keyword"},
 		{"gather bad fail", `gather([], fail = "ignore")`, `fail is "ignore". Use one of: return, raise.`},
+		{"gather bad until", `gather([], until = "first")`, `until is "first". Use one of: all, any.`},
+		{"gather number for until", `gather([], until = 1)`, "until is 1. Use one of: all, any."},
 		{"gather number for fail", `gather([], fail = 3)`, "fail is 3. Use one of: return, raise."},
 		{"gather list for fail", `gather([], fail = ["raise"])`, "fail is list. Use one of: return, raise."},
 		{"item_comment unknown keyword", `item_comment("1", "t", "k", body = "b")`, "item_comment takes no argument body"},

@@ -89,7 +89,7 @@ func swarmSignatures() map[string][]Param {
 			opt("forbid_text", KindList), opt("gate_run", KindList),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
-		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), label},
+		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
 		spawnName:  {req("items", KindList), opt(entryKeyword, KindText), label},
 		queueName:  {label, opt("hold", KindText)},
 	}

@@ -73,7 +73,7 @@ func TestCheck_AnUnknownKeywordOfSpawnOrGatherIsAProblemAtTheKeyword(t *testing.
 
 	require.Len(t, got, 2)
 	assert.Contains(t, got[0], "2:25 spawn takes no argument limit. Use one of: items, entry, name.")
-	assert.Contains(t, got[1], "3:18 gather takes no argument wait. Use one of: runs, fail, name.")
+	assert.Contains(t, got[1], "3:18 gather takes no argument wait. Use one of: runs, fail, until, name.")
 }
 
 func TestCheck_ABatchMergeCallWithNoNameIsAProblemAtTheCall(t *testing.T) {
