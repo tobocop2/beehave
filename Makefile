@@ -1,16 +1,17 @@
 GO_TEST_FLAGS := -race -count=1 -p 2
 GOLANGCI_LINT_VERSION := v2.15.0
+AI_RULEZ_VERSION := v5.9.2
 BIN := bin/obee
 REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent mutation \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent mutation \
 	governance-generate governance-validate governance-verify clean check
 
 setup:  ## Install the Go tools and generate the agent files
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	command -v ai-rulez >/dev/null 2>&1 || brew install goldziher/tap/ai-rulez
+	$(MAKE) ai-rulez-install
 	command -v go-test-coverage >/dev/null 2>&1 || go install github.com/vladopajic/go-test-coverage/v2@v2.20.1
 	command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 	command -v deadcode >/dev/null 2>&1 || go install $(DEADCODE_VERSION)
@@ -25,6 +26,12 @@ release-snapshot:  ## Build release archives without publishing
 
 lint-version:  ## Fail unless golangci-lint is the version CI runs
 	@golangci-lint version | grep -q "version $(patsubst v%,%,$(GOLANGCI_LINT_VERSION)) " || { echo "golangci-lint $(GOLANGCI_LINT_VERSION) is required: run make setup"; exit 1; }
+
+ai-rulez-install:  ## Install ai-rulez $(AI_RULEZ_VERSION) into the Go bin folder
+	sh scripts/install-ai-rulez.sh $(AI_RULEZ_VERSION) "$$(go env GOPATH)/bin"
+
+ai-rulez-version:  ## Fail unless ai-rulez is the version the gate expects
+	@ai-rulez --version | grep -qx "ai-rulez version $(patsubst v%,%,$(AI_RULEZ_VERSION))" || { echo "ai-rulez $(AI_RULEZ_VERSION) is required, found: $$(ai-rulez --version). Run make ai-rulez-install. A new version can add rules: change AI_RULEZ_VERSION in its own pull request."; exit 1; }
 
 format: lint-version  ## Format the Go code (gofumpt and goimports)
 	golangci-lint fmt ./...
@@ -66,10 +73,10 @@ smoke-agent: build  ## Run examples/local once with the real claude CLI (costs a
 mutation:
 	gremlins unleash $(or $(PKG),./internal/...)
 
-governance-generate:  ## Generate the agent files from .ai-rulez/
+governance-generate: ai-rulez-version  ## Generate the agent files from .ai-rulez/
 	ai-rulez generate --no-self-mcp
 
-governance-validate:
+governance-validate: ai-rulez-version
 	ai-rulez validate
 
 governance-verify: governance-validate  ## Validate the config and render it without writing files
