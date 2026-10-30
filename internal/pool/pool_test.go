@@ -409,3 +409,46 @@ func TestCommand_NoneQualifiesKeepsTheLinesAndReturnsTheRefusal(t *testing.T) {
 		t.Fatalf("Error = %q", none.Error())
 	}
 }
+
+func TestChoose_PrefersARunnerThatIsNotBusy(t *testing.T) {
+	t.Parallel()
+
+	readings := map[string]model.Reading{"a": use(1, 1), "b": use(80, 80)}
+
+	chosen, ok := pool.Choose(runners("a", "b"), readings, caps, "a")
+	if !ok || chosen.Name != "b" {
+		t.Fatalf("Choose = %v, %v: a free runner beats a busy one with lower use", chosen, ok)
+	}
+}
+
+func TestChoose_EveryRunnerBusyFallsBackToTheLowestUse(t *testing.T) {
+	t.Parallel()
+
+	readings := map[string]model.Reading{"a": use(1, 30), "b": use(80, 10)}
+
+	chosen, ok := pool.Choose(runners("a", "b"), readings, caps, "a", "b")
+	if !ok || chosen.Name != "b" {
+		t.Fatalf("Choose = %v, %v: with all busy the lowest seven-day use wins", chosen, ok)
+	}
+}
+
+func TestChoose_AFreeRunnerOverACapStaysOut(t *testing.T) {
+	t.Parallel()
+
+	readings := map[string]model.Reading{"a": use(1, 1), "b": use(99, 99)}
+
+	chosen, ok := pool.Choose(runners("a", "b"), readings, caps, "a")
+	if !ok || chosen.Name != "a" {
+		t.Fatalf("Choose = %v, %v: a free runner over a cap is not chosen", chosen, ok)
+	}
+}
+
+func TestSelect_PrefersARunnerThatIsNotBusy(t *testing.T) {
+	t.Parallel()
+
+	got, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+		readerOf(map[string]model.Reading{"a": use(1, 1), "b": use(5, 5)}), "a")
+	if err != nil || got.Name != "b" {
+		t.Fatalf("Select = %v, %v", got, err)
+	}
+}

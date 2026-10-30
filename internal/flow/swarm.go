@@ -148,10 +148,16 @@ func (s *script) checkItem(id string, seen map[string]bool) error {
 func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]spawnedRun, error) {
 	plan := make([]spawnedRun, 0, len(ids))
 
+	var taken []string
+
 	for _, id := range ids {
-		one, err := e.planOne(ctx, in, id)
+		one, err := e.planOne(ctx, in, id, taken)
 		if err != nil {
 			return nil, err
+		}
+
+		if one.Start {
+			taken = append(taken, one.Login)
 		}
 
 		plan = append(plan, one)
@@ -162,7 +168,8 @@ func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]s
 
 // planOne plans one item. An open run is refused, as a joined run has no parent row and a cancel of the parent would not reach it.
 // A failed last attempt is refused until obee resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
-func (e *Engine) planOne(ctx context.Context, in ItemInput, id string) (spawnedRun, error) {
+// taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
+func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []string) (spawnedRun, error) {
 	last, found, err := latestRun(e.ctx, id)
 
 	switch {
@@ -176,7 +183,7 @@ func (e *Engine) planOne(ctx context.Context, in ItemInput, id string) (spawnedR
 		return spawnedRun{Item: id, Run: last.Status.ID}, nil
 	}
 
-	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project})
+	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project}, taken...)
 	if err != nil {
 		return spawnedRun{}, err
 	}

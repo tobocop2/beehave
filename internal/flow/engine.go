@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -424,8 +425,14 @@ func (e *Engine) start(in ItemInput, attempt int) (dbos.WorkflowHandle[ItemResul
 }
 
 // pickLogin reads the pool once for a new run. It refuses an empty pick.
-func (e *Engine) pickLogin(ctx context.Context, in ItemInput) (string, error) {
-	login, err := e.deps.Logins.Pick(ctx, in.Project, in.Item)
+// The pick prefers a login that has no agent step running or queued. taken lists the logins that the caller picked for earlier runs that it has not started yet.
+func (e *Engine) pickLogin(ctx context.Context, in ItemInput, taken ...string) (string, error) {
+	busy, err := e.busyLogins(taken)
+	if err != nil {
+		return "", fmt.Errorf("read the busy logins for item %s: %w", in.Item, err)
+	}
+
+	login, err := e.deps.Logins.Pick(ctx, in.Project, in.Item, busy)
 	if err != nil {
 		return "", fmt.Errorf("pick the login of item %s: %w", in.Item, err)
 	}
@@ -435,6 +442,58 @@ func (e *Engine) pickLogin(ctx context.Context, in ItemInput) (string, error) {
 	}
 
 	return login, nil
+}
+
+// busyLogins returns the logins that have an agent step running or queued, and the logins in taken. The library keeps the list: obee counts nothing.
+// An agent step is an open phase, which has the login as its partition key on the agents queue. A run that a spawn or the queue started holds its login from its start,
+// because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `obee run` started holds none, so the loop parent needs no login of its own.
+// The engine registers only the run and the phase, so one listing of the open workflows, filtered to those two names, reads both.
+func (e *Engine) busyLogins(taken []string) ([]string, error) {
+	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))
+	if err != nil {
+		return nil, fmt.Errorf("list the open workflows: %w", err)
+	}
+
+	return heldLogins(open, taken)
+}
+
+// heldLogins returns the logins that the open workflows in rows hold, and the logins in taken, sorted and without repeats.
+func heldLogins(rows []dbos.WorkflowStatus, taken []string) ([]string, error) {
+	busy := slices.Clone(taken)
+
+	for _, row := range rows {
+		login, err := heldLogin(row)
+		if err != nil {
+			return nil, err
+		}
+
+		if login != "" {
+			busy = append(busy, login)
+		}
+	}
+
+	slices.Sort(busy)
+
+	return slices.Compact(busy), nil
+}
+
+// heldLogin returns the login that an open workflow holds, or "" when it holds none. A phase holds its login. A run holds it only when a spawn or the queue started it: its input has an entry.
+// A run that a user started has no entry and holds no login, so its login reads free between two phases. The library returns the stored JSON of the input as a string.
+func heldLogin(row dbos.WorkflowStatus) (string, error) {
+	var in struct {
+		Login string `json:"login"`
+		Entry string `json:"entry"`
+	}
+
+	if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
+		return "", fmt.Errorf("read the input of workflow %s: %w", row.ID, err)
+	}
+
+	if row.Name != phaseName && in.Entry == "" {
+		return "", nil
+	}
+
+	return in.Login, nil
 }
 
 // join returns the handle of an open run. It refuses a run of another project or another version.

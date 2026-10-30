@@ -799,7 +799,7 @@ func TestSpawnGather_TheItemsQueueReportsAStoreThatIsClosed(t *testing.T) {
 // pickFails picks a login for every item but one.
 type pickFails struct{ item string }
 
-func (p pickFails) Pick(_ context.Context, _, item string) (string, error) {
+func (p pickFails) Pick(_ context.Context, _, item string, _ []string) (string, error) {
 	if item == p.item {
 		return "", errFake
 	}
@@ -839,7 +839,7 @@ func TestSpawnGather_TheReadsOfAStoppedEngineReportTheError(t *testing.T) {
 
 	require.NoError(t, engine.Shutdown())
 
-	_, err := engine.planOne(t.Context(), ItemInput{Item: testItem, Project: testProject}, "21")
+	_, err := engine.planOne(t.Context(), ItemInput{Item: testItem, Project: testProject}, "21", nil)
 	require.Error(t, err, "the plan reads the latest run")
 
 	_, err = engine.readRuns([]spawnedRun{{Item: "21", Run: "item-21-r1"}})
