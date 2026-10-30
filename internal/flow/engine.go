@@ -107,18 +107,20 @@ type Engine struct {
 	// itemQueue is the queue of the runs that spawn starts.
 	itemQueue dbos.Queue
 	deps      Deps
-	version   string
-	dir       string
-	log       io.Closer
-	lock      *flock.Flock
-	logger    *slog.Logger
-	env       map[string]string
-	redact    func(string) string
-	cancels   cancels
-	holds     holds
-	procs     *groups
-	tickEnd   chan struct{}
-	tickRun   sync.WaitGroup
+	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
+	maxConcurrent int
+	version       string
+	dir           string
+	log           io.Closer
+	lock          *flock.Flock
+	logger        *slog.Logger
+	env           map[string]string
+	redact        func(string) string
+	cancels       cancels
+	holds         holds
+	procs         *groups
+	tickEnd       chan struct{}
+	tickRun       sync.WaitGroup
 	// launched is the time of the last Launch. A run that was open then and ended after it was resumed by this engine.
 	launched time.Time
 	down     sync.Once
@@ -140,7 +142,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	engine := &Engine{
-		deps: deps, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, maxConcurrent: opts.MaxConcurrent, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}),
 	}
 

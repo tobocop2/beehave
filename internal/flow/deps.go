@@ -192,6 +192,8 @@ type Deps struct {
 	Writer    writer
 	// Batch serves batch_merge. A nil Batch means the build cannot run it.
 	Batch batchHost
+	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.
+	Queue queueReader
 	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
 	Hosts hostStopper
 }

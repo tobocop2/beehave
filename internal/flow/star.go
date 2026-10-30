@@ -22,7 +22,7 @@ const builtinFile = "<builtin>"
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star2"
+const stepsVersion = "star3"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
@@ -73,6 +73,10 @@ func (s *script) end(err error) error {
 func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields map[string]string) error {
 	s.sources = sources
 
+	if err := s.holdAtStart(); err != nil {
+		return err
+	}
+
 	main, err := sources.Entry(thread, s.predeclared(), cmp.Or(s.in.Entry, defaultEntry))
 	if err != nil {
 		return err
@@ -119,7 +123,7 @@ func itemArg(fields map[string]string) *starlarkstruct.Struct {
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
 	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "spawn": s.spawn, "wait": s.wait,
+		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "queue": s.queue, "spawn": s.spawn, "wait": s.wait,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

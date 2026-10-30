@@ -373,6 +373,7 @@ type harness struct {
 	items     *fakeItems
 	writer    writer      // nil unless a test sets it
 	hosts     hostStopper // nil unless a test sets it
+	queue     queueReader // nil unless a test sets it
 	ticks     chan time.Time
 	sleep     time.Duration
 	opts      Options
@@ -442,6 +443,7 @@ func (h *harness) deps() Deps {
 
 	deps.Preflight = h.preflight
 	deps.Hosts = h.hosts
+	deps.Queue = h.queue
 
 	if h.picker != nil {
 		deps.Logins = h.picker
