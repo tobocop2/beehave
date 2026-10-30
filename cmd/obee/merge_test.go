@@ -439,7 +439,7 @@ func TestMerge_TheValuesRowTheExampleHoldsEverySettingAndNoIdentity(t *testing.T
 			assert.NotNil(t, ship[name], "%s is set in the example", name)
 		}
 
-		assert.Nil(t, ship["tree"], "the example does not merge, so it passes no tree")
+		assert.NotNil(t, ship["tree"], "the example passes the tree of the gate, so a merge proves the merged tree")
 
 		assert.Equal(t, []string{"BASE"}, workflowtest.Literals(ship["base"]), "base is the integration branch, read from the environment")
 		assert.Equal(t, []string{"REPO"}, workflowtest.Literals(ship["repo"]))

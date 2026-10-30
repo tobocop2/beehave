@@ -44,17 +44,20 @@ def main(item):
         )
         return
 
-    # An approved head is marked ready and then left to the owner: this call does not set `merge`, so it never merges.
-    # The settings for a merge are present, so the call can set `merge = True` once the engine has a merger. The repository, the base
-    # and the owner identity come from the environment, so the file holds no login or address.
+    # An approved head is marked ready. The call merges it when MERGE is "true". With MERGE set to anything else, the call stops after the mark
+    # and the owner merges, so a dry run stays possible. The guards of the merge run on every merge: reviews, change requests, open threads,
+    # own work, authors, draft, state and the pin of the head. The repository, the base, the switch and the owner identity come from the environment,
+    # so the file holds no login or address.
     # `base` is the integration branch of the repository, never the default branch.
     # `approved` is the verdict of the review, which is not the agent that wrote the code. Our own pull requests merge only when it is true.
-    # A call that sets `merge = True` also passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. The proof runs after the merge:
+    # The call passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. A gate that records no tree stops the run at the call. The proof runs after the merge:
     # a stop does not undo it, and the item ends failed with the pull request merged.
     # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
     merge(
         name = "ship",
         head = loop.gate.head,
+        tree = loop.gate.tree,
+        merge = env("MERGE") == "true",
         repo = env("REPO"),
         base = env("BASE"),
         hold = "hold",

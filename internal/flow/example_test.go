@@ -47,7 +47,7 @@ func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) st
 	skill := exampleSkill(t, folder)
 
 	rig := newAgentRig(t)
-	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com"}
+	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "MERGE": "false"}
 	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head, Tree: exampleTree}}
 	rig.h.forge.state = review.Standing{Number: testPull, Head: rig.head}
 
@@ -214,15 +214,16 @@ func TestExample_AReviewIsOnlyReadAgainstTheHeadTheGatePassed(t *testing.T) {
 	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "the review agent never started")
 }
 
-func TestExample_AGateThatRecordedNoTreeStillReachesTheMergeCallBecauseTheExampleNeverMerges(t *testing.T) {
+func TestExample_AGateThatRecordedNoTreeStopsTheRunAtTheMergeCall(t *testing.T) {
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
 	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head}}
+	rig.h.opts.Env["MERGE"] = "true"
 
 	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
-	require.NoError(t, err, "the example passes no tree, so a gate that records none stops nothing")
+	require.ErrorContains(t, err, "`tree` is empty", "a merge needs the tree of the gate, so a gate that records none stops the run")
 }
 
 func TestExample_AReviewThatWritesNoVerdictFileIsAskedOnceMore(t *testing.T) {

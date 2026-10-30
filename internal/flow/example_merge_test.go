@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -38,8 +36,10 @@ type shipWorld struct {
 	pull      model.PullRequest
 	children  []model.PullRequest
 	requests  []model.ChangeRequest
+	threads   []model.ReviewThread
 	tipReads  []string
 	committer model.Committer
+	checks    []model.Check
 	writes    []string
 }
 
@@ -59,7 +59,11 @@ func (w *shipWorld) PRList(context.Context, int, ...string) ([]model.PullRequest
 	return w.children, nil
 }
 
-func (*shipWorld) PRChecks(context.Context, int) ([]model.Check, error) {
+func (w *shipWorld) PRChecks(context.Context, int) ([]model.Check, error) {
+	if w.checks != nil {
+		return w.checks, nil
+	}
+
 	return []model.Check{{Name: "ci", Bucket: model.CheckPass}}, nil
 }
 
@@ -67,8 +71,8 @@ func (w *shipWorld) OpenChangeRequests(context.Context, int) ([]model.ChangeRequ
 	return w.requests, nil
 }
 
-func (*shipWorld) UnresolvedThreads(context.Context, int) ([]model.ReviewThread, error) {
-	return nil, nil
+func (w *shipWorld) UnresolvedThreads(context.Context, int) ([]model.ReviewThread, error) {
+	return w.threads, nil
 }
 
 func (*shipWorld) StackID(context.Context, int) (string, error) { return "", nil }
@@ -145,30 +149,16 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 	}
 }
 
-// mergingExample returns the example rig whose merge step has `merge = true`, with the environment of the example and a merger over world.
+// mergingExample returns the example rig with the environment of the example, MERGE set to "true", and a merger over world.
+// The file of the example is the one in the repository, unchanged.
 func mergingExample(t *testing.T, world func(head string) *shipWorld) (*agentRig, string, *shipWorld) {
 	t.Helper()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
 
-	folder, err := os.OpenRoot(filepath.Dir(file))
-	require.NoError(t, err)
-
-	defer func() { require.NoError(t, folder.Close()) }()
-
-	source, err := folder.ReadFile(filepath.Base(file))
-	require.NoError(t, err)
-
-	const marker = "        head = loop.gate.head,\n"
-
-	require.Contains(t, string(source), marker, "the merge call of the example")
-
-	merging := strings.Replace(string(source), marker, marker+"        merge = True,\n", 1)
-	require.NoError(t, folder.WriteFile(filepath.Base(file), []byte(merging), 0o600))
-
 	built := world(rig.head)
 	rig.h.merge = &fakeMerge{over: mergerOver(built)}
-	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": shipBase, "OWNER_LOGIN": shipOwner, "OWNER_EMAIL": shipMail}
+	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": shipBase, "OWNER_LOGIN": shipOwner, "OWNER_EMAIL": shipMail, "MERGE": "true"}
 
 	return rig, file, built
 }
@@ -212,6 +202,42 @@ func TestExampleMerge_TheMergeStepOfTheExampleMergesThroughTheEngineAndTheForgeF
 			},
 			refusal: "rev",
 		},
+		"an open review thread is refused": {
+			setup: func(w *shipWorld) {
+				w.threads = []model.ReviewThread{{Path: ptr("a.go"), Line: ptr(4), First: &model.ThreadComment{Author: model.Account{Login: "rev"}, Body: ptr("fix this")}}}
+			},
+			refusal: "unresolved review threads",
+		},
+		"a failing check is refused": {
+			setup:   func(w *shipWorld) { w.checks = []model.Check{{Name: "ci", Bucket: model.CheckFail}} },
+			refusal: "checks are not green: ci=fail",
+		},
+		"a commit with no linked account is refused": {
+			over: map[string]any{"commits": []any{map[string]any{
+				"oid": strings.Repeat("b", 40), "messageHeadline": "fix", "authors": []any{map[string]any{"email": "dev@x"}},
+			}}},
+			refusal: "have no linked account",
+		},
+		"a closed pull request is refused": {
+			over:    map[string]any{"state": "CLOSED"},
+			refusal: "state is CLOSED",
+		},
+		"a pull request on another base is refused": {
+			over:    map[string]any{"baseRefName": "main"},
+			refusal: "base is main, expected " + shipBase,
+		},
+		"a pull request that cannot merge cleanly is refused": {
+			over:    map[string]any{"mergeable": "CONFLICTING"},
+			refusal: "mergeable is CONFLICTING",
+		},
+		"a draft is refused": {
+			over:    map[string]any{"isDraft": true},
+			refusal: "is a draft",
+		},
+		"a head that moved after the gate is refused": {
+			over:    map[string]any{shipHeadKey: strings.Repeat("e", 40)},
+			refusal: "is not the gated",
+		},
 		"a base that moved before the merge call is refused and no child moves": {
 			setup: func(w *shipWorld) {
 				w.tipReads = []string{shipTipOne, shipTipTwo}
@@ -246,6 +272,31 @@ func TestExampleMerge_TheMergeStepOfTheExampleMergesThroughTheEngineAndTheForgeF
 			assert.Equal(t, tc.writes(rig.head), world.writes)
 		})
 	}
+}
+
+func TestExampleMerge_AMergeSwitchThatIsNotTrueLeavesTheMergeToTheOwner(t *testing.T) {
+	t.Parallel()
+
+	rig, file, world := mergingExample(t, func(head string) *shipWorld { return &shipWorld{pull: shipPull(t, head, nil)} })
+	rig.h.opts.Env["MERGE"] = "false"
+
+	result, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Empty(t, world.writes, "a dry run writes nothing")
+	assert.Equal(t, "merged", result.Merge)
+}
+
+func TestExampleMerge_TheMergeCallPassesTheTreeTheGateRecorded(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _ := mergingExample(t, func(head string) *shipWorld { return &shipWorld{pull: shipPull(t, head, nil)} })
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.merge.given, 1)
+	assert.Equal(t, exampleTree, rig.h.merge.given[0].GatedTree, "the merge proves the merged tree against the tree of the gate")
 }
 
 func ptr[T any](value T) *T { return &value }

@@ -360,6 +360,8 @@ func e2eSetup(env *testscript.Env) error {
 	env.Setenv("OBEE_CONFIG", filepath.Join(work, "config"))
 	env.Setenv("OBEE_STATE_DIR", filepath.Join(work, "state"))
 	env.Setenv(e2eDirVariable, work)
+	// The example merges only when MERGE is "true". The scripts run it as a dry run: the owner merges, and no merge guard runs.
+	env.Setenv("MERGE", "false")
 
 	return nil
 }
