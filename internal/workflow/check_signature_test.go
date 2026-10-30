@@ -30,6 +30,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"env missing name", `env()`, "env needs the `name` keyword"},
 		{"gate unknown keyword", `gate(runs = ["a"])`, "gate takes no argument runs"},
 		{"gate text for a list", `gate(run = "make check")`, "run must be a list, not a text."},
+		{"queue unknown keyword", `queue(name = "n", limit = 2)`, "queue takes no argument limit. Use one of: name, hold."},
+		{"queue number for hold", `queue(name = "n", hold = 3)`, "hold must be a text, not an int."},
 		{"gather unknown keyword", `gather([], wait = True)`, "gather takes no argument wait"},
 		{"gather missing runs", `gather(fail = "raise")`, "gather needs the `runs` keyword"},
 		{"gather bad fail", `gather([], fail = "ignore")`, `fail is "ignore". Use one of: return, raise.`},

@@ -18,6 +18,7 @@ const (
 	waitName         = "wait"
 	mergeName        = "merge"
 	preflightName    = "preflight"
+	queueName        = "queue"
 	itemCommentName  = "item_comment"
 	itemCreateName   = "item_create"
 	itemStatusName   = "item_status"
@@ -41,6 +42,7 @@ func resultFields() map[string][]string {
 		itemStatusName:   {"id", "status"},
 		mergeName:        {"state", reasonField},
 		preflightName:    {"ok", "stop", "code", reasonField},
+		queueName:        {"rows", "free"},
 		spawnName:        {"runs"},
 		waitName:         {"answer"},
 	}
