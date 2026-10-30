@@ -399,6 +399,24 @@ func TestCommands_RefuseAnUnusableConfigAndAnUnknownStateFolder(t *testing.T) {
 	}
 }
 
+func TestCommands_RefuseAnUnknownIssueStoreAtStartAndNameTheKnownOnes(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range [][]string{{"run", "12"}, {"status"}, {"resume", "12"}, {"cancel", "12"}, {"answer", "12", "yes"}} {
+		t.Run(command[0], func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRig(t)
+			writeConfig(t, rig.dir, "projects/p.star", "project(repo = \"o/n\", tracker = \"jira\", forge = \"github\", base_branch = \"main\", gate = \"g\")\n")
+
+			code, _, stderr := rig.execute(t.Context(), command...)
+
+			assert.Equal(t, 2, code)
+			assert.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+		})
+	}
+}
+
 func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 	t.Parallel()
 

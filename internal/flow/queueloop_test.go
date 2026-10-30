@@ -13,7 +13,68 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/preflight"
 )
+
+// loopPreflight answers the preflight of each item. An item that is not in stops has no pull request that stops it.
+type loopPreflight struct {
+	mu    sync.Mutex
+	stops map[string]preflight.Result
+	asked []string
+}
+
+func (p *loopPreflight) Preflight(_ context.Context, _, item string, _ preflight.Request, _ string) (preflight.Result, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.asked = append(p.asked, item)
+
+	return p.stops[item], nil
+}
+
+func (p *loopPreflight) askedItems() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return slices.Clone(p.asked)
+}
+
+func TestQueueLoop_AnItemWithAnOpenPullRequestOfAnotherLoginStartsNoAgentAndIsHeld(t *testing.T) {
+	t.Parallel()
+
+	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
+	r.h.preflight = &loopPreflight{stops: map[string]preflight.Result{"22": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+
+	require.NoError(t, r.run(t))
+	assert.ElementsMatch(t, []string{"21", "23"}, r.agents.started())
+	assert.Zero(t, r.agents.callsOf("22"), "an item that another login holds starts no agent")
+	assert.Equal(t, []string{testProject + "|22|hold"}, r.w.statuses)
+	require.Len(t, r.w.notes, 1)
+	assert.Contains(t, r.w.notes[0], "claimed by another login")
+}
+
+func TestQueueLoop_APullRequestOpenedSinceTheLastPassStopsTheItemThatThePassReads(t *testing.T) {
+	t.Parallel()
+
+	r := newLoopRig(t, queueItem("21", model.SeverityP1))
+	pf := &loopPreflight{stops: map[string]preflight.Result{"30": {Stop: preflight.Claimed, Lines: []string{"STOP: claimed by another login"}}}}
+	r.h.preflight = pf
+	r.agents.setAct(func(_ context.Context, item string) error {
+		if item == "21" {
+			// Another login opens a pull request for 30 while 21 runs. The next pass reads 30 as ready.
+			r.q.mu.Lock()
+			r.q.items = append(r.q.items, queueItem("30", model.SeverityP1))
+			r.q.mu.Unlock()
+		}
+
+		return nil
+	})
+
+	require.NoError(t, r.run(t))
+	assert.Equal(t, []string{"21"}, r.agents.started())
+	assert.Contains(t, pf.askedItems(), "30", "the child of the new pass reads the forge before its agent")
+	assert.Zero(t, r.agents.callsOf("30"))
+}
 
 // loopAgents is an agent runner whose behavior is set for each item. The default is an agent that ends at once.
 // start lists the items in the order of their first call, so a test sees which items began and when.
@@ -84,7 +145,8 @@ func newLoopRig(t *testing.T, items ...model.Item) *loopRig {
 	require.NoError(t, os.CopyFS(folder, os.DirFS(filepath.Join("..", "..", "examples", "queue"))))
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"BASE": "integration"}
+	h.preflight = &loopPreflight{}
+	h.opts.Env = map[string]string{"BASE": "integration", "OWNER_LOGIN": "owner"}
 	// One login runs one agent phase at a time, so each item has its own login. The slots of the items queue then decide how many items run at once.
 	h.logins = fakeLogins{login: testLogin, byItem: map[string]string{"21": "login-21", "22": "login-22", "23": "login-23", "24": "login-24", "30": "login-30"}}
 

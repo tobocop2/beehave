@@ -1,5 +1,6 @@
 # A queue loop: one parent item reads the open work of the project, starts a run for each ready item up to the free slots, and starts the next item when any run ends.
 # Run it with `obee run <item> --workflow workflow.star`, where the item is a parent that has no work of its own.
+# Set OWNER_LOGIN before the run. It names your own login on the forge; an open pull request by another login claims the item.
 # Set BASE before the run. It names the integration branch that receives the pull requests.
 #
 # Each pass does four things:
@@ -22,6 +23,13 @@ MAX_PASSES = 500
 
 def work(item):
     """Runs for each item as a child run. The agent works in its own work folder, pushes the branch that has the id of the item, and opens the pull request."""
+
+    # The forge is read here, at the start of the item, so a pull request that was opened after the pass read the queue still stops the item.
+    # An open pull request of a login that is not OWNER_LOGIN claims the item. The failure holds the item with the reason, and no agent starts.
+    intake = preflight(name = "intake", base = env("BASE"), hold = HOLD, own = {"logins": [env("OWNER_LOGIN")]})
+    if not intake.ok:
+        fail(intake.reason)
+
     agent(
         name = "implement",
         prompt = "prompts/task.md",

@@ -93,6 +93,18 @@ func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T)
 	require.Contains(t, stderr, "`beads_prefix` must be a non-empty string")
 }
 
+func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/p.star", "project(repo = \"o/n\", tracker = \"jira\", forge = \"github\", base_branch = \"main\", gate = \"g\")\n")
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 2, code)
+	require.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+}
+
 func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 	t.Parallel()
 
