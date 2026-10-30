@@ -36,7 +36,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Install ai-rulez
-        run: go install github.com/Goldziher/ai-rulez/v5/cmd/ai-rulez@v5.4.1
+        run: make ai-rulez-install
 
       - name: Format, vet, vulnerabilities, race tests, coverage gate, smoke
         run: make format-check vet deps vuln test coverage smoke
