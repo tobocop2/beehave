@@ -11,11 +11,18 @@ const (
 	FindingLocalDelete  FindingKind = "local-delete"
 	FindingUnparsed     FindingKind = "unparsed"
 	FindingOpaque       FindingKind = "opaque-command"
+	FindingGitAuthor    FindingKind = "git-author"
+	FindingGitBypass    FindingKind = "git-bypass"
+	FindingEnvOverride  FindingKind = "env-override"
+	FindingConfigRead   FindingKind = "config-read"
 )
 
-// FindingKinds returns the six kinds, sorted by name. A workflow lists them in `forbid_commands`.
+// FindingKinds returns the ten kinds, sorted by name. A workflow lists them in `forbid_commands`.
 func FindingKinds() []FindingKind {
-	return []FindingKind{FindingBulkStaging, FindingDeleteText, FindingLocalDelete, FindingOpaque, FindingRemoteDelete, FindingUnparsed}
+	return []FindingKind{
+		FindingBulkStaging, FindingConfigRead, FindingDeleteText, FindingEnvOverride, FindingGitAuthor,
+		FindingGitBypass, FindingLocalDelete, FindingOpaque, FindingRemoteDelete, FindingUnparsed,
+	}
 }
 
 // FindingKindNames returns the names of the kinds, in the order of FindingKinds.

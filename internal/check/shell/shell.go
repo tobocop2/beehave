@@ -34,6 +34,7 @@ type resolution struct {
 type command struct {
 	head, prefix []string
 	heredocs     []string
+	writes       []string // the targets of the redirects that write
 	expanded     []string
 	unread       string // the variable that is the command word when its value is past a cap
 	prev         *command
@@ -233,6 +234,12 @@ func (w *walker) visit(node syntax.Node) bool {
 		if typed.Op == syntax.Pipe || typed.Op == syntax.PipeAll {
 			w.feeds[typed.Y] = lastOfPipe(typed.X)
 		}
+	case *syntax.DeclClause:
+		w.s.declared(w.u, typed)
+	case *syntax.CallExpr:
+		if len(typed.Args) == 0 {
+			w.s.bare(w.u, typed)
+		}
 	case *syntax.Stmt:
 		if found := w.s.command(w.u, typed, w.byStmt[w.feeds[typed]]); found != nil {
 			w.byStmt[typed] = found
@@ -265,11 +272,7 @@ func (s *scanner) command(u Unit, stmt *syntax.Stmt, prev *command) *command {
 	found.expanded = s.used
 	found.unread = s.unreadable(names, len(prefix), found.expanded)
 
-	for _, redir := range stmt.Redirs {
-		if (redir.Op == syntax.Hdoc || redir.Op == syntax.DashHdoc) && redir.Hdoc != nil {
-			found.heredocs = append(found.heredocs, SrcOf(u.Src, redir.Hdoc))
-		}
-	}
+	found.heredocs, found.writes = s.redirects(u, stmt)
 
 	return found
 }
@@ -326,7 +329,7 @@ func (s *scanner) judge(cmd *command, remote bool) {
 		s.findings = append(s.findings, model.Finding{Kind: model.FindingBulkStaging, Text: staging})
 	}
 
-	s.scanOpaque(cmd)
+	s.scanRules(cmd)
 
 	if len(cmd.head) == 0 {
 		return

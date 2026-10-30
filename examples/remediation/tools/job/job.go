@@ -64,7 +64,8 @@ func jobLine(finding model.Finding) string {
 		return unparsedMessage(finding.Text)
 	case model.FindingOpaque:
 		return "FAIL: the job runs a command the check cannot read (" + finding.Text + "). Write the command name out, with no variable or wrapper that hides it"
-	case model.FindingRemoteDelete, model.FindingDeleteText, model.FindingLocalDelete:
+	case model.FindingRemoteDelete, model.FindingDeleteText, model.FindingLocalDelete,
+		model.FindingGitAuthor, model.FindingGitBypass, model.FindingEnvOverride, model.FindingConfigRead:
 	}
 
 	return ""

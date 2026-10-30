@@ -5,7 +5,7 @@ load("@obee//review_fix.star", "review_fix")
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
-FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
+FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read"]
 
 def land(pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
