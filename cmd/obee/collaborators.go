@@ -22,6 +22,7 @@ import (
 	"github.com/tobocop2/obee/internal/lease"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 )
@@ -546,6 +547,55 @@ func (p pulls) Merge(ctx context.Context, project, item, head string, settings f
 	}
 
 	return merge.Run(ctx, built, p.request(number, head, settings, rules)), nil
+}
+
+// Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
+// An item with no pull request in any state has nothing that can have changed, so it gives Unchanged.
+func (p pulls) Preflight(ctx context.Context, project, item string, req preflight.Request, hold string) (preflight.Result, error) {
+	built, err := p.forgeOf(project)
+	if err != nil {
+		return preflight.Result{}, err
+	}
+
+	number, err := anyState(ctx, built, item)
+	if err != nil {
+		return preflight.Result{}, err
+	}
+
+	if number == 0 {
+		return preflight.Result{Stop: preflight.Unchanged, Lines: []string{"OK: the item has no pull request yet."}}, nil
+	}
+
+	req.PR = number
+
+	return preflight.Check(ctx, built, req, hold)
+}
+
+// anyState returns the number of the pull request of the item: the open one first, then the merged one, then the newest closed one. It is 0 when there is none.
+func anyState(ctx context.Context, built forge.Forge, item string) (int, error) {
+	for _, state := range []string{"open", "merged"} {
+		number, err := listed(ctx, built, item, state)
+		if err != nil || number != 0 {
+			return number, err
+		}
+	}
+
+	return newestListed(ctx, built, item, "closed")
+}
+
+// newestListed returns the number of the newest pull request in the state on the branch of the item, or 0 when there is none.
+// A branch that was closed and opened again has many closed pull requests, and only the last one tells where the item stands. The forge lists the newest first.
+func newestListed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
+	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	if err != nil {
+		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
+	}
+
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	return rows[0].Number, nil
 }
 
 // request is the merge request of one pull request: the settings of the step, and the runners of the config as own identities.

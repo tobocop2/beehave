@@ -8,6 +8,14 @@ load("@obee//review_fix.star", "review_fix")
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command"]
 
 def main(item):
+    # Before any agent starts, the pull request of the item must be as the owner left it: not merged, not closed, its branch still on the remote,
+    # no hold label, not a draft, the head the owner named in EXPECT_HEAD (a full SHA; when it is not set, no head is checked), and the base BASE.
+    # A stop is a result: the run ends here and starts no agent. The result of the run holds the stop as `stopped`: the step, the exit code and the reason.
+    # An item with no pull request yet passes.
+    intake = preflight(name = "intake", head = env("EXPECT_HEAD", default = ""), base = env("BASE"), hold = "hold")
+    if not intake.ok:
+        return
+
     plan = agent(
         name = "plan",
         prompt = "prompts/plan.md",

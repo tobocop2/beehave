@@ -18,7 +18,7 @@ make build    # write bin/obee
 
 ## Examples
 
-`examples/remediation` takes issues from beads and GitHub to reviewed pull requests. Set `MERGE` to `true` to let the workflow merge an approved pull request through the merge guards. With any other value, the owner merges. A run fails if `MERGE` is not set.
+`examples/remediation` takes issues from beads and GitHub to reviewed pull requests. Set `MERGE` to `true` to let the workflow merge an approved pull request through the merge guards. With any other value, the owner merges. A run fails if `MERGE` is not set. Set `EXPECT_HEAD` to the full SHA the owner reviewed, and the run stops before any agent starts if the head of the pull request moved. When `EXPECT_HEAD` is not set, no head is checked. A stop of this kind shows in the result of the run as `stopped`, with the step, the exit code and the reason.
 
 `examples/local` needs no tracker and no forge. The items are in `local.db`, and the result is a branch in a git repository on this machine. Copy `examples/local/project.star` to `<config folder>/projects/<name>.star`, set `source`, and run:
 

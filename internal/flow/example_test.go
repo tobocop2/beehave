@@ -47,7 +47,8 @@ func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) st
 	skill := exampleSkill(t, folder)
 
 	rig := newAgentRig(t)
-	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "MERGE": "false"}
+	rig.h.opts.Env = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "MERGE": "false", "EXPECT_HEAD": ""}
+	rig.h.preflight = &fakePreflight{}
 	rig.h.gate.results = []GateResult{{Passed: true, Head: rig.head, Tree: exampleTree}}
 	rig.h.forge.state = review.Standing{Number: testPull, Head: rig.head}
 

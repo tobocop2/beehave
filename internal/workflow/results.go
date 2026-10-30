@@ -14,6 +14,7 @@ const (
 	gateName        = "gate"
 	waitName        = "wait"
 	mergeName       = "merge"
+	preflightName   = "preflight"
 	itemCommentName = "item_comment"
 	itemCreateName  = "item_create"
 	itemStatusName  = "item_status"
@@ -35,6 +36,7 @@ func resultFields() map[string][]string {
 		itemCreateName:  {"id", "created"},
 		itemStatusName:  {"id", "status"},
 		mergeName:       {"state", "reason"},
+		preflightName:   {"ok", "stop", "code", "reason"},
 		spawnName:       {"runs"},
 		waitName:        {"answer"},
 	}

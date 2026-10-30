@@ -26,6 +26,9 @@ const (
 	nameKeyword    = "name"
 	runKeyword     = "run"
 	headKeyword    = "head"
+	baseKeyword    = "base"
+	holdKeyword    = "hold"
+	reasonKey      = "reason"
 	timeoutKeyword = "timeout"
 	statusKeyword  = "status"
 )

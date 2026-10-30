@@ -22,6 +22,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"item_create", `item_create("t", "k")`, "3:11 haed is not a field of the result of item_create. It has: id, created."},
 		{"item_status", `item_status("1", "open")`, "3:11 haed is not a field of the result of item_status. It has: id, status."},
 		{"merge", `merge("h")`, "3:11 haed is not a field of the result of merge. It has: state, reason."},
+		{"preflight", `preflight()`, "3:11 haed is not a field of the result of preflight. It has: ok, stop, code, reason."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
 		{"wait", `wait()`, "3:11 haed is not a field of the result of wait. It has: answer."},
 	}
@@ -145,7 +146,7 @@ func TestCheck_ATopLevelStatementThatIsNotAFunctionIsSkipped(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "batch_merge", "command", "gate", "gather", "item_comment", "item_create", "item_status", "merge", "spawn", "wait"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "batch_merge", "command", "gate", "gather", "item_comment", "item_create", "item_status", "merge", "preflight", "spawn", "wait"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {
