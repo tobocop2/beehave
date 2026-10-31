@@ -99,6 +99,29 @@ func TestTokenScopes_AnAnswerWithNoTokenLineIsARefusal(t *testing.T) {
 	}
 }
 
+func TestLogin_ReadsTheLoginOfTheActiveAccount(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "octo\n")
+
+	login, err := f.Login(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "octo", login)
+	assert.Equal(t, [][]string{{"api", "user", "--jq", ".login"}}, run.Calls)
+}
+
+func TestLogin_AFailedOrEmptyReadIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	down, _ := failing(t, "HTTP 401")
+	_, err := down.Login(context.Background())
+	require.ErrorContains(t, err, "cannot read the login")
+
+	empty, _ := fixed(t, "\n")
+	_, err = empty.Login(context.Background())
+	require.ErrorContains(t, err, "has no login")
+}
+
 func TestCreateBranch_PostsTheRefAtTheCommit(t *testing.T) {
 	t.Parallel()
 

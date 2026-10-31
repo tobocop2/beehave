@@ -730,3 +730,57 @@ func TestLoadFolder_ABadPoolCapNamesTheFileAndTheVariable(t *testing.T) {
 	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in OBEE_POOL_FIVE_HOUR_MAX.")
 	require.Contains(t, text, "Set it in "+filepath.Join(dir, "runners.star")+" or in OBEE_POOL_SEVEN_DAY_MAX.")
 }
+
+func TestLoadFolder_AgentsReviewPollMinutesDefaultsToNoPollAndRefusesANegative(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.Equal(t, 0, cfg.Agents.ReviewPollMinutes)
+
+	cfg, problems = loadRunnersText(t, "agents(review_poll_minutes = 60)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 60, cfg.Agents.ReviewPollMinutes)
+
+	_, problems = loadRunnersText(t, "agents(review_poll_minutes = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.review_poll_minutes must be 0 (no poll) or more")
+	require.ErrorContains(t, problems[0], "OBEE_REVIEW_POLL_MINUTES")
+}
+
+func TestLoadFolder_TheReviewPollVariableOverlaysTheFileAndIsValidated(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(review_poll_minutes = 30)\n")
+
+	cfg, problems := config.LoadFolder(dir, map[string]string{"OBEE_REVIEW_POLL_MINUTES": "15"})
+	require.Empty(t, problems)
+	require.Equal(t, 15, cfg.Agents.ReviewPollMinutes)
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_REVIEW_POLL_MINUTES": ""})
+	require.Empty(t, problems)
+	require.Equal(t, 30, cfg.Agents.ReviewPollMinutes, "an empty variable leaves the file value")
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_REVIEW_POLL_MINUTES": "hourly"})
+	require.ErrorContains(t, problems, "OBEE_REVIEW_POLL_MINUTES=hourly is not a whole number")
+}
+
+func TestLoadFolder_TheReviewPollIntervalHasAnUpperBoundOfOneWeek(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents(review_poll_minutes = 10080)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 10080, cfg.Agents.ReviewPollMinutes)
+
+	_, problems = loadRunnersText(t, "agents(review_poll_minutes = 10081)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.review_poll_minutes is 10081: set it to 10080 (one week) or less")
+	require.ErrorContains(t, problems[0], "OBEE_REVIEW_POLL_MINUTES")
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents()\n")
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_REVIEW_POLL_MINUTES": "307445735"})
+	require.ErrorContains(t, problems, "agents.review_poll_minutes is 307445735: set it to 10080 (one week) or less")
+}

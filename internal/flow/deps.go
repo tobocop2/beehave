@@ -213,6 +213,8 @@ type Deps struct {
 	Batch batchHost
 	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.
 	Queue queueReader
+	// Poll serves the scheduled review poll. A nil Poll means the build cannot read the forges: the engine sets no poll schedule.
+	Poll pollReader
 	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
 	Hosts hostStopper
 	// Kept lists errors, besides the errors of the gate and the host, that a gate or a merge keeps for errors.Is when it fails. A call that runs in

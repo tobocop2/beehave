@@ -7,6 +7,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -52,6 +53,7 @@ func TestOptions_RefuseUnusableSettingsForTheEngineAndTheClient(t *testing.T) {
 		{"an_empty_version", func(o *Options) { o.Version = "" }, "build version is empty"},
 		{"a_relative_state_folder", func(o *Options) { o.StateDir = "state" }, "not an absolute path"},
 		{"no_agent_slot", func(o *Options) { o.MaxConcurrent = 0 }, "agents.max_concurrent is 0: set it to 1 or more"},
+		{"a_negative_review_poll", func(o *Options) { o.ReviewPoll = -time.Minute }, "review poll interval is -1m0s: set it to 0 or more"},
 	}
 
 	for _, test := range tests {

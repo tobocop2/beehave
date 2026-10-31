@@ -112,6 +112,7 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Batch:  batchHost{pulls: life.pulls, programs: commands},
 		Hosts:  hostStop{programs: commands},
 		Queue:  queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
+		Poll:   pollReads{projects: cfg.Projects, pulls: life.pulls},
 		Kept:   backendErrors(),
 	})
 }

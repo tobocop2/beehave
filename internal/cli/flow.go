@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -37,6 +38,10 @@ type Runner interface {
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Status() ([]flow.RunInfo, error)
+	// Poll returns the newest review poll that finished. The second value is false when none has.
+	Poll() (flow.PollOutput, bool, error)
+	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
+	PollNotScheduled() (string, error)
 	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
 	PinnedFile(item string) (string, error)
 	Answer(item, text string) error
@@ -95,7 +100,15 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 		return cfg, flow.Options{}, err
 	}
 
-	return cfg, flow.Options{StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, Env: f.env}, nil
+	return cfg, f.engineOptions(cfg, state), nil
+}
+
+// engineOptions builds the options of the engine from the config and the state folder.
+func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
+	return flow.Options{
+		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, Env: f.env,
+		ReviewPoll: time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
+	}
 }
 
 // itemArgs checks the item id before any state folder opens. The engine checks it again.
@@ -376,8 +389,67 @@ func (f flowCommands) status(cmd *cobra.Command, flag string) error {
 
 		printStatus(cmd.OutOrStdout(), infos)
 
-		return nil
+		return printPollSection(cmd.OutOrStdout(), client)
 	})
+}
+
+// printPollSection writes the newest review poll, then the cause when the last launch could not schedule the poll.
+func printPollSection(stdout io.Writer, client Steering) error {
+	poll, found, err := client.Poll()
+	if err != nil {
+		return err
+	}
+
+	if found {
+		printPoll(stdout, poll)
+	}
+
+	cause, err := client.PollNotScheduled()
+	if err != nil {
+		return err
+	}
+
+	if cause != "" {
+		// A failed write to stdout has no recovery.
+		_, _ = fmt.Fprintf(stdout, "\nthe review poll is not scheduled: %s\n", oneLine(cause))
+	}
+
+	return nil
+}
+
+// printPoll writes the section of the newest review poll: its time, then the rows of each project.
+// A project that the poll could not read shows the cause, never an empty list.
+func printPoll(stdout io.Writer, poll flow.PollOutput) {
+	if poll.Failure != "" {
+		// A failed write to stdout has no recovery.
+		_, _ = fmt.Fprintf(stdout, "\nthe review poll failed at %s: %s\n", poll.At.Format(time.RFC3339), oneLine(poll.Failure))
+
+		return
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintf(stdout, "\nreview poll at %s\n", poll.At.Format(time.RFC3339))
+
+	for _, project := range poll.Projects {
+		printPollProject(stdout, project)
+	}
+}
+
+// printPollProject writes the lines of one project: its rows, or the reason it has none.
+func printPollProject(stdout io.Writer, project flow.PollProject) {
+	// A failed write to stdout has no recovery.
+	switch {
+	case project.NoForge:
+		_, _ = fmt.Fprintf(stdout, "%s: no forge, not polled\n", project.Project)
+	case project.Unread != "":
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Project, oneLine(project.Unread))
+	case len(project.Rows) == 0:
+		_, _ = fmt.Fprintf(stdout, "%s\tnothing to review\n", project.Project)
+	}
+
+	for _, row := range project.Rows {
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Project, row)
+	}
 }
 
 // printStatus writes one line for each run. A paused run shows its question; a stranded run names the version that finishes it.

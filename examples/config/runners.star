@@ -24,11 +24,15 @@ pool(
 # build host more. Each login runs one agent at a time. The argument is optional; the default is 2.
 # max_turns and max_budget_usd cap one agent run, in agentic turns and in dollars. 0 means no cap,
 # which is the default. A run that reaches a cap ends the step with the output stop. Both are optional.
+# review_poll_minutes is the time between two polls of the open pull requests that wait for your
+# review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
+# `obee status` shows the newest poll.
 # Call agents() once.
 agents(
     max_concurrent = 2,
     # max_turns = 60,
     # max_budget_usd = 5,
+    # review_poll_minutes = 60,
 )
 
 runner(

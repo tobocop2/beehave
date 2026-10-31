@@ -424,6 +424,7 @@ type harness struct {
 	writer    writer      // nil unless a test sets it
 	hosts     hostStopper // nil unless a test sets it
 	queue     queueReader // nil unless a test sets it
+	poll      pollReader  // nil unless a test sets it
 	ticks     chan time.Time
 	sleep     time.Duration
 	opts      Options
@@ -497,6 +498,7 @@ func (h *harness) deps() Deps {
 	deps.Preflight = h.preflight
 	deps.Hosts = h.hosts
 	deps.Queue = h.queue
+	deps.Poll = h.poll
 
 	if h.picker != nil {
 		deps.Logins = h.picker

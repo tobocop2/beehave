@@ -57,6 +57,8 @@ type Options struct {
 	Version       string
 	MaxConcurrent int
 	Env           map[string]string
+	// ReviewPoll is the time between two review polls. 0 means no poll.
+	ReviewPoll time.Duration
 }
 
 func (o Options) validate() error {
@@ -71,6 +73,8 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: the state folder %q is not an absolute path", errBadOptions, o.StateDir)
 	case o.MaxConcurrent < minMaxConcurrent:
 		return fmt.Errorf("%w: agents.max_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxConcurrent)
+	case o.ReviewPoll < 0:
+		return fmt.Errorf("%w: the review poll interval is %s: set it to 0 or more", errBadOptions, o.ReviewPoll)
 	}
 
 	return nil
@@ -112,18 +116,23 @@ type Engine struct {
 	deps           Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
-	version       string
-	dir           string
-	log           io.Closer
-	lock          *flock.Flock
-	logger        *slog.Logger
-	env           map[string]string
-	redact        func(string) string
-	cancels       cancels
-	holds         holds
-	procs         *groups
-	tickEnd       chan struct{}
-	tickRun       sync.WaitGroup
+	// reviewPoll is the time between two review polls. 0 means no poll.
+	reviewPoll time.Duration
+	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
+	setSchedule func(*Engine) error
+	version     string
+
+	dir     string
+	log     io.Closer
+	lock    *flock.Flock
+	logger  *slog.Logger
+	env     map[string]string
+	redact  func(string) string
+	cancels cancels
+	holds   holds
+	procs   *groups
+	tickEnd chan struct{}
+	tickRun sync.WaitGroup
 	// launched is the time of the last Launch. A run that was open then and ended after it was resumed by this engine.
 	launched time.Time
 	down     sync.Once
@@ -145,7 +154,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	}
 
 	engine := &Engine{
-		deps: deps, maxConcurrent: opts.MaxConcurrent, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}),
 	}
 
@@ -195,6 +204,7 @@ func (e *Engine) register(maxConcurrent int) error {
 	dbos.RegisterWorkflow(e.ctx, e.item, dbos.WithWorkflowName(itemName))
 	dbos.RegisterWorkflow(e.ctx, e.phase, dbos.WithWorkflowName(phaseName))
 	dbos.RegisterWorkflow(e.ctx, e.exclusive, dbos.WithWorkflowName(exclusiveName))
+	dbos.RegisterWorkflow(e.ctx, e.poll, dbos.WithWorkflowName(pollName))
 
 	return errors.Join(e.registerQueue(maxConcurrent), e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue())
 }
@@ -234,6 +244,34 @@ func (e *Engine) registerItemQueue(maxConcurrent int) error {
 
 // Launch starts the workers and resumes the runs of this version that a crash cut short.
 func (e *Engine) Launch() error {
+	if err := e.reapLeft(); err != nil {
+		return err
+	}
+
+	e.launched = time.Now()
+
+	if err := e.launchAndSchedule(); err != nil {
+		return err
+	}
+
+	e.tidy()
+
+	return nil
+}
+
+// launchAndSchedule launches the workflow engine, then sets the schedule of the review poll. A schedule that fails does not fail the launch.
+func (e *Engine) launchAndSchedule() error {
+	if err := dbos.Launch(e.ctx); err != nil {
+		return fmt.Errorf("start the workflow engine: %w", err)
+	}
+
+	e.recordSchedule(e.setSchedule(e))
+
+	return nil
+}
+
+// reapLeft stops the agent processes that a crashed worker left.
+func (e *Engine) reapLeft() error {
 	killed, err := e.procs.reap(e.ctx)
 	if err != nil {
 		return err
@@ -242,14 +280,6 @@ func (e *Engine) Launch() error {
 	if killed > 0 {
 		e.logger.Warn("stopped agent processes that a crashed worker left", "groups", killed)
 	}
-
-	e.launched = time.Now()
-
-	if err := dbos.Launch(e.ctx); err != nil {
-		return fmt.Errorf("start the workflow engine: %w", err)
-	}
-
-	e.tidy()
 
 	return nil
 }

@@ -19,9 +19,13 @@ const (
 	envMaxConcurrent = "OBEE_AGENTS_MAX_CONCURRENT"
 	envMaxTurns      = "OBEE_AGENTS_MAX_TURNS"
 	envMaxBudget     = "OBEE_AGENTS_MAX_BUDGET_USD"
+	envReviewPoll    = "OBEE_REVIEW_POLL_MINUTES"
 	envFiveHourMax   = "OBEE_POOL_FIVE_HOUR_MAX"
 	envSevenDayMax   = "OBEE_POOL_SEVEN_DAY_MAX"
 )
+
+// maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
+const maxReviewPollMinutes = 10080
 
 // floatBits is the bit size of a percent that the OBEE_* variables give.
 const floatBits = 64
@@ -153,7 +157,7 @@ func (c *Config) applyEnv(env map[string]string) error {
 		c.Agents.MaxConcurrent = limit
 	}
 
-	if err := c.applyCapEnv(env); err != nil {
+	if err := errors.Join(c.applyCapEnv(env), c.applyPollEnv(env)); err != nil {
 		return err
 	}
 
@@ -182,6 +186,23 @@ func (c *Config) applyCapEnv(env map[string]string) error {
 
 		c.Agents.MaxBudgetUSD = budget
 	}
+
+	return nil
+}
+
+// applyPollEnv reads the minutes between two review polls from the environment.
+func (c *Config) applyPollEnv(env map[string]string) error {
+	value := env[envReviewPoll]
+	if value == "" {
+		return nil
+	}
+
+	minutes, err := strconv.Atoi(value)
+	if err != nil {
+		return refuse("%s=%s is not a whole number. Write digits only, for example 60, or 0 for no poll.", envReviewPoll, value)
+	}
+
+	c.Agents.ReviewPollMinutes = minutes
 
 	return nil
 }
@@ -221,7 +242,20 @@ func (c Config) Validate() Problems {
 		problems = append(problems, refuse("agents.max_budget_usd must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", runnersPath, envMaxBudget))
 	}
 
+	problems = append(problems, c.pollProblems(runnersPath)...)
+
 	return append(problems, c.poolProblems(runnersPath)...)
+}
+
+func (c Config) pollProblems(runnersPath string) Problems {
+	switch minutes := c.Agents.ReviewPollMinutes; {
+	case minutes < 0:
+		return Problems{refuse("agents.review_poll_minutes must be 0 (no poll) or more. Set it in %s or in %s.", runnersPath, envReviewPoll)}
+	case minutes > maxReviewPollMinutes:
+		return Problems{refuse("agents.review_poll_minutes is %d: set it to %d (one week) or less. Set it in %s or in %s.", minutes, maxReviewPollMinutes, runnersPath, envReviewPoll)}
+	}
+
+	return nil
 }
 
 func (c Config) poolProblems(runnersPath string) Problems {
