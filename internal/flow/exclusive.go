@@ -9,6 +9,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 const (
@@ -99,7 +100,7 @@ func (e *Engine) queueExclusive(ctx context.Context, in ExclusiveInput) (Exclusi
 		return ExclusiveOutput{}, errNotRunContext
 	}
 
-	handle, err := dbos.RunWorkflow(run, e.exclusive, in, dbos.WithQueue(e.exclusiveQueue), dbos.WithQueuePartitionKey(in.Project))
+	handle, err := dbos.RunWorkflow(run, e.exclusive, in, dbos.WithQueue(e.exclusiveQueue), dbos.WithQueuePartitionKey(in.Project), dbos.WithPriority(e.exclusivePriority(ctx, in)))
 	if err != nil {
 		return ExclusiveOutput{}, fmt.Errorf("queue the %s of item %s: %w", in.Kind, in.Item, err)
 	}
@@ -110,6 +111,39 @@ func (e *Engine) queueExclusive(ctx context.Context, in ExclusiveInput) (Exclusi
 	}
 
 	return out, out.Failure.err(e.knownErrors())
+}
+
+// The queue starts the lowest number first. Both numbers are above zero so that the queue never mixes them with a run that sets no priority.
+const (
+	priorityPersonWaits uint = 1
+	priorityNormal      uint = 2
+)
+
+// exclusivePriority gives a gate the first place in the queue when a person waits on the pull request of its item:
+// the pull request is open and has an open change request or an unresolved review thread. The merges and the batch gates keep the normal place.
+// The read is the standing read that the lifecycle makes already. A pull request that cannot be read gets the normal place, and a line says so.
+func (e *Engine) exclusivePriority(ctx context.Context, in ExclusiveInput) uint {
+	if in.Kind != kindGate || e.deps.Forge == nil {
+		return priorityNormal
+	}
+
+	standing, err := e.deps.Forge.Pull(ctx, in.Project, in.Item)
+	if err != nil {
+		e.logger.WarnContext(ctx, "cannot read the pull request, so its gate keeps the normal place in the queue", "item", in.Item, "error", err)
+
+		return priorityNormal
+	}
+
+	if personWaits(standing) {
+		return priorityPersonWaits
+	}
+
+	return priorityNormal
+}
+
+// personWaits is true for an open pull request with an open change request or an unresolved review thread.
+func personWaits(standing review.Standing) bool {
+	return !standing.Merged && !standing.Closed && (len(standing.ChangeRequests) > 0 || standing.UnresolvedThreads > 0)
 }
 
 var errNotRunContext = errors.New("a gate or a merge runs only with the context of a workflow run")
