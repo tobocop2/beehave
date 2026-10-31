@@ -766,6 +766,33 @@ func TestAgentStep_AViolationIsAnOutputAndTheStepStillSucceeds(t *testing.T) {
 	assert.Equal(t, []string{"show bulk-staging: git add -A"}, rig.h.commands.ran())
 }
 
+var capFlow = bodyFlow(`a = agent(model = "m", prompt = "prompts/a.md", name = "a")
+command(run = ["show", "[" + a.stop + "]"])
+`)
+
+func TestAgentStep_ARunThatACapStoppedIsNotAFailureAndTheOutputStopNamesTheCap(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		outcome agent.Outcome
+		show    string
+	}{
+		{agent.OutcomeTurnCap, "show [turns]"},
+		{agent.OutcomeBudgetCap, "show [budget]"},
+		{agent.OutcomeExited, "show []"},
+	} {
+		rig := newAgentRig(t)
+		capped := exited
+		capped.Outcome = tc.outcome
+		rig.reply("", capped)
+
+		_, err := rig.run(t, capFlow, "x")
+
+		require.NoError(t, err, tc.outcome)
+		assert.Equal(t, []string{tc.show}, rig.h.commands.ran(), tc.outcome)
+	}
+}
+
 func TestAgentStep_AReplayAfterTheAgentEndedKeepsTheViolationItRecorded(t *testing.T) {
 	t.Parallel()
 

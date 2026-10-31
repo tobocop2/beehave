@@ -20,6 +20,7 @@ import (
 
 	"go.starlark.net/starlark"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -388,7 +389,7 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"))
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome))
 
 	if problem := a.readOutputs(outputs); problem != "" {
 		return stepResult{Note: problem}, nil
@@ -397,10 +398,24 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 	return stepResult{Outputs: outputs}, nil
 }
 
+// capOf names the cap that ended a run, or returns "" for a run that no cap ended.
+func capOf(outcome agent.Outcome) string {
+	if outcome == agent.OutcomeTurnCap {
+		return string(agent.StopTurns)
+	}
+
+	if outcome == agent.OutcomeBudgetCap {
+		return string(agent.StopBudget)
+	}
+
+	return ""
+}
+
 // readOutputs reads the output file when the call declares outputs, adds them to outputs, then applies the follow_ups option.
 // A call that forbids follow-ups declares the output verdict, so it always has an output file. It returns what is wrong with the file, or an empty text.
 func (a agentArgs) readOutputs(outputs map[string]any) string {
-	if len(a.declared) == 0 {
+	// A run that a cap stopped returns its stop with no declared outputs: the workflow guard names the cap, and a missing output file would hide it.
+	if len(a.declared) == 0 || outputs["stop"] != "" {
 		return ""
 	}
 

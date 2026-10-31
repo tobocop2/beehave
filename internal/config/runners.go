@@ -28,6 +28,10 @@ type Pool struct {
 type agents struct {
 	// MaxConcurrent is the global limit on agent processes. A laptop wants 2, a build host more.
 	MaxConcurrent int
+	// MaxTurns is the most agentic turns of one agent run. 0 means no cap.
+	MaxTurns int
+	// MaxBudgetUSD is the most dollars that one agent run spends on API calls. 0 means no cap.
+	MaxBudgetUSD float64
 }
 
 // runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
@@ -40,7 +44,9 @@ type runnersFile struct {
 }
 
 // The schemas of the constructors of the runners file.
-func agentsSpec() spec { return spec{"agents", []string{"max_concurrent?"}} }
+func agentsSpec() spec {
+	return spec{"agents", []string{"max_concurrent?", "max_turns?", "max_budget_usd?"}}
+}
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
 
@@ -64,7 +70,15 @@ func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 }
 
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
-	return agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent)
+	budget := number(f.agents.MaxBudgetUSD)
+
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxTurns, &budget); err != nil {
+		return err
+	}
+
+	f.agents.MaxBudgetUSD = float64(budget)
+
+	return nil
 }
 
 func (f *runnersFile) addPool(at syntax.Position, kwargs []starlark.Tuple) error {

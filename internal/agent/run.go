@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,13 @@ const (
 	OutcomeIdle       Outcome = "idle"
 	OutcomeCancelled  Outcome = "cancelled" //nolint:misspell // the same spelling as the note proc prints
 	OutcomeNotStarted Outcome = "not-started"
+	// OutcomeTurnCap and OutcomeBudgetCap mean the CLI stopped the run at the cap of turns or of dollars. The caller sets them from the result line of the CLI.
+	OutcomeTurnCap   Outcome = "turn-cap"
+	OutcomeBudgetCap Outcome = "budget-cap"
 )
+
+// floatBits is the bit size of a dollar amount in a flag.
+const floatBits = 64
 
 var (
 	errTotalTimeout = errors.New("total timeout")
@@ -48,8 +55,11 @@ type Spec struct {
 	IdleTimeout time.Duration
 	Model       string
 	Resume      string
-	Log         io.Writer
-	OnStart     func(pid int)
+	// MaxTurns and MaxBudget cap one run. 0 means no cap. A profile without the matching flag refuses a set cap.
+	MaxTurns  int
+	MaxBudget float64
+	Log       io.Writer
+	OnStart   func(pid int)
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
 }
@@ -107,12 +117,8 @@ func prepare(spec Spec) (Profile, string) {
 
 	p := spec.Adapter.Profile()
 
-	if spec.Model != "" && p.ModelFlag == "" {
-		return p, fmt.Sprintf("%s has no option to set a model, so model %q is not used. Remove the model from the step.", p.Binary, spec.Model)
-	}
-
-	if spec.Resume != "" && p.ResumeFlag == "" {
-		return p, p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
+	if problem := optionProblem(spec, p); problem != "" {
+		return p, problem
 	}
 
 	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {
@@ -121,6 +127,27 @@ func prepare(spec Spec) (Profile, string) {
 	}
 
 	return p, ""
+}
+
+// optionProblem says why the profile cannot set an option that the spec asks for, or returns "" when it can set each one.
+func optionProblem(spec Spec, p Profile) string {
+	if spec.Model != "" && p.ModelFlag == "" {
+		return fmt.Sprintf("%s has no option to set a model, so model %q is not used. Remove the model from the step.", p.Binary, spec.Model)
+	}
+
+	if spec.Resume != "" && p.ResumeFlag == "" {
+		return p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
+	}
+
+	if spec.MaxTurns > 0 && p.TurnsFlag == "" {
+		return p.Binary + " has no option to cap the turns, so the run does not start. Set agents.max_turns to 0."
+	}
+
+	if spec.MaxBudget > 0 && p.BudgetFlag == "" {
+		return p.Binary + " has no option to cap the cost, so the run does not start. Set agents.max_budget_usd to 0."
+	}
+
+	return ""
 }
 
 func withTotalTimeout(ctx context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
@@ -166,8 +193,25 @@ func argsOf(spec Spec, p Profile) []string {
 		args = append(args, p.ResumeFlag, spec.Resume)
 	}
 
+	args = append(args, capArgs(spec, p)...)
+
 	if spec.Guard != "" {
 		args = append(args, spec.Adapter.Guard(spec.Guard)...)
+	}
+
+	return args
+}
+
+// capArgs returns the options for the turn cap and the cost cap that the spec sets.
+func capArgs(spec Spec, p Profile) []string {
+	var args []string
+
+	if spec.MaxTurns > 0 {
+		args = append(args, p.TurnsFlag, strconv.Itoa(spec.MaxTurns))
+	}
+
+	if spec.MaxBudget > 0 {
+		args = append(args, p.BudgetFlag, strconv.FormatFloat(spec.MaxBudget, 'f', -1, floatBits))
 	}
 
 	return args

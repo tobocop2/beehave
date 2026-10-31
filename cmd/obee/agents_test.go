@@ -59,6 +59,14 @@ func (lineAdapter) Calls(line string) agent.Seen {
 		seen.Skills = append(seen.Skills, name)
 	}
 
+	if kind, ok := cutPrefix(line, "stop="); ok {
+		seen.Stop = agent.Stop(kind)
+	}
+
+	if subtype, ok := cutPrefix(line, "failed="); ok {
+		seen.Failed = subtype
+	}
+
 	seen.Result = line == "result=end"
 	_, seen.Invalid = cutPrefix(line, "junk")
 
@@ -467,6 +475,54 @@ func TestAgents_RunTheRunnerOfTheLoginInTheWorktreeAndReadTheSession(t *testing.
 	assert.Equal(t, 1, started)
 }
 
+func TestAgents_TheCapsOfTheConfigGoToTheSpecOfEveryRun(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.agents.maxTurns, f.agents.maxBudget = 12, 1.5
+
+	_, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, 12, f.spec.MaxTurns)
+	assert.InDelta(t, 1.5, f.spec.MaxBudget, 0)
+}
+
+func TestAgents_ACapOnTheResultLineEndsTheRunAsACapWhateverTheExitCode(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		stop string
+		want agent.Outcome
+	}{
+		{"turns", agent.OutcomeTurnCap},
+		{"budget", agent.OutcomeBudgetCap},
+	} {
+		for _, code := range []int{0, 1} {
+			f := newAgentFixture("session=s1\ntext=halfway\nstop="+tc.stop+"\n", agent.Result{Outcome: agent.OutcomeExited, ExitCode: code})
+
+			got, err := f.agents.Run(t.Context(), request())
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got.Outcome, "exit code %d", code)
+			assert.Equal(t, code, got.ExitCode)
+			assert.Equal(t, "s1", got.Session)
+			assert.Equal(t, "halfway", got.Text)
+		}
+	}
+}
+
+func TestAgents_ACapOnARunThatTimedOutStaysATimeout(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\nstop=turns\n", agent.Result{Outcome: agent.OutcomeTimedOut, ExitCode: -1})
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
+}
+
 func TestAgents_ARunThatDidNotExitCleanlyIsReturnedWithoutASession(t *testing.T) {
 	t.Parallel()
 
@@ -492,6 +548,17 @@ func TestAgents_ACleanRunWithNoSessionIdIsAnError(t *testing.T) {
 	_, err := f.agents.Run(t.Context(), request())
 
 	require.ErrorIs(t, err, errNoSession)
+}
+
+func TestAgents_AnErrorResultWithExitCodeZeroIsAFailureThatNamesTheSubtype(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\nfailed=error_during_execution\n", agent.Result{Outcome: agent.OutcomeExited})
+
+	_, err := f.agents.Run(t.Context(), request())
+
+	require.ErrorIs(t, err, errAgentFailed)
+	require.ErrorContains(t, err, "error_during_execution")
 }
 
 func TestAgents_RefuseARequestThatCannotRun(t *testing.T) {

@@ -30,13 +30,17 @@ def work(item):
     if not intake.ok:
         fail(intake.reason)
 
-    agent(
+    implement = agent(
         name = "implement",
         prompt = "prompts/task.md",
         model = "sonnet",
         forbid_commands = ["bulk-staging"],
         inputs = {"item": item, "base": env("BASE")},
     )
+
+    # A cap ended the run (the output `stop` is "turns" or "budget"), so the pull request may be half done. The item fails with the reason.
+    if implement.stop != "":
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
 
 def main(item):
     # The runs that this parent started and has not seen end.

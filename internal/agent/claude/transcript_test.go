@@ -57,6 +57,62 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	assert.Equal(t, "--resume", p.ResumeFlag)
 }
 
+func TestProfile_NamesTheTurnAndBudgetFlags(t *testing.T) {
+	t.Parallel()
+
+	p := claude.New().Profile()
+
+	assert.Equal(t, "--max-turns", p.TurnsFlag)
+	assert.Equal(t, "--max-budget-usd", p.BudgetFlag)
+}
+
+func TestCalls_AnErrorResultThatIsNoCapNamesItsSubtype(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, line, want string
+	}{
+		{"error", `{"type":"result","subtype":"error_during_execution","is_error":true}`, "error_during_execution"},
+		{"error with no subtype", `{"type":"result","is_error":true}`, "unknown"},
+		{"turn cap", `{"type":"result","subtype":"error_max_turns","is_error":true}`, ""},
+		{"budget cap", `{"type":"result","subtype":"error_max_budget_usd","is_error":true}`, ""},
+		{"success", `{"type":"result","subtype":"success","is_error":false}`, ""},
+		{"an error subtype with no is_error", `{"type":"result","subtype":"error_during_execution"}`, ""},
+		{"not a result line", `{"type":"assistant","is_error":true}`, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, claude.New().Calls(tc.line).Failed)
+		})
+	}
+}
+
+func TestCalls_TheSubtypeOfTheResultLineNamesTheCapThatStoppedTheRun(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, line string
+		want       agent.Stop
+	}{
+		{"turns", `{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":5}`, agent.StopTurns},
+		{"budget", `{"type":"result","subtype":"error_max_budget_usd","is_error":true}`, agent.StopBudget},
+		{"success", `{"type":"result","subtype":"success","is_error":false}`, ""},
+		{"other error", `{"type":"result","subtype":"error_during_execution"}`, ""},
+		{"not a result line", `{"type":"assistant","subtype":"error_max_turns"}`, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, claude.New().Calls(tc.line).Stop)
+		})
+	}
+}
+
 func TestAdapter(t *testing.T) {
 	t.Parallel()
 

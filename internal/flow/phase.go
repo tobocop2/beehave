@@ -158,7 +158,12 @@ func stopError(ctx context.Context) error {
 }
 
 // phaseEnd turns a phase that did not exit with code 0 into an error that names the step.
+// A run that a cap stopped (turns or dollars) is not a failure: the output `stop` names the cap and the workflow decides what follows.
 func phaseEnd(in PhaseInput, out PhaseOutput) error {
+	if out.Outcome == agent.OutcomeTurnCap || out.Outcome == agent.OutcomeBudgetCap {
+		return nil
+	}
+
 	if out.Outcome != agent.OutcomeExited || out.ExitCode != 0 {
 		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
 	}

@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,8 @@ import (
 // Names of the OBEE_* variables that override the config files.
 const (
 	envMaxConcurrent = "OBEE_AGENTS_MAX_CONCURRENT"
+	envMaxTurns      = "OBEE_AGENTS_MAX_TURNS"
+	envMaxBudget     = "OBEE_AGENTS_MAX_BUDGET_USD"
 	envFiveHourMax   = "OBEE_POOL_FIVE_HOUR_MAX"
 	envSevenDayMax   = "OBEE_POOL_SEVEN_DAY_MAX"
 )
@@ -150,10 +153,37 @@ func (c *Config) applyEnv(env map[string]string) error {
 		c.Agents.MaxConcurrent = limit
 	}
 
+	if err := c.applyCapEnv(env); err != nil {
+		return err
+	}
+
 	return errors.Join(
 		overlayPercent(env, envFiveHourMax, &c.Pool.FiveHourMax),
 		overlayPercent(env, envSevenDayMax, &c.Pool.SevenDayMax),
 	)
+}
+
+// applyCapEnv reads the turn cap and the cost cap of an agent run from the environment.
+func (c *Config) applyCapEnv(env map[string]string) error {
+	if value := env[envMaxTurns]; value != "" {
+		turns, err := strconv.Atoi(value)
+		if err != nil {
+			return refuse("%s=%s is not a whole number. Write digits only, for example 40, or 0 for no cap.", envMaxTurns, value)
+		}
+
+		c.Agents.MaxTurns = turns
+	}
+
+	if value := env[envMaxBudget]; value != "" {
+		budget, err := strconv.ParseFloat(value, floatBits)
+		if err != nil || math.IsInf(budget, 0) || math.IsNaN(budget) {
+			return refuse("%s=%s is not a number. Write dollars, for example 5, or 0 for no cap.", envMaxBudget, value)
+		}
+
+		c.Agents.MaxBudgetUSD = budget
+	}
+
+	return nil
 }
 
 func overlayPercent(env map[string]string, name string, target *float64) error {
@@ -180,6 +210,15 @@ func (c Config) Validate() Problems {
 
 	if c.Agents.MaxConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
+	}
+
+	if c.Agents.MaxTurns < 0 {
+		problems = append(problems, refuse("agents.max_turns must be 0 (no cap) or more. Set it in %s or in %s.", runnersPath, envMaxTurns))
+	}
+
+	// The negated form also refuses NaN, which fails every comparison. An infinite budget is no number of dollars.
+	if !(c.Agents.MaxBudgetUSD >= 0) || math.IsInf(c.Agents.MaxBudgetUSD, 0) {
+		problems = append(problems, refuse("agents.max_budget_usd must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", runnersPath, envMaxBudget))
 	}
 
 	return append(problems, c.poolProblems(runnersPath)...)
