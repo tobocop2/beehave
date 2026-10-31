@@ -96,7 +96,7 @@ func TestWait_RefusesAFinalStateWhileTheHostHoldsUnbankedWork(t *testing.T) {
 	ssh.Plan("COMPLETED\n", "squeue")
 	ssh.Plan("./repo/.git\x00", "find")
 	ssh.Plan("", "for-each-ref")
-	ssh.PlanContaining("1111111111111111111111111111111111111111  refs/heads/main\n", "%(*objectname)")
+	ssh.PlanContaining("commit\t1111111111111111111111111111111111111111\t\t\trefs/heads/main\n", "%(objecttype)")
 	ssh.Plan("", "worktree", "list")
 	ssh.PlanResult(model.CommandResult{ExitCode: 1}, "config", "--get-regexp")
 
@@ -443,7 +443,7 @@ func TestCancel_BanksTheWorkOfTheCanceledJobBeforeTheSlotEnds(t *testing.T) {
 	ssh.Plan("CANCELLED\n", "squeue") //nolint:misspell // Slurm's spelling
 	ssh.Plan("./repo/.git\x00", "find")
 	ssh.Plan("", "for-each-ref")
-	ssh.PlanContaining("1111111111111111111111111111111111111111  refs/heads/main\n", "%(*objectname)")
+	ssh.PlanContaining("commit\t1111111111111111111111111111111111111111\t\t\trefs/heads/main\n", "%(objecttype)")
 	ssh.Plan("", "worktree", "list")
 	ssh.PlanResult(model.CommandResult{ExitCode: 1}, "config", "--get-regexp")
 

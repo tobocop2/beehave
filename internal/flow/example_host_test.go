@@ -63,8 +63,8 @@ func (f *fakeHosts) Teardown(ctx context.Context, project string) error {
 		joined := strings.Join(args, " ")
 
 		switch {
-		case strings.Contains(joined, "for-each-ref --format=%(objectname)") && f.unbanked:
-			return model.CommandResult{Stdout: hostUnsaved + "  refs/heads/item-7\n"}
+		case strings.Contains(joined, "for-each-ref --format=%(objecttype)") && f.unbanked:
+			return model.CommandResult{Stdout: "commit\t" + hostUnsaved + "\t\t\trefs/heads/item-7\n"}
 		case strings.Contains(joined, "config --get-regexp"):
 			return model.CommandResult{ExitCode: 1}
 		case strings.Contains(joined, "rev-list"):

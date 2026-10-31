@@ -388,7 +388,7 @@ func TestBank_RefusesWhenThePushFails(t *testing.T) { //nolint:paralleltest // s
 // scriptedRepo answers the reads of one repository with one unbanked branch.
 func scriptedRepo() *proctest.Scripted {
 	git := &proctest.Scripted{}
-	git.Plan("1111111111111111111111111111111111111111  refs/heads/main\n", "for-each-ref", "--format=%(objectname) %(*objectname) %(refname)")
+	git.Plan("commit\t1111111111111111111111111111111111111111\t\t\trefs/heads/main\n", "for-each-ref", refFormat)
 	git.Plan("", "--format=%(refname)")
 	git.Plan("", "worktree", "list")
 	git.PlanResult(model.CommandResult{ExitCode: 1}, "config", "--get-regexp")
@@ -418,7 +418,7 @@ func TestBanked_EveryGitReadThatFailsIsAnError(t *testing.T) {
 		words []string
 		stash bool
 	}{
-		{"refs", []string{"for-each-ref", "--format=%(objectname) %(*objectname) %(refname)"}, false},
+		{"refs", []string{"for-each-ref", refFormat}, false},
 		{"stash_probe", []string{"--format=%(refname)"}, false},
 		{"stash_log", []string{"reflog"}, true},
 		{"worktrees", []string{"worktree", "list"}, false},
@@ -456,6 +456,102 @@ func TestBanked_ReadsAStashLogAndSkipsAnUnbornWorktree(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 3)
 	assert.Equal(t, "stash@{1}", items[2].Ref)
+}
+
+func TestBanked_ATagOfATagResolvesToItsCommitWhateverTheGitVersionPeels(t *testing.T) {
+	t.Parallel()
+
+	const (
+		outerTag = "4444444444444444444444444444444444444444"
+		tagged   = "5555555555555555555555555555555555555555"
+	)
+
+	git := scriptedRepo()
+	// Git 2.43 peels one level in a for-each-ref field, so the listing alone never shows the commit of a tag of a tag.
+	git.Plan("tag\t"+outerTag+"\ttag\t7777777777777777777777777777777777777777\trefs/tags/outer\ncommit\t"+localTip+"\t\t\trefs/heads/main\n", "for-each-ref", refFormat)
+	git.Plan(tagged+"\n", "refs/tags/outer^{commit}")
+
+	items, err := host.Banked(t.Context(), git, []string{"/r"})
+
+	require.NoError(t, err)
+	assert.Contains(t, items, host.Unbanked{Repo: "/r", Ref: "refs/tags/outer", Commit: tagged})
+	assert.NotContains(t, items, host.Unbanked{Repo: "/r", Ref: "refs/tags/outer", Commit: outerTag})
+}
+
+func TestBanked_ATagOfATreeOrABlobHoldsNoCommitToBank(t *testing.T) {
+	t.Parallel()
+
+	git := scriptedRepo()
+	listing := "tag\t4444444444444444444444444444444444444444\ttree\t6666666666666666666666666666666666666666\trefs/tags/tree\n" +
+		"tag\t4444444444444444444444444444444444444444\tblob\t8888888888888888888888888888888888888888\trefs/tags/blob\n" +
+		"tag\t4444444444444444444444444444444444444444\ttag\t7777777777777777777777777777777777777777\trefs/tags/nested\n" +
+		"tree\t6666666666666666666666666666666666666666\t\t\trefs/tags/raw\n" +
+		"commit\t" + localTip + "\t\t\trefs/heads/main\n"
+	git.Plan(listing, "for-each-ref", refFormat)
+	git.PlanFail("", "refs/tags/nested^{commit}")
+
+	items, err := host.Banked(t.Context(), git, []string{"/r"})
+
+	require.NoError(t, err)
+	assert.Equal(t, []host.Unbanked{{Repo: "/r", Ref: "refs/heads/main", Commit: localTip}}, items)
+}
+
+func TestBanked_AListingLineThatCannotBeReadIsAnError(t *testing.T) {
+	t.Parallel()
+
+	git := scriptedRepo()
+	git.Plan("short line\n", "for-each-ref", refFormat)
+
+	_, err := host.Banked(t.Context(), git, []string{"/r"})
+
+	require.ErrorContains(t, err, "short line")
+}
+
+func TestBanked_ManyAnnotatedTagsNeedNoPeelCall(t *testing.T) {
+	t.Parallel()
+
+	const tags = 2000
+
+	var listing strings.Builder
+
+	for i := range tags {
+		fmt.Fprintf(&listing, "tag\t%040d\tcommit\t%040d\trefs/tags/v%d\n", i+1, i+1000000, i)
+	}
+
+	git := scriptedRepo()
+	git.Plan(listing.String(), "for-each-ref", refFormat)
+
+	items, err := host.Banked(t.Context(), git, []string{"/r"})
+
+	require.NoError(t, err)
+	assert.Equal(t, tags, len(items), "every tag commit is listed") //nolint:testifylint // Len would print 2000 items on failure
+	assert.Zero(t, countCalls(git, "rev-parse"), "an annotated tag of a commit needs no call per tag")
+}
+
+const refFormat = "--format=%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)%09%(refname)"
+
+func TestBanked_APeelThatFailsForAnyOtherReasonIsAnError(t *testing.T) {
+	t.Parallel()
+
+	git := scriptedRepo()
+	git.Plan("tag\t4444444444444444444444444444444444444444\ttag\t7777777777777777777777777777777777777777\trefs/tags/outer\n", "for-each-ref", refFormat)
+	git.PlanResult(model.CommandResult{ExitCode: 128, Stderr: "fatal"}, "refs/tags/outer^{commit}")
+
+	_, err := host.Banked(t.Context(), git, []string{"/r"})
+
+	require.ErrorContains(t, err, "exit 128")
+}
+
+func TestBanked_ARealTagOfATreeHoldsNoCommit(t *testing.T) { //nolint:paralleltest // sets the git environment
+	isolate(t)
+
+	repo := banked(t)
+	git(t, repo, "tag", "-a", "treetag", "-m", "tree", "HEAD^{tree}")
+
+	items, err := host.Banked(t.Context(), proc.NewExecRunner("git", ""), []string{repo})
+
+	require.NoError(t, err)
+	assert.Empty(t, items)
 }
 
 const localTip = "1111111111111111111111111111111111111111"
