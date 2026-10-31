@@ -209,6 +209,16 @@ func TestRunner_StopsOnTheTotalTimeout(t *testing.T) { //nolint:paralleltest // 
 	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
 }
 
+func TestRunner_TheTotalTimeoutKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	f.spec.Timeout = 2 * time.Second
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
+	assertGone(t, f.records)
+}
+
 // fakeClock stands in for the idle timer: the test decides when it fires.
 type fakeClock struct {
 	mu     sync.Mutex
@@ -408,7 +418,7 @@ func assertGone(t *testing.T, records string) {
 
 	pid, err := strconv.Atoi(record(t, records, "grandchild"))
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 30*time.Second, 50*time.Millisecond,
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, 10*time.Second, 50*time.Millisecond,
 		"the child %d is still running", pid)
 }
 

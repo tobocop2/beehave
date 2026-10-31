@@ -21,8 +21,8 @@ mode=$(cat "$here/mode" 2>/dev/null)
 case "$mode" in
 chatter) for i in 1 2 3 4 5 6; do echo "tick $i"; done ;;
 silent) sleep 30 ;;
-grand) sleep 30 & echo $! > "$here/grandchild.tmp"; mv "$here/grandchild.tmp" "$here/grandchild"; echo started; exit 0 ;;
-holdgrand) sleep 30 & echo $! > "$here/grandchild.tmp"; mv "$here/grandchild.tmp" "$here/grandchild"; sleep 30 ;;
+grand) sleep 120 & echo $! > "$here/grandchild.tmp"; mv "$here/grandchild.tmp" "$here/grandchild"; echo started; exit 0 ;;
+holdgrand) sleep 120 & echo $! > "$here/grandchild.tmp"; mv "$here/grandchild.tmp" "$here/grandchild"; sleep 30 ;;
 secret) echo "token is $CLAUDE_CODE_OAUTH_TOKEN and sk-ant-abcdef123456 here"; echo "err $CLAUDE_CODE_OAUTH_TOKEN" >&2; exit 3 ;;
 fail) echo "boom" >&2; exit 7 ;;
 partial) printf 'no newline at the end' ;;
