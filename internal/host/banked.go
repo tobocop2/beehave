@@ -14,7 +14,11 @@ const (
 	bankedRefSpace = "refs/heads/obee-banked/"
 	shortCommit    = 12
 	tipsPerCall    = 1000
-	peeledFields   = 3 // a ref line of an annotated tag: the tag object, its commit and the ref name
+	commitType     = "commit"
+	tagType        = "tag"
+	refFields      = 5
+	// refFormat prints, tab separated: the object type, the object name, the type and name one level down (empty for a commit), the ref name.
+	refFormat = "--format=%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)%09%(refname)"
 )
 
 // Unbanked is one commit on the host that no remote with a host part holds.
@@ -149,7 +153,7 @@ func run(ctx context.Context, git proc.Runner, repo string, args ...string) (str
 }
 
 func refCommits(ctx context.Context, git proc.Runner, repo string) ([]Unbanked, error) {
-	out, err := run(ctx, git, repo, "for-each-ref", "--format=%(objectname) %(*objectname) %(refname)", "refs/heads", "refs/tags")
+	out, err := run(ctx, git, repo, "for-each-ref", refFormat, "refs/heads", "refs/tags")
 	if err != nil {
 		return nil, err
 	}
@@ -157,18 +161,49 @@ func refCommits(ctx context.Context, git proc.Runner, repo string) ([]Unbanked, 
 	var found []Unbanked
 
 	for _, line := range lines(out) {
-		// %(*objectname) is empty for a ref that names a commit and is the commit of an annotated tag.
-		fields := strings.Fields(line)
-		commit, ref := fields[0], fields[len(fields)-1]
-
-		if len(fields) == peeledFields {
-			commit = fields[1]
+		item, err := refCommit(ctx, git, repo, strings.Split(line, "\t"))
+		if err != nil {
+			return nil, err
 		}
 
-		found = append(found, Unbanked{Ref: ref, Commit: commit})
+		if item.Commit != "" {
+			found = append(found, item)
+		}
 	}
 
 	return found, nil
+}
+
+// refCommit reads one for-each-ref line, split into fields. A ref that names a tree or a blob, or a tag that peels to one, holds no commit: the result has none.
+// A line with the wrong number of fields is an error: a ref that cannot be read may hold work, so the host is not called banked.
+func refCommit(ctx context.Context, git proc.Runner, repo string, fields []string) (Unbanked, error) {
+	if len(fields) != refFields {
+		return Unbanked{}, fmt.Errorf("git for-each-ref in %s: cannot read the line %q", repo, strings.Join(fields, "\t"))
+	}
+
+	kind, object, peeledKind, peeledObject, ref := fields[0], fields[1], fields[2], fields[3], fields[4]
+
+	switch {
+	case kind == commitType:
+		return Unbanked{Ref: ref, Commit: object}, nil
+	case kind == tagType && peeledKind == commitType:
+		return Unbanked{Ref: ref, Commit: peeledObject}, nil
+	case kind == tagType && peeledKind == tagType:
+		return peelToCommit(ctx, git, repo, ref)
+	default:
+		return Unbanked{}, nil
+	}
+}
+
+// peelToCommit asks git for the commit of a tag of a tag. Git 2.43 peels one level in a for-each-ref field; only ^{commit} peels every level.
+// With --quiet, exit code 1 means the ref does not peel to a commit; any other failure is a real error.
+func peelToCommit(ctx context.Context, git proc.Runner, repo, ref string) (Unbanked, error) {
+	peeled := git.Run(ctx, []string{"-C", repo, "rev-parse", "--verify", "--quiet", ref + "^{commit}"})
+	if peeled.ExitCode > 1 {
+		return Unbanked{}, fmt.Errorf("git rev-parse in %s: exit %d: %s", repo, peeled.ExitCode, strings.TrimSpace(peeled.Stderr))
+	}
+
+	return Unbanked{Ref: ref, Commit: strings.TrimSpace(peeled.Stdout)}, nil
 }
 
 func stashCommits(ctx context.Context, git proc.Runner, repo string) ([]Unbanked, error) {

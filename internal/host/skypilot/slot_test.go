@@ -260,7 +260,7 @@ func TestWait_ReturnsTheStateTogetherWithTheBankError(t *testing.T) {
 	ssh.Plan("", "for-each-ref")
 	ssh.Plan("", "worktree", "list")
 	ssh.PlanResult(model.CommandResult{ExitCode: 1}, "config", "--get-regexp")
-	ssh.PlanContaining("1111111111111111111111111111111111111111  refs/heads/main\n", "%(*objectname)")
+	ssh.PlanContaining("commit\t1111111111111111111111111111111111111111\t\t\trefs/heads/main\n", "%(objecttype)")
 
 	got, err := h.Wait(deadline(t), "5-n")
 

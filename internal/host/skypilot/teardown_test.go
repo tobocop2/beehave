@@ -41,7 +41,7 @@ func TestTeardown_KeepsTheClusterWhileTheHeadNodeHoldsUnbankedWork(t *testing.T)
 	t.Parallel()
 
 	h, sky, ssh := newTeardown(t, "")
-	ssh.PlanContaining("1111111111111111111111111111111111111111  refs/heads/main\n", "%(*objectname)")
+	ssh.PlanContaining("commit\t1111111111111111111111111111111111111111\t\t\trefs/heads/main\n", "%(objecttype)")
 
 	err := h.Teardown(deadline(t))
 
