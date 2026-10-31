@@ -55,8 +55,21 @@ type fakeRemote struct {
 	state     model.JobState
 	submitErr error
 	waitErr   error
+	root      string
+	rootErr   error
 	submitted []model.JobSpec
 	waited    []model.JobID
+}
+
+const defaultRoot = "/home/ob"
+
+// WorkRoot returns the root of the fake, or defaultRoot when the test sets none.
+func (f *fakeRemote) WorkRoot(context.Context) (string, error) {
+	if f.root == "" {
+		return defaultRoot, f.rootErr
+	}
+
+	return f.root, f.rootErr
 }
 
 func (f *fakeRemote) Submit(_ context.Context, spec model.JobSpec) (model.JobID, error) {

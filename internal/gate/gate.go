@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/config"
@@ -20,6 +21,15 @@ const (
 
 	// safeWordRune holds the characters that a shell word may hold without a quote.
 	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
+
+	// plainRune holds the characters of a word in the folder name of a clone.
+	plainRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+
+	// clonePrefix starts the name of every clone folder of a host gate.
+	clonePrefix = "obee-gate-"
+
+	// cloneMarker is the line that the job writes when the gate has ended, before it deletes the clone.
+	cloneMarker = "obee-gate-done"
 )
 
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
@@ -33,6 +43,9 @@ var ErrNoHead = errors.New("the resumed gate job has no head")
 
 // ErrNoCloneURL is the cause when a host gate has no URL to clone the repository from.
 var ErrNoCloneURL = errors.New("the host gate has no clone URL")
+
+// ErrCloneOutsideRoot is the cause when the clone folder of a host gate would not be directly below the work root of the host.
+var ErrCloneOutsideRoot = errors.New("the clone folder is not below the work root of the host")
 
 // Shell runs a command line in dir and returns its output and exit code. A signal ends it as 128 plus the signal.
 type Shell func(ctx context.Context, dir, command string) (string, int)
@@ -51,6 +64,7 @@ type Tree func(ctx context.Context, dir string) (State, error)
 type Remote interface {
 	Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error)
 	Wait(ctx context.Context, id model.JobID) (model.JobState, error)
+	WorkRoot(ctx context.Context) (string, error)
 }
 
 // Hosts returns the build host of a project.
@@ -269,7 +283,12 @@ func job(ctx context.Context, host Remote, request Request, head string) (model.
 func submit(ctx context.Context, host Remote, request Request, head string) (model.JobID, error) {
 	project := request.Project
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.CloneURL, head)})
+	clone, err := cloneOn(ctx, host, project, head)
+	if err != nil {
+		return "", err
+	}
+
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.CloneURL, head, clone)})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}
@@ -281,15 +300,49 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 	return id, nil
 }
 
-// hostCommand is the command line that makes the host gate the commit that obee sends: a fresh folder under the login folder of the host,
-// a trap that removes it when the shell exits and keeps the exit status, a clone of the repository at cloneURL, a detached checkout of head,
-// a check that the checkout is head, and then the gate command.
+// cloneOn reads the work root of the host and returns the clone folder of the project for head below it.
+func cloneOn(ctx context.Context, host Remote, project model.Project, head string) (string, error) {
+	root, err := host.WorkRoot(ctx)
+	if err != nil {
+		return "", fmt.Errorf("read the work root of %s: %w", project.BuildHost, err)
+	}
+
+	return clonePath(root, project.Name, head)
+}
+
+// clonePath returns the folder that a host gate clones into: a name of the project and the head under the work root of the host.
+// The work root must be one absolute path in its clean form, and the name and the head must be plain words, so the folder is always
+// below the work root and the command can delete it by that literal path. Anything else is refused.
+func clonePath(root, name, head string) (string, error) {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root || root == string(filepath.Separator) {
+		return "", fmt.Errorf("%w: the work root %q is not one absolute path below the root folder", ErrCloneOutsideRoot, root)
+	}
+
+	if !plainWord(name) || !plainWord(head) {
+		return "", fmt.Errorf("%w: the project %q or the head %q has a character that a folder name cannot hold", ErrCloneOutsideRoot, name, head)
+	}
+
+	return root + "/" + clonePrefix + name + "-" + head, nil
+}
+
+// plainWord is true for a word of letters, digits, dot, underscore and hyphen that is not a dot word.
+func plainWord(word string) bool {
+	return word != "" && !strings.HasPrefix(word, ".") && strings.Trim(word, plainRune) == ""
+}
+
+// hostCommand is the command line that makes the host gate the commit that obee sends: a clone folder at the literal path clone,
+// a clone of the repository at cloneURL, a detached checkout of head, a check that the checkout is head, and then the gate command.
+// A trap on exit, hang-up, interrupt and terminate writes the marker line and then deletes the folder by its literal path, so the result
+// is written first and the folder goes whether the gate passes, fails or is stopped. The exit status of the gate is kept.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
-func hostCommand(project model.Project, cloneURL, head string) string {
+func hostCommand(project model.Project, cloneURL, head, clone string) string {
+	path := quote(clone)
 	words := []string{
-		`dir=$(mktemp -d "$HOME/obee-gate.XXXXXX")`,
-		`trap 'rm -rf "$dir"' EXIT`,
-		`cd "$dir"`,
+		"trap " + quote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
+		"trap 'exit 143' HUP INT TERM",
+		"rm -rf " + path,
+		"mkdir " + path,
+		"cd " + path,
 		"git clone -- " + quote(cloneURL) + " tree",
 		"cd tree",
 		"git checkout --detach " + quote(head),
