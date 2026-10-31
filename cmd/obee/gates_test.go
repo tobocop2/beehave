@@ -140,7 +140,7 @@ func TestProjectGate_ALocalGateReportsAPassOnTheHeadOfTheWorktree(t *testing.T) 
 	got, err := gate.Run(t.Context(), "p", "1")
 
 	require.NoError(t, err)
-	assert.Equal(t, flow.GateResult{Passed: true, Report: "ok", Head: "abc123", Tree: "tree-of-abc123"}, got)
+	assert.Equal(t, flow.GateResult{Passed: true, Report: "ok", Head: "abc123", Tree: "tree-of-abc123", Steps: []flow.GateStep{{Name: "command", Status: "pass"}}}, got)
 	assert.Equal(t, []string{"git", "git", "sh", "git", "git"}, calls.binaries, "the tree is read before the gate runs and again after it")
 	assert.Equal(t, []string{"-c", "make check"}, calls.args[2])
 	assert.Equal(t, "/tree", calls.dirs[2])
@@ -235,7 +235,12 @@ func TestProjectGate_AHostGateChecksOutTheHeadItReportsAndRunsNothingHere(t *tes
 			got, err := gate.Run(t.Context(), "p", "1")
 
 			require.NoError(t, err)
-			assert.Equal(t, flow.GateResult{Passed: test.want, Report: test.report, Head: "abc123", Tree: "tree-of-abc123"}, got)
+			status := "fail"
+			if test.want {
+				status = "pass"
+			}
+
+			assert.Equal(t, flow.GateResult{Passed: test.want, Report: test.report, Head: "abc123", Tree: "tree-of-abc123", Steps: []flow.GateStep{{Name: "command", Status: status}}}, got)
 			assert.NotContains(t, calls.binaries, "sh", "the gate runs on the host and never here")
 			assert.Contains(t, hosted.spec.Command, "git clone -- https://example.test/repo.git tree")
 			assert.Contains(t, hosted.spec.Command, "git checkout --detach abc123")

@@ -220,7 +220,7 @@ func (g packageGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
 		return GateResult{}, err
 	}
 
-	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: commandStep(result.Passed)}, nil
 }
 
 // zeroTestGate runs the real gate package on a local project that sets test_report. The gate command exits 0 and writes a report with no test.
@@ -256,7 +256,7 @@ func (g zeroTestGate) Run(ctx context.Context, _, _ string) (GateResult, error) 
 		return GateResult{}, err
 	}
 
-	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: commandStep(result.Passed)}, nil
 }
 
 func TestExample_AGateThatExitsZeroWithZeroTestsDoesNotPassAndTheFixGetsTheReason(t *testing.T) {

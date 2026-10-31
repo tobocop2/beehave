@@ -95,7 +95,7 @@ func TestRun_ALocalGateRunsTheProjectGateInTheTreeAndPassesOnExitZero(t *testing
 
 	got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/work/tree"})
 	require.NoError(t, err)
-	assert.Equal(t, gate.Result{Passed: true, Report: "all green\n", Head: headA}, got)
+	assert.Equal(t, gate.Result{Passed: true, Report: "all green\n", Head: headA, Steps: passed}, got)
 	assert.Equal(t, "/work/tree", shell.dir)
 	assert.Equal(t, "make check", shell.ran)
 }
@@ -109,7 +109,7 @@ func TestRun_ALocalGateThatExitsNonZeroFailsWithItsOutput(t *testing.T) {
 
 		got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
 		require.NoError(t, err)
-		assert.Equal(t, gate.Result{Report: "lint: 3 problems\n", Head: headA}, got, "exit %d", code)
+		assert.Equal(t, gate.Result{Report: "lint: 3 problems\n", Head: headA, Steps: failed}, got, "exit %d", code)
 	}
 }
 
@@ -219,7 +219,7 @@ func TestRun_AProjectOnAClusterSendsTheGateToTheHost(t *testing.T) {
 
 	got, err := g.Run(context.Background(), request)
 	require.NoError(t, err)
-	assert.Equal(t, gate.Result{Passed: true, Head: headA}, got)
+	assert.Equal(t, gate.Result{Passed: true, Head: headA, Steps: passed}, got)
 	require.Len(t, remote.submitted, 1)
 	assert.Equal(t, "gate-demo", remote.submitted[0].Name)
 	assert.Contains(t, remote.submitted[0].Command, "make check")
@@ -255,7 +255,7 @@ func TestRun_AResumedHostGateJudgesTheHeadItWasSubmittedWithNotTheHeadOfTheTree(
 
 	got, err := g.Run(context.Background(), request)
 	require.NoError(t, err)
-	assert.Equal(t, gate.Result{Passed: true, Head: headB}, got)
+	assert.Equal(t, gate.Result{Passed: true, Head: headB, Steps: passed}, got)
 }
 
 func TestRun_TheResultHoldsTheTreeOfTheGatedHeadAndNoTreeForAHeadItDidNotRead(t *testing.T) {
@@ -264,7 +264,7 @@ func TestRun_TheResultHoldsTheTreeOfTheGatedHeadAndNoTreeForAHeadItDidNotRead(t 
 	local := build(&fakeShell{}, &fakeTree{states: []gate.State{{Head: headA, Tree: "tree-a", Clean: true}}}, &fakeRemote{})
 	got, err := local.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/work/tree"})
 	require.NoError(t, err)
-	assert.Equal(t, gate.Result{Passed: true, Head: headA, Tree: "tree-a"}, got)
+	assert.Equal(t, gate.Result{Passed: true, Head: headA, Tree: "tree-a", Steps: passed}, got)
 
 	remote := &fakeRemote{state: model.JobSucceeded}
 	resumed := build(&fakeShell{}, &fakeTree{states: []gate.State{{Head: headA, Tree: "tree-a", Clean: true}}}, remote)
@@ -273,7 +273,7 @@ func TestRun_TheResultHoldsTheTreeOfTheGatedHeadAndNoTreeForAHeadItDidNotRead(t 
 
 	got, err = resumed.Run(context.Background(), request)
 	require.NoError(t, err)
-	assert.Equal(t, gate.Result{Passed: true, Head: headB}, got, "the tree of another head is not the tree that the job judged")
+	assert.Equal(t, gate.Result{Passed: true, Head: headB, Steps: passed}, got, "the tree of another head is not the tree that the job judged")
 }
 
 func TestRun_AResumeWithoutTheHeadItWasSubmittedWithIsRefusedAndReadsNoJob(t *testing.T) {

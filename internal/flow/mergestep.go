@@ -7,6 +7,7 @@ import (
 
 	"go.starlark.net/starlark"
 
+	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -47,26 +48,87 @@ type mergeArgs struct {
 
 // mergeCall unpacks the arguments of the merge builtin.
 func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (m mergeArgs, err error) {
-	var own, forbid, tree starlark.Value
+	var own, forbid, tree, steps starlark.Value
 
 	children, s := "refuse", &m.settings
 
 	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		headKeyword: &m.head, "repo": &s.Repo, baseKeyword: &s.Base, holdKeyword: &s.Hold, ownKeyword: &own, "approved": &s.Approved, "tree": &tree,
-		"forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
+		"steps": &steps, "forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
 	})
 	if err != nil {
 		return m, err
 	}
 
 	if m.merges {
-		if s.GatedTree, err = gatedTree(tree); err != nil {
+		if s.GatedTree, err = mergeProof(tree, steps); err != nil {
 			return m, err
 		}
 	}
 
 	return m, s.read(children, forbid, own)
 }
+
+// mergeProof reads the `tree` and `steps` arguments of a merge call that merges. It returns the gated tree.
+func mergeProof(tree, steps starlark.Value) (string, error) {
+	gated, err := gatedTree(tree)
+	if err != nil {
+		return "", err
+	}
+
+	return gated, everyStepPassed(steps)
+}
+
+// everyStepPassed reads the `steps` argument of a merge call: the steps of the gate at the head. A call that leaves it out asks for no check.
+// A list with no step is refused, and so is a step that is not a pass. An unknown step is not a pass.
+func everyStepPassed(v starlark.Value) error {
+	if v == nil {
+		return nil
+	}
+
+	steps, err := toGo[[]any](v)
+	if err != nil {
+		return errStepsShape
+	}
+
+	if len(steps) == 0 {
+		return errors.New("`steps` is empty. The gate recorded no step for this head, so its result is unknown. Leave out `steps` to merge without the check")
+	}
+
+	for _, each := range steps {
+		if err := stepPassed(each); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// stepPassed checks one step of the `steps` argument of a merge call.
+func stepPassed(each any) error {
+	step, ok := each.(map[string]any)
+	name, named := step["name"].(string)
+	status, stated := step[statusKeyword].(string)
+
+	if !ok || !named || !stated {
+		return errStepsShape
+	}
+
+	if status != passStatus {
+		return fmt.Errorf("the gate step %q is %s. A merge needs every step of the gate to pass at the head. Run the gate again", name, status)
+	}
+
+	return nil
+}
+
+// The statuses of a gate step, as the gate package names them.
+const (
+	passStatus = string(gatepkg.StatusPass)
+	failStatus = string(gatepkg.StatusFail)
+)
+
+// errStepsShape is returned when the `steps` argument of a merge call is not the list that a gate records.
+var errStepsShape = errors.New("`steps` must be the steps of a gate. Pass `steps = <gate>.steps`")
 
 // gatedTree reads the `tree` argument of a merge call. A call that leaves it out asks for no proof. A call that sets it to the empty text is refused:
 // a program gate, or a resumed host job, records no tree, and the proof would be skipped without a word.

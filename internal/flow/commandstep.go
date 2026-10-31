@@ -9,6 +9,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/obee/internal/agent"
+	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -219,7 +220,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 			return nil, err
 		}
 
-		return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report), nil
+		return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), nil
 	}
 
 	out, err := s.e.deps.Commands.Run(ctx, request)
@@ -227,7 +228,12 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 		return nil, err
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout), nil
+	status := passStatus
+	if out.RC != 0 {
+		status = failStatus
+	}
+
+	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), nil
 }
 
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.

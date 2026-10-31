@@ -198,6 +198,10 @@ type treeGate struct {
 	trees []string
 	// lie, when set, is the tree that the gate reports in place of the tree it ran on.
 	lie string
+	// unknownStep, when set, makes the gate report Passed with a step whose result is unknown.
+	unknownStep bool
+	// noSteps, when set, makes the gate report Passed with an empty, non-nil list of steps.
+	noSteps bool
 }
 
 func (g *treeGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
@@ -210,14 +214,28 @@ func (g *treeGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
 	g.mu.Unlock()
 
 	g.mu.Lock()
-	lie := g.lie
+	lie, unknown, empty := g.lie, g.unknownStep, g.noSteps
 	g.mu.Unlock()
 
 	if lie != "" {
 		tree = lie
 	}
 
-	return GateResult{Passed: passed, Report: "gate on " + tree, Head: head, Tree: tree}, nil
+	status := "fail"
+	if passed {
+		status = "pass"
+	}
+
+	steps := []GateStep{{Name: "command", Status: status}}
+	if unknown {
+		steps = append(steps, GateStep{Name: "tests", Status: "unknown"})
+	}
+
+	if empty {
+		steps = []GateStep{}
+	}
+
+	return GateResult{Passed: passed, Report: "gate on " + tree, Head: head, Tree: tree, Steps: steps}, nil
 }
 
 func (g *treeGate) ran() []string {

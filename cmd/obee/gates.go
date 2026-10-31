@@ -44,7 +44,17 @@ func (g projectGate) Run(ctx context.Context, project, item string) (flow.GateRe
 		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
 	}
 
-	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree}, nil
+	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: gateSteps(result.Steps)}, nil
+}
+
+// gateSteps gives the steps of a gate result to the engine.
+func gateSteps(steps []gate.Step) []flow.GateStep {
+	out := make([]flow.GateStep, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, flow.GateStep{Name: s.Name, Status: string(s.Status)})
+	}
+
+	return out
 }
 
 // request names the project, the worktree of the item and, for a project with a build host, the URL that the host clones the repository from.

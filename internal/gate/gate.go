@@ -58,11 +58,13 @@ type Hosts func(project model.Project) (Remote, error)
 
 // Result is the outcome of a gate that ran. Report is the tail of its output. Head is the commit the gate judged.
 // Tree is the tree id of that commit, or empty when the run did not read the tree of the commit it judged.
+// Steps holds one result for each step. Passed is true only when every step is a pass.
 type Result struct {
 	Passed bool
 	Report string
 	Head   string
 	Tree   string
+	Steps  []Step
 }
 
 // Request is one gate run. Resume names a host job that an earlier run submitted; the run reads that job again and submits none.
@@ -149,16 +151,51 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
 	}
 
-	result := Result{Passed: code == 0, Report: tail(output), Head: head}
+	result := Result{Report: tail(output), Head: head, Steps: []Step{{Name: StepCommand, Status: exitStatus(code)}}}
 
-	if result.Passed && request.Project.TestReport != "" {
-		if reason := judge(request.Dir, request.Project.TestReport, before); reason != "" {
-			result.Passed = false
-			result.Report = tail(output + "\n" + reason + "\n")
+	if request.Project.TestReport != "" {
+		result = withTestsStep(result, request, code, output, before)
+	}
+
+	result.Passed = allPass(result.Steps)
+
+	return result, nil
+}
+
+// exitStatus is the result of a command from its exit code.
+func exitStatus(code int) Status {
+	if code == 0 {
+		return StatusPass
+	}
+
+	return StatusFail
+}
+
+// withTestsStep adds the tests step. The report is read only after a gate that exited 0. Before that, the tests step has no result line.
+func withTestsStep(result Result, request Request, code int, output string, before snapshot) Result {
+	tests, reason := StatusUnknown, ""
+	if code == 0 {
+		tests, reason = judge(request.Dir, request.Project.TestReport, before)
+	}
+
+	if reason != "" {
+		result.Report = tail(output + "\n" + reason + "\n")
+	}
+
+	result.Steps = append(result.Steps, Step{Name: StepTests, Status: tests})
+
+	return result
+}
+
+// allPass is true when every step is a pass. A list with no step is not a pass.
+func allPass(steps []Step) bool {
+	for _, s := range steps {
+		if s.Status != StatusPass {
+			return false
 		}
 	}
 
-	return result, nil
+	return len(steps) > 0
 }
 
 func (g Gate) remote(ctx context.Context, request Request, head string) (Result, error) {
@@ -258,9 +295,9 @@ func quote(word string) string {
 func verdict(cluster string, state model.JobState) (Result, error) {
 	switch state {
 	case model.JobSucceeded:
-		return Result{Passed: true}, nil
+		return Result{Passed: true, Steps: []Step{{Name: StepCommand, Status: StatusPass}}}, nil
 	case model.JobFailed:
-		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host."}, nil
+		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: []Step{{Name: StepCommand, Status: StatusFail}}}, nil
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown:
 	}
 

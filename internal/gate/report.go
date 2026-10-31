@@ -150,16 +150,17 @@ func (s suite) count() int {
 	return own + sum(s.Suites)
 }
 
-// judge applies the test report of the project to a gate that exited 0. It returns the reason that the gate fails, or an empty string.
-func judge(dir, pattern string, before snapshot) string {
+// judge reads the test report of the project after a gate that exited 0. It returns the status of the tests step and, when the step is not a pass,
+// the reason. A report that is missing, stale, not valid or empty is no result line, so the step is unknown.
+func judge(dir, pattern string, before snapshot) (Status, string) {
 	count, err := countTests(dir, pattern, before)
 	if err != nil {
-		return err.Error()
+		return StatusUnknown, err.Error()
 	}
 
 	if count == 0 {
-		return fmt.Sprintf("%v: the reports that match the test_report glob %q hold 0 tests", ErrNoTests, pattern)
+		return StatusUnknown, fmt.Sprintf("%v: the reports that match the test_report glob %q hold 0 tests", ErrNoTests, pattern)
 	}
 
-	return ""
+	return StatusPass, ""
 }

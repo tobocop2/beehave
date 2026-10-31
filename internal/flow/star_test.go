@@ -232,7 +232,7 @@ const goldenFlow = `def main(item):
     merge(name = "m", head = checked.head)
 `
 
-// goldenSteps are the step names that goldenFlow records under stepsVersion star3.
+// goldenSteps are the step names that goldenFlow records under stepsVersion star4.
 // A change to this list is a change to the sequence of a builtin: bump stepsVersion in the same commit.
 var goldenSteps = []string{
 	"env:HOME#1", "command:c#1", "gate:g#1",
@@ -257,7 +257,7 @@ func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t
 	eventually(t, func() bool { return client.Answer(testItem, "yes") == nil })
 
 	require.NoError(t, (<-done).err)
-	assert.Equal(t, "star3", stepsVersion)
+	assert.Equal(t, "star4", stepsVersion)
 	assert.Equal(t, goldenSteps, stepNames(t, engine), "the step names changed: bump stepsVersion and update the list")
 }
 
@@ -269,7 +269,7 @@ func TestStrandedError_ARunStoredUnderTheBareVersionNamesTheOlderStepFormat(t *t
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "older step format, stored as version v1, and this is v1+star3")
+	assert.Contains(t, err.Error(), "older step format, stored as version v1, and this is v1+star4")
 	assert.NotContains(t, err.Error(), "Start version")
 }
 
@@ -281,7 +281,7 @@ func TestStrandedError_ASpawnedRunStoredBeforeTheHoldStepIsRefusedNotReplayed(t 
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star2 and this is v1+star3", "a run from before the hold:start step cannot replay against the new step list")
+	assert.Contains(t, err.Error(), "started under version v1+star2 and this is v1+star4", "a run from before the hold:start step cannot replay against the new step list")
 }
 
 func TestRunStar_AChangedFileRefusesTheReplayWithBothHashes(t *testing.T) {
