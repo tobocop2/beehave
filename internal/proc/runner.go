@@ -5,10 +5,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -36,14 +39,37 @@ type Runner interface {
 // ExecRunner runs a binary found on PATH. A zero Timeout means no limit. Env holds NAME=value pairs that the command gets on top of its base environment.
 // The base environment is that of the process, unless Only is not nil: then it is Only, and no variable of the process reaches the command.
 // Stdin is the text that the command reads. An empty Stdin is an empty input.
+// MaxNewProcesses sets the process limit of the user to the count of the user at the start plus MaxNewProcesses. Zero means no cap.
+// The kernel counts every process of the user, not only those of the command, so the cap is shared with the other programs of the user.
+// A value below about 10 is not exact on a busy machine, because other programs start and end processes while the command runs.
+// A user with root rights has no cap. On Linux, the count and the kernel count each thread of the user.
 type ExecRunner struct {
-	Binary  string
-	Dir     string
-	Timeout time.Duration
-	Env     []string
-	Only    []string
-	Stdin   string
+	Binary          string
+	Dir             string
+	Timeout         time.Duration
+	Env             []string
+	Only            []string
+	Stdin           string
+	MaxNewProcesses int
+
+	// count returns the count of the processes of the user. Nil means the count of the system: ps on macOS, /proc on Linux. Tests set it with WithCount.
+	count func() (int, error)
+
+	// abs makes a path absolute. Nil means filepath.Abs. Tests set it with WithAbs.
+	abs func(string) (string, error)
 }
+
+// ExitCapFailed is the exit code of a call whose process cap could not be counted or set. The command did not start.
+// The result holds the cause in SetupErr. The exit code alone does not tell this failure from a command that exits with 125.
+const ExitCapFailed = 125
+
+// capScript sets the process limit of the user to $1, then replaces the shell with the command.
+// The error of ulimit goes to file descriptor 3, a pipe that only this script writes. The script closes it before exec, so the command never holds it.
+// Text on that pipe means the limit was not set. The count is made before the start, in Go, so no count tool is looked up in the PATH of the request.
+// The exit code in the script is ExitCapFailed.
+const capScript = `ulimit -u "$1" 2>&3 || exit 125
+shift
+exec "$@" 3>&-`
 
 // NewExecRunner returns a runner for the binary in dir that stops a call after DefaultTimeout.
 func NewExecRunner(binary, dir string) ExecRunner {
@@ -103,26 +129,160 @@ func KillGroup(cmd *exec.Cmd) error {
 }
 
 func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandResult {
-	cmd := GroupCommand(ctx, r.Binary, args, r.Dir)
+	cmd, capped, err := r.command(ctx, args)
+	if err != nil {
+		return model.CommandResult{ExitCode: ExitCapFailed, SetupErr: err}
+	}
+
 	if cmd.Err != nil {
 		return model.CommandResult{ExitCode: exitNotFound, Stderr: r.Binary + ": command not found"}
 	}
 
 	r.feed(cmd)
 
+	return r.collect(ctx, cmd, capped)
+}
+
+// collect runs cmd to its end and returns its result. With a cap, cmd gets a pipe as file descriptor 3.
+// Text on that pipe means the script did not set the limit: the result then holds it in SetupErr, and nothing else.
+func (r ExecRunner) collect(ctx context.Context, cmd *exec.Cmd, capped bool) model.CommandResult {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 
-	code, note := exitCodeOf(ctx, cmd.Run())
-	if note != "" {
-		if stderr.Len() > 0 && !bytes.HasSuffix(stderr.Bytes(), []byte("\n")) {
-			stderr.WriteString("\n")
-		}
+	read, err := runWithPipe(cmd, capped)
 
-		stderr.WriteString(r.Binary + ": " + note)
+	if cause := pipeError(read); cause != nil {
+		return model.CommandResult{ExitCode: ExitCapFailed, SetupErr: fmt.Errorf("could not set max_new_processes = %d: %w", r.MaxNewProcesses, cause)}
 	}
 
+	code, note := exitCodeOf(ctx, err)
+	addNote(&stderr, r.Binary, note)
+
 	return model.CommandResult{ExitCode: code, Stdout: stdout.String(), Stderr: stderr.String()}
+}
+
+// runWithPipe runs cmd to its end. With a cap, cmd gets the write end of a pipe as file descriptor 3, and the read end is returned. Without a cap, the read end is nil.
+// The parent closes its copy of the write end after the run, so a read of the returned end stops at the end of the pipe.
+func runWithPipe(cmd *exec.Cmd, capped bool) (*os.File, error) {
+	var read, write *os.File
+
+	var err error
+
+	if capped {
+		read, write, err = os.Pipe()
+		cmd.ExtraFiles = []*os.File{write}
+	}
+
+	if err == nil {
+		err = cmd.Run()
+	}
+
+	_ = write.Close()
+
+	return read, err
+}
+
+// pipeError reads read to its end and closes it. It returns the text as an error, or nil for an empty pipe or no pipe.
+// The call comes after the command ends. At that time no process holds the write end: the script closes it before exec, and the parent has closed its copy. So the read ends at the end of the pipe.
+func pipeError(read *os.File) error {
+	if read == nil {
+		return nil
+	}
+
+	data, err := io.ReadAll(read)
+	_ = read.Close()
+
+	return errors.Join(err, textError(strings.TrimSpace(string(data))))
+}
+
+// textError returns an error that holds text, or nil for an empty text.
+func textError(text string) error {
+	if text == "" {
+		return nil
+	}
+
+	return errors.New(text)
+}
+
+// addNote ends stderr with a line that names the binary and the note, when there is a note.
+func addNote(stderr *bytes.Buffer, binary, note string) {
+	if note == "" {
+		return
+	}
+
+	if stderr.Len() > 0 && !bytes.HasSuffix(stderr.Bytes(), []byte("\n")) {
+		stderr.WriteString("\n")
+	}
+
+	stderr.WriteString(binary + ": " + note)
+}
+
+// command returns the command to start, and whether it is the shell of the cap. With a cap, it counts the processes of the user, then returns a shell that sets the limit and runs the binary.
+// A binary that is not found keeps its name, so the call reads as not found and not as a shell failure.
+func (r ExecRunner) command(ctx context.Context, args []string) (*exec.Cmd, bool, error) {
+	if r.MaxNewProcesses > 0 {
+		cmd, err := r.cappedCommand(ctx, args)
+		if cmd != nil || err != nil {
+			return cmd, cmd != nil, err
+		}
+	}
+
+	return GroupCommand(ctx, r.Binary, args, r.Dir), false, nil
+}
+
+// cappedCommand returns the shell of the cap for a binary that is found. It returns nil and no error for a binary that is not found.
+func (r ExecRunner) cappedCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
+	target, err := r.resolved()
+	if err != nil {
+		return nil, err
+	}
+
+	found, err := exec.LookPath(target)
+	if err != nil {
+		return nil, nil //nolint:nilerr // a binary that is not found is reported by the plain command
+	}
+
+	limit, err := r.limit()
+	if err != nil {
+		return nil, err
+	}
+
+	return GroupCommand(ctx, "/bin/sh", append([]string{"-c", capScript, "sh", strconv.Itoa(limit), found}, args...), r.Dir), nil
+}
+
+// resolved returns the binary to look up. A program path with a separator is relative to Dir, because the program runs there, so the lookup joins it to Dir and makes it absolute.
+// If the path cannot be made absolute, the call fails: a capped call must not run without its cap.
+func (r ExecRunner) resolved() (string, error) {
+	if r.Dir == "" || filepath.IsAbs(r.Binary) || filepath.Base(r.Binary) == r.Binary {
+		return r.Binary, nil
+	}
+
+	abs := r.abs
+	if abs == nil {
+		abs = filepath.Abs
+	}
+
+	path, err := abs(filepath.Join(r.Dir, r.Binary))
+	if err != nil {
+		return "", fmt.Errorf("could not resolve %s in %s: %w", r.Binary, r.Dir, err)
+	}
+
+	return path, nil
+}
+
+// limit returns the process limit to set:the count of the user now plus MaxNewProcesses.
+func (r ExecRunner) limit() (int, error) {
+	count := r.count
+	if count == nil {
+		count = userProcesses
+	}
+
+	now, err := count()
+	if err != nil {
+		return 0, fmt.Errorf("could not count the user's processes: %w", err)
+	}
+
+	return now + r.MaxNewProcesses, nil
 }
 
 // feed sets the environment and the stdin of cmd. An empty Stdin leaves the input empty (the null device).

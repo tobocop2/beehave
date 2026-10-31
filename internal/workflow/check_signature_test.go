@@ -24,7 +24,11 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
 		{"batch_merge unknown keyword", `batch_merge(prs = [], base = "b", repo = "r", name = "n", limit = 2)`, "batch_merge takes no argument limit"},
 		{"batch_merge missing base", `batch_merge(prs = [], repo = "r", name = "n")`, "batch_merge needs the `base` keyword"},
-		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, name."},
+		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, name."},
+		{"command cap as text", `command(run = ["a"], max_new_processes = "5")`, "max_new_processes must be an int, not a text."},
+		{"command cap of zero", `command(run = ["a"], max_new_processes = 0)`, "max_new_processes is 0. Write a whole number from 1 to 100000."},
+		{"command cap below zero", `command(run = ["a"], max_new_processes = -3)`, "max_new_processes is -3. Write a whole number from 1 to 100000."},
+		{"command cap too large", `command(run = ["a"], max_new_processes = 100001)`, "max_new_processes is 100001. Write a whole number from 1 to 100000."},
 		{"command missing run", `command(name = "n")`, "command needs the `run` keyword"},
 		{"command text for a list", `command(run = "ls")`, "run must be a list, not a text."},
 		{"command list for a dict", `command(run = ["a"], env = ["A=b"])`, "env must be a dict, not a list."},
@@ -83,6 +87,10 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 		`agent("p", "m", forbid_commands = ["protected-path"], protect_paths = ["/own/checkout"])`,
 		`batch_merge([], "b", "r", name = "n", gate_run = ["make"])`,
 		`command(["a"], env = {"A": "b"}, stop_on_rc = [1], name = "n")`,
+		`command(["a"], max_new_processes = 50)`,
+		`command(["a"], max_new_processes = len(item))`,
+		`command(["a"], max_new_processes = 2.5)`,
+		`command(["a"], max_new_processes = +3)`,
 		`env("HOME")`,
 		`gate(run = ["a"], head = "h")`,
 		`gather([], "raise")`,
@@ -134,18 +142,20 @@ func TestUnpack_ReadsTheKeywordsOfTheSignature(t *testing.T) {
 	t.Parallel()
 
 	var (
-		run, env, codes             starlark.Value
+		run, env, codes, processes  starlark.Value
 		timeout, host, stdin, label string
 	)
 
+	into := map[string]any{"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "max_new_processes": &processes, "name": &label}
+
 	kwargs := []starlark.Tuple{{starlark.String("name"), starlark.String("n")}}
-	err := workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, map[string]any{"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "name": &label})
+	err := workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, into)
 
 	require.NoError(t, err)
 	assert.Equal(t, "n", label)
 
 	kwargs = []starlark.Tuple{{starlark.String("stop_on_code"), starlark.MakeInt(1)}}
-	err = workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, map[string]any{"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "name": &label})
+	err = workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, into)
 
 	assert.ErrorContains(t, err, `unexpected keyword argument "stop_on_code"`)
 }

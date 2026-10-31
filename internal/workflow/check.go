@@ -60,6 +60,12 @@ func SecretEnvName(name string) bool {
 	return strings.HasSuffix(upper, "_KEY") || slices.ContainsFunc(secretWords(), func(word string) bool { return strings.Contains(upper, word) })
 }
 
+// The smallest and the largest value of max_new_processes in a command call.
+const (
+	MinProcessCap = 1
+	MaxProcessCap = 100000
+)
+
 // StopCode reports whether code is an exit code that stop_on_rc can list: a whole number from 1 to 255. Code 0 is success.
 func StopCode(code int) bool { return code >= minStopCode && code <= maxStopCode }
 

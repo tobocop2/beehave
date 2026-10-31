@@ -73,6 +73,18 @@ func TestWalk_AHostCommandWithStdinOrEnvIsRefusedBeforeItRuns(t *testing.T) {
 	}
 }
 
+func TestWalk_ACommandCapReachesTheRunnerAndNoCapMeansZero(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	_, err := walkBody(t, h, "command(run = [\"a\"], max_new_processes = 5, name = \"capped\")\ncommand(run = [\"b\"], name = \"free\")\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.requests, 2)
+	assert.Equal(t, 5, h.commands.requests[0].MaxNewProcesses)
+	assert.Zero(t, h.commands.requests[1].MaxNewProcesses, "a call with no cap is not capped")
+}
+
 func TestWalk_AGateGetsNoEnvironmentOfItsOwn(t *testing.T) {
 	t.Parallel()
 
@@ -98,6 +110,12 @@ func TestWalk_ASettingThatIsWrongFailsTheStepBeforeItRuns(t *testing.T) {
 		"stop code not number": `stop_on_rc = ["two"]`,
 		"stop not a list":      `stop_on_rc = 2`,
 		"timeout not a time":   `timeout = "soon"`,
+		"cap is 0":             `max_new_processes = 0`,
+		"cap below 0":          `max_new_processes = -2`,
+		"cap above the limit":  `max_new_processes = 100001`,
+		"cap a fraction":       `max_new_processes = 2.5`,
+		"cap a text":           `max_new_processes = "5"`,
+		"cap with a host":      `host = "box", max_new_processes = 5`,
 		"run not a list":       `run = "a"`,
 		"run holds a number":   `run = [1]`,
 	}
