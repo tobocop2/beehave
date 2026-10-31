@@ -122,14 +122,14 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
 
-	return awaitPhase(ctx, handle, e.deps.Clock.resultOptions())
+	return awaitResult(ctx, handle, e.deps.Clock.resultOptions())
 }
 
-// awaitPhase waits for the result of a phase. A cancel of ctx ends the wait at once:
+// awaitResult waits for the result of a child workflow. A cancel of ctx ends the wait at once:
 // the polling handle of the workflow library does not watch the context, so a stopped engine would wait for the phase to end.
-func awaitPhase(ctx dbos.Context, handle dbos.WorkflowHandle[PhaseOutput], options []dbos.GetResultOption) (PhaseOutput, error) {
+func awaitResult[T any](ctx dbos.Context, handle dbos.WorkflowHandle[T], options []dbos.GetResultOption) (T, error) { //nolint:ireturn // the result is the type of the child workflow
 	type outcome struct {
-		out PhaseOutput
+		out T
 		err error
 	}
 
@@ -144,7 +144,9 @@ func awaitPhase(ctx dbos.Context, handle dbos.WorkflowHandle[PhaseOutput], optio
 	case finished := <-done:
 		return finished.out, finished.err
 	case <-ctx.Done():
-		return PhaseOutput{}, stopError(ctx)
+		var none T
+
+		return none, stopError(ctx)
 	}
 }
 

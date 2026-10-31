@@ -240,12 +240,13 @@ type stepRecorder struct {
 }
 
 func (r stepRecorder) Step(_ context.Context, name string, run func() ([]byte, error)) ([]byte, error) {
-	var opts []dbos.StepOption
-	if !strings.HasPrefix(name, "batch:"+r.call+".gate#") {
-		opts = append(opts, dbos.WithStepMaxRetries(stepRetries))
+	// The gate step is a child run on the exclusive queue, and a child run cannot start inside a step. The child run is the record of the gate:
+	// DBOS gives it the same id on a replay and returns its result. It runs once, as the step did.
+	if strings.HasPrefix(name, "batch:"+r.call+".gate#") {
+		return run()
 	}
 
-	return runStep(r.s.e, r.s.ctx, name, func(context.Context) ([]byte, error) { return run() }, opts...)
+	return runStep(r.s.e, r.s.ctx, name, func(context.Context) ([]byte, error) { return run() }, dbos.WithStepMaxRetries(stepRetries))
 }
 
 // batchGate gates a union commit: it puts the commit in the worktree of the item, then runs the project gate or the program of gate_run.
@@ -254,19 +255,27 @@ type batchGate struct {
 	run []string
 }
 
+// Run queues the checkout and the gate on the exclusive queue, so no merge of the repository starts while the batch gate runs.
 func (g batchGate) Run(ctx context.Context, in batch.GateInput) (batch.GateOutcome, error) {
-	tree, err := g.s.e.deps.Batch.Checkout(ctx, g.s.in.Project, g.s.in.Item, in.Commit)
+	ran, err := g.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindBatchGate, Project: g.s.in.Project, Item: g.s.in.Item, Commit: in.Commit, GateRun: g.run})
+
+	return ran.Batch, err
+}
+
+// batchGateOutcome puts the commit in the worktree of the item, then runs the project gate or the program of gate_run.
+func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch.GateOutcome, error) {
+	tree, err := e.deps.Batch.Checkout(ctx, in.Project, in.Item, in.Commit)
 	if err != nil {
 		return batch.GateOutcome{}, err
 	}
 
-	if len(g.run) == 0 {
-		gated, err := g.s.e.deps.Gate.Run(ctx, g.s.in.Project, g.s.in.Item)
+	if len(in.GateRun) == 0 {
+		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item)
 
 		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed && everyStepIsAPass(gated.Steps), Report: gated.Report}, err
 	}
 
-	out, err := g.s.e.deps.Commands.Run(ctx, CommandRequest{Project: g.s.in.Project, Item: g.s.in.Item, Run: g.run})
+	out, err := e.deps.Commands.Run(ctx, CommandRequest{Project: in.Project, Item: in.Item, Run: in.GateRun})
 
 	return batch.GateOutcome{Tree: tree, Passed: out.RC == 0, Report: out.Stdout}, err
 }
@@ -294,7 +303,7 @@ func (b *batchBase) Tip(ctx context.Context) (batch.Tip, error) {
 
 // Merge records the intent of the member, then merges through merge.Run with that intent. The intent step comes first, so a merge that the forge
 // made before a crash counts as ours on the replay. A mergeable state that stays UNKNOWN is read again after a durable sleep.
-func (b *batchBase) Merge(_ context.Context, m batch.Member, prefixTree string) (batch.MergeOutcome, error) {
+func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string) (batch.MergeOutcome, error) {
 	read, err := runStep(b.s.e, b.s.ctx, b.stepName("intent", m.Item, 1), func(ctx context.Context) (intentRead, error) {
 		return b.intent(ctx, m)
 	}, dbos.WithStepMaxRetries(stepRetries))
@@ -309,13 +318,13 @@ func (b *batchBase) Merge(_ context.Context, m batch.Member, prefixTree string) 
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent = prefixTree, &read.Intent
 
-	return b.mergeReads(m, settings)
+	return b.mergeReads(ctx, m, settings)
 }
 
 // mergeReads merges the member and reads again after a durable sleep while the mergeable state stays UNKNOWN, up to unknownReads reads.
-func (b *batchBase) mergeReads(m batch.Member, settings MergeSettings) (batch.MergeOutcome, error) {
+func (b *batchBase) mergeReads(ctx context.Context, m batch.Member, settings MergeSettings) (batch.MergeOutcome, error) {
 	for read := 1; ; read++ {
-		got, err := b.mergeRead(m, settings, read)
+		got, err := b.mergeRead(ctx, m, settings)
 		if err != nil {
 			return batch.MergeOutcome{}, err
 		}
@@ -335,11 +344,11 @@ func (b *batchBase) mergeReads(m batch.Member, settings MergeSettings) (batch.Me
 	}
 }
 
-// mergeRead runs one merge of the member as a step. The step name carries the number of the read.
-func (b *batchBase) mergeRead(m batch.Member, settings MergeSettings, read int) (merge.Result, error) {
-	return runStep(b.s.e, b.s.ctx, b.stepName("merge", m.Item, read), func(ctx context.Context) (merge.Result, error) {
-		return b.s.e.deps.Merge.Merge(ctx, b.s.in.Project, m.Item, m.Head, settings)
-	})
+// mergeRead runs one merge of the member as a child run on the exclusive queue.
+func (b *batchBase) mergeRead(ctx context.Context, m batch.Member, settings MergeSettings) (merge.Result, error) {
+	ran, err := b.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindMerge, Project: b.s.in.Project, Item: m.Item, Head: m.Head, Settings: settings})
+
+	return ran.Merge, err
 }
 
 // intentRead is the record of the intent step: the intent, or the reason the member cannot be merged because its pull request is not OPEN.

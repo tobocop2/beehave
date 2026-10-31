@@ -138,10 +138,10 @@ func (c *Client) reopenCanceledPhases(id string) error {
 	return nil
 }
 
-// reopenCanceledPhase puts one child back to work when it is a phase that was canceled.
+// reopenCanceledPhase puts one child back to work when it is a phase, or a gate or a merge, that was canceled.
 func (c *Client) reopenCanceledPhase(id string) error {
 	phase, err := c.row(id)
-	if err != nil || phase.Name != phaseName || stateOf(phase.Status) != runCancelled {
+	if err != nil || (phase.Name != phaseName && phase.Name != exclusiveName) || stateOf(phase.Status) != runCancelled {
 		return err
 	}
 
@@ -195,6 +195,13 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 		}
 
 		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queueName), dbos.WithRewindQueuePartitionKey(in.Login)}, nil
+	case row.Name == exclusiveName:
+		var in ExclusiveInput
+		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
+			return nil, fmt.Errorf("read the input of %s: %w", row.ID, err)
+		}
+
+		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(exclusiveQueueName), dbos.WithRewindQueuePartitionKey(in.Project)}, nil
 	case row.QueueName == itemsQueueName:
 		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(itemsQueueName)}, nil
 	}

@@ -8,8 +8,15 @@ import (
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 )
+
+func TestBackendErrors_TheSentinelOfTheHostBackendSurvivesAGateOrAMerge(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, backendErrors(), skypilot.ErrConfig)
+}
 
 func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
 	t.Parallel()

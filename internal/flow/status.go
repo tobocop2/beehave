@@ -303,6 +303,11 @@ func (c *Client) reopenRun(last run) error {
 		return c.reopen(last.Status.ID)
 	}
 
+	// The cancel reached the gates and the merges that the run waited for. The run replays its steps, and a child that stays canceled would fail it again.
+	if err := c.reopenCanceledPhases(last.Status.ID); err != nil {
+		return err
+	}
+
 	_, err := dbos.ResumeWorkflow[ItemResult](c.flow, last.Status.ID)
 
 	return err

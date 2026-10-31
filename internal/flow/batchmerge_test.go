@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/merge"
 )
 
@@ -162,7 +163,6 @@ func TestBatchMerge_AMergeableStateThatStaysUnknownDefersTheMemberAfterThreeRead
 	require.NoError(t, err)
 	assert.Contains(t, rig.h.commands.ran()[0], "1:mergeable is UNKNOWN after 3 reads of 1")
 	assert.Equal(t, []string{"1", "1", "1"}, rig.merger.landed())
-	assert.Contains(t, stepNames(t, engine), "batch:b.merge#1@3", "the later reads are named @2 and @3")
 }
 
 func TestBatchMerge_AGateRunThatIsNotAListIsRefused(t *testing.T) {
@@ -443,13 +443,13 @@ func TestBatchMerge_EachMemberRecordsItsIntentStepBeforeItsMergeStep(t *testing.
 
 	var own []string
 
-	for _, name := range stepNames(t, engine) {
-		if strings.HasPrefix(name, "batch:b.intent#") || strings.HasPrefix(name, "batch:b.merge#") {
+	for _, name := range stepNamesOf(t, engine, testRun) {
+		if strings.HasPrefix(name, "batch:b.intent#") || name == exclusiveName {
 			own = append(own, name)
 		}
 	}
 
-	assert.Equal(t, []string{"batch:b.intent#1", "batch:b.merge#1", "batch:b.intent#3", "batch:b.merge#3"}, own)
+	assert.Equal(t, []string{exclusiveName, "batch:b.intent#1", exclusiveName, "batch:b.intent#3", exclusiveName}, own, "the gate, then the intent and the merge of each member")
 }
 
 func TestBatchMerge_ACancelWhileTheMergeStepRunsThenAResumeMergesTheMemberOnce(t *testing.T) {
@@ -500,6 +500,19 @@ func TestBatchMerge_AGateStepThatFailsIsRunOnce(t *testing.T) {
 
 	require.ErrorIs(t, err, errFake)
 	assert.Equal(t, 1, rig.host.checkoutCalls(), "the gate step checks the union out, and a failure is recorded without a second run")
+}
+
+func TestBatchMerge_AGateOrAMergeWithAContextThatIsNotARunIsRefused(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	s := &script{e: rig.engine(t)}
+
+	_, err := batchGate{s: s}.Run(t.Context(), batch.GateInput{})
+	require.ErrorIs(t, err, errNotRunContext)
+
+	_, err = (&batchBase{s: s}).mergeReads(t.Context(), batch.Member{}, MergeSettings{})
+	require.ErrorIs(t, err, errNotRunContext)
 }
 
 func TestBatchMerge_ACallOutsideAWorkflowRunIsRefused(t *testing.T) {

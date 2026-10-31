@@ -59,7 +59,7 @@ func TestAwaitPhase_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *tes
 	stopped := assert.AnError
 	stop(stopped)
 
-	_, err := awaitPhase(ctx, blockedHandle{}, nil)
+	_, err := awaitResult(ctx, blockedHandle{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
 	require.ErrorIs(t, err, stopped)

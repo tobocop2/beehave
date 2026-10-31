@@ -202,20 +202,22 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	return s.durable("gate", label, func(ctx context.Context, name string) (stepResult, error) {
-		outputs, err := s.gateOutputs(ctx, request, head)
-		if err != nil {
-			return stepResult{}, fmt.Errorf("gate %q could not run: %w", name, err)
-		}
+	// The gate runs as a child workflow on the exclusive queue, so no merge of the repository starts while it runs.
+	// The call records its outputs as its own step, so a replay reads them and runs no gate again.
+	ran, err := s.e.queueExclusive(s.ctx, ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request})
+	if err != nil {
+		return nil, fmt.Errorf("gate %q could not run: %w", label, err)
+	}
 
-		return stepResult{Outputs: outputs}, nil
+	return s.durable("gate", label, func(context.Context, string) (stepResult, error) {
+		return stepResult{Outputs: ran.Outputs}, nil
 	})
 }
 
 // gateOutputs runs the project gate when the request names no program, and the program otherwise.
-func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
 	if len(request.Run) == 0 {
-		gated, err := s.e.deps.Gate.Run(ctx, request.Project, request.Item)
+		gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +225,7 @@ func (s *script) gateOutputs(ctx context.Context, request CommandRequest, head s
 		return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), nil
 	}
 
-	out, err := s.e.deps.Commands.Run(ctx, request)
+	out, err := e.deps.Commands.Run(ctx, request)
 	if err != nil {
 		return nil, err
 	}
