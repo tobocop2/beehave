@@ -58,9 +58,18 @@ type agents interface {
 	Run(ctx context.Context, request AgentRequest) (agent.Result, error)
 }
 
-// gate runs the gate of an item.
+// GateKey names the gate that Run would start for an item: ID is the same for the same tree, gate command, test report, build host and pins.
+// Head and Tree are the commit and tree id of the item. An empty ID means that no earlier pass may stand in for the gate.
+type GateKey struct {
+	ID   string
+	Head string
+	Tree string
+}
+
+// gate runs the gate of an item. Key reads the key of that gate and starts nothing.
 type gate interface {
 	Run(ctx context.Context, project, item string) (GateResult, error)
+	Key(ctx context.Context, project, item string) (GateKey, error)
 }
 
 // logins picks the agent login for an item of a project and returns its runner name.

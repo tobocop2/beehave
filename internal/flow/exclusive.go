@@ -40,6 +40,10 @@ type ExclusiveOutput struct {
 	Merge   merge.Result      `json:"merge"`
 	Batch   batch.GateOutcome `json:"batch"`
 	Failure *Failure          `json:"failure,omitempty"`
+	// Key names the gate of a gate run that passed on every step; a later gate with the same key reuses the pass. Empty for every other run.
+	Key string `json:"key,omitempty"`
+	// Project is the project of a run that holds a Key; the lookup reads a pass only from a run of the same project.
+	Project string `json:"project,omitempty"`
 }
 
 // exclusive runs one gate or one merge. The exclusive queue holds one run for each repository at a time,
@@ -57,9 +61,7 @@ func (e *Engine) exclusive(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput
 func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (err error) {
 	switch in.Kind {
 	case kindGate:
-		out.Outputs, err = runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) {
-			return e.gateOutputs(c, in.Request, in.Head)
-		})
+		out.Outputs, err = runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) { return e.keyedGate(c, in, out) })
 	case kindMerge:
 		out.Merge, err = runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) {
 			return e.deps.Merge.Merge(c, in.Project, in.Item, in.Head, in.Settings)
@@ -73,6 +75,19 @@ func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *Exclusi
 	}
 
 	return err
+}
+
+// keyedGate runs the gate and stores its key and project in out. The key is set only when the step runs here:
+// a replay reads the recorded outputs and sets no key, so it can only reuse less.
+func (e *Engine) keyedGate(ctx context.Context, in ExclusiveInput, out *ExclusiveOutput) (map[string]any, error) {
+	outputs, key, err := e.gateOutputs(ctx, in.Request, in.Head)
+	out.Key = key
+
+	if key != "" {
+		out.Project = in.Request.Project
+	}
+
+	return outputs, err
 }
 
 // queueExclusive runs a gate or a merge as a child workflow on the exclusive queue, keyed by the repository, and waits for it.

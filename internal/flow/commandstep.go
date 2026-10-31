@@ -215,19 +215,15 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 }
 
 // gateOutputs runs the project gate when the request names no program, and the program otherwise.
-func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+// The key it returns is empty unless the gate passed on every step and read the tree it judged: only such a pass may stand in for a later gate.
+func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head string) (outputs map[string]any, key string, err error) {
 	if len(request.Run) == 0 {
-		gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item)
-		if err != nil {
-			return nil, err
-		}
-
-		return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), nil
+		return e.projectGateOutputs(ctx, request)
 	}
 
 	out, err := e.deps.Commands.Run(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	status := passStatus
@@ -235,7 +231,45 @@ func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head s
 		status = failStatus
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), nil
+	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), "", nil
+}
+
+// projectGateOutputs reuses the pass of an earlier gate with the same key, and runs the project gate when there is none.
+func (e *Engine) projectGateOutputs(ctx context.Context, request CommandRequest) (map[string]any, string, error) {
+	key := e.gateKey(ctx, request)
+
+	if earlier, ok := e.earlierPass(key, request.Project); ok {
+		line := fmt.Sprintf("reused the gate pass of run %s: the tree %s, the gate command and the pins are the same. The gate did not run.", earlier.run, key.Tree)
+		e.logger.InfoContext(ctx, line, "item", request.Item)
+
+		return gateOutputs(true, key.Head, key.Tree, line, earlier.steps), key.ID, nil
+	}
+
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), recordedKey(gated, key), nil
+}
+
+// gateKey reads the key of the project gate. A key that cannot be read is an empty key: the gate then runs and reports the same problem.
+func (e *Engine) gateKey(ctx context.Context, request CommandRequest) GateKey {
+	key, err := e.deps.Gate.Key(ctx, request.Project, request.Item)
+	if err != nil {
+		return GateKey{}
+	}
+
+	return key
+}
+
+// recordedKey gives the key id for a gate that passed on every step and judged the tree that its key names, and an empty text for any other gate.
+func recordedKey(gated GateResult, key GateKey) string {
+	if gated.Passed && everyStepIsAPass(gated.Steps) && gated.Head == key.Head && gated.Tree == key.Tree {
+		return key.ID
+	}
+
+	return ""
 }
 
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.
