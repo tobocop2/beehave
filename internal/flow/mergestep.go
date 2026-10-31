@@ -21,7 +21,7 @@ const (
 )
 
 // errNoMerger is returned when a merge call asks to merge and the engine has no merger.
-var errNoMerger = errors.New("this engine has no merger. Remove `merge = True` from the merge call, and the owner merges the pull request")
+var errNoMerger = &absentError{message: "this engine has no merger. Remove `merge = True` from the merge call, and the owner merges the pull request", step: "merge the pull request"}
 
 // MergeSettings are the values of a merge call that merges. A value that the call leaves out is empty.
 // Logins and Emails are the identities of `own`. Children is "refuse" or "retarget". Approved is true when another step accepted the head.

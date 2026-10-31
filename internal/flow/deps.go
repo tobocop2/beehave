@@ -192,6 +192,12 @@ type items interface {
 	Fields(ctx context.Context, project, item string) (map[string]string, error)
 }
 
+// absentError is the error of a step that needs a collaborator the build does not set. step says what the step does.
+// A dry run leaves such a collaborator out on purpose, so it reports the step as not run instead of as a failure.
+type absentError struct{ message, step string }
+
+func (e *absentError) Error() string { return e.message }
+
 // Deps holds the collaborators of the workflows. A nil Merge means the build cannot merge: a merge step with `merge = true` fails.
 type Deps struct {
 	Clock     clock

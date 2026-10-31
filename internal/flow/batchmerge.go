@@ -24,7 +24,7 @@ const unknownReads = 3
 const settleEvery = 10 * time.Second
 
 var (
-	errNoBatch  = errors.New("this build cannot run batch_merge. Use a build that sets a batch host")
+	errNoBatch  = &absentError{message: "this build cannot run batch_merge. Use a build that sets a batch host", step: "merge a batch of pull requests"}
 	errNoScope  = errors.New("batch_merge runs only inside a workflow run. Call it from main() of a workflow file")
 	errNoMember = errors.New("`prs` is empty. Pass a list of struct(item = ..., head = ...), one for each pull request to land")
 

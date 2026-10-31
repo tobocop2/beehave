@@ -2,7 +2,6 @@ package flow
 
 import (
 	"context"
-	"errors"
 
 	"go.starlark.net/starlark"
 
@@ -15,7 +14,7 @@ type hostStopper interface {
 	Teardown(ctx context.Context, project string) error
 }
 
-var errNoHosts = errors.New("this build cannot stop a host. Use a build that sets a host stopper")
+var errNoHosts = &absentError{message: "this build cannot stop a host. Use a build that sets a host stopper", step: "stop the build host"}
 
 // hostTeardown stops the build host of the project. A host that stays up is a result, not an error: down is false and reason says why,
 // so the workflow can report it. A build with no host stopper fails the call, and so does a run that was canceled.
