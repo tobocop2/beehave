@@ -65,6 +65,27 @@ func DiskFloor(ctx context.Context, h Host, floorGB int) error {
 	return nil
 }
 
+// floored is a Host that checks the disk floor before it starts a job.
+type floored struct {
+	Host
+
+	floorGB int
+}
+
+// WithDiskFloor returns h with a Submit that first runs DiskFloor. A job does not start on a host under its floor, or on a host that cannot report its free space.
+// Every other method is the method of h.
+func WithDiskFloor(h Host, floorGB int) Host { //nolint:ireturn // the wrapper is a Host of any provider
+	return floored{Host: h, floorGB: floorGB}
+}
+
+func (f floored) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error) {
+	if err := DiskFloor(ctx, f.Host, f.floorGB); err != nil {
+		return "", fmt.Errorf("job %s does not start: %w", spec.Name, err)
+	}
+
+	return f.Host.Submit(ctx, spec)
+}
+
 // EnsureUnused refuses when a process has dir as its working directory or holds a file open in it. sh is the command line of `sh` on the host.
 // A scan that fails counts as in use, because a process of another user hides its directory from the scan.
 //
