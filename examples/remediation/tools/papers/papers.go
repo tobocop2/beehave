@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gobwas/glob"
+	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/internal/model"
@@ -46,7 +46,7 @@ func SourcePaths(ctx context.Context, git runner, revisionRange, sourceGlobs str
 }
 
 // sourceHits returns the changed names that are source. A pattern that does not parse is a refusal that names it.
-// The patterns compile without separators, so `*` also matches a slash, as in fnmatch.
+// The patterns use the doublestar dialect: `*` stops at a slash and `**` crosses it.
 func sourceHits(names, sourceGlobs string) ([]string, error) {
 	var hits []string
 
@@ -64,16 +64,17 @@ func sourceHits(names, sourceGlobs string) ([]string, error) {
 	return hits, nil
 }
 
-func compilePatterns(patterns []string) ([]*glob.Pattern, error) {
-	compiled := make([]*glob.Pattern, 0, len(patterns))
+// compilePatterns checks each pattern and drops a leading `./`, because the paths that git lists have none.
+func compilePatterns(patterns []string) ([]string, error) {
+	compiled := make([]string, 0, len(patterns))
 
 	for _, pattern := range patterns {
-		one, err := glob.Compile(pattern)
-		if err != nil {
-			return nil, &check.Refusal{Message: fmt.Sprintf("the pattern %q is not valid: %v", pattern, err)}
+		clean := strings.TrimPrefix(pattern, "./")
+		if !doublestar.ValidatePattern(clean) {
+			return nil, &check.Refusal{Message: fmt.Sprintf("the pattern %q is not valid: %v", pattern, doublestar.ErrBadPattern)}
 		}
 
-		compiled = append(compiled, one)
+		compiled = append(compiled, clean)
 	}
 
 	return compiled, nil
@@ -101,13 +102,13 @@ func refusedLines(revisionRange string, hits []string, sourceGlobs string) []str
 }
 
 // isSource reports whether the path is source under the globs; no globs means every path but a document.
-func isSource(name string, noGlobs bool, patterns []*glob.Pattern) bool {
+func isSource(name string, noGlobs bool, patterns []string) bool {
 	if noGlobs {
 		return !strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".txt")
 	}
 
 	for _, pattern := range patterns {
-		if pattern.Match(name) {
+		if doublestar.MatchUnvalidated(pattern, name) {
 			return true
 		}
 	}

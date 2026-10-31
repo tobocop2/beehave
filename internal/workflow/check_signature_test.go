@@ -19,6 +19,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent missing model", `agent(prompt = "p")`, "agent needs the `model` keyword"},
 		{"agent bad follow_ups", `agent(prompt = "p", model = "m", follow_ups = "maybe")`, `follow_ups is "maybe". Use one of: allow, forbid.`},
 		{"agent text for a list", `agent(prompt = "p", model = "m", outputs = "verdict")`, "outputs must be a list, not a text."},
+		{"agent text for the allowed paths", `agent(prompt = "p", model = "m", allow_paths = "papers/**")`, "allow_paths must be a list, not a text."},
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
 		{"batch_merge unknown keyword", `batch_merge(prs = [], base = "b", repo = "r", name = "n", limit = 2)`, "batch_merge takes no argument limit"},
 		{"batch_merge missing base", `batch_merge(prs = [], repo = "r", name = "n")`, "batch_merge needs the `base` keyword"},
@@ -77,7 +78,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 	t.Parallel()
 
 	calls := []string{
-		`agent("p", "m", follow_ups = "forbid", outputs = ["verdict"], output_tries = 2, inputs = {"a": 1})`,
+		`agent("p", "m", follow_ups = "forbid", outputs = ["verdict"], output_tries = 2, inputs = {"a": 1}, allow_paths = ["papers/**"])`,
 		`batch_merge([], "b", "r", name = "n", gate_run = ["make"])`,
 		`command(["a"], env = {"A": "b"}, stop_on_rc = [1], name = "n")`,
 		`env("HOME")`,

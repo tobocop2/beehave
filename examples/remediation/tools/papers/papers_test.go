@@ -14,7 +14,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const globs = "crates/*/src/* packages/*/src/*"
+const globs = "crates/*/src/** packages/*/src/**"
 
 type diffRunner struct{ result model.CommandResult }
 
@@ -81,17 +81,23 @@ type globCase struct {
 }
 
 var globCases = []globCase{
-	{"star_crosses_slash", "crates/a/src/deep/lib.rs", "crates/*/src/*", true},
-	{"literal_mismatch", "crates/a/tests/t.rs", "crates/*/src/*", false},
-	{"question_mark_one_char", "a/b", "a?b", true},
+	{"star_stops_at_slash", "crates/a/src/deep/lib.rs", "crates/*/src/*", false},
+	{"double_star_crosses_slash", "crates/a/src/deep/lib.rs", "crates/*/src/**", true},
+	{"double_star_matches_zero_directories", "a.rs", "**/*.rs", true},
+	{"double_star_after_a_folder_matches_one_level", "docs/a", "docs/**", true},
+	{"double_star_after_a_folder_matches_two_levels", "docs/a/b", "docs/**", true},
+	{"leading_dot_slash_is_dropped", "papers/a.md", "./papers/**", true},
+	{"literal_mismatch", "crates/a/tests/t.rs", "crates/*/src/**", false},
+	{"question_mark_one_char", "axb", "a?b", true},
+	{"question_mark_stops_at_slash", "a/b", "a?b", false},
 	{"question_mark_needs_a_char", "ab", "a?b", false},
 	{"set_member", "x.c", "x.[ch]", true},
 	{"set_range", "x.d", "x.[a-e]", true},
 	{"set_range_miss", "x.z", "x.[a-e]", false},
 	{"bang_negates", "x.c", "x.[!c]", false},
 	{"bang_negates_other", "x.d", "x.[!c]", true},
-	{"caret_is_literal", "x.^", "x.[^c]", true},
-	{"caret_does_not_negate", "x.d", "x.[^c]", false},
+	{"caret_negates", "x.c", "x.[^c]", false},
+	{"caret_negates_other", "x.d", "x.[^c]", true},
 	{"leading_dash_is_literal", "-", "[-a]", true},
 	{"backslash_escapes_the_next_character", "ab", `a\b`, true},
 	{"backslash_pattern_does_not_match_the_backslash", `a\b`, `a\b`, false},
@@ -101,7 +107,7 @@ var globCases = []globCase{
 	{"escaped_braces_are_literal", "{x}.rs", `\{x\}.rs`, true},
 	{"escaped_star_is_a_star_only", "a*", `a\*`, true},
 	{"escaped_star_does_not_cross", "ab", `a\*`, false},
-	{"case_sensitive", "CRATES/a/src/x", "crates/*/src/*", false},
+	{"case_sensitive", "CRATES/a/src/x", "crates/*/src/**", false},
 	{"star_matches_empty", "a", "a*", true},
 	{"star_backtracks", "abcabd", "*abd", true},
 	{"unicode_one_rune", "é", "?", true},
@@ -113,7 +119,7 @@ var globCases = []globCase{
 func TestPapers_AMalformedPatternIsARefusalThatNamesIt(t *testing.T) {
 	t.Parallel()
 
-	for _, bad := range []string{"x[a", "[!", "[]", "[]a]", "[b-a]", "[!b-a]", "[a-]", "[a-c-]", "[]]", "[!]a]", `a\`, "{", "[!"} {
+	for _, bad := range []string{"x[a", "[!", "[]", "[a", `a\`, "{", "{a", "[a-"} {
 		_, err := papers.SourcePaths(t.Context(), diffRunner{model.CommandResult{Stdout: "src/a.rs\n"}}, "A..B", "src/* "+bad)
 
 		var refusal *check.Refusal

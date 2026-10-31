@@ -64,7 +64,7 @@ func stepSignatures() map[string][]Param {
 	return map[string][]Param{
 		agentName: {
 			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("output_tries", KindInt),
+			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("allow_paths", KindList), opt("output_tries", KindInt),
 			one("follow_ups", FollowUpModes()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {

@@ -40,6 +40,8 @@ type agentArgs struct {
 	pin           string
 	requireSkills []string
 	forbid        []model.FindingKind
+	scope         scope
+	start         startMark
 	declared      []string
 	resume        string
 	noFollowUps   bool
@@ -55,7 +57,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
-		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "output_tries": &a.tries,
+		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "output_tries": &a.tries,
 		"follow_ups": &raw.followUps, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
@@ -73,6 +75,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 type agentRaw struct {
 	label, timeout, idle, followUps string
 	inputs, outputs, skills, kinds  starlark.Value
+	allow                           starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -107,6 +110,10 @@ func (a *agentArgs) lists(raw agentRaw) (err error) {
 	}
 
 	if a.forbid, err = findingKinds(raw.kinds); err != nil {
+		return err
+	}
+
+	if a.scope, err = readScope(raw.allow); err != nil {
 		return err
 	}
 
@@ -177,6 +184,10 @@ func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 // promptOf finds the folder and the output file of the call, then renders the prompt in a step and returns it.
 func (s *script) promptOf(a *agentArgs, name string) (string, error) {
 	if err := s.prepare(a, name); err != nil {
+		return "", err
+	}
+
+	if err := s.markStart(a, name); err != nil {
 		return "", err
 	}
 
@@ -332,6 +343,10 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 
 	head, err := folderHead(ctx, a.dir)
 	if err != nil {
+		return stepResult{}, err
+	}
+
+	if err = a.scope.check(ctx, a.dir, a.start); err != nil {
 		return stepResult{}, err
 	}
 
