@@ -53,6 +53,7 @@ type childOutcome struct {
 	Error    string   `json:"error,omitempty"`
 	Merge    string   `json:"merge,omitempty"`
 	SentBack string   `json:"sent_back,omitempty"`
+	Closed   string   `json:"closed,omitempty"`
 	Stopped  *Stopped `json:"stopped,omitempty"`
 }
 
@@ -324,7 +325,7 @@ func textAttr(holder starlark.HasAttrs, name string) string {
 	return text
 }
 
-// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back and stopped.
+// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed and stopped.
 func outcomesValue(outcomes []childOutcome) *starlarkstruct.Struct {
 	results := make([]starlark.Value, len(outcomes))
 
@@ -339,7 +340,7 @@ func outcomesValue(outcomes []childOutcome) *starlarkstruct.Struct {
 
 		results[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
-			"merge": starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "stopped": stopped,
+			"merge": starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stopped,
 		})
 	}
 
@@ -503,7 +504,7 @@ func succeeded(ref spawnedRun, row dbos.WorkflowStatus) childOutcome {
 		return childOutcome{Item: ref.Item, Error: err.Error()}
 	}
 
-	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Stopped: result.Stopped}
+	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Closed: result.Closed, Stopped: result.Stopped}
 }
 
 // cancelOpen cancels the runs that are still open, as obee cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.

@@ -38,7 +38,30 @@ func (e *Engine) markReady(ctx context.Context, project, item, reviewed string) 
 		return "", fmt.Errorf("%w: pull request %d: %s", errNotReady, standing.Number, strings.Join(reasons, ", "))
 	}
 
-	return standing.Head, e.deps.Forge.Ready(ctx, project, item)
+	if err := e.deps.Forge.Ready(ctx, project, item); err != nil {
+		return "", err
+	}
+
+	return standing.Head, e.holdHead(ctx, project, item, standing)
+}
+
+// holdHead reads the pull request again right after the ready call. The ready call cannot name a head, so a push between the standing read and the call
+// would leave a head that nobody reviewed marked ready. A head that moved, or one that cannot be read, puts the pull request back to draft.
+func (e *Engine) holdHead(ctx context.Context, project, item string, read review.Standing) error {
+	now, err := e.deps.Forge.Pull(ctx, project, item)
+	if err == nil && now.Head == read.Head {
+		return nil
+	}
+
+	if draftErr := e.deps.Watch.SetDraft(ctx, project, read.Number, true); draftErr != nil {
+		return errors.Join(fmt.Errorf("put pull request %d back to draft: %w", read.Number, draftErr), err)
+	}
+
+	if err != nil {
+		return fmt.Errorf("read the head of pull request %d after it was marked ready: %w", read.Number, err)
+	}
+
+	return fmt.Errorf("%w: pull request %d: it moved to %q while it was marked ready", errNotReady, read.Number, now.Head)
 }
 
 // readyStep runs markReady as the recorded step of the lifecycle. A replay reads the recorded head, so the merge pins the same head after a restart.

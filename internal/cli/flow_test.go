@@ -28,6 +28,7 @@ const (
 type fakeRunner struct {
 	launchErr, runErr error
 	sentBack          string
+	closed            string
 	stopped           *flow.Stopped
 	block             chan struct{}
 	mu                sync.Mutex
@@ -48,7 +49,7 @@ func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error
 		<-r.block
 	}
 
-	return flow.ItemResult{Item: item, SentBack: r.sentBack, Stopped: r.stopped}, r.runErr
+	return flow.ItemResult{Item: item, SentBack: r.sentBack, Closed: r.closed, Stopped: r.stopped}, r.runErr
 }
 
 // Shutdown releases a blocked Run, as a real engine shutdown ends the run it holds.
@@ -185,6 +186,18 @@ func TestRun_ASentBackItemSaysItWentBackToDraft(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "item 12 went back to draft: a review asks for changes\n", stdout)
+}
+
+func TestRun_AClosedItemSaysThePullRequestWasClosed(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.runner.closed = "the pull request was closed"
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 ended: the pull request was closed\n", stdout)
 }
 
 func TestRun_AnItemThatAStepStoppedNamesTheStepTheCodeAndTheOutput(t *testing.T) {
@@ -429,6 +442,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-5-r1", State: "running", Merge: "owner_merge"},
 		{ID: "item-6-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
 		{ID: "item-7-r1", State: "running", Version: "v1", Stranded: true, OlderSteps: true},
+		{ID: "item-8-r1", State: "done", Closed: "the pull request was closed"},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -439,7 +453,8 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
 		"item-6-r1\tstopped\tstopped at check rc 2\n"+
-		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n", stdout)
+		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n"+
+		"item-8-r1\tdone\tended: the pull request was closed\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

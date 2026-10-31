@@ -61,11 +61,97 @@ func TestRun_TheWatchStepSendsAPullRequestBackToDraftAndEnds(t *testing.T) {
 			assert.Equal(t, ItemResult{Item: testItem, Merge: "sent_back", SentBack: reason}, result)
 
 			reads, drafts := harness.watch.seen()
-			assert.Equal(t, []int{testPull, testPull}, reads, "the step ends at the send back")
+			assert.Equal(t, []int{testPull, testPull, testPull}, reads, "the send back reads the pull request again before it drafts")
 			assert.Equal(t, []int{testPull}, drafts)
 			assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
 		})
 	}
+}
+
+func TestRun_TheSendBackReadsTheStateAgainAndDoesNotDraftAMergedPullRequest(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: "a review asks for changes"}, {Kind: review.Merged}}
+	engine := harness.engine(t)
+
+	result, err := engine.Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "merged"}, result)
+
+	_, drafts := harness.watch.seen()
+	assert.Empty(t, drafts, "a pull request that merged since the read is not set to draft")
+}
+
+func TestRun_ASendBackThatTheFreshReadClearsKeepsWatching(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: "it conflicts with its base branch"}, {Kind: review.Waiting}, {Kind: review.Merged}}
+	engine := harness.engine(t)
+
+	result, err := engine.Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "merged"}, result)
+
+	reads, drafts := harness.watch.seen()
+	assert.Equal(t, []int{testPull, testPull, testPull}, reads)
+	assert.Empty(t, drafts, "a conflict that cleared before the draft call leaves the pull request ready")
+}
+
+func TestRun_AClosedPullRequestEndsTheWatchWithoutADraftCall(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting}, {Kind: review.Closed, Reason: "it is closed"}}
+	engine := harness.engine(t)
+
+	result, err := engine.Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "closed", Closed: "the pull request was closed"}, result)
+
+	reads, drafts := harness.watch.seen()
+	assert.Equal(t, []int{testPull, testPull}, reads)
+	assert.Empty(t, drafts, "a closed pull request cannot return to draft")
+}
+
+func TestRun_AClosedPullRequestIsNotSentBackAndStatusShowsIt(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.Closed, Reason: "it is closed"}}
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	infos, err := client.Status()
+	require.NoError(t, err)
+	require.Len(t, infos, 1)
+	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runDone, Version: testVersion, Merge: "closed", Closed: "the pull request was closed"}, infos[0])
+	assert.Empty(t, infos[0].SentBack, "a closed pull request has no rework")
+}
+
+func TestRun_ASendBackThatTheFreshReadShowsAlreadyDraftDoesNotCallDraftAgain(t *testing.T) {
+	t.Parallel()
+
+	const reason = "a review asks for changes"
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: reason}, {Kind: review.SendBack, Reason: reason, Draft: true}}
+	engine := harness.engine(t)
+
+	result, err := engine.Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "sent_back", SentBack: reason}, result)
+
+	_, drafts := harness.watch.seen()
+	assert.Empty(t, drafts, "a replay after the draft call finds the pull request already in draft")
 }
 
 func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T) {
@@ -74,7 +160,7 @@ func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T)
 	const reason = "a review asks for changes"
 
 	harness := shipHarness(t)
-	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: reason}, {Kind: review.Merged}}
+	harness.watch.outcomes = []review.Outcome{{Kind: review.SendBack, Reason: reason}, {Kind: review.SendBack, Reason: reason}, {Kind: review.Merged}}
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
@@ -169,7 +255,7 @@ func TestRun_TheWatchStepEndsWithAnErrorWhenTheNumberOfThePullRequestCannotBeRea
 	t.Parallel()
 
 	harness := shipHarness(t)
-	harness.forge.failFrom = 2
+	harness.forge.failFrom = 3
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)

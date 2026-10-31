@@ -22,7 +22,7 @@ const builtinFile = "<builtin>"
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star6"
+const stepsVersion = "star7"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
@@ -46,7 +46,7 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 		err = errors.Join(err, finishErr)
 	}
 
-	return ItemResult{Item: in.Item, Merge: s.mergeState, SentBack: s.sentBack, Stopped: s.stopped}, err
+	return ItemResult{Item: in.Item, Merge: s.mergeState, SentBack: s.sentBack, Closed: s.closed, Stopped: s.stopped}, err
 }
 
 // thread makes the thread of a run. It logs print at the debug level and stops after model.StarlarkMaxSteps instructions.

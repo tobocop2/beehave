@@ -47,7 +47,9 @@ type RunInfo struct {
 	Question string
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
 	SentBack string
-	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged or sent_back. It is empty for a run with no merge step.
+	// Closed is the text for the owner when the pull request of a finished run was closed with no merge. An empty text means it was not.
+	Closed string
+	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged, sent_back or closed. It is empty for a run with no merge step.
 	Merge string
 	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did. A run with a Stopped has the state stopped.
 	Stopped *Stopped
@@ -152,7 +154,7 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 		var result ItemResult
 
 		result, err = resultOf(row)
-		info.SentBack, info.Merge, info.Stopped = result.SentBack, result.Merge, result.Stopped
+		info.SentBack, info.Closed, info.Merge, info.Stopped = result.SentBack, result.Closed, result.Merge, result.Stopped
 
 		// The workflow returns a stop as a result, so the store records success. The result tells the two apart.
 		if info.Stopped != nil {

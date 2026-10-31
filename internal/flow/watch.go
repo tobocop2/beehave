@@ -26,57 +26,82 @@ type watcher interface {
 	SetDraft(ctx context.Context, project string, pr int, draft bool) error
 }
 
-// watchReady reads the ready pull request of an item until it merges. A change request or a conflict sets the pull request to draft and ends the watch with the reason; a merge ends it with no reason.
+// watchReady reads the ready pull request of an item until it merges. A change request or a conflict sets the pull request to draft and ends the watch with the reason; a merge ends it with no reason; a close ends it with Closed set and no draft call.
 // The wait between two reads is a durable sleep of the workflow, so a restart resumes the watch and no timer of ours runs.
 // The count of failed reads is a local of the loop. The workflow replays the loop on a restart, so the count is rebuilt from the recorded steps.
-func (e *Engine) watchReady(ctx dbos.Context, project, item string) (string, error) {
+func (e *Engine) watchReady(ctx dbos.Context, project, item string) (watchEnd, error) {
 	pr, err := runStep(e, ctx, watchStep, func(c context.Context) (int, error) {
 		found, err := e.deps.Forge.Pull(c, project, item)
 
 		return found.Number, err
 	})
 	if err != nil {
-		return "", fmt.Errorf("%s of item %s: %w", watchStep, item, err)
+		return watchEnd{}, fmt.Errorf("%s of item %s: %w", watchStep, item, err)
 	}
 
 	return e.watchLoop(ctx, project, pr, item)
 }
 
 // watchLoop reads the pull request until it merges, goes back to draft, or the reads fail watchFailures times in a row.
-func (e *Engine) watchLoop(ctx dbos.Context, project string, pr int, item string) (string, error) {
+func (e *Engine) watchLoop(ctx dbos.Context, project string, pr int, item string) (watchEnd, error) {
 	for failed := 0; ; {
 		outcome, err := e.readWatch(ctx, project, pr)
 
 		failed = nextFailed(failed, err)
 		if failed >= watchFailures {
-			return "", fmt.Errorf("%s of item %s: %w", watchStep, item, err)
+			return watchEnd{}, fmt.Errorf("%s of item %s: %w", watchStep, item, err)
 		}
 
-		if reason, over, err := e.watchSettle(ctx, project, pr, item, outcome, err); over {
-			return reason, err
+		if end, over, err := e.watchSettle(ctx, project, pr, item, outcome, err); over {
+			return end, err
 		}
 
 		if err := e.pause(ctx, item); err != nil {
-			return "", err
+			return watchEnd{}, err
 		}
 	}
 }
 
-// watchSettle acts on a good read. It reports whether the watch is over and, after a send back, the reason. A failed read is never over here.
-func (e *Engine) watchSettle(ctx dbos.Context, project string, pr int, item string, outcome review.Outcome, readErr error) (string, bool, error) {
+// closedText is what the owner reads when the watch ends on a pull request that was closed with no merge.
+const closedText = "the pull request was closed"
+
+// watchEnd is how a finished watch ended. A merge leaves it empty. A send back sets Reason. A close sets Closed, which is not a send back: nothing is drafted and no rework follows.
+type watchEnd struct {
+	Reason string
+	Closed bool
+}
+
+// watchSettle acts on a good read. It reports whether the watch is over and how it ended. A failed read is never over here.
+func (e *Engine) watchSettle(ctx dbos.Context, project string, pr int, item string, outcome review.Outcome, readErr error) (watchEnd, bool, error) {
 	if readErr != nil {
-		return "", false, nil
+		return watchEnd{}, false, nil
 	}
 
 	switch outcome.Kind {
 	case review.Merged:
-		return "", true, nil
+		return watchEnd{}, true, nil
+	case review.Closed:
+		return watchEnd{Reason: closedText, Closed: true}, true, nil
 	case review.SendBack:
-		return outcome.Reason, true, e.sendBack(ctx, project, pr, item)
+		return e.settleSendBack(ctx, project, pr, item, outcome)
 	case review.Waiting:
 	}
 
-	return "", false, nil
+	return watchEnd{}, false, nil
+}
+
+// settleSendBack sends the pull request back, then settles on the fresh read of that step: a pull request that merged or closed since is not drafted.
+func (e *Engine) settleSendBack(ctx dbos.Context, project string, pr int, item string, outcome review.Outcome) (watchEnd, bool, error) {
+	fresh, err := e.sendBack(ctx, project, pr, item)
+	if err != nil {
+		return watchEnd{}, true, err
+	}
+
+	if fresh.Kind == review.SendBack {
+		return watchEnd{Reason: outcome.Reason}, true, nil
+	}
+
+	return e.watchSettle(ctx, project, pr, item, fresh, nil)
 }
 
 // pause is the durable sleep between two reads.
@@ -104,14 +129,20 @@ func nextFailed(failed int, err error) int {
 	return 0
 }
 
-// sendBack sets the pull request to draft.
-func (e *Engine) sendBack(ctx dbos.Context, project string, pr int, item string) error {
-	_, err := runStep(e, ctx, watchStep, func(c context.Context) (struct{}, error) {
-		return struct{}{}, e.deps.Watch.SetDraft(c, project, pr, true)
+// sendBack reads the pull request again and sets it to draft only if the fresh read still says send back. The read before it is a step ago:
+// the pull request can have merged or closed since. It returns the fresh read, so a caller settles on what the pull request is now.
+func (e *Engine) sendBack(ctx dbos.Context, project string, pr int, item string) (review.Outcome, error) {
+	fresh, err := runStep(e, ctx, watchStep, func(c context.Context) (review.Outcome, error) {
+		again, err := e.deps.Watch.Watch(c, project, pr)
+		if err != nil || again.Kind != review.SendBack || again.Draft {
+			return again, err
+		}
+
+		return again, e.deps.Watch.SetDraft(c, project, pr, true)
 	})
 	if err != nil {
-		return fmt.Errorf("%s of item %s: %w", watchStep, item, err)
+		return review.Outcome{}, fmt.Errorf("%s of item %s: %w", watchStep, item, err)
 	}
 
-	return nil
+	return fresh, nil
 }

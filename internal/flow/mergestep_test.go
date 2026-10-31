@@ -222,7 +222,7 @@ func TestMergeStep_AWatchThatCannotReadThePullRequestFailsTheStep(t *testing.T) 
 	t.Parallel()
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
-	h.forge.failFrom = 2
+	h.forge.failFrom = 3
 
 	_, err := walkText(t, h, shipFlow(""))
 
