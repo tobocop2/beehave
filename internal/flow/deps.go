@@ -170,6 +170,8 @@ type CommandRequest struct {
 	Run     []string
 	Host    string
 	Timeout time.Duration
+	// MaxNewProcesses is the number of processes above the count of the user at the start. It is zero for a call that sets no cap.
+	MaxNewProcesses int
 	// Stdin is the text that the program reads. It is empty when the call sets none.
 	Stdin string
 	// Env is the whole environment of the program as NAME=value pairs. It is nil for a request that keeps the environment of the process.

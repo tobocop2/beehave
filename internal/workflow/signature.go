@@ -31,6 +31,8 @@ type Param struct {
 	Kind     Kind
 	Required bool
 	Values   []string
+	// Min and Max bound a whole number. Both are zero for a keyword with no bounds.
+	Min, Max int
 	// Why ends the message for a missing required keyword. It says what the keyword is for, when that is not plain.
 	Why string
 }
@@ -68,7 +70,7 @@ func stepSignatures() map[string][]Param {
 			one("follow_ups", FollowUpModes()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {
-			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), label,
+			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), {Name: "max_new_processes", Kind: KindInt, Min: MinProcessCap, Max: MaxProcessCap}, label,
 		},
 		"env": {req(nameKeyword, KindText), opt("default", KindText)},
 		gateName: {
@@ -177,16 +179,34 @@ func keywordPairs(builtin string, into map[string]any) ([]any, bool) {
 	return pairs, true
 }
 
+// literalKind is the kind of a text or a number literal, and KindAny for any other.
+func literalKind(lit *syntax.Literal) Kind {
+	switch lit.Value.(type) {
+	case string:
+		return KindText
+	case int64, *big.Int:
+		return KindInt
+	}
+
+	return KindAny
+}
+
+// negativeKind is KindInt for a minus sign before a whole number, and KindAny for any other unary expression.
+func negativeKind(e *syntax.UnaryExpr) Kind {
+	if e.Op == syntax.MINUS && kindOf(e.X) == KindInt {
+		return KindInt
+	}
+
+	return KindAny
+}
+
 // kindOf is the kind of a literal expression, or KindAny for an expression that the check cannot read before the run.
 func kindOf(expr syntax.Expr) Kind {
 	switch e := expr.(type) {
 	case *syntax.Literal:
-		switch e.Value.(type) {
-		case string:
-			return KindText
-		case int64, *big.Int:
-			return KindInt
-		}
+		return literalKind(e)
+	case *syntax.UnaryExpr:
+		return negativeKind(e)
 	case *syntax.ListExpr, *syntax.TupleExpr:
 		return KindList
 	case *syntax.DictExpr:
@@ -258,6 +278,28 @@ func (g *graph) value(value syntax.Expr, param Param) {
 
 	if param.Kind != KindAny && got != param.Kind {
 		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s must be %s, not %s.", param.Name, withArticle(param.Kind), withArticle(got)))
+
+		return
+	}
+
+	g.bounds(value, param)
+}
+
+// bounds reports an integer literal that is outside the bounds of its keyword. A literal that is not a small whole number is outside.
+func (g *graph) bounds(value syntax.Expr, param Param) {
+	if param.Max == 0 {
+		return
+	}
+
+	lit, isLit := value.(*syntax.Literal) // the only other expression of the int kind is a negative number
+	n, small := int64(0), false
+
+	if isLit {
+		n, small = lit.Value.(int64)
+	}
+
+	if !small || n < int64(param.Min) || n > int64(param.Max) {
+		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s is %s. Write a whole number from %d to %d.", param.Name, rawText(value), param.Min, param.Max))
 	}
 }
 
@@ -274,6 +316,10 @@ func withArticle(kind Kind) string {
 func rawText(expr syntax.Expr) string {
 	if lit, ok := expr.(*syntax.Literal); ok {
 		return lit.Raw
+	}
+
+	if neg, ok := expr.(*syntax.UnaryExpr); ok && neg.Op == syntax.MINUS {
+		return "-" + rawText(neg.X)
 	}
 
 	return string(kindOf(expr))

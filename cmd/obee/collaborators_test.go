@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,6 +161,83 @@ func TestPrograms_ALocalProgramRunsInTheWorktreeAndKeepsItsExitCode(t *testing.T
 	assert.Equal(t, flow.CommandOutput{Stdout: "out", RC: 3}, got)
 	assert.Equal(t, proc.ExecRunner{Binary: "make", Dir: "/tree", Timeout: time.Minute, Only: []string{"PATH=/bin"}, Stdin: "the text"}, spec, "the environment of the request replaces the environment of the process")
 	assert.Equal(t, []string{"check"}, args)
+}
+
+func TestPrograms_ACappedProgramGetsTheCapAndOnlyAForkFailureNamesIt(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		result model.CommandResult
+		cap    int
+		note   bool
+	}{
+		"fork failure in stderr":         {model.CommandResult{Stdout: "out", Stderr: "sh: fork: Resource temporarily unavailable", ExitCode: 2}, 5, true},
+		"cannot fork in stdout":          {model.CommandResult{Stdout: "out: Cannot fork", ExitCode: 2}, 5, true},
+		"a failure with another cause":   {model.CommandResult{Stdout: "out", Stderr: "assertion failed", ExitCode: 1}, 5, false},
+		"a fork text but exit code 0":    {model.CommandResult{Stdout: "out", Stderr: "Cannot fork", ExitCode: 0}, 5, false},
+		"a fork failure with no cap set": {model.CommandResult{Stdout: "out", Stderr: "Cannot fork", ExitCode: 2}, 0, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var spec proc.ExecRunner
+
+			runs := programs{
+				trees: treeAt("/tree"),
+				exec: func(s proc.ExecRunner) proc.Runner {
+					spec = s
+
+					return scripted{result: tc.result, args: new([]string)}
+				},
+			}
+
+			got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"probe"}, MaxNewProcesses: tc.cap})
+			require.NoError(t, err)
+			assert.Equal(t, tc.cap, spec.MaxNewProcesses)
+			assert.Equal(t, tc.result.ExitCode, got.RC)
+			assert.True(t, strings.HasPrefix(got.Stdout, "out"), "the output of the program stays first")
+			assert.Equal(t, tc.note, strings.Contains(got.Stdout, "max_new_processes = 5"))
+		})
+	}
+}
+
+func TestPrograms_ACapThatCannotBeCountedOrSetFailsTheStepWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	runs := programs{
+		trees: treeAt("/tree"),
+		exec: func(proc.ExecRunner) proc.Runner {
+			return scripted{result: model.CommandResult{ExitCode: proc.ExitCapFailed, SetupErr: errors.New("could not set max_new_processes = 9: no")}, args: new([]string)}
+		},
+	}
+
+	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"probe"}, MaxNewProcesses: 9})
+
+	require.EqualError(t, err, "could not set max_new_processes = 9: no")
+	assert.Empty(t, got.Stdout)
+
+	exit125 := programs{
+		trees: treeAt("/tree"),
+		exec: func(proc.ExecRunner) proc.Runner {
+			return scripted{result: model.CommandResult{ExitCode: proc.ExitCapFailed, Stderr: "could not open the thing"}, args: new([]string)}
+		},
+	}
+
+	got, err = exit125.Run(t.Context(), flow.CommandRequest{Run: []string{"probe"}, MaxNewProcesses: 9})
+	require.NoError(t, err, "a command that exits with 125 by itself is not a cap failure")
+	assert.Equal(t, proc.ExitCapFailed, got.RC)
+}
+
+func TestNewPrograms_ACappedProgramThatExits125WithCouldNotKeepsItsResult(t *testing.T) { //nolint:paralleltest // the cap counts every process of the user
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil))
+
+	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", `echo out; echo "could not open the thing" >&2; exit 125`}, MaxNewProcesses: 1000})
+
+	require.NoError(t, err)
+	assert.Equal(t, 125, got.RC)
+	assert.Contains(t, got.Stdout, "out\n")
 }
 
 func TestNewPrograms_ACommandStepGetsOnlyTheEnvironmentOfItsRequestAndItsStdin(t *testing.T) {

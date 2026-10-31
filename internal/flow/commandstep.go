@@ -18,7 +18,7 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 	var c commandRaw
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		runKeyword: &c.run, "host": &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+		runKeyword: &c.run, "host": &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, "stop_on_rc": &c.codes, nameKeyword: &c.label,
 	})
 	if err != nil {
 		return CommandRequest{}, nil, "", err
@@ -33,6 +33,8 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 type commandRaw struct {
 	label, timeout, host, stdin string
 	run, own, codes             starlark.Value
+	// processes is max_new_processes as the file wrote it. It stays a value so that a text or a fraction is refused with its own message.
+	processes starlark.Value
 }
 
 // commandRequest checks the arguments of a command call and makes its request and its stop codes.
@@ -43,6 +45,10 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 	}
 
 	request.Stdin = c.stdin
+
+	if request.MaxNewProcesses, err = processCap(c.processes, c.host); err != nil {
+		return request, nil, err
+	}
 
 	if request.Env, err = s.environment(request, c.own); err != nil {
 		return request, nil, err
@@ -65,6 +71,27 @@ func (s *script) request(run starlark.Value, host, timeout string) (CommandReque
 	request.Timeout, err = duration("timeout", timeout)
 
 	return request, err
+}
+
+// processCap reads the max_new_processes keyword: a whole number of 1 or more, or zero for a call that sets none. A call with a host cannot set it,
+// because a host job takes a command line only.
+func processCap(v starlark.Value, host string) (int, error) {
+	if v == nil {
+		return 0, nil
+	}
+
+	if host != "" {
+		return 0, errors.New("max_new_processes cannot be used together with host. A host job takes a command line only. Remove max_new_processes or host")
+	}
+
+	n, isInt := v.(starlark.Int)
+	limit, small := n.Int64()
+
+	if !isInt || !small || limit < workflow.MinProcessCap || limit > workflow.MaxProcessCap {
+		return 0, fmt.Errorf("max_new_processes must be a whole number from %d to %d. Write max_new_processes = 50", workflow.MinProcessCap, workflow.MaxProcessCap)
+	}
+
+	return int(limit), nil
 }
 
 // environment returns the whole environment of the program: the allowed names of the caller, then the variables of the call.

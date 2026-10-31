@@ -7,6 +7,8 @@ type CommandResult struct {
 	ExitCode int
 	Stdout   string
 	Stderr   string
+	// SetupErr is set when the runner could not set up the call (a process cap that cannot be counted or set). The command did not start. It is never set from the output of the command.
+	SetupErr error
 }
 
 // ReportLimit is the most bytes of command output that obee keeps. The tail of an output holds the findings.

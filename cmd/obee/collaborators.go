@@ -276,10 +276,34 @@ func (p programs) inFolder(ctx context.Context, request flow.CommandRequest, dir
 
 	defer cleanup()
 
-	spec := proc.ExecRunner{Binary: request.Run[0], Dir: dir, Timeout: request.Timeout, Only: request.Env, Stdin: request.Stdin}
+	spec := proc.ExecRunner{Binary: request.Run[0], Dir: dir, Timeout: request.Timeout, Only: request.Env, Stdin: request.Stdin, MaxNewProcesses: request.MaxNewProcesses}
 	result := p.exec(spec).Run(ctx, request.Run[1:])
 
-	return flow.CommandOutput{Stdout: result.Stdout, RC: result.ExitCode}, nil
+	if result.SetupErr != nil {
+		return flow.CommandOutput{}, result.SetupErr
+	}
+
+	return flow.CommandOutput{Stdout: result.Stdout + capNote(request.MaxNewProcesses, result), RC: result.ExitCode}, nil
+}
+
+// showsForkFailure reports whether text holds a sign of a failed process start. The texts are the system error for EAGAIN ("Resource temporarily unavailable"), the message of dash ("Cannot fork") and the message of bash ("fork: retry:").
+// A program can print the same words by itself, so the note says only that a start failed under a cap, and it is added only to a failed command.
+func showsForkFailure(text string) bool {
+	return strings.Contains(text, "Resource temporarily unavailable") || strings.Contains(text, "Cannot fork") || strings.Contains(text, "fork: retry:")
+}
+
+// capNote is the line that ends the output of a failed command when the output shows a failed process start under a process cap, so the record names the cap.
+// It is empty for a command with no cap, with exit code 0, or whose failure shows no fork failure text in its output.
+func capNote(limit int, result model.CommandResult) string {
+	if limit == 0 || result.ExitCode == 0 {
+		return ""
+	}
+
+	if !showsForkFailure(result.Stdout + "\n" + result.Stderr) {
+		return ""
+	}
+
+	return fmt.Sprintf("\nobee: a process start failed. The command ran with max_new_processes = %d: the process count of the user at the start plus %d, shared with the other programs of the user.\n", limit, limit)
 }
 
 // commandFolder returns dir, or a new empty folder when dir is empty because the item has no worktree. The program then never touches the folder where obee started.
