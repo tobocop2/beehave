@@ -232,7 +232,7 @@ const goldenFlow = `def main(item):
     merge(name = "m", head = checked.head)
 `
 
-// goldenSteps are the step names that goldenFlow records under stepsVersion star10.
+// goldenSteps are the step names that goldenFlow records under stepsVersion star11.
 // A change to this list is a change to the sequence of a builtin: bump stepsVersion in the same commit.
 var goldenSteps = []string{
 	"env:HOME#1", "command:c#1", "gate:g#1",
@@ -257,7 +257,7 @@ func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t
 	eventually(t, func() bool { return client.Answer(testItem, "yes") == nil })
 
 	require.NoError(t, (<-done).err)
-	assert.Equal(t, "star10", stepsVersion)
+	assert.Equal(t, "star11", stepsVersion)
 	assert.Equal(t, goldenSteps, stepNames(t, engine), "the step names changed: bump stepsVersion and update the list")
 }
 
@@ -269,7 +269,7 @@ func TestStrandedError_ARunStoredUnderTheBareVersionNamesTheOlderStepFormat(t *t
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "older step format, stored as version v1, and this is v1+star10")
+	assert.Contains(t, err.Error(), "older step format, stored as version v1, and this is v1+star11")
 	assert.NotContains(t, err.Error(), "Start version")
 }
 
@@ -281,7 +281,7 @@ func TestStrandedError_ASpawnedRunStoredBeforeTheHoldStepIsRefusedNotReplayed(t 
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star2 and this is v1+star10", "a run from before the hold:start step cannot replay against the new step list")
+	assert.Contains(t, err.Error(), "started under version v1+star2 and this is v1+star11", "a run from before the hold:start step cannot replay against the new step list")
 }
 
 func TestStrandedError_ARunStoredBeforeTheIssueReadAfterTheBatchIsRefusedNotReplayed(t *testing.T) {
@@ -292,7 +292,7 @@ func TestStrandedError_ARunStoredBeforeTheIssueReadAfterTheBatchIsRefusedNotRepl
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star5 and this is v1+star10", "a run from before the batch:issues step cannot replay against the new step list")
+	assert.Contains(t, err.Error(), "started under version v1+star5 and this is v1+star11", "a run from before the batch:issues step cannot replay against the new step list")
 }
 
 func TestStrandedError_ARunStoredBeforeTheSendBackReadIsRefusedNotReplayed(t *testing.T) {
@@ -303,7 +303,7 @@ func TestStrandedError_ARunStoredBeforeTheSendBackReadIsRefusedNotReplayed(t *te
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star6 and this is v1+star10", "a run whose send back step recorded no outcome cannot replay against the new step")
+	assert.Contains(t, err.Error(), "started under version v1+star6 and this is v1+star11", "a run whose send back step recorded no outcome cannot replay against the new step")
 }
 
 func TestStrandedError_ARunStoredBeforeTheStopOutputOfAnAgentCallIsRefusedNotReplayed(t *testing.T) {
@@ -314,7 +314,7 @@ func TestStrandedError_ARunStoredBeforeTheStopOutputOfAnAgentCallIsRefusedNotRep
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star7 and this is v1+star10", "a run whose agent step recorded no stop output cannot replay against the new step")
+	assert.Contains(t, err.Error(), "started under version v1+star7 and this is v1+star11", "a run whose agent step recorded no stop output cannot replay against the new step")
 }
 
 func TestStrandedError_ARunStoredBeforeTheVoidMarkOfABatchGateIsRefusedNotReplayed(t *testing.T) {
@@ -325,7 +325,7 @@ func TestStrandedError_ARunStoredBeforeTheVoidMarkOfABatchGateIsRefusedNotReplay
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star8 and this is v1+star10", "a run whose batch gate recorded no void mark cannot replay against the new gate output")
+	assert.Contains(t, err.Error(), "started under version v1+star8 and this is v1+star11", "a run whose batch gate recorded no void mark cannot replay against the new gate output")
 }
 
 func TestStrandedError_ARunStoredBeforeTheRecordedHeadReadOfAGateIsRefusedNotReplayed(t *testing.T) {
@@ -336,7 +336,18 @@ func TestStrandedError_ARunStoredBeforeTheRecordedHeadReadOfAGateIsRefusedNotRep
 	err := strandedError(stored, applicationVersion("v1"))
 
 	require.ErrorIs(t, err, errStranded)
-	assert.Contains(t, err.Error(), "started under version v1+star9 and this is v1+star10", "a run from before the gate:tip and gate:stop steps cannot replay against the new step list")
+	assert.Contains(t, err.Error(), "started under version v1+star9 and this is v1+star11", "a run from before the gate:tip and gate:stop steps cannot replay against the new step list")
+}
+
+func TestStrandedError_ARunStoredBeforeTheMechanismOutputOfTheReviewIsRefusedNotReplayed(t *testing.T) {
+	t.Parallel()
+
+	stored := run{Status: dbos.WorkflowStatus{ID: "item-12-r1", ApplicationVersion: "v1+star10"}}
+
+	err := strandedError(stored, applicationVersion("v1"))
+
+	require.ErrorIs(t, err, errStranded)
+	assert.Contains(t, err.Error(), "started under version v1+star10 and this is v1+star11", "a review recorded before the mechanism output has no mechanism for the design rule to count")
 }
 
 func TestRunStar_AChangedFileRefusesTheReplayWithBothHashes(t *testing.T) {

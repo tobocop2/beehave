@@ -73,7 +73,7 @@ The prompts hold the rules of the brief text that the `brief` package once built
 | S1-L-21 | At five rounds, adjudicate each open finding | skill | expressed | workflow.star wait adjudicate | TestCheckWorkflow_ExitsZeroForTheRemediationExample | S1-L-21 |
 | S1-L-22 | Lane ledger counts lanes by kind and flags the sixth lane | drop | n/a | dropped: counts lanes for an orchestrator lane cap; DBOS queue concurrency caps the runs | TestLedger_AddRecordsALaneAndCountReadsItBack | S1-L-22 |
 | S1-L-23 | A lane reports its regression count; a rise blocks the lane | file | gap | policy: review_fix.star carries the regression count of the gate between rounds and stops a round that raises it | - | S1-L-23 |
-| S1-L-24 | After two patch rounds on one mechanism, the next lane is a design lane | core | gap | owner: the ledger rounds count per mechanism (`remedy ledger rounds`, architecture.md Ledger); at two it routes the next fix to a design agent step | - | S1-L-24 |
+| S1-L-24 | After two patch rounds on one mechanism, the next lane is a design lane | file | proven | review_fix.star agent design | TestExample_TheThirdRoundOnOneMechanismRunsTheDesignStepAndAReplaceEndsTheLoop | S1-L-24 |
 | S1-L-25 | A design lane comes before new behavior | skill | gap | - | - | S1-L-25 |
 | S1-L-59 | Patch rounds and fix lanes are bounded for each PR | file | gap | policy: the bound on rounds and fix agents for one PR, in review_fix.star next to the five-round rule (S1-L-19) | - | S1-L-59 |
 | S1-L-26 | Design lane rules: coverage, cheapest evidence, repeat-offender, build-versus-buy | skill | gap | - | - | S1-L-26, S1-L-86, S1-L-97, S1-L-98, S1-L-99, S1-L-100, S1-L-104 |

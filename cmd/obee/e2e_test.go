@@ -233,7 +233,7 @@ if [ -e hang ] && [ "$step" = "$(cat hang)" ] && [ ! -e started ]; then
 fi
 if [ "$step" = review ]; then
   n=$(grep -c '^review ' calls.log)
-  printf '{"verdict":"%s","findings":[]}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
+  printf '{"verdict":"%s","mechanism":"","findings":[]}\n' "$(sed -n "${n}p" verdicts)" > "$(field write)"
 fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
