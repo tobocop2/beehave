@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,7 @@ import (
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 var errFake = errors.New("fake failure")
@@ -73,6 +75,10 @@ func (r *fakeRunner) count() int {
 }
 
 type fakeSteering struct {
+	poll      *flow.PollOutput
+	pollErr   error
+	notSched  string
+	notSchedE error
 	infos     []flow.RunInfo
 	err       error
 	pinned    string
@@ -84,6 +90,16 @@ type fakeSteering struct {
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
+
+func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
+	if s.poll == nil {
+		return flow.PollOutput{}, false, s.pollErr
+	}
+
+	return *s.poll, true, s.pollErr
+}
+
+func (s *fakeSteering) PollNotScheduled() (string, error) { return s.notSched, s.notSchedE }
 
 func (s *fakeSteering) Answer(item, text string) error {
 	s.calls = append(s.calls, "answer "+item+" "+text)
@@ -232,6 +248,7 @@ func TestRun_TakesTheItemToTheEndAndPassesTheSettingsOfTheConfig(t *testing.T) {
 	assert.Equal(t, 1, rig.runner.count())
 	assert.Equal(t, "v9", rig.options.Version)
 	assert.Equal(t, 2, rig.options.MaxConcurrent)
+	assert.Zero(t, rig.options.ReviewPoll, "the poll is off unless the config sets it")
 	assert.Equal(t, rig.env[stateDirVariable], rig.options.StateDir)
 	assert.Contains(t, rig.config.Projects, "p")
 }
@@ -474,6 +491,93 @@ func TestStatus_SaysWhenThereAreNoRunsAndReportsAnError(t *testing.T) {
 	rig.clientOf = func() error { return errFake }
 	code, _, _ = rig.execute(t.Context(), "status")
 	assert.Equal(t, 1, code)
+}
+
+func TestStatus_ShowsTheNewestReviewPollInItsOwnSection(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.poll = &flow.PollOutput{At: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Projects: []flow.PollProject{
+		{Project: "alpha", Rows: []review.Row{{Kind: review.KindCIRed, Number: 7, Failed: 2}}},
+		{Project: "beta", Unread: "could not read beta: cannot list\nour pull requests"},
+		{Project: "gamma"},
+		{Project: "delta", NoForge: true},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "no runs\n\nreview poll at 2026-10-31T09:00:00Z\n"+
+		"alpha\tCI-RED     #7 failed=2 not_started=0\n"+
+		"beta\tcould not read beta: cannot list our pull requests\n"+
+		"gamma\tnothing to review\n"+
+		"delta: no forge, not polled\n", stdout)
+}
+
+func TestStatus_ShowsAReviewPollThatGaveUpAsAFailureWithItsStatus(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.poll = &flow.PollOutput{At: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Failure: "MAX_RECOVERY_ATTEMPTS_EXCEEDED"}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "no runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: MAX_RECOVERY_ATTEMPTS_EXCEEDED\n", stdout)
+}
+
+func TestStatus_ShowsWhyTheReviewPollIsNotScheduled(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.notSched = "the store\nis locked"
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "no runs\n\nthe review poll is not scheduled: the store is locked\n", stdout)
+
+	rig.steering.notSched, rig.steering.notSchedE = "", errFake
+	code, _, stderr = rig.execute(t.Context(), "status")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
+}
+
+func TestStatus_ShowsAFailedReviewPollWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.poll = &flow.PollOutput{At: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Failure: "the store\nis locked"}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "no runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: the store is locked\n", stdout)
+}
+
+func TestOptions_TheReviewPollMinutesBecomeTheIntervalOfTheEngine(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "runners.star", "agents(review_poll_minutes = 45)\n"+validRunners)
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, 45*time.Minute, rig.options.ReviewPoll)
+}
+
+func TestStatus_ReportsAReviewPollThatCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.pollErr = errFake
+
+	code, _, stderr := rig.execute(t.Context(), "status")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
 }
 
 func TestSteeringCommands_PassTheItemAndTheJoinedAnswerToTheClient(t *testing.T) {

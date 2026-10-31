@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -122,6 +124,74 @@ func (c *Client) Status() ([]RunInfo, error) {
 	}
 
 	return infos, nil
+}
+
+// Poll returns the newest review poll that finished, whatever its result: success, error, canceled or too many recovery attempts.
+// A poll that did not succeed returns Failure and the time it ended, so an older poll never shows as current.
+// The second value is false when no poll has finished.
+func (c *Client) Poll() (PollOutput, bool, error) {
+	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterName(pollName),
+		dbos.WithFilterStatus(dbos.WorkflowStatusSuccess, dbos.WorkflowStatusError, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded),
+		dbos.WithFilterLoadOutput(true), dbos.WithFilterSortDesc(), dbos.WithFilterLimit(1))
+	if err != nil {
+		return PollOutput{}, false, fmt.Errorf("list the review polls: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return PollOutput{}, false, nil
+	}
+
+	return pollOf(rows[0])
+}
+
+// pollOf reads the result of one finished poll run.
+func pollOf(row dbos.WorkflowStatus) (PollOutput, bool, error) {
+	if row.Status != dbos.WorkflowStatusSuccess {
+		return PollOutput{At: endOf(row), Projects: []PollProject{}, Failure: failureOf(row)}, true, nil
+	}
+
+	var out PollOutput
+	// ListWorkflows returns the stored JSON of the output as a string.
+	if err := json.Unmarshal([]byte(fmt.Sprint(row.Output)), &out); err != nil {
+		return PollOutput{}, false, fmt.Errorf("read the result of the review poll %s: %w", row.ID, err)
+	}
+
+	return out, true, nil
+}
+
+// endOf returns the time a poll run ended: the completion time, or the last update when DBOS left no completion time.
+func endOf(row dbos.WorkflowStatus) time.Time {
+	if row.CompletedAt.IsZero() {
+		return row.UpdatedAt.UTC()
+	}
+
+	return row.CompletedAt.UTC()
+}
+
+// failureOf describes a poll run that did not succeed: the error, or the status when the run was canceled or gave up recovering.
+func failureOf(row dbos.WorkflowStatus) string {
+	switch {
+	case row.Status == dbos.WorkflowStatusError:
+		return fmt.Sprint(row.Error)
+	case row.Error != nil:
+		return fmt.Sprintf("%s: %s", row.Status, row.Error)
+	}
+
+	return string(row.Status)
+}
+
+// PollNotScheduled returns why the last launch could not set the schedule of the review poll. It is empty when the launch set it or none ran.
+func (c *Client) PollNotScheduled() (string, error) {
+	text, err := os.ReadFile(pollScheduleFile(c.dir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("read the state of the review poll schedule: %w", err)
+	}
+
+	return string(text), nil
 }
 
 // info describes one run of the store. An open run also carries the question it asks the owner.

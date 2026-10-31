@@ -45,6 +45,21 @@ func (f *Forge) TokenScopes(ctx context.Context) ([]string, error) {
 	return nil, forge.Refuse("cannot read the token scopes of gh")
 }
 
+// Login returns the login of the active account: the account the review poll reads for. An empty answer is a refusal.
+// It is a method of this backend only; the forge contract does not list it.
+func (f *Forge) Login(ctx context.Context) (string, error) {
+	login, err := f.text(ctx, []string{argAPI, "user", argJQ, ".login"}, "cannot read the login of the active account")
+	if err != nil {
+		return "", err
+	}
+
+	if strings.TrimSpace(login) == "" {
+		return "", forge.Refuse("the active account has no login")
+	}
+
+	return strings.TrimSpace(login), nil
+}
+
 // scopeNames returns the quoted words of a scope list. The text none has no quotes and gives no scope.
 func scopeNames(list string) []string {
 	var names []string

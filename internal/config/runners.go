@@ -32,6 +32,8 @@ type agents struct {
 	MaxTurns int
 	// MaxBudgetUSD is the most dollars that one agent run spends on API calls. 0 means no cap.
 	MaxBudgetUSD float64
+	// ReviewPollMinutes is the minutes between two review polls. 0 means no poll.
+	ReviewPollMinutes int
 }
 
 // runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
@@ -45,7 +47,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_turns?", "max_budget_usd?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -72,7 +74,7 @@ func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
 	budget := number(f.agents.MaxBudgetUSD)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxTurns, &budget); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes); err != nil {
 		return err
 	}
 
