@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/forge"
+	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store/beads/beadstest"
@@ -312,7 +314,7 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 
 	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
 	require.NoError(t, err)
-	assert.IsType(t, &skypilot.Host{}, built)
+	assert.NotNil(t, built)
 
 	_, err = table.host(hostProject("ssh", "lane-host"))
 	require.EqualError(t, err, `project p: no host adapter named "ssh"`)
@@ -323,6 +325,51 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	built, err = table.host(hostProject(model.HostSkyPilot, "-oProxyCommand=x"))
 	require.ErrorIs(t, err, skypilot.ErrConfig)
 	assert.Nil(t, built)
+}
+
+// statusHost is a host.Host that reports one disk reading and records its Submit calls.
+type statusHost struct {
+	host.Host
+
+	disk    model.DiskReading
+	submits int
+}
+
+func (s *statusHost) Status(context.Context) (model.HostStatus, error) {
+	return model.HostStatus{Disk: s.disk}, nil
+}
+
+func (s *statusHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {
+	s.submits++
+
+	return "job-1", nil
+}
+
+func TestAdapters_HostRefusesAJobWhenTheDiskIsUnderTheFloor(t *testing.T) {
+	t.Parallel()
+
+	const gigabyte = 1 << 30
+
+	low := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}}
+	table := newAdapters(beadstest.NewBd(t), nil)
+	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return low, nil }
+
+	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
+	require.NoError(t, err)
+
+	_, err = built.Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	require.ErrorIs(t, err, host.ErrDiskLow)
+	assert.Zero(t, low.submits)
+
+	enough := &statusHost{disk: model.DiskReading{FreeBytes: 60 * gigabyte, Readable: true}}
+	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return enough, nil }
+
+	built, err = table.host(hostProject(model.HostSkyPilot, "lane-host"))
+	require.NoError(t, err)
+
+	_, err = built.Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, enough.submits)
 }
 
 func TestAdapters_CheckRefusesAHostProviderItDoesNotKnowAndAHostItCannotBuild(t *testing.T) {

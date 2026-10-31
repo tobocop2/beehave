@@ -177,7 +177,12 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 		return nil, fmt.Errorf("project %s: no host adapter named %q", project.Name, project.Host.Provider)
 	}
 
-	return build(project)
+	built, err := build(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return host.WithDiskFloor(built, project.Host.DiskFloorGB), nil
 }
 
 // agent builds the adapter of the agent. It returns nil for an agent that has no adapter yet, and a run with no adapter does not start.

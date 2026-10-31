@@ -24,6 +24,7 @@ type stubHost struct {
 	root      string
 	rootErr   error
 	downs     int
+	submits   int
 }
 
 func (s *stubHost) WorkRoot(context.Context) (string, error) { return s.root, s.rootErr }
@@ -38,7 +39,11 @@ func (s *stubHost) Down(context.Context) error {
 	return nil
 }
 
-func (*stubHost) Submit(context.Context, model.JobSpec) (model.JobID, error) { return "1", nil }
+func (s *stubHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {
+	s.submits++
+
+	return "1", nil
+}
 
 func (s *stubHost) Wait(context.Context, model.JobID) (model.JobState, error) {
 	return s.state, s.waitErr
@@ -88,6 +93,64 @@ func TestDiskFloor_ABrokenStatusKeepsItsCause(t *testing.T) {
 	t.Parallel()
 
 	require.ErrorIs(t, host.DiskFloor(t.Context(), &stubHost{statusErr: errDown}, 50), errDown)
+}
+
+func TestWithDiskFloor_ASubmitStartsOnlyOnAHostAboveTheFloor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		host       *stubHost
+		wantErr    error
+		wantSubmit int
+	}{
+		{"enough_space", &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 60 * gb, Readable: true}}}, nil, 1},
+		{"under_the_floor", &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}}, host.ErrDiskLow, 0},
+		{"unreadable_reading", &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 900 * gb}}}, host.ErrDiskRead, 0},
+		{"status_fails", &stubHost{statusErr: errDown}, errDown, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			id, err := host.WithDiskFloor(tc.host, 50).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+
+			assert.Equal(t, tc.wantSubmit, tc.host.submits)
+
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				assert.Equal(t, model.JobID("1"), id)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tc.wantErr)
+			assert.Empty(t, id)
+			assert.Contains(t, err.Error(), "job gate-p does not start")
+		})
+	}
+}
+
+func TestWithDiskFloor_UnderTheFloorNamesTheFreeAndTheNeededSpace(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}}
+	_, err := host.WithDiskFloor(stub, 50).Submit(t.Context(), model.JobSpec{Name: "j"})
+
+	require.ErrorContains(t, err, "10 GB free, floor 50 GB")
+}
+
+func TestWithDiskFloor_EveryOtherMethodIsTheMethodOfTheHost(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubHost{state: model.JobSucceeded}
+	wrapped := host.WithDiskFloor(stub, 50)
+
+	state, err := wrapped.Wait(t.Context(), "1")
+	require.NoError(t, err)
+	assert.Equal(t, model.JobSucceeded, state)
+	assert.Zero(t, stub.submits)
 }
 
 func TestWaitJob(t *testing.T) {

@@ -202,6 +202,10 @@ func (f *fakeHost) Submit(_ context.Context, spec model.JobSpec) (model.JobID, e
 	return "job-1", f.submitErr
 }
 
+func (*fakeHost) Status(context.Context) (model.HostStatus, error) {
+	return model.HostStatus{Disk: model.DiskReading{FreeBytes: 1 << 40, Readable: true}}, nil
+}
+
 func (f *fakeHost) Wait(context.Context, model.JobID) (model.JobState, error) {
 	return f.state, f.waitErr
 }
@@ -282,7 +286,10 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	got, err := runs.hosts("h")
 
 	require.NoError(t, err)
-	assert.Same(t, hosted, got)
+
+	_, err = got.Submit(t.Context(), model.JobSpec{Name: "j"})
+	require.NoError(t, err)
+	assert.Equal(t, "j", hosted.spec.Name)
 }
 
 func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *testing.T) {
