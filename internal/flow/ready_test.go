@@ -20,6 +20,7 @@ func TestRun_TheMergeStepRefusesAPullRequestThatIsNotReadyAndNamesTheReason(t *t
 		reason string
 	}{
 		"a_review_asks_for_changes":     {review.Standing{Number: testPull, ChangeRequests: standingChanges}, "pull request 7: a review asks for changes"},
+		"the_pull_request_is_closed":    {review.Standing{Number: testPull, Closed: true}, "pull request 7: it is closed"},
 		"a_thread_is_unresolved":        {review.Standing{Number: testPull, UnresolvedThreads: 2}, "pull request 7: 2 review threads are unresolved"},
 		"the_branch_conflicts":          {review.Standing{Number: testPull, Conflicting: true}, "pull request 7: it conflicts with its base branch"},
 		"two_reasons_stand":             {review.Standing{Number: testPull, ChangeRequests: standingChanges, Conflicting: true}, "a review asks for changes, it conflicts with its base branch"},
@@ -73,5 +74,67 @@ func TestRun_TheMergeStepMarksACleanPullRequestReady(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"claim:12", "ready:12", "release:12"}, harness.life.seen())
-	assert.Equal(t, []string{testItem, testItem}, harness.forge.asked, "one read to mark ready and one for the number the watch reads")
+	assert.Equal(t, []string{testItem, testItem, testItem}, harness.forge.asked, "one read to mark ready, one for the head after it and one for the number the watch reads")
+}
+
+func TestRun_APushBetweenTheReadAndReadyPutsThePullRequestBackToDraftAndRefuses(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.forge.state.Head = gatedHead
+	harness.forge.pushAfterReady = "ddd"
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errNotReady)
+	require.ErrorContains(t, err, `moved to "ddd" while it was marked ready`)
+
+	_, drafts := harness.watch.seen()
+	assert.Equal(t, []int{testPull}, drafts, "the unreviewed head is not left ready")
+}
+
+func TestRun_AFailedReadyCallFailsTheStepAndReadsNoHead(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.forge.state.Head = gatedHead
+	harness.life.failing["ready"] = true
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errFake)
+	assert.Equal(t, []string{testItem}, harness.forge.asked, "the head is read again only after a ready call that worked")
+}
+
+func TestRun_APushAfterReadyThatCannotBeDraftedNamesBothFailures(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.forge.state.Head = gatedHead
+	harness.forge.pushAfterReady = "ddd"
+	harness.watch.draftErr = errFake
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "put pull request 7 back to draft")
+}
+
+func TestRun_AFailedReadOfTheHeadAfterReadyPutsThePullRequestBackToDraft(t *testing.T) {
+	t.Parallel()
+
+	harness := shipHarness(t)
+	harness.forge.state.Head = gatedHead
+	harness.forge.failFrom = 2
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errFake)
+
+	_, drafts := harness.watch.seen()
+	assert.Equal(t, []int{testPull}, drafts)
 }

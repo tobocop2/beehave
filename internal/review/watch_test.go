@@ -17,13 +17,15 @@ func TestWatch_ReturnsMergedWaitingOrSendBack(t *testing.T) {
 		change func(*pulls)
 		want   review.Outcome
 	}{
-		"merged":                    {func(p *pulls) { p.view.State = str("MERGED") }, review.Outcome{Kind: review.Merged}},
-		"merged_beats_a_conflict":   {func(p *pulls) { p.view.State = str("MERGED"); p.view.Mergeable = str("CONFLICTING") }, review.Outcome{Kind: review.Merged}},
-		"clean_and_open":            {func(*pulls) {}, review.Outcome{Kind: review.Waiting}},
-		"an_open_thread_waits":      {func(p *pulls) { p.threads = make([]model.ReviewThread, 1) }, review.Outcome{Kind: review.Waiting}},
-		"a_moved_head_waits":        {func(p *pulls) { p.view.HeadRefOid = str(old) }, review.Outcome{Kind: review.Waiting}},
-		"a_conflict_sends_it_back":  {func(p *pulls) { p.view.Mergeable = str("CONFLICTING") }, review.Outcome{Kind: review.SendBack, Reason: "it conflicts with its base branch"}},
-		"a_change_request_sends_it": {func(p *pulls) { p.changes = []model.ChangeRequest{{Login: "rev", Commit: old}} }, review.Outcome{Kind: review.SendBack, Reason: "a review asks for changes"}},
+		"merged":                                   {func(p *pulls) { p.view.State = str("MERGED") }, review.Outcome{Kind: review.Merged}},
+		"merged_beats_a_conflict":                  {func(p *pulls) { p.view.State = str("MERGED"); p.view.Mergeable = str("CONFLICTING") }, review.Outcome{Kind: review.Merged}},
+		"closed_ends_the_watch":                    {func(p *pulls) { p.view.State = str("CLOSED") }, review.Outcome{Kind: review.Closed, Reason: "it is closed"}},
+		"clean_and_open":                           {func(*pulls) {}, review.Outcome{Kind: review.Waiting}},
+		"an_open_thread_waits":                     {func(p *pulls) { p.threads = make([]model.ReviewThread, 1) }, review.Outcome{Kind: review.Waiting}},
+		"a_moved_head_waits":                       {func(p *pulls) { p.view.HeadRefOid = str(old) }, review.Outcome{Kind: review.Waiting}},
+		"a_conflict_sends_it_back":                 {func(p *pulls) { p.view.Mergeable = str("CONFLICTING") }, review.Outcome{Kind: review.SendBack, Reason: "it conflicts with its base branch"}},
+		"a_change_request_sends_it":                {func(p *pulls) { p.changes = []model.ChangeRequest{{Login: "rev", Commit: old}} }, review.Outcome{Kind: review.SendBack, Reason: "a review asks for changes"}},
+		"a_draft_with_a_conflict_says_it_is_draft": {func(p *pulls) { p.view.Mergeable = str("CONFLICTING"); p.view.IsDraft = new(true) }, review.Outcome{Kind: review.SendBack, Reason: "it conflicts with its base branch", Draft: true}},
 		"both_name_both": {func(p *pulls) {
 			p.changes = []model.ChangeRequest{{Login: "rev", Commit: old}}
 			p.view.Mergeable = str("CONFLICTING")

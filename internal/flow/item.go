@@ -32,7 +32,9 @@ type ItemInput struct {
 type ItemResult struct {
 	Item     string `json:"item"`
 	SentBack string `json:"sent_back,omitempty"`
-	// Merge is the state that the merge step of a workflow file ended in: merged or sent_back. It is empty when the file has no merge step, or when the step did not run.
+	// Closed holds the text for the owner when the pull request was closed with no merge. The run is finished, and nothing returned to draft.
+	Closed string `json:"closed,omitempty"`
+	// Merge is the state that the merge step of a workflow file ended in: merged, sent_back or closed. It is empty when the file has no merge step, or when the step did not run.
 	Merge string `json:"merge,omitempty"`
 	// Stopped is the command step that ended the item on a code of its `stop_on_rc`. It is nil when no step did.
 	Stopped *Stopped `json:"stopped,omitempty"`

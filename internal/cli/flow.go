@@ -296,11 +296,23 @@ func (f flowCommands) openRunFile(stdout io.Writer, cfg config.Config, opts flow
 	return pinned, nil
 }
 
+// endNote says why a run ended before the merge: a send back or a close. It is empty for any other end.
+func endNote(result flow.ItemResult) string {
+	switch {
+	case result.SentBack != "":
+		return "went back to draft: " + oneLine(result.SentBack)
+	case result.Closed != "":
+		return "ended: " + oneLine(result.Closed)
+	}
+
+	return ""
+}
+
 // printResult says how a finished run ended: finished, or back at draft.
 func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 	// A failed write to stdout has no recovery.
-	if result.SentBack != "" {
-		_, _ = fmt.Fprintf(stdout, "item %s went back to draft: %s\n", item, oneLine(result.SentBack))
+	if note := endNote(result); note != "" {
+		_, _ = fmt.Fprintf(stdout, "item %s %s\n", item, note)
 
 		return
 	}
@@ -393,15 +405,27 @@ func statusLine(info flow.RunInfo) string {
 		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
 	case info.Question != "":
 		line += "\tpaused: " + oneLine(info.Question)
-	case info.SentBack != "":
-		line += "\tsent back to draft: " + oneLine(info.SentBack)
-	case info.Stopped != nil:
-		line += fmt.Sprintf("\tstopped at %s rc %d", info.Stopped.Step, info.Stopped.RC)
-	case info.Merge != "":
-		line += "\tmerge: " + info.Merge
+	default:
+		line += finishedNote(info)
 	}
 
 	return line
+}
+
+// finishedNote is the tab and text that a run adds to its status line when it ended: a send back, a close, a stop or a merge state. It is empty for none.
+func finishedNote(info flow.RunInfo) string {
+	switch {
+	case info.SentBack != "":
+		return "\tsent back to draft: " + oneLine(info.SentBack)
+	case info.Closed != "":
+		return "\tended: " + oneLine(info.Closed)
+	case info.Stopped != nil:
+		return fmt.Sprintf("\tstopped at %s rc %d", info.Stopped.Step, info.Stopped.RC)
+	case info.Merge != "":
+		return "\tmerge: " + info.Merge
+	}
+
+	return ""
 }
 
 func oneLine(text string) string {

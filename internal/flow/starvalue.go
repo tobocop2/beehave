@@ -38,7 +38,7 @@ type script struct {
 	counts map[string]int
 
 	// merge and sentBack are what a merge builtin reported. They go into the result of the item.
-	mergeState, sentBack string
+	mergeState, sentBack, closed string
 
 	// batches holds the names of the batch_merge calls of this run, so that a name is never used twice.
 	batches map[string]bool

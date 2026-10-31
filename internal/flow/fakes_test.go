@@ -609,6 +609,8 @@ type fakeForge struct {
 	rewritten bool
 	// failFrom, when above zero, makes the read of that number and every later read fail with errFake.
 	failFrom int
+	// pushAfterReady, when set, moves the head of the pull request to it once Ready has run: a push between the standing read and the ready call.
+	pushAfterReady string
 }
 
 func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, error) {
@@ -636,7 +638,16 @@ func (f *fakeForge) Reviewed(ctx context.Context, project, item, reviewed string
 
 // Ready records the call in the log of the lifecycle fake, and fails when a test sets failing["ready"].
 func (f *fakeForge) Ready(_ context.Context, project, item string) error {
-	return f.life.step("ready", project, item)
+	err := f.life.step("ready", project, item)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.pushAfterReady != "" {
+		f.state.Head = f.pushAfterReady
+	}
+
+	return err
 }
 
 // fakeWatch answers each read with the next of outcomes and then repeats the last. A non-nil err fails every read.

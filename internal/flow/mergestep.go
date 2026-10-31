@@ -16,6 +16,7 @@ import (
 const (
 	mergeDone     = "merged"
 	mergeSentBack = "sent_back"
+	mergeClosed   = "closed"
 	mergeOwner    = "owner_merge"
 )
 
@@ -247,17 +248,21 @@ func (s *script) readyAndMerge(head string, merges bool, settings MergeSettings)
 // awaitOwner reads the pull request until the owner merges it or sends it back. When ownerMerges is true, the run first shows that it waits for the owner.
 // The state and the reason go into the result of the item. The reason is empty after a merge.
 func (s *script) awaitOwner(label string, ownerMerges bool) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	reason, err := s.watchOwner(ownerMerges)
+	end, err := s.watchOwner(ownerMerges)
 	if err != nil {
 		return nil, err
 	}
 
-	state := mergeDone
-	if reason != "" {
-		state = mergeSentBack
+	state, reason := mergeDone, end.Reason
+
+	switch {
+	case end.Closed:
+		state, s.closed = mergeClosed, end.Reason
+	case end.Reason != "":
+		state, s.sentBack = mergeSentBack, end.Reason
 	}
 
-	s.mergeState, s.sentBack = state, reason
+	s.mergeState = state
 
 	return s.durable("merge", label, func(context.Context, string) (stepResult, error) {
 		return stepResult{Outputs: mergeOutputs(state, reason)}, nil
@@ -265,10 +270,10 @@ func (s *script) awaitOwner(label string, ownerMerges bool) (starlark.Value, err
 }
 
 // watchOwner shows that the run waits for the owner when ownerMerges is true, then watches the pull request.
-func (s *script) watchOwner(ownerMerges bool) (string, error) {
+func (s *script) watchOwner(ownerMerges bool) (watchEnd, error) {
 	if ownerMerges {
 		if err := show(s.ctx, s.in.Item, mergeKey, mergeOwner, "that it waits for the owner to merge"); err != nil {
-			return "", err
+			return watchEnd{}, err
 		}
 	}
 

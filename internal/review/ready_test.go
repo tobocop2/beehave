@@ -85,6 +85,18 @@ func TestStanding_ACleanPullRequestHasNoReason(t *testing.T) {
 	assert.Equal(t, head, standing.Head)
 }
 
+func TestStanding_AClosedPullRequestIsNotReady(t *testing.T) {
+	t.Parallel()
+
+	p := cleanPulls()
+	p.view.State = str("CLOSED")
+
+	standing := review.Pull(t.Context(), p, 7)
+
+	assert.True(t, standing.Closed)
+	assert.Equal(t, []string{"it is closed"}, standing.Reasons(head))
+}
+
 func TestStanding_ReasonsKeepTheOrderOfTheChecks(t *testing.T) {
 	t.Parallel()
 

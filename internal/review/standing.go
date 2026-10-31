@@ -9,6 +9,7 @@ import (
 
 const (
 	stateMerged = "MERGED"
+	stateClosed = "CLOSED"
 	conflicting = "CONFLICTING"
 )
 
@@ -25,6 +26,8 @@ type Standing struct {
 	Number            int
 	Head              string
 	Merged            bool
+	Closed            bool
+	Draft             bool
 	Conflicting       bool
 	ChangeRequests    []model.ChangeRequest
 	UnresolvedThreads int
@@ -85,7 +88,7 @@ func Pull(ctx context.Context, reads Pulls, pr int) Standing {
 
 // readView fills the head, the merge state and the conflict flag from the view of the pull request.
 func (s *Standing) readView(ctx context.Context, reads Pulls) {
-	view, err := reads.PRView(ctx, s.Number, "state", "mergeable", "headRefOid")
+	view, err := reads.PRView(ctx, s.Number, "state", "mergeable", "headRefOid", "isDraft")
 	if err != nil {
 		s.Unread = append(s.Unread, "pull request")
 
@@ -94,16 +97,14 @@ func (s *Standing) readView(ctx context.Context, reads Pulls) {
 
 	s.Head = derefOr(view.HeadRefOid, "")
 	s.Merged = derefOr(view.State, "") == stateMerged
+	s.Closed = derefOr(view.State, "") == stateClosed
 	s.Conflicting = derefOr(view.Mergeable, "") == conflicting
+	s.Draft = view.IsDraft != nil && *view.IsDraft
 }
 
 // Reasons lists why the pull request is not ready, in the order the checks run. reviewed is the commit the review read.
 func (s Standing) Reasons(reviewed string) []string {
-	var reasons []string
-
-	for _, read := range s.Unread {
-		reasons = append(reasons, fmt.Sprintf("the %s could not be read", read))
-	}
+	reasons := s.unreadAndClosed()
 
 	if s.Head != reviewed && (s.Rewritten == "" || s.Rewritten != reviewed) {
 		reasons = append(reasons, fmt.Sprintf("it moved to %q after the review read %q", s.Head, reviewed))
@@ -113,6 +114,21 @@ func (s Standing) Reasons(reviewed string) []string {
 
 	if s.UnresolvedThreads > 0 {
 		reasons = append(reasons, fmt.Sprintf("%d review threads are unresolved", s.UnresolvedThreads))
+	}
+
+	return reasons
+}
+
+// unreadAndClosed lists each read that failed, then the closed state of the pull request.
+func (s Standing) unreadAndClosed() []string {
+	var reasons []string
+
+	for _, read := range s.Unread {
+		reasons = append(reasons, fmt.Sprintf("the %s could not be read", read))
+	}
+
+	if s.Closed {
+		reasons = append(reasons, "it is closed")
 	}
 
 	return reasons
