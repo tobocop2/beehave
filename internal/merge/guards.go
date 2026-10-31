@@ -48,7 +48,7 @@ func (a *attempt) state() *refusal {
 // readRefusal refuses a first read whose state, base, head or mergeable value is not the one the merge needs.
 func (a *attempt) readRefusal(state, base, head, mergeable string) *refusal {
 	switch {
-	case state != "OPEN" && !a.replayed():
+	case state != stateOpen && !a.replayed():
 		return refuse("REFUSE: state is " + state)
 	case base != a.req.Base:
 		return refuse(fmt.Sprintf("REFUSE: base is %s, expected %s", base, a.req.Base))

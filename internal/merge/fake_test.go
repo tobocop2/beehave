@@ -54,6 +54,29 @@ type world struct {
 	tipsOf []string
 	// committers are the committers the forge reports. Nil means one unnamed committer for each commit.
 	committers []model.Committer
+	// reviews are the reviews of the pull request, oldest first.
+	reviews []model.Review
+	// behind makes the head not an ancestor of the base after the merge. ancestryErr makes that read fail.
+	behind      bool
+	ancestryErr bool
+	// failAt makes the read of that number fail, counted from 1 over all reads of the pull request. Zero fails none.
+	failAt int
+}
+
+func (w *world) Reviews(context.Context, int) ([]model.Review, error) {
+	w.calls = append(w.calls, "Reviews")
+
+	return w.reviews, w.fail("Reviews")
+}
+
+func (w *world) IsAncestor(_ context.Context, commit, base string) (bool, error) {
+	w.calls = append(w.calls, "IsAncestor "+commit+" "+base)
+
+	if w.ancestryErr {
+		return false, fmt.Errorf("IsAncestor: %w", errDown)
+	}
+
+	return !w.behind, nil
 }
 
 // tipRead is one answer of a read of a branch tip.
@@ -130,6 +153,10 @@ func (w *world) fail(name string) error {
 func (w *world) PRView(_ context.Context, number int, fields ...string) (model.PullRequest, error) {
 	w.calls = append(w.calls, fmt.Sprintf("PRView %d %s", number, strings.Join(fields, ",")))
 	w.views++
+
+	if w.views == w.failAt {
+		return model.PullRequest{}, fmt.Errorf("PRView %d: %w", w.views, errDown)
+	}
 
 	if err := w.fail("PRView"); err != nil {
 		return model.PullRequest{}, err

@@ -41,6 +41,36 @@ func TestCommitTree_RefusesAFailedReadAnEmptyAnswerAndANameThatIsNotAnId(t *test
 	assert.Empty(t, run.Calls, "a name that is not a commit id reaches no URL")
 }
 
+func TestIsAncestor_ReadsTheStatusOfTheComparison(t *testing.T) {
+	t.Parallel()
+
+	for status, want := range map[string]bool{"ahead\n": true, "identical\n": true, "behind\n": false, "diverged\n": false} {
+		f, run := fixed(t, status)
+
+		got, err := f.IsAncestor(context.Background(), commit, "release/1")
+		require.NoError(t, err, status)
+		assert.Equal(t, want, got, status)
+		assert.Equal(t, [][]string{{"api", "repos/owner/name/compare/" + commit + "...release/1", "--jq", ".status"}}, run.Calls)
+	}
+}
+
+func TestIsAncestor_RefusesAFailedReadAnUnknownStatusAndANameThatIsNotAnId(t *testing.T) {
+	t.Parallel()
+
+	down, _ := failing(t, "HTTP 502")
+	_, err := down.IsAncestor(context.Background(), commit, "main")
+	require.Error(t, err)
+
+	odd, _ := fixed(t, "\n")
+	_, err = odd.IsAncestor(context.Background(), commit, "main")
+	require.ErrorContains(t, err, "no status")
+
+	bad, run := fixed(t, "ahead")
+	_, err = bad.IsAncestor(context.Background(), "../x", "main")
+	require.Error(t, err)
+	assert.Empty(t, run.Calls)
+}
+
 func TestTreeBlobs_ListsEveryFileOfATreeAndSkipsFolders(t *testing.T) {
 	t.Parallel()
 

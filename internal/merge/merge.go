@@ -10,6 +10,9 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
+// stateOpen is the state of a pull request that is open.
+const stateOpen = "OPEN"
+
 // shaLength is the length of a full commit id. The merge call pins to the gated head, and a shorter pin is refused.
 const shaLength = 40
 
@@ -61,6 +64,17 @@ type Reads interface {
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 }
 
+// Approvals is what the merge reads to check the commit that a review approved.
+type Approvals interface {
+	Reviews(ctx context.Context, pr int) ([]model.Review, error)
+}
+
+// Ancestry is what the merge reads to prove a landing. A forge that also implements Ancestry lets the merge check, after the merge call,
+// that the merged head is an ancestor of the base. IsAncestor is true when commit is the base tip or lies in its history.
+type Ancestry interface {
+	IsAncestor(ctx context.Context, commit, base string) (bool, error)
+}
+
 // Writes is what the merge changes on the forge. MergePR merges only if the head is still the pin.
 type Writes interface {
 	SetDraft(ctx context.Context, pr int, draft bool) error
@@ -77,6 +91,7 @@ type Body interface {
 // Forge is the forge the merge works on.
 type Forge interface {
 	Reads
+	Approvals
 	Writes
 	Body
 }
@@ -162,8 +177,10 @@ type attempt struct {
 	// tip is the tip of the base at the start of the run. The run refuses if the base is somewhere else right before the merge call.
 	tip string
 	// kids are the children to move onto the base right before the merge call. Only a retarget fills it.
-	kids  []int
-	lines []string
+	kids []int
+	// history proves the landing after the merge call. The provable guard sets it before any write.
+	history Ancestry
+	lines   []string
 }
 
 func (a *attempt) say(lines ...string) {
@@ -174,7 +191,7 @@ func (a *attempt) say(lines ...string) {
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
 		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).orphans, (*attempt).checks,
-		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
+		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).reviewed, (*attempt).provable, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }
 

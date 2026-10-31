@@ -251,15 +251,21 @@ func TestRun_AFailedReadyRefuses(t *testing.T) {
 	assert.Equal(t, "REFUSE: #5 is still a draft after it was marked ready", last(w.run(req)))
 
 	w = newWorld(t).set(t, map[string]any{"isDraft": true})
-	w.later = &model.PullRequest{}
+	open := "OPEN"
+	w.later = &model.PullRequest{State: &open}
 	assert.Equal(t, "REFUSE: #5 is still a draft after it was marked ready", last(w.run(req)))
 	assert.Empty(t, merges(w))
 
 	w = newWorld(t).set(t, map[string]any{"isDraft": true})
 	w.later = &still
-	w.fails["PRView later"] = true
+	w.failAt = 3
 	assert.Equal(t, "REFUSE: cannot read #5 after it was marked ready", last(w.run(req)))
 	assert.Empty(t, merges(w))
+
+	w = newWorld(t).set(t, map[string]any{"isDraft": true})
+	w.failAt = 2
+	assert.Equal(t, "REFUSE: cannot read the state of #5 before it is marked ready", last(w.run(req)))
+	assert.Empty(t, w.writes)
 }
 
 func TestRun_AHeadThatMovesBeforeTheMergeRefuses(t *testing.T) {

@@ -88,6 +88,10 @@ func (*shipForge) UnresolvedThreads(context.Context, int) ([]model.ReviewThread,
 
 func (*shipForge) StackID(context.Context, int) (string, error) { return "", nil }
 
+func (*shipForge) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
+
+func (*shipForge) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+
 func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
 
 func (*shipForge) BranchRef(context.Context, string) (string, bool, error) {
@@ -244,6 +248,21 @@ func TestOpened_AForgeWithoutTreesOrLogsGivesAnErrorNotAPanic(t *testing.T) {
 	for _, err := range []error{treeErr, blobErr, logErr} {
 		require.ErrorIs(t, err, errNoOptionalRead)
 	}
+}
+
+type historyForge struct{ forge.Forge }
+
+func (historyForge) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+
+func TestOpened_AncestryIsPassedThroughOrGivesAnError(t *testing.T) {
+	t.Parallel()
+
+	_, err := opened{noTreeForge{}}.IsAncestor(t.Context(), "x", "main")
+	require.ErrorIs(t, err, errNoOptionalRead)
+
+	in, err := opened{historyForge{}}.IsAncestor(t.Context(), "x", "main")
+	require.NoError(t, err)
+	assert.True(t, in)
 }
 
 type logForge struct{ forge.Forge }

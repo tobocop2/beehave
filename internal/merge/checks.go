@@ -157,6 +157,39 @@ func (a *attempt) reviews() *refusal {
 	return refuse(lines...)
 }
 
+// reviewed refuses a pull request whose approvals all name a commit other than the head that merges. The forge records the commit that each review saw.
+// A pull request with no approval is not judged here: the own-work rule and the change-request guard own that case.
+func (a *attempt) reviewed() *refusal {
+	all, err := a.forge.Reviews(a.ctx, a.req.PR)
+	if err != nil {
+		return refuse(err.Error(), fmt.Sprintf("REFUSE: the reviews of #%d could not be read, so the commit that was approved cannot be checked.", a.req.PR))
+	}
+
+	seen, onHead := approvedCommits(all, a.req.Gated)
+	if onHead || len(seen) == 0 {
+		return nil
+	}
+
+	return refuse(fmt.Sprintf("REFUSE: #%d was approved %s, and the head that merges is %s. Get the head reviewed.", a.req.PR, strings.Join(seen, ", "), a.req.Gated))
+}
+
+// approvedCommits lists the commit of each approving review, and says whether one of them is the head.
+func approvedCommits(all []model.Review, head string) (seen []string, onHead bool) {
+	for _, review := range all {
+		if review.State != model.ReviewApproved {
+			continue
+		}
+
+		if review.CommitID == head {
+			onHead = true
+		}
+
+		seen = append(seen, review.CommitID)
+	}
+
+	return seen, onHead
+}
+
 func (a *attempt) requests() *refusal {
 	standing, err := a.forge.OpenChangeRequests(a.ctx, a.req.PR)
 	if err != nil {
