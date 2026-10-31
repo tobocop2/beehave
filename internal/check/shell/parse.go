@@ -64,7 +64,7 @@ func unitsOfLine(line string) []Unit {
 }
 
 func parseText(text string) (*syntax.File, bool) {
-	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(text), "")
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.KeepComments(true)).Parse(strings.NewReader(text), "")
 
 	return file, err == nil
 }

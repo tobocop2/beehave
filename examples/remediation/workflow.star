@@ -5,7 +5,7 @@ load("@obee//review_fix.star", "review_fix")
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
-FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path"]
+FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path", "zsh-expansion"]
 
 # The agent works in the worktree of the item and must not write in the checkout of the owner. The environment variable SOURCE_CHECKOUT names that checkout.
 # The kind protected-path refuses a write there, and a git command there that is not a read. A command that reads the checkout passes.
