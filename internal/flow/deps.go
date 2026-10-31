@@ -30,7 +30,10 @@ type AgentRequest struct {
 	IdleTimeout time.Duration
 	Forbid      []model.FindingKind
 	Protect     []string
-	Started     func(pid int)
+	// OutputFile is the file where the agent writes its declared outputs as a JSON object. Outputs names them. Outputs is empty for a call that declares none.
+	OutputFile string
+	Outputs    []string
+	Started    func(pid int)
 }
 
 // GateResult is the outcome of a gate that ran. Report holds the findings when Passed is false. Head is the commit the gate ran on.

@@ -344,8 +344,75 @@ func TestDryAgents_FailsWhenTheReviewFileCannotBeWritten(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "f")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))
 
-	_, err := dryAgents{}.Run(t.Context(), AgentRequest{Prompt: "Write it to " + filepath.Join(file, "out.json") + " as JSON"})
+	_, err := dryAgents{}.Run(t.Context(), AgentRequest{OutputFile: filepath.Join(file, "out.json"), Outputs: []string{"verdict"}})
 	require.Error(t, err)
+}
+
+func TestDryAgents_WriteTheDeclaredOutputsOfTheRequestWhateverThePromptSays(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "outputs", "out.json")
+
+	_, err := dryAgents{}.Run(t.Context(), AgentRequest{Prompt: "Judge the change.", OutputFile: file, Outputs: []string{"verdict", "summary"}})
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(file) //nolint:gosec // the test names its own output file
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"verdict":"approve","summary":"dry","findings":[]}`, string(raw))
+}
+
+func TestDryAgents_WriteNoFileForACallWithNoDeclaredOutputs(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "out.json")
+
+	_, err := dryAgents{}.Run(t.Context(), AgentRequest{Prompt: "Write it to " + file + " as JSON", OutputFile: file})
+	require.NoError(t, err)
+	assert.NoFileExists(t, file)
+}
+
+func TestDryRun_AReviewPromptWithNoWriteInstructionStillGetsItsVerdict(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "p.md"), []byte("Judge the change. Nothing else."), 0o600))
+	flow := filepath.Join(dir, "workflow.star")
+	require.NoError(t, os.WriteFile(flow, []byte("def main(item):\n    r = agent(prompt = \"p.md\", model = \"sonnet\", outputs = [\"verdict\"])\n    if r.verdict !=\"approve\":\n        fail(\"not approved\")\n"), 0o600))
+
+	var out bytes.Buffer
+
+	require.NoError(t, DryRun(t.Context(), flow, "12", map[string]string{}, &out), out.String())
+}
+
+func TestDryRun_EveryExampleThatNeedsNoServiceRunsToTheEnd(t *testing.T) {
+	t.Parallel()
+
+	envs := map[string]map[string]string{
+		"local":       {},
+		"remediation": dryExampleEnv,
+		"research":    {"RESEARCH_TOOLS": "/tools", "RESEARCH_OUT": "/out"},
+		"swarm":       dryExampleEnv,
+	}
+
+	for name, env := range envs {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var out bytes.Buffer
+
+			require.NoError(t, DryRun(t.Context(), filepath.Join("..", "..", "examples", name, "workflow.star"), "12", env, &out), out.String())
+		})
+	}
+}
+
+func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "queue", "workflow.star"), "12", map[string]string{}, &out)
+	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 }
 
 func TestDryFakes_AnswerWithoutTouchingAnything(t *testing.T) {
