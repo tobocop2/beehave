@@ -295,6 +295,43 @@ func TestLoadFolder_ATestReportOnABuildHostIsRefusedAndNamesTheKeyAndTheReason(t
 	require.Empty(t, problems)
 }
 
+func TestLoadFolder_ThePinFileKeyIsReadAnEmptyOneIsRefusedAndABuildHostIsRefused(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject+`, pin_file = ".tool-versions"`))
+	require.Empty(t, problems)
+	require.Equal(t, ".tool-versions", project.PinFile)
+
+	project, problems = loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Empty(t, project.PinFile)
+
+	_, problems = loadProjectText(t, call(goodProject+`, pin_file = ""`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "`pin_file` must be a non-empty string")
+
+	_, problems = loadProjectText(t, call(goodProject+`, build_host = "gpu-a", host = `+hostCall("")+`, pin_file = ".tool-versions"`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "`pin_file`")
+	require.Contains(t, problems[0].Error(), "read only for a local gate")
+}
+
+func TestLoadFolder_APinFileThatLeavesTheWorkTreeIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"/etc/tool-versions", "../.tool-versions", "a/../../b", ".."} {
+		_, problems := loadProjectText(t, call(goodProject+`, pin_file = "`+path+`"`))
+
+		require.Len(t, problems, 1, path)
+		require.Contains(t, problems[0].Error(), "`pin_file`", path)
+		require.Contains(t, problems[0].Error(), "inside the work tree", path)
+	}
+
+	project, problems := loadProjectText(t, call(goodProject+`, pin_file = "tools/.tool-versions"`))
+	require.Empty(t, problems)
+	require.Equal(t, "tools/.tool-versions", project.PinFile)
+}
+
 func TestLoadFolder_AProjectPathThatIsNotAFileIsReported(t *testing.T) {
 	t.Parallel()
 

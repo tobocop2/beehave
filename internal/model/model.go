@@ -56,6 +56,7 @@ type Project struct {
 	BaseBranch  string
 	Gate        string
 	TestReport  string
+	PinFile     string
 	BuildHost   string
 	Host        *HostConfig
 }

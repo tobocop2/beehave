@@ -145,6 +145,14 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 		return g.remote(ctx, request, head)
 	}
 
+	if reason := g.pinProblem(ctx, request); reason != "" {
+		return voided(request, head, reason), nil
+	}
+
+	return g.local(ctx, request, head)
+}
+
+func (g Gate) local(ctx context.Context, request Request, head string) (Result, error) {
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
 	if code > signalBase {
@@ -160,6 +168,16 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 	result.Passed = allPass(result.Steps)
 
 	return result, nil
+}
+
+// voided is the result of a gate that did not run because a pinned tool is not at its pinned version. Every step is unknown: neither a pass nor a fail.
+func voided(request Request, head, reason string) Result {
+	steps := []Step{{Name: StepCommand, Status: StatusUnknown}}
+	if request.Project.TestReport != "" {
+		steps = append(steps, Step{Name: StepTests, Status: StatusUnknown})
+	}
+
+	return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version, then run the gate again.\n"), Head: head, Steps: steps}
 }
 
 // exitStatus is the result of a command from its exit code.
