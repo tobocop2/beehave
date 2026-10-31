@@ -30,8 +30,30 @@ func TestExclusive_ReportsAChildThatTheStoreRefusesToQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
+	_, err = engine.queueExclusive(engine.ctx, ExclusiveInput{Kind: kindMerge, Project: testProject, Item: "12"})
+	require.ErrorContains(t, err, "queue the merge of item 12")
+}
+
+func TestExclusive_ReportsAGateWhoseHeadReadTheStoreCannotRecord(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
 	_, err = engine.queueExclusive(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12"})
-	require.ErrorContains(t, err, "queue the gate of item 12")
+	require.ErrorContains(t, err, "record the head of the pull request of item 12")
+}
+
+func TestExclusive_ReportsAGateWhoseStopTheStoreCannotRecord(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	err = engine.stopOlderGates(engine.ctx, ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12", Tip: "B"})
+	require.ErrorContains(t, err, "record the stop of the old gates of item 12")
 }
 
 func TestExclusive_ReportsAQueueThatTheStoreRefuses(t *testing.T) {

@@ -64,6 +64,7 @@ type Tree func(ctx context.Context, dir string) (State, error)
 type Remote interface {
 	Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error)
 	Wait(ctx context.Context, id model.JobID) (model.JobState, error)
+	Cancel(ctx context.Context, id model.JobID) error
 	WorkRoot(ctx context.Context) (string, error)
 }
 
@@ -250,6 +251,11 @@ func (g Gate) remote(ctx context.Context, request Request, head string) (Result,
 func wait(ctx context.Context, host Remote, cluster string, id model.JobID, head string) (Result, error) {
 	state, err := host.Wait(ctx, id)
 	if err != nil {
+		// A wait that ends because the context ended leaves the job running on the host: stop it, so a stopped gate frees the host.
+		if ctx.Err() != nil {
+			err = errors.Join(err, stopJob(ctx, host, cluster, id))
+		}
+
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 
@@ -257,6 +263,16 @@ func wait(ctx context.Context, host Remote, cluster string, id model.JobID, head
 	result.Head = head
 
 	return result, err
+}
+
+// stopJob stops the host job under a context that the end of ctx does not reach. A job that cannot be stopped keeps its slot for at most max_run,
+// and the error names it.
+func stopJob(ctx context.Context, host Remote, cluster string, id model.JobID) error {
+	if err := host.Cancel(context.WithoutCancel(ctx), id); err != nil {
+		return fmt.Errorf("stop job %s on %s: %w", id, cluster, err)
+	}
+
+	return nil
 }
 
 // job returns the host job to wait for and the head that it judges: the resumed job with its own head, or a new job for head.

@@ -139,7 +139,7 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 		"claim", "item", "env:LAND#1", "env:EXPECT_HEAD#2", "env:BASE#3", "env:OWNER_LOGIN#4", "preflight:intake#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#5",
 		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:SOURCE_CHECKOUT#6",
-		"exclusive", "DBOS.getResult", "gate:check#1",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:check#1",
 		"agent:review#3/render", "agent:review#3/clear1", "phase", "DBOS.getResult", "agent:review#3/read1",
 		"env:MERGE#7", "env:REPO#8", "env:BASE#9", "env:OWNER_LOGIN#10", "env:OWNER_EMAIL#11", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
 		"env:HOST_TEARDOWN#12", "worktree", "release",

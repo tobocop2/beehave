@@ -57,8 +57,21 @@ type fakeRemote struct {
 	waitErr   error
 	root      string
 	rootErr   error
-	submitted []model.JobSpec
-	waited    []model.JobID
+	// stopOnContext makes Wait fail with the error of its context when the context has ended, as a real wait does.
+	stopOnContext bool
+	submitted     []model.JobSpec
+	waited        []model.JobID
+	// canceled holds the jobs that Cancel stopped, and cancelErr is what Cancel returns. cancelCtxErr holds the state of the context that Cancel got.
+	canceled     []model.JobID
+	cancelErr    error
+	cancelCtxErr error
+}
+
+func (f *fakeRemote) Cancel(ctx context.Context, id model.JobID) error {
+	f.canceled = append(f.canceled, id)
+	f.cancelCtxErr = ctx.Err()
+
+	return f.cancelErr
 }
 
 const defaultRoot = "/home/ob"
@@ -78,8 +91,12 @@ func (f *fakeRemote) Submit(_ context.Context, spec model.JobSpec) (model.JobID,
 	return "job-7", f.submitErr
 }
 
-func (f *fakeRemote) Wait(_ context.Context, id model.JobID) (model.JobState, error) {
+func (f *fakeRemote) Wait(ctx context.Context, id model.JobID) (model.JobState, error) {
 	f.waited = append(f.waited, id)
+
+	if f.stopOnContext && ctx.Err() != nil {
+		return model.JobUnknown, ctx.Err()
+	}
 
 	return f.state, f.waitErr
 }

@@ -50,7 +50,10 @@ func TestExclusivePriority_AGateOfAPullRequestThatAPersonWaitsOnComesFirst(t *te
 
 			t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-			assert.Equal(t, test.want, engine.exclusivePriority(t.Context(), ExclusiveInput{Kind: test.kind, Project: testProject, Item: "12"}))
+			in := ExclusiveInput{Kind: test.kind, Project: testProject, Item: "12"}
+			standing, read := engine.gateStanding(t.Context(), in)
+
+			assert.Equal(t, test.want, priorityOf(in, standing, read))
 		})
 	}
 }
