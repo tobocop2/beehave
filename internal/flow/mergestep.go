@@ -126,6 +126,8 @@ func stepPassed(each any) error {
 const (
 	passStatus = string(gatepkg.StatusPass)
 	failStatus = string(gatepkg.StatusFail)
+	// unknownStatus is a step that gave no result, as a voided gate leaves every step.
+	unknownStatus = string(gatepkg.StatusUnknown)
 )
 
 // errStepsShape is returned when the `steps` argument of a merge call is not the list that a gate records.

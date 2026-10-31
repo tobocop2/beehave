@@ -313,12 +313,38 @@ func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch
 	if len(in.GateRun) == 0 {
 		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item)
 
-		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed && everyStepIsAPass(gated.Steps), Report: gated.Report}, err
+		void := voidReason(gated)
+		if void != "" && gated.Tree == "" {
+			// A voided gate reads no tree. The checked-out tree is the tree of the union, so the batch reads the void and not a mismatch.
+			gated.Tree = tree
+		}
+
+		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed && everyStepIsAPass(gated.Steps), Report: gated.Report, Void: void}, err
 	}
 
 	out, err := e.deps.Commands.Run(ctx, CommandRequest{Project: in.Project, Item: in.Item, Run: in.GateRun})
 
 	return batch.GateOutcome{Tree: tree, Passed: out.RC == 0, Report: out.Stdout}, err
+}
+
+// voidReason is the report of a gate whose every step is unknown: the gate did not run, for example when a pinned tool is at another version.
+// It is empty for a gate that ran. A gate with no step has no result either, but it stays a red gate as before.
+func voidReason(gated GateResult) string {
+	if len(gated.Steps) == 0 {
+		return ""
+	}
+
+	for _, s := range gated.Steps {
+		if s.Status != unknownStatus {
+			return ""
+		}
+	}
+
+	if strings.TrimSpace(gated.Report) == "" {
+		return "every step of the gate is unknown"
+	}
+
+	return gated.Report
 }
 
 // everyStepIsAPass is true when the gate recorded at least one step and every step passed. An unknown step, or no step, is not a pass.

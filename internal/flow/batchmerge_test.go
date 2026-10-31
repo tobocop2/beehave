@@ -125,6 +125,31 @@ func TestBatchMerge_AGateWithAnUnknownStepLandsNoMemberEvenWhenItReportsPassed(t
 	assert.Equal(t, "README", rig.mainFiles(t))
 }
 
+func TestBatchMerge_AVoidGateStopsTheBatchAndNoItemIsGatedAlone(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.gate.void = true
+
+	_, err := rig.walk(t, rig.call("1 2 3", ""))
+
+	require.ErrorIs(t, err, batch.ErrGateVoid)
+	assert.Contains(t, err.Error(), "node is 20.1.0 and the pin is 22.0.0")
+	assert.Len(t, rig.gate.ran(), 1, "a void gate does not split the batch")
+	assert.Empty(t, rig.merger.landed())
+}
+
+func TestVoidReason_OnlyAGateWithEveryStepUnknownIsVoidAndItAlwaysHasAReason(t *testing.T) {
+	t.Parallel()
+
+	unknown := []GateStep{{Name: "command", Status: "unknown"}}
+
+	assert.Equal(t, "every step of the gate is unknown", voidReason(GateResult{Steps: unknown}))
+	assert.Equal(t, "pin", voidReason(GateResult{Steps: unknown, Report: "pin"}))
+	assert.Empty(t, voidReason(GateResult{Steps: append(unknown, GateStep{Name: "tests", Status: "pass"})}))
+	assert.Empty(t, voidReason(GateResult{}))
+}
+
 func TestBatchMerge_AGateWithNoStepLandsNoMemberEvenWhenItReportsPassed(t *testing.T) {
 	t.Parallel()
 

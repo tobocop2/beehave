@@ -224,6 +224,8 @@ type treeGate struct {
 	unknownStep bool
 	// noSteps, when set, makes the gate report Passed with an empty, non-nil list of steps.
 	noSteps bool
+	// void, when set, makes the gate answer as a voided gate does: it did not run, and every step is unknown.
+	void bool
 }
 
 func (g *treeGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
@@ -236,8 +238,12 @@ func (g *treeGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
 	g.mu.Unlock()
 
 	g.mu.Lock()
-	lie, unknown, empty := g.lie, g.unknownStep, g.noSteps
+	lie, unknown, empty, void := g.lie, g.unknownStep, g.noSteps, g.void
 	g.mu.Unlock()
+
+	if void {
+		return GateResult{Report: "the gate did not run: node is 20.1.0 and the pin is 22.0.0", Head: head, Steps: []GateStep{{Name: "command", Status: "unknown"}}}, nil
+	}
 
 	if lie != "" {
 		tree = lie
