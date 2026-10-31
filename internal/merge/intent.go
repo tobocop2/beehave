@@ -67,7 +67,7 @@ func (a *attempt) intended() *refusal {
 			intent.PR, intent.Head, intent.Base, a.req.PR, a.req.Gated, a.req.Base))
 	}
 
-	if intent.State != "OPEN" {
+	if intent.State != stateOpen {
 		return refuse(fmt.Sprintf("REFUSE: #%d is merged, and the intent did not read the pull request as OPEN, so the merge may not be ours.", a.req.PR))
 	}
 

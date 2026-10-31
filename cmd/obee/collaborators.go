@@ -421,6 +421,16 @@ func (o opened) TreeBlobs(ctx context.Context, tree string) (map[string]string, 
 	return trees.TreeBlobs(ctx, tree)
 }
 
+// IsAncestor tells whether a commit is in the history of the base, when the forge compares commits.
+func (o opened) IsAncestor(ctx context.Context, commit, base string) (bool, error) {
+	history, ok := o.Forge.(merge.Ancestry)
+	if !ok {
+		return false, fmt.Errorf("%w: ancestry", errNoOptionalRead)
+	}
+
+	return history.IsAncestor(ctx, commit, base)
+}
+
 // FailedLog returns the log of a failed check, when the forge reads logs.
 func (o opened) FailedLog(ctx context.Context, link string) (string, error) {
 	logs, ok := o.Forge.(merge.Logs)

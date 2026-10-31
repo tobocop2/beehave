@@ -47,6 +47,29 @@ func (f *Forge) CommitTree(ctx context.Context, commit string) (string, error) {
 	return tree, nil
 }
 
+// IsAncestor is true when commit is the tip of base or lies in its history. The forge compares commit to base: a base that is ahead of the commit, or equal to it, holds it.
+// Any other status, such as behind or diverged, is false. An answer with no status is an error.
+func (f *Forge) IsAncestor(ctx context.Context, commit, base string) (bool, error) {
+	if !isID(commit) {
+		return false, forge.Refuse("%q is not a full commit id", commit)
+	}
+
+	status, err := f.text(ctx, []string{argAPI, "repos/" + f.repo + "/compare/" + commit + "..." + escapeSegments(base), argJQ, ".status"},
+		"cannot compare commit "+commit+" with "+base)
+	if err != nil {
+		return false, err
+	}
+
+	switch status {
+	case "ahead", "identical":
+		return true, nil
+	case "behind", "diverged":
+		return false, nil
+	}
+
+	return false, forge.Refuse("cannot compare commit %s with %s: the answer holds no status", commit, base)
+}
+
 // TreeBlobs returns every file of a tree: its path and the id of its content. A folder is not listed. A tree too large for one answer is refused.
 func (f *Forge) TreeBlobs(ctx context.Context, tree string) (map[string]string, error) {
 	base := "cannot list the tree " + tree

@@ -75,6 +75,10 @@ func (w *shipWorld) UnresolvedThreads(context.Context, int) ([]model.ReviewThrea
 	return w.threads, nil
 }
 
+func (*shipWorld) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
+
+func (*shipWorld) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+
 func (*shipWorld) StackID(context.Context, int) (string, error) { return "", nil }
 
 func (w *shipWorld) BranchRef(context.Context, string) (string, bool, error) {
