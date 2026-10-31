@@ -111,7 +111,7 @@ func papersCommand(ctx context.Context, deps Deps, s streams, args []string) int
 	var globs string
 
 	revisions, ok := parseSubject("papers", papersSyntax, args, s.err, func(f *flag.FlagSet) {
-		f.StringVar(&globs, "globs", "", "the patterns of the source paths, split on white space; every path but *.md and *.txt when not given. * and ? match / as well. [!x] negates a set. {a,b} chooses between patterns, so write \\{ for a literal brace. \\ escapes the next character, so write \\\\ for a literal backslash. A pattern that does not parse is refused")
+		f.StringVar(&globs, "globs", "", "the patterns of the source paths, split on white space; every path but *.md and *.txt when not given. The dialect is doublestar: * and ? stop at /, and ** crosses it. [!x] and [^x] negate a set. {a,b} chooses between patterns, so write \\{ for a literal brace. \\ escapes the next character, so write \\\\ for a literal backslash. A pattern that does not parse is refused")
 	})
 	if !ok {
 		return ExitRefused

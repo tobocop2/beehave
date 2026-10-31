@@ -126,6 +126,15 @@ func (r *agentRig) crashAfterThePhaseEnded(t *testing.T, file string) {
 func (r *agentRig) crashItemAfterThePhaseEnded(t *testing.T, item, file string) {
 	t.Helper()
 
+	r.crashItemAfterThePhaseEndedArmedBy(t, item, file, func(arm func()) { arm() })
+}
+
+// crashItemAfterThePhaseEndedArmedBy is crashItemAfterThePhaseEnded with a choice of when the pipe goes into the folder config.
+// It hands the arming function to armBy before the engine starts. A git command that runs after the arming blocks on the pipe, so a caller that arms
+// from inside the fake agent lets the steps before the phase run free.
+func (r *agentRig) crashItemAfterThePhaseEndedArmedBy(t *testing.T, item, file string, armBy func(arm func())) {
+	t.Helper()
+
 	gate := filepath.Join(t.TempDir(), "gate")
 	require.NoError(t, syscall.Mkfifo(gate, 0o600))
 
@@ -149,7 +158,7 @@ func (r *agentRig) crashItemAfterThePhaseEnded(t *testing.T, item, file string) 
 		}
 	})
 
-	gitIn(t, r.dir, "config", "--local", "include.path", gate)
+	armBy(func() { gitIn(t, r.dir, "config", "--local", "include.path", gate) })
 
 	crashed, err := NewEngine(t.Context(), r.h.opts, r.h.deps())
 	require.NoError(t, err)
