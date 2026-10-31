@@ -825,6 +825,45 @@ func TestAgentStep_TheUntilOfALoopReadsTheViolationsOfAnAgent(t *testing.T) {
 	assert.Len(t, rig.h.agents.seen(), 2, "the loop ends in the round that has no violation")
 }
 
+func TestAgentStep_ProtectPathsGoToTheAgentRequestBesideTheProtectedPathKind(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`forbid_commands = ["protected-path"], protect_paths = ["/own/checkout", "rel/dir"], `), "x")
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.Equal(t, []model.FindingKind{model.FindingProtected}, rig.h.agents.seen()[0].Forbid)
+	assert.Equal(t, []string{"/own/checkout", "rel/dir"}, rig.h.agents.seen()[0].Protect)
+}
+
+func TestAgentStep_AKindThatNeedsPathsWithNoPathsIsRefusedWhenTheStepRuns(t *testing.T) {
+	t.Parallel()
+
+	for _, extra := range []string{
+		`forbid_commands = ["protected-path"], `,
+		`forbid_commands = ["protected-path"], protect_paths = [], `,
+		`forbid_commands = ["protected-path"], protect_paths = [""], `,
+		`forbid_commands = ["bulk-staging"], protect_paths = ["/own/checkout"], `,
+		`protect_paths = ["/own/checkout"], `,
+		`forbid_commands = ["protected-path"], protect_paths = [3], `,
+		`forbid_commands = ["protected-path"], protect_paths = 3 + 0, `,
+	} {
+		t.Run(extra, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newAgentRig(t)
+
+			_, err := rig.run(t, agentFlow(extra), "x")
+
+			require.ErrorContains(t, err, "protect_paths")
+			assert.Empty(t, rig.h.agents.seen())
+		})
+	}
+}
+
 func TestAgentStep_AForbidCommandsKindThatTheFileDoesNotKnowIsRefusedWhenTheStepRuns(t *testing.T) {
 	t.Parallel()
 

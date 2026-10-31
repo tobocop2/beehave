@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -37,9 +38,15 @@ func TestExample_TheReviewIsReadOnlyAndTheFixIsNot(t *testing.T) {
 
 	require.NoError(t, err)
 
-	var reviews, others int
+	var reviews, others, guarded int
 
 	for _, request := range rig.h.agents.requests {
+		if slices.Contains(request.Forbid, model.FindingProtected) {
+			guarded++
+
+			assert.Equal(t, []string{"/own/checkout"}, request.Protect, "the checkout of the owner is off limits")
+		}
+
 		if strings.Contains(request.Prompt, reviewMarker) {
 			reviews++
 
@@ -55,6 +62,7 @@ func TestExample_TheReviewIsReadOnlyAndTheFixIsNot(t *testing.T) {
 
 	assert.Equal(t, 2, reviews)
 	assert.Equal(t, 3, others, "plan, implement and one fix")
+	assert.Equal(t, 4, guarded, "implement, two reviews and one fix hold the protected checkout; the plan does not")
 }
 
 func TestExample_AFailingGateRunsNoReviewSoARejectNeverFollowsAFixRound(t *testing.T) {

@@ -9,12 +9,15 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-func TestFindingKinds_ListsTheElevenKindsSortedByName(t *testing.T) {
+func TestFindingKinds_ListsTheTwelveKindsSortedByName(t *testing.T) {
 	t.Parallel()
 
 	kinds := model.FindingKinds()
 
-	assert.Len(t, kinds, 11)
+	assert.Len(t, kinds, 12)
+	assert.Contains(t, kinds, model.FindingProtected)
+	assert.True(t, model.FindingProtected.NeedsPaths())
+	assert.False(t, model.FindingGitWrite.NeedsPaths())
 	assert.Contains(t, kinds, model.FindingGitWrite)
 	assert.True(t, slices.IsSorted(kinds), "%v", kinds)
 	assert.Contains(t, kinds, model.FindingBulkStaging)

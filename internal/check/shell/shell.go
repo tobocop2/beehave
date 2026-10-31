@@ -43,7 +43,7 @@ type command struct {
 func newScanner() *scanner {
 	return &scanner{
 		vars: map[string]string{}, funcs: map[string]bool{}, active: map[string]bool{},
-		memo: map[string]resolution{}, local: map[string]resolution{}, resolving: map[string]bool{},
+		memo: map[string]resolution{}, local: map[string]resolution{}, resolving: map[string]bool{}, plain: map[string]string{},
 	}
 }
 
@@ -60,7 +60,11 @@ type scanner struct {
 	resolutions int                   // values worked out so far, for the tests
 	used        []string              // variables the current command expanded
 	findings    []model.Finding
-	readOnly    bool // the step is read-only: a git command that changes a repository is a finding
+	readOnly    bool              // the step is read-only: a git command that changes a repository is a finding
+	prot        *protector        // the protected directories, or nil when the kind protected-path is off
+	cwd         string            // the directory the next command runs in, or "" when no static read can tell
+	plain       map[string]string // variables the text sets to a plain value, for the paths of protected-path
+	blind       bool              // the current command named a path that no static read can place
 }
 
 // value returns the wrapper value of a variable, unless the scan is already reading that value or the value is unreadable.
@@ -174,14 +178,23 @@ func (s *scanner) hold(names []string) func() {
 // Scan returns the forbidden commands in one shell command, each once, in the order found.
 // The kind git-write is not in this scan: it is for a read-only step and ScanFor turns it on.
 func Scan(commandText string) []model.Finding {
-	return scanText(commandText, false)
+	return scanText(commandText, false, Protection{})
 }
 
 // ScanFor returns the findings of the listed kinds only. The kind git-write, which refuses every command that changes a repository, is found only when the list holds it.
 func ScanFor(commandText string, kinds []model.FindingKind) []model.Finding {
+	return ScanWith(commandText, kinds, Protection{})
+}
+
+// ScanWith is ScanFor with the setting of the kind protected-path. The kind finds nothing unless the list of kinds holds it and the protection names a directory.
+func ScanWith(commandText string, kinds []model.FindingKind, protect Protection) []model.Finding {
 	var out []model.Finding
 
-	for _, finding := range scanText(commandText, slices.Contains(kinds, model.FindingGitWrite)) {
+	if !slices.Contains(kinds, model.FindingProtected) {
+		protect = Protection{}
+	}
+
+	for _, finding := range scanText(commandText, slices.Contains(kinds, model.FindingGitWrite), protect) {
 		if slices.Contains(kinds, finding.Kind) {
 			out = append(out, finding)
 		}
@@ -190,9 +203,11 @@ func ScanFor(commandText string, kinds []model.FindingKind) []model.Finding {
 	return out
 }
 
-func scanText(commandText string, readOnly bool) []model.Finding {
+func scanText(commandText string, readOnly bool, protect Protection) []model.Finding {
 	s := newScanner()
 	s.readOnly = readOnly
+	s.prot = newProtector(protect)
+	s.cwd = protect.Base
 	s.prepass(commandText)
 	s.scan(commandText, false)
 
@@ -279,6 +294,10 @@ func lastOfPipe(stmt *syntax.Stmt) *syntax.Stmt {
 }
 
 func (s *scanner) command(u Unit, stmt *syntax.Stmt, prev *command) *command {
+	if stmt.Cmd == nil && len(stmt.Redirs) > 0 {
+		return s.redirectOnly(u, stmt, prev)
+	}
+
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Args) == 0 {
 		return nil
@@ -292,6 +311,14 @@ func (s *scanner) command(u Unit, stmt *syntax.Stmt, prev *command) *command {
 	found.expanded = s.used
 	found.unread = s.unreadable(names, len(prefix), found.expanded)
 
+	found.heredocs, found.writes = s.redirects(u, stmt)
+
+	return found
+}
+
+// redirectOnly returns the command of a statement that holds redirects and no command word, such as `> file`. It writes with no head.
+func (s *scanner) redirectOnly(u Unit, stmt *syntax.Stmt, prev *command) *command {
+	found := &command{prev: prev}
 	found.heredocs, found.writes = s.redirects(u, stmt)
 
 	return found
@@ -519,6 +546,10 @@ func (s *scanner) noteCall(u Unit, call *syntax.CallExpr, bodies *[][2]string) {
 func (s *scanner) noteAssign(u Unit, assign *syntax.Assign) {
 	if assign.Name == nil || assign.Value == nil {
 		return
+	}
+
+	if s.prot != nil {
+		s.plain[assign.Name.Value] = valueText(u.Src, assign.Value)
 	}
 
 	if value := valueText(u.Src, assign.Value); holdsWrapper(value, s.funcs) || startsWithWrapper(value) || s.namesRecorded(value) {

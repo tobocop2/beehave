@@ -1,6 +1,6 @@
 # The implementer leaves a forbidden command, and every review approves with the gate green.
 # The first fix hits too, so the loop goes on: a hit in any lane run forces another fix round. The clean second fix ends it.
-env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
 exec obee run 7 --workflow flow/workflow.star
 stdout 'item 7 finished'
 

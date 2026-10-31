@@ -40,6 +40,7 @@ type agentArgs struct {
 	pin           string
 	requireSkills []string
 	forbid        []model.FindingKind
+	protect       []string
 	scope         scope
 	start         startMark
 	declared      []string
@@ -57,7 +58,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
-		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "output_tries": &a.tries,
+		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
 		"follow_ups": &raw.followUps, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
@@ -75,7 +76,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 type agentRaw struct {
 	label, timeout, idle, followUps string
 	inputs, outputs, skills, kinds  starlark.Value
-	allow                           starlark.Value
+	allow, protect                  starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -109,7 +110,7 @@ func (a *agentArgs) lists(raw agentRaw) (err error) {
 		return err
 	}
 
-	if a.forbid, err = findingKinds(raw.kinds); err != nil {
+	if a.forbid, a.protect, err = forbidden(raw.kinds, raw.protect); err != nil {
 		return err
 	}
 
@@ -132,6 +133,43 @@ func findingKinds(v starlark.Value) ([]model.FindingKind, error) {
 
 		return model.FindingKind(name), nil
 	}, errors.New("forbid_commands must be a list of strings"))
+}
+
+// forbidden reads the forbid_commands argument and the protect_paths argument that goes with it.
+func forbidden(kinds, protect starlark.Value) ([]model.FindingKind, []string, error) {
+	forbid, err := findingKinds(kinds)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	paths, err := protectPaths(protect, forbid)
+
+	return forbid, paths, err
+}
+
+// protectPaths reads the protect_paths argument: the directories the kind protected-path guards. A relative path starts at the folder of the step.
+// The list and the kind go together: a kind that needs paths with none would pass every command, and paths with no kind would guard nothing.
+func protectPaths(v starlark.Value, forbid []model.FindingKind) ([]string, error) {
+	paths, err := words("protect_paths", v)
+	if err != nil {
+		return nil, err
+	}
+
+	if slices.Contains(paths, "") {
+		return nil, errors.New("protect_paths holds an empty path, which would name the folder of the step. Give a path")
+	}
+
+	for _, kind := range forbid {
+		if kind.NeedsPaths() && len(paths) == 0 {
+			return nil, fmt.Errorf("forbid_commands lists %s, so protect_paths must list at least one directory", kind)
+		}
+	}
+
+	if len(paths) > 0 && !slices.ContainsFunc(forbid, model.FindingKind.NeedsPaths) {
+		return nil, errors.New("protect_paths is set, but forbid_commands lists no kind that uses it. Add \"protected-path\" to forbid_commands")
+	}
+
+	return paths, nil
 }
 
 // inputMap converts the inputs dict of an agent call into the data of its prompt template. An absent dict is empty.
@@ -223,7 +261,7 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
-		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid,
+		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
 	}
 }
 

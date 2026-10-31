@@ -5,7 +5,12 @@ load("@obee//review_fix.star", "review_fix")
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
-FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read"]
+FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path"]
+
+# The agent works in the worktree of the item and must not write in the checkout of the owner. The environment variable SOURCE_CHECKOUT names that checkout.
+# The kind protected-path refuses a write there, and a git command there that is not a read. A command that reads the checkout passes.
+def protected():
+    return [env("SOURCE_CHECKOUT")]
 
 def land(pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
@@ -97,6 +102,7 @@ def pipeline(item):
         model = "sonnet",
         require_skills = ["blast-radius-review"],
         forbid_commands = FORBID,
+        protect_paths = protected(),
         inputs = {"item": item, "plan": plan.text},
     )
 
@@ -104,7 +110,7 @@ def pipeline(item):
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
     # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix round.
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid")
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected())
 
     # A reject verdict ends the loop with no fix round. The item gets the text of the review as the reason and the hold status.
     if loop.rejected:

@@ -1,6 +1,6 @@
 # The first review approves and the gate passes, but the implementer left a forbidden command.
 # A hit in the latest lane run forces a fix round: the fix gets the hit as its findings, and the second review approves.
-env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
 exec obee run 7 --workflow flow/workflow.star
 stdout 'item 7 finished'
 

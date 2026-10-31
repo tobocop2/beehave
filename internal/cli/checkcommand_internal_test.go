@@ -85,6 +85,71 @@ func TestCheckCommand_TheDefaultListLeavesOutGitWriteWhichIsOptIn(t *testing.T) 
 	assert.Equal(t, 2, code)
 }
 
+func bashAt(command, cwd string) string {
+	return `{"hook_event_name":"PreToolUse","cwd":"` + cwd + `","tool_name":"Bash","tool_input":{"command":"` + command + `"}}`
+}
+
+func TestCheckCommand_ProtectedPathRefusesAWriteInAListedDirectoryAndPassesARead(t *testing.T) {
+	t.Parallel()
+
+	args := []string{"--forbid", "protected-path", "--protect", "/own/checkout"}
+
+	code, stderr := hook(t, bashAt("touch /own/checkout/a", "/work/step"), args...)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "protected-path: touch /own/checkout/a")
+
+	code, _ = hook(t, bashAt("git -C /own/checkout commit -m x", "/work/step"), args...)
+	assert.Equal(t, 2, code)
+
+	code, _ = hook(t, bashAt("git -C /own/checkout log", "/work/step"), args...)
+	assert.Zero(t, code, "a read of the protected directory passes")
+
+	code, _ = hook(t, bashAt("touch /work/step/a", "/work/step"), args...)
+	assert.Zero(t, code)
+}
+
+func TestCheckCommand_ProtectedPathReadsTheDirectoryOfTheEventForRelativePaths(t *testing.T) {
+	t.Parallel()
+
+	args := []string{"--forbid", "protected-path", "--protect", "/own/checkout,/own/other"}
+
+	code, _ := hook(t, bashAt("touch a", "/own/other"), args...)
+	assert.Equal(t, 2, code, "the second directory of the list counts")
+
+	code, _ = hook(t, bashAt("touch a", "/work/step"), args...)
+	assert.Zero(t, code)
+}
+
+func TestCheckCommand_ProtectedPathRefusesARelativeDirectoryInTheList(t *testing.T) {
+	t.Parallel()
+
+	code, stderr := hook(t, cleanEvent, "--forbid", "protected-path", "--protect", "own/checkout")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "needs absolute directories")
+}
+
+func TestHookEvent_TheDirectoryIsTheEventOneThenTheProcessOneThenNone(t *testing.T) {
+	t.Parallel()
+
+	getwd := func() (string, error) { return "/proc/dir", nil }
+	broken := func() (string, error) { return "", errors.New("no working directory") }
+
+	assert.Equal(t, "/ev/dir", hookEvent{Cwd: "/ev/dir"}.dir(broken))
+	assert.Equal(t, "/proc/dir", hookEvent{}.dir(getwd))
+	assert.Empty(t, hookEvent{}.dir(broken), "a relative path cannot be placed")
+}
+
+func TestCheckCommand_ProtectedPathWithNoDirectoryIsRefusedAndTheDefaultListLeavesItOut(t *testing.T) {
+	t.Parallel()
+
+	code, stderr := hook(t, cleanEvent, "--forbid", "protected-path")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "--protect")
+
+	code, _ = hook(t, cleanEvent)
+	assert.Zero(t, code, "a bare hook has no directory to protect and must not fail")
+}
+
 func TestCheckCommand_AnUnknownKindIsAnErrorThatNamesTheKinds(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +191,7 @@ func TestRunCheckCommand_AnInputThatFailsToReadIsRefused(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	err := runCheckCommand(failingReader{}, &stderr, []string{"bulk-staging"})
+	err := runCheckCommand(failingReader{}, &stderr, []string{"bulk-staging"}, nil)
 
 	var exit *ExitError
 	require.ErrorAs(t, err, &exit)

@@ -200,6 +200,35 @@ func TestAgents_AStepThatForbidsKindsRunsTheAgentWithTheHookOfThoseKinds(t *test
 	assert.Equal(t, "'/bin/obee' check command --forbid bulk-staging,local-delete", f.spec.Guard)
 }
 
+func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfTheStep(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingProtected}
+	req.Protect = []string{"/own/it's", "../sibling"}
+
+	_, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, `'/bin/obee' check command --forbid protected-path --protect '/own/it'\''s' --protect '/work/sibling'`, f.spec.Guard)
+}
+
+func TestAgents_AWriteInAProtectedDirectoryIsAViolationAndARelativeWriteInTheStepFolderIsNot(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []string{"touch /own/checkout/a", "git -C /own/checkout log", "touch notes.txt", "git -C /own/checkout commit -m x"}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingProtected}
+	req.Protect = []string{"/own/checkout"}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"protected-path: touch /own/checkout/a", "protected-path: git -C /own/checkout commit"}, got.Violations)
+}
+
 func TestAgents_AStepThatForbidsCommandsDoesNotStartWithoutTheBinaryPathOfObee(t *testing.T) {
 	t.Parallel()
 

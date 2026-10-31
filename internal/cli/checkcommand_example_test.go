@@ -22,6 +22,8 @@ func exampleForbid(t *testing.T) []string {
 	text, err := os.ReadFile("../../examples/remediation/workflow.star")
 	require.NoError(t, err)
 	require.Contains(t, string(text), "forbid_commands = FORBID")
+	require.Contains(t, string(text), "protect_paths = protected()", "the kind protected-path needs the list of the step")
+	require.Contains(t, string(text), "protect = protected()", "the review loop gets the same list")
 
 	list := exampleForbidList.FindStringSubmatch(string(text))
 	require.Len(t, list, 2, "workflow.star holds one FORBID list")
@@ -62,16 +64,21 @@ func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T
 		"S1-S-08: bulk staging stays refused":        "git add -A",
 		"S1-S-08: a hidden command stays refused":    "$X -rf $Y",
 		"S1-S-08: a delete of the laptop is refused": "rm -rf *",
+		"S1-B-23: a write in the checkout":           "touch /own/checkout/a",
+		"S1-B-23: git in the checkout":               "git -C /own/checkout commit -m x",
+		"S1-B-23: git after a cd into the checkout":  "cd /own/checkout && git checkout -b x",
 	}
 
+	protect := []string{"--forbid", forbid, "--protect", "/own/checkout"}
+
 	for name, command := range rows {
-		code, stderr := hook(t, jsonEvent(command), "--forbid", forbid)
+		code, stderr := hook(t, jsonEvent(command), protect...)
 
 		assert.Equal(t, 2, code, "%s: %s", name, stderr)
 	}
 
-	for _, clean := range []string{"git commit -m x", "git push origin b", "git config --get core.editor", "cat main.go", "make check"} {
-		code, stderr := hook(t, jsonEvent(clean), "--forbid", forbid)
+	for _, clean := range []string{"git commit -m x", "git push origin b", "git config --get core.editor", "cat main.go", "make check", "git -C /own/checkout log", "cat /own/checkout/main.go"} {
+		code, stderr := hook(t, jsonEvent(clean), protect...)
 
 		assert.Zero(t, code, "%s: %s", clean, stderr)
 	}

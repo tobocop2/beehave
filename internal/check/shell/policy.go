@@ -45,6 +45,7 @@ var (
 func (s *scanner) scanRules(cmd *command) {
 	s.scanOpaque(cmd)
 	s.scanPolicy(cmd)
+	s.scanProtected(cmd)
 }
 
 // redirects returns the heredoc bodies of a statement and the targets of its redirects that write.
@@ -204,7 +205,7 @@ func (s *scanner) scanSubcommand(named []string, set flagSet) {
 // skipsSafeguard reports whether a git command skips the hooks, hides work in a stash or overwrites a remote branch.
 func skipsSafeguard(sub string, set flagSet) bool {
 	switch sub {
-	case "stash":
+	case subStash:
 		return len(set.pos) == 0 || !slices.Contains([]string{"list", "show"}, set.pos[0])
 	case subCommit:
 		return set.has("n", noVerify) || hasLong(set, noVerify)

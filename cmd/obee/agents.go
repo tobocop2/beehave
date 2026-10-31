@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -61,11 +62,26 @@ func guardCommand(executable func() (string, error)) string {
 		return ""
 	}
 
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "' check command"
+	return shellQuote(path) + " check command"
+}
+
+// protectionOf returns the protection of a request: its directories, absolute, a relative one taken from the folder of the step.
+func protectionOf(protect []string, dir string) shell.Protection {
+	dirs := make([]string, 0, len(protect))
+
+	for _, name := range protect {
+		if !filepath.IsAbs(name) {
+			name = filepath.Join(dir, name)
+		}
+
+		dirs = append(dirs, filepath.Clean(name))
+	}
+
+	return shell.Protection{Dirs: dirs, Base: dir}
 }
 
 // guardFor returns the hook command of a run that forbids kinds, or "" when the run forbids none or has no guard.
-func (a agents) guardFor(forbid []model.FindingKind) string {
+func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) string {
 	if a.guard == "" || len(forbid) == 0 {
 		return ""
 	}
@@ -75,7 +91,12 @@ func (a agents) guardFor(forbid []model.FindingKind) string {
 		names = append(names, string(kind))
 	}
 
-	return a.guard + " --forbid " + strings.Join(names, ",")
+	words := []string{a.guard, "--forbid", strings.Join(names, ",")}
+	for _, dir := range protect.Dirs {
+		words = append(words, "--protect", shellQuote(dir))
+	}
+
+	return strings.Join(words, " ")
 }
 
 func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string) agent.Spec {
@@ -109,7 +130,8 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	}
 
 	adapter := a.adapter(runner.Agent)
-	guard := a.guardFor(request.Forbid)
+	protect := protectionOf(request.Protect, dir)
+	guard := a.guardFor(request.Forbid, protect)
 
 	if note := noGuardNote(adapter, guard, request.Forbid); note != "" {
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
@@ -118,7 +140,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	tap := newSessionTap(adapter)
 	result := a.run(ctx, a.specOf(request, runner, dir, adapter, tap, guard))
 
-	return describe(adapter, runner, dir, tap, result, request.Forbid)
+	return describe(adapter, runner, dir, tap, result, request.Forbid, protect)
 }
 
 // target returns the runner of the login and the worktree of the item. A request with no prompt, an unknown login or no worktree is refused.
@@ -156,7 +178,7 @@ func (a agents) runnerOf(name string) (model.Runner, bool) {
 
 // describe adds the session, the transcript path, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0.
 // It reads them from the output lines that the tap kept. The violations are the second line of defense: the hook of the run refuses a forbidden command before the call.
-func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind) (agent.Result, error) {
+func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind, protect shell.Protection) (agent.Result, error) {
 	if result.Outcome != agent.OutcomeExited || result.ExitCode != 0 {
 		return result, nil
 	}
@@ -170,7 +192,7 @@ func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessi
 	result.Skills = tap.skillCalls()
 
 	if len(forbid) > 0 {
-		result.Violations = violations(tap.shellCalls(), forbid, tap.incomplete())
+		result.Violations = violations(tap.shellCalls(), forbid, protect, tap.incomplete())
 	}
 
 	return result, nil
@@ -179,11 +201,11 @@ func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessi
 // violations scans each Bash call and returns one line for each hit of a listed kind: the kind, a colon and the command that matched.
 // The notes say that the check did not see the whole output. They always stay, and they count in the cap.
 // The hits and notes together fill at most maxViolationLines lines, and one line gives the number of hits left out.
-func violations(calls []string, forbid []model.FindingKind, notes []string) []string {
+func violations(calls []string, forbid []model.FindingKind, protect shell.Protection, notes []string) []string {
 	var lines []string
 
 	for _, call := range calls {
-		for _, finding := range shell.ScanFor(call, forbid) {
+		for _, finding := range shell.ScanWith(call, forbid, protect) {
 			lines = append(lines, fmt.Sprintf("%s: %s", finding.Kind, snippet(finding.Text)))
 		}
 	}
