@@ -47,6 +47,21 @@ func (g projectGate) Run(ctx context.Context, project, item string) (flow.GateRe
 	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: gateSteps(result.Steps)}, nil
 }
 
+// Key reads the key of the gate that Run would start on the worktree of the item.
+func (g projectGate) Key(ctx context.Context, project, item string) (flow.GateKey, error) {
+	request, err := g.request(ctx, project, item)
+	if err != nil {
+		return flow.GateKey{}, err
+	}
+
+	key, err := gate.New(g.shell, g.tree, nil).Key(ctx, request)
+	if err != nil {
+		return flow.GateKey{}, fmt.Errorf("read the gate key of item %s: %w", item, err)
+	}
+
+	return flow.GateKey{ID: key.ID, Head: key.Head, Tree: key.Tree}, nil
+}
+
 // gateSteps gives the steps of a gate result to the engine.
 func gateSteps(steps []gate.Step) []flow.GateStep {
 	out := make([]flow.GateStep, 0, len(steps))

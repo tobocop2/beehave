@@ -146,6 +146,52 @@ func TestProjectGate_ALocalGateReportsAPassOnTheHeadOfTheWorktree(t *testing.T) 
 	assert.Equal(t, "/tree", calls.dirs[2])
 }
 
+func TestProjectGate_KeyNamesTheHeadAndTheTreeAndStartsNoGate(t *testing.T) {
+	t.Parallel()
+
+	calls := &gateCalls{}
+	gate := projectGate{
+		projects: localProject(),
+		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
+	}
+
+	got, err := gate.Key(t.Context(), "p", "1")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, got.ID)
+	assert.Equal(t, "abc123", got.Head)
+	assert.Equal(t, "tree-of-abc123", got.Tree)
+	assert.NotContains(t, calls.binaries, "sh", "a key never runs the gate")
+}
+
+func TestProjectGate_KeyRefusesWhatItCannotReadWithoutRunningTheGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		project string
+		head    model.CommandResult
+		wantErr string
+	}{
+		{"unknown project", "zzz", model.CommandResult{Stdout: "abc"}, errUnknownProject.Error()},
+		{"head error", "p", model.CommandResult{Stderr: "fatal: no repository\n", ExitCode: 128}, "read the gate key of item 1"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			calls := &gateCalls{}
+			gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, test.head, model.CommandResult{})}}
+
+			_, err := gate.Key(t.Context(), test.project, "1")
+
+			require.ErrorContains(t, err, test.wantErr)
+			assert.NotContains(t, calls.binaries, "sh")
+		})
+	}
+}
+
 func TestProjectGate_ATreeWithUncommittedChangesIsRefusedAndTheGateNeverRuns(t *testing.T) {
 	t.Parallel()
 

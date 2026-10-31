@@ -168,6 +168,10 @@ func (g e2eGate) Run(ctx context.Context, _, _ string) (flow.GateResult, error) 
 	return flow.GateResult{Passed: true, Head: head, Tree: "tree-of-" + head}, err
 }
 
+func (g e2eGate) Key(context.Context, string, string) (flow.GateKey, error) {
+	return flow.GateKey{}, nil
+}
+
 // e2eAgents starts the claude program of the script PATH through the real agent runner.
 type e2eAgents struct{ dir, path string }
 

@@ -79,8 +79,19 @@ func (g Gate) pinProblem(ctx context.Context, request Request) string {
 	return ""
 }
 
+// installed asks the tool for its version, the same way for the pin check and for the gate key.
+func (g Gate) installed(ctx context.Context, dir string, p pin) (string, int) {
+	return g.shell(ctx, dir, quote(p.tool)+" version 2>&1 || "+quote(p.tool)+" --version 2>&1")
+}
+
 func (g Gate) toolProblem(ctx context.Context, dir string, p pin) string {
-	output, code := g.shell(ctx, dir, quote(p.tool)+" version 2>&1 || "+quote(p.tool)+" --version 2>&1")
+	output, code := g.installed(ctx, dir, p)
+
+	return versionProblem(p, output, code)
+}
+
+// versionProblem is the reason why the version text of an installed tool is not the pinned version, or empty when it is.
+func versionProblem(p pin, output string, code int) string {
 	if code != 0 {
 		return fmt.Sprintf("the tool %s pins version %s, but its version cannot be read (exit code %d)", p.tool, p.version, code)
 	}

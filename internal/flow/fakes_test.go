@@ -128,7 +128,40 @@ type fakeGate struct {
 	calls   int
 	err     error
 	via     gate
+	// keys are the answers of Key in order; keyReads counts them.
+	keys     []GateKey
+	keyReads int
+	keyErr   error
 }
+
+// Key answers from keys in order, the last repeating. With no keys it gives an empty key, so no gate reuses a pass.
+func (g *fakeGate) Key(context.Context, string, string) (GateKey, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if len(g.keys) == 0 {
+		return GateKey{}, g.keyErr
+	}
+
+	index := min(g.keyReads, len(g.keys)-1)
+	g.keyReads++
+
+	return g.keys[index], g.keyErr
+}
+
+// The gates below run a tree of their own and give no key, so the engine never reuses a pass for them.
+
+func (*treeGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (packageGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (zeroTestGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (deadlineGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (slowGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (cancelGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
 
 func (g *fakeGate) Run(ctx context.Context, project, item string) (GateResult, error) {
 	g.mu.Lock()
