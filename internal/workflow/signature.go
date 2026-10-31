@@ -110,7 +110,7 @@ func itemSignatures() map[string][]Param {
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("id", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("approved", KindBool),
-			opt("tree", KindText), opt("forbid_text", KindList), one("children", ChildrenValues()), opt("merge", KindBool), label,
+			opt("tree", KindText), opt("steps", KindList), opt("forbid_text", KindList), one("children", ChildrenValues()), opt("merge", KindBool), label,
 		},
 	}
 }

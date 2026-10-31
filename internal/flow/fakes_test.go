@@ -140,7 +140,21 @@ func (g *fakeGate) Run(ctx context.Context, project, item string) (GateResult, e
 	index := min(g.calls, len(g.results)-1)
 	g.calls++
 
-	return g.results[index], g.err
+	result := g.results[index]
+	if result.Steps == nil {
+		result.Steps = commandStep(result.Passed)
+	}
+
+	return result, g.err
+}
+
+// commandStep is the one step that a real gate gives from the exit code of its command.
+func commandStep(passed bool) []GateStep {
+	if passed {
+		return []GateStep{{Name: "command", Status: "pass"}}
+	}
+
+	return []GateStep{{Name: "command", Status: "fail"}}
 }
 
 // fakeLogins picks byItem[item] when set and login otherwise.

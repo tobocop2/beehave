@@ -263,12 +263,23 @@ func (g batchGate) Run(ctx context.Context, in batch.GateInput) (batch.GateOutco
 	if len(g.run) == 0 {
 		gated, err := g.s.e.deps.Gate.Run(ctx, g.s.in.Project, g.s.in.Item)
 
-		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed, Report: gated.Report}, err
+		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed && everyStepIsAPass(gated.Steps), Report: gated.Report}, err
 	}
 
 	out, err := g.s.e.deps.Commands.Run(ctx, CommandRequest{Project: g.s.in.Project, Item: g.s.in.Item, Run: g.run})
 
 	return batch.GateOutcome{Tree: tree, Passed: out.RC == 0, Report: out.Stdout}, err
+}
+
+// everyStepIsAPass is true when the gate recorded at least one step and every step passed. An unknown step, or no step, is not a pass.
+func everyStepIsAPass(steps []GateStep) bool {
+	for _, s := range steps {
+		if s.Status != passStatus {
+			return false
+		}
+	}
+
+	return len(steps) > 0
 }
 
 // batchBase reads the base tip and merges the members.

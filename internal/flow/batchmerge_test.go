@@ -110,6 +110,32 @@ func TestBatchMerge_TheProjectGateReportsTheTreeOfTheUnionItRanOn(t *testing.T) 
 	assert.Equal(t, rig.repo.must(t, "rev-parse", "main^{tree}"), rig.merger.given[len(rig.merger.given)-1].GatedTree)
 }
 
+func TestBatchMerge_AGateWithAnUnknownStepLandsNoMemberEvenWhenItReportsPassed(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.gate.unknownStep = true
+
+	_, err := rig.walk(t, rig.call("1 3", ""))
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "an unknown step is not a pass, so no member lands")
+	assert.Equal(t, "README", rig.mainFiles(t))
+}
+
+func TestBatchMerge_AGateWithNoStepLandsNoMemberEvenWhenItReportsPassed(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.gate.noSteps = true
+
+	_, err := rig.walk(t, rig.call("1 3", ""))
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "a gate with no step has no result, so no member lands")
+	assert.Equal(t, "README", rig.mainFiles(t))
+}
+
 func TestBatchMerge_GateRunReplacesTheProjectGateWithAProgram(t *testing.T) {
 	t.Parallel()
 

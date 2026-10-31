@@ -7,8 +7,18 @@ func commandOutputs(stdout string, rc int) map[string]any {
 	return map[string]any{"stdout": stdout, "rc": rc}
 }
 
-func gateOutputs(passed bool, head, tree, report string) map[string]any {
-	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report}
+func gateOutputs(passed bool, head, tree, report string, steps []GateStep) map[string]any {
+	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report, "steps": stepList(steps)}
+}
+
+// stepList makes the recorded list of the steps of a gate. A gate with no step records an empty list, never a null.
+func stepList(steps []GateStep) []map[string]any {
+	list := make([]map[string]any, 0, len(steps))
+	for _, s := range steps {
+		list = append(list, map[string]any{"name": s.Name, statusKeyword: s.Status})
+	}
+
+	return list
 }
 
 func teardownOutputs(down bool, reason string) map[string]any {
@@ -26,7 +36,7 @@ func createOutputs(id string, created bool) map[string]any {
 }
 
 func statusOutputs(id, status string) map[string]any {
-	return map[string]any{"id": id, "status": status}
+	return map[string]any{"id": id, statusKeyword: status}
 }
 
 func commentOutputs(id string) map[string]any { return map[string]any{"id": id} }

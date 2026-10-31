@@ -34,7 +34,7 @@ func resultFields() map[string][]string {
 		agentName:        {"text", "session", "transcript", "head_sha", "violations"},
 		batchMergeName:   {"merged", "rejected", "deferred", "tip", "tree", "gates"},
 		commandName:      {"stdout", "rc"},
-		gateName:         {"passed", "head", "tree", "report"},
+		gateName:         {"passed", "head", "tree", "report", "steps"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
 		itemCommentName:  {"id"},
