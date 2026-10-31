@@ -17,13 +17,14 @@ const (
 	FindingConfigRead   FindingKind = "config-read"
 	FindingGitWrite     FindingKind = "git-write"
 	FindingProtected    FindingKind = "protected-path"
+	FindingZshExpansion FindingKind = "zsh-expansion"
 )
 
-// FindingKinds returns the twelve kinds, sorted by name. A workflow lists them in `forbid_commands`.
+// FindingKinds returns the thirteen kinds, sorted by name. A workflow lists them in `forbid_commands`.
 func FindingKinds() []FindingKind {
 	return []FindingKind{
 		FindingBulkStaging, FindingConfigRead, FindingDeleteText, FindingEnvOverride, FindingGitAuthor,
-		FindingGitBypass, FindingGitWrite, FindingLocalDelete, FindingOpaque, FindingProtected, FindingRemoteDelete, FindingUnparsed,
+		FindingGitBypass, FindingGitWrite, FindingLocalDelete, FindingOpaque, FindingProtected, FindingRemoteDelete, FindingUnparsed, FindingZshExpansion,
 	}
 }
 

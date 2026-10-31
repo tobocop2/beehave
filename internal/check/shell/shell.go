@@ -209,6 +209,7 @@ func scanText(commandText string, readOnly bool, protect Protection) []model.Fin
 	s.prot = newProtector(protect)
 	s.cwd = protect.Base
 	s.prepass(commandText)
+	s.scanZsh(commandText)
 	s.scan(commandText, false)
 
 	return dedupe(s.findings)
