@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 
+	"github.com/tobocop2/obee/internal/batch"
 	forgepkg "github.com/tobocop2/obee/internal/forge"
 	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/host"
@@ -41,7 +42,7 @@ func (e *Engine) failureOf(err error) *Failure {
 func productionKnown() []error {
 	return []error{
 		context.Canceled, context.DeadlineExceeded, fs.ErrNotExist,
-		forgepkg.ErrNoForge, ErrMemberNotOpen,
+		forgepkg.ErrNoForge, ErrMemberNotOpen, batch.ErrGateVoid,
 		gatepkg.ErrNoTests, gatepkg.ErrTreeChanged, gatepkg.ErrNoVerdict, gatepkg.ErrNoHead, gatepkg.ErrNoCloneURL,
 		host.ErrUnbanked, host.ErrNoRepos, host.ErrDiskLow, host.ErrDiskRead, host.ErrInUse, host.ErrInUseRead, host.ErrJobState,
 	}

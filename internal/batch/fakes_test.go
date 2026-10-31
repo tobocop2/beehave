@@ -18,6 +18,9 @@ type world struct {
 	// conflict says that item conflicts with a commit that holds these items.
 	conflict func(have []string, item string) bool
 	version  string
+	// void makes the gate void, for the unions that voidFor accepts, or for every union when voidFor is nil.
+	void    string
+	voidFor func(items []string) bool
 
 	gateTrees     []string
 	gateTreeFixed string
@@ -111,6 +114,10 @@ func (w *world) Run(_ context.Context, in GateInput) (GateOutcome, error) {
 	}
 
 	red := w.bad != nil && w.bad(itemsOf(in.Commit))
+
+	if w.void != "" && (w.voidFor == nil || w.voidFor(itemsOf(in.Commit))) {
+		return GateOutcome{Tree: reported, Void: w.void, Report: w.void}, nil
+	}
 
 	return GateOutcome{Tree: reported, Passed: !red, Report: "red on " + in.Tree}, nil
 }

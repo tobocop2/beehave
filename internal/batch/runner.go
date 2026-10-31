@@ -223,6 +223,10 @@ func (r *runner) gateAndLand(ctx context.Context, u Union) error {
 		return err
 	}
 
+	if out.Void != "" {
+		return fmt.Errorf("%w: %s. No member is blamed. Fix the cause and run the batch again", ErrGateVoid, strings.TrimRight(strings.TrimSpace(out.Void), "."))
+	}
+
 	if out.Passed {
 		return r.mergeAll(ctx, u)
 	}

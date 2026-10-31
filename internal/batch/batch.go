@@ -59,11 +59,17 @@ type GateInput struct {
 	Tree   string
 }
 
+// ErrGateVoid is a gate that gave no result about the code, for example when a pinned tool is at another version.
+// A void gate is not red: the batch stops and does not split, and no member is blamed.
+var ErrGateVoid = errors.New("the gate gave no result")
+
 // GateOutcome is what one gate run reported. Tree is the tree id the gate ran on, which must equal the tree of the union.
+// Void is set when the gate did not run to a result, and it holds the reason. A void outcome is never a pass.
 type GateOutcome struct {
 	Tree   string `json:"tree"`
 	Passed bool   `json:"passed"`
 	Report string `json:"report"`
+	Void   string `json:"void,omitempty"`
 }
 
 // Gate runs the project gate on one union. It runs one gate at a time.
