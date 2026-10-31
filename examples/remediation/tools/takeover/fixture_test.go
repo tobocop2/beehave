@@ -43,6 +43,7 @@ type spec struct {
 type setup struct {
 	pr      obj
 	rows    []model.Comment
+	views   int
 	viewErr error
 	rowsErr error
 	postErr error
@@ -52,6 +53,10 @@ type setup struct {
 	asked   []string
 	idle    time.Duration
 	grace   time.Duration
+
+	// beforeSecondView runs before the second read of the pull request, and secondViewErr fails it.
+	beforeSecondView func()
+	secondViewErr    error
 }
 
 func newSetup(s spec) *setup {
@@ -91,6 +96,16 @@ func newSetup(s spec) *setup {
 
 func (s *setup) PRView(_ context.Context, _ int, _ ...string) (model.PullRequest, error) {
 	s.asked = append(s.asked, "view")
+
+	s.views++
+
+	if s.views == 2 && s.beforeSecondView != nil {
+		s.beforeSecondView()
+	}
+
+	if s.views == 2 && s.secondViewErr != nil {
+		return model.PullRequest{}, s.secondViewErr
+	}
 
 	if s.viewErr != nil {
 		return model.PullRequest{}, s.viewErr
