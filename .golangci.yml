@@ -240,6 +240,7 @@ linters:
             - "**/internal/model/**"
             - "**/internal/config/**"
             - "**/internal/lockfile/**"
+            - "**/internal/exectest/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -247,6 +248,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/exectest
         layer-1:
           list-mode: lax
           files:
@@ -261,6 +263,7 @@ linters:
           allow:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
+            - github.com/tobocop2/obee/internal/exectest
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
             - github.com/tobocop2/obee/internal/proc
@@ -286,6 +289,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/exectest
             - github.com/tobocop2/obee/internal/check/shell
             - github.com/tobocop2/obee/internal/batch
             - github.com/tobocop2/obee/internal/claim
@@ -307,6 +311,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/exectest
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
             - github.com/tobocop2/obee/internal/proc
@@ -329,6 +334,7 @@ linters:
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/lockfile/**"
+            - "!**/internal/exectest/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"
             - "!**/internal/proc/**"

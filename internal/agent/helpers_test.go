@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/exectest"
 )
 
 // fakeScript records its arguments, stdin, working folder and environment, then acts on the mode file beside it. The grandchild pid goes to a temporary
@@ -35,7 +37,7 @@ func install(t *testing.T, name, mode string) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(fakeScript), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, name), fakeScript))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "mode"), []byte(mode), 0o600))
 	t.Setenv("PATH", dir+":/bin:/usr/bin")
 

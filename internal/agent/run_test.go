@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -486,7 +487,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 
 	t.Run("binary_cannot_start", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
 		f := newFixture(t, "claude", model.AgentClaude, "")
-		require.NoError(t, os.WriteFile(filepath.Join(f.records, "claude"), []byte("#!/nonexistent/interpreter\n"), 0o700)) //nolint:gosec // a test script must be executable
+		require.NoError(t, exectest.Write(filepath.Join(f.records, "claude"), "#!/nonexistent/interpreter\n"))
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/cli"
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -30,7 +31,7 @@ func newMachine(t *testing.T) machine {
 	writeConfig(t, m.config, "projects/p.star", validProject)
 
 	for _, tool := range []string{"bd", "gh", "git"} {
-		require.NoError(t, os.WriteFile(filepath.Join(m.bin, tool), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a fake program must be executable
+		require.NoError(t, exectest.Write(filepath.Join(m.bin, tool), "#!/bin/sh\n"))
 	}
 
 	return m

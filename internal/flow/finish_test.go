@@ -62,6 +62,7 @@ func TestFinish_DoesNotRunWhenTheRunIsCanceled(t *testing.T) {
 
 	waitForTheOwner(t, h)
 	require.NoError(t, h.client(t, testVersion).Cancel(testItem))
+	h.tick(t) // the engine of the run learns of the cancel from its tick, which the harness sends
 
 	outcome := <-done
 

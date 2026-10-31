@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -62,7 +63,7 @@ func runGateCommand(t *testing.T, gateCommand string, env ...string) (int, strin
 	t.Helper()
 
 	home, bin := t.TempDir(), t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte(gitShim), 0o700)) //nolint:gosec // a fake program must be executable
+	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), gitShim))
 
 	remote := &fakeRemote{state: model.JobSucceeded}
 	project := hostProject()

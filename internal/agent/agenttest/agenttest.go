@@ -6,21 +6,20 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
-	prompt     = "do the step"
-	token      = "tok-suite-value"
-	leakName   = "OBEE_SUITE_LEAK"
-	scriptMode = 0o700
+	prompt   = "do the step"
+	token    = "tok-suite-value"
+	leakName = "OBEE_SUITE_LEAK"
 	// fakeCLI prints the arguments, the standard input and the environment of the run, one item for each line.
 	fakeCLI = "#!/bin/sh\necho \"args=$*\"\necho \"stdin=$(cat)\"\nenv\n"
 )
@@ -74,7 +73,7 @@ func CheckRun(r Reporter, adapter agent.Adapter, dir string) {
 
 	profile := adapter.Profile()
 
-	if err := os.WriteFile(filepath.Join(dir, profile.Binary), []byte(fakeCLI), scriptMode); err != nil {
+	if err := exectest.Write(filepath.Join(dir, profile.Binary), fakeCLI); err != nil {
 		r.Errorf("cannot write the fake CLI: %v", err)
 
 		return

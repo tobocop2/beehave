@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -20,7 +21,7 @@ const (
 	scriptMode = 0o700
 	fileMode   = 0o600
 	// scriptHead logs the arguments, the folder, the environment and the request of the fake CLI.
-	scriptHead = "#!/bin/sh\nd=$(dirname \"$0\")\necho \"args=$*\" > \"$d/log\"\npwd >> \"$d/log\"\nenv > \"$d/env\"\nIFS= read -r request\necho \"$request\" >> \"$d/log\"\n"
+	scriptHead = "#!/bin/sh\n[ -z \"$" + warmupVar + "\" ] || exit 0\nd=$(dirname \"$0\")\necho \"args=$*\" > \"$d/log\"\npwd >> \"$d/log\"\nenv > \"$d/env\"\nIFS= read -r request\necho \"$request\" >> \"$d/log\"\n"
 	answer     = "cat \"$d/reply\"\n"
 )
 
@@ -54,21 +55,32 @@ func goodReply() string {
 func write(t *testing.T, path, text string, mode os.FileMode) {
 	t.Helper()
 
+	if mode == scriptMode {
+		if err := exectest.Write(path, text); err != nil {
+			t.Fatal(err)
+		}
+
+		startOnce(t, path)
+
+		return
+	}
+
 	if err := os.WriteFile(path, []byte(text), mode); err != nil {
 		t.Fatal(err)
 	}
-
-	if mode == scriptMode {
-		startOnce(t, path)
-	}
 }
 
+// warmupVar tells a script that this start is the warm-up: the script of scriptHead ends at once and writes nothing,
+// so a file that a script writes proves a real start, however fast the machine runs the warm-up.
+const warmupVar = "OBEE_WARMUP"
+
 // startOnce starts a new script and stops it at once, so the first-run scan of macOS happens before any timer starts.
-// The start returns after the scan, so the script has no time to do its work. A script that cannot start is not an error here.
+// A script that cannot start is not an error here.
 func startOnce(t *testing.T, path string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), path)
+	cmd.Env = []string{warmupVar + "=1", "PATH=/usr/bin:/bin"}
 	if err := cmd.Start(); err != nil {
 		t.Logf("warm-up start of %s: %v", path, err)
 

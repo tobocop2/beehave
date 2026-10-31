@@ -3,7 +3,6 @@ package claude_test
 import (
 	"bytes"
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -55,8 +55,8 @@ func guardOutcome(t *testing.T, bashCommand string) string {
 
 	dir := t.TempDir()
 	guard := filepath.Join(dir, "guard.sh")
-	require.NoError(t, os.WriteFile(guard, []byte(guardScript), scriptMode))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "claude"), []byte(fakeClaude), scriptMode))
+	require.NoError(t, exectest.Write(guard, guardScript))
+	require.NoError(t, exectest.Write(filepath.Join(dir, "claude"), fakeClaude))
 
 	var out bytes.Buffer
 

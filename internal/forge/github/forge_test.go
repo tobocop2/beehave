@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/model"
@@ -620,7 +620,7 @@ func TestPRView(t *testing.T) {
 func TestNewExec_RunsTheGhBinaryOnPath(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho '[[{\"state\": \"APPROVED\"}]]'\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, "gh"), script))
 	t.Setenv("PATH", dir+":/bin:/usr/bin")
 
 	reviews, err := newExec(t).Reviews(context.Background(), 1)

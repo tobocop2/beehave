@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 )
@@ -37,7 +38,7 @@ func fakeOnPath(t *testing.T, name, script string) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, name), script))
 	t.Setenv("PATH", dir+":/bin:/usr/bin")
 	runOnce(t, filepath.Join(dir, name))
 
@@ -221,7 +222,7 @@ func TestLookPath(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "tool"), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, "tool"), "#!/bin/sh\n"))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plain"), []byte("text"), 0o600))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "folder"), 0o700))
 
@@ -261,7 +262,7 @@ func TestLookPath(t *testing.T) {
 
 func TestLookPath_AnEmptyPathReadsTheProcessPath(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "tool"), []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test script must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, "tool"), "#!/bin/sh\n"))
 	t.Setenv("PATH", dir)
 
 	got, err := proc.LookPath("tool", "")
