@@ -7,6 +7,11 @@ FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "gi
 # A reviewer is read-only: it must not fix, commit or push. The kind git-write refuses every git command that changes a repository.
 REVIEW_FORBID = FORBID + ["git-write"]
 
+def capped(step, name, item):
+    """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the work of a capped run may be half done."""
+    if step.stop != "":
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
+
 def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = []):
     """Runs the loop and returns a struct with exhausted, rejected, gate and review.
 
@@ -40,6 +45,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 output_tries = 2,
                 inputs = {"item": item, "violations": violations},
             )
+            capped(review, "review", item)
 
         if check.passed and review.verdict == "approve" and violations == "":
             return struct(exhausted = False, rejected = False, gate = check, review = review)
@@ -65,6 +71,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             protect_paths = protect,
             inputs = {"item": item, "round": round, "findings": findings},
         )
+        capped(fix, "fix", item)
         violations = fix.violations
 
     return struct(exhausted = True, rejected = False, gate = check, review = review)

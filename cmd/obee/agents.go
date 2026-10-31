@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -30,6 +31,8 @@ var (
 	errNoFolder  = errors.New("the item has no worktree to run the agent in")
 	errNoPrompt  = errors.New("the agent request has no prompt")
 	errNoSession = errors.New("the agent left no session id in its output")
+	// errAgentFailed means the result line of a run that exited with code 0 reports an error that is no cap.
+	errAgentFailed = errors.New("the agent ended with an error result")
 )
 
 // agents runs an agent request with the adapter of the runner it names.
@@ -41,6 +44,9 @@ type agents struct {
 	run     func(ctx context.Context, spec agent.Spec) agent.Result
 	// guard is the command line of `obee check command`, without its flags. Empty means the agent runs with no hook, and the check after the run is the only one.
 	guard string
+	// maxTurns and maxBudget are agents.max_turns and agents.max_budget_usd. 0 means no cap.
+	maxTurns  int
+	maxBudget float64
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -52,6 +58,8 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		env:     opts.Env,
 		run:     func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
 		guard:   guardCommand(os.Executable),
+
+		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD,
 	}
 }
 
@@ -103,6 +111,7 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 	return agent.Spec{
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
+		MaxTurns: a.maxTurns, MaxBudget: a.maxBudget,
 		Log: tap, OnStart: request.Started, Guard: guard,
 	}
 }
@@ -176,13 +185,30 @@ func (a agents) runnerOf(name string) (model.Runner, bool) {
 	return model.Runner{}, false
 }
 
-// describe adds the session, the transcript path, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0.
-// It reads them from the output lines that the tap kept. The violations are the second line of defense: the hook of the run refuses a forbidden command before the call.
-func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind, protect shell.Protection) (agent.Result, error) {
-	if result.Outcome != agent.OutcomeExited || result.ExitCode != 0 {
-		return result, nil
+// capped gives the result the outcome of the cap that the result line reports, and leaves the result as it is when no cap stopped the run.
+func capped(result agent.Result, stop agent.Stop) agent.Result {
+	if stop == agent.StopTurns {
+		result.Outcome = agent.OutcomeTurnCap
 	}
 
+	if stop == agent.StopBudget {
+		result.Outcome = agent.OutcomeBudgetCap
+	}
+
+	return result
+}
+
+// capOrFail gives the result the outcome of the cap that stopped the run. An error result that is no cap fails the run, whatever the exit code of the CLI.
+func capOrFail(result agent.Result, stop agent.Stop, failed string) (agent.Result, error) {
+	if failed != "" && stop == "" {
+		return result, fmt.Errorf("%w: %s", errAgentFailed, failed)
+	}
+
+	return capped(result, stop), nil
+}
+
+// withSession adds the session, the transcript path, the last message and the skill calls that the tap kept. A run with no session id is an error.
+func withSession(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result) (agent.Result, error) {
 	result.Session, result.Text = tap.found()
 	if result.Session == "" {
 		return result, errNoSession
@@ -190,6 +216,27 @@ func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessi
 
 	result.Transcript = adapter.TranscriptPath(runner.ConfigDir, dir, result.Session)
 	result.Skills = tap.skillCalls()
+
+	return result, nil
+}
+
+// describe adds the session, the transcript path, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0.
+// It reads them from the output lines that the tap kept. The violations are the second line of defense: the hook of the run refuses a forbidden command before the call.
+func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind, protect shell.Protection) (agent.Result, error) {
+	// The result line says whether a cap stopped the run. The CLI may exit with any code then, so the stop decides, not the exit code.
+	stop := tap.stopped()
+	if result.Outcome != agent.OutcomeExited || (result.ExitCode != 0 && stop == "") {
+		return result, nil
+	}
+
+	result, err := capOrFail(result, stop, tap.failure())
+	if err != nil {
+		return result, err
+	}
+
+	if result, err = withSession(adapter, runner, dir, tap, result); err != nil {
+		return result, err
+	}
 
 	if len(forbid) > 0 {
 		result.Violations = violations(tap.shellCalls(), forbid, protect, tap.incomplete())
@@ -241,6 +288,8 @@ type sessionTap struct {
 	// dropped counts the lines that the runner cut for length. invalid counts the lines that the adapter cannot read. ended is true after the line that ends the run.
 	dropped, invalid int
 	ended            bool
+	stop             agent.Stop
+	failed           string
 }
 
 func newSessionTap(adapter agent.Adapter) *sessionTap {
@@ -290,6 +339,9 @@ func (t *sessionTap) see(line string) {
 	}
 
 	t.ended = t.ended || seen.Result
+	t.stop = cmp.Or(seen.Stop, t.stop)
+	t.failed = cmp.Or(seen.Failed, t.failed)
+
 	if seen.Invalid {
 		t.invalid++
 	}
@@ -338,6 +390,22 @@ func (t *sessionTap) skillCalls() []string {
 	defer t.mu.Unlock()
 
 	return slices.Clone(t.skills)
+}
+
+// stopped returns the cap that the result line reported, or "" when it reported none.
+func (t *sessionTap) stopped() agent.Stop {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.stop
+}
+
+// failure returns the error subtype that the result line reported, or "" when it reported none.
+func (t *sessionTap) failure() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.failed
 }
 
 func (t *sessionTap) found() (string, string) {

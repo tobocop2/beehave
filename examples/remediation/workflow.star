@@ -106,6 +106,9 @@ def pipeline(item):
         inputs = {"item": item},
     )
 
+    if plan.stop != "":
+        fail("REFUSE: the plan step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (plan.stop, item.id))
+
     implement = agent(
         name = "implement",
         prompt = "prompts/implement.md",
@@ -115,6 +118,10 @@ def pipeline(item):
         protect_paths = protected(),
         inputs = {"item": item, "plan": plan.text},
     )
+
+    # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the gate and the review.
+    if implement.stop != "":
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
 
     # Five fix rounds need six passes: the sixth reviews the fifth fix.
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
@@ -134,12 +141,16 @@ def pipeline(item):
             "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",
             name = "adjudicate",
         )
-        agent(
+        settle = agent(
             name = "settle",
             prompt = "prompts/settle.md",
             model = "sonnet",
             inputs = {"ruling": ruling.answer},
         )
+
+        if settle.stop != "":
+            fail("REFUSE: the settle step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (settle.stop, item.id))
+
         return
 
     # An approved head is marked ready. The call merges it when MERGE is "true". With MERGE set to anything else, the call stops after the mark

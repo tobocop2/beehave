@@ -114,6 +114,56 @@ func (r *agentRig) models() []string {
 	return models
 }
 
+// capRig makes every agent call that matches capped end at a cap.
+func capRig(t *testing.T, verdicts func(review int) string, capped func(AgentRequest) bool, outcome agent.Outcome) (*agentRig, string) {
+	t.Helper()
+
+	rig, file := exampleRig(t, verdicts)
+	inner := rig.h.agents.result
+	rig.h.agents.result = func(request AgentRequest) agent.Result {
+		result := inner(request)
+		if capped(request) {
+			result.Outcome = outcome
+		}
+
+		return result
+	}
+
+	return rig, file
+}
+
+func TestExample_ACappedImplementStopsTheItemWithARefuseThatNamesTheCapAndStartsNoGateOrReview(t *testing.T) {
+	t.Parallel()
+
+	rig, file := capRig(t, func(int) string { return "approve" }, func(r AgentRequest) bool { return r.Model == "sonnet" && r.Resume == "" }, agent.OutcomeTurnCap)
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REFUSE")
+	assert.Contains(t, err.Error(), "turns")
+	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "no review starts after the capped implement")
+	assert.Zero(t, rig.h.gate.calls, "no gate runs after the capped implement")
+}
+
+func TestExample_ACappedFixStopsTheItemWithARefuseThatNamesTheCap(t *testing.T) {
+	t.Parallel()
+
+	rig, file := capRig(t, func(review int) string {
+		if review == 1 {
+			return "changes"
+		}
+
+		return "approve"
+	}, func(r AgentRequest) bool { return r.Resume != "" }, agent.OutcomeBudgetCap)
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REFUSE")
+	assert.Contains(t, err.Error(), "budget")
+}
+
 func TestExample_AnApprovedFirstReviewMarksTheHeadReadyWithoutAFix(t *testing.T) {
 	t.Parallel()
 

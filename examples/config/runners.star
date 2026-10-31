@@ -22,9 +22,13 @@ pool(
 
 # max_concurrent in agents() is the global limit on agent processes. A laptop wants 2, a
 # build host more. Each login runs one agent at a time. The argument is optional; the default is 2.
+# max_turns and max_budget_usd cap one agent run, in agentic turns and in dollars. 0 means no cap,
+# which is the default. A run that reaches a cap ends the step with the output stop. Both are optional.
 # Call agents() once.
 agents(
     max_concurrent = 2,
+    # max_turns = 60,
+    # max_budget_usd = 5,
 )
 
 runner(

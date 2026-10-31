@@ -27,7 +27,7 @@ NOT_DONE = "The task did not finish, so its pull request is not in the batch."
 
 def task(item):
     """Runs for each task item. The agent works in its own work folder, pushes the branch that has the id of the item, and opens the pull request."""
-    agent(
+    implement = agent(
         name = "implement",
         prompt = "prompts/task.md",
         model = "sonnet",
@@ -35,6 +35,10 @@ def task(item):
         forbid_commands = ["bulk-staging"],
         inputs = {"item": item, "base": env("BASE")},
     )
+
+    # A cap ended the run (the output `stop` is "turns" or "budget"), so the pull request may be half done. The task fails with the reason.
+    if implement.stop != "":
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
 
 def tasks_of(item):
     """The tasks are the non-empty lines of the body of the parent item."""

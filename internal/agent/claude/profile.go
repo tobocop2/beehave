@@ -25,6 +25,8 @@ func (Adapter) Profile() agent.Profile {
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",
 		ResumeFlag: "--resume",
+		TurnsFlag:  "--max-turns",
+		BudgetFlag: "--max-budget-usd",
 	}
 }
 

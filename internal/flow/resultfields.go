@@ -42,6 +42,7 @@ func statusOutputs(id, status string) map[string]any {
 func commentOutputs(id string) map[string]any { return map[string]any{"id": id} }
 
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
-func agentOutputs(text, session, transcript, head, violations string) map[string]any {
-	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations}
+// stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
+func agentOutputs(text, session, transcript, head, violations, stop string) map[string]any {
+	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop}
 }

@@ -551,6 +551,65 @@ func TestLoadFolder_AgentsMaxConcurrent(t *testing.T) {
 	require.ErrorContains(t, problems[0], "runners.star:2:7: block `agents` appears twice. Keep one.")
 }
 
+func TestLoadFolder_AgentsMaxTurnsAndBudgetDefaultToNoCapAndRefuseANegative(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.Equal(t, 0, cfg.Agents.MaxTurns)
+	require.InDelta(t, 0.0, cfg.Agents.MaxBudgetUSD, 0)
+
+	cfg, problems = loadRunnersText(t, "agents(max_turns = 30, max_budget_usd = 2.5)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 30, cfg.Agents.MaxTurns)
+	require.InDelta(t, 2.5, cfg.Agents.MaxBudgetUSD, 0)
+
+	_, problems = loadRunnersText(t, "agents(max_turns = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.max_turns must be 0 (no cap) or more")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_TURNS")
+
+	_, problems = loadRunnersText(t, "agents(max_budget_usd = -0.5)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.max_budget_usd must be 0 (no cap) or more")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_BUDGET_USD")
+}
+
+func TestLoadFolder_TheCapVariablesOverlayTheFileAndABadValueIsRefused(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_turns = 10, max_budget_usd = 1)\n")
+
+	cfg, problems := config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_TURNS": "25", "OBEE_AGENTS_MAX_BUDGET_USD": "3.25"})
+	require.Empty(t, problems)
+	require.Equal(t, 25, cfg.Agents.MaxTurns)
+	require.InDelta(t, 3.25, cfg.Agents.MaxBudgetUSD, 0)
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_TURNS": "many"})
+	require.NotEmpty(t, problems)
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_TURNS=many is not a whole number")
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_BUDGET_USD": "lots"})
+	require.NotEmpty(t, problems)
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_BUDGET_USD=lots is not a number")
+}
+
+func TestLoadFolder_ABudgetThatIsNotFiniteIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"Inf", "+Inf", "-Inf", "NaN", "1e999"} {
+		_, problems := config.LoadFolder(t.TempDir(), map[string]string{"OBEE_AGENTS_MAX_BUDGET_USD": value})
+
+		require.NotEmpty(t, problems, value)
+		require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_BUDGET_USD", value)
+	}
+
+	_, problems := loadRunnersText(t, "agents(max_budget_usd = float(\"inf\"))\n")
+	require.NotEmpty(t, problems)
+	require.ErrorContains(t, problems[0], "agents.max_budget_usd")
+}
+
 func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 	t.Parallel()
 

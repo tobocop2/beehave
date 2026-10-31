@@ -27,26 +27,35 @@ PASSES = 3
 MAX_QUESTIONS = 5
 NO_TEXT = "The reviewer left a finding open and wrote no text for it."
 
+def capped(step, name, item):
+    """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the notes of a capped run may be half done."""
+    if step.stop != "":
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
+
 def notes_file(number):
     return "notes/%d.md" % number
 
 def research(item, number, question, findings):
-    agent(
+    step = agent(
         name = "research",
         prompt = "prompts/research.md",
         model = "sonnet",
         inputs = {"item": item, "number": str(number), "question": question, "findings": findings},
     )
+    capped(step, "research", item)
 
 def summarize(item, findings):
     """Writes the summary of the notes as they are now. The review reads it, and the findings of the review say what to fix in it."""
-    return agent(
+    step = agent(
         name = "summary",
         prompt = "prompts/conclude.md",
         model = "sonnet",
         outputs = ["summary"],
         inputs = {"item": item, "findings": findings},
-    ).summary
+    )
+    capped(step, "summary", item)
+
+    return step.summary
 
 def check_notes(item, questions):
     """Checks the notes. A file with a problem goes back to its sub-question. The check stops the item at its last pass."""
@@ -77,6 +86,7 @@ def main(item):
         outputs = ["questions"],
         inputs = {"item": item},
     )
+    capped(scope, "scope", item)
 
     questions = [line.strip() for line in scope.questions.split("\n") if line.strip() != ""][:MAX_QUESTIONS]
 
@@ -100,6 +110,7 @@ def main(item):
             output_tries = 2,
             inputs = {"item": item, "summary": summary},
         )
+        capped(review, "review", item)
 
         # The text of the open findings is the output `open` of the verdict file, not the last message of the reviewer.
         findings = review.open if review.open != "" else NO_TEXT
@@ -111,7 +122,8 @@ def main(item):
         if attempt == PASSES:
             break
 
-        agent(name = "revise", prompt = "prompts/revise.md", model = "sonnet", inputs = {"item": item, "findings": findings})
+        revise = agent(name = "revise", prompt = "prompts/revise.md", model = "sonnet", inputs = {"item": item, "findings": findings})
+        capped(revise, "revise", item)
         check_notes(item, questions)
         summary = summarize(item, findings)
 

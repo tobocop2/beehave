@@ -126,12 +126,43 @@ func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //n
 	assert.Contains(t, named.Note, "Remove the model from the step.")
 }
 
-// noFlags is an adapter whose CLI has no model or resume option.
+func TestRunner_PassesTheTurnAndBudgetCapsAsFlagsAndNoCapAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.MaxTurns, f.spec.MaxBudget = 40, 2.5
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Equal(t, "-p --output-format stream-json --verbose --max-turns 40 --max-budget-usd 2.5", record(t, f.records, "args"))
+
+	f.spec.MaxTurns, f.spec.MaxBudget = 0, 0
+	agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, "-p --output-format stream-json --verbose", record(t, f.records, "args"))
+}
+
+func TestRunner_RefusesACapThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.Adapter = noFlags{f.spec.Adapter}
+
+	f.spec.MaxTurns = 5
+	turns := agent.Runner{}.Run(context.Background(), f.spec)
+
+	f.spec.MaxTurns, f.spec.MaxBudget = 0, 1
+	budget := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeNotStarted, turns.Outcome)
+	assert.Contains(t, turns.Note, "no option to cap the turns, so the run does not start. Set agents.max_turns to 0.")
+	assert.Equal(t, agent.OutcomeNotStarted, budget.Outcome)
+	assert.Contains(t, budget.Note, "no option to cap the cost, so the run does not start. Set agents.max_budget_usd to 0.")
+}
+
+// noFlags is an adapter whose CLI has no model, resume or cap option.
 type noFlags struct{ agent.Adapter }
 
 func (n noFlags) Profile() agent.Profile {
 	p := n.Adapter.Profile()
-	p.ModelFlag, p.ResumeFlag = "", ""
+	p.ModelFlag, p.ResumeFlag, p.TurnsFlag, p.BudgetFlag = "", "", "", ""
 
 	return p
 }

@@ -13,7 +13,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct{ name, call, want string }{
-		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations."},
+		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop."},
 		{"batch_merge", `batch_merge([], "b", "r", name = "n")`, "3:11 haed is not a field of the result of batch_merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, rc."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps."},
@@ -66,7 +66,7 @@ func TestCheck_AnAgentWithLiteralOutputsHasThemAsFields(t *testing.T) {
 	got := checkText(t, "def main(item):\n    out = agent(\"p\", \"m\", outputs = [\"verdict\"])\n    command([out.verdikt])\n    command([out.verdict])\n")
 
 	require.Len(t, got, 1)
-	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, verdict.")
+	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, verdict.")
 }
 
 func TestCheck_AnAgentWhoseOutputsAreNotLiteralHasItsOwnFieldsLeftToTheRun(t *testing.T) {

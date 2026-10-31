@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"cmp"
 	"sort"
 	"strings"
 
@@ -36,17 +37,59 @@ func (Adapter) Calls(line string) agent.Seen {
 		return agent.Seen{Invalid: true}
 	}
 
+	return agent.Seen{
+		Stop:    stopOf(value),
+		Failed:  failedOf(value),
+		Shell:   toolCalls(value, bashTool, bashKey, false),
+		Skills:  skillNames(value),
+		Refused: refusedIDs(value),
+		Result:  lineType(value) == resultType,
+	}
+}
+
+// skillNames returns the skill of each Skill call of an assistant line.
+func skillNames(value any) []string {
 	var skills []string
 	for _, call := range toolCalls(value, skillTool, skillKey, true) {
 		skills = append(skills, call.Text)
 	}
 
-	return agent.Seen{
-		Shell:   toolCalls(value, bashTool, bashKey, false),
-		Skills:  skills,
-		Refused: refusedIDs(value),
-		Result:  lineType(value) == resultType,
+	return skills
+}
+
+// stopOf returns the cap that a result line reports in its subtype, or "" for any other line.
+func stopOf(value any) agent.Stop {
+	if lineType(value) != resultType {
+		return ""
 	}
+
+	line, _ := value.(map[string]any)      //nolint:errcheck // lineType found an object
+	subtype, _ := line["subtype"].(string) //nolint:errcheck // a missing subtype reads as ""
+
+	switch subtype {
+	case "error_max_turns":
+		return agent.StopTurns
+	case "error_max_budget_usd":
+		return agent.StopBudget
+	}
+
+	return ""
+}
+
+// failedOf returns the subtype of a result line that sets is_error and reports no cap, "unknown" when it has no subtype, or "" for any other line.
+func failedOf(value any) string {
+	if lineType(value) != resultType || stopOf(value) != "" {
+		return ""
+	}
+
+	line, _ := value.(map[string]any)      //nolint:errcheck // lineType found an object
+	subtype, _ := line["subtype"].(string) //nolint:errcheck // a missing subtype reads as ""
+
+	if line["is_error"] != true {
+		return ""
+	}
+
+	return cmp.Or(subtype, "unknown")
 }
 
 // lineType returns the type of a line, or "" when the line is not a JSON object.
