@@ -14,6 +14,8 @@ import (
 type Protection struct {
 	Dirs []string
 	Base string
+	// Private says the repository is private, so the kind laptop-copy finds nothing. False means public or unknown.
+	Private bool
 	// IgnoresCase says whether the file system of a protected directory ignores case. A nil function probes the file system once for each directory.
 	IgnoresCase func(dir string) bool
 }

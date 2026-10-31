@@ -9,12 +9,14 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-func TestFindingKinds_ListsTheThirteenKindsSortedByName(t *testing.T) {
+func TestFindingKinds_ListsTheFourteenKindsSortedByName(t *testing.T) {
 	t.Parallel()
 
 	kinds := model.FindingKinds()
 
-	assert.Len(t, kinds, 13)
+	assert.Len(t, kinds, 14)
+	assert.Contains(t, kinds, model.FindingLaptopCopy)
+	assert.False(t, model.FindingLaptopCopy.NeedsPaths())
 	assert.Contains(t, kinds, model.FindingProtected)
 	assert.True(t, model.FindingProtected.NeedsPaths())
 	assert.False(t, model.FindingGitWrite.NeedsPaths())

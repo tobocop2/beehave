@@ -42,10 +42,11 @@ var (
 )
 
 // scanRules adds the findings of the rules that need no more than the words of one command.
-func (s *scanner) scanRules(cmd *command) {
+func (s *scanner) scanRules(cmd *command, remote bool) {
 	s.scanOpaque(cmd)
 	s.scanPolicy(cmd)
 	s.scanProtected(cmd)
+	s.scanLaptopCopy(cmd, remote)
 }
 
 // redirects returns the heredoc bodies of a statement and the targets of its redirects that write.
@@ -63,6 +64,19 @@ func (s *scanner) redirects(u Unit, stmt *syntax.Stmt) ([]string, []string) {
 	}
 
 	return bodies, targets
+}
+
+// inputFiles returns the files that the redirects of a statement read as standard input. A heredoc and a here-string are text of the command, not a file.
+func (s *scanner) inputFiles(u Unit, stmt *syntax.Stmt) []string {
+	var files []string
+
+	for _, redir := range stmt.Redirs {
+		if redir.Word != nil && (redir.Op == syntax.RdrIn || redir.Op == syntax.RdrInOut) {
+			files = append(files, s.literal(u, redir.Word))
+		}
+	}
+
+	return files
 }
 
 // scanPolicy adds the findings of the rules about the author, the git safeguards, the shell start and the files with a key.

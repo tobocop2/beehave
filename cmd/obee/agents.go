@@ -39,9 +39,11 @@ var (
 type agents struct {
 	runners []model.Runner
 	trees   treeFinder
-	adapter func(model.Agent) agent.Adapter
-	env     map[string]string
-	run     func(ctx context.Context, spec agent.Spec) agent.Result
+	// projects holds the visibility of each repository. A project that is not here counts as public.
+	projects map[string]config.Project
+	adapter  func(model.Agent) agent.Adapter
+	env      map[string]string
+	run      func(ctx context.Context, spec agent.Spec) agent.Result
 	// guard is the command line of `obee check command`, without its flags. Empty means the agent runs with no hook, and the check after the run is the only one.
 	guard string
 	// maxTurns and maxBudget are agents.max_turns and agents.max_budget_usd. 0 means no cap.
@@ -52,12 +54,13 @@ type agents struct {
 // newAgents runs the agent CLIs with the environment of the process.
 func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table adapters) agents {
 	return agents{
-		runners: cfg.Runners,
-		trees:   trees,
-		adapter: table.agent,
-		env:     opts.Env,
-		run:     func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
-		guard:   guardCommand(os.Executable),
+		runners:  cfg.Runners,
+		trees:    trees,
+		projects: cfg.Projects,
+		adapter:  table.agent,
+		env:      opts.Env,
+		run:      func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
+		guard:    guardCommand(os.Executable),
 
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD,
 	}
@@ -104,6 +107,10 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 		words = append(words, "--protect", shellQuote(dir))
 	}
 
+	if protect.Private {
+		words = append(words, "--visibility", string(model.VisibilityPrivate))
+	}
+
 	return strings.Join(words, " ")
 }
 
@@ -140,6 +147,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 
 	adapter := a.adapter(runner.Agent)
 	protect := protectionOf(request.Protect, dir)
+	protect.Private = a.projects[request.Project].IsPrivate()
 	guard := a.guardFor(request.Forbid, protect)
 
 	if note := noGuardNote(adapter, guard, request.Forbid); note != "" {

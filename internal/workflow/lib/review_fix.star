@@ -2,7 +2,7 @@
 # Rounds 1 to 3 resume the implementer on a cheaper model. Later rounds start a fresh session one tier up.
 # A project that wants another policy copies this file into its workflow folder and loads it with load("//review_fix.star", "review_fix").
 
-FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "zsh-expansion"]
+FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "zsh-expansion", "laptop-copy"]
 
 # A reviewer is read-only: it must not fix, commit or push. The kind git-write refuses every git command that changes a repository.
 REVIEW_FORBID = FORBID + ["git-write"]

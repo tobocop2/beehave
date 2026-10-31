@@ -35,6 +35,7 @@ type command struct {
 	head, prefix []string
 	heredocs     []string
 	writes       []string // the targets of the redirects that write
+	reads        []string // the files that the redirects read as standard input
 	expanded     []string
 	unread       string // the variable that is the command word when its value is past a cap
 	prev         *command
@@ -65,6 +66,7 @@ type scanner struct {
 	cwd         string            // the directory the next command runs in, or "" when no static read can tell
 	plain       map[string]string // variables the text sets to a plain value, for the paths of protected-path
 	blind       bool              // the current command named a path that no static read can place
+	private     bool              // the repository is private: the kind laptop-copy finds nothing
 }
 
 // value returns the wrapper value of a variable, unless the scan is already reading that value or the value is unreadable.
@@ -191,7 +193,7 @@ func ScanWith(commandText string, kinds []model.FindingKind, protect Protection)
 	var out []model.Finding
 
 	if !slices.Contains(kinds, model.FindingProtected) {
-		protect = Protection{}
+		protect = Protection{Private: protect.Private}
 	}
 
 	for _, finding := range scanText(commandText, slices.Contains(kinds, model.FindingGitWrite), protect) {
@@ -208,6 +210,7 @@ func scanText(commandText string, readOnly bool, protect Protection) []model.Fin
 	s.readOnly = readOnly
 	s.prot = newProtector(protect)
 	s.cwd = protect.Base
+	s.private = protect.Private
 	s.prepass(commandText)
 	s.scanZsh(commandText)
 	s.scan(commandText, false)
@@ -312,15 +315,21 @@ func (s *scanner) command(u Unit, stmt *syntax.Stmt, prev *command) *command {
 	found.expanded = s.used
 	found.unread = s.unreadable(names, len(prefix), found.expanded)
 
-	found.heredocs, found.writes = s.redirects(u, stmt)
+	s.redirected(found, u, stmt)
 
 	return found
+}
+
+// redirected sets what the redirects of the statement hold: heredoc bodies, written targets and read files.
+func (s *scanner) redirected(found *command, u Unit, stmt *syntax.Stmt) {
+	found.heredocs, found.writes = s.redirects(u, stmt)
+	found.reads = s.inputFiles(u, stmt)
 }
 
 // redirectOnly returns the command of a statement that holds redirects and no command word, such as `> file`. It writes with no head.
 func (s *scanner) redirectOnly(u Unit, stmt *syntax.Stmt, prev *command) *command {
 	found := &command{prev: prev}
-	found.heredocs, found.writes = s.redirects(u, stmt)
+	s.redirected(found, u, stmt)
 
 	return found
 }
@@ -377,7 +386,7 @@ func (s *scanner) judge(cmd *command, remote bool) {
 		s.findings = append(s.findings, model.Finding{Kind: model.FindingBulkStaging, Text: staging})
 	}
 
-	s.scanRules(cmd)
+	s.scanRules(cmd, remote)
 
 	if len(cmd.head) == 0 {
 		return

@@ -172,7 +172,7 @@ func TestSourcesMain_RunsTheEmbeddedLibrary(t *testing.T) {
 	got, err := call(t, sources)
 
 	require.NoError(t, err)
-	assert.Equal(t, "9", got.String())
+	assert.Equal(t, "10", got.String())
 }
 
 func TestSourcesMain_RefusesALoadOutsideThePin(t *testing.T) {
