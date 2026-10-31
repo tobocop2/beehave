@@ -107,7 +107,9 @@ type Engine struct {
 	queue dbos.Queue
 	// itemQueue is the queue of the runs that spawn starts.
 	itemQueue dbos.Queue
-	deps      Deps
+	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
+	exclusiveQueue dbos.Queue
+	deps           Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
 	version       string
@@ -192,8 +194,9 @@ func buildVersion(stored string) string { return strings.TrimSuffix(stored, "+"+
 func (e *Engine) register(maxConcurrent int) error {
 	dbos.RegisterWorkflow(e.ctx, e.item, dbos.WithWorkflowName(itemName))
 	dbos.RegisterWorkflow(e.ctx, e.phase, dbos.WithWorkflowName(phaseName))
+	dbos.RegisterWorkflow(e.ctx, e.exclusive, dbos.WithWorkflowName(exclusiveName))
 
-	return errors.Join(e.registerQueue(maxConcurrent), e.registerItemQueue(maxConcurrent))
+	return errors.Join(e.registerQueue(maxConcurrent), e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue())
 }
 
 func (e *Engine) registerQueue(maxConcurrent int) error {

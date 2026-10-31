@@ -206,4 +206,7 @@ type Deps struct {
 	Queue queueReader
 	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
 	Hosts hostStopper
+	// Kept lists errors, besides the errors of the gate and the host, that a gate or a merge keeps for errors.Is when it fails. A call that runs in
+	// a child run returns its error as text, and the parent finds each listed error again from that text.
+	Kept []error
 }

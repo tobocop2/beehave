@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/pool"
 	"github.com/tobocop2/obee/internal/proc"
@@ -111,7 +112,13 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Batch:  batchHost{pulls: life.pulls, programs: commands},
 		Hosts:  hostStop{programs: commands},
 		Queue:  queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
+		Kept:   backendErrors(),
 	})
+}
+
+// backendErrors lists the sentinel errors of the backends. A gate or a merge on a host returns them, and the engine cannot import a backend.
+func backendErrors() []error {
+	return []error{skypilot.ErrConfig}
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.
