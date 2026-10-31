@@ -95,13 +95,58 @@ func TestApply_NoChangesRequestedReviewPostsNothing(t *testing.T) {
 	assert.Empty(t, s.posted)
 }
 
-func TestApply_ASecondNoticeIsNagging(t *testing.T) {
+func TestApply_ANoticeTheForgeAlreadyHoldsIsUsedAndNotPostedAgain(t *testing.T) {
 	t.Parallel()
 
-	got := newSetup(spec{assignees: []string{"me"}, age: 9, notice: 5}).run(t, takeover.ModeApply)
+	s := newSetup(spec{assignees: []string{"me"}, age: 9, notice: 5})
+	got := s.run(t, takeover.ModeApply)
 
-	assert.Equal(t, takeover.CodeRule, got.Code)
-	assert.Contains(t, all(got), "Posting a second one is nagging")
+	assert.Equal(t, 0, got.Code)
+	assert.Contains(t, all(got), "notice already posted on #7")
+	assert.Empty(t, s.posted)
+}
+
+func TestApply_ANoticeThatLandsAfterTheFirstReadIsNotPostedAgain(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	s.beforeSecondView = func() {
+		s.pr["comments"] = append(s.comments(), obj{"author": login("me"), "createdAt": ago(0.1), "body": "Taking over this pull request: it is assigned to me"})
+	}
+	got := s.run(t, takeover.ModeApply)
+
+	assert.Equal(t, 0, got.Code)
+	assert.Contains(t, all(got), "notice already posted on #7")
+	assert.Empty(t, s.posted)
+	assert.Equal(t, 2, s.views)
+}
+
+func TestApply_ANoticeWithAnUnreadableTimeBeforeThePostPostsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	s.beforeSecondView = func() {
+		s.pr["comments"] = append(s.comments(), obj{"author": login("me"), "createdAt": "2026-13-45", "body": "Taking over this pull request: it is assigned to me"})
+	}
+	_, err := s.try(takeover.ModeApply)
+
+	require.Error(t, err)
+	assert.Empty(t, s.posted)
+}
+
+func TestApply_AFailedReadOfTheCommentsBeforeThePostPostsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	s.secondViewErr = errDown
+	_, err := s.try(takeover.ModeApply)
+
+	var refusal *check.Refusal
+
+	require.ErrorAs(t, err, &refusal)
+	require.ErrorIs(t, err, errDown)
+	assert.Equal(t, "cannot read the comments of #7.", refusal.Message)
+	assert.Empty(t, s.posted)
 }
 
 func TestApply_RefusesInsideTheThresholdWhenUnassigned(t *testing.T) {

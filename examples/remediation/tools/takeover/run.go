@@ -447,7 +447,7 @@ func (s *session) dry(p plan) {
 	}
 }
 
-// mayPost refuses a notice that has no review behind it, no right to be posted yet, or that is a second one.
+// mayPost refuses a notice that has no review behind it or no right to be posted yet.
 func (s *session) mayPost(p plan) error {
 	if err := s.needReview(p); err != nil {
 		return err
@@ -457,16 +457,34 @@ func (s *session) mayPost(p plan) error {
 		return stop(CodeRule, fmt.Sprintf("REFUSE: #%d is not assigned to you and was touched %sh ago, inside the %sh threshold. Nothing posted.", s.request.PR, hours(p.age), setting(s.c.Idle)))
 	}
 
-	if p.activity.notice != nil {
-		return stop(CodeRule, fmt.Sprintf("REFUSE: a notice is already posted at %s. Posting a second one is nagging, not claiming.", p.activity.notice.text))
-	}
-
 	return nil
 }
 
-func (s *session) apply(ctx context.Context, p plan) error {
-	number := s.request.PR
+// posted asks the forge for the notice of ours on the pull request. A read that fails is an error, never "no notice".
+func (s *session) posted(ctx context.Context) (*stamp, error) {
+	pr, err := s.reader.PRView(ctx, s.request.PR, "comments")
+	if err != nil {
+		return nil, unread(err, "cannot read the comments of #%d.", s.request.PR)
+	}
 
+	var found activity
+
+	for _, comment := range pr.Comments {
+		if comment.Author.Login != s.c.Me {
+			continue
+		}
+
+		if err = found.keepNotice(comment.Body, comment.CreatedAt); err != nil {
+			return nil, err
+		}
+	}
+
+	return found.notice, nil
+}
+
+// apply posts the notice once. A notice that the forge already holds is used, not posted again, so a step that repeats after a crash does not post twice.
+// The forge is asked again right before the write, because the first read is older than the claim check.
+func (s *session) apply(ctx context.Context, p plan) error {
 	if err := s.mayPost(p); err != nil {
 		return err
 	}
@@ -474,6 +492,23 @@ func (s *session) apply(ctx context.Context, p plan) error {
 	if err := s.c.Free(ctx); err != nil {
 		return err
 	}
+
+	existing, err := s.posted(ctx)
+	if err != nil {
+		return err
+	}
+
+	if existing != nil {
+		s.say(fmt.Sprintf("notice already posted on #%d at %s. Nothing written. Take it no earlier than %sh after that.", s.request.PR, existing.text, setting(s.c.Grace)))
+
+		return nil
+	}
+
+	return s.post(ctx, p)
+}
+
+func (s *session) post(ctx context.Context, p plan) error {
+	number := s.request.PR
 
 	if err := s.reader.PostComment(ctx, number, p.notice); err != nil {
 		return unread(err, "cannot post the notice on #%d.", number)
