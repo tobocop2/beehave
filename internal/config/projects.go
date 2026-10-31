@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -34,6 +35,7 @@ type rawProject struct {
 	BuildHost   string
 	Host        *rawHost
 	TestReport  text
+	PinFile     text
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -56,7 +58,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?"}}
+	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -88,7 +90,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile)
 	raw.Host = host.block
 
 	return raw, err
@@ -114,6 +116,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
+		PinFile: raw.PinFile.Value,
 	}, nil
 }
 
@@ -133,7 +136,28 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return "", "", err
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host), pinFile(raw, host))
+}
+
+// pinFile refuses a pin_file that is set and empty, or set for a gate on a build host. An unset key is allowed.
+func pinFile(raw rawProject, host string) error {
+	if !raw.PinFile.Set {
+		return nil
+	}
+
+	if host != LocalHost {
+		return refuseAt(raw.At, "`pin_file` is set with `build_host = %q`. The tool versions are read only for a local gate. Remove `pin_file` or set `build_host = %q`.", host, LocalHost)
+	}
+
+	if err := requireText(raw.At, "pin_file", raw.PinFile.Value); err != nil {
+		return err
+	}
+
+	if filepath.IsAbs(raw.PinFile.Value) || slices.Contains(strings.Split(filepath.ToSlash(raw.PinFile.Value), "/"), "..") {
+		return refuseAt(raw.At, "`pin_file` is %q. The pin file is read from the base commit, so its path must be inside the work tree. Use a relative path with no `..`.", raw.PinFile.Value)
+	}
+
+	return nil
 }
 
 // testReport refuses a test_report that is set and empty, or set for a gate on a build host. An unset key is allowed.
