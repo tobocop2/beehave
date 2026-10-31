@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/exectest"
 )
 
 const (
@@ -198,7 +200,7 @@ func TestCheck_BoundsEachFetch(t *testing.T) {
 	bin := t.TempDir()
 	log := filepath.Join(t.TempDir(), "curl.log")
 	script := "#!/bin/sh\necho \"$@\" >> " + log + "\nexit 0\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "curl"), []byte(script), 0o700)) //nolint:gosec // an executable test double
+	require.NoError(t, exectest.Write(filepath.Join(bin, "curl"), script))
 
 	out, code := run(t, []string{"PATH=" + bin + ":/usr/bin:/bin"}, "check.sh", notes(t, "# Q\n\n- One. [source: http://example.test/a]\n"))
 	require.Equal(t, exitPass, code, out)
@@ -341,8 +343,8 @@ func TestCheck_PrintsTheFailuresFoundWhenTheTimeRunsOut(t *testing.T) {
 	ran := filepath.Join(bin, "curl-ran")
 	curl := "#!/bin/sh\ntouch " + ran + "\nexit 22\n"
 	date := "#!/bin/sh\nif [ -e " + ran + " ]; then echo 1000; else echo 0; fi\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "curl"), []byte(curl), 0o700)) //nolint:gosec // an executable test double
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "date"), []byte(date), 0o700)) //nolint:gosec // an executable test double
+	require.NoError(t, exectest.Write(filepath.Join(bin, "curl"), curl))
+	require.NoError(t, exectest.Write(filepath.Join(bin, "date"), date))
 
 	folder := notes(t, "# Q\n\n- One. [source: http://example.test/a]\n- Two. [source: http://example.test/b]\n")
 	out, code := run(t, []string{"PATH=" + bin + ":/usr/bin:/bin", "CHECK_TOTAL_TIME=1"}, "check.sh", folder)

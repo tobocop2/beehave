@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 )
@@ -51,7 +51,7 @@ func fakeSecurity(t *testing.T, body string) {
 	t.Helper()
 
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "security"), []byte("#!/bin/sh\n"+body), 0o700)) //nolint:gosec // a fake program must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, "security"), "#!/bin/sh\n"+body))
 	t.Setenv("PATH", dir+":/usr/bin:/bin")
 }
 

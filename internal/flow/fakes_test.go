@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 )
@@ -29,7 +30,9 @@ const (
 	testOwner    = "owner-"
 	eventTimeout = 30 * time.Second
 	pollEvery    = 5 * time.Millisecond
-	storePoll    = 5 * time.Millisecond
+	// storePoll is the interval at which the two queues of an engine and a result wait read the store. Each poll parses a statement, which
+	// costs most of the CPU of the package under the race detector, and the engines of the parallel tests all poll at once.
+	storePoll = 25 * time.Millisecond
 )
 
 var errFake = errors.New("fake failure")
@@ -391,6 +394,8 @@ type harness struct {
 	ticks     chan time.Time
 	sleep     time.Duration
 	opts      Options
+	// freshStore makes the engine and the client create the database themselves, for a test of the files that the first open makes.
+	freshStore bool
 }
 
 // defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
@@ -475,9 +480,51 @@ func (h *harness) tick(t *testing.T) {
 	}
 }
 
+// migratedDatabase is the database file of a new state folder after the migrations of the workflow store, built once for the test process.
+// The migrations parse and run many SQL statements, which costs more than the rest of a test under the race detector.
+var migratedDatabase = sync.OnceValues(func() ([]byte, error) {
+	dir, err := os.MkdirTemp("", "flow-template-")
+	if err != nil {
+		return nil, err
+	}
+
+	defer os.RemoveAll(dir)
+
+	opts := Options{StateDir: filepath.Join(dir, "state"), Version: testVersion, MaxConcurrent: minMaxConcurrent, Env: map[string]string{}}
+
+	engine, err := NewEngine(context.Background(), opts, Deps{})
+	if err != nil {
+		return nil, err
+	}
+
+	if err = engine.Shutdown(); err != nil {
+		return nil, err
+	}
+
+	return os.ReadFile(filepath.Join(opts.StateDir, databaseFile))
+})
+
+// migrated gives the state folder of the harness a database that has its migrations, when the folder has none. The first open of a folder
+// without a database is tested by the tests that call NewEngine or OpenClient on their own.
+func (h *harness) migrated(t *testing.T) {
+	t.Helper()
+
+	path := filepath.Join(h.opts.StateDir, databaseFile)
+	if _, err := os.Stat(path); err == nil || h.freshStore {
+		return
+	}
+
+	text, err := migratedDatabase()
+	require.NoError(t, err)
+	require.NoError(t, config.EnsureStateDir(h.opts.StateDir))
+	require.NoError(t, os.WriteFile(path, text, privateMode))
+}
+
 // engine builds and launches an engine over the harness. The cleanup shuts it down.
 func (h *harness) engine(t *testing.T) *Engine {
 	t.Helper()
+
+	h.migrated(t)
 
 	engine, err := NewEngine(t.Context(), h.opts, h.deps())
 	require.NoError(t, err)
@@ -490,6 +537,8 @@ func (h *harness) engine(t *testing.T) *Engine {
 // client opens a client over the harness state folder with the given build version.
 func (h *harness) client(t *testing.T, version string) *Client {
 	t.Helper()
+
+	h.migrated(t)
 
 	opts := h.opts
 	opts.Version = version

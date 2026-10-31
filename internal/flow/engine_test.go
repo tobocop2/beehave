@@ -105,6 +105,7 @@ func TestRun_AFileRunClaimsRunsItsStepsReleasesAndKeepsTheFilesPrivate(t *testin
 	t.Cleanup(func() { syscall.Umask(previous) })
 
 	harness := newHarness(t)
+	harness.freshStore = true
 	engine := harness.engine(t)
 
 	result, err := engine.Run(testItem, testProject)

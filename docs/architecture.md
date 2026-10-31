@@ -147,6 +147,7 @@ flowchart TD
         config["config<br/>settings and state folder"]
         model["model<br/>types, enums, contracts"]
         lockfile["lockfile<br/>file lock opener"]
+        exectest["exectest<br/>writes the programs that tests start"]
     end
 
     main --> cli
