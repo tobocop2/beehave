@@ -28,6 +28,8 @@ type Pool struct {
 type agents struct {
 	// MaxConcurrent is the global limit on agent processes. A laptop wants 2, a build host more.
 	MaxConcurrent int
+	// MaxReviewConcurrent is the limit on agent processes of the steps of the kind review. It is separate from MaxConcurrent: the two queues do not lend slots.
+	MaxReviewConcurrent int
 	// MaxTurns is the most agentic turns of one agent run. 0 means no cap.
 	MaxTurns int
 	// MaxBudgetUSD is the most dollars that one agent run spends on API calls. 0 means no cap.
@@ -47,7 +49,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -74,7 +76,7 @@ func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
 	budget := number(f.agents.MaxBudgetUSD)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes); err != nil {
 		return err
 	}
 

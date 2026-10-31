@@ -479,8 +479,8 @@ func newHarness(t *testing.T) *harness {
 		opts: Options{
 			StateDir:      filepath.Join(folder, "state"),
 			Version:       testVersion,
-			MaxConcurrent: 2,
-			Env:           map[string]string{},
+			MaxConcurrent: 2, MaxReviewConcurrent: 2,
+			Env: map[string]string{},
 		},
 	}
 }
@@ -526,7 +526,7 @@ var migratedDatabase = sync.OnceValues(func() ([]byte, error) {
 
 	defer os.RemoveAll(dir)
 
-	opts := Options{StateDir: filepath.Join(dir, "state"), Version: testVersion, MaxConcurrent: minMaxConcurrent, Env: map[string]string{}}
+	opts := Options{StateDir: filepath.Join(dir, "state"), Version: testVersion, MaxConcurrent: minMaxConcurrent, MaxReviewConcurrent: minMaxConcurrent, Env: map[string]string{}}
 
 	engine, err := NewEngine(context.Background(), opts, Deps{})
 	if err != nil {

@@ -167,7 +167,7 @@ func (c *Client) childClaim(row dbos.WorkflowStatus) (project, item, owner strin
 	return project, in.Item, owner, err
 }
 
-// rewind drops the history of the run from one step on and queues the run again. A phase goes back to the agents queue, in the partition of its login.
+// rewind drops the history of the run from one step on and queues the run again. A phase goes back to the queue of its kind, in the partition of its login.
 func (c *Client) rewind(id string, from int) error {
 	row, err := c.row(id)
 	if err != nil {
@@ -184,17 +184,17 @@ func (c *Client) rewind(id string, from int) error {
 	return err
 }
 
-// rewindQueue names the queue that a rewound run goes back to. A phase goes to the agents queue, in the partition of its login.
+// rewindQueue names the queue that a rewound run goes back to. A phase goes to the queue of its kind, in the partition of its login.
 // A run that spawn started goes back to the items queue: the parent starts it again by the same id, and the library refuses an id that moved to another queue.
 func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 	switch {
 	case row.Name == phaseName:
-		var in PhaseInput
-		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
-			return nil, fmt.Errorf("read the input of %s: %w", row.ID, err)
+		queue, partition, err := phaseRewindTarget(row)
+		if err != nil {
+			return nil, err
 		}
 
-		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queueName), dbos.WithRewindQueuePartitionKey(in.Login)}, nil
+		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queue), dbos.WithRewindQueuePartitionKey(partition)}, nil
 	case row.Name == exclusiveName:
 		var in ExclusiveInput
 		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
@@ -207,6 +207,16 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 	}
 
 	return nil, nil
+}
+
+// phaseRewindTarget returns the queue and the partition key that a rewound phase goes back to: the queue of its kind and the partition of its login.
+func phaseRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err error) {
+	var in PhaseInput
+	if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
+		return "", "", fmt.Errorf("read the input of %s: %w", row.ID, err)
+	}
+
+	return agentQueueName(in.Kind), in.Login, nil
 }
 
 // errNoRow is returned when a workflow the store listed is gone.

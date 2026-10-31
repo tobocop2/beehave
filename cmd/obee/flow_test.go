@@ -21,7 +21,7 @@ func TestBackendErrors_TheSentinelOfTheHostBackendSurvivesAGateOrAMerge(t *testi
 func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
 	t.Parallel()
 
-	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, Env: map[string]string{}}
+	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, MaxReviewConcurrent: 1, Env: map[string]string{}}
 
 	engine, err := flowFactory().Engine(t.Context(), config.Config{Projects: map[string]config.Project{}}, opts)
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestLogins_NeverGuessAProjectTheConfigLacks(t *testing.T) {
 func TestFlowFactory_OpensTheClientAndTheEngineOverTheStateFolder(t *testing.T) {
 	t.Parallel()
 
-	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, Env: map[string]string{}}
+	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, MaxReviewConcurrent: 1, Env: map[string]string{}}
 	factory := flowFactory()
 
 	client, err := factory.Client(t.Context(), config.Config{}, opts)

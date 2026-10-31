@@ -15,6 +15,16 @@ const (
 // FollowUpModes lists the values that follow_ups takes.
 func FollowUpModes() []string { return []string{FollowUpsAllow, FollowUpsForbid} }
 
+// The values of the kind argument of an agent call. A review step runs on the review queue, an implement step on the agents queue.
+// A call with no kind is an implement step.
+const (
+	AgentKindImplement = "implement"
+	AgentKindReview    = "review"
+)
+
+// AgentKinds lists the values that kind takes.
+func AgentKinds() []string { return []string{AgentKindImplement, AgentKindReview} }
+
 // arguments reports each agent call in the file whose follow_ups is "forbid" and whose outputs lack the verdict, at the place of the value.
 func (g *graph) arguments(parsed *syntax.File) {
 	syntax.Walk(parsed, func(n syntax.Node) bool {

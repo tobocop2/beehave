@@ -551,6 +551,37 @@ func TestLoadFolder_AgentsMaxConcurrent(t *testing.T) {
 	require.ErrorContains(t, problems[0], "runners.star:2:7: block `agents` appears twice. Keep one.")
 }
 
+func TestLoadFolder_AgentsMaxReviewConcurrentIsItsOwnLimit(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents(max_concurrent = 6, max_review_concurrent = 3)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 6, cfg.Agents.MaxConcurrent)
+	require.Equal(t, 3, cfg.Agents.MaxReviewConcurrent)
+
+	cfg, problems = loadRunnersText(t, "agents(max_concurrent = 6)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 2, cfg.Agents.MaxReviewConcurrent, "a call without the argument keeps the default")
+
+	_, problems = loadRunnersText(t, "agents(max_review_concurrent = 0)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.max_review_concurrent must be 1 or more")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_REVIEW_CONCURRENT")
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_review_concurrent = 2)\n")
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	require.Empty(t, problems)
+	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "many"})
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number")
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "0"})
+	require.ErrorContains(t, problems[0], "agents.max_review_concurrent must be 1 or more")
+}
+
 func TestLoadFolder_AgentsMaxTurnsAndBudgetDefaultToNoCapAndRefuseANegative(t *testing.T) {
 	t.Parallel()
 
@@ -626,6 +657,11 @@ func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_CONCURRENT": ""})
 	require.Empty(t, problems)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "an empty variable leaves the file value")
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	require.Empty(t, problems)
+	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
+	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "the review limit is its own variable")
 }
 
 func TestLoadFolder_AnOverlayValueIsValidated(t *testing.T) {
@@ -638,6 +674,8 @@ func TestLoadFolder_AnOverlayValueIsValidated(t *testing.T) {
 	}{
 		{"text_for_max_concurrent", map[string]string{"OBEE_AGENTS_MAX_CONCURRENT": "many"}, "OBEE_AGENTS_MAX_CONCURRENT=many is not a whole number"},
 		{"zero_for_max_concurrent", map[string]string{"OBEE_AGENTS_MAX_CONCURRENT": "0"}, "agents.max_concurrent must be 1 or more"},
+		{"text_for_max_review_concurrent", map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "many"}, "OBEE_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number"},
+		{"zero_for_max_review_concurrent", map[string]string{"OBEE_AGENTS_MAX_REVIEW_CONCURRENT": "0"}, "agents.max_review_concurrent must be 1 or more"},
 		{"text_for_five_hour_cap", map[string]string{"OBEE_POOL_FIVE_HOUR_MAX": "lots"}, "OBEE_POOL_FIVE_HOUR_MAX=lots is not a number"},
 		{"text_for_seven_day_cap", map[string]string{"OBEE_POOL_SEVEN_DAY_MAX": "lots"}, "OBEE_POOL_SEVEN_DAY_MAX=lots is not a number"},
 		{"cap_over_one_hundred", map[string]string{"OBEE_POOL_SEVEN_DAY_MAX": "101"}, "`seven_day_max` in the pool block"},

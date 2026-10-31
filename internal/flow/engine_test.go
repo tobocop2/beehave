@@ -358,7 +358,9 @@ func TestRegister_ReportsAQueueThatTheStoreRefuses(t *testing.T) {
 
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	require.ErrorContains(t, engine.registerQueue(-1), "register the agents queue")
+	var into dbos.Queue
+
+	require.ErrorContains(t, engine.registerQueue("agents-again", -1, &into), "register the agents-again queue")
 }
 
 // stoppedHandle is a run handle whose wait returns the stop cause of the engine, as the library does when the engine stops in the instant the run completes.

@@ -35,6 +35,7 @@ type agentArgs struct {
 	prompt        string
 	data          map[string]any
 	runner        string
+	kind          string
 	model         string
 	timeout       time.Duration
 	idleTimeout   time.Duration
@@ -60,7 +61,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"follow_ups": &raw.followUps, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
+		"follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -70,7 +71,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 		return a, "", err
 	}
 
-	return a, raw.label, a.read(raw)
+	return a, raw.label, errors.Join(a.checkKind(), a.read(raw))
 }
 
 // agentRaw are the arguments of an agent call that need a check before they are used.
@@ -99,6 +100,15 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 	}
 
 	return a.lists(raw)
+}
+
+// checkKind refuses a kind that is not one of the two kinds. An empty kind is the kind implement.
+func (a agentArgs) checkKind() error {
+	if a.kind == "" || slices.Contains(workflow.AgentKinds(), a.kind) {
+		return nil
+	}
+
+	return fmt.Errorf("kind is %q. Use one of: %s", a.kind, strings.Join(workflow.AgentKinds(), ", "))
 }
 
 // lists reads the three list arguments of an agent call, then the follow_ups option, which needs the declared outputs.
@@ -261,7 +271,7 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 // phase makes the input of the phase that runs the agent.
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
-		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
+		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
 		OutputFile: a.file, Outputs: a.declared,
 	}

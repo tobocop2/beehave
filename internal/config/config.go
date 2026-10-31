@@ -16,12 +16,13 @@ import (
 
 // Names of the OBEE_* variables that override the config files.
 const (
-	envMaxConcurrent = "OBEE_AGENTS_MAX_CONCURRENT"
-	envMaxTurns      = "OBEE_AGENTS_MAX_TURNS"
-	envMaxBudget     = "OBEE_AGENTS_MAX_BUDGET_USD"
-	envReviewPoll    = "OBEE_REVIEW_POLL_MINUTES"
-	envFiveHourMax   = "OBEE_POOL_FIVE_HOUR_MAX"
-	envSevenDayMax   = "OBEE_POOL_SEVEN_DAY_MAX"
+	envMaxConcurrent       = "OBEE_AGENTS_MAX_CONCURRENT"
+	envMaxReviewConcurrent = "OBEE_AGENTS_MAX_REVIEW_CONCURRENT"
+	envMaxTurns            = "OBEE_AGENTS_MAX_TURNS"
+	envMaxBudget           = "OBEE_AGENTS_MAX_BUDGET_USD"
+	envReviewPoll          = "OBEE_REVIEW_POLL_MINUTES"
+	envFiveHourMax         = "OBEE_POOL_FIVE_HOUR_MAX"
+	envSevenDayMax         = "OBEE_POOL_SEVEN_DAY_MAX"
 )
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
@@ -55,7 +56,7 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   agents{MaxConcurrent: defaultConcurrent},
+		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent},
 		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
 		Projects: map[string]Project{},
 	}
@@ -147,17 +148,29 @@ func (c *Config) addProject(problems Problems, path string) Problems {
 	return problems
 }
 
-func (c *Config) applyEnv(env map[string]string) error {
-	if value := env[envMaxConcurrent]; value != "" {
-		limit, err := strconv.Atoi(value)
-		if err != nil {
-			return refuse("%s=%s is not a whole number. Write digits only, for example 2.", envMaxConcurrent, value)
-		}
-
-		c.Agents.MaxConcurrent = limit
+// overlayLimit reads a limit on agent processes from the environment. An empty variable leaves the value.
+func overlayLimit(env map[string]string, name string, into *int) error {
+	value := env[name]
+	if value == "" {
+		return nil
 	}
 
-	if err := errors.Join(c.applyCapEnv(env), c.applyPollEnv(env)); err != nil {
+	limit, err := strconv.Atoi(value)
+	if err != nil {
+		return refuse("%s=%s is not a whole number. Write digits only, for example 2.", name, value)
+	}
+
+	*into = limit
+
+	return nil
+}
+
+func (c *Config) applyEnv(env map[string]string) error {
+	err := errors.Join(
+		overlayLimit(env, envMaxConcurrent, &c.Agents.MaxConcurrent), overlayLimit(env, envMaxReviewConcurrent, &c.Agents.MaxReviewConcurrent),
+		c.applyCapEnv(env), c.applyPollEnv(env),
+	)
+	if err != nil {
 		return err
 	}
 
@@ -223,15 +236,28 @@ func overlayPercent(env map[string]string, name string, target *float64) error {
 	return nil
 }
 
+// limitProblems checks the two limits on agent processes.
+func (c Config) limitProblems(runnersPath string) Problems {
+	var problems Problems
+
+	if c.Agents.MaxConcurrent < 1 {
+		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
+	}
+
+	if c.Agents.MaxReviewConcurrent < 1 {
+		problems = append(problems, refuse("agents.max_review_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxReviewConcurrent))
+	}
+
+	return problems
+}
+
 // Validate checks the values that no single file owns: the agent limit and the pool caps.
 func (c Config) Validate() Problems {
 	var problems Problems
 
 	runnersPath := filepath.Join(c.Dir, runnersFileName)
 
-	if c.Agents.MaxConcurrent < 1 {
-		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
-	}
+	problems = append(problems, c.limitProblems(runnersPath)...)
 
 	if c.Agents.MaxTurns < 0 {
 		problems = append(problems, refuse("agents.max_turns must be 0 (no cap) or more. Set it in %s or in %s.", runnersPath, envMaxTurns))
