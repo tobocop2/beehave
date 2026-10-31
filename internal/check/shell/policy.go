@@ -192,6 +192,10 @@ func (s *scanner) scanSubcommand(named []string, set flagSet) {
 		s.add(model.FindingGitAuthor, named)
 	}
 
+	if s.readOnly && changesRepository(sub, set) {
+		s.add(model.FindingGitWrite, named)
+	}
+
 	if skipsSafeguard(sub, set) {
 		s.add(model.FindingGitBypass, named)
 	}

@@ -15,6 +15,7 @@ const (
 	outputVerdict  = "verdict"
 	outputFindings = "findings"
 	verdictChanges = "changes"
+	verdictReject  = "reject"
 )
 
 // findingClasses lists the classes that a finding may have.
@@ -51,7 +52,8 @@ func applyFollowUps(outputs map[string]any, written map[string]any) string {
 		return problem
 	}
 
-	if review.NeedsCommit(findings, review.Policy{NoFollowUps: true}) {
+	// A reject ends the loop with no fix round, so open findings do not turn it into changes.
+	if outputs[outputVerdict] != verdictReject && review.NeedsCommit(findings, review.Policy{NoFollowUps: true}) {
 		outputs[outputVerdict] = verdictChanges
 	}
 

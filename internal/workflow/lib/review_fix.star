@@ -4,8 +4,13 @@
 
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read"]
 
+# A reviewer is read-only: it must not fix, commit or push. The kind git-write refuses every git command that changes a repository.
+REVIEW_FORBID = FORBID + ["git-write"]
+
 def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow"):
-    """Runs the loop and returns a struct with exhausted, gate and review.
+    """Runs the loop and returns a struct with exhausted, rejected, gate and review.
+
+    The review verdict is approve, changes or reject. A reject ends the loop at once: rejected is true and no fix round runs.
 
     follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
     and the review prompt must ask the agent to write a `findings` list beside the verdict.
@@ -25,13 +30,19 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 model = "opus",
                 pin = check.head,
                 outputs = ["verdict"],
+                forbid_commands = REVIEW_FORBID,
                 follow_ups = follow_ups,
                 output_tries = 2,
                 inputs = {"item": item, "violations": violations},
             )
 
         if check.passed and review.verdict == "approve" and violations == "":
-            return struct(exhausted = False, gate = check, review = review)
+            return struct(exhausted = False, rejected = False, gate = check, review = review)
+
+        # A reject ends the loop with no fix round, whatever the gate says. The review runs only on a passing gate, so a missing review is no reject.
+        # The caller holds the item with the text of the review as the reason.
+        if review != None and review.verdict == "reject":
+            return struct(exhausted = False, rejected = True, gate = check, review = review)
 
         if round == rounds:
             break
@@ -50,4 +61,4 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
         )
         violations = fix.violations
 
-    return struct(exhausted = True, gate = check, review = review)
+    return struct(exhausted = True, rejected = False, gate = check, review = review)

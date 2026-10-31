@@ -106,6 +106,12 @@ def pipeline(item):
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix round.
     loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid")
 
+    # A reject verdict ends the loop with no fix round. The item gets the text of the review as the reason and the hold status.
+    if loop.rejected:
+        item_comment(name = "rejected", id = item.id, key = "rejected", text = loop.review.text)
+        item_status(name = "hold-rejected", id = item.id, status = "hold")
+        return
+
     # After the last round, a person rules on each open finding. The ruling is applied once. No review follows it.
     if loop.exhausted:
         ruling = wait(

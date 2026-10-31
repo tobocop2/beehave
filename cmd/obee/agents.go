@@ -183,10 +183,8 @@ func violations(calls []string, forbid []model.FindingKind, notes []string) []st
 	var lines []string
 
 	for _, call := range calls {
-		for _, finding := range shell.Scan(call) {
-			if slices.Contains(forbid, finding.Kind) {
-				lines = append(lines, fmt.Sprintf("%s: %s", finding.Kind, snippet(finding.Text)))
-			}
+		for _, finding := range shell.ScanFor(call, forbid) {
+			lines = append(lines, fmt.Sprintf("%s: %s", finding.Kind, snippet(finding.Text)))
 		}
 	}
 
