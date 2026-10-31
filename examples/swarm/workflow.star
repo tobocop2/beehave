@@ -57,7 +57,7 @@ def main(item):
 
     # Each item runs the function `task` as a child run. The wait ends when every child run has ended, with success or not.
     runs = spawn(items = ids, entry = "task", name = "fan")
-    results = gather(runs, name = "fan")
+    results = gather(runs, name = "fan").results
 
     prs = []
     unfinished = []

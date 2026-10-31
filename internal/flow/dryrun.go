@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -273,19 +274,34 @@ func shorten(text string) string {
 	return text
 }
 
-// dryAgents ends every agent as done. It writes the output file that a review prompt names, with the verdict approve, and reports the required skills as used.
+// dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve), and reports the required skills as used.
 type dryAgents struct{ skills []string }
 
 func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, error) {
-	if _, rest, found := strings.Cut(request.Prompt, "Write it to "); found {
-		path, _, _ := strings.Cut(rest, " as JSON")
+	if len(request.Outputs) > 0 {
+		// The file holds one string for each declared output, and an empty findings list for a call that forbids follow-ups.
+		fields := []string{`"findings":[]`}
+		for _, name := range request.Outputs {
+			fields = append(fields, strconv.Quote(name)+":"+strconv.Quote(dryOutput(name)))
+		}
 
-		if err := errors.Join(os.MkdirAll(filepath.Dir(path), dryDirMode), os.WriteFile(path, []byte(`{"verdict":"approve","findings":[]}`), dryFileMode)); err != nil {
-			return agent.Result{}, fmt.Errorf("write the fake review: %w", err)
+		raw := []byte("{" + strings.Join(fields, ",") + "}")
+
+		if err := errors.Join(os.MkdirAll(filepath.Dir(request.OutputFile), dryDirMode), os.WriteFile(request.OutputFile, raw, dryFileMode)); err != nil {
+			return agent.Result{}, fmt.Errorf("write the fake outputs: %w", err)
 		}
 	}
 
 	return agent.Result{Outcome: agent.OutcomeExited, Session: "dry-session", Transcript: "/dry.jsonl", Text: "dry run: no agent ran", Skills: a.skills}, nil
+}
+
+// dryOutput is the fixed value of a declared output in a dry run: a review approves, and any other output holds the text dry.
+func dryOutput(name string) string {
+	if name == outputVerdict {
+		return "approve"
+	}
+
+	return "dry"
 }
 
 // dryGate passes on the commit of the dry-run folder.

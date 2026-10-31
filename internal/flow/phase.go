@@ -30,6 +30,10 @@ type PhaseInput struct {
 	Forbid []model.FindingKind `json:"forbid,omitempty"`
 	// Protect lists the directories of the kind protected-path. It is empty, and so left out of a recorded phase, for a step that does not use the kind.
 	Protect []string `json:"protect,omitempty"`
+
+	// OutputFile is the file where the agent writes its declared outputs. Outputs names them. Outputs is left out for a call that declares none.
+	OutputFile string   `json:"output_file,omitempty"`
+	Outputs    []string `json:"outputs,omitempty"`
 }
 
 // PhaseOutput records how the agent of a phase ended. Session, Transcript, Text, Skills and Violations describe the session that ended.
@@ -72,7 +76,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
 		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, in),
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect,
+		Forbid: in.Forbid, Protect: in.Protect, OutputFile: in.OutputFile, Outputs: in.Outputs,
 	})
 
 	out := phaseOutput(result)
