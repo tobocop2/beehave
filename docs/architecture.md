@@ -499,7 +499,7 @@ A refusal on a replay means a person must look. It does not mean that the pull r
 
 ### Edit of the shared body
 
-`EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
+`EditBody` reads a body, applies an edit and writes the result. It holds an exclusive `flock` lock on `integration-<pr>.lock` in the state folder for the whole read and write, so two writers never lose a row. The lock is released on every exit, a failed write included. A merge with an integration pull request records its row through `EditBody`, but only after it reads the author of that pull request and finds an owner login. A body of another author, or an author that cannot be read, is never edited: the step says a REFUSE line that names the author, and the owner adds the row. The step never edits a title. Ready, draft and base changes are not covered by this rule, because obee merges third-party work that is reviewed. A row that cannot be recorded does not undo the merge. The step says so, and the owner adds the row.
 
 ### Merge step of the item
 
