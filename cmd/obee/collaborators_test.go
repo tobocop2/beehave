@@ -196,6 +196,8 @@ type fakeHost struct {
 	spec      model.JobSpec
 }
 
+func (*fakeHost) WorkRoot(context.Context) (string, error) { return "/home/ob", nil }
+
 func (f *fakeHost) Submit(_ context.Context, spec model.JobSpec) (model.JobID, error) {
 	f.spec = spec
 

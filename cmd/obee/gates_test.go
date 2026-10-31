@@ -125,7 +125,7 @@ func localProject() map[string]config.Project {
 }
 
 func clusterProject() map[string]config.Project {
-	return map[string]config.Project{"p": {Project: model.Project{Gate: "make check", BuildHost: "cluster", Host: &model.HostConfig{}}}}
+	return map[string]config.Project{"p": {Project: model.Project{Name: "p", Gate: "make check", BuildHost: "cluster", Host: &model.HostConfig{}}}}
 }
 
 func TestProjectGate_ALocalGateReportsAPassOnTheHeadOfTheWorktree(t *testing.T) {
@@ -318,6 +318,7 @@ func TestProjectGate_TheCloneURLIsTheSourceOfTheProjectAndTheForgeIsNotAsked(t *
 
 	require.NoError(t, err)
 	assert.Contains(t, hosted.spec.Command, "git clone -- https://example.test/shop.git tree")
+	assert.Contains(t, hosted.spec.Command, "rm -rf /home/ob/obee-gate-p-abc123")
 }
 
 func TestProjectGate_AHostThatCannotRunTheJobEndsTheGateWithAnError(t *testing.T) {
