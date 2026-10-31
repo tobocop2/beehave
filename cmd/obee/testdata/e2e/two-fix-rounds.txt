@@ -1,5 +1,5 @@
 # Two reviews ask for changes. Each fix round carries the findings of the review before it. The third review approves.
-env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
 exec obee run 7 --workflow flow/workflow.star
 stdout 'item 7 finished'
 

@@ -16,15 +16,19 @@ const (
 	FindingEnvOverride  FindingKind = "env-override"
 	FindingConfigRead   FindingKind = "config-read"
 	FindingGitWrite     FindingKind = "git-write"
+	FindingProtected    FindingKind = "protected-path"
 )
 
-// FindingKinds returns the eleven kinds, sorted by name. A workflow lists them in `forbid_commands`.
+// FindingKinds returns the twelve kinds, sorted by name. A workflow lists them in `forbid_commands`.
 func FindingKinds() []FindingKind {
 	return []FindingKind{
 		FindingBulkStaging, FindingConfigRead, FindingDeleteText, FindingEnvOverride, FindingGitAuthor,
-		FindingGitBypass, FindingGitWrite, FindingLocalDelete, FindingOpaque, FindingRemoteDelete, FindingUnparsed,
+		FindingGitBypass, FindingGitWrite, FindingLocalDelete, FindingOpaque, FindingProtected, FindingRemoteDelete, FindingUnparsed,
 	}
 }
+
+// NeedsPaths reports whether a kind judges commands against a list of paths that the step must give in `protect_paths`.
+func (k FindingKind) NeedsPaths() bool { return k == FindingProtected }
 
 // FindingKindNames returns the names of the kinds, in the order of FindingKinds.
 func FindingKindNames() []string {

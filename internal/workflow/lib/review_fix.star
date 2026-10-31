@@ -7,14 +7,18 @@ FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "gi
 # A reviewer is read-only: it must not fix, commit or push. The kind git-write refuses every git command that changes a repository.
 REVIEW_FORBID = FORBID + ["git-write"]
 
-def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow"):
+def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = []):
     """Runs the loop and returns a struct with exhausted, rejected, gate and review.
+
+    protect lists the directories that no command of the review or the fix may write in, such as the checkout of the owner.
+    A non-empty list adds the kind protected-path to both calls. An empty list adds nothing.
 
     The review verdict is approve, changes or reject. A reject ends the loop at once: rejected is true and no fix round runs.
 
     follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
     and the review prompt must ask the agent to write a `findings` list beside the verdict.
     """
+    extra = ["protected-path"] if protect else []
     violations = impl.violations
     check = None
     review = None
@@ -30,7 +34,8 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 model = "opus",
                 pin = check.head,
                 outputs = ["verdict"],
-                forbid_commands = REVIEW_FORBID,
+                forbid_commands = REVIEW_FORBID + extra,
+                protect_paths = protect,
                 follow_ups = follow_ups,
                 output_tries = 2,
                 inputs = {"item": item, "violations": violations},
@@ -56,7 +61,8 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             prompt = fix_prompt,
             model = "sonnet" if round <= 3 else "opus",
             resume = impl.session if round <= 3 else "",
-            forbid_commands = FORBID,
+            forbid_commands = FORBID + extra,
+            protect_paths = protect,
             inputs = {"item": item, "round": round, "findings": findings},
         )
         violations = fix.violations

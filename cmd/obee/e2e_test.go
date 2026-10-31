@@ -178,14 +178,15 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 	adapter := newAdapters(nil, nil).agent(model.AgentClaude)
 	runner := model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir}
 	tap := newSessionTap(adapter)
+	protect := protectionOf(request.Protect, a.dir)
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
 		Adapter: adapter, Runner: runner,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started,
-		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid),
+		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
 	})
 
-	return describe(adapter, runner, a.dir, tap, result, request.Forbid)
+	return describe(adapter, runner, a.dir, tap, result, request.Forbid, protect)
 }
 
 // The agent runs in the work folder of the script and sees no other variable than PATH.

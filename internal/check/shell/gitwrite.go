@@ -2,6 +2,12 @@ package shell
 
 import "slices"
 
+// The git subcommands that more than one rule names.
+const (
+	subStash  = "stash"
+	subBranch = "branch"
+)
+
 // alwaysWrites reports whether a git subcommand changes the tree, the index, a ref, the history or a remote whatever its arguments.
 func alwaysWrites(sub string) bool {
 	return slices.Contains([]string{
@@ -14,9 +20,9 @@ func alwaysWrites(sub string) bool {
 // The commands `worktree add` and `worktree list` are not in it: a reviewer may build its own copy of the tree with `worktree add`.
 func changesRepository(sub string, set flagSet) bool {
 	switch sub {
-	case "stash":
+	case subStash:
 		return !firstIs(set, "list", "show")
-	case "branch", "tag":
+	case subBranch, "tag":
 		return writesRefs(sub, set)
 	case cmdConfig:
 		return writesConfig(set)
@@ -48,7 +54,7 @@ func writesRefs(sub string, set flagSet) bool {
 	letters := []string{"d", "a", "s", "u", "f", "m", "F"}
 	longs := []string{"--delete", "--annotate", "--sign", "--local-user", forceOption, "--message", "--file"}
 
-	if sub == "branch" {
+	if sub == subBranch {
 		letters = []string{"d", "D", "m", "M", "c", "C", "f", "u"}
 		longs = []string{"--delete", "--move", "--copy", forceOption, "--set-upstream-to", "--unset-upstream", "--edit-description"}
 	}

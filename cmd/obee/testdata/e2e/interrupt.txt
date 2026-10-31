@@ -1,5 +1,5 @@
 # Ctrl-C stops the command and leaves the run open with its claim held. The next obee run continues the same run.
-env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
 ! exec obee run 7 --workflow flow/workflow.star &
 waitfile started
 kill -INT

@@ -1,6 +1,6 @@
 # The obee process dies during the implement step. The next obee run finishes the same run
 # and does not repeat the plan step.
-env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
 ! exec obee run 7 --workflow flow/workflow.star &
 waitfile started
 kill -KILL
