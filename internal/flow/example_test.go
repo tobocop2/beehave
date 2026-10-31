@@ -43,6 +43,27 @@ const exampleTree = "tree-of-the-gated-head"
 func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) string) (*agentRig, string) {
 	t.Helper()
 
+	return exampleRigLimited(t, verdicts, findings, func(int) string { return "" }, "", 6)
+}
+
+// designMarker is a phrase of the prompt of the design step of the example.
+const designMarker = "What a design step must do"
+
+// designReviewLimit is the most reviews that any design test expects. The rounds cap is 6, so a loop that fails to stop fails at the sixth review.
+const designReviewLimit = 5
+
+// exampleRigWithDesign is exampleRigWithFindings with the mechanism that each review names, and the JSON object that the design step writes.
+// A nil mechanisms leaves the output out of the review.
+func exampleRigWithDesign(t *testing.T, verdicts, findings, mechanisms func(review int) string, design string) (*agentRig, string) {
+	t.Helper()
+
+	return exampleRigLimited(t, verdicts, findings, mechanisms, design, designReviewLimit)
+}
+
+// exampleRigLimited is exampleRigWithDesign with the most reviews that the test expects.
+func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review int) string, design string, limit int) (*agentRig, string) {
+	t.Helper()
+
 	folder := t.TempDir()
 	require.NoError(t, os.CopyFS(folder, os.DirFS(filepath.Join("..", "..", "examples", "remediation"))))
 
@@ -60,11 +81,24 @@ func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) st
 		if strings.Contains(request.Prompt, reviewMarker) {
 			reviews++
 
+			// A loop that does not stop where the test expects would run to the rounds cap and then wait for a person. Past the limit the
+			// review writes no output, so the run fails at once and the test reports it as an assertion, not as a timeout.
 			_, rest, _ := strings.Cut(request.Prompt, "Write it to ")
 			path, _, _ := strings.Cut(rest, " as JSON")
-			if verdict := verdicts(reviews); verdict != "" {
-				rig.put(path, `{"verdict":"`+verdict+`","findings":`+findings(reviews)+`}`)
+			if verdict := verdicts(reviews); verdict != "" && reviews <= limit {
+				mechanism := ""
+				if mechanisms != nil {
+					mechanism = `"mechanism":"` + mechanisms(reviews) + `",`
+				}
+
+				rig.put(path, `{"verdict":"`+verdict+`",`+mechanism+`"findings":`+findings(reviews)+`}`)
 			}
+		}
+
+		if strings.Contains(request.Prompt, designMarker) {
+			_, rest, _ := strings.Cut(request.Prompt, "Write it to ")
+			path, _, _ := strings.Cut(rest, " as JSON")
+			rig.put(path, design)
 		}
 
 		return agent.Result{Outcome: agent.OutcomeExited, Session: "sess-1", Transcript: "/t.jsonl", Text: "all done", Skills: []string{skill}}

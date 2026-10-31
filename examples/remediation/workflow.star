@@ -127,12 +127,24 @@ def pipeline(item):
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
     # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix round.
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected())
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md")
 
     # A reject verdict ends the loop with no fix round. The item gets the text of the review as the reason and the hold status.
     if loop.rejected:
         item_comment(name = "rejected", id = item.id, key = "rejected", text = loop.review.text)
         item_status(name = "hold-rejected", id = item.id, status = "hold")
+        return
+
+    # After two fix rounds on one mechanism, a design step decides whether the mechanism should exist. A replace or a delete ends the loop:
+    # the item gets the decision and the reason as the comment and the hold status, and a person rules on it.
+    if loop.design != None:
+        item_comment(
+            name = "design",
+            id = item.id,
+            key = "design",
+            text = "Design decision for %s: %s. %s" % (loop.design.mechanism, loop.design.decision, loop.design.reason),
+        )
+        item_status(name = "hold-design", id = item.id, status = "hold")
         return
 
     # After the last round, a person rules on each open finding. The ruling is applied once. No review follows it.

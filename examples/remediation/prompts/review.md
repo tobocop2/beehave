@@ -198,5 +198,6 @@ This method has no follow-ups: every open finding needs a commit. A finding that
 The verdict is `approve` when you have no open finding, and `changes` when you have one.
 Write it to {{ .output_file }} as JSON with the list of your open findings, for example `{"verdict":"approve","findings":[]}`.
 Give each open finding as an object with a `class` and a `text`: `{"class":"blocking","text":"what is wrong and where"}`.
+Write the output `mechanism` beside them: the one file that your open findings are about, as the file path. You may add `:function` after the path. The loop counts the fix rounds on the part before the first colon. When you have no open finding, or the findings do not share one mechanism, write an empty text. For example: `{"verdict":"changes","mechanism":"internal/store/retry.go:Do","findings":[{"class":"blocking","text":"the retry never stops"}]}`.
 The class is one of `blocking`, `deferred`, `pre-existing` or `minor`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.

@@ -84,7 +84,7 @@ case $step in
   fix) echo fixed > fixed.txt && commit fixed.txt ;;
   review)
     if [ -e "@WORK@/reviewed" ]; then verdict=approve; else verdict=changes; : > "@WORK@/reviewed"; fi
-    printf '{"verdict":"%s"}\n' "$verdict" > "$write"
+    printf '{"verdict":"%s","mechanism":""}\n' "$verdict" > "$write"
     ;;
 esac
 echo '{"type":"result","session_id":"s1","result":"done"}'

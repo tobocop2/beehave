@@ -66,7 +66,7 @@ func answerLikeAnAgent(rig *agentRig, request AgentRequest) {
 	case strings.HasPrefix(match[0], "Write the summary"):
 		rig.put(match[1], `{"summary":"X is Y."}`)
 	default:
-		rig.put(match[1], `{"verdict":"changes","open":"fix it","findings":[{"class":"blocking","text":"fix it"}]}`)
+		rig.put(match[1], `{"verdict":"changes","mechanism":"","open":"fix it","findings":[{"class":"blocking","text":"fix it"}]}`)
 	}
 }
 
