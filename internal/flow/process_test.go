@@ -42,7 +42,7 @@ func TestHelperProcess(t *testing.T) {
 	mode, stateDir, index := args[0], args[1], args[2]
 	require.Contains(t, []string{"client", "engine", "hang", "stall", swarmFirst, swarmSecond}, mode, "unknown helper mode")
 
-	opts := Options{StateDir: stateDir, Version: testVersion, MaxConcurrent: 2, Env: map[string]string{}}
+	opts := Options{StateDir: stateDir, Version: testVersion, MaxConcurrent: 2, MaxReviewConcurrent: 2, Env: map[string]string{}}
 
 	if mode == "stall" {
 		// A stalled helper never writes its ready file; the parent kills it at the deadline.

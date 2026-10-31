@@ -47,7 +47,7 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 
 	defer func() { err = errors.Join(err, os.RemoveAll(root)) }()
 
-	opts := Options{StateDir: filepath.Join(root, "state"), Version: "dry-run", MaxConcurrent: minMaxConcurrent, Env: env}
+	opts := Options{StateDir: filepath.Join(root, "state"), Version: "dry-run", MaxConcurrent: minMaxConcurrent, MaxReviewConcurrent: minMaxConcurrent, Env: env}
 
 	deps, err := dryPrepare(ctx, root, file, item)
 	if err != nil {

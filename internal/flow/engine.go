@@ -30,14 +30,16 @@ const (
 	appName      = "obee"
 	executorName = "local"
 	queueName    = "agents"
-	itemName     = "item"
-	treeName     = "tree"
-	phaseName    = "phase"
-	ownerTopic   = "owner"
-	databaseFile = "dbos.db"
-	logFileName  = "flow.log"
-	logFileMode  = 0o600
-	stateScheme  = "sqlite:"
+	// reviewsQueueName is the queue of the agent steps of the kind review. The agents queue holds the steps of the kind implement.
+	reviewsQueueName = "reviews"
+	itemName         = "item"
+	treeName         = "tree"
+	phaseName        = "phase"
+	ownerTopic       = "owner"
+	databaseFile     = "dbos.db"
+	logFileName      = "flow.log"
+	logFileMode      = 0o600
+	stateScheme      = "sqlite:"
 
 	shutdownTimeout  = 10 * time.Second
 	partitionLimit   = 1
@@ -51,12 +53,14 @@ const (
 var errBadOptions = errors.New("invalid flow options")
 
 // Options holds the settings the engine and the client share.
-// Version is the build version that pins each run. MaxConcurrent is agents.max_concurrent.
+// Version is the build version that pins each run.
+// MaxConcurrent is agents.max_concurrent, the cap of the implement queue. MaxReviewConcurrent is agents.max_review_concurrent, the cap of the review queue.
 type Options struct {
-	StateDir      string
-	Version       string
-	MaxConcurrent int
-	Env           map[string]string
+	StateDir            string
+	Version             string
+	MaxConcurrent       int
+	MaxReviewConcurrent int
+	Env                 map[string]string
 	// ReviewPoll is the time between two review polls. 0 means no poll.
 	ReviewPoll time.Duration
 }
@@ -73,6 +77,8 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: the state folder %q is not an absolute path", errBadOptions, o.StateDir)
 	case o.MaxConcurrent < minMaxConcurrent:
 		return fmt.Errorf("%w: agents.max_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxConcurrent)
+	case o.MaxReviewConcurrent < minMaxConcurrent:
+		return fmt.Errorf("%w: agents.max_review_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxReviewConcurrent)
 	case o.ReviewPoll < 0:
 		return fmt.Errorf("%w: the review poll interval is %s: set it to 0 or more", errBadOptions, o.ReviewPoll)
 	}
@@ -107,8 +113,11 @@ func openStore(opts Options) (store, error) {
 
 // Engine runs the item workflows. Call NewEngine, then Launch, then Run for each item, then Shutdown.
 type Engine struct {
-	ctx   dbos.Context
+	ctx dbos.Context
+	// queue is the agents queue: the steps of the kind implement.
 	queue dbos.Queue
+	// reviewQueue is the queue of the steps of the kind review.
+	reviewQueue dbos.Queue
 	// itemQueue is the queue of the runs that spawn starts.
 	itemQueue dbos.Queue
 	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
@@ -162,7 +171,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Unlock(), state.log.Close())
 	}
 
-	return engine.registered(engine.register(opts.MaxConcurrent))
+	return engine.registered(engine.register(opts))
 }
 
 // registered returns the engine when the registration worked. When it failed, it shuts the engine down, so the folder lock and the store do not stay open.
@@ -199,28 +208,35 @@ func applicationVersion(build string) string { return build + "+" + stepsVersion
 // buildVersion is the version that a user starts: a stored version without the version of the builtin steps.
 func buildVersion(stored string) string { return strings.TrimSuffix(stored, "+"+stepsVersion) }
 
-// register adds the workflows, the agents queue (one agent per login, at most maxConcurrent in all) and the items queue of spawn.
-func (e *Engine) register(maxConcurrent int) error {
+// register adds the workflows, the agents queue (implement steps), the reviews queue (review steps) and the items queue of spawn.
+// Each agent queue runs one agent per login, at most its own cap in all. The two caps do not lend slots to each other.
+func (e *Engine) register(opts Options) error {
+	maxConcurrent := opts.MaxConcurrent
+
 	dbos.RegisterWorkflow(e.ctx, e.item, dbos.WithWorkflowName(itemName))
 	dbos.RegisterWorkflow(e.ctx, e.phase, dbos.WithWorkflowName(phaseName))
 	dbos.RegisterWorkflow(e.ctx, e.exclusive, dbos.WithWorkflowName(exclusiveName))
 	dbos.RegisterWorkflow(e.ctx, e.poll, dbos.WithWorkflowName(pollName))
 
-	return errors.Join(e.registerQueue(maxConcurrent), e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue())
+	return errors.Join(
+		e.registerQueue(queueName, maxConcurrent, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
+		e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue(),
+	)
 }
 
-func (e *Engine) registerQueue(maxConcurrent int) error {
-	options := []dbos.QueueOption{dbos.WithGlobalConcurrency(maxConcurrent), dbos.WithPartitionConcurrency(partitionLimit)}
+// registerQueue adds an agent queue with one agent per login and at most limit in all, and keeps it in into.
+func (e *Engine) registerQueue(name string, limit int, into *dbos.Queue) error {
+	options := []dbos.QueueOption{dbos.WithGlobalConcurrency(limit), dbos.WithPartitionConcurrency(partitionLimit)}
 	if poll := e.deps.Clock.Poll; poll > 0 {
 		options = append(options, dbos.WithQueueBasePollingInterval(poll))
 	}
 
-	queue, err := dbos.RegisterQueue(e.ctx, queueName, options...)
+	queue, err := dbos.RegisterQueue(e.ctx, name, options...)
 	if err != nil {
-		return fmt.Errorf("register the agents queue: %w", err)
+		return fmt.Errorf("register the %s queue: %w", name, err)
 	}
 
-	e.queue = queue
+	*into = queue
 
 	return nil
 }

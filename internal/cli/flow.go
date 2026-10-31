@@ -106,7 +106,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 // engineOptions builds the options of the engine from the config and the state folder.
 func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
 	return flow.Options{
-		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, Env: f.env,
+		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, Env: f.env,
 		ReviewPoll: time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
 	}
 }

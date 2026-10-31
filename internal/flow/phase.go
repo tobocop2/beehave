@@ -10,6 +10,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // PhaseInput describes one agent phase of an item. Run is the id of the run that queued the phase.
@@ -20,6 +21,8 @@ type PhaseInput struct {
 	Item    string `json:"item"`
 	Project string `json:"project"`
 	Login   string `json:"login"`
+	// Kind is the agent kind of the step: review or implement. It is empty, and so left out of a recorded phase, for the kind implement.
+	Kind string `json:"kind,omitempty"`
 
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
@@ -113,7 +116,25 @@ func (e *Engine) endGroups(run string) {
 	}
 }
 
-// queuePhase runs a phase as a child workflow on the agents queue, keyed by the login, and waits for it. It returns how the agent ended.
+// agentQueueName is the queue of an agent kind: a review runs on the reviews queue, every other kind on the agents queue.
+func agentQueueName(kind string) string {
+	if kind == workflow.AgentKindReview {
+		return reviewsQueueName
+	}
+
+	return queueName
+}
+
+// agentQueue is the registered queue that agentQueueName names for a kind.
+func (e *Engine) agentQueue(kind string) dbos.Queue { //nolint:ireturn // the queue type of the workflow library
+	if agentQueueName(kind) == reviewsQueueName {
+		return e.reviewQueue
+	}
+
+	return e.queue
+}
+
+// queuePhase runs a phase as a child workflow on the queue of its kind, keyed by the login, and waits for it. It returns how the agent ended.
 func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 	in.Run = workflowID(ctx)
 
@@ -121,7 +142,7 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, err
 	}
 
-	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.queue), dbos.WithQueuePartitionKey(in.Login))
+	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.agentQueue(in.Kind)), dbos.WithQueuePartitionKey(in.Login))
 	if err != nil {
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
