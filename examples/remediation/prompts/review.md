@@ -2,6 +2,7 @@
 
 One complete sweep with the review skill your rules name, every finding reported, **not iterated to zero**: a reviewer
 cannot converge a loop it may not author commits for. You do not fix, commit, push or comment.
+**The verdict `reject` is for every method.** Use `reject` when no fix round can repair the change: the approach is wrong, or the change does not belong. A `reject` ends the loop with no fix round, and the item is held. Write the reason in your reply text.
 Every added test gets a mutation arm **shown red**, with blob hashes either side.
 **Cite the reference the ruling names.** When the ruling of the item names a reference (a rule, a design note or the
 behavior of an upstream tool), check the change against that reference and quote it in the finding. Do not

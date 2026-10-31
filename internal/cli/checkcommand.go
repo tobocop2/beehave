@@ -47,7 +47,9 @@ func newCheckCommandCommand() *cobra.Command {
 	command.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return refuse(cmd.ErrOrStderr(), err.Error())
 	})
-	command.Flags().StringSliceVar(&forbid, forbidFlag, model.FindingKindNames(), "the kinds of command to refuse, separated by commas ("+strings.Join(model.FindingKindNames(), ", ")+")")
+	// git-write is opt-in: a bare hook must not refuse every commit.
+	defaults := slices.DeleteFunc(model.FindingKindNames(), func(name string) bool { return name == string(model.FindingGitWrite) })
+	command.Flags().StringSliceVar(&forbid, forbidFlag, defaults, "the kinds of command to refuse, separated by commas; the default is every kind except git-write ("+strings.Join(model.FindingKindNames(), ", ")+")")
 
 	return command
 }
@@ -96,10 +98,8 @@ func decodeEvent(stdin io.Reader) (hookEvent, error) {
 func hitsOf(command string, kinds []model.FindingKind) []string {
 	var hits []string
 
-	for _, finding := range shell.Scan(command) {
-		if slices.Contains(kinds, finding.Kind) {
-			hits = append(hits, fmt.Sprintf("%s: %s", finding.Kind, finding.Text))
-		}
+	for _, finding := range shell.ScanFor(command, kinds) {
+		hits = append(hits, fmt.Sprintf("%s: %s", finding.Kind, finding.Text))
 	}
 
 	return hits

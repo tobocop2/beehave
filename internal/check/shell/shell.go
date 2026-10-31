@@ -60,6 +60,7 @@ type scanner struct {
 	resolutions int                   // values worked out so far, for the tests
 	used        []string              // variables the current command expanded
 	findings    []model.Finding
+	readOnly    bool // the step is read-only: a git command that changes a repository is a finding
 }
 
 // value returns the wrapper value of a variable, unless the scan is already reading that value or the value is unreadable.
@@ -171,8 +172,27 @@ func (s *scanner) hold(names []string) func() {
 }
 
 // Scan returns the forbidden commands in one shell command, each once, in the order found.
+// The kind git-write is not in this scan: it is for a read-only step and ScanFor turns it on.
 func Scan(commandText string) []model.Finding {
+	return scanText(commandText, false)
+}
+
+// ScanFor returns the findings of the listed kinds only. The kind git-write, which refuses every command that changes a repository, is found only when the list holds it.
+func ScanFor(commandText string, kinds []model.FindingKind) []model.Finding {
+	var out []model.Finding
+
+	for _, finding := range scanText(commandText, slices.Contains(kinds, model.FindingGitWrite)) {
+		if slices.Contains(kinds, finding.Kind) {
+			out = append(out, finding)
+		}
+	}
+
+	return out
+}
+
+func scanText(commandText string, readOnly bool) []model.Finding {
 	s := newScanner()
+	s.readOnly = readOnly
 	s.prepass(commandText)
 	s.scan(commandText, false)
 

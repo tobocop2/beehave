@@ -70,6 +70,21 @@ func TestCheckCommand_RefusesOnlyTheKindsListedInForbid(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+func TestCheckCommand_TheDefaultListLeavesOutGitWriteWhichIsOptIn(t *testing.T) {
+	t.Parallel()
+
+	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git commit -m x"}}`
+
+	code, _ := hook(t, commit)
+	assert.Zero(t, code, "a bare hook must not refuse every commit")
+
+	code, _ = hook(t, bashEvent)
+	assert.Equal(t, 2, code, "the other kinds stay in the default")
+
+	code, _ = hook(t, commit, "--forbid", "git-write")
+	assert.Equal(t, 2, code)
+}
+
 func TestCheckCommand_AnUnknownKindIsAnErrorThatNamesTheKinds(t *testing.T) {
 	t.Parallel()
 
