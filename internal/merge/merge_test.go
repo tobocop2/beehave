@@ -351,6 +351,7 @@ func TestRun_AMergeThatIsRecordedOnTheIntegrationPullRequestKeepsItsRow(t *testi
 	t.Parallel()
 
 	w := newWorld(t)
+	w.authorOf = map[int]string{9: me}
 	req := request()
 	req.IntegrationPR, req.Dir = 9, t.TempDir()
 	result := w.run(req)
@@ -377,12 +378,65 @@ func TestRun_AFailedRowWriteLeavesTheMergeDone(t *testing.T) {
 
 	w := newWorld(t)
 	w.fails["SetBody"] = true
+	w.authorOf = map[int]string{9: me}
 	req := request()
 	req.IntegrationPR, req.Dir = 9, t.TempDir()
 	result := w.run(req)
 
 	assert.Equal(t, merge.Done, result.Stop)
 	assert.Equal(t, "integration-row: not recorded on #9: write the body of #9: SetBody: down. Add the row by hand.", last(result))
+}
+
+func TestRun_ARowIsNeverWrittenOnAPullRequestOfAnotherAuthor(t *testing.T) {
+	t.Parallel()
+
+	for name, authors := range map[string]map[int]string{
+		"another author": {9: dev},
+		"no author":      {},
+	} {
+		w := newWorld(t)
+		w.authorOf = authors
+		req := request()
+		req.IntegrationPR, req.Dir = 9, t.TempDir()
+		result := w.run(req)
+
+		assert.Equal(t, merge.Done, result.Stop, name)
+		assert.Equal(t, []string{"MergePR 5 " + sha}, w.writes, name)
+		assert.Equal(t, "rows", w.body, name)
+		assert.Contains(t, last(result), "REFUSE: integration-row not recorded on #9: its author is", name)
+		assert.Contains(t, last(result), "Add the row by hand.", name)
+	}
+
+	w := newWorld(t)
+	w.authorOf = map[int]string{9: dev}
+	req := request()
+	req.IntegrationPR, req.Dir = 9, t.TempDir()
+	assert.Contains(t, last(w.run(req)), `"dev"`)
+}
+
+func TestRun_ARowIsNotWrittenWhenTheAuthorCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	w.fails["PRView other"] = true
+	req := request()
+	req.IntegrationPR, req.Dir = 9, t.TempDir()
+	result := w.run(req)
+
+	assert.Equal(t, merge.Done, result.Stop)
+	assert.Equal(t, []string{"MergePR 5 " + sha}, w.writes)
+	assert.Contains(t, last(result), "REFUSE: integration-row not recorded on #9: cannot read its author")
+}
+
+func TestRun_TheAuthorOfTheIntegrationPullRequestMatchesWithoutCase(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	w.authorOf = map[int]string{9: "ME"}
+	req := request()
+	req.IntegrationPR, req.Dir = 9, t.TempDir()
+
+	assert.Equal(t, "integration-row: recorded on #9", last(w.run(req)))
 }
 
 func TestStop_IsAClosedSetWithCodes(t *testing.T) {

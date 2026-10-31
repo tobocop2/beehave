@@ -59,6 +59,8 @@ type world struct {
 	// behind makes the head not an ancestor of the base after the merge. ancestryErr makes that read fail.
 	behind      bool
 	ancestryErr bool
+	// authorOf is the author login of each pull request other than the merged one. A number not in the map has no author.
+	authorOf map[int]string
 	// failAt makes the read of that number fail, counted from 1 over all reads of the pull request. Zero fails none.
 	failAt int
 }
@@ -152,6 +154,14 @@ func (w *world) fail(name string) error {
 
 func (w *world) PRView(_ context.Context, number int, fields ...string) (model.PullRequest, error) {
 	w.calls = append(w.calls, fmt.Sprintf("PRView %d %s", number, strings.Join(fields, ",")))
+	if number != pr {
+		if err := w.fail("PRView other"); err != nil {
+			return model.PullRequest{}, err
+		}
+
+		return model.PullRequest{Author: model.Account{Login: w.authorOf[number]}}, nil
+	}
+
 	w.views++
 
 	if w.views == w.failAt {
