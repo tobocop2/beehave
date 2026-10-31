@@ -46,7 +46,7 @@ func (f *shipForge) PRList(_ context.Context, _ int, args ...string) ([]model.Pu
 		switch {
 		case arg == "--state" && args[i+1] == "merged":
 			return nil, nil
-		case arg == "--head" && args[i+1] != "item":
+		case arg == "--head" && args[i+1] != "item" && args[i+1] != "12":
 			return nil, nil
 		case arg == "--head":
 			return []model.PullRequest{{Number: number}}, nil
@@ -93,6 +93,10 @@ func (*shipForge) Reviews(context.Context, int) ([]model.Review, error) { return
 func (*shipForge) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
 
 func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
+
+func (*shipForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errFake
+}
 
 func (*shipForge) BranchRef(context.Context, string) (string, bool, error) {
 	return strings.Repeat("c", 40), true, nil

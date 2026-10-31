@@ -81,6 +81,10 @@ func (*shipWorld) IsAncestor(context.Context, string, string) (bool, error) { re
 
 func (*shipWorld) StackID(context.Context, int) (string, error) { return "", nil }
 
+func (w *shipWorld) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errFake
+}
+
 func (w *shipWorld) BranchRef(context.Context, string) (string, bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

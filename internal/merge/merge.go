@@ -64,6 +64,11 @@ type Reads interface {
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 }
 
+// Closings is what the merge reads to audit the issues that the pull request closes. A forge that cannot answer returns an error, never an empty list.
+type Closings interface {
+	ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, error)
+}
+
 // Approvals is what the merge reads to check the commit that a review approved.
 type Approvals interface {
 	Reviews(ctx context.Context, pr int) ([]model.Review, error)
@@ -92,6 +97,7 @@ type Body interface {
 type Forge interface {
 	Reads
 	Approvals
+	Closings
 	Writes
 	Body
 }
@@ -125,6 +131,11 @@ type Request struct {
 	AllowOrphans  bool
 	AllowNoChecks bool
 	AllowReady    bool
+	// AuditClosing turns on the audit of the closing references. Names are the issues the item names: the pull request must close exactly those.
+	AuditClosing bool
+	Names        []int
+	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
+	Unaudited string
 }
 
 // Result is the verdict. A Done result merged the pull request. Lines are the lines to show, a refusal last.
@@ -190,7 +201,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).reviewed, (*attempt).provable, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }

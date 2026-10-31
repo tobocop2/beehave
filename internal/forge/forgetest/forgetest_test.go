@@ -231,6 +231,10 @@ func (m memForge) DefaultBranch(context.Context) (string, error) {
 	return forgetest.DefaultBranch, m.fail()
 }
 
+func (m memForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
+}
+
 func (m memForge) BranchRef(_ context.Context, branch string) (string, bool, error) {
 	if branch == forgetest.SevenBranch {
 		return forgetest.SevenTip, true, m.fail()
