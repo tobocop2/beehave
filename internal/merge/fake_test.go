@@ -63,6 +63,18 @@ type world struct {
 	authorOf map[int]string
 	// failAt makes the read of that number fail, counted from 1 over all reads of the pull request. Zero fails none.
 	failAt int
+	// closingRefs is what the forge lists as closing references. Nil means the forge cannot read them, and the read fails.
+	closingRefs *model.ClosingRefs
+}
+
+func (w *world) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	w.calls = append(w.calls, "ClosingRefs")
+
+	if w.closingRefs == nil {
+		return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
+	}
+
+	return *w.closingRefs, nil
 }
 
 func (w *world) Reviews(context.Context, int) ([]model.Review, error) {

@@ -41,6 +41,10 @@ type hostForge struct {
 	viewHead string
 }
 
+func (f hostForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errFake
+}
+
 func (f hostForge) BranchRef(context.Context, string) (string, bool, error) {
 	return f.tip, f.found, f.tipErr
 }

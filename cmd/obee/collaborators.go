@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -443,14 +444,24 @@ func (o opened) FailedLog(ctx context.Context, link string) (string, error) {
 
 // forgeOf builds the forge of the named project.
 func (p pulls) forgeOf(name string) (opened, error) {
-	found, ok := p.projects[name]
-	if !ok {
-		return opened{}, fmt.Errorf("%w: %q", errUnknownProject, name)
+	found, err := p.projectOf(name)
+	if err != nil {
+		return opened{}, err
 	}
 
 	built, err := p.forge(found.Project)
 
 	return opened{built}, err
+}
+
+// projectOf returns the named project. A name that the config lacks is an error, so no request is built for a project that obee does not know.
+func (p pulls) projectOf(name string) (config.Project, error) {
+	found, ok := p.projects[name]
+	if !ok {
+		return config.Project{}, fmt.Errorf("%w: %q", errUnknownProject, name)
+	}
+
+	return found, nil
 }
 
 // find returns the forge of the project and the number of the pull request of the item.
@@ -540,23 +551,22 @@ func (p pulls) Watch(ctx context.Context, project string, pr int) (review.Outcom
 // Merge merges the pull request of the item at head, through the guards of the merge package and the settings of the merge step.
 // The runners of the config count as own identities, next to the logins and addresses of the step. A pattern that is not RE2 is an error.
 func (p pulls) Merge(ctx context.Context, project, item, head string, settings flow.MergeSettings) (merge.Result, error) {
-	rules, err := compileForbidden(settings.ForbidText)
+	found, rules, err := p.prepared(project, settings.ForbidText)
 	if err != nil {
 		return merge.Result{}, err
 	}
 
 	built, number, err := p.target(ctx, project, item, settings.Repo)
 
-	var wrong *repoError
-	if errors.As(err, &wrong) {
-		return merge.Result{Stop: merge.Refused, Lines: []string{wrong.Error()}}, nil
+	if result, wrong := repoRefusal(err); wrong {
+		return result, nil
 	}
 
 	if err != nil {
 		return merge.Result{}, err
 	}
 
-	return merge.Run(ctx, built, p.request(number, head, settings, rules)), nil
+	return merge.Run(ctx, built, p.request(project, found, item, number, head, settings, rules)), nil
 }
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
@@ -609,12 +619,54 @@ func newestListed(ctx context.Context, built forge.Forge, item, state string) (i
 }
 
 // request is the merge request of one pull request: the settings of the step, and the runners of the config as own identities.
-func (p pulls) request(number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
+// The id of an item of the GitHub tracker is the number of its issue, so that issue is the one the pull request must close, and the closing
+// references of the pull request are audited against it. An id of any other tracker is a free name, not an issue number, so the audit is off for it,
+// and the request carries the line that says so. The caller passes the project it has already found, so a project that obee does not know never gets here.
+func (p pulls) request(name string, project config.Project, item string, number int, head string, settings flow.MergeSettings, rules []*regexp.Regexp) merge.Request {
+	names, unaudited := audited(name, project.Tracker, item)
+
 	return merge.Request{
+		AuditClosing: names != nil, Names: names, Unaudited: unaudited,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 	}
+}
+
+// prepared returns the known project and the compiled forbid_text patterns of a merge step.
+func (p pulls) prepared(project string, patterns []string) (config.Project, []*regexp.Regexp, error) {
+	rules, err := compileForbidden(patterns)
+	if err != nil {
+		return config.Project{}, nil, err
+	}
+
+	found, err := p.projectOf(project)
+
+	return found, rules, err
+}
+
+// repoRefusal turns a repoError into the refusal to show. The second value is false for any other error.
+func repoRefusal(err error) (merge.Result, bool) {
+	var wrong *repoError
+	if !errors.As(err, &wrong) {
+		return merge.Result{}, false
+	}
+
+	return merge.Result{Stop: merge.Refused, Lines: []string{wrong.Error()}}, true
+}
+
+// audited returns the issues that the item names, or the line that says why the audit is off.
+func audited(project string, tracker model.TrackerName, item string) ([]int, string) {
+	named, err := strconv.Atoi(item)
+
+	switch {
+	case tracker != model.TrackerGithub:
+		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran.", tracker, project)
+	case err != nil || named <= 0 || strconv.Itoa(named) != item:
+		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran.", item, project)
+	}
+
+	return []int{named}, ""
 }
 
 // repoError says that a merge step names a repository other than the one of the project. Its text is the line to show.

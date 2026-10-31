@@ -176,6 +176,10 @@ func (fileForge) TreeBlobs(context.Context, string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
 
+func (f fileForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errFake
+}
+
 func (f fileForge) BranchRef(ctx context.Context, branch string) (string, bool, error) {
 	tip, err := f.git(ctx, "rev-parse", "refs/heads/"+branch)
 

@@ -35,6 +35,10 @@ func (f *preflightForge) over() pulls {
 	}
 }
 
+func (*preflightForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return model.ClosingRefs{}, errFake
+}
+
 func (*preflightForge) BranchRef(context.Context, string) (string, bool, error) {
 	return "abc", true, nil
 }
