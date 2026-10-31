@@ -21,6 +21,8 @@ type openRun struct {
 	cancel context.CancelFunc
 	ended  chan struct{}
 	in     ItemInput
+	// gate is true for a gate of the exclusive queue: a cancel stops its context, and there is no claim or worktree to give back.
+	gate bool
 }
 
 // cancels holds the runs this process executes, by run id.
@@ -168,6 +170,10 @@ func (e *Engine) cancelCancelled(stop <-chan struct{}) {
 
 	// The give-back waits for the run to end and calls the tracker, so it runs beside the tick: a slow release delays no beat and no scan.
 	for _, open := range cut {
+		if open.gate {
+			continue
+		}
+
 		e.tickRun.Go(func() { e.giveBackWhenEnded(open, stop) })
 	}
 }
