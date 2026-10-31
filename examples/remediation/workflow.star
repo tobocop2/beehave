@@ -12,7 +12,7 @@ FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "gi
 def protected():
     return [env("SOURCE_CHECKOUT")]
 
-def land(pins):
+def land(item, pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `pins` is id=sha: the item and the full SHA the owner reviewed, as EXPECT_HEAD is for one item.
     The MERGE switch, the stops before the work and the guards are those of the pipeline of one item. The branch of each pull request has the id of its item."""
@@ -52,12 +52,22 @@ def land(pins):
         hold = "hold",
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
         forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"],
+        integration = int(env("INTEGRATION_PR", default = "0")),
     )
 
     # A rejected item gets the reason as a comment and the hold status, so it does not come back until a person reads it.
     for rejected in out.rejected:
         item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason)
         item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
+
+    # The read of the issues after the batch. A note means the read did not run, which is not a pass: the owner sees it as a comment.
+    # A finding stops the run. The batch has landed, so the owner fixes the state of the issues by hand.
+    if out.note != "":
+        print("the issue check did not run: " + out.note)
+        item_comment(name = "issue-check", id = item.id, key = "issue-check", text = "the issue check did not run: " + out.note)
+
+    if len(out.findings) > 0:
+        fail("REFUSE: the batch landed, but the issues are not as they must be. Fix the state of each issue by hand:\n" + "\n".join(out.findings))
 
 def main(item):
     pipeline(item)
@@ -78,7 +88,7 @@ def pipeline(item):
     # LAND lists ready items as id=sha, split by spaces. A run with LAND set starts no agent: it lands those items with one batch_merge. Without LAND, the run is the pipeline of one item.
     ready = env("LAND", default = "").split()
     if len(ready) > 0:
-        land(ready)
+        land(item, ready)
         return
 
     # Before any agent starts, the pull request of the item must be as the owner left it: not merged, not closed, its branch still on the remote,

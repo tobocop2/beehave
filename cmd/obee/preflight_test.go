@@ -35,6 +35,10 @@ func (f *preflightForge) over() pulls {
 	}
 }
 
+func (*preflightForge) IssueState(context.Context, int) (string, error) {
+	return "", errFake
+}
+
 func (*preflightForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errFake
 }

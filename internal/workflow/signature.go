@@ -86,7 +86,7 @@ func swarmSignatures() map[string][]Param {
 	return map[string][]Param{
 		batchMergeName: {
 			req("prs", KindList), req("base", KindText), req("repo", KindText), opt("hold", KindText), opt("own", KindDict),
-			opt("forbid_text", KindList), opt("gate_run", KindList),
+			opt("forbid_text", KindList), opt("gate_run", KindList), opt("integration", KindInt),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
 		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},

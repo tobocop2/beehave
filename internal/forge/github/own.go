@@ -266,6 +266,23 @@ func (f *Forge) Title(ctx context.Context, number int) (string, error) {
 	return strings.TrimSuffix(done.Stdout, "\n"), nil
 }
 
+// IssueState returns the state of an issue as the forge names it: OPEN or CLOSED.
+func (f *Forge) IssueState(ctx context.Context, number int) (string, error) {
+	base := fmt.Sprintf("cannot read the state of issue #%d", number)
+
+	done := f.run.Run(ctx, []string{"issue", argView, strconv.Itoa(number), "-R", f.repo, argJSON, "state", argJQ, ".state"})
+	if done.ExitCode != 0 {
+		return "", forge.Refuse("%s", base)
+	}
+
+	state := strings.ToUpper(strings.TrimSpace(done.Stdout))
+	if state != "OPEN" && state != "CLOSED" {
+		return "", forge.Refuse("%s: the forge answered %q", base, state)
+	}
+
+	return state, nil
+}
+
 type annotation struct {
 	Message *string `json:"message"`
 }

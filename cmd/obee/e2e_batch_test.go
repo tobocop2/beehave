@@ -176,6 +176,12 @@ func (fileForge) TreeBlobs(context.Context, string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
 
+func (fileForge) DefaultBranch(context.Context) (string, error) { return "main", nil }
+
+func (f fileForge) IssueState(context.Context, int) (string, error) {
+	return "", errFake
+}
+
 func (f fileForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errFake
 }

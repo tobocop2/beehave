@@ -7,6 +7,8 @@
 #   BASE         the integration branch that receives the pull requests. It is never the default branch of the repository.
 #   OWNER_LOGIN  your login on the forge. A pull request of this login lands only if a step approved it, so the guard sees the agents as you.
 #   OWNER_EMAIL  the email of your commits, for the same guard.
+# One optional variable names the integration pull request:
+#   INTEGRATION_PR  the number of the pull request from BASE into the default branch. With it, the read of the issues after the batch runs once that pull request is merged. Without it, the read runs only when BASE is the default branch.
 #
 # Steps: create (one item for each task), fan (spawn starts one run of `task` for each item and gather waits for all of them),
 # head (a command that reads the head of each pull request branch), land (one batch_merge).
@@ -92,9 +94,19 @@ def main(item):
         repo = env("REPO"),
         hold = HOLD,
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
+        integration = int(env("INTEGRATION_PR", default = "0")),
     )
 
     # A rejected member gets the reason as a comment and the hold status, so it does not come back in the next batch until a person reads it.
     for rejected in out.rejected:
         item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason)
         item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
+
+    # The read of the issues after the batch. A note means the read did not run, which is not a pass: the owner sees it as a comment on the parent.
+    # A finding stops the run. The batch has landed, so the owner fixes the state of the issues by hand.
+    if out.note != "":
+        print("the issue check did not run: " + out.note)
+        item_comment(name = "issue-check", id = item.id, key = "issue-check", text = "the issue check did not run: " + out.note)
+
+    if len(out.findings) > 0:
+        fail("REFUSE: the batch landed, but the issues are not as they must be. Fix the state of each issue by hand:\n" + "\n".join(out.findings))

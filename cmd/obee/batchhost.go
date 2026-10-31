@@ -8,6 +8,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -134,6 +135,66 @@ func (h batchHost) fetched(ctx context.Context, project, item string) (string, e
 	}
 
 	return dir, nil
+}
+
+// Issues reads the state of the issues after a batch. Only the GitHub tracker has issue numbers for ids. A read that fails is a finding of the report.
+// The issues of members of an integration branch stay open until the integration pull request lands, so a base that is not the default branch
+// is read only when the call names the integration pull request, and only once that pull request is merged. In each other case the report holds a note.
+func (h batchHost) Issues(ctx context.Context, project, base string, integration int, landed []string) (batch.Report, error) {
+	found, err := h.pulls.projectOf(project)
+	if err != nil {
+		return batch.Report{}, err
+	}
+
+	if found.Tracker != model.TrackerGithub {
+		return batch.Report{Note: fmt.Sprintf("issue states: the tracker %s of project %s has no issue numbers, so no read ran.", found.Tracker, project)}, nil
+	}
+
+	built, err := h.pulls.forgeOf(project)
+	if err != nil {
+		return batch.Report{Findings: []string{fmt.Sprintf("cannot read the issues: %v", err)}}, nil
+	}
+
+	if held, stop := h.notYet(ctx, built, base, integration); stop {
+		return held, nil
+	}
+
+	return batch.Audit(ctx, built, landed, integration), nil
+}
+
+// notYet says whether the issues cannot be read yet. The report holds a note for a state that is legitimate, and a finding for a read that failed.
+func (h batchHost) notYet(ctx context.Context, built forge.Forge, base string, integration int) (batch.Report, bool) {
+	if integration > 0 {
+		return notMerged(ctx, built, integration)
+	}
+
+	defaultBranch, err := built.DefaultBranch(ctx)
+	if err != nil {
+		return batch.Report{Findings: []string{fmt.Sprintf("cannot read the default branch: %v", err)}}, true
+	}
+
+	if base != defaultBranch {
+		return batch.Report{Note: fmt.Sprintf("issue states: the base %s is not the default branch %s, so the issues stay open until the integration pull request lands. Pass `integration` to read them.", base, defaultBranch)}, true
+	}
+
+	return batch.Report{}, false
+}
+
+// notMerged says whether the integration pull request is not merged yet. A read that fails is a finding.
+func notMerged(ctx context.Context, built forge.Forge, integration int) (batch.Report, bool) {
+	view, err := built.PRView(ctx, integration, "state")
+	if err != nil {
+		return batch.Report{Findings: []string{fmt.Sprintf("cannot read pull request #%d: %v", integration, err)}}, true
+	}
+
+	switch state := strings.ToUpper(strings.TrimSpace(deref(view.State))); state {
+	case "MERGED":
+		return batch.Report{}, false
+	case "OPEN", "CLOSED":
+		return batch.Report{Note: fmt.Sprintf("issue states: the integration pull request %d is %s, not MERGED, so the issues are not read yet.", integration, state)}, true
+	default:
+		return batch.Report{Findings: []string{fmt.Sprintf("the integration pull request %d has the state %q, which is not OPEN, CLOSED or MERGED", integration, state)}}, true
+	}
 }
 
 // Intent reads the pull request of the item once and requires it OPEN. It writes nothing to the forge.

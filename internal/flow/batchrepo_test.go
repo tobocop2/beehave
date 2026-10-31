@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,10 @@ type repoHost struct {
 	folderAtGit string
 	gitErr      error
 	checkErr    error
+	// report and reportErr are the answer of Issues, and issueCalls holds what it was asked.
+	report     batch.Report
+	reportErr  error
+	issueCalls []string
 }
 
 func (h *repoHost) Git(context.Context, string, string) (batch.Git, error) {
@@ -182,6 +187,23 @@ func (h *repoHost) Intent(_ context.Context, _, item, _, base, tipTree string, n
 	}
 
 	return merge.Intent{PR: 1, Head: item, Base: base, BaseTipTree: tipTree, State: "OPEN", Time: now}, h.intentErr
+}
+
+// Issues answers the read after the batch: it records what it was asked and returns the report of the test.
+func (h *repoHost) Issues(_ context.Context, project, base string, integration int, landed []string) (batch.Report, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.issueCalls = append(h.issueCalls, fmt.Sprintf("%s %s %d %s", project, base, integration, strings.Join(landed, ",")))
+
+	return h.report, h.reportErr
+}
+
+func (h *repoHost) issueReads() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return slices.Clone(h.issueCalls)
 }
 
 func (h *repoHost) tipReads() int {

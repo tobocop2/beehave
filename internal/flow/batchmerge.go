@@ -36,7 +36,10 @@ var (
 // Git returns the git calls on the repository of the worktree of the item. Checkout puts a commit in that worktree and returns its tree id.
 // Tip reads the tip commit of the base on the forge and its tree id. Intent reads the pull request of an item once, requires it OPEN,
 // and returns the record that merge.Run needs; it writes nothing to the forge.
+// Issues is the read after the batch: it reads the issue of each landed item and, when integration is not zero, the closing references of that pull request.
+// It reads only, and it reports a read that fails as a finding in the report, not as an error.
 type batchHost interface {
+	Issues(ctx context.Context, project, base string, integration int, landed []string) (batch.Report, error)
 	Git(ctx context.Context, project, item string) (batch.Git, error)
 	Checkout(ctx context.Context, project, item, commit string) (tree string, err error)
 	Tip(ctx context.Context, project, item, base string) (batch.Tip, error)
@@ -49,6 +52,8 @@ type batchCall struct {
 	members  []batch.Member
 	settings MergeSettings
 	gateRun  []string
+	// integration is the number of the integration pull request, or 0 when the call names none.
+	integration int
 }
 
 // batchMerge lands the pull requests of `prs` with one gate run for the whole set, and a split of the set when the gate is red.
@@ -70,7 +75,35 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, fmt.Errorf("batch_merge %q: %w", call.name, err)
 	}
 
-	return batchResult(done), nil
+	return s.batchOutcome(call, done)
+}
+
+// batchOutcome reads the issues of the landed items and builds the result. The batch has landed and the merge cannot be undone,
+// so a finding of the read goes into the result and never fails the call.
+func (s *script) batchOutcome(call batchCall, done batch.Result) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	report, err := s.batchIssues(call, done)
+	if err != nil {
+		return nil, fmt.Errorf("batch_merge %q: %w", call.name, err)
+	}
+
+	return batchResult(done, report), nil
+}
+
+// batchIssues reads the issues of the landed items as one recorded step, so a replay returns the first report and does not read the forge again.
+// A batch that landed nothing reads nothing.
+func (s *script) batchIssues(call batchCall, done batch.Result) (batch.Report, error) {
+	if len(done.Merged) == 0 {
+		return batch.Report{Findings: []string{}, Note: "issue states: no member landed, so no read ran."}, nil
+	}
+
+	return runStep(s.e, s.ctx, "batch:"+call.name+".issues", func(ctx context.Context) (batch.Report, error) {
+		report, err := s.e.deps.Batch.Issues(ctx, s.in.Project, call.settings.Base, call.integration, done.Merged)
+		if report.Findings == nil {
+			report.Findings = []string{}
+		}
+
+		return report, err
+	}, dbos.WithStepMaxRetries(stepRetries))
 }
 
 // batchGit makes the worktree of the item, then returns git over it. The worktree exists before the first git call, as it does for an agent step.
@@ -97,7 +130,7 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prs": &prs, baseKeyword: &set.Base, "repo": &set.Repo, holdKeyword: &set.Hold, ownKeyword: &own, "forbid_text": &forbid, "gate_run": &gateRun,
-		nameKeyword: &call.name,
+		"integration": &call.integration, nameKeyword: &call.name,
 	})
 	if err != nil {
 		return call, err
@@ -201,11 +234,17 @@ func field(pr *starlarkstruct.Struct, name string) (string, error) {
 	return text, nil
 }
 
-// batchResult turns the result of a batch into the struct of the builtin.
-func batchResult(done batch.Result) starlark.Value { //nolint:ireturn // the builtin contract of starlark-go
+// batchResult turns the result of a batch and the report of the read after it into the struct of the builtin.
+// `findings` holds one line for each problem of the issues, and `note` says why no read ran.
+func batchResult(done batch.Result, report batch.Report) starlark.Value { //nolint:ireturn // the builtin contract of starlark-go
 	merged := make([]starlark.Value, len(done.Merged))
 	for i, item := range done.Merged {
 		merged[i] = starlark.String(item)
+	}
+
+	findings := make([]starlark.Value, len(report.Findings))
+	for i, line := range report.Findings {
+		findings[i] = starlark.String(line)
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
@@ -215,6 +254,8 @@ func batchResult(done batch.Result) starlark.Value { //nolint:ireturn // the bui
 		"tip":      starlark.String(done.Tip.Commit),
 		treeName:   starlark.String(done.Tip.Tree),
 		"gates":    starlark.MakeInt(done.Gates),
+		"findings": starlark.NewList(findings),
+		"note":     starlark.String(report.Note),
 	})
 }
 

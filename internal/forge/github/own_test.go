@@ -338,6 +338,27 @@ func TestTitle_ReadsTheTitleOfAnIssue(t *testing.T) {
 	require.ErrorContains(t, err, "cannot read the title of #5")
 }
 
+func TestIssueState_ReadsOpenAndClosedAndRefusesAnythingElse(t *testing.T) {
+	t.Parallel()
+
+	for answer, want := range map[string]string{"OPEN\n": "OPEN", "closed\n": "CLOSED"} {
+		f, run := fixed(t, answer)
+		state, err := f.IssueState(context.Background(), 5)
+		require.NoError(t, err)
+		assert.Equal(t, want, state)
+		assert.True(t, run.Called("issue", "view", "5"))
+		assert.Contains(t, run.Calls[0], "state")
+	}
+
+	odd, _ := fixed(t, "MERGED\n")
+	_, err := odd.IssueState(context.Background(), 5)
+	require.ErrorContains(t, err, `cannot read the state of issue #5: the forge answered "MERGED"`)
+
+	failed, _ := failing(t, "boom")
+	_, err = failed.IssueState(context.Background(), 5)
+	require.ErrorContains(t, err, "cannot read the state of issue #5")
+}
+
 func TestCheckNotStarted_ReadsTheFirstAnnotationOfTheRun(t *testing.T) {
 	t.Parallel()
 

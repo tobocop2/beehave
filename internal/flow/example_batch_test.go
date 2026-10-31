@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/preflight"
 )
@@ -220,4 +221,76 @@ func TestExampleBatch_OneReadyItemLandsAsABatchOfOne(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"3"}, rig.merger.landed())
+}
+
+func TestExampleBatch_TheIntegrationPullRequestOfTheEnvironmentReachesTheReadAfterTheBatch(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.h.opts.Env["INTEGRATION_PR"] = "7"
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testProject + " main 7 1,3"}, rig.host.issueReads())
+}
+
+func TestExampleBatch_ARunWithNoIntegrationPullRequestReadsWithNumberZero(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _, _ := landingExample(t, reviewed("1 3"), "true")
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{testProject + " main 0 1,3"}, rig.host.issueReads())
+}
+
+func TestExampleBatch_AFindingStopsTheRunWithARefuseForTheOwner(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.host.report = batch.Report{Findings: []string{"issue #1 of item 1 is not closed after the batch landed"}}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REFUSE")
+	assert.Contains(t, err.Error(), "issue #1 of item 1 is not closed after the batch landed")
+	assert.Contains(t, err.Error(), "by hand")
+}
+
+func TestExampleBatch_ANoteIsCommentedAsAnIssueCheckThatDidNotRun(t *testing.T) {
+	t.Parallel()
+
+	rig, file, writer, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.host.report = batch.Report{Note: "the base is not the default branch"}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	require.Len(t, writer.notes, 1)
+	assert.Contains(t, writer.notes[0], "the issue check did not run: the base is not the default branch")
+}
+
+func TestExampleBatch_AReportWithNoFindingAndNoNoteSaysNothing(t *testing.T) {
+	t.Parallel()
+
+	rig, file, writer, _ := landingExample(t, reviewed("1 3"), "true")
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Empty(t, writer.notes)
+}
+
+func TestExampleSwarm_TheLandCallPassesTheIntegrationAndActsOnFindingsAndNote(t *testing.T) {
+	t.Parallel()
+
+	text := string(mustRead(t, filepath.Join("..", "..", "examples", "swarm", "workflow.star")))
+
+	assert.Contains(t, text, `integration = int(env("INTEGRATION_PR", default = "0"))`)
+	assert.Contains(t, text, "out.findings")
+	assert.Contains(t, text, `fail("REFUSE`)
+	assert.Contains(t, text, "the issue check did not run: ")
 }

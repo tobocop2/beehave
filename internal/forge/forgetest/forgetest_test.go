@@ -231,6 +231,10 @@ func (m memForge) DefaultBranch(context.Context) (string, error) {
 	return forgetest.DefaultBranch, m.fail()
 }
 
+func (m memForge) IssueState(context.Context, int) (string, error) {
+	return "", errors.New("this forge cannot read the state of an issue")
+}
+
 func (m memForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
 }
