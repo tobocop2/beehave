@@ -191,7 +191,7 @@ func TestRunCheckCommand_AnInputThatFailsToReadIsRefused(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	err := runCheckCommand(failingReader{}, &stderr, []string{"bulk-staging"}, nil)
+	err := runCheckCommand(failingReader{}, &stderr, []string{"bulk-staging"}, nil, "")
 
 	var exit *ExitError
 	require.ErrorAs(t, err, &exit)

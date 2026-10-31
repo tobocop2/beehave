@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -82,4 +83,42 @@ func TestExample_TheHookOfTheExampleRefusesEachRuleOfTheCommandRows(t *testing.T
 
 		assert.Zero(t, code, "%s: %s", clean, stderr)
 	}
+}
+
+func TestExample_TheHookRefusesACopyFromThisMachineToAnotherMachineUnlessTheRepositoryIsPrivate(t *testing.T) {
+	t.Parallel()
+
+	forbid := strings.Join(exampleForbid(t), ",")
+	base := []string{"--forbid", forbid, "--protect", "/own/checkout"}
+	copies := []string{"rsync -a ./src host:/work/src", "scp a.txt me@host:/work", "tar cf - src | ssh host 'tar xf -'"}
+
+	for _, command := range copies {
+		for _, visibility := range [][]string{nil, {"--visibility", "public"}} {
+			code, stderr := hook(t, jsonEvent(command), append(slices.Clone(base), visibility...)...)
+
+			assert.Equal(t, 2, code, "%s: %s", command, stderr)
+			assert.Contains(t, stderr, "laptop-copy")
+			assert.Contains(t, stderr, "Clone the repository from the forge on the host")
+		}
+
+		code, stderr := hook(t, jsonEvent(command), append(slices.Clone(base), "--visibility", "private")...)
+
+		assert.Zero(t, code, "%s: %s", command, stderr)
+	}
+
+	for _, clean := range []string{"scp host:/work/out.txt .", "rsync -a host:/work/out ./out", "rsync -a src/ dst/", "ssh host 'git clone https://example.com/o/r.git tree'"} {
+		code, stderr := hook(t, jsonEvent(clean), base...)
+
+		assert.Zero(t, code, "%s: %s", clean, stderr)
+	}
+}
+
+func TestCheckCommand_AVisibilityThatNamesNothingIsRefused(t *testing.T) {
+	t.Parallel()
+
+	code, stderr := hook(t, jsonEvent("make check"), "--forbid", "laptop-copy", "--visibility", "secret")
+
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "--visibility")
+	assert.Contains(t, stderr, "unknown visibility")
 }

@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	forbidFlag   = "forbid"
-	protectFlag  = "protect"
-	bashToolName = "Bash"
-	exitRefused  = 2
+	forbidFlag  = "forbid"
+	protectFlag = "protect"
+	// visibilityFlag tells the check whether the repository is private. A missing flag counts as public.
+	visibilityFlag = "visibility"
+	bashToolName   = "Bash"
+	exitRefused    = 2
 )
 
 var (
@@ -40,28 +42,45 @@ type hookEvent struct {
 func newCheckCommandCommand() *cobra.Command {
 	var forbid, protect []string
 
+	var visibility string
+
 	command := &cobra.Command{
 		Use:   "command",
 		Short: "Refuse a shell command of an agent that breaks a rule, as a PreToolUse hook",
-		Long: "Read one PreToolUse event as JSON on stdin and check the Bash command in it against the shell rules. " +
-			"Exit 0 when the command is allowed or the tool is not Bash. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason (an unreadable event, a bad flag); " +
-			"Claude Code then blocks the call. The step of a workflow installs this command as a hook for each run that sets `forbid_commands`. " +
-			"The kind protected-path refuses a write inside the directories of --protect, and a git command that is not a read there.",
-		Args: noArgs,
+		Long:  checkCommandLong,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runCheckCommand(cmd.InOrStdin(), cmd.ErrOrStderr(), forbid, protect)
+			return runCheckCommand(cmd.InOrStdin(), cmd.ErrOrStderr(), forbid, protect, visibility)
 		},
 	}
 	// A hook that fails must block the call, so a bad flag ends with exit code 2 as well.
 	command.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return refuse(cmd.ErrOrStderr(), err.Error())
 	})
-	addCheckFlags(command, &forbid, &protect)
+	addCheckFlags(command, &forbid, &protect, &visibility)
 
 	return command
 }
 
-func addCheckFlags(command *cobra.Command, forbid, protect *[]string) {
+const checkCommandLong = "Read one PreToolUse event as JSON on stdin and check the Bash command in it against the shell rules. " +
+	"Exit 0 when the command is allowed or the tool is not Bash. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason (an unreadable event, a bad flag); " +
+	"Claude Code then blocks the call. The step of a workflow installs this command as a hook for each run that sets `forbid_commands`. " +
+	"The kind protected-path refuses a write inside the directories of --protect, and a git command that is not a read there. " +
+	"The kind laptop-copy refuses a copy from this machine to another machine (rsync or scp with a remote target, a pipe into ssh) unless --visibility is private; " +
+	"a missing --visibility counts as public."
+
+// visibilityNames returns the names that --visibility accepts.
+func visibilityNames() []string {
+	names := make([]string, 0, len(model.Visibilities()))
+	for _, v := range model.Visibilities() {
+		names = append(names, string(v))
+	}
+
+	return names
+}
+
+func addCheckFlags(command *cobra.Command, forbid, protect *[]string, visibility *string) {
+	command.Flags().StringVar(visibility, visibilityFlag, "", "whether the repository is "+strings.Join(visibilityNames(), " or ")+"; empty counts as public, and only private lets the kind laptop-copy pass a copy")
 	// git-write is opt-in: a bare hook must not refuse every commit. protected-path is opt-in too: it has no directory until --protect gives one.
 	defaults := slices.DeleteFunc(model.FindingKindNames(), func(name string) bool {
 		return name == string(model.FindingGitWrite) || model.FindingKind(name).NeedsPaths()
@@ -93,8 +112,8 @@ func noArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runCheckCommand(stdin io.Reader, stderr io.Writer, forbid, protect []string) error {
-	kinds, err := kindsOf(forbid, protect)
+func runCheckCommand(stdin io.Reader, stderr io.Writer, forbid, protect []string, visibility string) error {
+	kinds, private, err := settingsOf(forbid, protect, visibility)
 	if err != nil {
 		return refuse(stderr, err.Error())
 	}
@@ -108,11 +127,37 @@ func runCheckCommand(stdin io.Reader, stderr io.Writer, forbid, protect []string
 		return nil
 	}
 
-	if hits := hitsOf(event.ToolInput.Command, kinds, shell.Protection{Dirs: protect, Base: event.dir(os.Getwd)}); len(hits) > 0 {
+	if hits := hitsOf(event.ToolInput.Command, kinds, shell.Protection{Dirs: protect, Base: event.dir(os.Getwd), Private: private}); len(hits) > 0 {
 		return refuse(stderr, "this command breaks the shell rules of the step.\n"+strings.Join(hits, "\n"))
 	}
 
 	return nil
+}
+
+// settingsOf reads the kinds of --forbid and the --visibility value.
+func settingsOf(forbid, protect []string, visibility string) ([]model.FindingKind, bool, error) {
+	kinds, err := kindsOf(forbid, protect)
+	if err != nil {
+		return nil, false, err
+	}
+
+	private, err := privateOf(visibility)
+
+	return kinds, private, err
+}
+
+// privateOf reads the --visibility value. Empty is unknown and counts as public, so the check fails closed. A value that names no visibility is refused.
+func privateOf(visibility string) (bool, error) {
+	if visibility == "" {
+		return false, nil
+	}
+
+	parsed, err := model.ParseVisibility(visibility)
+	if err != nil {
+		return false, fmt.Errorf("--%s: %w", visibilityFlag, err)
+	}
+
+	return parsed == model.VisibilityPrivate, nil
 }
 
 func decodeEvent(stdin io.Reader) (hookEvent, error) {

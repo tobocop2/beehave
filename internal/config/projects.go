@@ -36,6 +36,7 @@ type rawProject struct {
 	Host        *rawHost
 	TestReport  text
 	PinFile     text
+	Visibility  text
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -58,7 +59,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?"}}
+	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -90,7 +91,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility)
 	raw.Host = host.block
 
 	return raw, err
@@ -108,7 +109,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	hostTable, err := hostConfig(host, raw)
+	hostTable, visibility, err := tables(host, raw)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -116,7 +117,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
-		PinFile: raw.PinFile.Value,
+		PinFile: raw.PinFile.Value, Visibility: visibility,
 	}, nil
 }
 
@@ -137,6 +138,36 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 	}
 
 	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host), pinFile(raw, host))
+}
+
+// tables returns the host block and the visibility of a project.
+func tables(host string, raw rawProject) (*model.HostConfig, model.Visibility, error) {
+	hostTable, err := hostConfig(host, raw)
+	if err != nil {
+		return nil, "", err
+	}
+
+	visibility, err := visibilityOf(raw)
+
+	return hostTable, visibility, err
+}
+
+// visibilityOf reads visibility. An unset key gives the empty visibility, which counts as public. A set key that is empty or unknown is refused.
+func visibilityOf(raw rawProject) (model.Visibility, error) {
+	if !raw.Visibility.Set {
+		return "", nil
+	}
+
+	if err := requireText(raw.At, "visibility", raw.Visibility.Value); err != nil {
+		return "", err
+	}
+
+	visibility, err := model.ParseVisibility(raw.Visibility.Value)
+	if err != nil {
+		return "", refuseAt(raw.At, "`visibility`: %w. Fix the value.", err)
+	}
+
+	return visibility, nil
 }
 
 // pinFile refuses a pin_file that is set and empty, or set for a gate on a build host. An unset key is allowed.

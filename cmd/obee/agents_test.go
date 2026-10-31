@@ -222,6 +222,44 @@ func TestAgents_AProtectedDirectoryGoesToTheHookAsAnAbsolutePathFromTheFolderOfT
 	assert.Equal(t, `'/bin/obee' check command --forbid protected-path --protect '/own/it'\''s' --protect '/work/sibling'`, f.spec.Guard)
 }
 
+func TestAgents_OnlyAPrivateProjectPassesItsVisibilityToTheHookAndACopyToAnotherMachineIsAViolationOtherwise(t *testing.T) {
+	t.Parallel()
+
+	for visibility, want := range map[model.Visibility]string{
+		model.VisibilityPrivate: "'/bin/obee' check command --forbid laptop-copy --visibility private",
+		model.VisibilityPublic:  "'/bin/obee' check command --forbid laptop-copy",
+		"":                      "'/bin/obee' check command --forbid laptop-copy",
+	} {
+		f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+		f.bash = []string{"rsync -a src host:dst"}
+		f.agents.projects = map[string]config.Project{"p": {Project: model.Project{Visibility: visibility}}}
+		req := request()
+		req.Forbid = []model.FindingKind{model.FindingLaptopCopy}
+
+		got, err := f.agents.Run(t.Context(), req)
+
+		require.NoError(t, err)
+		assert.Equal(t, want, f.spec.Guard)
+		assert.Equal(t, visibility != model.VisibilityPrivate, len(got.Violations) == 1, "%q: %v", visibility, got.Violations)
+	}
+}
+
+func TestAgents_ARequestWhoseProjectIsNotInTheConfigGetsNoPrivateVisibilityAndACopyIsAViolation(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []string{"rsync -a src host:dst"}
+	f.agents.projects = map[string]config.Project{"other": {Project: model.Project{Visibility: model.VisibilityPrivate}}}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingLaptopCopy}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "'/bin/obee' check command --forbid laptop-copy", f.spec.Guard)
+	assert.Len(t, got.Violations, 1)
+}
+
 func TestAgents_AWriteInAProtectedDirectoryIsAViolationAndARelativeWriteInTheStepFolderIsNot(t *testing.T) {
 	t.Parallel()
 

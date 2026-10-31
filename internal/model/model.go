@@ -59,6 +59,7 @@ type Project struct {
 	PinFile     string
 	BuildHost   string
 	Host        *HostConfig
+	Visibility  Visibility
 }
 
 // The programs that the adapters of a project start.
