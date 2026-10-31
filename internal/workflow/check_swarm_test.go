@@ -83,7 +83,7 @@ func TestCheck_ABatchMergeCallWithNoNameIsAProblemAtTheCall(t *testing.T) {
 
 	require.Len(t, got, 2)
 	assert.Contains(t, got[0], "2:16 batch_merge needs the `name` keyword. Add name = ... to the call. The name makes the step names of the call unique, so use one for each call of the run.")
-	assert.Contains(t, got[1], "3:36 batch_merge takes no argument limit. Use one of: prs, base, repo, hold, own, forbid_text, gate_run, name.")
+	assert.Contains(t, got[1], "3:36 batch_merge takes no argument limit. Use one of: prs, base, repo, hold, own, forbid_text, gate_run, integration, name.")
 }
 
 func TestCheck_AFailValueThatIsNotListedIsAProblemAtTheValue(t *testing.T) {

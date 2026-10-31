@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,50 @@ func TestBatchMerge_AMergeableStateThatStaysUnknownDefersTheMemberAfterThreeRead
 	require.NoError(t, err)
 	assert.Contains(t, rig.h.commands.ran()[0], "1:mergeable is UNKNOWN after 3 reads of 1")
 	assert.Equal(t, []string{"1", "1", "1"}, rig.merger.landed())
+}
+
+// findingsCall is a batch_merge call whose findings and note go to a command, so a test reads them.
+func (r *batchRig) findingsCall(items, extra string) string {
+	return strings.Replace(r.call(items, extra), `command(name = "report"`, `command(name = "issues", run = ["issues", "|".join(out.findings), out.note])
+command(name = "report"`, 1)
+}
+
+func TestBatchMerge_TheFindingsOfTheReadAfterTheBatchGoToTheResultAndTheLandedItemsAreRead(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.host.report = batch.Report{Findings: []string{"issue #1 of item 1 is not closed after the batch landed", "cannot read issue #3: down"}, Note: "a note"}
+
+	_, err := rig.walk(t, rig.findingsCall("1 2 3", `integration = 70, `))
+
+	require.NoError(t, err, "a finding never fails the step: the batch has landed")
+	assert.Equal(t, "issues issue #1 of item 1 is not closed after the batch landed|cannot read issue #3: down a note", rig.h.commands.ran()[0])
+	assert.Equal(t, []string{"p main 70 1,3"}, rig.host.issueReads(), "the read gets the project, the base, the integration pull request and the landed items only")
+	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
+}
+
+func TestBatchMerge_ABatchThatLandedNothingReadsNoIssueAndSaysSo(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+
+	_, err := rig.walk(t, rig.findingsCall("2", ""))
+
+	require.NoError(t, err)
+	assert.Equal(t, "issues  issue states: no member landed, so no read ran.", rig.h.commands.ran()[0])
+	assert.Empty(t, rig.host.issueReads())
+}
+
+func TestBatchMerge_AReadAfterTheBatchThatErrorsEndsTheCallWithTheError(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.host.reportErr = errors.New("project gone")
+
+	_, err := rig.walk(t, rig.call("1", ""))
+
+	require.ErrorContains(t, err, `batch_merge "b"`)
+	require.ErrorContains(t, err, "project gone")
 }
 
 func TestBatchMerge_AGateRunThatIsNotAListIsRefused(t *testing.T) {

@@ -81,6 +81,10 @@ func (*shipWorld) IsAncestor(context.Context, string, string) (bool, error) { re
 
 func (*shipWorld) StackID(context.Context, int) (string, error) { return "", nil }
 
+func (w *shipWorld) IssueState(context.Context, int) (string, error) {
+	return "", errFake
+}
+
 func (w *shipWorld) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errFake
 }

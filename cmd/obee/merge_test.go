@@ -94,6 +94,10 @@ func (*shipForge) IsAncestor(context.Context, string, string) (bool, error) { re
 
 func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
 
+func (*shipForge) IssueState(context.Context, int) (string, error) {
+	return "", errFake
+}
+
 func (*shipForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
 	return model.ClosingRefs{}, errFake
 }
