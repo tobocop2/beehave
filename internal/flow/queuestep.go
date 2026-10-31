@@ -3,7 +3,6 @@ package flow
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -29,7 +28,7 @@ const (
 // holdStep is the name of the step that reads the hold of an item at the start of a run that spawn started.
 const holdStep = "hold:start"
 
-var errNoQueue = errors.New("this build cannot read the open work. Use a build that sets a queue reader")
+var errNoQueue = &absentError{message: "this build cannot read the open work. Use a build that sets a queue reader", step: "read the open work of the project"}
 
 // queueReader reads the open work of a project: the open items of its tracker and the open pull requests of its forge.
 type queueReader interface {

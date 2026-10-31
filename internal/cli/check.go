@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -18,6 +19,7 @@ import (
 const (
 	exitProblems         = 2
 	exitWorkflowProblems = 1
+	exitDryRunEndedEarly = 3
 
 	configFlag          = "config"
 	projectFlag         = "project"
@@ -39,28 +41,77 @@ func newCheckCommand(ctx context.Context, env map[string]string, adapters func(c
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(), newCheckCommandCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(ctx, env), newCheckCommandCommand())
 
 	return check
 }
 
-func newCheckWorkflowCommand() *cobra.Command {
-	return &cobra.Command{
+const (
+	dryRunFlag      = "dry-run"
+	dryRunItemFlag  = "item"
+	dryRunItemValue = "1"
+)
+
+const checkWorkflowLong = "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
+	"The default file is " + defaultWorkflowFile + " in the current folder. " +
+	"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.\n\n" +
+	"With --" + dryRunFlag + ", obee then runs the file for one item over fakes and prints each step with its fake result. " +
+	"The run uses a temporary state folder that obee deletes at the end. It calls no forge, agent, tracker or host. " +
+	"A dry run has three exit codes. " +
+	"Exit 0: the run reached the end of the file and every step passed. " +
+	"Exit 1: a Starlark error, a REFUSE or a failed faked step; the output shows the error and the last step that ran. " +
+	"Exit 3: the run ended early at a step the dry run does not fake, and the steps after it were not checked. " +
+	"The last line says what that step does."
+
+// runDryWorkflow checks the file, and with dryRun set it then runs the file over fakes and prints the steps.
+func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dryRun bool) error {
+	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dryRun {
+		return err
+	}
+
+	if err := itemID(item); err != nil {
+		return err
+	}
+
+	if err := flow.DryRun(ctx, file, item, env, cmd.OutOrStdout()); err != nil {
+		if errors.Is(err, flow.ErrDryRunEndedEarly) {
+			return &ExitError{Code: exitDryRunEndedEarly}
+		}
+
+		return &ExitError{Code: exitWorkflowProblems}
+	}
+
+	return nil
+}
+
+func newCheckWorkflowCommand(ctx context.Context, env map[string]string) *cobra.Command {
+	var dryRun bool
+
+	var item string
+
+	command := &cobra.Command{
 		Use:   "workflow [file]",
 		Short: "Check a workflow file and print one line for each problem",
-		Long: "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
-			"The default file is " + defaultWorkflowFile + " in the current folder. " +
-			"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.",
-		Args: cobra.MaximumNArgs(1),
+		Long:  checkWorkflowLong,
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file := defaultWorkflowFile
 			if len(args) > 0 {
 				file = args[0]
 			}
 
-			return runCheckWorkflow(cmd.ErrOrStderr(), file)
+			return runDryWorkflow(ctx, cmd, env, file, item, dryRun)
 		},
 	}
+
+	return addDryRunFlags(command, &dryRun, &item)
+}
+
+func addDryRunFlags(command *cobra.Command, dryRun *bool, item *string) *cobra.Command {
+	command.Flags().BoolVar(dryRun, dryRunFlag, false, "after the check, run the file over fakes and print each step")
+	command.Flags().StringVar(item, dryRunItemFlag, dryRunItemValue, "the item id for --"+dryRunFlag)
+
+	return command
 }
 
 func runCheckWorkflow(stderr io.Writer, file string) error {

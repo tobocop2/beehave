@@ -2,7 +2,6 @@ package flow
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.starlark.net/syntax"
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
@@ -79,26 +77,8 @@ func exampleRigWithFindings(t *testing.T, verdicts, findings func(review int) st
 func exampleSkill(t *testing.T, folder string) string {
 	t.Helper()
 
-	parsed, err := (&syntax.FileOptions{}).Parse("workflow.star", mustRead(t, filepath.Join(folder, "workflow.star")), 0)
+	skills, err := dryRequiredSkills(filepath.Join(folder, "workflow.star"))
 	require.NoError(t, err)
-
-	var skills []string
-
-	syntax.Walk(parsed, func(n syntax.Node) bool {
-		if pair, ok := n.(*syntax.BinaryExpr); ok && pair.Op == syntax.EQ {
-			if name, isName := pair.X.(*syntax.Ident); isName && name.Name == "require_skills" {
-				syntax.Walk(pair.Y, func(m syntax.Node) bool {
-					if lit, isLit := m.(*syntax.Literal); isLit {
-						skills = append(skills, fmt.Sprint(lit.Value))
-					}
-
-					return true
-				})
-			}
-		}
-
-		return true
-	})
 	require.Len(t, skills, 1)
 
 	return skills[0]
