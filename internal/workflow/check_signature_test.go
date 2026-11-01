@@ -57,7 +57,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"merge unknown keyword", `merge("h", force = True)`, "merge takes no argument force"},
 		{"merge missing head", `merge(repo = "r")`, "merge needs the `head` keyword"},
 		{"merge bad children", `merge("h", children = "drop")`, `children is "drop". Use one of: refuse, retarget.`},
-		{"merge text for a bool", `merge("h", merge = "yes", steps = item.steps)`, "merge must be a bool, not a text."},
+		{"merge text for a bool", `merge("h", merge = "yes", steps = item.id)`, "merge must be a bool, not a text."},
 		{"preflight unknown keyword", `preflight(state = "open")`, "preflight takes no argument state"},
 		{"preflight number for head", `preflight(head = 3)`, "head must be a text, not an int."},
 		{"preflight list for hold", `preflight(hold = ["hold"])`, "hold must be a text, not a list."},
@@ -125,6 +125,33 @@ func TestCheck_LeavesACallOfAShadowingFunctionAlone(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestCheck_ChecksEachLiteralKindOfForbidCommands(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    agent(\"p\", \"m\", forbid_commands = [\"git-write\", \"nope\", 3])\n")
+
+	require.Len(t, got, 2)
+	assert.Contains(t, got[0], `forbid_commands has the unknown kind "nope". Use one of: bulk-staging,`)
+	assert.Contains(t, got[1], "forbid_commands has the unknown kind 3. Use one of: bulk-staging,")
+}
+
+func TestCheck_ChecksAParenthesisedForbidCommands(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    agent(\"p\", \"m\", forbid_commands = (\"git-write\", \"nope\"))\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], `forbid_commands has the unknown kind "nope". Use one of: bulk-staging,`)
+}
+
+func TestCheck_LeavesANonLiteralForbidCommandsToTheRun(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "KINDS = [\"nope\"]\n\ndef main(item):\n    agent(\"p\", \"m\", forbid_commands = KINDS)\n    agent(\"p\", \"m\", forbid_commands = [\"git-write\"] + KINDS)\n    agent(\"p\", \"m\", forbid_commands = [KINDS[0], \"git-write\"])\n")
+
+	assert.Empty(t, got)
+}
+
 func TestSignature_ListsEveryBuiltinThatTakesKeywords(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +195,7 @@ func TestCheck_AMergeCallThatDoesNotMergeOrNamesStepsPasses(t *testing.T) {
 	calls := []string{
 		`merge("h")`,
 		`merge("h", merge = False)`,
-		`merge("h", merge = True, steps = item.steps)`,
+		`merge("h", merge = True, steps = item.id)`,
 		`merge("h", *item)`,
 		`merge("h", **item)`,
 	}

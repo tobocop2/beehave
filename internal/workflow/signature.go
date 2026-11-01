@@ -10,6 +10,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // Kind is the type that a keyword of a builtin takes. KindAny is a keyword that the check leaves to the run.
@@ -31,6 +33,8 @@ type Param struct {
 	Kind     Kind
 	Required bool
 	Values   []string
+	// Each is the closed set of the literal text elements of a list keyword. The check reads each literal element and leaves a list or an element that is not a literal to the run.
+	Each []string
 	// Min and Max bound a whole number. Both are zero for a keyword with no bounds.
 	Min, Max int
 	// Why ends the message for a missing required keyword. It says what the keyword is for, when that is not plain.
@@ -42,6 +46,10 @@ func StatusValues() []string { return []string{"open", "closed", "hold"} }
 
 // ChildrenValues lists the values of the children argument of a merge call.
 func ChildrenValues() []string { return []string{"refuse", "retarget"} }
+
+// ForbidKinds lists the values that an element of the forbid_commands argument takes: the names of the finding kinds.
+// The check and the run both read it.
+func ForbidKinds() []string { return model.FindingKindNames() }
 
 func req(name string, kind Kind) Param { return Param{Name: name, Kind: kind, Required: true} }
 func opt(name string, kind Kind) Param { return Param{Name: name, Kind: kind} }
@@ -66,7 +74,9 @@ func stepSignatures() map[string][]Param {
 	return map[string][]Param{
 		agentName: {
 			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
+			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList),
+			{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
+			opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
 			opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {
@@ -203,6 +213,8 @@ func negativeKind(e *syntax.UnaryExpr) Kind {
 // kindOf is the kind of a literal expression, or KindAny for an expression that the check cannot read before the run.
 func kindOf(expr syntax.Expr) Kind {
 	switch e := expr.(type) {
+	case *syntax.ParenExpr:
+		return kindOf(e.X)
 	case *syntax.Literal:
 		return literalKind(e)
 	case *syntax.UnaryExpr:
@@ -250,15 +262,98 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 	for i, param := range params {
 		value := argument(call, param.Name, i)
 		if value == nil {
-			if param.Required {
-				g.report(placeOf(call.Lparen), strings.TrimSpace(fmt.Sprintf("%s needs the `%s` keyword. Add %s = ... to the call. %s", builtin, param.Name, param.Name, param.Why)))
-			}
+			g.missing(call, builtin, param)
 
 			continue
 		}
 
 		g.value(value, param)
 	}
+
+	if builtin == agentName {
+		g.protection(call, params)
+	}
+}
+
+// missing reports a keyword that the call needs and leaves out.
+func (g *graph) missing(call *syntax.CallExpr, builtin string, param Param) {
+	if param.Required {
+		g.report(placeOf(call.Lparen), strings.TrimSpace(fmt.Sprintf("%s needs the `%s` keyword. Add %s = ... to the call. %s", builtin, param.Name, param.Name, param.Why)))
+	}
+}
+
+// protection checks the two rules of the run that tie forbid_commands to protect_paths: a kind that needs paths takes at least one, and paths
+// need such a kind. An empty path is always wrong. Both rules need both sides to be absent or list literals of text literals, and every kind to be
+// a known one (the check of each kind reports the rest). Any other value is left to the run.
+func (g *graph) protection(call *syntax.CallExpr, params []Param) {
+	index := func(name string) int {
+		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
+	}
+
+	pathsArg := argument(call, "protect_paths", index("protect_paths"))
+	paths, pathsKnown := textList(pathsArg)
+
+	if hasEmptyText(pathsArg) {
+		g.report(placeOf(call.Lparen), "protect_paths holds an empty path, which would name the folder of the step. Give a path.")
+
+		return
+	}
+
+	kinds, kindsKnown := textList(argument(call, "forbid_commands", index("forbid_commands")))
+	if pathsKnown && kindsKnown {
+		g.pair(call, kinds, paths)
+	}
+}
+
+// pair reports a list of kinds and a list of paths that do not go together. A list with an unknown kind is left to the check of each kind.
+func (g *graph) pair(call *syntax.CallExpr, kinds, paths []string) {
+	if slices.ContainsFunc(kinds, func(kind string) bool { return !slices.Contains(ForbidKinds(), kind) }) {
+		return
+	}
+
+	needs := slices.ContainsFunc(kinds, func(kind string) bool { return model.FindingKind(kind).NeedsPaths() })
+
+	switch {
+	case needs && len(paths) == 0:
+		g.report(placeOf(call.Lparen), fmt.Sprintf("forbid_commands lists %s, so protect_paths must list at least one directory.", model.FindingProtected))
+	case !needs && len(paths) > 0:
+		g.report(placeOf(call.Lparen), fmt.Sprintf("protect_paths is set, but forbid_commands lists no kind that uses it. Add %q to forbid_commands.", model.FindingProtected))
+	}
+}
+
+// hasEmptyText reports whether a list literal has a member that is an empty text literal.
+func hasEmptyText(value syntax.Expr) bool {
+	items, isList := members(value)
+
+	return isList && slices.ContainsFunc(items, func(item syntax.Expr) bool {
+		text, isText := literal(item)
+
+		return isText && text == ""
+	})
+}
+
+// textList returns the text of the members of a list literal whose members are all text literals. An absent argument is an empty list. ok is false
+// for any other expression, and for a list with a member that is not a text literal.
+func textList(value syntax.Expr) (texts []string, ok bool) {
+	if value == nil {
+		return nil, true
+	}
+
+	items, isList := members(value)
+	if !isList {
+		return nil, false
+	}
+
+	for _, item := range items {
+		text, isText := literal(item)
+		if !isText {
+			return nil, false
+		}
+
+		texts = append(texts, text)
+	}
+
+	return texts, true
 }
 
 // mergeNeedsSteps reports a merge call that can merge and names no gate steps: it leaves out `steps` or passes an empty list literal.
@@ -318,7 +413,32 @@ func (g *graph) value(value syntax.Expr, param Param) {
 		return
 	}
 
+	g.contents(value, param)
+}
+
+// contents checks what a literal of the right kind holds: the bounds of a number and the elements of a list.
+func (g *graph) contents(value syntax.Expr, param Param) {
 	g.bounds(value, param)
+	g.each(value, param)
+}
+
+// each checks the literal elements of a list literal against the closed set of its keyword. An element that is not a literal is left to the run.
+func (g *graph) each(value syntax.Expr, param Param) {
+	if param.Each == nil {
+		return
+	}
+
+	items, _ := members(value) // the kind of the value is a list, so it is a list or a tuple
+
+	for _, item := range items {
+		if kindOf(item) == KindAny {
+			continue
+		}
+
+		if text, _ := literal(item); kindOf(item) != KindText || !slices.Contains(param.Each, text) {
+			g.report(placeOf(syntax.Start(item)), fmt.Sprintf("%s has the unknown kind %s. Use one of: %s.", param.Name, rawText(item), strings.Join(param.Each, ", ")))
+		}
+	}
 }
 
 // bounds reports an integer literal that is outside the bounds of its keyword. A literal that is not a small whole number is outside.

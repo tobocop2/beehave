@@ -117,7 +117,7 @@ type ghView struct {
 }
 
 // ItemFields declares the fields that Item returns.
-func (*Store) ItemFields() []string { return []string{"id", "title", "body"} }
+func (*Store) ItemFields() []string { return model.ItemFields() }
 
 // Item returns the number, title and body of an issue. An unreadable issue is a refusal with code 2.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {

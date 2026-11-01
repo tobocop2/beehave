@@ -909,13 +909,14 @@ func TestAgentStep_AKindThatNeedsPathsWithNoPathsIsRefusedWhenTheStepRuns(t *tes
 	t.Parallel()
 
 	for _, extra := range []string{
-		`forbid_commands = ["protected-path"], `,
-		`forbid_commands = ["protected-path"], protect_paths = [], `,
-		`forbid_commands = ["protected-path"], protect_paths = [""], `,
-		`forbid_commands = ["bulk-staging"], protect_paths = ["/own/checkout"], `,
-		`protect_paths = ["/own/checkout"], `,
-		`forbid_commands = ["protected-path"], protect_paths = [3], `,
-		`forbid_commands = ["protected-path"], protect_paths = 3 + 0, `,
+		// The check refuses a literal list before the run, so each case builds a list that the check does not read.
+		`forbid_commands = [] + ["protected-path"], `,
+		`forbid_commands = [] + ["protected-path"], protect_paths = [] + [], `,
+		`forbid_commands = [] + ["protected-path"], protect_paths = [] + [""], `,
+		`forbid_commands = [] + ["bulk-staging"], protect_paths = [] + ["/own/checkout"], `,
+		`protect_paths = [] + ["/own/checkout"], `,
+		`forbid_commands = [] + ["protected-path"], protect_paths = [] + [3], `,
+		`forbid_commands = [] + ["protected-path"], protect_paths = 3 + 0, `,
 	} {
 		t.Run(extra, func(t *testing.T) {
 			t.Parallel()
@@ -935,14 +936,14 @@ func TestAgentStep_AForbidCommandsKindThatTheFileDoesNotKnowIsRefusedWhenTheStep
 
 	rig := newAgentRig(t)
 
-	_, err := rig.run(t, agentFlow("forbid_commands = [\"not-a-kind\"], "), "x")
+	_, err := rig.run(t, agentFlow("forbid_commands = [] + [\"not-a-kind\"], "), "x")
 
 	require.ErrorContains(t, err, `forbid_commands has the unknown kind "not-a-kind". Use one of: `+strings.Join(model.FindingKindNames(), ", "))
 	assert.Empty(t, rig.h.agents.seen())
 
 	rig = newAgentRig(t)
 
-	_, err = rig.run(t, agentFlow("forbid_commands = [3], "), "x")
+	_, err = rig.run(t, agentFlow("forbid_commands = [] + [3], "), "x")
 
 	require.ErrorContains(t, err, "forbid_commands has the unknown kind 3. Use one of: "+strings.Join(model.FindingKindNames(), ", "))
 	assert.Empty(t, rig.h.agents.seen())

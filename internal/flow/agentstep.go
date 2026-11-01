@@ -140,8 +140,8 @@ func (a *agentArgs) lists(raw agentRaw) (err error) {
 func findingKinds(v starlark.Value) ([]model.FindingKind, error) {
 	return listOfEach(v, func(item starlark.Value) (model.FindingKind, error) {
 		name, ok := starlark.AsString(item)
-		if !ok || !slices.Contains(model.FindingKindNames(), name) {
-			return "", fmt.Errorf("forbid_commands has the unknown kind %s. Use one of: %s", item, strings.Join(model.FindingKindNames(), ", "))
+		if !ok || !slices.Contains(workflow.ForbidKinds(), name) {
+			return "", fmt.Errorf("forbid_commands has the unknown kind %s. Use one of: %s", item, strings.Join(workflow.ForbidKinds(), ", "))
 		}
 
 		return model.FindingKind(name), nil

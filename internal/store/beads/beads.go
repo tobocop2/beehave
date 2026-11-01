@@ -226,7 +226,7 @@ func (s *Store) shown(ctx context.Context, item string) (bdRow, error) {
 }
 
 // ItemFields declares the fields that Item returns.
-func (*Store) ItemFields() []string { return []string{"id", "title", "body"} }
+func (*Store) ItemFields() []string { return model.ItemFields() }
 
 // Item returns the id, title and description of an item.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {

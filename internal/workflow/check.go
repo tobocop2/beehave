@@ -83,6 +83,9 @@ type graph struct {
 	// entries are the literal entries of the spawn calls, and mainNames the functions that the workflow file binds at the top level.
 	entries   []entryRef
 	mainNames []string
+	// mainFile is the parsed workflow file. Its results are checked after every file is read, because the entries of the spawn calls of the
+	// loaded files name functions of this file.
+	mainFile *syntax.File
 }
 
 func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
@@ -92,6 +95,10 @@ func scan(file string) *graph {
 	g := &graph{dir: filepath.Dir(file), main: filepath.Base(file), units: map[string]*unit{}}
 	g.visit(g.main, Diagnostic{File: file})
 	g.entriesDefined()
+
+	if g.mainFile != nil {
+		g.results(g.mainFile, g.itemFunctions())
+	}
 
 	slices.SortStableFunc(g.found, func(a, b Diagnostic) int {
 		return cmp.Or(cmp.Compare(a.File, b.File), cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
@@ -171,9 +178,13 @@ func finishTakesNoItem(parsed *syntax.File) bool {
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
 	g.swarm(parsed)
-	g.results(parsed)
+
+	if name != g.main {
+		g.results(parsed, nil)
+	}
 
 	if name == g.main {
+		g.mainFile = parsed
 		g.mainNames = definedNames(parsed)
 
 		if finishTakesNoItem(parsed) {
