@@ -269,6 +269,39 @@ func positionOf(stack starlark.CallStack) syntax.Position {
 	return pos
 }
 
+// paths is an argument that takes a list of strings.
+type paths []string
+
+// Unpack stores a list or a tuple of strings. It refuses any other value.
+func (p *paths) Unpack(v starlark.Value) error {
+	seq, ok := v.(starlark.Sequence)
+	if !ok || v.Type() == "dict" || v.Type() == "set" {
+		return fmt.Errorf("got %s, want a list of strings", v.Type())
+	}
+
+	*p = nil
+
+	return p.collect(seq)
+}
+
+// collect stores the items of a sequence. It refuses an item that is not a string.
+func (p *paths) collect(seq starlark.Sequence) error {
+	iter := seq.Iterate()
+	defer iter.Done()
+
+	var item starlark.Value
+	for iter.Next(&item) {
+		value, isText := starlark.AsString(item)
+		if !isText {
+			return fmt.Errorf("the list holds a %s, want a list of strings", item.Type())
+		}
+
+		*p = append(*p, value)
+	}
+
+	return nil
+}
+
 // text is a string argument that records whether the file gave it.
 type text struct {
 	Value string

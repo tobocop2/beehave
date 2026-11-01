@@ -37,6 +37,9 @@ type rawProject struct {
 	TestReport  text
 	PinFile     text
 	Visibility  text
+	Sandbox     text
+	SandboxRead paths
+	SandboxDeny paths
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -59,7 +62,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?"}}
+	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -91,7 +94,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny)
 	raw.Host = host.block
 
 	return raw, err
@@ -109,7 +112,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	hostTable, visibility, err := tables(host, raw)
+	hostTable, visibility, sandbox, err := tables(host, raw)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -117,7 +120,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
-		PinFile: raw.PinFile.Value, Visibility: visibility,
+		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny),
 	}, nil
 }
 
@@ -140,16 +143,21 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host), pinFile(raw, host))
 }
 
-// tables returns the host block and the visibility of a project.
-func tables(host string, raw rawProject) (*model.HostConfig, model.Visibility, error) {
+// tables returns the host block, the visibility and the sandbox mode of a project.
+func tables(host string, raw rawProject) (*model.HostConfig, model.Visibility, model.SandboxMode, error) {
 	hostTable, err := hostConfig(host, raw)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	visibility, err := visibilityOf(raw)
+	if err != nil {
+		return nil, "", "", err
+	}
 
-	return hostTable, visibility, err
+	sandbox, err := sandboxOf(raw)
+
+	return hostTable, visibility, sandbox, err
 }
 
 // visibilityOf reads visibility. An unset key gives the empty visibility, which counts as public. A set key that is empty or unknown is refused.
@@ -168,6 +176,51 @@ func visibilityOf(raw rawProject) (model.Visibility, error) {
 	}
 
 	return visibility, nil
+}
+
+// absolutePaths refuses the first path of sandbox_read or sandbox_deny that is neither absolute nor under ~/.
+func absolutePaths(raw rawProject) error {
+	for _, key := range []string{"sandbox_read", "sandbox_deny"} {
+		list := raw.SandboxRead
+		if key == "sandbox_deny" {
+			list = raw.SandboxDeny
+		}
+
+		for _, path := range list {
+			if !filepath.IsAbs(path) && path != "~" && !strings.HasPrefix(path, "~/") {
+				return refuseAt(raw.At, "`%s` lists %q. Write an absolute path, or one that starts with ~/.", key, path)
+			}
+		}
+	}
+
+	if err := model.CheckSandboxRead(raw.SandboxRead); err != nil {
+		return refuseAt(raw.At, "%w.", err)
+	}
+
+	return nil
+}
+
+// sandboxOf reads sandbox. An unset key gives the empty mode, which runs the steps with no sandbox. A set key that is empty or unknown is refused.
+// The sandbox_read and sandbox_deny paths must be absolute, or start with ~/, so that a path never depends on the folder of a step.
+func sandboxOf(raw rawProject) (model.SandboxMode, error) {
+	if err := absolutePaths(raw); err != nil {
+		return "", err
+	}
+
+	if !raw.Sandbox.Set {
+		return "", nil
+	}
+
+	if err := requireText(raw.At, "sandbox", raw.Sandbox.Value); err != nil {
+		return "", err
+	}
+
+	mode, err := model.ParseSandboxMode(raw.Sandbox.Value)
+	if err != nil {
+		return "", refuseAt(raw.At, "`sandbox`: %w. Fix the value.", err)
+	}
+
+	return mode, nil
 }
 
 // pinFile refuses a pin_file that is set and empty, or set for a gate on a build host. An unset key is allowed.

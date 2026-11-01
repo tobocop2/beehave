@@ -49,6 +49,8 @@ type agents struct {
 	// maxTurns and maxBudget are agents.max_turns and agents.max_budget_usd. 0 means no cap.
 	maxTurns  int
 	maxBudget float64
+	// home returns the home folder of the owner, which a sandboxed step cannot read.
+	home func() (string, error)
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -61,6 +63,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		env:      opts.Env,
 		run:      func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
 		guard:    guardCommand(os.Executable),
+		home:     os.UserHomeDir,
 
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD,
 	}
@@ -114,8 +117,9 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 	return strings.Join(words, " ")
 }
 
-func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string) agent.Spec {
+func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan) agent.Spec {
 	return agent.Spec{
+		Sandbox: box,
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: a.maxBudget,
@@ -146,18 +150,44 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	}
 
 	adapter := a.adapter(runner.Agent)
-	protect := protectionOf(request.Protect, dir)
-	protect.Private = a.projects[request.Project].IsPrivate()
+	protect := a.protection(request, dir)
 	guard := a.guardFor(request.Forbid, protect)
 
-	if note := noGuardNote(adapter, guard, request.Forbid); note != "" {
+	box, note := a.boxOf(ctx, request, runner, dir, adapter, guard)
+	if note != "" {
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
 	tap := newSessionTap(adapter)
-	result := a.run(ctx, a.specOf(request, runner, dir, adapter, tap, guard))
+	result := a.run(ctx, a.specOf(request, runner, dir, adapter, tap, guard, box))
 
 	return describe(adapter, runner, dir, tap, result, request.Forbid, protect)
+}
+
+// protection returns the paths that the step must not change, and whether the project is private.
+func (a agents) protection(request flow.AgentRequest, dir string) shell.Protection {
+	protect := protectionOf(request.Protect, dir)
+	protect.Private = a.projects[request.Project].IsPrivate()
+
+	return protect
+}
+
+// boxOf returns the sandbox plan of a step, or nil when the step has no sandbox. A step that cannot start, for want of its guard or its sandbox, returns the reason.
+func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (*agent.SandboxPlan, string) {
+	if note := noGuardNote(adapter, guard, request.Forbid); note != "" {
+		return nil, note
+	}
+
+	if request.Sandbox == nil {
+		return nil, ""
+	}
+
+	plan, note := a.sandboxPlan(ctx, request, runner, dir)
+	if note != "" {
+		return nil, note
+	}
+
+	return &plan, ""
 }
 
 // target returns the runner of the login and the worktree of the item. A request with no prompt, an unknown login or no worktree is refused.

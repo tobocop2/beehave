@@ -80,6 +80,8 @@ type graph struct {
 	stack    []string
 	found    []Diagnostic
 	unparsed bool
+	// notes are the facts for Notes: no problem, and no effect on the exit code.
+	notes []Diagnostic
 	// entries are the literal entries of the spawn calls, and mainNames the functions that the workflow file binds at the top level.
 	entries   []entryRef
 	mainNames []string
@@ -177,6 +179,7 @@ func finishTakesNoItem(parsed *syntax.File) bool {
 // inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
+	g.sandboxes(parsed)
 	g.swarm(parsed)
 
 	if name != g.main {

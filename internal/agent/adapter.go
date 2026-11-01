@@ -15,6 +15,10 @@ type Profile struct {
 	// TurnsFlag and BudgetFlag are the flags that cap the turns and the dollars of one run. An empty flag means the CLI has no such option.
 	TurnsFlag  string
 	BudgetFlag string
+	// Sandbox is true when the CLI has a sandbox that the adapter maps a SandboxPlan to. A run with a sandbox on an adapter without it does not start.
+	// MinVersion is the oldest version of the CLI that knows every setting of that mapping; an older CLI ignores a setting it does not know.
+	Sandbox    bool
+	MinVersion string
 }
 
 // Stop names the cap that ended a run.
@@ -48,7 +52,7 @@ type Seen struct {
 }
 
 // Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.
-// Call order for one run: Profile and Guard before the CLI starts, then Line and Calls for each output line while it runs, then TranscriptPath after it ends.
+// Call order for one run: Profile, then Guard or Sandbox, before the CLI starts, then Line and Calls for each output line while it runs, then TranscriptPath after it ends.
 // Line and Calls never see a line of an earlier run, and TranscriptPath needs the session id that Line returned.
 type Adapter interface {
 	// Profile returns the command line and the login variables of the CLI.
@@ -56,6 +60,9 @@ type Adapter interface {
 	// Guard returns the arguments that make the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
 	// It returns nil when the CLI has no such option.
 	Guard(command string) []string
+	// Sandbox returns the arguments that confine the shell of one run to the plan, and nothing else the CLI reads can widen it: no settings file and no MCP server.
+	// A non-empty guard is the hook of Guard, and the arguments carry it in the same settings as the sandbox. Only a profile with Sandbox true is asked.
+	Sandbox(plan SandboxPlan, guard string) []string
 	// Line reads one line of the output of the CLI. It returns the session id and the message text that the line holds, or empty strings.
 	Line(line string) (session, text string)
 	// Calls reads one line of the output of the CLI and returns what it holds.

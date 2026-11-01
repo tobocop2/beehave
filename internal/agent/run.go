@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -64,6 +65,9 @@ type Spec struct {
 	Guard string
 	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs).
 	NoEdits bool
+	// Sandbox, when set, confines the shell of the run by the plan. The run does not start if the adapter has no sandbox, the system is Windows or the CLI is too old.
+	// The environment of the CLI then holds no proxy variable and no agent socket, and git reads no global or system config.
+	Sandbox *SandboxPlan
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -88,14 +92,17 @@ type Timer interface {
 }
 
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
+// Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
+	Version   func(ctx context.Context, binary string, env []string) (string, error)
+	OS        string
 }
 
 // Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
 // The agent runs in its own process group, which dies on a timeout, a cancel or the end of the run.
 func (r Runner) Run(ctx context.Context, spec Spec) Result {
-	p, refusal := prepare(spec)
+	p, refusal := prepare(spec, cmp.Or(r.OS, hostOS()))
 	if refusal != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: refusal}
 	}
@@ -103,20 +110,35 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	after := r.AfterFunc
-	if after == nil {
-		after = func(d time.Duration, fire func()) Timer { return time.AfterFunc(d, fire) }
-	}
+	after := r.after()
 
 	defer startTotalTimeout(spec.Timeout, after, cancel)()
 
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return execute(ctx, spec, p, idle)
+	return execute(ctx, spec, p, idle, r.version())
 }
 
-func prepare(spec Spec) (Profile, string) {
+// after returns the timer function of the runner, or the one of the standard library when the runner sets none.
+func (r Runner) after() func(time.Duration, func()) Timer {
+	if r.AfterFunc != nil {
+		return r.AfterFunc
+	}
+
+	return func(d time.Duration, fire func()) Timer { return time.AfterFunc(d, fire) }
+}
+
+// version returns the function that reads the version of the CLI, or runVersion when the runner sets none.
+func (r Runner) version() versionOf {
+	if r.Version != nil {
+		return r.Version
+	}
+
+	return runVersion
+}
+
+func prepare(spec Spec, goos string) (Profile, string) {
 	if spec.Adapter == nil {
 		return Profile{}, fmt.Sprintf("agent %q cannot be started yet. Set the runner to agent claude.", spec.Runner.Agent)
 	}
@@ -124,6 +146,10 @@ func prepare(spec Spec) (Profile, string) {
 	p := spec.Adapter.Profile()
 
 	if problem := optionProblem(spec, p); problem != "" {
+		return p, problem
+	}
+
+	if problem := sandboxProblem(spec, p, goos); problem != "" {
 		return p, problem
 	}
 
@@ -167,17 +193,28 @@ func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Ti
 	return func() { timer.Stop() }
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result {
+func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf) Result {
 	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
+	env := envFor(spec, p)
+
+	if problem := versionProblem(ctx, spec, p, binary, env, version); problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
 	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p), spec.Dir)
 
-	cmd.Env = buildEnv(spec.Env, p, spec.Runner.ConfigDir, spec.Token)
+	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 
+	return runCommand(ctx, spec, cmd, idle)
+}
+
+// runCommand starts the command, waits for it and returns what it left.
+func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) Result {
 	stdout, stderr, tail := newStreams(spec)
 	cmd.Stdout, cmd.Stderr = idle.watch(stdout), idle.watch(stderr)
 
@@ -205,11 +242,19 @@ func argsOf(spec Spec, p Profile) []string {
 
 	args = append(args, capArgs(spec, p)...)
 
-	if spec.Guard != "" {
-		args = append(args, spec.Adapter.Guard(spec.Guard)...)
+	return append(args, shellArgs(spec)...)
+}
+
+// shellArgs returns the arguments that start the sandbox of the spec, or the command guard when the spec has no sandbox.
+func shellArgs(spec Spec) []string {
+	switch {
+	case spec.Sandbox != nil:
+		return spec.Adapter.Sandbox(*spec.Sandbox, spec.Guard)
+	case spec.Guard != "":
+		return spec.Adapter.Guard(spec.Guard)
 	}
 
-	return args
+	return nil
 }
 
 // editArgs returns the arguments that let the CLI edit files, or none for a spec with NoEdits.

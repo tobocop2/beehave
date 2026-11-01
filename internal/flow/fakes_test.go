@@ -425,9 +425,11 @@ type harness struct {
 	hosts     hostStopper // nil unless a test sets it
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
-	ticks     chan time.Time
-	sleep     time.Duration
-	opts      Options
+	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
+	sandboxDefault func(project string) bool
+	ticks          chan time.Time
+	sleep          time.Duration
+	opts           Options
 	// freshStore makes the engine and the client create the database themselves, for a test of the files that the first open makes.
 	freshStore bool
 }
@@ -499,6 +501,7 @@ func (h *harness) deps() Deps {
 	deps.Hosts = h.hosts
 	deps.Queue = h.queue
 	deps.Poll = h.poll
+	deps.SandboxDefault = h.sandboxDefault
 
 	if h.picker != nil {
 		deps.Logins = h.picker

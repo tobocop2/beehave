@@ -54,7 +54,8 @@ const (
 
 const checkWorkflowLong = "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
 	"The default file is " + defaultWorkflowFile + " in the current folder. " +
-	"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed.\n\n" +
+	"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed. " +
+	"A line that starts with note: is a fact for the author, such as an agent step with sandbox = None. It is no problem and changes no exit code.\n\n" +
 	"With --" + dryRunFlag + ", obee then runs the file for one item over fakes and prints each step with its fake result. " +
 	"The run uses a temporary state folder that obee deletes at the end. It calls no forge, agent, tracker or host. " +
 	"A dry run has three exit codes. " +
@@ -116,6 +117,12 @@ func addDryRunFlags(command *cobra.Command, dryRun *bool, item *string) *cobra.C
 
 func runCheckWorkflow(stderr io.Writer, file string) error {
 	found, unparsed := workflow.Check(file)
+
+	for _, note := range workflow.Notes(file) {
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintf(stderr, "note: %s\n", note)
+	}
+
 	if len(found) == 0 {
 		return nil
 	}
