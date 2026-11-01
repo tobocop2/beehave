@@ -73,7 +73,7 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 		return PhaseOutput{}, err
 	}
 
-	return runStep(e, ctx, "agent", func(c context.Context) (PhaseOutput, error) {
+	return runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
 		return e.runAgent(c, claim, in)
 	})
 }

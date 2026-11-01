@@ -38,6 +38,8 @@ type Runner interface {
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Status() ([]flow.RunInfo, error)
+	// Steps lists the steps of one run, in order.
+	Steps(id string) (flow.RunSteps, error)
 	// Poll returns the newest review poll that finished. The second value is false when none has.
 	Poll() (flow.PollOutput, bool, error)
 	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
@@ -181,7 +183,7 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	}
 
 	// A folder without a workflow file may still hold an open run, which continues with the file that it pinned. runItem decides.
-	return f.runItem(cmd.OutOrStdout(), cfg, opts, args[0], project, file)
+	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
 }
 
 // checkedWorkflow returns the workflow file that run uses after it passes the check.
@@ -252,7 +254,7 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 
 // runItem takes the item to the end of its run. An open run continues with the file that it pinned, so a folder without a workflow file is enough for it.
 // The pinned file is read through the client, which launches nothing: a refused run never opens the engine.
-func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
+func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
 	pinned, err := f.openRunFile(stdout, cfg, opts, item)
 	if err != nil {
 		return err
@@ -262,6 +264,14 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 		return missingWorkflow()
 	}
 
+	// The engine writes the start of the run and the start and end of each step to stderr, so that stdout keeps the result lines.
+	opts.Progress = stderr
+
+	return f.runOnEngine(stdout, cfg, opts, item, project, cmp.Or(file, pinned))
+}
+
+// runOnEngine opens the engine, runs the item on it and shuts it down.
+func (f flowCommands) runOnEngine(stdout io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
 	engine, err := f.factory.Engine(f.ctx, cfg, opts)
 	if err != nil {
 		return err
@@ -271,7 +281,7 @@ func (f flowCommands) runItem(stdout io.Writer, cfg config.Config, opts flow.Opt
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	return errors.Join(f.continueOrStart(stdout, engine, item, project, cmp.Or(file, pinned)), engine.Shutdown())
+	return errors.Join(f.continueOrStart(stdout, engine, item, project, file), engine.Shutdown())
 }
 
 func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string) error {
@@ -366,21 +376,42 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 }
 
 func (f flowCommands) statusCommand() *cobra.Command {
-	var flag string
+	var (
+		flag   string
+		asJSON bool
+	)
 
 	command := &cobra.Command{
-		Use:   "status",
-		Short: "List the runs, the questions that wait for you and the runs another version must finish",
-		Args:  cobra.NoArgs,
-		RunE:  func(cmd *cobra.Command, _ []string) error { return f.status(cmd, flag) },
+		Use:   "status [run id]",
+		Short: "List the runs, or the steps of one run",
+		Long: "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
+			"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
+			"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, args, asJSON) },
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the steps of the run as JSON (needs a run id)")
 
 	return command
 }
 
-// status prints the runs of the store.
-func (f flowCommands) status(cmd *cobra.Command, flag string) error {
+// jsonFlag is the name of the flag that makes the per-run view print JSON.
+const jsonFlag = "json"
+
+// errJSONNeedsRun is returned when --json comes with no run id: the list of runs has no JSON form.
+var errJSONNeedsRun = errors.New("--" + jsonFlag + " prints the steps of one run: give the run id after status")
+
+// status prints the runs of the store, or the steps of the run that the command names.
+func (f flowCommands) status(cmd *cobra.Command, flag string, args []string, asJSON bool) error {
+	if len(args) == 1 {
+		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(cmd.OutOrStdout(), client, args[0], asJSON) })
+	}
+
+	if asJSON {
+		return errJSONNeedsRun
+	}
+
 	return f.withClient(cmd, flag, func(client Steering) error {
 		infos, err := client.Status()
 		if err != nil {

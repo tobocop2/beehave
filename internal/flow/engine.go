@@ -63,6 +63,8 @@ type Options struct {
 	Env                 map[string]string
 	// ReviewPoll is the time between two review polls. 0 means no poll.
 	ReviewPoll time.Duration
+	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends. A nil Progress prints nothing.
+	Progress io.Writer
 }
 
 func (o Options) validate() error {
@@ -142,6 +144,8 @@ type Engine struct {
 	procs   *groups
 	tickEnd chan struct{}
 	tickRun sync.WaitGroup
+	// progress writes the lines of the terminal: the start of a run and the start and end of each of its steps.
+	progress *progress
 	// launched is the time of the last Launch. A run that was open then and ended after it was resumed by this engine.
 	launched time.Time
 	down     sync.Once
@@ -162,16 +166,24 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 		return nil, errors.Join(err, state.log.Close())
 	}
 
-	engine := &Engine{
-		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
-		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}),
-	}
+	engine := newEngine(opts, deps, state, held)
 
 	if err := engine.open(ctx, opts, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts))
+}
+
+// newEngine makes the engine value for an opened store and a held folder lock.
+func newEngine(opts Options, deps Deps, state store, held *flock.Flock) *Engine {
+	engine := &Engine{
+		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress},
+	}
+	engine.progress.redact = engine.redact
+
+	return engine
 }
 
 // registered returns the engine when the registration worked. When it failed, it shuts the engine down, so the folder lock and the store do not stay open.

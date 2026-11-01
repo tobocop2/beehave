@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -80,6 +81,7 @@ type fakeSteering struct {
 	notSched  string
 	notSchedE error
 	infos     []flow.RunInfo
+	view      flow.RunSteps
 	err       error
 	pinned    string
 	pinnedErr error
@@ -90,6 +92,12 @@ type fakeSteering struct {
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
+
+func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
+	s.calls = append(s.calls, "steps "+id)
+
+	return s.view, s.err
+}
 
 func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
 	if s.poll == nil {
@@ -131,6 +139,8 @@ type flowRig struct {
 	engineOf func() error
 	clientOf func() error
 	options  flow.Options
+	// progress is the line that the fake engine writes to the terminal of the run.
+	progress string
 	config   config.Config
 	dir      string
 	engines  int // how many times the run command asked for an engine
@@ -162,6 +172,13 @@ func (rig *flowRig) factory() cli.Flow {
 		Engine: func(_ context.Context, cfg config.Config, opts flow.Options) (cli.Runner, error) {
 			rig.config, rig.options = cfg, opts
 			rig.engines++
+
+			if rig.progress != "" && opts.Progress != nil {
+				_, err := io.WriteString(opts.Progress, rig.progress)
+				if err != nil {
+					return nil, err
+				}
+			}
 
 			if rig.engineOf != nil {
 				return nil, rig.engineOf()

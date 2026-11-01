@@ -32,6 +32,8 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 		return ItemResult{}, err
 	}
 
+	e.progress.say("run %s workflow %s item %s", workflowID(ctx), in.File, in.Item)
+
 	fields, err := runStep(e, ctx, "item", func(c context.Context) (map[string]string, error) {
 		return e.deps.Items.Fields(c, in.Project, in.Item)
 	})
@@ -39,14 +41,18 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 		return ItemResult{}, fmt.Errorf("read the fields of item %s: %w", in.Item, err)
 	}
 
-	s := &script{e: e, ctx: ctx, in: in, login: login, counts: map[string]int{}}
-	err = s.end(s.main(e.thread(in.Item), sources, fields))
+	return e.playScript(&script{e: e, ctx: ctx, in: in, login: login, counts: map[string]int{}}, sources, fields)
+}
 
-	if finishErr := s.finish(e.thread(in.Item), sources, fields); finishErr != nil {
+// playScript runs main, then the finish of the workflow file, and returns what the item came to.
+func (e *Engine) playScript(s *script, sources *workflow.Sources, fields map[string]string) (ItemResult, error) {
+	err := s.end(s.main(e.thread(s.in.Item), sources, fields))
+
+	if finishErr := s.finish(e.thread(s.in.Item), sources, fields); finishErr != nil {
 		err = errors.Join(err, finishErr)
 	}
 
-	return ItemResult{Item: in.Item, Merge: s.mergeState, SentBack: s.sentBack, Closed: s.closed, Stopped: s.stopped}, err
+	return ItemResult{Item: s.in.Item, Merge: s.mergeState, SentBack: s.sentBack, Closed: s.closed, Stopped: s.stopped}, err
 }
 
 // thread makes the thread of a run. It logs print at the debug level and stops after model.StarlarkMaxSteps instructions.
@@ -143,7 +149,7 @@ func (s *script) predeclared() starlark.StringDict {
 		fn := table[name]
 
 		out[name] = starlark.NewBuiltin(name, func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-			return fn(b, args, kwargs)
+			return s.traced(b, kwargs, func() (starlark.Value, error) { return fn(b, args, kwargs) })
 		})
 	}
 
