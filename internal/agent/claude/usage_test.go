@@ -35,7 +35,12 @@ func window(percent, resets any) map[string]any {
 }
 
 func replyOf(id string, five, seven any) string {
-	limits := map[string]any{"five_hour": five, "seven_day": seven}
+	return limitsReplyOf(id, map[string]any{"five_hour": five, "seven_day": seven})
+}
+
+func limitsReply(limits map[string]any) string { return limitsReplyOf("obee-usage", limits) }
+
+func limitsReplyOf(id string, limits map[string]any) string {
 	text, _ := json.Marshal(map[string]any{ //nolint:errcheck // a map of strings and numbers always encodes
 		"type": "control_response",
 		"response": map[string]any{
@@ -271,6 +276,20 @@ func TestParseUsage_ALoggedInReplyGivesBothWindows(t *testing.T) {
 	}
 }
 
+func TestParseUsage_ANullWindowReadsAsZeroPercentWithNoResetTime(t *testing.T) {
+	t.Parallel()
+
+	usage := usageOf(t, claude.ParseUsage(fixture(t, "idle-five-hour.json")))
+	if usage.FiveHour.Percent != 0 || !usage.FiveHour.ResetsAt.IsZero() || usage.SevenDay.Percent != 62 || usage.SevenDay.ResetsAt.IsZero() {
+		t.Fatalf("usage = %+v", usage)
+	}
+
+	both := usageOf(t, claude.ParseUsage(reply(nil, nil)))
+	if both.FiveHour.Percent != 0 || both.SevenDay.Percent != 0 {
+		t.Fatalf("both null: usage = %+v", both)
+	}
+}
+
 func TestParseUsage_AReplyWithNoPlanLimitsNeedsALogin(t *testing.T) {
 	t.Parallel()
 
@@ -319,8 +338,10 @@ func TestParseUsage_AReplyWithoutBothWindowsIsUnknownWithTheReason(t *testing.T)
 
 	cases := []struct{ name, text, reason string }{
 		{"empty output", "", "ended without answering"},
-		{"no five-hour window", reply(nil, window(1, nil)), "no five_hour window"},
-		{"no seven-day window", reply(window(1, nil), nil), "no seven_day window"},
+		{"no five-hour window", limitsReply(map[string]any{"seven_day": window(1, nil)}), "no five_hour window"},
+		{"no seven-day window", limitsReply(map[string]any{"five_hour": window(1, nil)}), "no seven_day window"},
+		{"a five-hour window that is text", reply("x", window(1, nil)), "no five_hour window"},
+		{"a seven-day window that is a list", reply(window(1, nil), []any{}), "no seven_day window"},
 		{"null utilization", reply(window(nil, nil), window(1, nil)), "five_hour window has no utilization"},
 		{"text utilization", reply(window("9", nil), window(1, nil)), "five_hour window has no utilization"},
 		{"bool utilization", reply(window(true, nil), window(1, nil)), "five_hour window has no utilization"},
