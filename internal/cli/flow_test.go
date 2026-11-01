@@ -82,6 +82,7 @@ type fakeSteering struct {
 	notSchedE error
 	infos     []flow.RunInfo
 	view      flow.RunSteps
+	lanes     flow.ItemLanes
 	err       error
 	pinned    string
 	pinnedErr error
@@ -92,6 +93,12 @@ type fakeSteering struct {
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
+
+func (s *fakeSteering) Lanes(item string) (flow.ItemLanes, error) {
+	s.calls = append(s.calls, "lanes "+item)
+
+	return s.lanes, s.err
+}
 
 func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
 	s.calls = append(s.calls, "steps "+id)

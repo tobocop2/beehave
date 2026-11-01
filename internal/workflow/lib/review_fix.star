@@ -69,6 +69,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
             review = agent(
                 name = "review",
+                lane = "review",
                 prompt = review_prompt,
                 model = "opus",
                 pin = check.head,
@@ -108,6 +109,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
             design = agent(
                 name = "design",
+                lane = "design",
                 prompt = design_prompt,
                 model = "opus",
                 outputs = ["decision", "reason"],
@@ -140,6 +142,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
         fix = agent(
             name = "fix",
+            lane = "rework",
             prompt = fix_prompt,
             model = "sonnet" if round <= 3 else "opus",
             resume = impl.session if round <= 3 else "",

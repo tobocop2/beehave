@@ -402,3 +402,39 @@ func TestGroups_ReleaseForgetsEveryGroupOfTheRunAndKillsNone(t *testing.T) {
 	requireStayAlive(t, "a release kills no group", first, second, longer, other)
 	assert.ElementsMatch(t, []groupRow{{pgid: longer, run: "item-12-r10"}, {pgid: other, run: "item-13-r1"}}, withoutStart(g.rows), "run r10 is not run r1")
 }
+
+type exitedAgents struct{}
+
+func (exitedAgents) Run(context.Context, AgentRequest) (agent.Result, error) {
+	return agent.Result{Outcome: agent.OutcomeExited}, nil
+}
+
+func TestRunAgent_TheOutputOfAPhaseNamesTheKindOfItsLaneInTheLedgerOfTheMethod(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input PhaseInput
+		want  string
+	}{
+		{"a_review_call_is_a_review_lane", PhaseInput{Kind: "review"}, "review"},
+		{"a_call_with_no_lane_is_a_fix_lane", PhaseInput{}, "fix"},
+		{"an_implement_call_with_no_lane_is_a_fix_lane", PhaseInput{Kind: "implement"}, "fix"},
+		{"a_rework_lane", PhaseInput{Lane: "rework"}, "rework"},
+		{"a_relay_lane", PhaseInput{Lane: "relay"}, "relay"},
+		{"a_design_lane", PhaseInput{Lane: "design"}, "design"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newProcEngine(t, exitedAgents{})
+			test.input.Run, test.input.Item = procRun, testItem
+
+			out, err := runAgentOf(t.Context(), engine, test.input)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, out.Kind)
+		})
+	}
+}

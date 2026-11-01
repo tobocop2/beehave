@@ -27,6 +27,33 @@ const (
 // AgentKinds lists the values that kind takes.
 func AgentKinds() []string { return []string{AgentKindImplement, AgentKindReview} }
 
+// The values of the lane argument of an agent call, and with LaneReview the kinds that the lane ledger of the method holds.
+// A call with no lane is a fix lane, or a review lane when its kind is review.
+const (
+	LaneFix    = "fix"
+	LaneRework = "rework"
+	LaneRelay  = "relay"
+	LaneReview = "review"
+	LaneDesign = "design"
+)
+
+// Lanes lists the values that lane takes. A call with kind = "review" is a review lane without it, and also runs on the review queue.
+func Lanes() []string { return []string{LaneFix, LaneRework, LaneRelay, LaneReview, LaneDesign} }
+
+// LaneKind is the kind of the lane of an agent call in the ledger: review for the kind review, else the lane, else fix.
+// The check of the call refuses a lane that the kind review contradicts.
+func LaneKind(kind, lane string) string {
+	if kind == AgentKindReview {
+		return LaneReview
+	}
+
+	if lane == "" {
+		return LaneFix
+	}
+
+	return lane
+}
+
 // arguments reports each agent call in the file whose follow_ups is "forbid" and whose outputs lack the verdict, at the place of the value.
 func (g *graph) arguments(parsed *syntax.File) {
 	syntax.Walk(parsed, func(n syntax.Node) bool {
