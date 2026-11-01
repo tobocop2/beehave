@@ -68,6 +68,11 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 		return PhaseOutput{}, err
 	}
 
+	in, err = e.markStarts(ctx, in)
+	if err != nil {
+		return PhaseOutput{}, err
+	}
+
 	return runStep(e, ctx, "agent", func(c context.Context) (PhaseOutput, error) {
 		return e.runAgent(c, claim, in)
 	})

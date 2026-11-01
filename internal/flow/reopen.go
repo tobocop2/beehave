@@ -22,7 +22,31 @@ func (c *Client) reopen(id string) error {
 		return err
 	}
 
-	return c.rewind(id, from)
+	return c.rewind(id, min(from, openStart(steps)))
+}
+
+// openStart returns the step of the first start mark of the open sequence, or the length of the history when there is none. The open sequence is
+// the start marks after the last agent step. A run that stopped in the middle of the agent step, such as a canceled one, holds such a sequence, and
+// a loss in it leaves marks and loss records. Every rewind goes back to the first mark, so the whole sequence goes and a resumed phase starts clean.
+func openStart(steps []dbos.StepInfo) int {
+	return firstOpenStart(steps, len(steps))
+}
+
+// firstOpenStart returns the step of the first start mark before the step limit that has no agent step between it and the limit, or limit when there is none.
+func firstOpenStart(steps []dbos.StepInfo, limit int) int {
+	open := limit
+
+	for _, step := range steps {
+		switch {
+		case step.StepID >= limit:
+		case step.StepName == agentStepName:
+			open = limit
+		case startNumber(step.StepName) == 1:
+			open = min(open, step.StepID)
+		}
+	}
+
+	return open
 }
 
 // raised returns the ids of the runs that a gather step of the run canceled when its raise fired. It reads the record before the rewind drops the step.
@@ -60,12 +84,24 @@ func (c *Client) failedStep(steps []dbos.StepInfo, canceled map[string]bool) (in
 			return 0, err
 		}
 
-		if (child || step.Error != nil) && step.StepID < first {
-			first = step.StepID
+		if !child && step.Error == nil {
+			continue
 		}
+
+		first = min(first, rewindPoint(steps, step))
 	}
 
 	return first, nil
+}
+
+// rewindPoint returns the step that a rewind goes back to for a failed step. A failed agent step goes back to the first start mark of its sequence,
+// so the rewind drops every mark and loss record with the step, and a rewound phase holds no start that has no end. Any other step goes back to itself.
+func rewindPoint(steps []dbos.StepInfo, failed dbos.StepInfo) int {
+	if failed.StepName != agentStepName {
+		return failed.StepID
+	}
+
+	return firstOpenStart(steps, failed.StepID)
 }
 
 // reopenChild reopens the child workflow of a step when it failed, or when it is an item run that the raise of a gather canceled, and reports whether it did.

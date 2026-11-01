@@ -424,6 +424,10 @@ func TestDryFakes_AnswerWithoutTouchingAnything(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, lost)
 
+	renewed, err := dryBeats{}.Renewed(ctx, "p", "o", "1")
+	require.NoError(t, err)
+	assert.True(t, renewed.IsZero())
+
 	require.NoError(t, dryLifecycle{}.Release(ctx, "p", "1", "o"))
 	require.NoError(t, dryForge{}.Ready(ctx, "p", "1"))
 	require.NoError(t, dryWatch{}.SetDraft(ctx, "p", 1, true))

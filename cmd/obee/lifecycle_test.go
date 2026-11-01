@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -302,7 +303,15 @@ func TestLeases_TheLocalClaimStoreTakesRenewsAndReleasesAnItemAndEveryCallCloses
 	require.NoError(t, err)
 	assert.Empty(t, text)
 
+	renewed, err := l.Renewed(t.Context(), "p", owner, "fix-login")
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), renewed, time.Minute, "the renewal is the time of the take or the last beat")
+
 	require.NoError(t, l.Release(t.Context(), "p", "fix-login", owner))
+
+	renewed, err = l.Renewed(t.Context(), "p", owner, "fix-login")
+	require.NoError(t, err)
+	assert.True(t, renewed.IsZero(), "a released item has no renewal")
 
 	l.owner = func() string { return "ownertwo" }
 	_, err = l.Claim(t.Context(), "p", "fix-login")
@@ -340,7 +349,10 @@ func TestLeases_ACallClosesTheStoreAndReportsAFailedClose(t *testing.T) {
 	require.ErrorIs(t, err, errFake)
 
 	require.ErrorIs(t, l.Release(t.Context(), "p", "12", "ownerone"), errFake)
-	assert.Equal(t, 3, closing.closed)
+
+	_, err = l.Renewed(t.Context(), "p", "ownerone", "12")
+	require.ErrorIs(t, err, errFake)
+	assert.Equal(t, 4, closing.closed)
 }
 
 func TestPulls_AProjectWithNoForgeGetsTheTypedNoForgeErrorFromEveryCall(t *testing.T) {

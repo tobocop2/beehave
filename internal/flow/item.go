@@ -102,11 +102,27 @@ func (e *Engine) firstTrust(ctx context.Context, id string, in ItemInput, taken 
 		return nil
 	}
 
+	// The first renewal moves the lease to now, so the renewal of the process that ran before is read first.
+	e.remember(ctx, id, in, taken.owner)
+
 	if err := e.firstRenewal(ctx, id, in, taken.owner); err != nil {
 		return err
 	}
 
 	return e.claimCheck(id, in.Item)
+}
+
+// remember reads the last renewal of the lease of the claim of the owner from the claim store and keeps it with the claim of the run. A read that fails is logged
+// and keeps nothing: the only cost is that the trace of a later loss gives no run time.
+func (e *Engine) remember(ctx context.Context, id string, in ItemInput, owner string) {
+	renewed, err := e.deps.Beats.Renewed(ctx, in.Project, owner, in.Item)
+	if err != nil {
+		e.logger.WarnContext(ctx, "cannot read the last renewal of the claim", "item", in.Item, "error", err)
+
+		return
+	}
+
+	e.holds.remember(id, renewed)
 }
 
 // firstRenewal renews a claim of unknown age until a renewal works or the tracker says the claim is gone, as the tick does, so one busy tracker call

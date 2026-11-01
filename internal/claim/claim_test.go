@@ -195,6 +195,39 @@ func TestBeat(t *testing.T) {
 	assert.ErrorContains(t, err, "is not an owner token")
 }
 
+func TestRenewed(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.hold("5", sessionA, 100)
+	renewed, err := h.claims.Renewed(ctx(), "A", "5")
+	require.NoError(t, err)
+	assert.Equal(t, time.Unix(nowUnix+100, 0).Add(-model.ClaimLease), renewed, "the last renewal is the end of the lease, less the lease")
+
+	renewed, err = h.claims.Renewed(ctx(), "B", "5")
+	require.NoError(t, err)
+	assert.True(t, renewed.IsZero(), "the claim of another holder is not the renewal of this owner")
+
+	renewed, err = h.claims.Renewed(ctx(), "A", "6")
+	require.NoError(t, err)
+	assert.True(t, renewed.IsZero(), "an item with no claim has no renewal")
+
+	h.rows.rows["7"] = model.ClaimRow{Item: "7", Holder: sessionA}
+	renewed, err = h.claims.Renewed(ctx(), "A", "7")
+	require.NoError(t, err)
+	assert.True(t, renewed.IsZero(), "a claim with no lease has no renewal")
+
+	h.rows.fail["HeldRows"] = errBoom
+	_, err = h.claims.Renewed(ctx(), "A", "5")
+	require.ErrorIs(t, err, errBoom)
+
+	_, err = h.claims.Renewed(ctx(), "A", "x y")
+	require.Error(t, err)
+
+	_, err = h.claims.Renewed(ctx(), "a b", "5")
+	require.Error(t, err)
+}
+
 func TestWho(t *testing.T) {
 	t.Parallel()
 

@@ -828,6 +828,21 @@ func (l leases) Beat(ctx context.Context, project, owner string) (string, error)
 	return text, err
 }
 
+// Renewed reads when the lease of the claim of the owner on the item was last renewed. The zero time means the owner holds no claim on the item.
+func (l leases) Renewed(ctx context.Context, project, owner, item string) (time.Time, error) {
+	var renewed time.Time
+
+	err := l.with(ctx, project, func(claims *claim.Claims) error {
+		var err error
+
+		renewed, err = claims.Renewed(ctx, owner, item)
+
+		return err
+	})
+
+	return renewed, err
+}
+
 // ownerToken returns a new owner token: letters and digits, and no two calls alike.
 func ownerToken() string { return "obee" + rand.Text() }
 

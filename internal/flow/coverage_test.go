@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -378,6 +379,40 @@ func TestEngine_AStoreThatIsShutDownRefusesEachRead(t *testing.T) {
 
 	_, err = engine.awaitClaim(t.Context(), PhaseInput{Run: "run-gone", Item: testItem})
 	require.ErrorContains(t, err, "read run run-gone")
+
+	_, err = engine.phase(engine.ctx, PhaseInput{Item: testItem, Project: testProject, Login: testLogin})
+	require.ErrorContains(t, err, "read the steps of the agent step")
+}
+
+func TestMarkStarts_ReportsAStartThatIsNotInAWorkflow(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+
+	t.Cleanup(func() { assert.NoError(t, engine.Shutdown()) })
+
+	_, err = engine.markStarts(engine.ctx, PhaseInput{Item: testItem})
+	require.Error(t, err, "outside a workflow the start mark is not a step")
+}
+
+func TestPhase_ARenewalThatTheStoreCannotReadIsLoggedAndGivesAnUnknownRunTime(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	loseAgent(t, harness, 5*time.Minute)
+	harness.beats.failRenewed(errFake)
+
+	_, err := harness.engine(t).Run(testItem, testProject)
+	require.NoError(t, err)
+
+	requests := harness.agents.seen()
+	require.Len(t, requests, 2)
+	assert.Contains(t, requests[1].Prompt, "ran before for an unknown time and was lost")
+
+	log, err := os.ReadFile(filepath.Join(harness.opts.StateDir, logFileName))
+	require.NoError(t, err)
+	assert.Contains(t, string(log), "cannot read the last renewal of the claim")
 }
 
 func TestClock_TheZeroValueAddsNoResultOption(t *testing.T) {

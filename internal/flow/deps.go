@@ -95,8 +95,10 @@ type lifecycle interface {
 // beats renews the claims of one owner in the tracker of a project.
 // A non-empty text means the tracker says the claim is gone. An error means the renewal could not run, and the claim can still be live.
 // The signature matches claim.Claims.Beat, plus the project.
+// Renewed returns when the lease of the claim of the owner on the item was last renewed, or the zero time when the owner holds no claim on the item or the claim has no lease.
 type beats interface {
 	Beat(ctx context.Context, project, owner string) (string, error)
+	Renewed(ctx context.Context, project, owner, item string) (time.Time, error)
 }
 
 // clock sets the intervals the engine waits on. The zero value uses the real ones.
