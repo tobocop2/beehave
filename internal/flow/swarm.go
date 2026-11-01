@@ -186,7 +186,7 @@ func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []s
 		return spawnedRun{Item: id, Run: last.Status.ID}, nil
 	}
 
-	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project}, taken...)
+	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project}, false, taken...)
 	if err != nil {
 		return spawnedRun{}, err
 	}

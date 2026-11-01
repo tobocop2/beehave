@@ -86,7 +86,7 @@ func dryWalk(ctx context.Context, opts Options, deps Deps, item, file string) er
 
 	err = engine.Launch() //nolint:contextcheck // the engine owns the context of its runs
 	if err == nil {
-		_, err = engine.RunFile(item, dryProject, file) //nolint:contextcheck // the engine owns the context of its runs
+		_, err = engine.RunFile(item, dryProject, file)
 	}
 
 	return errors.Join(err, engine.Shutdown())
@@ -315,7 +315,7 @@ func (g dryGate) Run(context.Context, string, string) (GateResult, error) {
 
 type dryLogins struct{}
 
-func (dryLogins) Pick(context.Context, string, string, []string) (string, error) {
+func (dryLogins) Pick(context.Context, string, string, []string, bool) (string, error) {
 	return dryLogin, nil
 }
 

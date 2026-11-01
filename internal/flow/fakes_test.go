@@ -200,7 +200,7 @@ type fakeLogins struct {
 	err    error
 }
 
-func (l fakeLogins) Pick(_ context.Context, _, item string, _ []string) (string, error) {
+func (l fakeLogins) Pick(_ context.Context, _, item string, _ []string, _ bool) (string, error) {
 	if login, ok := l.byItem[item]; ok {
 		return login, l.err
 	}
@@ -221,7 +221,7 @@ type loginSequence struct {
 	picks []loginPick
 }
 
-func (l *loginSequence) Pick(context.Context, string, string, []string) (string, error) {
+func (l *loginSequence) Pick(context.Context, string, string, []string, bool) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -457,7 +457,10 @@ type harness struct {
 	sandboxDefault func(project string) bool
 	ticks          chan time.Time
 	sleep          time.Duration
-	opts           Options
+	// wall replaces the wall clock of the engine when a test sets it.
+	wall    func() time.Time
+	capWait time.Duration
+	opts    Options
 	// freshStore makes the engine and the client create the database themselves, for a test of the files that the first open makes.
 	freshStore bool
 }
@@ -519,7 +522,7 @@ func (h *harness) deps() Deps {
 	deps := Deps{
 		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer,
 		Kept:  []error{errFake},
-		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond), Settle: cmp.Or(h.sleep, time.Millisecond)},
+		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond), Settle: cmp.Or(h.sleep, time.Millisecond), Wall: h.wall, CapWait: cmp.Or(h.capWait, time.Millisecond)},
 	}
 	if h.merge != nil {
 		deps.Merge = h.merge

@@ -80,8 +80,16 @@ type gate interface {
 }
 
 // logins picks the agent login for an item of a project and returns its runner name.
+// A pick with overCap set takes the runner with the lowest use even when every runner is over a cap.
+// When no runner has room, the error is one with a ResetAt method, and the engine waits for that time.
 type logins interface {
-	Pick(ctx context.Context, project, item string, busy []string) (string, error)
+	Pick(ctx context.Context, project, item string, busy []string, overCap bool) (string, error)
+}
+
+// resetter is the error of a pick that found no runner under the usage caps. ResetAt returns the earliest time a runner gets room,
+// and false when none is known.
+type resetter interface {
+	ResetAt() (time.Time, bool)
 }
 
 // lifecycle holds the claim of one item. Claim runs first and Release last, on every exit.
@@ -113,7 +121,9 @@ type beats interface {
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
 // Watch replaces the time of the durable sleep between two reads of a ready pull request.
 // Settle replaces the time of the durable sleep between two reads of a batch member whose mergeable state is UNKNOWN.
+// CapWait replaces the least time of the durable sleep that waits for a usage cap to reset.
 type clock struct {
+	CapWait   time.Duration
 	Tick      <-chan time.Time
 	Poll      time.Duration
 	Release   time.Duration

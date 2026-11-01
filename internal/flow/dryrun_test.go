@@ -136,7 +136,7 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{
-		"claim", "item", "env:LAND#1", "env:EXPECT_HEAD#2", "env:BASE#3", "env:OWNER_LOGIN#4", "preflight:intake#1",
+		"claim", "item", "env:LAND#1", "env:EXPECT_HEAD#2", "env:BASE#3", "env:OWNER_LOGIN#4", "preflight:intake#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#5",
 		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:SOURCE_CHECKOUT#6",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1",

@@ -19,8 +19,12 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-// maxRunArgs is the item and the optional project.
-const maxRunArgs = 2
+const (
+	// maxRunArgs is the item and the optional project.
+	maxRunArgs = 2
+	// overCapFlag is the flag of obee run that lets the first agent step take a runner over its usage cap.
+	overCapFlag = "over-cap"
+)
 
 // errNoWorkflow is returned by run when no workflow file is named and the current folder holds none.
 var errNoWorkflow = errors.New("the run has no workflow file")
@@ -140,40 +144,45 @@ func addConfigFlag(command *cobra.Command, target *string) {
 	command.Flags().StringVar(target, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
 }
 
+const runLong = "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
+	"The steps of the workflow file run in file order. Name the file with --workflow, or keep " + defaultWorkflowFile + " in the current folder. " +
+	"obee checks the file first and refuses on any problem. If no file is named and the folder has none, obee run refuses, unless the item has an open run.\n\n" +
+	"If an earlier run of the item is open, obee run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
+	"If the last run failed, obee run refuses and names the step that failed. Run obee resume, then obee run.\n" +
+	"After a finished or a canceled run, obee run starts a new run.\n\n" +
+	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
+	"If none is under the caps, the step waits for the earliest reset time that is known, then picks again. If no reset time is known, the step fails and says why. " +
+	"With --" + overCapFlag + ", the step takes the runner with the lowest use instead of waiting, and the run records that the runner was over its cap."
+
 func (f flowCommands) runCommand() *cobra.Command {
-	var flag, workflowFile string
+	var (
+		flag, workflowFile string
+		overCap            bool
+	)
 
 	command := &cobra.Command{
 		Use:   "run <item> [project]",
 		Short: "Take one item through its workflow",
-		Long: "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
-			"The steps of the workflow file run in file order. Name the file with --workflow, or keep " + defaultWorkflowFile + " in the current folder. " +
-			"obee checks the file first and refuses on any problem. If no file is named and the folder has none, obee run refuses, unless the item has an open run.\n\n" +
-			"If an earlier run of the item is open, obee run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
-			"If the last run failed, obee run refuses and names the step that failed. Run obee resume, then obee run.\n" +
-			"After a finished or a canceled run, obee run starts a new run.",
-		Args: runArgs,
-		RunE: func(cmd *cobra.Command, args []string) error { return f.run(cmd, args, flag, workflowFile) },
+		Long:  runLong,
+		Args:  runArgs,
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.run(cmd, args, flag, workflowFile, overCap) },
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().BoolVar(&overCap, overCapFlag, false, "let the first agent step take a runner that is over its usage cap, in place of waiting for a reset")
 	command.Flags().StringVar(&workflowFile, workflowFlag, "", "the workflow file (default: "+defaultWorkflowFile+" in the current folder, when it exists)")
 
 	return command
 }
 
 // run validates the config, the project and the workflow file, then takes the item to the end of its run.
-func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string) error {
+func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile string, overCap bool) error {
 	cfg, opts, err := f.options(cmd.ErrOrStderr(), flag)
 	if err != nil {
 		return err
 	}
 
-	project, err := chooseProject(cfg, args[1:])
+	project, err := f.target(cfg, args)
 	if err != nil {
-		return err
-	}
-
-	if err = f.knownItem(cfg.Projects[project].Project, args[0]); err != nil {
 		return err
 	}
 
@@ -183,7 +192,19 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	}
 
 	// A folder without a workflow file may still hold an open run, which continues with the file that it pinned. runItem decides.
+	opts.OverCap = overCap
+
 	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
+}
+
+// target returns the project that run names, after it checks that the project knows the item.
+func (f flowCommands) target(cfg config.Config, args []string) (string, error) {
+	project, err := chooseProject(cfg, args[1:])
+	if err != nil {
+		return "", err
+	}
+
+	return project, f.knownItem(cfg.Projects[project].Project, args[0])
 }
 
 // checkedWorkflow returns the workflow file that run uses after it passes the check.

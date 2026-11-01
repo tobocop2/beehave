@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
@@ -258,44 +257,40 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 	require.NoError(t, (<-done).err)
 }
 
-func TestRun_AnEmptyLoginIsRefusedBeforeTheClaimAndLeavesNoRun(t *testing.T) {
+func TestRun_AnEmptyLoginFailsTheAgentStepAndStartsNoAgent(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
 	harness.logins.login = ""
 	engine := harness.engine(t)
-	client := harness.client(t, testVersion)
 
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorIs(t, err, errEmptyLogin)
-	assert.Empty(t, harness.life.seen(), "nothing is claimed")
 	assert.Empty(t, harness.agents.seen(), "no agent starts")
-
-	rows, err := client.Status()
-	require.NoError(t, err)
-	assert.Empty(t, rows, "no failed attempt is stored")
-	assert.Zero(t, storedRuns(t, engine), "DBOS lists no workflow for the item")
 }
 
-func TestRun_APoolThatFailsToPickStoresNoRun(t *testing.T) {
+func TestRun_APoolThatFailsToPickFailsTheFirstAgentStepAndResumeTriesAgain(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
 	harness.picker = &loginSequence{picks: []loginPick{{err: errors.New("usage unreadable")}, {login: "alice"}}}
 	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
 
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "pick the login of item "+testItem)
 	require.ErrorContains(t, err, "usage unreadable")
-	assert.Zero(t, storedRuns(t, engine), "DBOS lists no workflow for the item")
+	assert.Empty(t, harness.agents.seen())
 
+	require.NoError(t, client.Resume(testItem))
 	_, err = engine.Run(testItem, testProject)
-	require.NoError(t, err, "the next run is the first attempt, not a retry of a failed one")
+	require.NoError(t, err, "the resume reads the pool again, not the failed record")
+	assert.Equal(t, []string{"alice"}, harness.agents.logins())
 }
 
-func TestRun_TheLoginRidesInTheInputOfTheRun(t *testing.T) {
+func TestRun_TheLoginIsPickedAtTheFirstAgentStepNotInTheInput(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
@@ -312,27 +307,25 @@ func TestRun_TheLoginRidesInTheInputOfTheRun(t *testing.T) {
 
 	input, err := last.input()
 	require.NoError(t, err)
-	assert.Equal(t, "alice", input.Login)
+	assert.Empty(t, input.Login, "the input holds no login: the first agent step picks it")
 	assert.Equal(t, 1, logins.count(), "the pool is read once for the run")
+	assert.Equal(t, []string{"alice"}, harness.agents.logins())
 }
 
-func TestItem_ARunWithoutALoginInItsInputFailsBeforeTheClaim(t *testing.T) {
+func TestItem_ARunWithoutALoginInItsInputClaimsTheItemAndReadsNoUsage(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
+	logins := &loginSequence{picks: []loginPick{{login: "alice"}}}
+	harness.picker = logins
+	harness.flowIs(t, "def main(item):\n    pass\n")
 	engine := harness.engine(t)
 
-	file := filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName)
-	pinned, err := workflow.Pin(file)
+	_, err := engine.Run(testItem, testProject)
+
 	require.NoError(t, err)
-
-	handle, err := dbos.RunWorkflow(engine.ctx, engine.item, ItemInput{Item: testItem, Project: testProject, File: file, Files: pinned}, dbos.WithWorkflowID(runID(testItem, 1)))
-	require.NoError(t, err)
-
-	_, err = handle.GetResult()
-
-	require.ErrorIs(t, err, errEmptyLogin)
-	assert.Empty(t, harness.life.seen(), "nothing is claimed")
+	assert.NotEmpty(t, harness.life.seen(), "the item is claimed")
+	assert.Zero(t, logins.count(), "a run with no agent step never asks the pool")
 }
 
 // storedRuns counts the workflows that DBOS lists for the test item.
@@ -399,7 +392,7 @@ func TestResume_AnAgentThatResumesASessionRunsOnTheLoginThatOwnsIt(t *testing.T)
 
 	input, err := last.input()
 	require.NoError(t, err)
-	assert.Equal(t, "alice", input.Login, "the input of the run keeps its login")
+	assert.Empty(t, input.Login, "the login is a recorded step of the run, not part of its input")
 }
 
 // writePrompt writes the prompt file that the flow of the harness names, beside the flow.
@@ -587,7 +580,7 @@ func TestLaunch_DeletesFinishedRunsPastTheRetentionAndKeepsTheOthers(t *testing.
 	assert.Equal(t, "item-13-r1", rows[0].ID, "a failed run stays: obee resume can reopen it")
 }
 
-func TestRun_ALoginThatFailsInsideTheRunEndsItBeforeTheClaim(t *testing.T) {
+func TestRun_ALoginThatFailsInsideTheRunEndsItAtTheFirstAgentStep(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
@@ -597,5 +590,5 @@ func TestRun_ALoginThatFailsInsideTheRunEndsItBeforeTheClaim(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 
 	require.ErrorContains(t, err, "pick the login of item 12")
-	assert.Empty(t, harness.life.seen(), "the pick is the first step of the run: nothing is claimed")
+	assert.Empty(t, harness.agents.seen(), "no agent starts")
 }

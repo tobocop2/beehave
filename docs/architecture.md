@@ -424,7 +424,9 @@ A gate that passes with the wrong tool proves nothing about the pinned tool. The
 
 ## Runner pool
 
-`pool` picks the runner of an agent that has room. A runner has room when both windows are under their caps from `config.Pool`. The pick is the lowest seven-day use, then the lowest five-hour use, then the first runner in config order. A runner whose usage is unknown is never picked. The engine gives `Select` the logins that have an agent step running or queued, and the pick prefers a runner that is not among them. When every runner with room is busy, the pick is the same as without the list. The engine reads those logins from the open phases of the `agents` queue and the open runs that a spawn or the queue started, which hold their login from the start. A run that `obee run` started holds its login only while one of its phases is open. Between phases its login reads free, and a second step on it waits for the per-login limit. The refusal ends with "Wait for it." only when a reset time is known or no runner needs a login. When runners exist and none has room, `Select` returns `NoneQualifiesError`, and the command that called it maps the error to exit 3. The run does not move to another agent.
+`pool` picks the runner of an agent that has room. A runner has room when both windows are under their caps from `config.Pool`. The pick is the lowest seven-day use, then the lowest five-hour use, then the first runner in config order. A runner whose usage is unknown is never picked. The engine gives `Select` the logins that have an agent step running or queued, and the pick prefers a runner that is not among them. When every runner with room is busy, the pick is the same as without the list. The engine reads those logins from the open phases of the `agents` queue and the open runs that a spawn or the queue started, which hold their login from the start. A run that `obee run` started holds its login only while one of its phases is open. Between phases its login reads free, and a second step on it waits for the per-login limit. The refusal ends with "Wait for it." only when a reset time is known or no runner needs a login. When runners exist and none has room, `Select` returns `NoneQualifiesError`. The error holds the earliest reset time that the pool knows, and `ResetAt` returns it. The run does not move to another agent.
+
+`obee run` never refuses a run because of the caps, and it exits with no code for them. The run starts, and a run with no agent step never reads the usage. The first `agent` step that names no `runner` picks the login, as a recorded step named `login#<n>`. If `Select` returns `NoneQualifiesError` with a reset time, the step sleeps with the durable sleep of DBOS until that time, then picks again, as a new recorded step. A reset time in the past waits one minute. If the error holds no reset time, the step fails with the same text as before, and `obee resume` picks again. `obee run --over-cap` changes only the case where no runner has room: the step takes the runner with the lowest use, from `SelectOverCap`, and its record holds `over_cap` true. A runner under the caps is taken as usual, and a runner with unknown usage is never taken.
 
 A reset time prints with its offset and, when it has a fraction, six digits of it (`05:00:00.500000+00:00`).
 
@@ -601,10 +603,9 @@ Each builtin call is checked against one table of keywords, which the run also r
 
 An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. The ID makes a second start of the same attempt join the first. The item workflow is not queued. It runs these steps in order:
 
-1. Pick the agent login of the run from the pool.
-2. Claim the item.
-3. Run `main(item)` of the workflow file on one Starlark thread. Each builtin call runs as a recorded step, so a restart replays `main` and skips the steps that finished. Then run `finish(item)` if the file defines it, unless the run was canceled.
-4. Release the worktree, then release the claim.
+1. Claim the item.
+2. Run `main(item)` of the workflow file on one Starlark thread. The first `agent` step that names no `runner` picks the agent login of the run from the pool, and waits when the usage caps leave no room. Each builtin call runs as a recorded step, so a restart replays `main` and skips the steps that finished. Then run `finish(item)` if the file defines it, unless the run was canceled.
+3. Release the worktree, then release the claim.
 
 The file decides the rest. The `gate` step runs the gate of the project and reports `passed`, `head`, `tree`, `report` and `steps`. `steps` lists each step of the gate with its `name` and its `status` (`pass`, `fail` or `unknown`). `tree` is the tree id of `head`, read from the worktree before the gate runs; a gate that runs a program records an empty `tree`, and so does a resumed host job unless the resumed head equals the current head. An `agent` call takes `follow_ups = "allow"` (the default) or `"forbid"`. With `"forbid"`, the call must list `verdict` in `outputs`, and the agent writes a `findings` list of `{"class", "text"}` objects (classes `blocking`, `deferred`, `pre-existing`, `minor`) in the output file. If any finding is open, the output `verdict` becomes `changes`; otherwise the agent verdict stands. The review loop of the library takes a `follow_ups` argument and passes it to its review call; the remediation example sets it to `"forbid"`. `obee check workflow` refuses a literal value that is not listed, and a literal `"forbid"` whose literal `outputs` lack `verdict`, and shows the position. It sees only calls named `agent`: a call through an alias or a wrapper is checked when the run starts it. An `agent` step with a `pin` starts only when the head of the worktree equals the pin, so a review reads the head that the gate passed. The `merge` step reads the forge, marks the pull request ready at the pinned head, and watches it until it merges. A change request or a conflict sets it to draft and ends the item.
 
@@ -614,7 +615,7 @@ Each agent step runs as a child workflow named `phase`. It starts the agent with
 
 Phases run on the queue `agents`, or on the queue `reviews` for an agent call with `kind = "review"`. The partition key of a phase is the login, and each partition of a queue runs one phase at a time. Each queue also has a global limit: `agents.max_concurrent` for `agents` and `agents.max_review_concurrent` for `reviews`. The queues do not lend slots, so the host never runs more than the sum of the two limits, and one login can run one review and one implement phase at once. The queue holds only phases. The wait for the owner is outside the queue and holds no slot. When the agent CLI stops a run at `agents.max_turns` or `agents.max_budget_usd`, the step does not fail. Its output `stop` is `turns` or `budget`, and the workflow decides what follows. `obee resume` starts a new agent run with the same cap for each run. No total cap counts across resumes.
 
-`run` refuses an item with an empty login before it claims the item or stores a run. An `agent` step that names no `runner` uses the login that the run picked. The pick happens once, before the run starts, and the login is stored in the input of the run. A resume keeps that login, so a step that resumes a session runs on the login that owns the session.
+An `agent` step that names no `runner` uses the login of the run. A run that a spawn or the queue started has its login in its input. A run that `obee run` started picks it at its first such step, see the section on the runner pool, and a run with no such step picks none. The pick is a recorded step, so a resume keeps that login, and a step that resumes a session runs on the login that owns the session. An empty pick fails the step.
 
 ### Fix rounds
 
@@ -732,10 +733,10 @@ sequenceDiagram
     participant G as gh (forge)
     participant O as owner
 
-    F->>F: pick the agent login of the run
     F->>C: take the claim for the item
     C->>B: bd update --claim --actor holder
     B-->>C: claimed, or refused with the winner
+    F->>F: pick the agent login of the run, at the first agent step
     F->>A: run the plan step
     A-->>F: plan
     F->>A: run the implement step with the plan

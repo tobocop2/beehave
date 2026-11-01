@@ -270,6 +270,20 @@ func TestRun_TakesTheItemToTheEndAndPassesTheSettingsOfTheConfig(t *testing.T) {
 	assert.Contains(t, rig.config.Projects, "p")
 }
 
+func TestRun_OverCapGoesToTheEngineAndIsOffByDefault(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+	require.Equal(t, 0, code, stderr)
+	assert.False(t, rig.options.OverCap)
+
+	rig = newRig(t)
+	code, _, stderr = rig.execute(t.Context(), "run", "12", "--over-cap")
+	require.Equal(t, 0, code, stderr)
+	assert.True(t, rig.options.OverCap)
+}
+
 func TestRun_TheProjectIsNamedOrTheOnlyOneAndNeverGuessed(t *testing.T) {
 	t.Parallel()
 

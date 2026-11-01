@@ -20,7 +20,8 @@ type ItemInput struct {
 	File    string `json:"file,omitempty"`
 	// Files are the workflow file and every file it loads, with their hashes. A run executes only these bytes.
 	Files []workflow.PinnedFile `json:"files,omitempty"`
-	// Login is the agent login that handleFor picked before the run started. DBOS stores the input, so a resume keeps it.
+	// Login is the agent login that a spawn or the queue picked before the run started. DBOS stores the input, so a resume keeps it.
+	// A run that `obee run` started has none: it picks at its first agent step.
 	Login string `json:"login,omitempty"`
 	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
 	// A run that spawn started has it set to the entry of the spawn call, and such a run cannot spawn.
@@ -184,14 +185,9 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 	return errors.Join(treeErr, e.lifecycle(ctx, model.StepRelease, releaseClaim, in.Project, in.Item))
 }
 
-// begin claims the item. The login came in the input of the run, so an agent step that names no runner uses it,
-// and a resumed run keeps it, so every agent of a run, and every resume of a session, uses the one login.
-// An input with no login claims nothing.
+// begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
+// A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
-	if in.Login == "" {
-		return "", "", time.Time{}, errEmptyLogin
-	}
-
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err

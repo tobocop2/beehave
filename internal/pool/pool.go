@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -32,11 +33,16 @@ func formatReset(when time.Time) string {
 var ErrNoRunner = errors.New("no runner of that agent")
 
 // NoneQualifiesError is returned when runners exist and none has room under both caps. The message says why and when to retry.
+// Reset is the earliest time a runner gets room, or the zero time when the pool knows none.
 type NoneQualifiesError struct {
 	Message string
+	Reset   time.Time
 }
 
 func (e *NoneQualifiesError) Error() string { return e.Message }
+
+// ResetAt returns the earliest time a runner gets room, and false when the pool knows no reset time.
+func (e *NoneQualifiesError) ResetAt() (time.Time, bool) { return e.Reset, !e.Reset.IsZero() }
 
 // Reader reads the usage of one runner. A failure is a reading with a reason, never a panic.
 type Reader func(ctx context.Context, runner model.Runner) model.Reading
@@ -238,10 +244,35 @@ func Select(ctx context.Context, runners []model.Runner, caps config.Pool, agent
 
 	picked, ok := Choose(mine, readings, caps, busy...)
 	if !ok {
-		return model.Runner{}, &NoneQualifiesError{Message: Refusal(mine, readings, caps, agent)}
+		return model.Runner{}, none(mine, readings, caps, agent)
 	}
 
 	return picked, nil
+}
+
+// SelectOverCap returns the runner of the agent with the lowest use, whatever the caps say. It is the pick of a run that the owner lets go over a cap.
+// A runner with unknown usage is never picked, so it returns a NoneQualifiesError when no runner of the agent has a known usage.
+func SelectOverCap(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader, busy ...string) (model.Runner, error) {
+	mine := ofAgent(runners, agent)
+	if len(mine) == 0 {
+		return model.Runner{}, ErrNoRunner
+	}
+
+	readings := ReadAll(ctx, mine, read)
+
+	picked, ok := Choose(mine, readings, config.Pool{FiveHourMax: math.Inf(1), SevenDayMax: math.Inf(1)}, busy...)
+	if !ok {
+		return model.Runner{}, none(mine, readings, caps, agent)
+	}
+
+	return picked, nil
+}
+
+// none builds the error of a pick that finds no runner with room.
+func none(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, agent model.Agent) *NoneQualifiesError {
+	reset, _ := EarliestReset(readings, caps)
+
+	return &NoneQualifiesError{Message: Refusal(runners, readings, caps, agent), Reset: reset}
 }
 
 // Command returns one line for each runner of the agent, then the pick. When none qualifies, the last line is "pick: none" and the error is a NoneQualifiesError.
@@ -256,7 +287,7 @@ func Command(ctx context.Context, runners []model.Runner, caps config.Pool, agen
 
 	picked, ok := Choose(mine, readings, caps)
 	if !ok {
-		return append(lines, "pick: none"), &NoneQualifiesError{Message: Refusal(mine, readings, caps, agent)}
+		return append(lines, "pick: none"), none(mine, readings, caps, agent)
 	}
 
 	return append(lines, "pick: "+picked.Name), nil

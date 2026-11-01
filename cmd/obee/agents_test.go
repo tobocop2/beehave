@@ -662,7 +662,7 @@ func TestLogins_AKnownProjectTakesThePoolPick(t *testing.T) {
 		pool:     func(context.Context, []string) (string, error) { return "from-pool", nil },
 	}
 
-	login, err := picked.Pick(t.Context(), "p", "1", nil)
+	login, err := picked.Pick(t.Context(), "p", "1", nil, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "from-pool", login)
@@ -678,7 +678,7 @@ func TestLogins_ThePickGivesTheBusyLoginsToThePool(t *testing.T) {
 		pool:     func(_ context.Context, busy []string) (string, error) { got = busy; return "x", nil },
 	}
 
-	_, err := picked.Pick(t.Context(), "p", "1", []string{"a", "b"})
+	_, err := picked.Pick(t.Context(), "p", "1", []string{"a", "b"}, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"a", "b"}, got)
@@ -700,13 +700,40 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read)(t.Context(), []string{"a"})
+	got, err := poolPick(cfg, read, pool.Select)(t.Context(), []string{"a"})
 	require.NoError(t, err)
 	assert.Equal(t, "b", got, "b has more use than a, and a is busy")
 
-	got, err = poolPick(cfg, read)(t.Context(), nil)
+	got, err = poolPick(cfg, read, pool.Select)(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "a", got)
+}
+
+func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Projects: map[string]config.Project{"p": {}},
+		Runners:  []model.Runner{{Name: "a", Agent: model.AgentClaude}, {Name: "b", Agent: model.AgentClaude}},
+		Pool:     config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+	}
+	read := func(_ context.Context, runner model.Runner) model.Reading {
+		percent := 99.0
+		if runner.Name == "b" {
+			percent = 97
+		}
+
+		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+	}
+	picked := loginsReading(cfg, read)
+
+	_, err := picked.Pick(t.Context(), "p", "1", nil, false)
+	var none *pool.NoneQualifiesError
+	require.ErrorAs(t, err, &none)
+
+	got, err := picked.Pick(t.Context(), "p", "1", nil, true)
+	require.NoError(t, err)
+	assert.Equal(t, "b", got)
 }
 
 func TestLogins_APoolFailureEndsThePick(t *testing.T) {
@@ -717,7 +744,7 @@ func TestLogins_APoolFailureEndsThePick(t *testing.T) {
 		pool:     func(context.Context, []string) (string, error) { return "", errFake },
 	}
 
-	_, err := picked.Pick(t.Context(), "p", "1", nil)
+	_, err := picked.Pick(t.Context(), "p", "1", nil, false)
 
 	require.ErrorIs(t, err, errFake)
 }
@@ -741,12 +768,12 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read)(t.Context(), nil)
+	got, err := poolPick(cfg, read, pool.Select)(t.Context(), nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "free", got)
 
-	_, err = poolPick(config.Config{}, read)(t.Context(), nil)
+	_, err = poolPick(config.Config{}, read, pool.Select)(t.Context(), nil)
 	require.ErrorIs(t, err, pool.ErrNoRunner)
 }
 

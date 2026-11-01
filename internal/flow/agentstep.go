@@ -2,7 +2,6 @@ package flow
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -228,17 +227,28 @@ func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 
 	name := s.name("agent", label)
 
-	prompt, err := s.promptOf(&a, name)
+	login, prompt, err := s.ready(&a, name)
 	if err != nil {
 		return nil, err
 	}
 
-	done, err := s.attempts(name, a, a.phase(s.in, cmp.Or(a.runner, s.login), prompt))
+	done, err := s.attempts(name, a, a.phase(s.in, login, prompt))
 	if err != nil {
 		return nil, err
 	}
 
 	return result(done.Outputs)
+}
+
+// ready returns the login and the rendered prompt of an agent call. The login comes first, so a call that waits for a usage cap holds no start mark.
+func (s *script) ready(a *agentArgs, name string) (login, prompt string, err error) {
+	if login, err = s.loginFor(*a); err != nil {
+		return "", "", err
+	}
+
+	prompt, err = s.promptOf(a, name)
+
+	return login, prompt, err
 }
 
 // promptOf finds the folder and the output file of the call, then renders the prompt in a step and returns it.
