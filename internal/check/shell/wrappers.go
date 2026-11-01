@@ -1,16 +1,20 @@
 package shell
 
 import (
+	"fmt"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 var (
 	assignWord         = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 	shellStringOption  = regexp.MustCompile(`^-[A-Za-z]*[cs][A-Za-z]*$`)
 	shellCommandOption = regexp.MustCompile(`^-[A-Za-z]*c[A-Za-z]*$`)
+	shortOption        = regexp.MustCompile(`^-[A-Za-z]+`)
 )
 
 // The names a check outside this package reads the same way the scan does.
@@ -23,13 +27,27 @@ const (
 )
 
 const (
-	cmdSudo  = "sudo"
-	cmdEnv   = "env"
-	cmdNice  = "nice"
-	cmdExec  = "exec"
-	cmdFind  = "find"
-	cmdNohup = "nohup"
-	cmdTime  = "time"
+	cmdSudo   = "sudo"
+	cmdEnv    = "env"
+	cmdNice   = "nice"
+	cmdExec   = "exec"
+	cmdFind   = "find"
+	cmdNohup  = "nohup"
+	cmdTime   = "time"
+	cmdSu     = "su"
+	cmdDoas   = "doas"
+	cmdFlock  = "flock"
+	cmdChroot = "chroot"
+	cmdWatch  = "watch"
+)
+
+const longCommandOption = "--command"
+
+// The limits on the work of one scan behind a wrapper (see scanBehind).
+// A command past a limit is reported as opaque, because the scan stops reading it.
+const (
+	MaxWordsBehind = 48
+	MaxLinesBehind = 256
 )
 
 // isShell reports whether the command name is a shell that reads a script.
@@ -46,6 +64,21 @@ func isShell(name string) bool {
 func isWrapper(name string) bool {
 	switch name {
 	case cmdSudo, cmdEnv, cmdNice, TimeoutName, GtimeoutName, "xargs", "sshpass", "stdbuf", "ionice", "busybox", cmdNohup, cmdTime, cmdExec, "command", "setsid":
+		return true
+	}
+
+	return false
+}
+
+// readsBehind reports whether the command name is a wrapper whose options the scan does not read.
+// Its words are scanned as candidates instead (see scanBehind): a guard may be stricter than the real command, never looser.
+func readsBehind(name string) bool {
+	switch name {
+	case cmdDoas, cmdFlock, cmdChroot, cmdWatch:
+		return true
+	case "runuser", "script", "systemd-run", "unbuffer", "taskset", "chrt", "nsenter", "unshare", "strace", "ltrace", "parallel", "pkexec", "sg", "setpriv":
+		return true
+	case "caffeinate", "firejail", "bwrap", "xvfb-run", "dbus-run-session", "proxychains", "proxychains4", "torsocks", "rlwrap", "cpulimit", "tmux", "screen", "dtach":
 		return true
 	}
 
@@ -78,6 +111,8 @@ func takesValueOfTool(name, option string) bool {
 		return OneOf(option, "-i", "-o", "-e")
 	case "ionice":
 		return OneOf(option, "-c", "-n", "-t", "-p", "-P", "-u")
+	case cmdExec:
+		return option == "-a"
 	}
 
 	return false
@@ -101,7 +136,7 @@ func skipPrefix(words []string, i int) (int, bool) {
 
 	i = skipOptions(words, i+1, name)
 	if IsTimeout(name) {
-		i++
+		i++ // the duration
 	}
 
 	return min(i, len(words)), true
@@ -110,10 +145,30 @@ func skipPrefix(words []string, i int) (int, bool) {
 // skipOptions returns the index after the options of the wrapper that start at i; an option that takes a value skips the next word too.
 func skipOptions(words []string, i int, wrapper string) int {
 	for i < len(words) && strings.HasPrefix(words[i], "-") && len(words[i]) > 1 {
-		i += optionWidth(takesValue(wrapper, words[i]))
+		i += optionWidth(takesNextWord(wrapper, words[i]))
 	}
 
 	return i
+}
+
+// takesNextWord reports whether the option takes its value from the next word.
+// A short cluster such as `-dn` ends in the option that takes the value; a value option inside the cluster owns the rest of the cluster (`-dn2`).
+func takesNextWord(wrapper, option string) bool {
+	if takesValue(wrapper, option) {
+		return true
+	}
+
+	if len(option) < 3 || strings.HasPrefix(option, dashDash) {
+		return false
+	}
+
+	for k := 1; k < len(option); k++ {
+		if takesValue(wrapper, "-"+option[k:k+1]) {
+			return k == len(option)-1
+		}
+	}
+
+	return false
 }
 
 // IsTimeout reports whether the command name is a timeout wrapper.
@@ -218,4 +273,90 @@ func splitsString(prefix []string) bool {
 	return slices.ContainsFunc(prefix, func(word string) bool {
 		return word == "-S" || strings.HasPrefix(word, "--split-string")
 	})
+}
+
+// scanBehind reads the words after `su` or a wrapper in readsBehind without reading its options.
+// The real command is some suffix of the words whatever the option grammar, so each suffix is judged as a command.
+// A word that holds a command line is judged as a shell string: the value of `-c` or `--command`, and a word with a space.
+func (s *scanner) scanBehind(cmd *command, remote bool) {
+	rest := cmd.head[1:]
+	if len(rest) > MaxWordsBehind {
+		s.add(model.FindingOpaque, cmd.head[:1])
+
+		return
+	}
+
+	s.scanSuffixes(cmd, rest, remote)
+	s.scanLines(cmd, rest, remote)
+}
+
+// scanSuffixes judges each suffix of the words behind a wrapper as a command.
+func (s *scanner) scanSuffixes(cmd *command, rest []string, remote bool) {
+	for i := range rest {
+		head, prefix := headOf(rest[i:])
+		if len(head) > 0 && !readsAllBehind(path.Base(head[0])) { // a nested wrapper's suffixes are already in this loop
+			s.scanCommand(&command{head: head, prefix: append(slices.Clone(cmd.prefix), prefix...)}, remote)
+		}
+	}
+}
+
+// scanLines judges each command line behind a wrapper as a shell string, up to MaxLinesBehind lines.
+func (s *scanner) scanLines(cmd *command, rest []string, remote bool) {
+	read := 0
+
+	for i := range rest {
+		for _, text := range commandLines(rest, i) {
+			if read++; read > MaxLinesBehind {
+				s.add(model.FindingOpaque, cmd.head[:1])
+
+				return
+			}
+
+			s.scanOnce(text, remote)
+		}
+	}
+}
+
+// scanOnce scans a shell string unless this scan already read it in the same folder.
+// The folder is part of the key because a relative path in the string means a different file after a `cd`.
+func (s *scanner) scanOnce(text string, remote bool) {
+	key := fmt.Sprintf("%t %q %q", remote, s.cwd, text)
+	if s.lines[key] {
+		return
+	}
+
+	if s.lines == nil {
+		s.lines = map[string]bool{}
+	}
+
+	s.lines[key] = true
+	s.scan(text, remote)
+}
+
+func readsAllBehind(name string) bool {
+	return name == cmdSu || readsBehind(name)
+}
+
+// commandLines returns the shell strings that the word at i can be: a `--command=` value, the word after a command option, a word with a space, and the text after each leading letter of a short option word (`-c'x y'` is one word `-cx y`).
+// The words after the option word follow the text of a short option, because an unquoted value (`-crm f`) spreads over them.
+func commandLines(words []string, i int) []string {
+	word := words[i]
+	if text, ok := strings.CutPrefix(word, longCommandOption+"="); ok {
+		return []string{text}
+	}
+
+	var lines []string
+
+	afterOption := i > 0 && (words[i-1] == longCommandOption || shellCommandOption.MatchString(words[i-1]))
+	if afterOption || strings.ContainsAny(word, " \t\n") {
+		lines = append(lines, word)
+	}
+
+	for end := range len(shortOption.FindString(word)) {
+		if end > 0 && end+1 < len(word) {
+			lines = append(lines, strings.Join(append([]string{word[end+1:]}, words[i+1:]...), " "))
+		}
+	}
+
+	return lines
 }

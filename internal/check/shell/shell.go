@@ -61,6 +61,7 @@ type scanner struct {
 	resolutions int                   // values worked out so far, for the tests
 	used        []string              // variables the current command expanded
 	findings    []model.Finding
+	lines       map[string]bool   // shell strings read from the words behind a wrapper: each is read once, so nested wrappers cost a polynomial time
 	readOnly    bool              // the step is read-only: a git command that changes a repository is a finding
 	prot        *protector        // the protected directories, or nil when the kind protected-path is off
 	cwd         string            // the directory the next command runs in, or "" when no static read can tell
@@ -409,12 +410,16 @@ func (s *scanner) scanWords(cmd *command, remote bool) {
 	name := path.Base(cmd.head[0])
 
 	switch {
+	case strings.ContainsAny(cmd.head[0], " \t\n"): // a command line in one word, as `sudo -s 'x y'` runs it
+		s.scan(strings.Join(cmd.head, " "), remote)
 	case name == CmdEval && len(cmd.head) > 1:
 		s.scan(strings.Join(cmd.head[1:], " "), remote)
 	case name == "echo" || name == "printf":
 		s.contentDeletes(strings.Join(cmd.head[1:], " "))
 	case isShell(name):
 		s.scanShell(cmd, remote)
+	case readsAllBehind(name):
+		s.scanBehind(cmd, remote)
 	}
 }
 
@@ -593,7 +598,7 @@ func (s *scanner) redefine(name, value string) string {
 func startsWithWrapper(value string) bool {
 	words := strings.Fields(value)
 
-	return len(words) > 0 && isWrapper(path.Base(words[0]))
+	return len(words) > 0 && (isWrapper(path.Base(words[0])) || readsBehind(path.Base(words[0])))
 }
 
 func (s *scanner) namesRecorded(value string) bool {

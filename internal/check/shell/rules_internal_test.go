@@ -194,8 +194,10 @@ func TestHeadOfDropsEachWrapperAndItsValuedOptions(t *testing.T) {
 		{"nohup", "x"},
 		{"time", "x"},
 		{"exec", "x"},
+		{"exec", "-a", "n", "x"},
 		{"command", "x"},
 		{"setsid", "x"},
+		{"sudo", "-Eu", "me", "x"},
 	}
 
 	for _, words := range rows {

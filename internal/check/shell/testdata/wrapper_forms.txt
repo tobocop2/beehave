@@ -1,0 +1,298 @@
+doas @
+doas -u bob @
+doas -- @
+doas -n @
+doas -u bob -- @
+doas -nu bob @
+doas -C /etc/doas.conf @
+/usr/bin/doas @
+doas sh -c Q
+doas "sh -c Q"
+su -c Q
+su -c Q bob
+su bob -c Q
+su - bob -c Q
+su -l -c Q
+su -lc Q
+su -cl Q
+su --command=Q
+su --command Q
+su --login --command Q
+su -- bob -c Q
+su -s /bin/sh -c Q
+su -c Q -
+su root -c Q
+/bin/su -c Q
+sudo su -c Q
+sudo su - bob -c Q
+sudo -u bob su -c Q
+sudo su --command=Q
+sudo -- su -c Q
+sudo su -lc Q
+flock /tmp/l @
+flock -n /tmp/l @
+flock -w 5 /tmp/l @
+flock -nx /tmp/l @
+flock -x -n /tmp/l @
+flock -- /tmp/l @
+flock /tmp/l -- @
+flock -n -- /tmp/l @
+flock /tmp/l -c Q
+flock -c Q /tmp/l
+flock /tmp/l -nc Q
+flock -nc Q /tmp/l
+flock -cn Q /tmp/l
+flock /tmp/l -cn Q
+flock /tmp/l --command=Q
+flock --command=Q /tmp/l
+flock --command Q /tmp/l
+flock /tmp/l --command Q
+flock -n /tmp/l -c Q
+flock /tmp/l -n -c Q
+flock -w 5 -c Q /tmp/l
+flock -w5 -c Q /tmp/l
+flock -w5 /tmp/l -c Q
+flock --timeout=5 /tmp/l -c Q
+flock --timeout 5 /tmp/l -c Q
+flock -E 3 /tmp/l -c Q
+flock 9 -c Q
+flock -s /tmp/l -c Q
+flock -o /tmp/l -c Q
+flock -F /tmp/l -c Q
+flock /tmp/l sh -c Q
+flock /tmp/l "sh -c Q"
+flock /tmp/l -c "flock /tmp/m -c Q"
+flock /tmp/l flock /tmp/m @
+flock /tmp/l -c "sudo @"
+/usr/bin/flock /tmp/l -c Q
+/usr/bin/flock /tmp/l @
+flock -c "cd d && @" /tmp/l
+flock /tmp/l -c "cd d; @"
+flock /tmp/l -c "ls && @"
+chroot /srv @
+chroot -- /srv @
+chroot --userspec=bob /srv @
+chroot --userspec bob /srv @
+chroot --groups=a /srv @
+chroot --skip-chdir /srv @
+chroot /srv sh -c Q
+chroot /srv "sh -c Q"
+chroot /srv bash -c Q
+/usr/sbin/chroot /srv @
+watch @
+watch -n 2 @
+watch -n2 @
+watch --interval=2 @
+watch --interval 2 @
+watch -- @
+watch -x @
+watch -dn 2 @
+watch -dn2 @
+watch -cn 2 @
+watch -nd 2 @
+watch -d -n 2 @
+watch -t -n 2 @
+watch -tdn 2 @
+watch -e @
+watch -g @
+watch Q
+watch -n 2 Q
+watch -x Q
+watch -- Q
+watch "sh -c Q"
+watch -n 2 "sh -c Q"
+watch -n 2 'ls && @'
+watch 'ls; @'
+watch --color Q
+watch -b -n 2 Q
+watch -p -n 2 Q
+watch -w Q
+watch --differences Q
+watch --differences=cumulative Q
+watch -d=cumulative Q
+watch -d cumulative Q
+watch -q Q
+watch --interval=2 --differences Q
+watch -n 2 -d -t Q
+/usr/bin/watch Q
+/usr/bin/watch -n 2 @
+timeout 5 doas @
+timeout 5 su -c Q
+timeout 5 flock /tmp/l @
+timeout 5 flock /tmp/l -c Q
+timeout 5 chroot /srv @
+timeout 5 watch @
+timeout 5 watch Q
+nice doas @
+nice -n 5 flock /tmp/l -c Q
+nice watch Q
+nice su -c Q
+env doas @
+env FOO=1 flock /tmp/l -c Q
+env su -c Q
+env watch Q
+env chroot /srv @
+xargs doas @
+xargs flock /tmp/l -c Q
+xargs su -c Q
+xargs watch Q
+xargs -n 1 watch Q
+ssh host doas @
+ssh host flock /tmp/l -c Q
+ssh host su -c Q
+ssh host watch Q
+ssh host chroot /srv @
+ssh host "watch Q"
+ssh host "flock /tmp/l -c Q"
+ssh host "su -c Q"
+doas flock /tmp/l -c Q
+doas watch Q
+doas su -c Q
+doas chroot /srv @
+sudo flock /tmp/l -c Q
+sudo watch Q
+sudo chroot /srv @
+sudo doas @
+flock /tmp/l doas @
+flock /tmp/l watch Q
+flock /tmp/l su -c Q
+flock /tmp/l chroot /srv @
+watch doas @
+watch flock /tmp/l -c Q
+watch su -c Q
+watch -n 2 flock /tmp/l -c Q
+watch -n 2 sudo @
+chroot /srv doas @
+chroot /srv flock /tmp/l -c Q
+chroot /srv su -c Q
+su -c "flock /tmp/l -c Q"
+su -c "watch Q"
+su -c "doas @"
+su -c "su -c Q"
+su -c "sudo @"
+sudo su -c "su -c Q"
+flock --command=Q -n /tmp/l
+flock -n --command=Q /tmp/l
+flock -c Q -- /tmp/l
+flock -n 9 -c Q
+sudo flock /tmp/l watch Q
+flock /tmp/l watch -n 2 Q
+timeout 5 flock /tmp/l watch Q
+watch -n 2 -- Q
+watch -- -n Q
+watch --precise Q
+watch --no-title Q
+watch -t Q
+sudo -u bob watch Q
+doas -u bob watch Q
+su -c Q -s /bin/sh bob
+su -c Q root
+su - -c Q
+su -lc Q root
+su --login -c Q
+su -l bob -c Q
+su -m -c Q
+su --preserve-environment -c Q
+su --shell=/bin/sh -c Q
+su -s /bin/sh bob -c Q
+su -g grp -c Q
+su -w VAR -c Q
+su -P -c Q
+su -T -c Q
+su -c Q -- bob
+su -c "ls" -c Q
+su -c "cd d && @"
+doas -s
+doas -L @
+doas -u root -C /etc/doas.conf @
+doas -- -u @
+flock -n -E 9 /tmp/l @
+flock -E9 /tmp/l @
+flock --conflict-exit-code 9 /tmp/l @
+flock --nonblock /tmp/l @
+flock --exclusive --nonblock /tmp/l @
+flock --no-fork /tmp/l @
+flock --shared /tmp/l @
+flock -xn /tmp/l @
+flock -xw 5 /tmp/l @
+flock -w 5 -n /tmp/l @
+flock /tmp/l -E 9 @
+flock /tmp/l -n @
+chroot --userspec=bob:grp --skip-chdir /srv @
+chroot -u bob /srv @
+chroot --groups a,b /srv @
+chroot /srv -- @
+sudo chroot --userspec bob /srv @
+nice -n 5 doas @
+env -i doas @
+env -u X watch Q
+xargs -I{} flock /tmp/l -c Q
+xargs -0 su -c Q
+setsid flock /tmp/l -c Q
+nohup watch Q
+exec flock /tmp/l -c Q
+command flock /tmp/l -c Q
+time flock /tmp/l -c Q
+stdbuf -o0 flock /tmp/l -c Q
+ionice -c 3 flock /tmp/l -c Q
+sudo -E flock /tmp/l -c Q
+sudo -Eu bob watch Q
+sudo -nE flock /tmp/l -c Q
+su -c'@'
+su -lc'@'
+su -c@
+flock -c'@' /tmp/l
+flock /tmp/l -c'@'
+flock -nc'@' /tmp/l
+flock --command='@' /tmp/l
+sudo flock -c'@' /tmp/l
+timeout 5 su -lc'@'
+runuser -u bob -- @
+runuser -u bob @
+runuser -l bob -c Q
+runuser bob -c Q
+runuser -c Q bob
+runuser -c'@' bob
+script -c Q /dev/null
+script -qc Q /dev/null
+script --command Q /dev/null
+script --command=Q /dev/null
+script -qec Q /dev/null
+systemd-run @
+systemd-run --wait -- @
+systemd-run -p MemoryMax=1G @
+systemd-run --wait --pipe sh -c Q
+unbuffer -p @
+taskset 0x1 @
+taskset -c 0 @
+chrt -f 1 @
+chrt --fifo 1 @
+nsenter -t 1 -m -- @
+unshare --mount @
+strace -f @
+ltrace @
+parallel -j1 @
+pkexec --user bob @
+sg grp -c Q
+sg grp Q
+setpriv --reuid 1000 @
+caffeinate -i @
+firejail @
+bwrap --bind / / @
+xvfb-run -a @
+dbus-run-session -- @
+proxychains4 -q @
+torsocks @
+rlwrap @
+cpulimit -l 50 -- @
+tmux new-session -d Q
+tmux send-keys Q Enter
+screen -dm @
+dtach -n x @
+stdbuf -o L @
+ionice -n 5 -c 2 @
+setsid -w @
+exec -a x @
+exec @
+sudo -s Q
+sudo -i Q
