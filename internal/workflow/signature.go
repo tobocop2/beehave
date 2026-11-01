@@ -213,6 +213,8 @@ func negativeKind(e *syntax.UnaryExpr) Kind {
 // kindOf is the kind of a literal expression, or KindAny for an expression that the check cannot read before the run.
 func kindOf(expr syntax.Expr) Kind {
 	switch e := expr.(type) {
+	case *syntax.ParenExpr:
+		return kindOf(e.X)
 	case *syntax.Literal:
 		return literalKind(e)
 	case *syntax.UnaryExpr:

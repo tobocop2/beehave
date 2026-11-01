@@ -135,6 +135,15 @@ func TestCheck_ChecksEachLiteralKindOfForbidCommands(t *testing.T) {
 	assert.Contains(t, got[1], "forbid_commands has the unknown kind 3. Use one of: bulk-staging,")
 }
 
+func TestCheck_ChecksAParenthesisedForbidCommands(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    agent(\"p\", \"m\", forbid_commands = (\"git-write\", \"nope\"))\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], `forbid_commands has the unknown kind "nope". Use one of: bulk-staging,`)
+}
+
 func TestCheck_LeavesANonLiteralForbidCommandsToTheRun(t *testing.T) {
 	t.Parallel()
 
