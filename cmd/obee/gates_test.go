@@ -373,6 +373,24 @@ func TestProjectGate_RefusesWhatItCannotRunWithoutRunningTheGate(t *testing.T) {
 	}
 }
 
+func TestProjectGate_ALocalGateThatTheTimeoutKillsIsNotAnExitCode(t *testing.T) {
+	t.Parallel()
+
+	local := func(binary, dir string, timeout time.Duration) proc.Runner {
+		return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
+	}
+	gate := projectGate{programs: programs{local: local}, timeout: 200 * time.Millisecond}
+
+	started := time.Now()
+	_, code := gate.shell(t.Context(), t.TempDir(), "echo partial; exec sleep 30")
+
+	assert.Equal(t, igate.ExitTimedOut, code, "a real kill by the local runner")
+	assert.Less(t, time.Since(started), 20*time.Second)
+
+	_, own := gate.shell(t.Context(), t.TempDir(), "exit 124")
+	assert.Equal(t, 124, own, "a command that exits 124 on its own is a failure, not a timeout")
+}
+
 func TestProjectGate_AStatusThatGitCannotReadEndsTheGate(t *testing.T) {
 	t.Parallel()
 

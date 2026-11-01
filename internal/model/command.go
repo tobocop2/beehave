@@ -9,6 +9,8 @@ type CommandResult struct {
 	Stderr   string
 	// SetupErr is set when the runner could not set up the call (a process cap that cannot be counted or set). The command did not start. It is never set from the output of the command.
 	SetupErr error
+	// TimedOut is set when the time limit of the runner killed the command. A command that exits 124 on its own does not set it.
+	TimedOut bool
 }
 
 // ReportLimit is the most bytes of command output that obee keeps. The tail of an output holds the findings.

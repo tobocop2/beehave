@@ -140,7 +140,7 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return "", "", err
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw, host), pinFile(raw, host))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw), pinFile(raw, host))
 }
 
 // tables returns the host block, the visibility and the sandbox mode of a project.
@@ -244,19 +244,11 @@ func pinFile(raw rawProject, host string) error {
 	return nil
 }
 
-// testReport refuses a test_report that is set and empty, or set for a gate on a build host. An unset key is refused for a local gate:
-// it has no test count, so a gate that exits 0 with no test would pass. A gate on a build host cannot use test_report, so it is allowed.
-func testReport(raw rawProject, host string) error {
+// testReport refuses an unset test_report, and one that is set and empty. A gate with no test count would pass when it exits 0 with no test,
+// on this machine and on a build host alike.
+func testReport(raw rawProject) error {
 	if !raw.TestReport.Set {
-		if host == LocalHost {
-			return refuseAt(raw.At, "`test_report` is not set. A local gate that sets no `test_report` has no test count, so a gate that exits 0 with no test would pass. Set `test_report` to a glob for the JUnit XML files of the gate, for example `test_report = \"reports/*.xml\"`.")
-		}
-
-		return nil
-	}
-
-	if host != LocalHost {
-		return refuseAt(raw.At, "`test_report` is set with `build_host = %q`. The report is read only from a local gate. Remove `test_report` or set `build_host = %q`.", host, LocalHost)
+		return refuseAt(raw.At, "`test_report` is not set. A gate that sets no `test_report` has no test count, so a gate that exits 0 with no test would pass. Set `test_report` to a glob for the JUnit XML files of the gate, for example `test_report = \"reports/*.xml\"`.")
 	}
 
 	return requireText(raw.At, "test_report", raw.TestReport.Value)

@@ -14,10 +14,12 @@ import (
 )
 
 // goodProject is the argument list of a project call that loads. A test adds arguments after it.
-// hostProject has no test_report: a project with a build host cannot set it.
-const hostProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
+// unreportedProject has no test_report, which the loader refuses for a gate on this machine and for a gate on a build host.
+const unreportedProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
 
-const goodProject = hostProject + `, test_report = "reports/*.xml"`
+const hostProject = unreportedProject + `, test_report = "reports/*.xml"`
+
+const goodProject = hostProject
 
 const goodRunner = "runner(name = \"a\", agent = \"claude\", config_dir = \"~/c\")\n"
 
@@ -163,8 +165,6 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 		args := hostProject + `, build_host = "` + name + `"`
 		if name != "local" {
 			args += ", host = " + hostCall("")
-		} else {
-			args += `, test_report = "reports/*.xml"`
 		}
 
 		project, problems = loadProjectText(t, call(args))
@@ -283,33 +283,26 @@ func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
 	require.Contains(t, problems[0].Error(), "`test_report` must be a non-empty string")
 }
 
-func TestLoadFolder_ATestReportOnABuildHostIsRefusedAndNamesTheKeyAndTheReason(t *testing.T) {
+func TestLoadFolder_ATestReportOnABuildHostIsAccepted(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadProjectText(t, call(hostProject+`, build_host = "gpu-a", host = `+hostCall("")+`, test_report = "out/*.xml"`))
+	project, problems := loadProjectText(t, call(hostProject+`, build_host = "gpu-a", host = `+hostCall("")))
 
-	require.Len(t, problems, 1)
-	require.Contains(t, problems[0].Error(), "`test_report`")
-	require.Contains(t, problems[0].Error(), "read only from a local gate")
-
-	_, problems = loadProjectText(t, call(hostProject+`, test_report = "out/*.xml"`))
 	require.Empty(t, problems)
+	require.Equal(t, "reports/*.xml", project.TestReport)
 }
 
-func TestLoadFolder_ALocalGateThatSetsNoTestReportIsRefusedAndNamesTheKey(t *testing.T) {
+func TestLoadFolder_AGateThatSetsNoTestReportIsRefusedOnThisMachineAndOnABuildHost(t *testing.T) {
 	t.Parallel()
 
-	for _, args := range []string{hostProject, hostProject + `, build_host = "local"`} {
+	for _, args := range []string{unreportedProject, unreportedProject + `, build_host = "local"`, unreportedProject + `, build_host = "gpu-a", host = ` + hostCall("")} {
 		_, problems := loadProjectText(t, call(args))
 
-		require.Len(t, problems, 1)
+		require.Len(t, problems, 1, args)
 		require.Contains(t, problems[0].Error(), "p.star:1:8:")
 		require.Contains(t, problems[0].Error(), "`test_report` is not set")
 		require.Contains(t, problems[0].Error(), "no test count")
 	}
-
-	_, problems := loadProjectText(t, call(hostProject+`, build_host = "gpu-a", host = `+hostCall("")))
-	require.Empty(t, problems, "a gate on a build host cannot use test_report, so it is not held to it")
 }
 
 func TestLoadFolder_ThePinFileKeyIsReadAnEmptyOneIsRefusedAndABuildHostIsRefused(t *testing.T) {
