@@ -562,6 +562,10 @@ func statusLine(info flow.RunInfo) string {
 		line += finishedNote(info)
 	}
 
+	if len(info.Others) > 0 {
+		line += "\tother orchestrators: " + oneLine(strings.Join(info.Others, "; "))
+	}
+
 	return line
 }
 

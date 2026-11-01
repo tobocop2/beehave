@@ -456,6 +456,7 @@ type harness struct {
 	hosts     hostStopper // nil unless a test sets it
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
+	others    *fakeOthers // nil unless a test sets it
 	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
 	sandboxDefault func(project string) bool
 	ticks          chan time.Time
@@ -535,6 +536,11 @@ func (h *harness) deps() Deps {
 	deps.Hosts = h.hosts
 	deps.Queue = h.queue
 	deps.Poll = h.poll
+
+	if h.others != nil {
+		deps.Others = h.others
+	}
+
 	deps.SandboxDefault = h.sandboxDefault
 
 	if h.picker != nil {

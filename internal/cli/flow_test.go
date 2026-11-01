@@ -499,6 +499,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-6-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
 		{ID: "item-7-r1", State: "running", Version: "v1", Stranded: true, OlderSteps: true},
 		{ID: "item-8-r1", State: "done", Closed: "the pull request was closed"},
+		{ID: "item-9-r1", State: "running", Others: []string{"ann: 3, 4", "bob: 7"}},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -510,7 +511,8 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
 		"item-6-r1\tstopped\tstopped at check rc 2: refused\n"+
 		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n"+
-		"item-8-r1\tdone\tended: the pull request was closed\n", stdout)
+		"item-8-r1\tdone\tended: the pull request was closed\n"+
+		"item-9-r1\trunning\tother orchestrators: ann: 3, 4; bob: 7\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 

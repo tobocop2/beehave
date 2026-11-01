@@ -208,8 +208,34 @@ func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error
 	}
 
 	saved, err := savedOwner(e.dir, workflowID(ctx))
+	if err != nil {
+		return "", time.Time{}, err
+	}
 
-	return cmp.Or(saved, recorded), took, err
+	owner := cmp.Or(saved, recorded)
+
+	return owner, took, e.listOthers(ctx, in, owner)
+}
+
+// listOthers reads the other orchestrators that hold items in the project and shows them, so status names them. The read is a recorded step.
+// A run with no one else shows nothing. A read that fails ends the run, because a failed read is not "nobody else runs".
+func (e *Engine) listOthers(ctx dbos.Context, in ItemInput, owner string) error {
+	if e.deps.Others == nil {
+		return nil
+	}
+
+	lines, err := runStep(e, ctx, othersStep, func(c context.Context) ([]string, error) {
+		return e.deps.Others.Others(c, in.Project, owner)
+	})
+	if err != nil {
+		return fmt.Errorf("%s of item %s: %w", othersStep, in.Item, err)
+	}
+
+	if len(lines) == 0 {
+		return nil
+	}
+
+	return show(ctx, in.Item, othersKey, lines, "the other orchestrators")
 }
 
 // lifecycle runs one step around the work of an item. The ready and release steps of the lifecycle plug in here.
@@ -244,7 +270,7 @@ func (e *Engine) waitOwner(ctx dbos.Context, item, question string) (string, err
 }
 
 // show sets an event of the run that status reads. what names the event for the error.
-func show(ctx dbos.Context, item, key, value, what string) error {
+func show[T any](ctx dbos.Context, item, key string, value T, what string) error {
 	if err := dbos.SetEvent(ctx, key, value); err != nil {
 		return fmt.Errorf("item %s cannot show %s: %w", item, what, err)
 	}

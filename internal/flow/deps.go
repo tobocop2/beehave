@@ -100,6 +100,12 @@ type lifecycle interface {
 	Release(ctx context.Context, project, item, owner string) error
 }
 
+// orchestrators lists the other orchestrators that run in the claim store of a project: one line for each, naming the owner and its items.
+// A store that cannot be read is an error and gives no list, so a failed read is never read as "nobody else runs".
+type orchestrators interface {
+	Others(ctx context.Context, project, owner string) ([]string, error)
+}
+
 // beats renews the claims of one owner in the tracker of a project.
 // A non-empty text means the tracker says the claim is gone. An error means the renewal could not run, and the claim can still be live.
 // The signature matches claim.Claims.Beat, plus the project.
@@ -242,6 +248,8 @@ type Deps struct {
 	Batch batchHost
 	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.
 	Queue queueReader
+	// Others lists the other orchestrators at the start of a run. A nil Others means the build cannot list them: the run lists none.
+	Others orchestrators
 	// Poll serves the scheduled review poll. A nil Poll means the build cannot read the forges: the engine sets no poll schedule.
 	Poll pollReader
 	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.

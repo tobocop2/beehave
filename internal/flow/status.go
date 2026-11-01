@@ -47,6 +47,8 @@ type RunInfo struct {
 	OlderSteps bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
 	Question string
+	// Others names the other orchestrators that held items when an open run started, one line for each: the owner and its items. It is empty when none did.
+	Others []string
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
 	SentBack string
 	// Closed is the text for the owner when the pull request of a finished run was closed with no merge. An empty text means it was not.
@@ -216,10 +218,7 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 
 	switch {
 	case !run{Status: row}.terminal():
-		info.Question, err = c.questionOf(row.ID)
-		if err == nil {
-			info.Merge, err = c.mergeOf(row.ID)
-		}
+		err = c.openDetails(row.ID, info)
 	case info.State == runDone:
 		var result ItemResult
 
@@ -235,6 +234,23 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 	return err
 }
 
+// openDetails reads what an open run shows: its question, the other orchestrators it found and its merge state.
+func (c *Client) openDetails(id string, info *RunInfo) error {
+	var err error
+
+	if info.Question, err = c.questionOf(id); err != nil {
+		return err
+	}
+
+	if info.Others, err = c.othersOf(id); err != nil {
+		return err
+	}
+
+	info.Merge, err = c.mergeOf(id)
+
+	return err
+}
+
 // questionOf reads the question an open run asks the owner.
 func (c *Client) questionOf(id string) (string, error) {
 	question, err := dbos.GetEvent[string](c.flow, id, questionKey, questionReadLimit)
@@ -244,6 +260,16 @@ func (c *Client) questionOf(id string) (string, error) {
 	}
 
 	return question, nil
+}
+
+// othersOf reads the other orchestrators that the run found at its start. A run that found none sets nothing.
+func (c *Client) othersOf(id string) ([]string, error) {
+	lines, err := dbos.GetEvent[[]string](c.flow, id, othersKey, questionReadLimit)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return nil, fmt.Errorf("read the other orchestrators of %s: %w", id, err)
+	}
+
+	return lines, nil
 }
 
 // mergeOf reads the state that an open run sets while its merge step waits for the owner.

@@ -422,6 +422,9 @@ var (
 // pullListLimit is the limit of one pull request search. A list at the limit is refused, so it must be larger than one.
 const pullListLimit = 5
 
+// namedListLimit is the limit of the search for pull requests that name an item. A list at the limit is refused, so it must be larger than the open pull requests that can match.
+const namedListLimit = 50
+
 // pulls reads and changes the pull request of an item. The pull request is the one on the branch that is named for the item.
 type pulls struct {
 	projects map[string]config.Project
@@ -645,16 +648,69 @@ func (p pulls) Preflight(ctx context.Context, project, item string, req prefligh
 	return preflight.Check(ctx, built, req, hold)
 }
 
-// anyState returns the number of the pull request of the item: the open one first, then the merged one, then the newest closed one. It is 0 when there is none.
+// anyState returns the number of the pull request of the item: the open one on its branch, then an open one that names it, then the merged one, then the newest closed one. It is 0 when there is none.
 func anyState(ctx context.Context, built forge.Forge, item string) (int, error) {
-	for _, state := range []string{"open", "merged"} {
-		number, err := listed(ctx, built, item, state)
-		if err != nil || number != 0 {
-			return number, err
-		}
+	number, err := listed(ctx, built, item, "open")
+	if err != nil || number != 0 {
+		return number, err
+	}
+
+	// An open pull request that names the item outranks a merged or closed one on its branch: the item is not free.
+	number, err = namedBy(ctx, built, item)
+	if err != nil || number != 0 {
+		return number, err
+	}
+
+	number, err = listed(ctx, built, item, "merged")
+	if err != nil || number != 0 {
+		return number, err
 	}
 
 	return newestListed(ctx, built, item, "closed")
+}
+
+// mentionRun is one run of the characters an item id or a #N reference is made of. The text of a pull request is cut into such runs.
+var mentionRun = regexp.MustCompile(`[\w#.-]+`)
+
+// namedBy returns the number of an open pull request that names the item in its title or body, or 0 when none does.
+// It finds work on a branch that is not the item: a person or another run opened it under its own branch name.
+// Any mention counts, as in "Closes #7", "see #7" or "follow-up to #7": a passing mention makes the item not free. This is the safe direction.
+// The search is loose, so the text of each pull request is matched again on the whole item id.
+func namedBy(ctx context.Context, built forge.Forge, item string) (int, error) {
+	term := mention(item)
+
+	rows, err := built.PRList(ctx, namedListLimit, "--state", "open", "--search", term+" in:title,body", "--json", "number,title,body")
+	if err != nil {
+		return 0, fmt.Errorf("search the pull requests that name item %s: %w", item, err)
+	}
+
+	for _, row := range rows {
+		if names(row.Title, term) || names(row.Body, term) {
+			return row.Number, nil
+		}
+	}
+
+	return 0, nil
+}
+
+// names reports whether the text holds the term as a whole run. One full stop that ends a sentence after the term does not count as part of it.
+func names(text, term string) bool {
+	for _, run := range mentionRun.FindAllString(text, -1) {
+		if run == term || run == term+"." {
+			return true
+		}
+	}
+
+	return false
+}
+
+// mention is the text a pull request holds when it names the item: #N for a number of the forge, the id for any other.
+func mention(item string) string {
+	if model.ItemKind(item) == model.KindForge {
+		return "#" + item
+	}
+
+	return item
 }
 
 // newestListed returns the number of the newest pull request in the state on the branch of the item, or 0 when there is none.
@@ -808,6 +864,23 @@ func (l leases) Claim(ctx context.Context, project, item string) (string, error)
 	}
 
 	return owner, nil
+}
+
+// Others lists the other orchestrators that hold items in the project, one line for each: the owner and its items. A store that cannot be read is an error.
+func (l leases) Others(ctx context.Context, project, owner string) ([]string, error) {
+	var lines []string
+
+	err := l.with(ctx, project, func(claims *claim.Claims) error {
+		others, err := claims.Others(ctx, owner)
+
+		for _, other := range others {
+			lines = append(lines, other.Holder+": "+strings.Join(other.Items, ", "))
+		}
+
+		return err
+	})
+
+	return lines, err
 }
 
 // Release gives the item back for the owner.
