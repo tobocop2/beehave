@@ -17,7 +17,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent unknown keyword", `agent(prompt = "p", model = "m", stop_on_code = 1)`, "agent takes no argument stop_on_code. Use one of: prompt, model,"},
 		{"agent missing prompt", `agent(model = "m")`, "agent needs the `prompt` keyword"},
 		{"agent missing model", `agent(prompt = "p")`, "agent needs the `model` keyword"},
-		{"agent bad follow_ups", `agent(prompt = "p", model = "m", follow_ups = "maybe")`, `follow_ups is "maybe". Use one of: allow, forbid.`},
+		{"agent bad follow_ups", `agent(prompt = "p", model = "m", follow_ups = "maybe")`, `follow_ups is "maybe". Use one of: allow, forbid, audit.`},
 		{"agent text for a list", `agent(prompt = "p", model = "m", outputs = "verdict")`, "outputs must be a list, not a text."},
 		{"agent text for the allowed paths", `agent(prompt = "p", model = "m", allow_paths = "papers/**")`, "allow_paths must be a list, not a text."},
 		{"agent text for the protected paths", `agent(prompt = "p", model = "m", protect_paths = "/own/checkout")`, "protect_paths must be a list, not a text."},

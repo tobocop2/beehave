@@ -16,6 +16,9 @@ const (
 	outputFindings = "findings"
 	verdictChanges = "changes"
 	verdictReject  = "reject"
+	// verdictClean and verdictFindings are the two verdicts of an audit of merged work.
+	verdictClean    = "clean"
+	verdictFindings = "findings"
 )
 
 // findingClasses lists the classes that a finding may have.
@@ -23,25 +26,30 @@ func findingClasses() []review.Class {
 	return []review.Class{review.Blocking, review.Deferred, review.PreExisting, review.Minor}
 }
 
-// followUps reads the follow_ups argument of an agent call: true when the workflow forbids follow-ups. A value that is not listed is an error.
-// A call that forbids follow-ups must declare the output verdict, because the option sets it.
-func followUps(mode string, declared []string) (forbid bool, err error) {
+// followUps reads the follow_ups argument of an agent call and returns the mode when the workflow sets the verdict from the findings
+// ("forbid" or "audit"), or an empty text for "allow". A value that is not listed is an error.
+// A call in either mode must declare the output verdict, because the option sets it.
+func followUps(mode string, declared []string) (string, error) {
 	if !slices.Contains(workflow.FollowUpModes(), mode) {
-		return false, fmt.Errorf("follow_ups is %q. Use one of: %s", mode, strings.Join(workflow.FollowUpModes(), ", "))
+		return "", fmt.Errorf("follow_ups is %q. Use one of: %s", mode, strings.Join(workflow.FollowUpModes(), ", "))
 	}
 
-	forbid = mode == workflow.FollowUpsForbid
-	if forbid && !slices.Contains(declared, outputVerdict) {
-		return false, fmt.Errorf("follow_ups is %q, so outputs must list %q", mode, outputVerdict)
+	if mode == workflow.FollowUpsAllow {
+		return "", nil
 	}
 
-	return forbid, nil
+	if !slices.Contains(declared, outputVerdict) {
+		return "", fmt.Errorf("follow_ups is %q, so outputs must list %q", mode, outputVerdict)
+	}
+
+	return mode, nil
 }
 
-// applyFollowUps lets the policy of the workflow overrule the verdict. It reads the findings that the agent wrote, asks review.NeedsCommit
-// and, when a finding needs a commit, sets the verdict to changes. When no finding needs a commit, the verdict stays as the agent wrote it.
+// applyFollowUps lets the policy of the workflow overrule the verdict. It reads the findings that the agent wrote.
+// With "forbid", it asks review.NeedsCommit and, when a finding needs a commit, sets the verdict to changes; otherwise the verdict stays as the agent wrote it.
+// With "audit", any open finding sets the verdict to findings and none sets it to clean, whatever the agent wrote.
 // The result says what is wrong with the findings, so the caller can run the agent again.
-func applyFollowUps(outputs map[string]any, written map[string]any) string {
+func applyFollowUps(mode string, outputs map[string]any, written map[string]any) string {
 	raw, ok := written[outputFindings]
 	if !ok || raw == nil {
 		return fmt.Sprintf("the agent did not write the output %q", outputFindings)
@@ -52,12 +60,27 @@ func applyFollowUps(outputs map[string]any, written map[string]any) string {
 		return problem
 	}
 
-	// A reject ends the loop with no fix round, so open findings do not turn it into changes.
-	if outputs[outputVerdict] != verdictReject && review.NeedsCommit(findings, review.Policy{NoFollowUps: true}) {
-		outputs[outputVerdict] = verdictChanges
-	}
+	outputs[outputVerdict] = followUpVerdict(mode, outputs[outputVerdict], findings)
 
 	return ""
+}
+
+// followUpVerdict returns the verdict that the mode gives for the open findings. written is the verdict of the agent.
+func followUpVerdict(mode string, written any, findings []review.Finding) any {
+	if mode == workflow.FollowUpsAudit {
+		if len(findings) > 0 {
+			return verdictFindings
+		}
+
+		return verdictClean
+	}
+
+	// A reject ends the loop with no fix round, so open findings do not turn it into changes.
+	if written != verdictReject && review.NeedsCommit(findings, review.Policy{NoFollowUps: true}) {
+		return verdictChanges
+	}
+
+	return written
 }
 
 // readFindings converts the findings output into review findings. The second result says what is wrong with it.

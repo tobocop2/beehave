@@ -105,7 +105,7 @@ func TestAgentStep_ABadFollowUpsValueThatTheCheckCannotSeeIsRefusedWhenTheCallRu
 
 		_, err := rig.run(t, flow, "x")
 
-		require.ErrorContains(t, err, "follow_ups is "+value+". Use one of: allow, forbid", value)
+		require.ErrorContains(t, err, "follow_ups is "+value+". Use one of: allow, forbid, audit", value)
 		assert.Empty(t, rig.h.agents.seen(), value)
 	}
 }
@@ -120,4 +120,45 @@ func TestAgentStep_ForbiddenFollowUpsNeedTheVerdictInTheDeclaredOutputs(t *testi
 
 	require.ErrorContains(t, err, `follow_ups is "forbid", so outputs must list "verdict"`)
 	assert.Empty(t, rig.h.agents.seen())
+}
+
+func TestAgentStep_AnAuditCallTurnsAnyOpenFindingIntoTheVerdictFindings(t *testing.T) {
+	t.Parallel()
+
+	for _, class := range []string{"minor", "deferred", "pre-existing", "blocking"} {
+		rig := newAgentRig(t)
+		rig.reply(`{"verdict":"clean","findings":[{"class":"`+class+`","text":"x"}]}`, exited)
+
+		_, err := rig.run(t, followUpFlow(`follow_ups = "audit", `), "Write to {{ .output_file }}\n")
+
+		require.NoError(t, err, class)
+		assert.Equal(t, []string{"show findings"}, rig.h.commands.ran(), class)
+	}
+}
+
+func TestAgentStep_AnAuditCallWithNoOpenFindingIsClean(t *testing.T) {
+	t.Parallel()
+
+	for _, written := range []string{"clean", "findings", "approve"} {
+		rig := newAgentRig(t)
+		rig.reply(`{"verdict":"`+written+`","findings":[]}`, exited)
+
+		_, err := rig.run(t, followUpFlow(`follow_ups = "audit", `), "Write to {{ .output_file }}\n")
+
+		require.NoError(t, err, written)
+		assert.Equal(t, []string{"show clean"}, rig.h.commands.ran(), written)
+	}
+}
+
+func TestAgentStep_AnAuditCallNeedsTheVerdictAndTheFindings(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	_, err := rig.run(t, bodyFlow("mode = \"audit\"\na = "+agentCallText(`follow_ups = mode, `)), "x")
+	require.ErrorContains(t, err, `follow_ups is "audit", so outputs must list "verdict"`)
+
+	rig = newAgentRig(t)
+	rig.reply(`{"verdict":"clean"}`, exited)
+	_, err = rig.run(t, followUpFlow(`follow_ups = "audit", `), "Write to {{ .output_file }}\n")
+	require.ErrorContains(t, err, `the agent did not write the output "findings"`)
 }

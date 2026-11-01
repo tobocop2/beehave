@@ -93,7 +93,7 @@ func TestCheck_RefusesABadFollowUpsValueAtItsPlaceAndAcceptsTheListedOnes(t *tes
 		require.Len(t, found, 1, value)
 		assert.Equal(t, 2, found[0].Line, value)
 		assert.Equal(t, 58, found[0].Col, value)
-		assert.Contains(t, found[0].Text, "follow_ups is "+value+". Use one of: allow, forbid.")
+		assert.Contains(t, found[0].Text, "follow_ups is "+value+". Use one of: allow, forbid, audit.")
 		assert.False(t, unparsed)
 	}
 }
@@ -123,6 +123,20 @@ func TestCheck_ALiteralForbidWhoseLiteralOutputsLackTheVerdictIsRefusedAtTheValu
 
 		assert.Empty(t, found, accepted)
 	}
+}
+
+func TestCheck_ALiteralAuditWhoseLiteralOutputsLackTheVerdictIsRefusedAtTheValue(t *testing.T) {
+	t.Parallel()
+
+	const head = "def main(item):\n    return agent(model = \"m\", prompt = \"p\", "
+
+	found, _ := workflow.Check(folder(t, map[string]string{"workflow.star": head + `outputs = ["text"], follow_ups = "audit")` + "\n"}, "workflow.star"))
+
+	require.Len(t, found, 1)
+	assert.Contains(t, found[0].Text, `follow_ups is "audit", so outputs must list "verdict"`)
+
+	found, _ = workflow.Check(folder(t, map[string]string{"workflow.star": head + `outputs = ["verdict"], follow_ups = "audit")` + "\n"}, "workflow.star"))
+	assert.Empty(t, found)
 }
 
 func TestCheck_ALiteralFollowUpsInACallThatIsNotAnAgentCallOrIsPositionalIsLeftAlone(t *testing.T) {

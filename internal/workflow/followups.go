@@ -7,13 +7,15 @@ import (
 )
 
 // The values of the follow_ups argument of an agent call. With FollowUpsForbid, a review that leaves any finding open needs a commit.
+// With FollowUpsAudit, the call audits merged work: no commit follows, and the verdict is derived from the findings.
 const (
 	FollowUpsAllow  = "allow"
 	FollowUpsForbid = "forbid"
+	FollowUpsAudit  = "audit"
 )
 
 // FollowUpModes lists the values that follow_ups takes.
-func FollowUpModes() []string { return []string{FollowUpsAllow, FollowUpsForbid} }
+func FollowUpModes() []string { return []string{FollowUpsAllow, FollowUpsForbid, FollowUpsAudit} }
 
 // The values of the kind argument of an agent call. A review step runs on the review queue, an implement step on the agents queue.
 // A call with no kind is an implement step.
@@ -48,8 +50,12 @@ func (g *graph) followUps(call *syntax.CallExpr) {
 	args := followUpArguments(call)
 	value, outputs := args.value, args.outputs
 
-	if value != nil && isForbid(value) && !mayListVerdict(outputs) {
-		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("follow_ups is %q, so outputs must list %q", FollowUpsForbid, "verdict"))
+	if value == nil || mayListVerdict(outputs) {
+		return
+	}
+
+	if mode, isMode := derivesVerdict(value); isMode {
+		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("follow_ups is %q, so outputs must list %q", mode, "verdict"))
 	}
 }
 
@@ -77,11 +83,16 @@ func followUpArguments(call *syntax.CallExpr) (found followUpArgs) {
 // followUpArgs holds the follow_ups and outputs expressions of a call.
 type followUpArgs struct{ value, outputs syntax.Expr }
 
-// isForbid says whether the value is the literal "forbid".
-func isForbid(value syntax.Expr) bool {
+// derivesVerdict says whether the value is the literal "forbid" or "audit", the modes that set the output verdict, and returns the mode.
+func derivesVerdict(value syntax.Expr) (string, bool) {
 	lit, ok := value.(*syntax.Literal)
+	if !ok {
+		return "", false
+	}
 
-	return ok && lit.Value == FollowUpsForbid
+	mode, isText := lit.Value.(string)
+
+	return mode, isText && (mode == FollowUpsForbid || mode == FollowUpsAudit)
 }
 
 // mayListVerdict says whether the outputs argument of a call can list the verdict. An absent argument and a list of literals without it cannot.
