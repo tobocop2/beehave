@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	localProject = `source = "/srv/repo", base_branch = "main", gate = "make check"`
-	tail         = `base_branch = "main", gate = "g"`
+	localProject = `source = "/srv/repo", base_branch = "main", gate = "make check", test_report = "r.xml"`
+	tail         = `base_branch = "main", gate = "g", test_report = "r.xml"`
+	// hostTail has no test_report: a project with a build host cannot set it.
+	hostTail = `base_branch = "main", gate = "g"`
 )
 
 func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapters(t *testing.T) {
@@ -22,7 +24,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", BaseBranch: "main", Gate: "make check", BuildHost: "local",
+		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -70,7 +72,7 @@ func TestLoadFolder_ASourceThatIsAUrlOrAPathWithALocalHostIsKept(t *testing.T) {
 		require.Equal(t, source, project.Source)
 	}
 
-	project, problems := loadProjectText(t, call(`source = "https://example.com/o/n.git", `+tail+`, build_host = "gpu", host = `+hostCall("")))
+	project, problems := loadProjectText(t, call(`source = "https://example.com/o/n.git", `+hostTail+`, build_host = "gpu", host = `+hostCall("")))
 	require.Empty(t, problems)
 	require.Equal(t, "gpu", project.BuildHost)
 }
@@ -100,7 +102,7 @@ func TestLoadFolder_AScpStyleSourceIsAGitUrlWithOrWithoutAUser(t *testing.T) {
 	t.Parallel()
 
 	for _, source := range []string{"git@host:o/n.git", "host:o/n.git", "ssh://host/o/n.git"} {
-		project, problems := loadProjectText(t, call(`source = "`+source+`", `+tail+`, build_host = "gpu", host = `+hostCall("")))
+		project, problems := loadProjectText(t, call(`source = "`+source+`", `+hostTail+`, build_host = "gpu", host = `+hostCall("")))
 
 		require.Empty(t, problems, source)
 		require.Equal(t, source, project.Source)
@@ -134,10 +136,10 @@ func TestLoadFolder_TheSourceRefusals(t *testing.T) {
 		{"dot_source", call(`source = "./repo", ` + tail), "p.star:1:8: `source` must be a git URL or an absolute path; got `./repo`"},
 		{"blank_source", call(`source = " ", ` + tail), "p.star:1:8: `source` must be a non-empty string"},
 		{
-			"path_source_with_a_remote_build_host", call(`tracker = "local", ` + src + tail + `, build_host = "gpu", host = ` + hostCall("")),
+			"path_source_with_a_remote_build_host", call(`tracker = "local", ` + src + hostTail + `, build_host = "gpu", host = ` + hostCall("")),
 			"p.star:1:8: a path `source` needs `build_host = \"local\"`, because the host \"gpu\" cannot read a path on this machine. Use a git URL for `source`.",
 		},
-		{"tilde_path_source_with_a_remote_build_host", call(`source = "~/repo", ` + tail + `, build_host = "gpu", host = ` + hostCall("")), "p.star:1:8: a path `source` needs `build_host = \"local\"`"},
+		{"tilde_path_source_with_a_remote_build_host", call(`source = "~/repo", ` + hostTail + `, build_host = "gpu", host = ` + hostCall("")), "p.star:1:8: a path `source` needs `build_host = \"local\"`"},
 		{"github_tracker_without_repo", call(`tracker = "github", ` + src + tail), "p.star:1:8: `repo` must be a non-empty string"},
 		{"github_forge_without_repo", call(`forge = "github", ` + tail), "p.star:1:8: `repo` must be a non-empty string"},
 		{"beads_tracker_without_prefix", call(`tracker = "beads", ` + src + tail), "p.star:1:8: `beads_prefix` must be a non-empty string"},

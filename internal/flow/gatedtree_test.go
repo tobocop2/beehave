@@ -41,7 +41,7 @@ func TestMergeStep_TheTreeThatTheGateRecordedReachesTheMerge(t *testing.T) {
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Tree: "tree-1"}}
 
-	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\nmerge(head = c.head, tree = c.tree, merge = True, name = \"ship\")\n"))
+	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\nmerge(head = c.head, tree = c.tree, steps = c.steps, merge = True, name = \"ship\")\n"))
 
 	require.NoError(t, err)
 	require.Len(t, h.merge.given, 1)
@@ -66,7 +66,7 @@ func TestMergeStep_AnExplicitEmptyTreeIsRefusedBeforeAnyMergeAndTheMessageSaysWh
 	for name, text := range map[string]string{
 		"a literal": shipFlow(`merge = True, tree = "", `),
 		"the tree of a gate that runs a program": bodyFlow("c = gate(run = [\"true\"], name = \"check\")\n" +
-			"merge(head = \"" + gatedHead + "\", tree = c.tree, merge = True, name = \"ship\")\n"),
+			"merge(head = \"" + gatedHead + "\", tree = c.tree, steps = c.steps, merge = True, name = \"ship\")\n"),
 	} {
 		h := mergeHarness(t, merge.Result{Stop: merge.Done})
 

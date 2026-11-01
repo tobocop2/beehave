@@ -84,7 +84,7 @@ func TestDoctor_EveryCheckPassesOnAGoodMachine(t *testing.T) {
 	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
 }
 
-const localProjectFile = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n"
+const localProjectFile = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
 func TestDoctor_AProjectWithNoBeadsAndNoGithubNeedsOnlyGit(t *testing.T) {
 	t.Parallel()
@@ -118,7 +118,7 @@ func TestDoctor_OnlyTheBeadsProjectNeedsBdAndOnlyTheGithubProjectNeedsGh(t *test
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", claims = \"beads\", beads_prefix = \"p\")\n")
+	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", claims = \"beads\", beads_prefix = \"p\")\n")
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())

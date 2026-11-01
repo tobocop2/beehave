@@ -17,7 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/store"
 )
 
-const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n"
+const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
 var errNoItem = store.Refuse("no item fix-login in project p. Add it: obee item add")
 

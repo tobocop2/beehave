@@ -6,4 +6,5 @@ project(
     source = "~/work/your-repo",  # any git repository; the work folder of the item is a branch of it
     base_branch = "main",
     gate = "true",  # the workflow runs no gate step, so the command does not matter
+    test_report = "reports/*.xml",  # a local gate needs a test count, so the loader requires this key even when no gate step runs
 )

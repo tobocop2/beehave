@@ -18,7 +18,7 @@ const (
 func TestLoadFolder_AStrayTopLevelNameIsRefused(t *testing.T) {
 	t.Parallel()
 
-	project := `project(source = "/s", base_branch = "main", gate = "g")` + "\n"
+	project := `project(source = "/s", base_branch = "main", gate = "g", test_report = "r.xml")` + "\n"
 
 	tests := []struct {
 		name string
@@ -70,7 +70,7 @@ func TestLoadFolder_AFunctionAndAnUnderscoreNameAreAllowed(t *testing.T) {
 	t.Parallel()
 
 	project, problems := loadProjectText(t,
-		"_base = \"main\"\n_a, _b = 1, 2\n_list = [1]\n_list[0] = 2\ndef gate_for(name):\n  return \"make \" + name\n\nproject(source = \"/s\", base_branch = _base, gate = gate_for(\"check\"))\n")
+		"_base = \"main\"\n_a, _b = 1, 2\n_list = [1]\n_list[0] = 2\ndef gate_for(name):\n  return \"make \" + name\n\nproject(source = \"/s\", base_branch = _base, gate = gate_for(\"check\"), test_report = \"r.xml\")\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)

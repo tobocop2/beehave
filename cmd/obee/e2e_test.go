@@ -285,6 +285,7 @@ const e2eProject = `project(
     beads_prefix = "shop",
     base_branch = "main",
     gate = "true",
+    test_report = "r.xml",
 )
 `
 

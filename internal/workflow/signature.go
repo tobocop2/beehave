@@ -261,6 +261,42 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 	}
 }
 
+// mergeNeedsSteps reports a merge call that can merge and names no gate steps: it leaves out `steps` or passes an empty list literal.
+// A call that sets `merge` to False, or leaves `merge` out, is an owner merge and needs none. A computed `merge` can be True, so it needs them.
+func (g *graph) mergeNeedsSteps(call *syntax.CallExpr, params []Param) {
+	if splat(call) {
+		return
+	}
+
+	index := func(name string) int {
+		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
+	}
+
+	merges := argument(call, "merge", index("merge"))
+	if ident, isIdent := merges.(*syntax.Ident); merges == nil || (isIdent && ident.Name == "False") {
+		return
+	}
+
+	steps := argument(call, "steps", index("steps"))
+	if steps != nil && !emptyList(steps) {
+		return
+	}
+
+	g.report(placeOf(call.Lparen), "merge needs the gate steps when it merges. Add steps = <gate>.steps to the call, or set merge = False and the owner merges.")
+}
+
+// emptyList reports whether an expression is a list or a tuple literal with no item.
+func emptyList(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.ListExpr:
+		return len(e.List) == 0
+	case *syntax.TupleExpr:
+		return len(e.List) == 0
+	}
+
+	return false
+}
+
 // value checks one literal against the closed set and the kind of its keyword.
 func (g *graph) value(value syntax.Expr, param Param) {
 	got := kindOf(value)

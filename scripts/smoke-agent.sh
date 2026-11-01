@@ -17,12 +17,16 @@ work=$(mktemp -d)
 mkdir -p "$work/config/projects" "$work/state" "$work/repo"
 
 git -C "$work/repo" init -q -b main
-printf 'check:\n\ttrue\n' > "$work/repo/Makefile"
+cat > "$work/repo/Makefile" <<'MAKEFILE'
+check:
+	mkdir -p reports
+	echo '<testsuite tests="1"><testcase name="smoke"/></testsuite>' > reports/smoke.xml
+MAKEFILE
 git -C "$work/repo" add Makefile
 git -C "$work/repo" -c user.name=smoke -c user.email=smoke@example.invalid commit -q -m "start"
 
 printf 'runner(name = "smoke", agent = "claude", config_dir = "%s")\n' "$profile" > "$work/config/runners.star"
-printf 'project(source = "%s", base_branch = "main", gate = "make check")\n' "$work/repo" > "$work/config/projects/demo.star"
+printf 'project(source = "%s", base_branch = "main", gate = "make check", test_report = "reports/*.xml")\n' "$work/repo" > "$work/config/projects/demo.star"
 printf 'Add a file named hello.txt that holds the word hello.\n' > "$work/task.md"
 
 export OBEE_CONFIG="$work/config" OBEE_STATE_DIR="$work/state"

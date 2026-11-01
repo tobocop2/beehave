@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
-const clusterProject = goodProject + `, build_host = "gpu"`
+const clusterProject = hostProject + `,build_host = "gpu"`
 
 // hostCall returns a valid host call with extra arguments added after the two required ones. Each extra starts with ", ".
 func hostCall(extra string) string {

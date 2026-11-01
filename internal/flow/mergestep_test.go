@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,12 @@ func shipFlow(extra string) string {
 	return bodyFlow(shipCall(extra))
 }
 
+// shipCall is a merge call. A call that merges and names no steps gets passing steps, because the check and the call refuse a merge without them.
 func shipCall(extra string) string {
+	if strings.Contains(extra, "merge = ") && !strings.Contains(extra, "steps = ") && !strings.Contains(extra, "merge = False") {
+		extra += `steps = [{"name": "command", "status": "pass"}], `
+	}
+
 	return "merge(head = \"" + gatedHead + "\", " + extra + "name = \"ship\")\n"
 }
 

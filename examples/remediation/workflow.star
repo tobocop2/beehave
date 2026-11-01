@@ -173,7 +173,7 @@ def pipeline(item):
     # `approved` is the verdict of the review, which is not the agent that wrote the code. Our own pull requests merge only when it is true.
     # The call passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. A gate that records no tree stops the run at the call. The proof runs after the merge:
     # a stop does not undo it, and the item ends failed with the pull request merged.
-    # The call also passes `steps = loop.gate.steps`: it merges only when every step of the gate at the head is a pass. A step that is unknown is not a pass.
+    # The call also passes `steps = loop.gate.steps`: it merges only when every step of the gate at the head is a pass. A step that is unknown is not a pass. A call that can merge and leaves out `steps` is refused by `obee check workflow` and again at the call.
     # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
     merge(
         name = "ship",

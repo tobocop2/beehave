@@ -191,9 +191,14 @@ func pinFile(raw rawProject, host string) error {
 	return nil
 }
 
-// testReport refuses a test_report that is set and empty, or set for a gate on a build host. An unset key is allowed.
+// testReport refuses a test_report that is set and empty, or set for a gate on a build host. An unset key is refused for a local gate:
+// it has no test count, so a gate that exits 0 with no test would pass. A gate on a build host cannot use test_report, so it is allowed.
 func testReport(raw rawProject, host string) error {
 	if !raw.TestReport.Set {
+		if host == LocalHost {
+			return refuseAt(raw.At, "`test_report` is not set. A local gate that sets no `test_report` has no test count, so a gate that exits 0 with no test would pass. Set `test_report` to a glob for the JUnit XML files of the gate, for example `test_report = \"reports/*.xml\"`.")
+		}
+
 		return nil
 	}
 
