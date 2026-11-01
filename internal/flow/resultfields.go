@@ -7,18 +7,9 @@ func commandOutputs(stdout, stderr string, rc int) map[string]any {
 	return map[string]any{"stdout": stdout, "stderr": stderr, "rc": rc}
 }
 
+// gateOutputs records the fields of a GateResult. A gate with no step records an empty list, never a null.
 func gateOutputs(passed bool, head, tree, report string, steps []GateStep) map[string]any {
-	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report, "steps": stepList(steps)}
-}
-
-// stepList makes the recorded list of the steps of a gate. A gate with no step records an empty list, never a null.
-func stepList(steps []GateStep) []map[string]any {
-	list := make([]map[string]any, 0, len(steps))
-	for _, s := range steps {
-		list = append(list, map[string]any{"name": s.Name, statusKeyword: s.Status})
-	}
-
-	return list
+	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report, "steps": append([]GateStep{}, steps...)}
 }
 
 func teardownOutputs(down bool, reason string) map[string]any {
@@ -45,4 +36,15 @@ func commentOutputs(id string) map[string]any { return map[string]any{"id": id} 
 // stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
 func agentOutputs(text, session, transcript, head, violations, stop string) map[string]any {
 	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop}
+}
+
+// agentFields are the fields that every agent call returns, as the view of a run reads them. A test decodes agentOutputs into it.
+// The output verdict is declared by the call, so a reader takes it by its name.
+type agentFields struct {
+	Text       string `json:"text"`
+	Session    string `json:"session"`
+	Transcript string `json:"transcript"`
+	Head       string `json:"head_sha"`
+	Violations string `json:"violations"`
+	Stop       string `json:"stop"`
 }

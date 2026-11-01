@@ -190,9 +190,9 @@ type CommandRequest struct {
 // CommandOutput is what a program printed and its exit code. A non-zero RC is data, not an error.
 // Stderr is empty for a program on a host, which keeps no output, and for a dry run.
 type CommandOutput struct {
-	Stdout string
-	Stderr string
-	RC     int
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
+	RC     int    `json:"rc"`
 }
 
 // commands runs the programs of command calls.

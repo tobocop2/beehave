@@ -17,7 +17,7 @@ import (
 func TestStateOf_MapsEveryStoreStatusToARunState(t *testing.T) {
 	t.Parallel()
 
-	tests := map[dbos.WorkflowStatusType]runState{
+	tests := map[dbos.WorkflowStatusType]RunState{
 		dbos.WorkflowStatusPending:                     runRunning,
 		dbos.WorkflowStatusEnqueued:                    runQueued,
 		dbos.WorkflowStatusDelayed:                     runQueued,

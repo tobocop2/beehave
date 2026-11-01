@@ -466,7 +466,7 @@ func TestPredeclared_NamesTheSameBuiltinsAsTheWorkflowPackage(t *testing.T) {
 func TestPredeclared_EveryBuiltinReadsItsKeywordsFromTheSignature(t *testing.T) {
 	t.Parallel()
 
-	table := (&script{}).predeclared()
+	table := (&script{e: &Engine{}}).predeclared()
 
 	for _, name := range workflow.Signed() {
 		fn, ok := table[name].(*starlark.Builtin)

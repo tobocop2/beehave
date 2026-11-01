@@ -17,6 +17,8 @@ import (
 const (
 	exclusiveName      = "exclusive"
 	exclusiveQueueName = "exclusive"
+	// gateTipName is the step that reads the standing of the pull request before a gate is queued. The per-run view names a waiting gate from it.
+	gateTipName = "gate:tip"
 
 	kindGate      = "gate"
 	kindMerge     = "merge"
@@ -198,7 +200,7 @@ func (e *Engine) planOf(run dbos.Context, in ExclusiveInput) (queuePlan, error) 
 		return queuePlan{Priority: priorityNormal}, nil
 	}
 
-	plan, err := runStep(e, run, "gate:tip", func(c context.Context) (queuePlan, error) {
+	plan, err := runStep(e, run, gateTipName, func(c context.Context) (queuePlan, error) {
 		standing, read := e.gateStanding(c, in)
 
 		return queuePlan{Tip: tipOf(in, standing, read), Priority: priorityOf(in, standing, read)}, nil

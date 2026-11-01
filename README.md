@@ -27,6 +27,15 @@ obee item add <name> fix-login --title "Fix the login" --body-file task.md
 obee run fix-login <name> --workflow examples/local/workflow.star
 ```
 
+`obee run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
+
+```bash
+obee status
+obee status item-fix-login-r1
+```
+
+The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `obee run` writes its progress lines to stderr.
+
 `examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
 
 `examples/swarm` splits a job into tasks, runs one agent for each task, and lands the pull requests with one `batch_merge` and one gate run. Put one task on each line of the body of the parent item. Set `REPO`, `BASE`, `OWNER_LOGIN` and `OWNER_EMAIL` to name your repository and your identity. A pull request that the gate or a guard rejects gets a comment and the status `hold`.

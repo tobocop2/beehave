@@ -25,22 +25,22 @@ var errEmptyAnswer = errors.New("the answer has no text")
 // errWrongState is returned when a command does not fit the state of the run.
 var errWrongState = errors.New("the run is in the wrong state for this command")
 
-// runState says where a run stands.
-type runState string
+// RunState says where a run stands.
+type RunState string
 
 const (
-	runRunning   runState = "running"
-	runQueued    runState = "queued"
-	runDone      runState = "done"
-	runFailed    runState = "failed"
-	runStopped   runState = "stopped"
-	runCancelled runState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
+	runRunning   RunState = "running"
+	runQueued    RunState = "queued"
+	runDone      RunState = "done"
+	runFailed    RunState = "failed"
+	runStopped   RunState = "stopped"
+	runCancelled RunState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
 )
 
 // RunInfo is one line of the status list. Stranded marks an open run that another version of obee started.
 type RunInfo struct {
 	ID       string
-	State    runState
+	State    RunState
 	Version  string
 	Stranded bool
 	// OlderSteps marks a stranded run that has the build version of this client, but was made by an older step format.
@@ -271,7 +271,7 @@ func resultOf(row dbos.WorkflowStatus) (ItemResult, error) {
 	return result, nil
 }
 
-func stateOf(status dbos.WorkflowStatusType) runState {
+func stateOf(status dbos.WorkflowStatusType) RunState {
 	switch status {
 	case dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusDelayed:
 		return runQueued
