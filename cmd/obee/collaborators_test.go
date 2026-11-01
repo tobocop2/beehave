@@ -150,7 +150,7 @@ func TestPrograms_ALocalProgramRunsInTheWorktreeAndKeepsItsExitCode(t *testing.T
 		exec: func(s proc.ExecRunner) proc.Runner {
 			spec = s
 
-			return scripted{result: model.CommandResult{Stdout: "out", ExitCode: 3}, args: &args}
+			return scripted{result: model.CommandResult{Stdout: "out", Stderr: "err", ExitCode: 3}, args: &args}
 		},
 	}
 
@@ -158,7 +158,7 @@ func TestPrograms_ALocalProgramRunsInTheWorktreeAndKeepsItsExitCode(t *testing.T
 
 	got, err := runs.Run(t.Context(), request)
 	require.NoError(t, err)
-	assert.Equal(t, flow.CommandOutput{Stdout: "out", RC: 3}, got)
+	assert.Equal(t, flow.CommandOutput{Stdout: "out", Stderr: "err", RC: 3}, got)
 	assert.Equal(t, proc.ExecRunner{Binary: "make", Dir: "/tree", Timeout: time.Minute, Only: []string{"PATH=/bin"}, Stdin: "the text"}, spec, "the environment of the request replaces the environment of the process")
 	assert.Equal(t, []string{"check"}, args)
 }

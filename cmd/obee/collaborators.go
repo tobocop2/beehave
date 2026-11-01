@@ -283,7 +283,7 @@ func (p programs) inFolder(ctx context.Context, request flow.CommandRequest, dir
 		return flow.CommandOutput{}, result.SetupErr
 	}
 
-	return flow.CommandOutput{Stdout: result.Stdout + capNote(request.MaxNewProcesses, result), RC: result.ExitCode}, nil
+	return flow.CommandOutput{Stdout: result.Stdout + capNote(request.MaxNewProcesses, result), Stderr: result.Stderr, RC: result.ExitCode}, nil
 }
 
 // showsForkFailure reports whether text holds a sign of a failed process start. The texts are the system error for EAGAIN ("Resource temporarily unavailable"), the message of dash ("Cannot fork") and the message of bash ("fork: retry:").
