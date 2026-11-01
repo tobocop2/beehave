@@ -123,7 +123,13 @@ func usageOf(limits map[string]json.RawMessage) (model.Usage, string) {
 }
 
 // windowOf returns a window of the reply, or the reason it is unusable.
+// A window with the value null is a window that is not open now: 0 percent used and no reset time.
+// A missing window, or one that is not an object, is unusable.
 func windowOf(raw json.RawMessage, name string) (model.Window, string) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return model.Window{}, ""
+	}
+
 	var window rawWindow
 
 	if err := decode(raw, &window); err != nil {
