@@ -7,4 +7,5 @@ project(
     forge = "github",
     base_branch = "main",         # the variable BASE of the run names the integration branch that receives the pull requests
     gate = "make check",          # one run of this command covers the union of all the heads
+    test_report = "reports/*.xml",  # the JUnit XML files that the gate writes; a gate that exits 0 with no test fails
 )

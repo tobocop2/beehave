@@ -14,7 +14,10 @@ import (
 )
 
 // goodProject is the argument list of a project call that loads. A test adds arguments after it.
-const goodProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
+// hostProject has no test_report: a project with a build host cannot set it.
+const hostProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
+
+const goodProject = hostProject + `, test_report = "reports/*.xml"`
 
 const goodRunner = "runner(name = \"a\", agent = \"claude\", config_dir = \"~/c\")\n"
 
@@ -68,7 +71,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", BuildHost: "local"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
 		cfg.Projects["example"].Project)
 }
 
@@ -82,7 +85,7 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralle
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: filepath.Join(home, "work/your-repo"), BaseBranch: "main", Gate: "make check", BuildHost: "local",
+		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: filepath.Join(home, "work/your-repo"), BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -137,7 +140,7 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects", "b.star"), call(goodProject))
-	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "g"`))
+	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "g", test_report = "r.xml"`))
 	writeFile(t, filepath.Join(dir, "projects", "notes.md"), "not a project")
 
 	cfg, problems := config.LoadFolder(dir, nil)
@@ -157,9 +160,11 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 	require.Equal(t, "local", project.BuildHost, "a project without a build host builds locally")
 
 	for _, name := range []string{"gpu-a", "A", "a1-b2-c3", "local"} {
-		args := goodProject + `, build_host = "` + name + `"`
+		args := hostProject + `, build_host = "` + name + `"`
 		if name != "local" {
 			args += ", host = " + hostCall("")
+		} else {
+			args += `, test_report = "reports/*.xml"`
 		}
 
 		project, problems = loadProjectText(t, call(args))
@@ -171,7 +176,7 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 func TestLoadFolder_TheBuildHostRefusalNamesTheKeyAndBothForms(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadProjectText(t, call(goodProject+`, build_host = "a b"`))
+	_, problems := loadProjectText(t, call(hostProject+`, build_host = "a b"`))
 
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "`build_host`")
@@ -216,13 +221,13 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"blank_beads_prefix", call(strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + `, claims = "beads"`), "p.star:1:8: `beads_prefix` must be a non-empty string"},
 		{"blank_base_branch", call(strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1)), "p.star:1:8: `base_branch` must be a non-empty string"},
 		{"blank_gate", call(strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1)), "p.star:1:8: `gate` must be a non-empty string"},
-		{"empty_build_host", call(goodProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
-		{"build_host_starts_with_a_digit", call(goodProject + `, build_host = "1gpu"`), hostWords},
-		{"build_host_with_underscore", call(goodProject + `, build_host = "gpu_a"`), hostWords},
-		{"build_host_with_space", call(goodProject + `, build_host = "gpu a"`), hostWords},
-		{"build_host_with_shell_text", call(goodProject + `, build_host = "gpu;id"`), hostWords},
-		{"build_host_with_newline", call(goodProject + `, build_host = "gpu\n"`), hostWords},
-		{"build_host_starts_with_hyphen", call(goodProject + `, build_host = "-gpu"`), hostWords},
+		{"empty_build_host", call(hostProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
+		{"build_host_starts_with_a_digit", call(hostProject + `, build_host = "1gpu"`), hostWords},
+		{"build_host_with_underscore", call(hostProject + `, build_host = "gpu_a"`), hostWords},
+		{"build_host_with_space", call(hostProject + `, build_host = "gpu a"`), hostWords},
+		{"build_host_with_shell_text", call(hostProject + `, build_host = "gpu;id"`), hostWords},
+		{"build_host_with_newline", call(hostProject + `, build_host = "gpu\n"`), hostWords},
+		{"build_host_starts_with_hyphen", call(hostProject + `, build_host = "-gpu"`), hostWords},
 		{"bad_syntax", call(goodProject) + "{", "Fix the syntax of the file"},
 		{"undefined_name", "projet()\n", "p.star:1:1: undefined: projet"},
 		{"no_project_call", "# none\n", "the file does not call `project`"},
@@ -248,7 +253,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g"`))
+	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g", test_report = "r.xml"`))
 
 	require.Empty(t, problems)
 	require.Equal(t, model.TrackerBeads, project.Tracker)
@@ -258,7 +263,7 @@ func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\", beads_prefix = \"p\",\r\n  base_branch = \"main\", gate = \"make check\",\r\n)\r\n")
+	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\", beads_prefix = \"p\",\r\n  base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\",\r\n)\r\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)
@@ -273,10 +278,6 @@ func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
 	require.Empty(t, problems)
 	require.Equal(t, "out/*.xml", project.TestReport)
 
-	project, problems = loadProjectText(t, "project("+base+")\n")
-	require.Empty(t, problems)
-	require.Empty(t, project.TestReport)
-
 	_, problems = loadProjectText(t, "project("+base+", test_report = \"\")\n")
 	require.Len(t, problems, 1)
 	require.Contains(t, problems[0].Error(), "`test_report` must be a non-empty string")
@@ -285,14 +286,30 @@ func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
 func TestLoadFolder_ATestReportOnABuildHostIsRefusedAndNamesTheKeyAndTheReason(t *testing.T) {
 	t.Parallel()
 
-	_, problems := loadProjectText(t, call(goodProject+`, build_host = "gpu-a", host = `+hostCall("")+`, test_report = "out/*.xml"`))
+	_, problems := loadProjectText(t, call(hostProject+`, build_host = "gpu-a", host = `+hostCall("")+`, test_report = "out/*.xml"`))
 
 	require.Len(t, problems, 1)
 	require.Contains(t, problems[0].Error(), "`test_report`")
 	require.Contains(t, problems[0].Error(), "read only from a local gate")
 
-	_, problems = loadProjectText(t, call(goodProject+`, test_report = "out/*.xml"`))
+	_, problems = loadProjectText(t, call(hostProject+`, test_report = "out/*.xml"`))
 	require.Empty(t, problems)
+}
+
+func TestLoadFolder_ALocalGateThatSetsNoTestReportIsRefusedAndNamesTheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range []string{hostProject, hostProject + `, build_host = "local"`} {
+		_, problems := loadProjectText(t, call(args))
+
+		require.Len(t, problems, 1)
+		require.Contains(t, problems[0].Error(), "p.star:1:8:")
+		require.Contains(t, problems[0].Error(), "`test_report` is not set")
+		require.Contains(t, problems[0].Error(), "no test count")
+	}
+
+	_, problems := loadProjectText(t, call(hostProject+`, build_host = "gpu-a", host = `+hostCall("")))
+	require.Empty(t, problems, "a gate on a build host cannot use test_report, so it is not held to it")
 }
 
 func TestLoadFolder_ThePinFileKeyIsReadAnEmptyOneIsRefusedAndABuildHostIsRefused(t *testing.T) {

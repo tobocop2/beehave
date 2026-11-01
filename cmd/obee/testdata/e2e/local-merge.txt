@@ -28,6 +28,7 @@ project(
     source      = "@WORK@/origin",
     base_branch = "main",
     gate        = "true",
+    test_report = "r.xml",
 )
 -- flow/merge.star --
 def main(item):

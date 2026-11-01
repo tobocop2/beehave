@@ -61,7 +61,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\")\n"
+	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n"
 	writeConfig(t, dir, "projects/a.star", text)
 	writeConfig(t, dir, "projects/b.star", text)
 

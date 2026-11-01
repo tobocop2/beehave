@@ -80,11 +80,11 @@ func mergeProof(tree, steps starlark.Value) (string, error) {
 	return gated, everyStepPassed(steps)
 }
 
-// everyStepPassed reads the `steps` argument of a merge call: the steps of the gate at the head. A call that leaves it out asks for no check.
-// A list with no step is refused, and so is a step that is not a pass. An unknown step is not a pass.
+// everyStepPassed reads the `steps` argument of a merge call that merges: the steps of the gate at the head.
+// A call that leaves it out is refused, a list with no step is refused, and so is a step that is not a pass. An unknown step is not a pass.
 func everyStepPassed(v starlark.Value) error {
 	if v == nil {
-		return nil
+		return errStepsMissing
 	}
 
 	steps, err := toGo[[]any](v)
@@ -93,7 +93,7 @@ func everyStepPassed(v starlark.Value) error {
 	}
 
 	if len(steps) == 0 {
-		return errors.New("`steps` is empty. The gate recorded no step for this head, so its result is unknown. Leave out `steps` to merge without the check")
+		return errors.New("`steps` is empty. The gate recorded no step for this head, so its result is unknown. Pass `steps = <gate>.steps` from a gate that ran")
 	}
 
 	for _, each := range steps {
@@ -129,6 +129,9 @@ const (
 	// unknownStatus is a step that gave no result, as a voided gate leaves every step.
 	unknownStatus = string(gatepkg.StatusUnknown)
 )
+
+// errStepsMissing is returned when a merge call that merges names no gate steps. A merge with no gate result would land a head that no check passed.
+var errStepsMissing = errors.New("this merge call names no gate steps. Add `steps = <gate>.steps` to the call, or remove `merge = True` and the owner merges")
 
 // errStepsShape is returned when the `steps` argument of a merge call is not the list that a gate records.
 var errStepsShape = errors.New("`steps` must be the steps of a gate. Pass `steps = <gate>.steps`")

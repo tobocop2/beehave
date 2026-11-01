@@ -5,4 +5,5 @@ project(
     source = "~/work/your-repo",  # the repository that gets the branch; a git URL or an absolute path
     base_branch = "main",
     gate = "make check",
+    test_report = "reports/*.xml",  # the JUnit XML files that the gate writes; a gate that exits 0 with no test fails
 )

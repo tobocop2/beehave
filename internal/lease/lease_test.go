@@ -11,7 +11,7 @@ import (
 	"github.com/tobocop2/obee/internal/lease"
 )
 
-const project = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\")\n"
+const project = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
 // configFolder writes a config folder with one project file and gives the environment that names it.
 func configFolder(t *testing.T, text string) map[string]string {
@@ -46,7 +46,7 @@ func TestProjectOf_FindsTheProjectThatOwnsTheRepository(t *testing.T) {
 func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {
 	t.Parallel()
 
-	env := configFolder(t, "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\")\n")
+	env := configFolder(t, "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n")
 
 	found, err := lease.ProjectOf(env, "/srv/repo")
 
@@ -61,7 +61,7 @@ func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {
 func TestProjectOf_FindsTheProjectThatOwnsAUrlSourceByExactText(t *testing.T) {
 	t.Parallel()
 
-	env := configFolder(t, "project(source = \"git@host:o/n.git\", base_branch = \"main\", gate = \"make check\")\n")
+	env := configFolder(t, "project(source = \"git@host:o/n.git\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n")
 
 	found, err := lease.ProjectOf(env, "git@host:o/n.git")
 

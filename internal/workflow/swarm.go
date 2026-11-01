@@ -61,6 +61,10 @@ func (g *graph) builtinCall(call *syntax.CallExpr, shadowed []string) {
 
 	g.signature(call, fn.Name, params)
 
+	if fn.Name == mergeName {
+		g.mergeNeedsSteps(call, params)
+	}
+
 	if fn.Name == spawnName {
 		g.entry(call)
 	}

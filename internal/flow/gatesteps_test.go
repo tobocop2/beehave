@@ -74,6 +74,42 @@ func TestMergeStep_AGateWithNoStepsIsUnknownAndRefusesTheMerge(t *testing.T) {
 	assert.Empty(t, h.merge.given)
 }
 
+func TestMergeStep_ACallThatMergesAndNamesNoStepsIsRefusedAndNamesTheFix(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	// A call with **kwargs is not read by the workflow check, so this reaches the call itself.
+	_, err := walkText(t, h, bodyFlow("merge(**{\"head\": \""+gatedHead+"\", \"merge\": True, \"name\": \"ship\"})\n"))
+
+	require.ErrorContains(t, err, "Add `steps = <gate>.steps`")
+	assert.Empty(t, h.merge.given)
+	assert.Empty(t, h.merge.asked)
+}
+
+func TestMergeStep_TheWorkflowCheckRefusesAMergeCallThatMergesAndNamesNoStepsBeforeTheRun(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	_, err := walkText(t, h, bodyFlow("merge(head = \""+gatedHead+"\", merge = True, name = \"ship\")\n"))
+
+	require.ErrorContains(t, err, "merge needs the gate steps when it merges")
+	assert.Empty(t, h.merge.given)
+}
+
+func TestMergeStep_ACallThatMergesAndPassesAnEmptyStepsListIsRefusedAndNamesTheFix(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	_, err := walkText(t, h, bodyFlow(shipCall(`steps = [] + [], merge = True, `)))
+
+	require.ErrorContains(t, err, "`steps` is empty")
+	require.ErrorContains(t, err, "Pass `steps = <gate>.steps`")
+	assert.Empty(t, h.merge.given)
+}
+
 func TestMergeStep_AStepsListThatIsNotTheStepsOfAGateIsRefused(t *testing.T) {
 	t.Parallel()
 
