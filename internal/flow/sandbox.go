@@ -55,12 +55,12 @@ func stringList(items []string) *starlark.List {
 
 // boxOf reads the two lists of a sandbox call.
 func boxOf(network, allow starlark.Value) (*model.Sandbox, error) {
-	domains, err := words("network", network)
+	domains, err := workflow.Words("network", network)
 	if err != nil {
 		return nil, err
 	}
 
-	paths, err := words("allow_write", allow)
+	paths, err := workflow.Words("allow_write", allow)
 	if err != nil {
 		return nil, err
 	}

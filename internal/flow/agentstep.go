@@ -86,15 +86,15 @@ type agentRaw struct {
 
 // read checks the raw arguments of an agent call and keeps the result in a.
 func (a *agentArgs) read(raw agentRaw) (err error) {
-	if a.tries < 1 {
-		return errors.New("output_tries must be a whole number of 1 or more")
+	if err = workflow.OutputTries(a.tries); err != nil {
+		return err
 	}
 
 	if err = a.limits(raw); err != nil {
 		return err
 	}
 
-	if a.data, err = inputMap(raw.inputs); err != nil {
+	if a.data, err = workflow.InputMap(raw.inputs); err != nil {
 		return err
 	}
 
@@ -107,11 +107,11 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 
 // limits reads the timeout and the idle timeout of an agent call.
 func (a *agentArgs) limits(raw agentRaw) (err error) {
-	if a.timeout, err = duration("timeout", raw.timeout); err != nil {
+	if a.timeout, err = workflow.Duration("timeout", raw.timeout); err != nil {
 		return err
 	}
 
-	a.idleTimeout, err = duration("idle_timeout", raw.idle)
+	a.idleTimeout, err = workflow.Duration("idle_timeout", raw.idle)
 
 	return err
 }
@@ -127,11 +127,11 @@ func (a agentArgs) checkKind() error {
 
 // lists reads the three list arguments of an agent call, then the follow_ups option, which needs the declared outputs.
 func (a *agentArgs) lists(raw agentRaw) (err error) {
-	if a.declared, err = words("outputs", raw.outputs); err != nil {
+	if a.declared, err = workflow.Words("outputs", raw.outputs); err != nil {
 		return err
 	}
 
-	if a.requireSkills, err = words("require_skills", raw.skills); err != nil {
+	if a.requireSkills, err = workflow.Words("require_skills", raw.skills); err != nil {
 		return err
 	}
 
@@ -150,7 +150,7 @@ func (a *agentArgs) lists(raw agentRaw) (err error) {
 
 // findingKinds reads the forbid_commands argument: a list of the names of finding kinds.
 func findingKinds(v starlark.Value) ([]model.FindingKind, error) {
-	return listOfEach(v, func(item starlark.Value) (model.FindingKind, error) {
+	return workflow.ListOfEach(v, func(item starlark.Value) (model.FindingKind, error) {
 		name, ok := starlark.AsString(item)
 		if !ok || !slices.Contains(workflow.ForbidKinds(), name) {
 			return "", fmt.Errorf("forbid_commands has the unknown kind %s. Use one of: %s", item, strings.Join(workflow.ForbidKinds(), ", "))
@@ -175,7 +175,7 @@ func forbidden(kinds, protect starlark.Value) ([]model.FindingKind, []string, er
 // protectPaths reads the protect_paths argument: the directories the kind protected-path guards. A relative path starts at the folder of the step.
 // The list and the kind go together: a kind that needs paths with none would pass every command, and paths with no kind would guard nothing.
 func protectPaths(v starlark.Value, forbid []model.FindingKind) ([]string, error) {
-	paths, err := words("protect_paths", v)
+	paths, err := workflow.Words("protect_paths", v)
 	if err != nil {
 		return nil, err
 	}
@@ -195,20 +195,6 @@ func protectPaths(v starlark.Value, forbid []model.FindingKind) ([]string, error
 	}
 
 	return paths, nil
-}
-
-// inputMap converts the inputs dict of an agent call into the data of its prompt template. An absent dict is empty.
-func inputMap(v starlark.Value) (map[string]any, error) {
-	dict, ok := optional[*starlark.Dict](v)
-	if !ok {
-		return nil, fmt.Errorf("inputs must be a dict, not a %s. Write inputs = {\"name\": value}", v.Type())
-	}
-
-	if dict == nil {
-		return map[string]any{}, nil
-	}
-
-	return toGo[map[string]any](dict)
 }
 
 // outputFile is the path where the agent of a step writes its declared outputs. It is in the state folder of the engine, named by item and step,

@@ -1,0 +1,11 @@
+# The check applies the rules of the run to literal arguments, so a workflow with two bad literals fails the check and not the run.
+isolate
+
+! exec obeereal check workflow bad.star
+stderr 'agent: output_tries must be a whole number of 1 or more'
+stderr 'command: timeout is "soon", which is not a duration'
+
+-- bad.star --
+def main(item):
+    agent("p", "m", output_tries = 0)
+    command(run = ["x"], timeout = "soon")

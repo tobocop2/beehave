@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
@@ -266,7 +268,7 @@ func TestStarValues_RoundTripEveryTypeAFileCanHold(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	out, err := toGo[any](got)
+	out, err := workflow.ToGo[any](got)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{
 		"none": nil, "text": "a", "yes": true, "whole": int64(2), "float": 1.5, "json": int64(4),
@@ -313,13 +315,13 @@ func TestToGo_RefusesTheValuesAPromptCannotCarry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := toGo[any](value)
+			_, err := workflow.ToGo[any](value)
 
 			require.ErrorContains(t, err, "cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts")
 		})
 	}
 
-	n, err := toGo[any](starlark.Float(2.5))
+	n, err := workflow.ToGo[any](starlark.Float(2.5))
 	require.NoError(t, err)
 	assert.InDelta(t, 2.5, n, 0)
 }
@@ -348,7 +350,7 @@ func TestToGo_ANumberOfAPromptWorksWithEqGtAndPrintf(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := toGo[map[string]any](dictOfOne(t, "n", c.value))
+			data, err := workflow.ToGo[map[string]any](dictOfOne(t, "n", c.value))
 			require.NoError(t, err)
 
 			got, err := fill(c.text, data)
@@ -361,7 +363,7 @@ func TestToGo_ANumberOfAPromptWorksWithEqGtAndPrintf(t *testing.T) {
 func TestToGo_ANumberOfAPromptKeepsAnIntegerBeyondInt64AsDigits(t *testing.T) {
 	t.Parallel()
 
-	data, err := toGo[map[string]any](dictOfOne(t, "n", starlark.MakeInt64(1).Lsh(70)))
+	data, err := workflow.ToGo[map[string]any](dictOfOne(t, "n", starlark.MakeInt64(1).Lsh(70)))
 	require.NoError(t, err)
 
 	got, err := fill(`{{ .n }}`, data)
@@ -372,17 +374,17 @@ func TestToGo_ANumberOfAPromptKeepsAnIntegerBeyondInt64AsDigits(t *testing.T) {
 func TestToGo_ANonFiniteFloatIsRefusedWithTheEncoderError(t *testing.T) {
 	t.Parallel()
 
-	_, err := toGo[any](starlark.Float(math.NaN()))
+	_, err := workflow.ToGo[any](starlark.Float(math.NaN()))
 	require.EqualError(t, err, "a value cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts (json.encode: cannot encode non-finite float nan)")
 
-	_, err = toGo[any](starlark.NewList([]starlark.Value{starlark.MakeInt(1), starlark.Float(math.NaN())}))
+	_, err = workflow.ToGo[any](starlark.NewList([]starlark.Value{starlark.MakeInt(1), starlark.Float(math.NaN())}))
 	require.EqualError(t, err, "a value cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts (json.encode: at list index 1: cannot encode non-finite float nan)")
 }
 
 func TestToGo_ARequestedTypeThatTheValueDoesNotFitIsAnError(t *testing.T) {
 	t.Parallel()
 
-	_, err := toGo[map[string]any](starlark.NewList(nil))
+	_, err := workflow.ToGo[map[string]any](starlark.NewList(nil))
 
 	require.EqualError(t, err, "a list is not the kind of value this place takes")
 }
@@ -390,11 +392,11 @@ func TestToGo_ARequestedTypeThatTheValueDoesNotFitIsAnError(t *testing.T) {
 func TestToGo_KeepsANumberBeyondInt64AsItsExactDigits(t *testing.T) {
 	t.Parallel()
 
-	n, err := toGo[any](starlark.MakeInt64(1).Lsh(70))
+	n, err := workflow.ToGo[any](starlark.MakeInt64(1).Lsh(70))
 	require.NoError(t, err)
 	assert.Equal(t, json.Number("1180591620717411303424"), n)
 
-	n, err = toGo[any](starlark.MakeInt(1234567))
+	n, err = workflow.ToGo[any](starlark.MakeInt(1234567))
 	require.NoError(t, err)
 	assert.Equal(t, "1234567", fmt.Sprint(n), "a prompt prints a whole number in full")
 }
@@ -411,9 +413,9 @@ func dictOfOne(t *testing.T, key string, value starlark.Value) *starlark.Dict {
 func TestWords_RefuseWhatIsNotAListOfText(t *testing.T) {
 	t.Parallel()
 
-	_, err := words("w", starlark.MakeInt(1))
+	_, err := workflow.Words("w", starlark.MakeInt(1))
 	require.ErrorContains(t, err, "w must be a list of strings")
 
-	_, err = words("w", starlark.NewList([]starlark.Value{starlark.MakeInt(1)}))
+	_, err = workflow.Words("w", starlark.NewList([]starlark.Value{starlark.MakeInt(1)}))
 	require.ErrorContains(t, err, "w must hold strings only")
 }

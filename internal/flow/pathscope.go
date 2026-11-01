@@ -3,7 +3,6 @@ package flow
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"go.starlark.net/starlark"
+
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 // scope is the set of path globs that an agent call may change. A scope with no globs allows every path.
@@ -22,40 +23,11 @@ type scope struct {
 }
 
 // readScope reads the allow_paths argument: a list of globs in the doublestar dialect. A `*` stops at a slash and a `**` crosses it.
-// A leading `./` is dropped, because the paths that git lists have none. A missing argument gives no scope. An empty list is refused.
+// A missing argument gives no scope.
 func readScope(v starlark.Value) (scope, error) {
-	patterns, err := words("allow_paths", v)
-	if err != nil {
-		return scope{}, err
-	}
-
-	if len(patterns) == 0 {
-		if v == nil || v == starlark.None {
-			return scope{}, nil
-		}
-
-		return scope{}, errors.New("allow_paths is an empty list, which would allow every path. To turn the check off, leave the keyword out")
-	}
-
-	globs, err := cleanGlobs(patterns)
+	patterns, globs, err := workflow.AllowPaths(v)
 
 	return scope{patterns: patterns, globs: globs}, err
-}
-
-// cleanGlobs drops the leading `./` of each pattern and refuses a pattern that does not parse.
-func cleanGlobs(patterns []string) ([]string, error) {
-	globs := make([]string, 0, len(patterns))
-
-	for _, pattern := range patterns {
-		clean := strings.TrimPrefix(pattern, "./")
-		if !doublestar.ValidatePattern(clean) {
-			return nil, fmt.Errorf("allow_paths has the pattern %q, which does not parse: %w", pattern, doublestar.ErrBadPattern)
-		}
-
-		globs = append(globs, clean)
-	}
-
-	return globs, nil
 }
 
 func (s scope) active() bool { return len(s.globs) > 0 }

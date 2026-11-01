@@ -155,7 +155,7 @@ func (c *batchCall) fill(prs, gateRun, forbid, own starlark.Value) (err error) {
 		return err
 	}
 
-	if c.gateRun, err = words("gate_run", gateRun); err != nil {
+	if c.gateRun, err = workflow.Words("gate_run", gateRun); err != nil {
 		return err
 	}
 
@@ -190,7 +190,7 @@ func (s *script) batchScope(name string) error {
 func members(v starlark.Value) ([]batch.Member, error) {
 	notList := errors.New("`prs` must be a list of struct(item = ..., head = ...)")
 
-	list, err := listOfEach(v, member, notList)
+	list, err := workflow.ListOfEach(v, member, notList)
 	if err != nil {
 		return nil, err
 	}

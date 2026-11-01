@@ -301,11 +301,11 @@ func TestAgentStep_ABadTimeoutAndALoginThatCannotBePickedFailTheStep(t *testing.
 	t.Parallel()
 
 	rig := newAgentRig(t)
-	_, err := rig.run(t, agentFlow("timeout = \"soon\", "), "x")
+	_, err := rig.run(t, agentFlow("timeout = \"so\" + \"on\", "), "x")
 	require.ErrorContains(t, err, "not a duration")
 
 	rig = newAgentRig(t)
-	_, err = rig.run(t, agentFlow("idle_timeout = \"soon\", "), "x")
+	_, err = rig.run(t, agentFlow("idle_timeout = \"so\" + \"on\", "), "x")
 	require.ErrorContains(t, err, "not a duration")
 
 	rig = newAgentRig(t)
@@ -321,7 +321,7 @@ func TestAgentStep_ABadTimeoutAndALoginThatCannotBePickedFailTheStep(t *testing.
 func TestAgentStep_AnArgumentOfTheWrongTypeFailsTheStep(t *testing.T) {
 	t.Parallel()
 
-	for _, arg := range []string{"inputs = \"text\"", "resume = 3", "output_tries = \"x\"", "pin = 3", "outputs = \"verdict\"", "inputs = {1: 2}", "inputs = {\"a\": len}"} {
+	for _, arg := range []string{"inputs = \"text\"", "resume = 3", "output_tries = \"x\"", "pin = 3", "outputs = \"verdict\"", "inputs = {1 + 0: 2}", "inputs = {\"a\": len}"} {
 		rig := newAgentRig(t)
 		_, err := rig.run(t, agentFlow(arg+", "), "x")
 
@@ -547,7 +547,7 @@ func TestAgentStep_AStepWithoutOutputTriesRunsTheAgentOnceInAll(t *testing.T) {
 func TestAgentStep_ABadOutputTriesIsRefused(t *testing.T) {
 	t.Parallel()
 
-	for _, tries := range []string{`"two"`, `0`, `1.5`} {
+	for _, tries := range []string{`"two"`, `1 - 1`, `1.5`} {
 		rig := newAgentRig(t)
 		_, err := rig.run(t, outputsFlow(tries), "x")
 

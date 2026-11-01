@@ -115,6 +115,7 @@ func TestWalk_ASettingThatIsWrongFailsTheStepBeforeItRuns(t *testing.T) {
 		"cap above the limit":  `max_new_processes = 100001`,
 		"cap a fraction":       `max_new_processes = 2.5`,
 		"cap a text":           `max_new_processes = "5"`,
+		"cap computed to 0":    `max_new_processes = 1 - 1`,
 		"cap with a host":      `host = "box", max_new_processes = 5`,
 		"run not a list":       `run = "a"`,
 		"run holds a number":   `run = [1]`,

@@ -569,10 +569,10 @@ func TestToGo_ConvertsADictOfListsAndStructsAndRefusesAFunction(t *testing.T) {
 	value, err := starlark.EvalOptions(&syntax.FileOptions{}, thread, "t", "{'a': [1, 'b', True, None, 1.5], 'c': struct(d = 'e')}", (&script{}).predeclared())
 	require.NoError(t, err)
 
-	got, err := toGo[any](value)
+	got, err := workflow.ToGo[any](value)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"a": []any{int64(1), "b", true, nil, 1.5}, "c": map[string]any{"d": "e"}}, got)
 
-	_, err = toGo[any](starlark.NewBuiltin("f", nil))
+	_, err = workflow.ToGo[any](starlark.NewBuiltin("f", nil))
 	require.ErrorContains(t, err, "cannot go into a prompt")
 }

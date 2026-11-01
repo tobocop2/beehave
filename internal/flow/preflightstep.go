@@ -96,9 +96,9 @@ func stopOf(label string, value starlark.Value) *Stopped {
 		return nil
 	}
 
-	number, _ := optional[starlark.Int](out["code"])
+	number, _ := workflow.Optional[starlark.Int](out["code"])
 	code, _ := number.Int64()
-	reason, _ := optional[starlark.String](out[reasonKey])
+	reason, _ := workflow.Optional[starlark.String](out[reasonKey])
 
 	return &Stopped{Step: stepOf(label), RC: int(code), Output: reason.GoString()}
 }
