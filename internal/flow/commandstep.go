@@ -193,7 +193,7 @@ func (s *script) runCommand(ctx context.Context, name string, request CommandReq
 		return stepResult{}, err
 	}
 
-	recorded := stepResult{Outputs: commandOutputs(out.Stdout, out.RC)}
+	recorded := stepResult{Outputs: commandOutputs(out.Stdout, out.Stderr, out.RC)}
 	if slices.Contains(stops, out.RC) {
 		recorded.Stopped = &Stopped{Step: name, RC: out.RC, Output: out.Stdout}
 	}

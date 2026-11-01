@@ -40,7 +40,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 
 	got := map[string][]string{
 		"agent":         keysOf(agentOutputs("", "", "", "", "", "")),
-		"command":       keysOf(commandOutputs("", 0)),
+		"command":       keysOf(commandOutputs("", "", 0)),
 		"gate":          keysOf(gateOutputs(true, "", "", "", nil)),
 		"item_comment":  keysOf(commentOutputs("")),
 		"item_create":   keysOf(createOutputs("", true)),

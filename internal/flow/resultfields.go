@@ -3,8 +3,8 @@ package flow
 // The outputs of each builtin that records a step, one function each. The fields of a function are the fields in workflow.ResultFields,
 // and a test compares them, so the check of a workflow file and the run read the same names.
 
-func commandOutputs(stdout string, rc int) map[string]any {
-	return map[string]any{"stdout": stdout, "rc": rc}
+func commandOutputs(stdout, stderr string, rc int) map[string]any {
+	return map[string]any{"stdout": stdout, "stderr": stderr, "rc": rc}
 }
 
 func gateOutputs(passed bool, head, tree, report string, steps []GateStep) map[string]any {
