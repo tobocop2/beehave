@@ -1,12 +1,17 @@
 package flow
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	forgepkg "github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/review"
 )
@@ -54,6 +59,38 @@ func TestExclusivePriority_AGateOfAPullRequestThatAPersonWaitsOnComesFirst(t *te
 			standing, read := engine.gateStanding(t.Context(), in)
 
 			assert.Equal(t, test.want, priorityOf(in, standing, read))
+		})
+	}
+}
+
+func TestExclusivePriority_TheWarningNamesOnlyAFailedReadOfAForge(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		readErr  error
+		wantWarn bool
+	}{
+		{"a_project_with_no_forge_says_nothing", fmt.Errorf("project p: %w", forgepkg.ErrNoForge), false},
+		{"a_read_that_fails_warns", errFake, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			harness := newHarness(t)
+			harness.forge.err = test.readErr
+			engine := harness.engine(t)
+
+			var out bytes.Buffer
+
+			engine.logger = slog.New(slog.NewTextHandler(&out, nil))
+
+			_, read := engine.gateStanding(t.Context(), ExclusiveInput{Kind: kindGate, Project: testProject, Item: "12"})
+
+			assert.False(t, read)
+			assert.Equal(t, test.wantWarn, strings.Contains(out.String(), "cannot read the pull request"))
 		})
 	}
 }
