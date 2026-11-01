@@ -32,6 +32,8 @@ type AgentRequest struct {
 	Protect     []string
 	// NoEdits starts the agent so that it cannot edit files. Shell commands stay allowed.
 	NoEdits bool
+	// Sandbox is the sandbox the shell of the step runs in, or nil for none.
+	Sandbox *model.Sandbox
 	// OutputFile is the file where the agent writes its declared outputs as a JSON object. Outputs names them. Outputs is empty for a call that declares none.
 	OutputFile string
 	Outputs    []string
@@ -232,6 +234,8 @@ type Deps struct {
 	Poll pollReader
 	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
 	Hosts hostStopper
+	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
+	SandboxDefault func(project string) bool
 	// Kept lists errors, besides the errors of the gate and the host, that a gate or a merge keeps for errors.Is when it fails. A call that runs in
 	// a child run returns its error as text, and the parent finds each listed error again from that text.
 	Kept []error

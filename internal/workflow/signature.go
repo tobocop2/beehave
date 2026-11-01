@@ -52,6 +52,10 @@ func ChildrenValues() []string { return []string{"refuse", "retarget"} }
 func ForbidKinds() []string { return model.FindingKindNames() }
 
 func req(name string, kind Kind) Param { return Param{Name: name, Kind: kind, Required: true} }
+
+// isBoolName reports whether name is one of the two boolean constants of Starlark.
+func isBoolName(name string) bool { return name == "True" || name == "False" }
+
 func opt(name string, kind Kind) Param { return Param{Name: name, Kind: kind} }
 func one(name string, values []string) Param {
 	return Param{Name: name, Kind: KindText, Values: values}
@@ -67,18 +71,24 @@ func signatures() map[string][]Param {
 	return all
 }
 
+// agentParams holds the keywords of the agent builtin.
+func agentParams() []Param {
+	return []Param{
+		req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
+		opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList),
+		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
+		opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
+		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+	}
+}
+
 // stepSignatures holds the builtins that run something.
 func stepSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
 
 	return map[string][]Param{
-		agentName: {
-			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList),
-			{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
-			opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
-			opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
-		},
+		agentName:   agentParams(),
+		sandboxName: {opt("network", KindList), opt("allow_write", KindList)},
 		commandName: {
 			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), {Name: "max_new_processes", Kind: KindInt, Min: MinProcessCap, Max: MaxProcessCap}, label,
 		},
@@ -224,7 +234,7 @@ func kindOf(expr syntax.Expr) Kind {
 	case *syntax.DictExpr:
 		return KindDict
 	case *syntax.Ident:
-		if e.Name == "True" || e.Name == "False" {
+		if isBoolName(e.Name) {
 			return KindBool
 		}
 	}

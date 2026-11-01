@@ -53,6 +53,9 @@ type agentArgs struct {
 	tries int
 	dir   string
 	file  string
+	// sandbox is the sandbox keyword as written. box is the sandbox the step runs with, which the render step records, or nil for no sandbox.
+	sandbox sandboxChoice
+	box     *model.Sandbox
 }
 
 // agentCall unpacks the arguments of the agent builtin. The second result is the label of the call.
@@ -63,7 +66,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
+		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -80,7 +83,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 type agentRaw struct {
 	label, timeout, idle, followUps string
 	inputs, outputs, skills, kinds  starlark.Value
-	allow, protect                  starlark.Value
+	allow, protect, sandbox         starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -89,11 +92,7 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 		return errors.New("output_tries must be a whole number of 1 or more")
 	}
 
-	if a.timeout, err = duration("timeout", raw.timeout); err != nil {
-		return err
-	}
-
-	if a.idleTimeout, err = duration("idle_timeout", raw.idle); err != nil {
+	if err = a.limits(raw); err != nil {
 		return err
 	}
 
@@ -101,7 +100,22 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 		return err
 	}
 
+	if a.sandbox, err = readSandbox(raw.sandbox); err != nil {
+		return err
+	}
+
 	return a.lists(raw)
+}
+
+// limits reads the timeout and the idle timeout of an agent call.
+func (a *agentArgs) limits(raw agentRaw) (err error) {
+	if a.timeout, err = duration("timeout", raw.timeout); err != nil {
+		return err
+	}
+
+	a.idleTimeout, err = duration("idle_timeout", raw.idle)
+
+	return err
 }
 
 // checkKind refuses a kind that is not one of the two kinds. An empty kind is the kind implement.
@@ -242,13 +256,27 @@ func (s *script) promptOf(a *agentArgs, name string) (string, error) {
 		return "", err
 	}
 
-	rendered, err := runStep(s.e, s.ctx, name+"/render", func(ctx context.Context) (stepResult, error) {
-		prompt, renderErr := s.render(ctx, *a)
+	// The sandbox is recorded with the prompt, in the same step, so a replay reads the sandbox of the first run and never the current default of the project.
+	rendered, err := runStep(s.e, s.ctx, name+"/render", s.renderStep(*a))
+	if err != nil {
+		return "", err
+	}
 
-		return stepResult{Note: prompt}, renderErr
-	})
+	a.box, err = recalledSandbox(rendered.Outputs)
 
 	return rendered.Note, err
+}
+
+// renderStep returns the step that renders the prompt of an agent call and records the sandbox of the call.
+func (s *script) renderStep(a agentArgs) func(context.Context) (stepResult, error) {
+	return func(ctx context.Context) (stepResult, error) {
+		prompt, err := s.render(ctx, a)
+		if err != nil {
+			return stepResult{Note: prompt}, err
+		}
+
+		return stepResult{Note: prompt, Outputs: recordSandbox(a.sandbox.effective(s.sandboxDefault()))}, nil
+	}
 }
 
 // prepare finds the folder and the output file of an agent call.
@@ -275,7 +303,7 @@ func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
-		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared,
+		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
 	}
 }
 

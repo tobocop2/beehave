@@ -60,6 +60,10 @@ type Project struct {
 	BuildHost   string
 	Host        *HostConfig
 	Visibility  Visibility
+	// Sandbox is the default for a step that sets no sandbox. SandboxRead and SandboxDeny extend the read base and the credential list of the engine.
+	Sandbox     SandboxMode
+	SandboxRead []string
+	SandboxDeny []string
 }
 
 // The programs that the adapters of a project start.

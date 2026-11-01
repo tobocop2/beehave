@@ -34,6 +34,8 @@ func (a fakeAdapter) Profile() agent.Profile { return a.profile }
 
 func (fakeAdapter) Guard(string) []string { return nil }
 
+func (fakeAdapter) Sandbox(agent.SandboxPlan, string) []string { return nil }
+
 func (fakeAdapter) Line(string) (string, string) { return "", "" }
 
 func (fakeAdapter) TranscriptPath(configDir, _, session string) string {

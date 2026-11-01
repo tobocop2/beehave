@@ -86,8 +86,8 @@ func TestResultFields_TheTableHasEveryBuiltinThatReturnsAStruct(t *testing.T) {
 
 	for _, name := range workflow.Builtins() {
 		_, has := workflow.ResultFields(name)
-		assert.Equal(t, name != "env" && name != "json" && name != "struct", has, name)
+		assert.Equal(t, name != "env" && name != "json" && name != "struct" && name != "sandbox", has, name)
 	}
 
-	assert.Len(t, workflow.Results(), len(workflow.Builtins())-3)
+	assert.Len(t, workflow.Results(), len(workflow.Builtins())-4)
 }
