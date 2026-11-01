@@ -5,10 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/tobocop2/obee/internal/store/beads"
-	"github.com/tobocop2/obee/internal/store/github"
-	"github.com/tobocop2/obee/internal/store/local"
 )
 
 func TestCheck_ReportsAnUnknownFieldOfTheItemParameter(t *testing.T) {
@@ -51,13 +47,4 @@ func TestCheck_LeavesAnItemParameterThatTheFunctionBindsAgainToTheRun(t *testing
 	got := checkText(t, "def main(item):\n    for item in [struct(parent = 1)]:\n        command(run = [item.parent])\n")
 
 	assert.Empty(t, got)
-}
-
-func TestItemFields_EveryTrackerDeclaresTheSameSet(t *testing.T) {
-	t.Parallel()
-
-	want := local.ItemFields()
-
-	assert.Equal(t, want, (*beads.Store)(nil).ItemFields())
-	assert.Equal(t, want, (*github.Store)(nil).ItemFields())
 }

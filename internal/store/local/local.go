@@ -167,10 +167,7 @@ func inTx(ctx context.Context, db *sql.DB, what string, fn func(*sql.Tx) error) 
 func (s *Store) Close() error { return s.db.Close() }
 
 // ItemFields declares the fields that Item returns.
-func (*Store) ItemFields() []string { return ItemFields() }
-
-// ItemFields declares the fields that a Store returns for an item. A caller that only needs the names does not open the file.
-func ItemFields() []string { return []string{"id", "title", "body"} }
+func (*Store) ItemFields() []string { return model.ItemFields() }
 
 // Add files an open item. It refuses an empty id, an empty title, and an id that the project already has.
 func (s *Store) Add(ctx context.Context, id, title, body string) error {

@@ -74,7 +74,9 @@ func stepSignatures() map[string][]Param {
 	return map[string][]Param{
 		agentName: {
 			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), {Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()}, opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
+			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList),
+			{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
+			opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
 			opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {
@@ -258,9 +260,7 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 	for i, param := range params {
 		value := argument(call, param.Name, i)
 		if value == nil {
-			if param.Required {
-				g.report(placeOf(call.Lparen), strings.TrimSpace(fmt.Sprintf("%s needs the `%s` keyword. Add %s = ... to the call. %s", builtin, param.Name, param.Name, param.Why)))
-			}
+			g.missing(call, builtin, param)
 
 			continue
 		}
@@ -270,6 +270,13 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 
 	if builtin == agentName {
 		g.protection(call, params)
+	}
+}
+
+// missing reports a keyword that the call needs and leaves out.
+func (g *graph) missing(call *syntax.CallExpr, builtin string, param Param) {
+	if param.Required {
+		g.report(placeOf(call.Lparen), strings.TrimSpace(fmt.Sprintf("%s needs the `%s` keyword. Add %s = ... to the call. %s", builtin, param.Name, param.Name, param.Why)))
 	}
 }
 
@@ -284,14 +291,21 @@ func (g *graph) protection(call *syntax.CallExpr, params []Param) {
 	pathsArg := argument(call, "protect_paths", index("protect_paths"))
 	paths, pathsKnown := textList(pathsArg)
 
-	if items, isList := members(pathsArg); isList && slices.ContainsFunc(items, func(item syntax.Expr) bool { text, isText := literal(item); return isText && text == "" }) {
+	if hasEmptyText(pathsArg) {
 		g.report(placeOf(call.Lparen), "protect_paths holds an empty path, which would name the folder of the step. Give a path.")
 
 		return
 	}
 
 	kinds, kindsKnown := textList(argument(call, "forbid_commands", index("forbid_commands")))
-	if !pathsKnown || !kindsKnown || slices.ContainsFunc(kinds, func(kind string) bool { return !slices.Contains(ForbidKinds(), kind) }) {
+	if pathsKnown && kindsKnown {
+		g.pair(call, kinds, paths)
+	}
+}
+
+// pair reports a list of kinds and a list of paths that do not go together. A list with an unknown kind is left to the check of each kind.
+func (g *graph) pair(call *syntax.CallExpr, kinds, paths []string) {
+	if slices.ContainsFunc(kinds, func(kind string) bool { return !slices.Contains(ForbidKinds(), kind) }) {
 		return
 	}
 
@@ -303,6 +317,17 @@ func (g *graph) protection(call *syntax.CallExpr, params []Param) {
 	case !needs && len(paths) > 0:
 		g.report(placeOf(call.Lparen), fmt.Sprintf("protect_paths is set, but forbid_commands lists no kind that uses it. Add %q to forbid_commands.", model.FindingProtected))
 	}
+}
+
+// hasEmptyText reports whether a list literal has a member that is an empty text literal.
+func hasEmptyText(value syntax.Expr) bool {
+	items, isList := members(value)
+
+	return isList && slices.ContainsFunc(items, func(item syntax.Expr) bool {
+		text, isText := literal(item)
+
+		return isText && text == ""
+	})
 }
 
 // textList returns the text of the members of a list literal whose members are all text literals. An absent argument is an empty list. ok is false
@@ -386,6 +411,11 @@ func (g *graph) value(value syntax.Expr, param Param) {
 		return
 	}
 
+	g.contents(value, param)
+}
+
+// contents checks what a literal of the right kind holds: the bounds of a number and the elements of a list.
+func (g *graph) contents(value syntax.Expr, param Param) {
 	g.bounds(value, param)
 	g.each(value, param)
 }
@@ -396,10 +426,7 @@ func (g *graph) each(value syntax.Expr, param Param) {
 		return
 	}
 
-	items, ok := members(value)
-	if !ok {
-		return
-	}
+	items, _ := members(value) // the kind of the value is a list, so it is a list or a tuple
 
 	for _, item := range items {
 		if kindOf(item) == KindAny {

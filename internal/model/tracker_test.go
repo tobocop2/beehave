@@ -9,6 +9,12 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
+func TestItemFields_AreIDTitleAndBody(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"id", "title", "body"}, model.ItemFields())
+}
+
 func TestParseTracker(t *testing.T) {
 	t.Parallel()
 

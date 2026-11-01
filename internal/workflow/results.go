@@ -7,7 +7,7 @@ import (
 
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/store/local"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.
@@ -87,9 +87,9 @@ func (g *graph) itemFunctions() []string {
 	return names
 }
 
-// markItem keeps the name of the first parameter of a function as the item, when the function binds it once.
-func (h *bound) markItem(def *syntax.DefStmt) {
-	if len(def.Params) == 0 {
+// markItem keeps the name of the first parameter of a function in itemFunctions as the item, when the function binds it once.
+func (h *bound) markItem(def *syntax.DefStmt, itemFunctions []string) {
+	if len(def.Params) == 0 || !slices.Contains(itemFunctions, def.Name.Name) {
 		return
 	}
 
@@ -113,18 +113,20 @@ func (g *graph) results(parsed *syntax.File, itemFunctions []string) {
 		}
 
 		held := holds(def, shadowed)
-		if slices.Contains(itemFunctions, def.Name.Name) {
-			held.markItem(def)
+		held.markItem(def, itemFunctions)
+		g.fields(def, held)
+	}
+}
+
+// fields checks each `name.field` of a function.
+func (g *graph) fields(def *syntax.DefStmt, held bound) {
+	syntax.Walk(def, func(n syntax.Node) bool {
+		if dot, isDot := n.(*syntax.DotExpr); isDot {
+			g.field(dot, held)
 		}
 
-		syntax.Walk(def, func(n syntax.Node) bool {
-			if dot, isDot := n.(*syntax.DotExpr); isDot {
-				g.field(dot, held)
-			}
-
-			return true
-		})
-	}
+		return true
+	})
 }
 
 // callee is the name of the function that a call names, or the empty text when the call names something else.
@@ -222,24 +224,31 @@ func (g *graph) field(dot *syntax.DotExpr, held bound) {
 	}
 
 	if id.Name == held.item {
-		if fields := local.ItemFields(); !slices.Contains(fields, dot.Name.Name) {
-			g.report(placeOf(dot.Name.NamePos), fmt.Sprintf("%s is not a field of the item. It has: %s.", dot.Name.Name, strings.Join(fields, ", ")))
-		}
+		g.itemField(dot)
 
 		return
 	}
 
-	call, ok := held.calls[id.Name]
-	if !ok {
-		return
+	if call, found := held.calls[id.Name]; found {
+		g.resultField(dot, call)
 	}
+}
 
+// resultField reports `name.field` when the result of the call has no such field.
+func (g *graph) resultField(dot *syntax.DotExpr, call *syntax.CallExpr) {
 	fields, known := callFields(call)
 	if !known || slices.Contains(fields, dot.Name.Name) {
 		return
 	}
 
 	g.report(placeOf(dot.Name.NamePos), fmt.Sprintf("%s is not a field of the result of %s. It has: %s.", dot.Name.Name, callee(call), strings.Join(fields, ", ")))
+}
+
+// itemField reports `item.name` when the item has no such field.
+func (g *graph) itemField(dot *syntax.DotExpr) {
+	if fields := model.ItemFields(); !slices.Contains(fields, dot.Name.Name) {
+		g.report(placeOf(dot.Name.NamePos), fmt.Sprintf("%s is not a field of the item. It has: %s.", dot.Name.Name, strings.Join(fields, ", ")))
+	}
 }
 
 // callFields lists the fields of the result of one call. An agent has the fields of its literal outputs as well. It is false for an agent whose
