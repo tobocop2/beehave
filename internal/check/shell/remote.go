@@ -103,7 +103,7 @@ func gcloudCommand(rest []string) []string {
 			return append(text, rest[i+1:]...)
 		case strings.HasPrefix(word, "--command="):
 			text = append(text, strings.TrimPrefix(word, "--command="))
-		case word == "--command" && i+1 < len(rest):
+		case word == longCommandOption && i+1 < len(rest):
 			text = append(text, rest[i+1])
 		}
 	}

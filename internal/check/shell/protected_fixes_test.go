@@ -127,6 +127,15 @@ func TestScanWith_ProtectedPathAfterARelativeCdResolvesAgainstTheNewFolder(t *te
 	assert.Empty(t, shell.ScanWith("cd sub && cd .. && touch f", protectedKind, sub))
 }
 
+func TestScanWith_AGluedCommandIsReadAgainAfterACd(t *testing.T) {
+	t.Parallel()
+
+	sub := shell.Protection{Dirs: []string{"/work/step/sub"}, Base: stepFolder}
+
+	assert.True(t, hasKind(shell.ScanWith("su -c'touch f'; cd sub; su -c'touch f'", protectedKind, sub), "protected-path"), "the second f is /work/step/sub/f")
+	assert.True(t, hasKind(shell.ScanWith("flock l -c 'touch f'; cd sub; flock l -c 'touch f'", protectedKind, sub), "protected-path"))
+}
+
 func TestScanWith_ProtectedPathSaysWhenAPathCannotBeResolved(t *testing.T) {
 	t.Parallel()
 
