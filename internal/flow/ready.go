@@ -23,6 +23,8 @@ type forge interface {
 	Pull(ctx context.Context, project, item string) (review.Standing, error)
 	Reviewed(ctx context.Context, project, item, reviewed string) (review.Standing, error)
 	Ready(ctx context.Context, project, item string) error
+	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them. Found is false when the item has no pull request yet.
+	ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error)
 }
 
 // markReady reads the forge and refuses a pull request with a reason to wait, or one that moved after the review to a head with another tree.

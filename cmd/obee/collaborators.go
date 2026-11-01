@@ -562,6 +562,27 @@ func (p pulls) Ready(ctx context.Context, project, item string) error {
 	return built.SetDraft(ctx, number, false)
 }
 
+// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them.
+// An item with no pull request, and a project with no forge, give found false: there is no scope to fix.
+// GitHub lists closing references only for a pull request into the default branch, so a pull request into another base has an empty set.
+func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error) {
+	built, number, err := p.find(ctx, project, item)
+	if errors.Is(err, errNoPull) || errors.Is(err, forge.ErrNoForge) {
+		return nil, false, nil
+	}
+
+	if err != nil {
+		return nil, false, err
+	}
+
+	refs, err := built.ClosingRefs(ctx, number)
+	if err != nil {
+		return nil, false, fmt.Errorf("read the issues that pull request %d closes: %w", number, err)
+	}
+
+	return refs.Issues, true, nil
+}
+
 // Watch reads the pull request once.
 func (p pulls) Watch(ctx context.Context, project string, pr int) (review.Outcome, error) {
 	built, err := p.forgeOf(project)

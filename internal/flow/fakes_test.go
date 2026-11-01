@@ -646,6 +646,13 @@ type fakeForge struct {
 	failFrom int
 	// pushAfterReady, when set, moves the head of the pull request to it once Ready has run: a push between the standing read and the ready call.
 	pushAfterReady string
+	// closing is the closing issues that each read of ClosingIssues gives, in order; the last repeats. closingReads counts the reads.
+	closing      [][]int
+	closingReads int
+	closingErr   error // fails every read after the first closingOK reads
+	closingOK    int
+	noPullAfter  int
+	noPull       bool // reports no pull request after the first noPullAfter reads
 }
 
 func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, error) {
@@ -659,6 +666,26 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 	}
 
 	return f.state, f.err
+}
+
+// ClosingIssues answers with the next of closing and then repeats the last. A set of nil is the empty set. noPull makes it report no pull request. closingErr fails every read.
+func (f *fakeForge) ClosingIssues(_ context.Context, _, _ string) ([]int, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.closingReads++
+
+	if f.closingErr != nil && f.closingReads > f.closingOK {
+		return nil, false, f.closingErr
+	}
+
+	gone := f.noPull && f.closingReads > f.noPullAfter
+
+	if gone || len(f.closing) == 0 {
+		return nil, !gone, nil
+	}
+
+	return f.closing[min(f.closingReads, len(f.closing))-1], true, nil
 }
 
 // Reviewed answers as Pull does. When rewritten is set and the head is not the reviewed commit, the standing says the head is a rewrite of it.
