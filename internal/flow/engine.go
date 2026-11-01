@@ -221,8 +221,42 @@ func engineConfig(opts Options, state store, logger *slog.Logger) dbos.Config {
 // applicationVersion is the version that DBOS stores with each run: the build version and the version of the builtin steps.
 func applicationVersion(build string) string { return build + "+" + stepsVersion }
 
+// stepsMark starts the version of the builtin steps in a stored application version.
+const stepsMark = "+star"
+
+// splitVersion splits a stored application version into the build version that a user starts and the version of the builtin steps (such as star13).
+// A version with no step list part has an empty second value. This is the only place that reads the format of applicationVersion.
+func splitVersion(stored string) (build, steps string) {
+	at := strings.LastIndex(stored, stepsMark)
+	if at < 0 {
+		return stored, ""
+	}
+
+	return stored[:at], stored[at+1:]
+}
+
 // buildVersion is the version that a user starts: a stored version without the version of the builtin steps.
-func buildVersion(stored string) string { return strings.TrimSuffix(stored, "+"+stepsVersion) }
+func buildVersion(stored string) string {
+	build, _ := splitVersion(stored)
+
+	return build
+}
+
+// stepListOf is the version of the builtin steps in a stored version, or an empty text when it holds none.
+func stepListOf(stored string) string {
+	_, steps := splitVersion(stored)
+
+	return steps
+}
+
+// describeStepList names a step list version for a message: "no step list" when the stored version holds none.
+func describeStepList(steps string) string {
+	if steps == "" {
+		return "no step list"
+	}
+
+	return "step list " + steps
+}
 
 // register adds the workflows, the agents queue (implement steps), the reviews queue (review steps) and the items queue of spawn.
 // Each agent queue runs one agent per login, at most its own cap in all. The two caps do not lend slots to each other.

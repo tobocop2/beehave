@@ -61,6 +61,10 @@ func resolveModule(module string) (string, error) {
 
 // readFile reads a pinned file by its name: from the folder, or from the binary.
 func readFile(dir, name string) ([]byte, error) {
+	if script, ok := strings.CutPrefix(name, scriptPrefix); ok {
+		return fs.ReadFile(os.DirFS(repoRoot(dir)), script)
+	}
+
 	if lib, ok := strings.CutPrefix(name, embeddedPrefix); ok {
 		return library.ReadFile(path.Join(libraryFolder, lib))
 	}
@@ -77,13 +81,8 @@ func hashOf(data []byte) string {
 // Pin reads the workflow file and every file it loads, and returns their hashes sorted by path. It runs no code.
 func Pin(file string) ([]PinnedFile, error) {
 	g := scan(file)
-	if len(g.found) > 0 {
-		errs := make([]error, len(g.found))
-		for i, d := range g.found {
-			errs[i] = d
-		}
-
-		return nil, errors.Join(errs...)
+	if err := g.failure(); err != nil {
+		return nil, err
 	}
 
 	pinned := make([]PinnedFile, 0, len(g.units))
@@ -91,7 +90,41 @@ func Pin(file string) ([]PinnedFile, error) {
 		pinned = append(pinned, PinnedFile{Path: name, SHA256: hashOf(u.data)})
 	}
 
+	scripts, err := g.pinScripts()
+	if err != nil {
+		return nil, err
+	}
+
+	pinned = append(pinned, scripts...)
+
 	slices.SortFunc(pinned, func(a, b PinnedFile) int { return strings.Compare(a.Path, b.Path) })
+
+	return pinned, nil
+}
+
+// failure joins the problems that the scan found, and returns nil when it found none.
+func (g *graph) failure() error {
+	errs := make([]error, len(g.found))
+	for i, d := range g.found {
+		errs[i] = d
+	}
+
+	return errors.Join(errs...)
+}
+
+// pinScripts returns the hashes of the scripts of the repository that the command calls of the workflow run.
+func (g *graph) pinScripts() ([]PinnedFile, error) {
+	inside, _ := g.scripts()
+	pinned := make([]PinnedFile, 0, len(inside))
+
+	for _, name := range inside {
+		data, err := readFile(g.dir, scriptPrefix+name)
+		if err != nil {
+			return nil, fmt.Errorf("read the script %s: %w", name, err)
+		}
+
+		pinned = append(pinned, PinnedFile{Path: scriptPrefix + name, SHA256: hashOf(data)})
+	}
 
 	return pinned, nil
 }

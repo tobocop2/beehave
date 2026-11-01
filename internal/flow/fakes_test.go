@@ -613,7 +613,7 @@ func (h *harness) client(t *testing.T, version string) *Client {
 	opts := h.opts
 	opts.Version = version
 
-	client, err := OpenClient(t.Context(), opts, ReleaseDeps{Lifecycle: h.life, Trees: h.trees, Clock: clock{Release: time.Second}})
+	client, err := OpenClient(t.Context(), opts, ReleaseDeps{Lifecycle: h.life, Beats: h.beats, Trees: h.trees, Clock: clock{Release: time.Second}})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 

@@ -624,6 +624,23 @@ func TestSteeringCommands_PassTheItemAndTheJoinedAnswerToTheClient(t *testing.T)
 	assert.Equal(t, []string{"answer 12 use option b", "resume 12", "cancel 12"}, rig.steering.calls)
 }
 
+func TestResumeCommand_TheOnThisBuildFlagMovesTheRunToThisBuild(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-build")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"resume-here 12"}, rig.steering.calls)
+}
+
+func (s *fakeSteering) ResumeOnThisBuild(item string) error {
+	s.calls = append(s.calls, "resume-here "+item)
+
+	return s.err
+}
+
 func TestFlowCommands_AreAbsentWithoutTheirFactories(t *testing.T) {
 	t.Parallel()
 

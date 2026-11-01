@@ -88,6 +88,10 @@ type graph struct {
 	// mainFile is the parsed workflow file. Its results are checked after every file is read, because the entries of the spawn calls of the
 	// loaded files name functions of this file.
 	mainFile *syntax.File
+	// programs are the paths that the command calls of every file name as the program to run.
+	programs []string
+	// dynamic counts the command calls on this machine whose run list is not a literal.
+	dynamic int
 }
 
 func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
@@ -179,6 +183,9 @@ func finishTakesNoItem(parsed *syntax.File) bool {
 // inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
+	found, dynamic := programs(parsed)
+	g.programs = append(g.programs, found...)
+	g.dynamic += dynamic
 	g.sandboxes(parsed)
 	g.swarm(parsed)
 

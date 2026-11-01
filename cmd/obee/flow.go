@@ -88,7 +88,7 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
 			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
 
-			client, err := flow.OpenClient(ctx, opts, flow.ReleaseDeps{Lifecycle: newLife(cfg, table), Trees: newWorktrees(nil, opts, nil)})
+			client, err := flow.OpenClient(ctx, opts, releaseDeps(newLife(cfg, table), opts))
 			if err != nil {
 				return nil, err
 			}
@@ -132,6 +132,11 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 // backendErrors lists the sentinel errors of the backends. A gate or a merge on a host returns them, and the engine cannot import a backend.
 func backendErrors() []error {
 	return []error{skypilot.ErrConfig}
+}
+
+// releaseDeps builds what the client needs: the claim to take and give back, the lease reader of a move to this build, and the worktrees.
+func releaseDeps(life itemLife, opts flow.Options) flow.ReleaseDeps {
+	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: newWorktrees(nil, opts, nil)}
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.
