@@ -267,6 +267,66 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 
 		g.value(value, param)
 	}
+
+	if builtin == agentName {
+		g.protection(call, params)
+	}
+}
+
+// protection checks the two rules of the run that tie forbid_commands to protect_paths: a kind that needs paths takes at least one, and paths
+// need such a kind. An empty path is always wrong. Both rules need both sides to be absent or list literals of text literals, and every kind to be
+// a known one (the check of each kind reports the rest). Any other value is left to the run.
+func (g *graph) protection(call *syntax.CallExpr, params []Param) {
+	index := func(name string) int {
+		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
+	}
+
+	pathsArg := argument(call, "protect_paths", index("protect_paths"))
+	paths, pathsKnown := textList(pathsArg)
+
+	if items, isList := members(pathsArg); isList && slices.ContainsFunc(items, func(item syntax.Expr) bool { text, isText := literal(item); return isText && text == "" }) {
+		g.report(placeOf(call.Lparen), "protect_paths holds an empty path, which would name the folder of the step. Give a path.")
+
+		return
+	}
+
+	kinds, kindsKnown := textList(argument(call, "forbid_commands", index("forbid_commands")))
+	if !pathsKnown || !kindsKnown || slices.ContainsFunc(kinds, func(kind string) bool { return !slices.Contains(ForbidKinds(), kind) }) {
+		return
+	}
+
+	needs := slices.ContainsFunc(kinds, func(kind string) bool { return model.FindingKind(kind).NeedsPaths() })
+
+	switch {
+	case needs && len(paths) == 0:
+		g.report(placeOf(call.Lparen), fmt.Sprintf("forbid_commands lists %s, so protect_paths must list at least one directory.", model.FindingProtected))
+	case !needs && len(paths) > 0:
+		g.report(placeOf(call.Lparen), fmt.Sprintf("protect_paths is set, but forbid_commands lists no kind that uses it. Add %q to forbid_commands.", model.FindingProtected))
+	}
+}
+
+// textList returns the text of the members of a list literal whose members are all text literals. An absent argument is an empty list. ok is false
+// for any other expression, and for a list with a member that is not a text literal.
+func textList(value syntax.Expr) (texts []string, ok bool) {
+	if value == nil {
+		return nil, true
+	}
+
+	items, isList := members(value)
+	if !isList {
+		return nil, false
+	}
+
+	for _, item := range items {
+		text, isText := literal(item)
+		if !isText {
+			return nil, false
+		}
+
+		texts = append(texts, text)
+	}
+
+	return texts, true
 }
 
 // mergeNeedsSteps reports a merge call that can merge and names no gate steps: it leaves out `steps` or passes an empty list literal.
