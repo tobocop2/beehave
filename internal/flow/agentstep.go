@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -216,11 +215,7 @@ func inputMap(v starlark.Value) (map[string]any, error) {
 // outputFile is the path where the agent of a step writes its declared outputs. It is in the state folder of the engine, named by item and step,
 // so the file never dirties the worktree of the item. A dot or a separator in a name is escaped, so two pairs of item and step never share a file.
 func outputFile(state, item, step string) string {
-	escape := func(name string) string {
-		return strings.ReplaceAll(url.PathEscape(name), ".", "%2E")
-	}
-
-	return filepath.Join(state, outputsFolder, escape(item)+"."+escape(step)+".json")
+	return filepath.Join(state, outputsFolder, model.SafeName(item)+"."+model.SafeName(step)+".json")
 }
 
 // agent runs an agent call. The prompt is rendered once and recorded as the note of the first step, so a replay never reads the prompt file again.
@@ -262,9 +257,21 @@ func (s *script) promptOf(a *agentArgs, name string) (string, error) {
 		return "", err
 	}
 
-	a.box, err = recalledSandbox(rendered.Outputs)
+	return rendered.Note, a.recall(rendered.Outputs)
+}
 
-	return rendered.Note, err
+// recall reads the sandbox and the output file that the render step recorded. The output file is the one that the recorded prompt names,
+// whatever the name function gives today. A record made before the path was pinned keeps the computed path.
+func (a *agentArgs) recall(outputs map[string]any) (err error) {
+	a.file = recalledOutputFile(outputs, a.file)
+
+	if err = os.MkdirAll(filepath.Dir(a.file), outputsMode); err != nil {
+		return fmt.Errorf("make the folder of the output file: %w", err)
+	}
+
+	a.box, err = recalledSandbox(outputs)
+
+	return err
 }
 
 // renderStep returns the step that renders the prompt of an agent call and records the sandbox of the call.
@@ -275,7 +282,10 @@ func (s *script) renderStep(a agentArgs) func(context.Context) (stepResult, erro
 			return stepResult{Note: prompt}, err
 		}
 
-		return stepResult{Note: prompt, Outputs: recordSandbox(a.sandbox.effective(s.sandboxDefault()))}, nil
+		outputs := map[string]any{recordedOutputFile: a.file}
+		maps.Copy(outputs, recordSandbox(a.sandbox.effective(s.sandboxDefault())))
+
+		return stepResult{Note: prompt, Outputs: outputs}, nil
 	}
 }
 

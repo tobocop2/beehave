@@ -2,6 +2,8 @@ package flow
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -166,6 +168,26 @@ func TestRecalledSandbox_ReadsBackWhatRecordSandboxWrote(t *testing.T) {
 	}
 
 	assert.Empty(t, recordSandbox(nil), "no sandbox records nothing")
+}
+
+func TestRecalledOutputFile_ARecordWithoutAPinnedPathFallsBackToTheComputedOne(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "/computed", recalledOutputFile(nil, "/computed"))
+	assert.Equal(t, "/computed", recalledOutputFile(map[string]any{recordedSandbox: "x"}, "/computed"))
+	assert.Equal(t, "/pinned", recalledOutputFile(map[string]any{recordedOutputFile: "/pinned"}, "/computed"))
+}
+
+func TestRecall_APinnedFileWhoseFolderCannotBeMadeIsAnError(t *testing.T) {
+	t.Parallel()
+
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+
+	a := agentArgs{}
+	err := a.recall(map[string]any{recordedOutputFile: filepath.Join(blocker, "x.json")})
+
+	require.ErrorContains(t, err, "make the folder of the output file")
 }
 
 func TestRecalledSandbox_AnUnreadableRecordIsAnError(t *testing.T) {

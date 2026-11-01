@@ -115,6 +115,18 @@ func (s *script) sandboxDefault() bool {
 	return s.e.deps.SandboxDefault != nil && s.e.deps.SandboxDefault(s.in.Project)
 }
 
+// recordedOutputFile is the name of the output of the render step that holds the output file that the recorded prompt names.
+const recordedOutputFile = "output_file"
+
+// recalledOutputFile reads the output file that the render step recorded. A record made before the path was pinned has none, and the caller keeps the computed path.
+func recalledOutputFile(outputs map[string]any, computed string) string {
+	if file, ok := outputs[recordedOutputFile].(string); ok && file != "" {
+		return file
+	}
+
+	return computed
+}
+
 // recordSandbox writes the sandbox of a step as the output of the render step, in the text a replay reads. No sandbox writes nothing.
 func recordSandbox(box *model.Sandbox) map[string]any {
 	if box == nil {

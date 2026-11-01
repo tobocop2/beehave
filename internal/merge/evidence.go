@@ -216,7 +216,7 @@ func (a *attempt) noLogs() string {
 
 // logPath is the file of the log of one check: it is named for the pull request, the job and the check. The job number keeps two checks of one name apart.
 func (a *attempt) logPath(row model.Check) string {
-	name := "pr" + strconv.Itoa(a.req.PR) + "-" + fileSafe(row.Link[strings.LastIndex(row.Link, "/")+1:]) + "-" + fileSafe(row.Name) + ".log"
+	name := "pr" + strconv.Itoa(a.req.PR) + "-" + model.SafeName(row.Link[strings.LastIndex(row.Link, "/")+1:]) + "-" + model.SafeName(row.Name) + ".log"
 
 	return filepath.Join(a.req.Dir, logsFolder, name)
 }
@@ -258,15 +258,4 @@ func writeWhole(path, text string) error {
 	}
 
 	return err
-}
-
-// fileSafe replaces every character of a check name that a file name cannot hold or that reads as a path.
-func fileSafe(name string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
-			return r
-		}
-
-		return '_'
-	}, name)
 }

@@ -94,7 +94,7 @@ func TestWorktrees_AskGitToListTheWorktreesInTheItemFolder(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "p", "1%2E5"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "p", "1_2E5"), 0o700))
 
 	var (
 		asked []string
@@ -110,7 +110,32 @@ func TestWorktrees_AskGitToListTheWorktreesInTheItemFolder(t *testing.T) {
 	_, err := trees.Path(t.Context(), "p", "1.5")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"worktree", "list", "--porcelain"}, asked)
-	assert.Equal(t, filepath.Join(root, "p", "1%2E5"), inDir)
+	assert.Equal(t, filepath.Join(root, "p", "1_2E5"), inDir)
+}
+
+func TestWorktrees_TheFolderOfAnItemHoldsOnlyLettersDigitsAndFewMarks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	item := "review#5 \"x\"/y"
+
+	var inDir string
+
+	folder := filepath.Join(root, "p", model.SafeName(item))
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+
+	trees := worktrees{root: root, git: func(dir string) proc.Runner {
+		inDir = dir
+
+		return scripted{args: new([]string)}
+	}}
+
+	_, err := trees.Path(t.Context(), "p", item)
+	require.NoError(t, err)
+
+	rel, err := filepath.Rel(root, inDir)
+	require.NoError(t, err)
+	assert.Regexp(t, `^[A-Za-z0-9._/-]+$`, rel)
 }
 
 func TestWorktrees_AFolderThatCannotBeReadIsAnError(t *testing.T) {
