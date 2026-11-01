@@ -46,7 +46,7 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 
 	request.Stdin = c.stdin
 
-	if request.MaxNewProcesses, err = processCap(c.processes, c.host); err != nil {
+	if request.MaxNewProcesses, err = workflow.ProcessCap(c.processes, c.host); err != nil {
 		return request, nil, err
 	}
 
@@ -54,7 +54,7 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 		return request, nil, err
 	}
 
-	stops, err := stopCodes(c.codes)
+	stops, err := workflow.StopCodes(c.codes)
 
 	return request, stops, err
 }
@@ -64,34 +64,13 @@ func (s *script) request(run starlark.Value, host, timeout string) (CommandReque
 	request := CommandRequest{Project: s.in.Project, Item: s.in.Item, Host: host}
 
 	var err error
-	if request.Run, err = words("run", run); err != nil {
+	if request.Run, err = workflow.Words("run", run); err != nil {
 		return request, err
 	}
 
-	request.Timeout, err = duration("timeout", timeout)
+	request.Timeout, err = workflow.Duration("timeout", timeout)
 
 	return request, err
-}
-
-// processCap reads the max_new_processes keyword: a whole number of 1 or more, or zero for a call that sets none. A call with a host cannot set it,
-// because a host job takes a command line only.
-func processCap(v starlark.Value, host string) (int, error) {
-	if v == nil {
-		return 0, nil
-	}
-
-	if host != "" {
-		return 0, errors.New("max_new_processes cannot be used together with host. A host job takes a command line only. Remove max_new_processes or host")
-	}
-
-	n, isInt := v.(starlark.Int)
-	limit, small := n.Int64()
-
-	if !isInt || !small || limit < workflow.MinProcessCap || limit > workflow.MaxProcessCap {
-		return 0, fmt.Errorf("max_new_processes must be a whole number from %d to %d. Write max_new_processes = 50", workflow.MinProcessCap, workflow.MaxProcessCap)
-	}
-
-	return int(limit), nil
 }
 
 // environment returns the whole environment of the program: the allowed names of the caller, then the variables of the call.
@@ -115,7 +94,7 @@ func (s *script) environment(request CommandRequest, own starlark.Value) ([]stri
 
 // variables reads the env dict of a command call as NAME=value pairs, sorted by name. An absent dict is empty.
 func variables(v starlark.Value) ([]string, error) {
-	dict, ok := optional[*starlark.Dict](v)
+	dict, ok := workflow.Optional[*starlark.Dict](v)
 	if !ok {
 		return nil, errors.New("env must be a dict of strings. Write env = {\"NAME\": \"value\"}")
 	}
@@ -158,20 +137,6 @@ func assignmentOf(key, val starlark.Value) (string, error) {
 	}
 
 	return name + "=" + value, nil
-}
-
-// stopCodes reads the stop_on_rc list. Each code must be a whole number from 1 to 255.
-func stopCodes(v starlark.Value) ([]int, error) {
-	return listOfEach(v, func(item starlark.Value) (int, error) {
-		code, isInt := item.(starlark.Int)
-		n, small := code.Int64()
-
-		if !isInt || !small || !workflow.StopCode(int(n)) {
-			return 0, errors.New("stop_on_rc must hold whole numbers from 1 to 255. Write each exit code as a number")
-		}
-
-		return int(n), nil
-	}, errors.New("stop_on_rc must be a list of exit codes. Write stop_on_rc = [2]"))
 }
 
 // command runs a program. A code in stop_on_rc ends the item: the step records it, so a replay stops at the same call.

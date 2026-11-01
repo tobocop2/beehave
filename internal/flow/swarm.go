@@ -115,7 +115,7 @@ func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
 		return nil, fmt.Errorf("item %s was started by spawn and cannot start items. Call spawn from the item that a user started", s.in.Item)
 	}
 
-	ids, err := words("items", list)
+	ids, err := workflow.Words("items", list)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func runRefs(v starlark.Value) ([]spawnedRun, error) {
 		}
 	}
 
-	return listOfEach(v, oneRef, errors.New("runs must be the value that spawn returned"))
+	return workflow.ListOfEach(v, oneRef, errors.New("runs must be the value that spawn returned"))
 }
 
 // oneRef reads one run struct: its item and its run id.

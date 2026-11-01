@@ -90,7 +90,7 @@ func everyStepPassed(v starlark.Value) error {
 		return errStepsMissing
 	}
 
-	steps, err := toGo[[]any](v)
+	steps, err := workflow.ToGo[[]any](v)
 	if err != nil {
 		return errStepsShape
 	}
@@ -165,7 +165,7 @@ func (s *MergeSettings) read(children string, forbid, own starlark.Value) (err e
 		return err
 	}
 
-	if s.ForbidText, err = words("forbid_text", forbid); err != nil {
+	if s.ForbidText, err = workflow.Words("forbid_text", forbid); err != nil {
 		return err
 	}
 
@@ -188,7 +188,7 @@ func retarget(children string) (bool, error) {
 
 // ownerIdentity reads the `own` dict into its logins and its addresses. An absent dict has none.
 func ownerIdentity(v starlark.Value) (logins, emails []string, err error) {
-	dict, ok := optional[*starlark.Dict](v)
+	dict, ok := workflow.Optional[*starlark.Dict](v)
 	if !ok {
 		return nil, nil, errors.New("`own` must be a dict with `logins` and `emails`. Write {\"logins\": [...], \"emails\": [...]}")
 	}
@@ -213,7 +213,7 @@ func ownerList(dict *starlark.Dict, key string) ([]string, error) {
 		return nil, err
 	}
 
-	return words("own."+key, list)
+	return workflow.Words("own."+key, list)
 }
 
 // merge pins the commit in `head`, marks the pull request ready, and merges it only when `merge` is true.

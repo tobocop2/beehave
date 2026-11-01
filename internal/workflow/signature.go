@@ -35,8 +35,9 @@ type Param struct {
 	Values   []string
 	// Each is the closed set of the literal text elements of a list keyword. The check reads each literal element and leaves a list or an element that is not a literal to the run.
 	Each []string
-	// Min and Max bound a whole number. Both are zero for a keyword with no bounds.
-	Min, Max int
+	// Rule is the validation that the run applies to the value of the keyword. The check applies it to a value that is a literal, and the run applies
+	// it to the value it got, so one function owns the rule. It is nil for a keyword with no rule beyond its kind.
+	Rule func(starlark.Value) error
 	// Why ends the message for a missing required keyword. It says what the keyword is for, when that is not plain.
 	Why string
 }
@@ -54,9 +55,93 @@ func ForbidKinds() []string { return model.FindingKindNames() }
 func req(name string, kind Kind) Param { return Param{Name: name, Kind: kind, Required: true} }
 
 // isBoolName reports whether name is one of the two boolean constants of Starlark.
-func isBoolName(name string) bool { return name == "True" || name == "False" }
+func isBoolName(name string) bool { return name == trueName || name == falseName }
+
+const (
+	trueName  = "True"
+	falseName = "False"
+)
 
 func opt(name string, kind Kind) Param { return Param{Name: name, Kind: kind} }
+
+// words is an optional list keyword whose elements must be text.
+func words(name string) Param { return Param{Name: name, Kind: KindList, Rule: wordsRule(name)} }
+
+// ruled is an optional keyword of a kind with the rule of the run.
+func ruled(name string, kind Kind, rule func(starlark.Value) error) Param {
+	return Param{Name: name, Kind: kind, Rule: rule}
+}
+
+// wordsRule is the rule of a keyword that takes a list of text.
+func wordsRule(name string) func(starlark.Value) error {
+	return func(v starlark.Value) error {
+		_, err := Words(name, v)
+
+		return err
+	}
+}
+
+// durationRule is the rule of a timeout keyword.
+func durationRule(name string) func(starlark.Value) error {
+	return func(v starlark.Value) error {
+		if v == starlark.None {
+			var text string
+
+			return noneFor(name, &text)
+		}
+
+		text, _ := starlark.AsString(v)
+		_, err := Duration(name, text)
+
+		return err
+	}
+}
+
+// noneFor is the error of the run for a None in a keyword that it reads into a Go value of the type of dest.
+func noneFor(name string, dest any) error {
+	err := starlark.UnpackArgs("", nil, []starlark.Tuple{{starlark.String(name), starlark.None}}, name+"?", dest)
+
+	// A None never fits a text, a whole number or a flag, so err is set. The step name goes in front when the check reports it.
+	return errors.New(strings.TrimPrefix(err.Error(), ": "))
+}
+
+func triesRule(v starlark.Value) error {
+	if v == starlark.None {
+		var tries int
+
+		return noneFor("output_tries", &tries)
+	}
+
+	n, err := starlark.AsInt32(v)
+	if err != nil {
+		if i, isInt := v.(starlark.Int); isInt && i.Sign() < 0 { // a number beyond 32 bits is below one only when it is negative
+			return OutputTries(0)
+		}
+
+		return nil
+	}
+
+	return OutputTries(n)
+}
+
+func stopRule(v starlark.Value) error {
+	_, err := StopCodes(v)
+
+	return err
+}
+
+func inputsRule(v starlark.Value) error {
+	_, err := InputMap(v)
+
+	return err
+}
+
+func allowRule(v starlark.Value) error {
+	_, _, err := AllowPaths(v)
+
+	return err
+}
+
 func one(name string, values []string) Param {
 	return Param{Name: name, Kind: KindText, Values: values}
 }
@@ -74,11 +159,12 @@ func signatures() map[string][]Param {
 // agentParams holds the keywords of the agent builtin.
 func agentParams() []Param {
 	return []Param{
-		req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-		opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList),
+		req("prompt", KindText), req("model", KindText), opt("runner", KindText), ruled("inputs", KindDict, inputsRule), words("outputs"),
+		opt("pin", KindText), opt("resume", KindText), words("require_skills"),
 		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
-		opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
-		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
+		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), ruled("timeout", KindText, durationRule("timeout")),
+		ruled("idle_timeout", KindText, durationRule("idle_timeout")), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 	}
 }
 
@@ -90,11 +176,13 @@ func stepSignatures() map[string][]Param {
 		agentName:   agentParams(),
 		sandboxName: {opt("network", KindList), opt("allow_write", KindList)},
 		commandName: {
-			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), {Name: "max_new_processes", Kind: KindInt, Min: MinProcessCap, Max: MaxProcessCap}, label,
+			{Name: "run", Kind: KindList, Required: true, Rule: wordsRule("run")},
+			opt("host", KindText), opt("stdin", KindText), opt("env", KindDict),
+			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), opt("max_new_processes", KindInt), label,
 		},
 		"env": {req(nameKeyword, KindText), opt("default", KindText)},
 		gateName: {
-			opt("run", KindList), opt("host", KindText), opt("timeout", KindText), opt("head", KindText), label,
+			words("run"), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
 		waitName:         {opt("question", KindText), label},
 		hostTeardownName: {label},
@@ -108,11 +196,11 @@ func swarmSignatures() map[string][]Param {
 	return map[string][]Param{
 		batchMergeName: {
 			req("prs", KindList), req("base", KindText), req("repo", KindText), opt("hold", KindText), opt("own", KindDict),
-			opt("forbid_text", KindList), opt("gate_run", KindList), opt("integration", KindInt),
+			words("forbid_text"), words("gate_run"), opt("integration", KindInt),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
 		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
-		spawnName:  {req("items", KindList), opt(entryKeyword, KindText), label},
+		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), label},
 		queueName:  {label, opt("hold", KindText)},
 	}
 }
@@ -132,7 +220,7 @@ func itemSignatures() map[string][]Param {
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("id", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("approved", KindBool),
-			opt("tree", KindText), opt("steps", KindList), opt("forbid_text", KindList), one("children", ChildrenValues()), opt("merge", KindBool), label,
+			opt("tree", KindText), opt("steps", KindList), words("forbid_text"), one("children", ChildrenValues()), opt("merge", KindBool), label,
 		},
 	}
 }
@@ -277,12 +365,63 @@ func (g *graph) signature(call *syntax.CallExpr, builtin string, params []Param)
 			continue
 		}
 
-		g.value(value, param)
+		g.value(builtin, value, param)
 	}
 
-	if builtin == agentName {
+	g.pairs(call, builtin, params)
+}
+
+// pairs checks the rules of a call that tie two keywords together.
+func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
+	switch builtin {
+	case agentName:
 		g.protection(call, params)
+	case commandName:
+		g.hostWithCap(call, params)
 	}
+}
+
+// hostWithCap checks max_new_processes of a command call with the rule of the run and the real pair of values the run passes it: the value and
+// the host. It reports one error for the argument. A value that is not a literal, or a host that is neither absent nor a text literal, is left
+// to the run, and so is a value of the wrong kind, which the kind check reports.
+func (g *graph) hostWithCap(call *syntax.CallExpr, params []Param) {
+	index := func(name string) int {
+		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
+	}
+
+	limit := argument(call, "max_new_processes", index("max_new_processes"))
+	value, isLiteral := capLiteral(limit)
+	host, known := hostText(argument(call, "host", index("host")))
+
+	if !isLiteral || !known {
+		return
+	}
+
+	if _, err := ProcessCap(value, host); err != nil {
+		g.report(placeOf(syntax.Start(limit)), commandName+": "+err.Error()+".")
+	}
+}
+
+// capLiteral is the value of a max_new_processes argument that is a literal of the kind int or none. A value of another kind is left to the kind check.
+func capLiteral(limit syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	if limit == nil {
+		return nil, false
+	}
+
+	if kind := kindOf(limit); kind != KindInt && kind != KindAny {
+		return nil, false
+	}
+
+	return literalValue(limit)
+}
+
+// hostText is the host of a call: empty when the call leaves it out. known is false for a host that is not a text literal.
+func hostText(arg syntax.Expr) (host string, known bool) {
+	if arg == nil {
+		return "", true
+	}
+
+	return literal(arg)
 }
 
 // missing reports a keyword that the call needs and leaves out.
@@ -378,7 +517,7 @@ func (g *graph) mergeNeedsSteps(call *syntax.CallExpr, params []Param) {
 	}
 
 	merges := argument(call, "merge", index("merge"))
-	if ident, isIdent := merges.(*syntax.Ident); merges == nil || (isIdent && ident.Name == "False") {
+	if ident, isIdent := merges.(*syntax.Ident); merges == nil || (isIdent && ident.Name == falseName) {
 		return
 	}
 
@@ -403,33 +542,177 @@ func emptyList(expr syntax.Expr) bool {
 }
 
 // value checks one literal against the closed set and the kind of its keyword.
-func (g *graph) value(value syntax.Expr, param Param) {
+func (g *graph) value(builtin string, value syntax.Expr, param Param) {
 	got := kindOf(value)
 	if got == KindAny {
+		g.none(builtin, value, param)
+
 		return
 	}
 
 	if param.Values != nil {
-		if text, _ := literal(value); got != KindText || !slices.Contains(param.Values, text) {
-			g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s is %s. Use one of: %s.", param.Name, rawText(value), strings.Join(param.Values, ", ")))
-		}
+		g.closedSet(value, got, param)
 
 		return
 	}
 
-	if param.Kind != KindAny && got != param.Kind {
-		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s must be %s, not %s.", param.Name, withArticle(param.Kind), withArticle(got)))
-
+	if !g.kindFits(value, got, param) {
 		return
 	}
 
-	g.contents(value, param)
+	g.each(value, param)
+	g.rule(builtin, value, param)
 }
 
-// contents checks what a literal of the right kind holds: the bounds of a number and the elements of a list.
-func (g *graph) contents(value syntax.Expr, param Param) {
-	g.bounds(value, param)
-	g.each(value, param)
+// kindFits reports whether the kind of a literal is the kind of its keyword, and reports the literal when it is not.
+func (g *graph) kindFits(value syntax.Expr, got Kind, param Param) bool {
+	if param.Kind == KindAny || got == param.Kind {
+		return true
+	}
+
+	g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s must be %s, not %s.", param.Name, withArticle(param.Kind), withArticle(got)))
+
+	return false
+}
+
+// none applies the rule of the run to a literal None, which has no kind. The rule says whether the run takes it.
+func (g *graph) none(builtin string, value syntax.Expr, param Param) {
+	if v, ok := literalValue(value); ok && v == starlark.None {
+		g.rule(builtin, value, param)
+	}
+}
+
+// closedSet reports a literal that is not one of the values of its keyword.
+func (g *graph) closedSet(value syntax.Expr, got Kind, param Param) {
+	if text, _ := literal(value); got != KindText || !slices.Contains(param.Values, text) {
+		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s is %s. Use one of: %s.", param.Name, rawText(value), strings.Join(param.Values, ", ")))
+	}
+}
+
+// rule applies the rule of the run to a value that is a literal, and reports the error of the run with the name of the step. A value that is
+// not a literal is left to the run.
+func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
+	if param.Rule == nil {
+		return
+	}
+
+	v, ok := literalValue(value)
+	if !ok {
+		return
+	}
+
+	if err := param.Rule(v); err != nil {
+		g.report(placeOf(syntax.Start(value)), builtin+": "+err.Error()+".")
+	}
+}
+
+// literalValue is the Starlark value of an expression made of literals only: text, numbers, True, False, None, and lists, tuples and dicts of them.
+// It reads the syntax and runs no code. ok is false for any other expression.
+func literalValue(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	switch e := expr.(type) {
+	case *syntax.ParenExpr:
+		return literalValue(e.X)
+	case *syntax.Literal:
+		return literalOf(e)
+	case *syntax.UnaryExpr:
+		return negated(e)
+	case *syntax.Ident:
+		return constant(e.Name)
+	}
+
+	return literalCollection(expr)
+}
+
+// literalCollection is the value of a list, a tuple or a dict of literals.
+func literalCollection(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	switch e := expr.(type) {
+	case *syntax.ListExpr:
+		items, ok := literalItems(e.List)
+
+		return starlark.NewList(items), ok
+	case *syntax.TupleExpr:
+		items, ok := literalItems(e.List)
+
+		return starlark.Tuple(items), ok
+	case *syntax.DictExpr:
+		return literalDict(e)
+	}
+
+	return nil, false
+}
+
+func literalOf(lit *syntax.Literal) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	switch v := lit.Value.(type) {
+	case string:
+		return starlark.String(v), true
+	case int64:
+		return starlark.MakeInt64(v), true
+	case *big.Int:
+		return starlark.MakeBigInt(v), true
+	}
+
+	f, _ := lit.Value.(float64) //nolint:errcheck // the only other literal is a float
+	return starlark.Float(f), true
+}
+
+func negated(e *syntax.UnaryExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	if e.Op != syntax.MINUS {
+		return nil, false
+	}
+
+	switch inner, ok := literalValue(e.X); v := inner.(type) {
+	case starlark.Int:
+		return starlark.MakeInt(0).Sub(v), ok
+	case starlark.Float:
+		return -v, ok
+	}
+
+	return nil, false
+}
+
+func constant(name string) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	switch name {
+	case trueName:
+		return starlark.True, true
+	case falseName:
+		return starlark.False, true
+	case noneName:
+		return starlark.None, true
+	}
+
+	return nil, false
+}
+
+func literalItems(exprs []syntax.Expr) ([]starlark.Value, bool) {
+	items := make([]starlark.Value, 0, len(exprs))
+
+	for _, expr := range exprs {
+		item, ok := literalValue(expr)
+		if !ok {
+			return nil, false
+		}
+
+		items = append(items, item)
+	}
+
+	return items, true
+}
+
+func literalDict(e *syntax.DictExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	dict := starlark.NewDict(len(e.List))
+
+	for _, entry := range e.List {
+		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
+
+		key, keyOK := literalValue(pair.Key)
+		val, valOK := literalValue(pair.Value)
+
+		if !keyOK || !valOK || dict.SetKey(key, val) != nil {
+			return nil, false
+		}
+	}
+
+	return dict, true
 }
 
 // each checks the literal elements of a list literal against the closed set of its keyword. An element that is not a literal is left to the run.
@@ -448,24 +731,6 @@ func (g *graph) each(value syntax.Expr, param Param) {
 		if text, _ := literal(item); kindOf(item) != KindText || !slices.Contains(param.Each, text) {
 			g.report(placeOf(syntax.Start(item)), fmt.Sprintf("%s has the unknown kind %s. Use one of: %s.", param.Name, rawText(item), strings.Join(param.Each, ", ")))
 		}
-	}
-}
-
-// bounds reports an integer literal that is outside the bounds of its keyword. A literal that is not a small whole number is outside.
-func (g *graph) bounds(value syntax.Expr, param Param) {
-	if param.Max == 0 {
-		return
-	}
-
-	lit, isLit := value.(*syntax.Literal) // the only other expression of the int kind is a negative number
-	n, small := int64(0), false
-
-	if isLit {
-		n, small = lit.Value.(int64)
-	}
-
-	if !small || n < int64(param.Min) || n > int64(param.Max) {
-		g.report(placeOf(syntax.Start(value)), fmt.Sprintf("%s is %s. Write a whole number from %d to %d.", param.Name, rawText(value), param.Min, param.Max))
 	}
 }
 
