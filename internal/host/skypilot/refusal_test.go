@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -63,14 +64,17 @@ func TestWait_AnSSHFailureIsNotAnOrdinaryFailure(t *testing.T) {
 	t.Parallel()
 
 	h, _, ssh := newScripted(t)
+	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	h.now, h.sleep = clock.read, clock.sleep
 	ssh.PlanResult(model.CommandResult{ExitCode: sshFailed, Stderr: "no route"}, "squeue")
 	ssh.Plan("COMPLETED\n", "sacct")
 
 	state, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, errCommand)
+	require.ErrorIs(t, err, errLink)
+	require.ErrorIs(t, err, host.ErrLost)
 	require.ErrorContains(t, err, "ssh to lane-host: no route")
-	assert.Equal(t, model.JobUnknown, state)
+	assert.Equal(t, model.JobLost, state)
 	assert.False(t, ssh.Called("sacct"), "sacct never answers for a host that ssh cannot reach")
 }
 

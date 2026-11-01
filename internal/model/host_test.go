@@ -29,6 +29,7 @@ func TestJobState_Terminal(t *testing.T) {
 	for state, want := range map[model.JobState]bool{
 		model.JobPending: false, model.JobRunning: false, model.JobUnknown: false, "": false,
 		model.JobSucceeded: true, model.JobFailed: true, model.JobCanceled: true,
+		model.JobDied: true, model.JobStale: true, model.JobLost: false,
 	} {
 		assert.Equal(t, want, state.Terminal(), string(state))
 	}
@@ -60,4 +61,14 @@ func TestRemoteHasHost(t *testing.T) {
 	for remote, want := range cases {
 		assert.Equal(t, want, model.RemoteHasHost(remote), remote)
 	}
+}
+
+func TestJobID_LostAdviceNamesTheJobAndTheCancel(t *testing.T) {
+	t.Parallel()
+
+	advice := model.JobID("job-7").LostAdvice()
+
+	assert.Contains(t, advice, "job job-7 may still run")
+	assert.Contains(t, advice, "scancel")
+	assert.Contains(t, advice, "Run it again only after the cancel")
 }

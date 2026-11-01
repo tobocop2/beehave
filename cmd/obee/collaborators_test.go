@@ -326,6 +326,29 @@ func TestPrograms_AHostProgramRunsAsOneQuotedJob(t *testing.T) {
 	}
 }
 
+func TestHostOutput_ADiedOrStaleJobSaysWhatAPersonCanDo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		state model.JobState
+		want  string
+	}{
+		{model.JobDied, "scheduler holds no record"},
+		{model.JobStale, "host.stale_minutes"},
+		{model.JobCanceled, "the state is canceled"},
+	}
+
+	for _, test := range tests {
+		t.Run(string(test.state), func(t *testing.T) {
+			t.Parallel()
+
+			_, err := hostOutput(test.state)
+			require.ErrorIs(t, err, errHostJob)
+			assert.Contains(t, err.Error(), test.want)
+		})
+	}
+}
+
 func TestPrograms_AHostThatCannotBeBuiltIsAnError(t *testing.T) {
 	t.Parallel()
 

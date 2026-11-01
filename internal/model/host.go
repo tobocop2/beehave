@@ -40,6 +40,7 @@ const MaxDiskFloorGB = 1 << 20
 type HostConfig struct {
 	Provider      HostProvider
 	IdleMinutes   int
+	StaleMinutes  int // zero means the default of the provider
 	MaxRun        time.Duration
 	DiskFloorGB   int
 	PrivateRemote string
@@ -79,6 +80,12 @@ type HostStatus struct {
 // handle of the same host, also after a restart, so an adapter keeps in the id all it needs to find the job again.
 type JobID string
 
+// LostAdvice is what a person does about a job whose wait ended as lost. The job may still run, so a second run needs a cancel of the first one.
+// The gate, the command step and the host wait all use this one text.
+func (id JobID) LostAdvice() string {
+	return fmt.Sprintf("job %s may still run on the host. Check it with `squeue` on the host and cancel it there with `scancel` and the job number (the digits before the dash in the job id). Run it again only after the cancel", id)
+}
+
 // JobSpec is one job to run on a build host.
 type JobSpec struct {
 	Name    string
@@ -96,11 +103,17 @@ const (
 	JobFailed    JobState = "failed"
 	JobCanceled  JobState = "canceled"
 	JobUnknown   JobState = "unknown"
+	// JobDied means the scheduler holds no record of the job: nothing runs it and no result exists.
+	JobDied JobState = "died"
+	// JobStale means the log of the job did not grow for host.stale_minutes. The wait stopped the job.
+	JobStale JobState = "stale"
+	// JobLost means the link to the host stayed down. The job may still run on the host. It is not a final state of the job.
+	JobLost JobState = "lost"
 )
 
-// Terminal reports whether the job has ended.
+// Terminal reports whether the job has ended. A lost job has not: the wait cannot tell.
 func (s JobState) Terminal() bool {
-	return s == JobSucceeded || s == JobFailed || s == JobCanceled
+	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale
 }
 
 // RemoteHasHost reports whether a git remote names a machine: a URL with a scheme other than file and a host, or a user@host:path address. A local path or a file URL names none.

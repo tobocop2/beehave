@@ -385,7 +385,11 @@ func verdict(cluster string, state model.JobState) (Result, error) {
 		return Result{Passed: true, Steps: []Step{{Name: StepCommand, Status: StatusPass}}}, nil
 	case model.JobFailed:
 		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: []Step{{Name: StepCommand, Status: StatusFail}}}, nil
-	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown:
+	case model.JobDied:
+		return Result{}, fmt.Errorf("%w: the job died on %s: the scheduler holds no record of it. Run the gate again", ErrNoVerdict, cluster)
+	case model.JobStale:
+		return Result{}, fmt.Errorf("%w: the job on %s was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again", ErrNoVerdict, cluster)
+	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
 
 	return Result{}, fmt.Errorf("%w: its state on %s is %s. Read the job in the scheduler of the host", ErrNoVerdict, cluster, state)

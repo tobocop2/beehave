@@ -22,16 +22,21 @@ import (
 var ErrConfig = errors.New("invalid SkyPilot host setting")
 
 var (
-	errCommand   = errors.New("command failed")
-	errNoJobText = errors.New("the scheduler gave no state for the job")
-	errJobFields = errors.New("a job needs a name and a command")
-	errWorkRoot  = errors.New("the head node gave a login folder that is not one absolute path")
+	errCommand     = errors.New("command failed")
+	errLink        = errors.New("the ssh link to the host dropped")
+	errJobFields   = errors.New("a job needs a name and a command")
+	errCancelStuck = errors.New("the cancel did not take")
+	errWorkRoot    = errors.New("the head node gave a login folder that is not one absolute path")
 )
 
 const (
 	sshFailed    = 255
 	drainReason  = "obee"
 	defaultPoll  = 10 * time.Second
+	defaultStale = 20 * time.Minute
+	lostAfter    = 5 * time.Minute // the time without an answered read before a wait ends as lost
+	stopLimit    = 5 * time.Minute // the time a job may take to end after the cancel
+	diedGrace    = time.Minute     // the time an empty record repeats before it reads as died: the accounting record can come late
 	runLimitKey  = "gcp.managed_instance_group.run_duration="
 	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
 )
@@ -45,6 +50,8 @@ type Host struct {
 	sky     proc.Runner
 	ssh     proc.Runner
 	poll    time.Duration
+	now     func() time.Time                           // the clock of a wait; a test replaces it
+	sleep   func(context.Context, time.Duration) error // the pause between two polls; a test replaces it
 	bank    func(ctx context.Context) error
 	nonce   func() string
 }
@@ -56,7 +63,7 @@ func New(cluster string, config model.HostConfig, sky, ssh proc.Runner) (*Host, 
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, sky: sky, ssh: ssh, poll: defaultPoll, nonce: rand.Text}
+	h := &Host{cluster: cluster, config: config, sky: sky, ssh: ssh, poll: defaultPoll, nonce: rand.Text, now: time.Now, sleep: sleepFor}
 	h.bank = h.bankWork
 
 	return h, nil
@@ -267,25 +274,159 @@ func (h *Host) endSlot(ctx context.Context, marker string) error {
 // The job id holds the Slurm job id and the nonce of the slot job, so any handle can wait for a job it is given, also after a restart.
 // Wait refuses an id that Submit did not return.
 func (h *Host) Wait(ctx context.Context, id model.JobID) (model.JobState, error) {
+	return h.waitFor(ctx, id, false)
+}
+
+// waitFor is Wait. A stop wait follows a cancel: it has no stale check, as the stale stop would call itself, and it ends with an error
+// when the job is not final after stopLimit on the clock of the host.
+func (h *Host) waitFor(ctx context.Context, id model.JobID, stopping bool) (model.JobState, error) {
 	job, err := parseJobID(id)
 	if err != nil {
 		return model.JobUnknown, err
 	}
 
+	w := waiting{grew: h.now(), answered: h.now(), size: -1}
+	if stopping {
+		w.stopBy = h.now().Add(stopLimit)
+	}
+
 	for {
-		state, err := h.jobState(ctx, job.slurm)
-		if err != nil {
-			return model.JobUnknown, err
+		if end, over := h.pollOnce(ctx, job, &w); over {
+			return end.state, end.err
 		}
 
-		if state.Terminal() {
-			return h.banked(ctx, job, state)
-		}
-
-		if err = h.pause(ctx); err != nil {
+		if err := h.sleep(ctx, h.poll); err != nil {
 			return model.JobUnknown, fmt.Errorf("wait for job %s: %w", id, err)
 		}
 	}
+}
+
+// ending is what Wait returns when the wait is over.
+type ending struct {
+	state model.JobState
+	err   error
+}
+
+// pollOnce reads the job once and says whether the wait is over, with what Wait returns when it is.
+func (h *Host) pollOnce(ctx context.Context, job jobHandle, w *waiting) (ending, bool) {
+	state, err := h.observe(ctx, job, w)
+
+	switch {
+	case errors.Is(err, errLink) && h.now().Sub(w.answered) >= lostAfter:
+		return ending{model.JobLost, fmt.Errorf("job %s: no read of the job answered for %s (%w): %w. %s", job, lostAfter, err, host.ErrLost, model.JobID(job.String()).LostAdvice())}, true
+	case err != nil && !errors.Is(err, errLink):
+		return ending{model.JobUnknown, err}, true
+	case err == nil && state.Terminal():
+		return endOf(h.banked(ctx, job, state)), true
+	case err == nil:
+		return h.unfinished(ctx, job, w)
+	}
+
+	return ending{}, false
+}
+
+// unfinished says whether the wait is over for a job that is not final. A stop wait ends at its limit; any other wait ends when the log is stale.
+func (h *Host) unfinished(ctx context.Context, job jobHandle, w *waiting) (ending, bool) {
+	switch {
+	case !w.stopBy.IsZero() && !h.now().Before(w.stopBy):
+		return ending{model.JobUnknown, fmt.Errorf("%w: job %s was not final %s after the cancel. Check it with `squeue` on the host and cancel it again with `scancel %s`", errCancelStuck, job, stopLimit, job.slurm)}, true
+	case w.stopBy.IsZero() && h.now().Sub(w.grew) >= h.staleAfter():
+		return endOf(h.stale(ctx, job)), true
+	}
+
+	return ending{}, false
+}
+
+func endOf(state model.JobState, err error) ending { return ending{state, err} }
+
+// waiting is what one Wait remembers between its polls: the time of the last answered read, the time an empty record was first read,
+// and the last size of the log with the time it last grew.
+type waiting struct {
+	answered time.Time
+	empty    time.Time
+	size     int64
+	grew     time.Time
+	stopBy   time.Time // the end of a stop wait; zero for a wait with no stop
+}
+
+// observe reads the state of the job once. A read that the ssh link drops returns errLink; a read that answers restarts the lost clock.
+// While the job runs it also reads the size of the log, which restarts the stale clock when the log grew.
+// A job that runs counts as answered only when its log read answers too, so a link that drops every log read ends as lost.
+func (h *Host) observe(ctx context.Context, job jobHandle, w *waiting) (model.JobState, error) {
+	state, err := h.jobState(ctx, job.slurm)
+	if errors.Is(err, errLink) {
+		return model.JobUnknown, err
+	}
+
+	state = h.afterGrace(state, w)
+
+	if err != nil || state != model.JobRunning {
+		w.answered, w.grew = h.now(), h.now()
+
+		return state, err
+	}
+
+	if err = h.readLog(ctx, job.slurm, w); err != nil {
+		return state, err
+	}
+
+	w.answered = h.now()
+
+	return state, nil
+}
+
+// afterGrace turns an empty record into died only after it repeats for diedGrace. Until then the job reads as pending, as the accounting record can come late.
+// Any other state clears the empty read.
+func (h *Host) afterGrace(state model.JobState, w *waiting) model.JobState {
+	if state != model.JobDied {
+		w.empty = time.Time{}
+
+		return state
+	}
+
+	if w.empty.IsZero() {
+		w.empty = h.now()
+	}
+
+	if h.now().Sub(w.empty) < diedGrace {
+		return model.JobPending
+	}
+
+	return model.JobDied
+}
+
+// readLog reads the size of the log of the job. A log that has no size yet counts as no growth.
+func (h *Host) readLog(ctx context.Context, id string, w *waiting) error {
+	result := h.ssh.Run(ctx, h.sshArgs("stat", "-c", "%s", "slurm-"+id+".out"))
+	if result.ExitCode == sshFailed {
+		return linkError(h.cluster, result)
+	}
+
+	size, err := strconv.ParseInt(strings.TrimSpace(result.Stdout), 10, 64)
+	if result.ExitCode == 0 && err == nil && size != w.size {
+		w.size, w.grew = size, h.now()
+	}
+
+	return nil
+}
+
+// staleAfter is the time a running job may keep its log still.
+func (h *Host) staleAfter() time.Duration {
+	if h.config.StaleMinutes > 0 {
+		return time.Duration(h.config.StaleMinutes) * time.Minute
+	}
+
+	return defaultStale
+}
+
+// stale stops a job whose log stopped growing, as Cancel does: it waits for the final state of the job, then banks its work and ends its slot.
+// The state is stale, with the error of a stop that failed.
+func (h *Host) stale(ctx context.Context, job jobHandle) (model.JobState, error) {
+	if err := h.Cancel(ctx, model.JobID(job.String())); err != nil {
+		return model.JobStale, fmt.Errorf("job %s is stale and its stop did not finish, so it may still run: %w", job.slurm, err)
+	}
+
+	return model.JobStale, nil
 }
 
 // banked banks the work of the host, ends the slot job of the job, and returns the final state. The state comes back with every error.
@@ -344,9 +485,9 @@ func (r remoteRunner) Run(ctx context.Context, args []string) model.CommandResul
 	return r.h.ssh.Run(ctx, r.h.sshArgs(append([]string{r.binary}, args...)...))
 }
 
-// pause sleeps for one poll interval, or returns the error of the context.
-func (h *Host) pause(ctx context.Context) error {
-	timer := time.NewTimer(h.poll)
+// sleepFor sleeps for d, or returns the error of the context.
+func sleepFor(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
 	defer timer.Stop()
 
 	select {
@@ -360,23 +501,35 @@ func (h *Host) pause(ctx context.Context) error {
 func (h *Host) jobState(ctx context.Context, id string) (model.JobState, error) {
 	result := h.ssh.Run(ctx, h.sshArgs("squeue", "-h", "-j", id, "-o", "%T"))
 	if result.ExitCode == sshFailed {
-		return model.JobUnknown, fmt.Errorf("%w: ssh to %s: %s", errCommand, h.cluster, strings.TrimSpace(result.Stderr))
+		return model.JobUnknown, linkError(h.cluster, result)
 	}
 
 	if result.ExitCode == 0 && strings.TrimSpace(result.Stdout) != "" {
 		return parseJobState(result.Stdout)
 	}
 
-	out, err := h.remote(ctx, "sacct", "sacct", "-X", "-n", "-P", "-j", id, "-o", "State")
-	if err != nil {
-		return model.JobUnknown, err
+	return h.recorded(ctx, id)
+}
+
+// recorded reads the state of a job from sacct, which keeps it after the controller forgets the job.
+func (h *Host) recorded(ctx context.Context, id string) (model.JobState, error) {
+	result := h.ssh.Run(ctx, h.sshArgs("sacct", "-X", "-n", "-P", "-j", id, "-o", "State"))
+
+	switch {
+	case result.ExitCode == sshFailed:
+		return model.JobUnknown, linkError(h.cluster, result)
+	case result.ExitCode != 0:
+		return model.JobUnknown, fmt.Errorf("%w: sacct: exit %d: %s", errCommand, result.ExitCode, strings.TrimSpace(result.Stderr))
+	case strings.TrimSpace(result.Stdout) == "":
+		// Neither squeue nor sacct holds the job: nothing runs it and no result exists.
+		return model.JobDied, nil
 	}
 
-	if strings.TrimSpace(out) == "" {
-		return model.JobUnknown, fmt.Errorf("%w: job %s", errNoJobText, id)
-	}
+	return parseJobState(result.Stdout)
+}
 
-	return parseJobState(out)
+func linkError(cluster string, result model.CommandResult) error {
+	return fmt.Errorf("%w: ssh to %s: %s", errLink, cluster, strings.TrimSpace(result.Stderr))
 }
 
 // Cancel stops the job, waits until Slurm reports it final, banks the work of the host and ends the slot job, as Wait does.
@@ -393,7 +546,7 @@ func (h *Host) Cancel(ctx context.Context, id model.JobID) error {
 		return err
 	}
 
-	_, err = h.Wait(ctx, id)
+	_, err = h.waitFor(ctx, id, true)
 
 	return err
 }
