@@ -67,7 +67,7 @@ func stepSignatures() map[string][]Param {
 		agentName: {
 			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
 			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
-			one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
+			opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {
 			req("run", KindList), opt("host", KindText), opt("stdin", KindText), opt("env", KindDict), opt("timeout", KindText), opt("stop_on_rc", KindList), {Name: "max_new_processes", Kind: KindInt, Min: MinProcessCap, Max: MaxProcessCap}, label,

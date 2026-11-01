@@ -752,6 +752,45 @@ func TestAgentStep_TheKindsOfForbidCommandsGoToTheAgentRequest(t *testing.T) {
 	assert.Empty(t, rig.h.agents.seen()[0].Forbid)
 }
 
+func TestAgentStep_EditsFalseGoesToTheAgentRequestAndTheDefaultAllowsEdits(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow("edits = False, "), "x")
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.True(t, rig.h.agents.seen()[0].NoEdits)
+
+	rig = newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err = rig.run(t, agentFlow("edits = True, "), "x")
+
+	require.NoError(t, err)
+	assert.False(t, rig.h.agents.seen()[0].NoEdits)
+
+	rig = newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err = rig.run(t, agentFlow(""), "x")
+
+	require.NoError(t, err)
+	assert.False(t, rig.h.agents.seen()[0].NoEdits)
+}
+
+func TestAgentStep_ANonBoolEditsFailsTheStepAndNamesTheKey(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	_, err := rig.run(t, agentFlow(`edits = "no", `), "x")
+
+	require.ErrorContains(t, err, "edits")
+	assert.Empty(t, rig.h.agents.seen())
+}
+
 func TestAgentStep_AViolationIsAnOutputAndTheStepStillSucceeds(t *testing.T) {
 	t.Parallel()
 

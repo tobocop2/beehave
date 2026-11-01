@@ -103,6 +103,7 @@ def pipeline(item):
         name = "plan",
         prompt = "prompts/plan.md",
         model = "opus",
+        edits = False,
         inputs = {"item": item},
     )
 

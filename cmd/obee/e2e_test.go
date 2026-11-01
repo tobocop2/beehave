@@ -190,7 +190,7 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
 		Adapter: adapter, Runner: runner,
-		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started,
+		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits,
 		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
 	})
 
@@ -207,11 +207,24 @@ const e2eClaude = `#!/bin/sh
 # A review writes the next line of the file verdicts to the output file that its prompt names, with no open finding.
 # When the file obey-hook exists, the fake obeys --settings as Claude Code does: it runs the hook command of the settings before each Bash call.
 # A hook that exits with code 2 blocks the call: the fake adds a line to blocked.log and prints the tool_result of the refusal.
+# When the file edit-file exists, the implement step writes edited.txt with the Write tool. As with the real claude in print mode,
+# the write is refused unless the start arguments hold --permission-mode acceptEdits: the fake adds a line to refused.log and prints the tool_result of the refusal.
 hook=
+mode=
 while [ $# -gt 0 ]; do
   if [ "$1" = --settings ]; then hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/'); fi
+  if [ "$1" = --permission-mode ]; then mode=$2; fi
   shift
 done
+write_call() {
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"'"$1"'","name":"Write","input":{"file_path":"'"$2"'"}}]}}'
+  if [ "$mode" = acceptEdits ]; then
+    echo edited > "$2"
+  else
+    echo "refused $2" >> refused.log
+    echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"'"$1"'","is_error":true,"content":"Claude requested permissions to write to '"$2"', but you haven'"'"'t granted it yet."}]}}'
+  fi
+}
 bash_call() {
   echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"'"$1"'","name":"Bash","input":{"command":"'"$2"'"}}]}}'
   if [ -e obey-hook ] && [ -n "$hook" ]; then
@@ -244,6 +257,7 @@ fi
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}'
 # The implementer stages everything, the command that the example forbids.
 if [ "$step" = implement ]; then
+  if [ -e edit-file ]; then write_call toolu_edit edited.txt; fi
   bash_call toolu_impl "git add -A"
 fi
 if [ "$step" = fix ]; then

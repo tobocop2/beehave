@@ -57,6 +57,16 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	assert.Equal(t, "--resume", p.ResumeFlag)
 }
 
+func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {
+	t.Parallel()
+
+	p := claude.New().Profile()
+
+	assert.Equal(t, "--permission-mode acceptEdits", strings.Join(p.EditArgs, " "))
+	assert.Contains(t, strings.Join(p.Args, " "), "--allowedTools Bash")
+	assert.NotContains(t, strings.Join(p.Args, " "), "--permission-mode")
+}
+
 func TestProfile_NamesTheTurnAndBudgetFlags(t *testing.T) {
 	t.Parallel()
 

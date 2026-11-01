@@ -21,6 +21,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for a list", `agent(prompt = "p", model = "m", outputs = "verdict")`, "outputs must be a list, not a text."},
 		{"agent text for the allowed paths", `agent(prompt = "p", model = "m", allow_paths = "papers/**")`, "allow_paths must be a list, not a text."},
 		{"agent text for the protected paths", `agent(prompt = "p", model = "m", protect_paths = "/own/checkout")`, "protect_paths must be a list, not a text."},
+		{"agent text for the edits switch", `agent(prompt = "p", model = "m", edits = "no")`, "edits must be a bool, not a text."},
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
 		{"batch_merge unknown keyword", `batch_merge(prs = [], base = "b", repo = "r", name = "n", limit = 2)`, "batch_merge takes no argument limit"},
 		{"batch_merge missing base", `batch_merge(prs = [], repo = "r", name = "n")`, "batch_merge needs the `base` keyword"},

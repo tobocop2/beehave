@@ -62,6 +62,8 @@ type Spec struct {
 	OnStart   func(pid int)
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
+	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs).
+	NoEdits bool
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -191,6 +193,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result 
 // argsOf returns the arguments of the profile, then the model and the session to resume when the spec sets them.
 func argsOf(spec Spec, p Profile) []string {
 	args := slices.Clone(p.Args)
+	args = append(args, editArgs(spec, p)...)
 
 	if spec.Model != "" {
 		args = append(args, p.ModelFlag, spec.Model)
@@ -207,6 +210,15 @@ func argsOf(spec Spec, p Profile) []string {
 	}
 
 	return args
+}
+
+// editArgs returns the arguments that let the CLI edit files, or none for a spec with NoEdits.
+func editArgs(spec Spec, p Profile) []string {
+	if spec.NoEdits {
+		return nil
+	}
+
+	return p.EditArgs
 }
 
 // capArgs returns the options for the turn cap and the cost cap that the spec sets.

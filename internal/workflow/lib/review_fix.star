@@ -58,6 +58,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 protect_paths = protect,
                 follow_ups = follow_ups,
                 output_tries = 2,
+                edits = False,
                 inputs = {"item": item, "violations": violations},
             )
             capped(review, "review", item)
@@ -91,6 +92,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 forbid_commands = REVIEW_FORBID + extra,
                 protect_paths = protect,
                 output_tries = 2,
+                edits = False,
                 inputs = {"item": item, "mechanism": mechanism, "fixes": fixes[mechanism], "findings": findings},
             )
             capped(design, "design", item)

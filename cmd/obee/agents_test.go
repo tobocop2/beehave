@@ -757,3 +757,13 @@ func TestNewLogins_ReadsTheUsageOfTheClaudeRunners(t *testing.T) {
 
 	require.ErrorIs(t, err, pool.ErrNoRunner)
 }
+
+func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {
+	t.Parallel()
+
+	for _, noEdits := range []bool{false, true} {
+		spec := agents{}.specOf(flow.AgentRequest{NoEdits: noEdits}, model.Runner{}, "", nil, nil, "")
+
+		assert.Equal(t, noEdits, spec.NoEdits, "a step with edits = False starts without the edit mode")
+	}
+}

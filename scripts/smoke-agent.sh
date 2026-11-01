@@ -15,6 +15,7 @@ command -v claude >/dev/null 2>&1 || { echo "smoke-agent: claude is not on the p
 
 work=$(mktemp -d)
 mkdir -p "$work/config/projects" "$work/state" "$work/repo"
+chmod 700 "$work/state"
 
 git -C "$work/repo" init -q -b main
 cat > "$work/repo/Makefile" <<'MAKEFILE'
@@ -22,7 +23,8 @@ check:
 	mkdir -p reports
 	echo '<testsuite tests="1"><testcase name="smoke"/></testsuite>' > reports/smoke.xml
 MAKEFILE
-git -C "$work/repo" add Makefile
+printf 'reports/\n' > "$work/repo/.gitignore"
+git -C "$work/repo" add Makefile .gitignore
 git -C "$work/repo" -c user.name=smoke -c user.email=smoke@example.invalid commit -q -m "start"
 
 printf 'runner(name = "smoke", agent = "claude", config_dir = "%s")\n' "$profile" > "$work/config/runners.star"

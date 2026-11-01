@@ -119,7 +119,7 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: a.maxBudget,
-		Log: tap, OnStart: request.Started, Guard: guard,
+		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits,
 	}
 }
 
