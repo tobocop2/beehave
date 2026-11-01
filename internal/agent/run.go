@@ -79,13 +79,13 @@ type Result struct {
 	Violations []string
 }
 
-// Timer is the part of time.Timer that the idle limit uses.
+// Timer is the part of time.Timer that the idle limit and the total limit use.
 type Timer interface {
 	Reset(d time.Duration) bool
 	Stop() bool
 }
 
-// Runner starts agent CLIs. AfterFunc starts the idle timer; the zero value uses time.AfterFunc.
+// Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
 }
@@ -101,10 +101,14 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	ctx, stop := withTotalTimeout(ctx, spec.Timeout)
-	defer stop()
+	after := r.AfterFunc
+	if after == nil {
+		after = func(d time.Duration, fire func()) Timer { return time.AfterFunc(d, fire) }
+	}
 
-	idle := newIdleTimer(spec.IdleTimeout, r.AfterFunc, cancel)
+	defer startTotalTimeout(spec.Timeout, after, cancel)()
+
+	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
 	return execute(ctx, spec, p, idle)
@@ -150,12 +154,15 @@ func optionProblem(spec Spec, p Profile) string {
 	return ""
 }
 
-func withTotalTimeout(ctx context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
+// startTotalTimeout cancels the run when the total limit passes. It returns the function that stops the timer.
+func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) func() {
 	if limit <= 0 {
-		return ctx, func() {}
+		return func() {}
 	}
 
-	return context.WithTimeoutCause(ctx, limit, errTotalTimeout)
+	timer := after(limit, func() { cancel(errTotalTimeout) })
+
+	return func() { timer.Stop() }
 }
 
 func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer) Result {
@@ -296,10 +303,6 @@ type idleTimer struct {
 }
 
 func newIdleTimer(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) *idleTimer {
-	if after == nil {
-		after = func(d time.Duration, fire func()) Timer { return time.AfterFunc(d, fire) }
-	}
-
 	return &idleTimer{limit: limit, cancel: cancel, after: after}
 }
 

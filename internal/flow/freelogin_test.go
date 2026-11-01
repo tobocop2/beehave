@@ -73,11 +73,14 @@ func (p *poolLogins) busyOf(item string) []string {
 	return p.busy[item]
 }
 
-// overlap counts the agents that run at once. Each agent waits up to a second for another to start, so a serial loop shows as a peak of one.
+// overlap counts the agents that run at once. Each agent waits up to its window for another to start, so a serial loop shows as a peak of one.
 type overlap struct {
-	mu   sync.Mutex
-	now  int
-	peak int
+	// window is how long a step waits for another step to start. A test that expects two steps to overlap sets it to the event
+	// timeout: the step ends as soon as the second one starts. A test that expects no overlap sets it to the time it watches.
+	window time.Duration
+	mu     sync.Mutex
+	now    int
+	peak   int
 }
 
 func (o *overlap) act(ctx context.Context, _ string) error {
@@ -86,7 +89,7 @@ func (o *overlap) act(ctx context.Context, _ string) error {
 	o.peak = max(o.peak, o.now)
 	o.mu.Unlock()
 
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(o.window)
 
 	for time.Now().Before(deadline) {
 		o.mu.Lock()
@@ -265,7 +268,7 @@ func TestFreeLogin_TwoLoginsAndTwoReadyItemsRunBothAgentsAtOnce(t *testing.T) {
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1))
 	picks := newPoolLogins("alice", "bob")
 	r.h.picker = picks
-	seen := &overlap{}
+	seen := &overlap{window: eventTimeout}
 	r.agents.setAct(seen.act)
 
 	require.NoError(t, r.run(t))
@@ -279,7 +282,7 @@ func TestFreeLogin_OneLoginRunsTheAgentStepsOneAtATime(t *testing.T) {
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1))
 	r.h.picker = newPoolLogins("alice")
-	seen := &overlap{}
+	seen := &overlap{window: time.Second}
 	r.agents.setAct(seen.act)
 
 	require.NoError(t, r.run(t))
