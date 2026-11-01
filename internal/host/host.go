@@ -42,5 +42,6 @@ var (
 	ErrDiskRead  = errors.New("cannot read the free space of the host. Check that the host is up and answers `df`")
 	ErrInUse     = errors.New("a process uses the directory")
 	ErrInUseRead = errors.New("cannot tell whether a process uses the directory. Run the scan as the user that owns the processes")
+	ErrLost      = errors.New("the link to the host stayed down, so the wait cannot tell where the job stands")
 	ErrJobState  = errors.New("the scheduler gave no final state for the job. Read the state of the job in the scheduler of the host")
 )

@@ -362,6 +362,24 @@ func TestRun_AHostJobThatDidNotPassAndDidNotFailIsAnErrorNeverAPass(t *testing.T
 	}
 }
 
+func TestRun_ADiedOrStaleHostJobSaysWhatAPersonCanDo(t *testing.T) {
+	t.Parallel()
+
+	cases := map[model.JobState]string{
+		model.JobDied:  "Run the gate again",
+		model.JobStale: "raise `host.stale_minutes`",
+	}
+
+	for state, advice := range cases {
+		g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
+
+		_, err := g.Run(context.Background(), hostRequest(project("gpu-a")))
+
+		require.ErrorIs(t, err, gate.ErrNoVerdict, string(state))
+		assert.Contains(t, err.Error(), advice, string(state))
+	}
+}
+
 func TestRun_AHostFailureIsReturnedWithTheStep(t *testing.T) {
 	t.Parallel()
 

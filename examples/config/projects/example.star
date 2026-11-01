@@ -20,6 +20,7 @@ project(
     # host = host(
     #     provider = "skypilot",   # the host adapter
     #     idle_minutes = 60,       # the host is deleted after this many idle minutes (default 60)
+    #     stale_minutes = 20,      # a running job whose log does not grow for this many minutes is stopped (default 20)
     #     max_run = "24h",         # the host is deleted after this run time (default "24h"); SkyPilot documents this limit for GPU instances only
     #     disk_floor_gb = 50,      # a host with less free space gets no new job; required
     #     private_remote = "git@example.com:your-org/your-repo-private.git",  # where obee pushes unbanked work before the host goes down

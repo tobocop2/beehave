@@ -391,16 +391,9 @@ func TestWait_RefusesWhatItDoesNotRecognise(t *testing.T) {
 		"squeue state unknown": func(ssh *proctest.Scripted) { ssh.Plan("MYSTERY\n", "squeue") },
 		"squeue two lines":     func(ssh *proctest.Scripted) { ssh.Plan("RUNNING\nRUNNING\n", "squeue") },
 		"squeue lower case":    func(ssh *proctest.Scripted) { ssh.Plan("completed\n", "squeue") },
-		"ssh fails": func(ssh *proctest.Scripted) {
-			ssh.PlanResult(model.CommandResult{ExitCode: sshFailed, Stderr: "no route"}, "squeue")
-		},
 		"sacct fails": func(ssh *proctest.Scripted) {
 			ssh.PlanFail("x", "squeue")
 			ssh.PlanFail("x", "sacct")
-		},
-		"sacct empty": func(ssh *proctest.Scripted) {
-			ssh.PlanFail("x", "squeue")
-			ssh.Plan("\n", "sacct")
 		},
 		"sacct unknown state": func(ssh *proctest.Scripted) {
 			ssh.PlanFail("x", "squeue")

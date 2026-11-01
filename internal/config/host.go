@@ -11,6 +11,7 @@ import (
 
 const (
 	defaultIdleMins  = 60
+	defaultStaleMins = 20
 	maxCount         = model.MaxDiskFloorGB
 	defaultMaxRun    = "24h"
 	hostTableMessage = "the `host` block %s. %s"
@@ -21,6 +22,7 @@ type rawHost struct {
 	At            syntax.Position
 	Provider      string
 	IdleMinutes   int
+	StaleMinutes  int
 	MaxRun        string
 	DiskFloorGB   int
 	PrivateRemote string
@@ -35,18 +37,18 @@ type rawSkyPilot struct {
 
 // The schemas of the host and skypilot constructors.
 func hostSpec() spec {
-	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "max_run?", "private_remote?", "skypilot?"}}
+	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "private_remote?", "skypilot?"}}
 }
 
 func skypilotSpec() spec { return spec{"skypilot", []string{"cloud?", "region?", "instance_type?"}} }
 
 // newHost is the constructor of the host block. A key that the call leaves out keeps its default.
 func newHost(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
-	raw := &rawHost{At: at, IdleMinutes: defaultIdleMins, MaxRun: defaultMaxRun}
+	raw := &rawHost{At: at, IdleMinutes: defaultIdleMins, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun}
 
 	skypilot := nested[rawSkyPilot]{want: skypilotSpec().name}
 
-	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.MaxRun, &raw.PrivateRemote, &skypilot)
+	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.PrivateRemote, &skypilot)
 	raw.SkyPilot = skypilot.block
 
 	return raw, err
@@ -108,15 +110,28 @@ func fillKeys(raw rawHost, host *model.HostConfig) error {
 		return refuseAt(raw.At, "`host.private_remote` must name a machine, such as git@host:org/repo.git; a path or a file URL does not count. Fix the value.")
 	}
 
-	if host.IdleMinutes, err = positive(raw.At, "host.idle_minutes", raw.IdleMinutes); err != nil {
-		return err
-	}
-
-	if host.DiskFloorGB, err = positive(raw.At, "host.disk_floor_gb", raw.DiskFloorGB); err != nil {
+	if err = fillCounts(raw, host); err != nil {
 		return err
 	}
 
 	host.MaxRun, err = maxRun(raw.At, raw.MaxRun)
+
+	return err
+}
+
+// fillCounts sets the keys of host that are whole numbers.
+func fillCounts(raw rawHost, host *model.HostConfig) error {
+	var err error
+
+	if host.IdleMinutes, err = positive(raw.At, "host.idle_minutes", raw.IdleMinutes); err != nil {
+		return err
+	}
+
+	if host.StaleMinutes, err = positive(raw.At, "host.stale_minutes", raw.StaleMinutes); err != nil {
+		return err
+	}
+
+	host.DiskFloorGB, err = positive(raw.At, "host.disk_floor_gb", raw.DiskFloorGB)
 
 	return err
 }
