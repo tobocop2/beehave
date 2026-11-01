@@ -243,10 +243,20 @@ func TestRunner_StopsOnTheTotalTimeout(t *testing.T) { //nolint:paralleltest // 
 
 func TestRunner_TheTotalTimeoutKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
-	f.spec.Timeout = 2 * time.Second
+	f.spec.Timeout = time.Hour
+	clock := &fakeClock{}
 
-	got := agent.Runner{}.Run(context.Background(), f.spec)
+	done := make(chan agent.Result, 1)
 
+	go func() { done <- agent.Runner{AfterFunc: clock.AfterFunc}.Run(context.Background(), f.spec) }()
+
+	require.Eventually(t, func() bool { return fileExists(filepath.Join(f.records, "grandchild")) }, 30*time.Second, 10*time.Millisecond,
+		"the agent started its child")
+	clock.fireNow()
+
+	got := <-done
+
+	assert.Equal(t, time.Hour, clock.limit)
 	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
 	assertGone(t, f.records)
 }
