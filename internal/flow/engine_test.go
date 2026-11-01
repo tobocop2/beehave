@@ -165,8 +165,8 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 		want  string
 		steps []string
 	}{
-		{"the_login_pick_fails", func(h *harness) { h.logins.err = errFake }, "pick the login of item 12", nil},
-		{"no_login_is_set", func(h *harness) { h.logins.login = "" }, "no agent login for this step", nil},
+		{"the_login_pick_fails", func(h *harness) { h.logins.err = errFake }, "pick the login of item 12", []string{"claim:12", "release:12"}},
+		{"no_login_is_set", func(h *harness) { h.logins.login = "" }, "no agent login for this step", []string{"claim:12", "release:12"}},
 		{"the_agent_fails", func(h *harness) { h.agents.err = errFake }, "fake failure", []string{"claim:12", "release:12"}},
 		{"the_agent_exits_nonzero", func(h *harness) {
 			h.agents.result = func(AgentRequest) agent.Result {

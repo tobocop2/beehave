@@ -443,6 +443,70 @@ func TestChoose_AFreeRunnerOverACapStaysOut(t *testing.T) {
 	}
 }
 
+func TestSelect_NoneQualifiesCarriesTheEarliestReset(t *testing.T) {
+	t.Parallel()
+
+	_, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+		readerOf(map[string]model.Reading{"a": useReset(99, 10, t2, t2), "b": useReset(99, 10, t1, t2)}))
+
+	var none *pool.NoneQualifiesError
+	if !errors.As(err, &none) {
+		t.Fatalf("err = %v", err)
+	}
+
+	if reset, known := none.ResetAt(); !known || !reset.Equal(t1) {
+		t.Fatalf("ResetAt = %v, %v: want %v", reset, known, t1)
+	}
+}
+
+func TestSelect_NoneQualifiesWithNoKnownResetSaysSo(t *testing.T) {
+	t.Parallel()
+
+	_, err := pool.Select(t.Context(), runners("a"), caps, model.AgentClaude,
+		readerOf(map[string]model.Reading{"a": model.Unknown("x")}))
+
+	var none *pool.NoneQualifiesError
+	if !errors.As(err, &none) {
+		t.Fatalf("err = %v", err)
+	}
+
+	if _, known := none.ResetAt(); known {
+		t.Fatal("ResetAt is known with no reading")
+	}
+}
+
+func TestSelectOverCap_TakesTheLowestUseWhateverTheCaps(t *testing.T) {
+	t.Parallel()
+
+	got, err := pool.SelectOverCap(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+		readerOf(map[string]model.Reading{"a": use(99, 99), "b": use(95, 97)}))
+	if err != nil || got.Name != "b" {
+		t.Fatalf("SelectOverCap = %v, %v", got, err)
+	}
+}
+
+func TestSelectOverCap_NeverTakesARunnerWithUnknownUsage(t *testing.T) {
+	t.Parallel()
+
+	_, err := pool.SelectOverCap(t.Context(), runners("a"), caps, model.AgentClaude,
+		readerOf(map[string]model.Reading{"a": model.Unknown("x")}))
+
+	var none *pool.NoneQualifiesError
+	if !errors.As(err, &none) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSelectOverCap_IsErrNoRunnerWithoutRunnersOfTheAgent(t *testing.T) {
+	t.Parallel()
+
+	only := []model.Runner{{Name: "o", Agent: model.AgentOpenCode}}
+
+	if _, err := pool.SelectOverCap(t.Context(), only, caps, model.AgentClaude, readerOf(nil)); !errors.Is(err, pool.ErrNoRunner) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestSelect_PrefersARunnerThatIsNotBusy(t *testing.T) {
 	t.Parallel()
 

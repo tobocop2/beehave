@@ -23,9 +23,11 @@ var errUnknownProject = errors.New("the config has no project of this name")
 
 // logins picks the runner of an agent step that names none, from the pool.
 // pool returns the name of the runner that has room under the usage caps. It prefers a runner that busy does not name.
+// overCap does the same pick for a run that may go over a cap.
 type logins struct {
 	projects map[string]config.Project
 	pool     func(ctx context.Context, busy []string) (string, error)
+	overCap  func(ctx context.Context, busy []string) (string, error)
 }
 
 // newLogins reads the projects of the config. The pool pick reads the usage of each claude runner.
@@ -35,13 +37,13 @@ func newLogins(cfg config.Config, opts flow.Options) logins {
 
 // loginsReading is newLogins with the reader of the usage given. A test of the whole command gives a reader that needs no login.
 func loginsReading(cfg config.Config, read pool.Reader) logins {
-	return logins{projects: cfg.Projects, pool: poolPick(cfg, read)}
+	return logins{projects: cfg.Projects, pool: poolPick(cfg, read, pool.Select), overCap: poolPick(cfg, read, pool.SelectOverCap)}
 }
 
-// poolPick returns the name of the claude runner that read finds under both usage caps.
-func poolPick(cfg config.Config, read pool.Reader) func(ctx context.Context, busy []string) (string, error) {
+// poolPick returns the name of the claude runner that read finds with the select function: under both usage caps for pool.Select, the lowest use for pool.SelectOverCap.
+func poolPick(cfg config.Config, read pool.Reader, selectRunner selector) func(ctx context.Context, busy []string) (string, error) {
 	return func(ctx context.Context, busy []string) (string, error) {
-		runner, err := pool.Select(ctx, cfg.Runners, cfg.Pool, model.AgentClaude, read, busy...)
+		runner, err := selectRunner(ctx, cfg.Runners, cfg.Pool, model.AgentClaude, read, busy...)
 		if err != nil {
 			return "", fmt.Errorf("pick a runner from the pool: %w", err)
 		}
@@ -50,10 +52,18 @@ func poolPick(cfg config.Config, read pool.Reader) func(ctx context.Context, bus
 	}
 }
 
+// selector is the signature of pool.Select and pool.SelectOverCap.
+type selector func(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read pool.Reader, busy ...string) (model.Runner, error)
+
 // Pick returns the pool pick for an item. busy lists the logins that have an agent step running or queued. A project that the config lacks is an error: no guess.
-func (l logins) Pick(ctx context.Context, project, _ string, busy []string) (string, error) {
+// overCap takes the runner with the lowest use even when it is over a cap.
+func (l logins) Pick(ctx context.Context, project, _ string, busy []string, overCap bool) (string, error) {
 	if _, ok := l.projects[project]; !ok {
 		return "", fmt.Errorf("%w: %q", errUnknownProject, project)
+	}
+
+	if overCap {
+		return l.overCap(ctx, busy)
 	}
 
 	return l.pool(ctx, busy)

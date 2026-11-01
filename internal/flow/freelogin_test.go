@@ -36,7 +36,7 @@ func newPoolLogins(names ...string) *poolLogins {
 	return &poolLogins{runners: runners, busy: map[string][]string{}, picked: map[string]string{}}
 }
 
-func (p *poolLogins) Pick(ctx context.Context, _, item string, busy []string) (string, error) {
+func (p *poolLogins) Pick(ctx context.Context, _, item string, busy []string, _ bool) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -257,7 +257,7 @@ func TestFreeLogin_APickFailsWhenTheOpenWorkflowsCannotBeRead(t *testing.T) {
 	engine := newHarness(t).engine(t)
 	require.NoError(t, engine.Shutdown())
 
-	_, err := engine.pickLogin(t.Context(), ItemInput{Item: "21", Project: testProject})
+	_, err := engine.pickLogin(t.Context(), ItemInput{Item: "21", Project: testProject}, false)
 
 	require.ErrorContains(t, err, "read the busy logins for item 21")
 }

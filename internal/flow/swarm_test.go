@@ -799,7 +799,7 @@ func TestSpawnGather_TheItemsQueueReportsAStoreThatIsClosed(t *testing.T) {
 // pickFails picks a login for every item but one.
 type pickFails struct{ item string }
 
-func (p pickFails) Pick(_ context.Context, _, item string, _ []string) (string, error) {
+func (p pickFails) Pick(_ context.Context, _, item string, _ []string, _ bool) (string, error) {
 	if item == p.item {
 		return "", errFake
 	}

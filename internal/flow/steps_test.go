@@ -69,7 +69,7 @@ func TestClient_StepsOfAFinishedRunShowEachStepWithTheFieldsThatDecideTheFlow(t 
 
 	assert.Equal(t, testRun, view.Run)
 	assert.Equal(t, runDone, view.State)
-	assert.Equal(t, []string{"claim", "item", "agent:a#1", "gate:g#1", "command:c#1", "worktree", "release"}, viewNames(view))
+	assert.Equal(t, []string{"claim", "item", "login#1", "agent:a#1", "gate:g#1", "command:c#1", "worktree", "release"}, viewNames(view))
 
 	for _, line := range view.Steps {
 		assert.Equal(t, "done", line.State, line.Name)
@@ -78,19 +78,19 @@ func TestClient_StepsOfAFinishedRunShowEachStepWithTheFieldsThatDecideTheFlow(t 
 		assert.GreaterOrEqual(t, line.Seconds, 0.0, line.Name)
 	}
 
-	work := view.Steps[2]
+	work := view.Steps[3]
 	require.NotNil(t, work.ExitCode)
 	assert.Equal(t, 0, *work.ExitCode)
 	assert.Equal(t, "approve", work.Verdict)
 	assert.Equal(t, rig.head, work.Head)
 	assert.Empty(t, work.Stop)
 
-	gate := view.Steps[3]
+	gate := view.Steps[4]
 	require.NotNil(t, gate.Passed)
 	assert.True(t, *gate.Passed)
 	assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, gate.Gate)
 
-	lint := view.Steps[4]
+	lint := view.Steps[5]
 	require.NotNil(t, lint.ExitCode)
 	assert.Equal(t, 3, *lint.ExitCode)
 }
@@ -479,11 +479,11 @@ func TestClient_StepsReadTheExitCodeOfAnAgentFromItsChildWorkflowNotFromTheLibra
 	view, err := client.Steps(testRun)
 	require.NoError(t, err)
 
-	work := view.Steps[2]
+	work := view.Steps[3]
 	require.NotNil(t, work.ExitCode, "the exit code comes from the output of the child workflow")
 	assert.Equal(t, 0, *work.ExitCode)
 	assert.False(t, work.OutputUnreadable)
-	assert.Nil(t, view.Steps[3].ExitCode, "the gate line has no exit code")
+	assert.Nil(t, view.Steps[4].ExitCode, "the gate line has no exit code")
 }
 
 func withVerdict(outputs map[string]any, verdict string) map[string]any {

@@ -199,7 +199,7 @@ func endsCall(name string) bool {
 
 	match := callName.FindStringSubmatch(base)
 
-	return match != nil && slices.Contains(workflow.Builtins(), match[1])
+	return match != nil && (match[1] == loginStepName || slices.Contains(workflow.Builtins(), match[1]))
 }
 
 // partOfCall reports whether the record belongs to a builtin call that ends in a later record: a sub-step, the child workflow of a phase or a gate,

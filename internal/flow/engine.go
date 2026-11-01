@@ -63,6 +63,8 @@ type Options struct {
 	Env                 map[string]string
 	// ReviewPoll is the time between two review polls. 0 means no poll.
 	ReviewPoll time.Duration
+	// OverCap lets the first agent step of a run take a runner that is over its usage cap when no runner has room. The step records that it did.
+	OverCap bool
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends. A nil Progress prints nothing.
 	Progress io.Writer
 }
@@ -129,6 +131,8 @@ type Engine struct {
 	maxConcurrent int
 	// reviewPoll is the time between two review polls. 0 means no poll.
 	reviewPoll time.Duration
+	// overCap is Options.OverCap.
+	overCap bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
 	version     string
@@ -178,7 +182,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 // newEngine makes the engine value for an opened store and a held folder lock.
 func newEngine(opts Options, deps Deps, state store, held *flock.Flock) *Engine {
 	engine := &Engine{
-		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress},
 	}
 	engine.progress.redact = engine.redact
@@ -473,27 +477,21 @@ func (e *Engine) resumedByLaunch(last run) bool {
 	return last.Status.Status == dbos.WorkflowStatusSuccess && last.Status.CreatedAt.Before(e.launched) && !last.Status.CompletedAt.Before(e.launched)
 }
 
-// start picks the login and starts the attempt. A refused pick starts nothing.
+// start starts the attempt. It reads no usage: the run picks its login at its first agent step.
 func (e *Engine) start(in ItemInput, attempt int) (dbos.WorkflowHandle[ItemResult], error) {
-	login, err := e.pickLogin(e.ctx, in)
-	if err != nil {
-		return nil, err
-	}
-
-	in.Login = login
-
 	return dbos.RunWorkflow(e.ctx, e.item, in, dbos.WithWorkflowID(runID(in.Item, attempt)))
 }
 
-// pickLogin reads the pool once for a new run. It refuses an empty pick.
+// pickLogin reads the pool once. It refuses an empty pick.
 // The pick prefers a login that has no agent step running or queued. taken lists the logins that the caller picked for earlier runs that it has not started yet.
-func (e *Engine) pickLogin(ctx context.Context, in ItemInput, taken ...string) (string, error) {
+// overCap lets the pick take a runner that is over a cap.
+func (e *Engine) pickLogin(ctx context.Context, in ItemInput, overCap bool, taken ...string) (string, error) {
 	busy, err := e.busyLogins(taken)
 	if err != nil {
 		return "", fmt.Errorf("read the busy logins for item %s: %w", in.Item, err)
 	}
 
-	login, err := e.deps.Logins.Pick(ctx, in.Project, in.Item, busy)
+	login, err := e.deps.Logins.Pick(ctx, in.Project, in.Item, busy, overCap)
 	if err != nil {
 		return "", fmt.Errorf("pick the login of item %s: %w", in.Item, err)
 	}
