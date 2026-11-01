@@ -10,6 +10,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // Kind is the type that a keyword of a builtin takes. KindAny is a keyword that the check leaves to the run.
@@ -31,6 +33,8 @@ type Param struct {
 	Kind     Kind
 	Required bool
 	Values   []string
+	// Each is the closed set of the literal text elements of a list keyword. The check reads each literal element and leaves a list or an element that is not a literal to the run.
+	Each []string
 	// Min and Max bound a whole number. Both are zero for a keyword with no bounds.
 	Min, Max int
 	// Why ends the message for a missing required keyword. It says what the keyword is for, when that is not plain.
@@ -42,6 +46,10 @@ func StatusValues() []string { return []string{"open", "closed", "hold"} }
 
 // ChildrenValues lists the values of the children argument of a merge call.
 func ChildrenValues() []string { return []string{"refuse", "retarget"} }
+
+// ForbidKinds lists the values that an element of the forbid_commands argument takes: the names of the finding kinds.
+// The check and the run both read it.
+func ForbidKinds() []string { return model.FindingKindNames() }
 
 func req(name string, kind Kind) Param { return Param{Name: name, Kind: kind, Required: true} }
 func opt(name string, kind Kind) Param { return Param{Name: name, Kind: kind} }
@@ -66,7 +74,7 @@ func stepSignatures() map[string][]Param {
 	return map[string][]Param{
 		agentName: {
 			req("prompt", KindText), req("model", KindText), opt("runner", KindText), opt("inputs", KindDict), opt("outputs", KindList),
-			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), opt("forbid_commands", KindList), opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
+			opt("pin", KindText), opt("resume", KindText), opt("require_skills", KindList), {Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()}, opt("allow_paths", KindList), opt("protect_paths", KindList), opt("output_tries", KindInt),
 			opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), opt("timeout", KindText), opt("idle_timeout", KindText), label,
 		},
 		commandName: {
@@ -319,6 +327,29 @@ func (g *graph) value(value syntax.Expr, param Param) {
 	}
 
 	g.bounds(value, param)
+	g.each(value, param)
+}
+
+// each checks the literal elements of a list literal against the closed set of its keyword. An element that is not a literal is left to the run.
+func (g *graph) each(value syntax.Expr, param Param) {
+	if param.Each == nil {
+		return
+	}
+
+	items, ok := members(value)
+	if !ok {
+		return
+	}
+
+	for _, item := range items {
+		if kindOf(item) == KindAny {
+			continue
+		}
+
+		if text, _ := literal(item); kindOf(item) != KindText || !slices.Contains(param.Each, text) {
+			g.report(placeOf(syntax.Start(item)), fmt.Sprintf("%s has the unknown kind %s. Use one of: %s.", param.Name, rawText(item), strings.Join(param.Each, ", ")))
+		}
+	}
 }
 
 // bounds reports an integer literal that is outside the bounds of its keyword. A literal that is not a small whole number is outside.

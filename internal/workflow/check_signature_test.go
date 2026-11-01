@@ -125,6 +125,24 @@ func TestCheck_LeavesACallOfAShadowingFunctionAlone(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestCheck_ChecksEachLiteralKindOfForbidCommands(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    agent(\"p\", \"m\", forbid_commands = [\"git-write\", \"nope\", 3])\n")
+
+	require.Len(t, got, 2)
+	assert.Contains(t, got[0], `forbid_commands has the unknown kind "nope". Use one of: bulk-staging,`)
+	assert.Contains(t, got[1], "forbid_commands has the unknown kind 3. Use one of: bulk-staging,")
+}
+
+func TestCheck_LeavesANonLiteralForbidCommandsToTheRun(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "KINDS = [\"nope\"]\n\ndef main(item):\n    agent(\"p\", \"m\", forbid_commands = KINDS)\n    agent(\"p\", \"m\", forbid_commands = [\"git-write\"] + KINDS)\n    agent(\"p\", \"m\", forbid_commands = [KINDS[0], \"git-write\"])\n")
+
+	assert.Empty(t, got)
+}
+
 func TestSignature_ListsEveryBuiltinThatTakesKeywords(t *testing.T) {
 	t.Parallel()
 
