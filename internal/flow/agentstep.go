@@ -45,7 +45,8 @@ type agentArgs struct {
 	start         startMark
 	declared      []string
 	resume        string
-	noFollowUps   bool
+	// followUps is the follow_ups mode that sets the verdict from the findings, or empty for the mode "allow".
+	followUps string
 	// edits is the edits argument: false starts the step so that Claude Code refuses each file edit.
 	edits bool
 	tries int
@@ -143,7 +144,7 @@ func (a *agentArgs) lists(raw agentRaw) (err error) {
 		return err
 	}
 
-	a.noFollowUps, err = followUps(raw.followUps, a.declared)
+	a.followUps, err = followUps(raw.followUps, a.declared)
 
 	return err
 }
@@ -475,8 +476,8 @@ func (a agentArgs) readOutputs(outputs map[string]any) string {
 		return problem
 	}
 
-	if a.noFollowUps {
-		return applyFollowUps(outputs, written)
+	if a.followUps != "" {
+		return applyFollowUps(a.followUps, outputs, written)
 	}
 
 	return ""

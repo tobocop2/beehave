@@ -193,6 +193,47 @@ func TestPoll_TheJSONHoldsTheRowsAsTheyPrint(t *testing.T) {
 		`"updatedAt":"2026-10-20T10:00:00Z","title":"`+pullView(1, nil).Title+`"}]`, string(data))
 }
 
+func TestPoll_TheRowIsALedgerOfOurLastReviewItsCommitAndWhetherThatCommitIsStillTheHead(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		commit string
+		still  bool
+	}{{head, true}, {old, false}} {
+		w := newWorld()
+		onePull(w, review1(me, model.ReviewApproved, tc.commit, "2026-10-19T00:00:00Z"))
+
+		rows, err := poll(t, w)
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+
+		data, err := json.Marshal(rows[0])
+		require.NoError(t, err)
+
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, "APPROVED", got["ours"])
+		assert.Equal(t, tc.commit, got["ours_at"])
+		assert.Equal(t, "2026-10-19T00:00:00Z", got["ours_when"])
+		assert.Equal(t, tc.still, got["still_head"], tc.commit)
+	}
+}
+
+func TestPoll_ARowWithNoReviewOfOursHasNoLedgerFields(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	onePull(w)
+
+	rows, err := poll(t, w)
+	require.NoError(t, err)
+
+	data, err := json.Marshal(rows[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "still_head")
+	assert.NotContains(t, string(data), "ours_when")
+}
+
 func TestPoll_NothingToDoGivesNoRows(t *testing.T) {
 	t.Parallel()
 

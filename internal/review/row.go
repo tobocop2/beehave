@@ -26,12 +26,16 @@ const ownLineFormat = "%-10s #%d fresh_reviews=%d unresolved=%s changes_requeste
 
 // Row is one line of the poll. String prints the line, and the JSON of the row holds the same facts.
 type Row struct {
-	Kind             Kind   `json:"kind"`
-	Number           int    `json:"number"`
-	Author           string `json:"author,omitempty"`
-	Head             string `json:"head,omitempty"`
-	Ours             string `json:"ours,omitempty"`
-	OursAt           string `json:"ours_at,omitempty"`
+	Kind   Kind   `json:"kind"`
+	Number int    `json:"number"`
+	Author string `json:"author,omitempty"`
+	Head   string `json:"head,omitempty"`
+	Ours   string `json:"ours,omitempty"`
+	OursAt string `json:"ours_at,omitempty"`
+	// OursWhen and StillHead complete the verdict ledger of the row: when our last review was submitted, and whether the commit it read (OursAt) is the head.
+	// A row with no review of ours has neither.
+	OursWhen         string `json:"ours_when,omitempty"`
+	StillHead        *bool  `json:"still_head,omitempty"`
 	ReplyAt          string `json:"reply_at,omitempty"`
 	IsDraft          *bool  `json:"isDraft,omitempty"`
 	UpdatedAt        string `json:"updatedAt,omitempty"`

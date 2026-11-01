@@ -34,7 +34,8 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
     A finding on another mechanism, and a finding with no mechanism, keep the normal fix rounds.
 
     follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
-    and the review prompt must ask the agent to write a `findings` list beside the verdict.
+    and the review prompt must ask the agent to write a `findings` list beside the verdict. A reject needs the list too: a call that writes the verdict reject and no `findings` fails the step. With "audit", any open finding of any class
+    gives the verdict "findings"; the method sets no threshold, so the prompt decides what the agent lists.
     """
     extra = ["protected-path"] if protect else []
     violations = impl.violations

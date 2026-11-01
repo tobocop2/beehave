@@ -22,6 +22,7 @@ const (
 	headWidth       = 9
 	updatedWidth    = 16
 	none            = "-"
+	noReview        = "NONE"
 )
 
 // Reader is the forge reads of the poll. The forge backend implements it.

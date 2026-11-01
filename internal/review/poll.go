@@ -135,10 +135,17 @@ func newRow(number int, view model.PullRequest, reviews []model.Review, me strin
 	head := derefOr(view.HeadRefOid, "null")
 	state, at, when := myState(reviews, me)
 
-	return Row{
+	row := Row{
 		Kind: kindOf(state, at, head), Number: number, Author: model.OrNull(view.Author.Login), Head: head, Ours: state, OursAt: at,
 		IsDraft: view.IsDraft, UpdatedAt: view.UpdatedAt, Title: view.Title,
-	}, when
+	}
+
+	if state != noReview {
+		still := at == head
+		row.OursWhen, row.StillHead = when, &still
+	}
+
+	return row, when
 }
 
 // withReply makes a row REPLIED when someone else wrote after our verdict.
@@ -165,7 +172,7 @@ func derefOr(text *string, fallback string) string {
 
 func kindOf(state, at, head string) Kind {
 	switch {
-	case state == "NONE":
+	case state == noReview:
 		return KindNew
 	case at == head && state == string(model.ReviewChangesRequested):
 		return KindWaiting
@@ -185,10 +192,10 @@ func myState(reviews []model.Review, me string) (state, commit, when string) {
 			continue
 		}
 
-		return orDefault(string(r.State), "NONE"), orDefault(r.CommitID, none), orDefault(derefOr(r.SubmittedAt, ""), none)
+		return orDefault(string(r.State), noReview), orDefault(r.CommitID, none), orDefault(derefOr(r.SubmittedAt, ""), none)
 	}
 
-	return "NONE", none, none
+	return noReview, none, none
 }
 
 func orDefault(text, fallback string) string {
