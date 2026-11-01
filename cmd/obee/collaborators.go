@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,7 +65,7 @@ func (w worktrees) Ensure(ctx context.Context, project, item string) (string, er
 		return "", err
 	}
 
-	dir = filepath.Join(w.root, escapeName(project), escapeName(item))
+	dir = filepath.Join(w.root, model.SafeName(project), model.SafeName(item))
 	if err = absent(dir); err != nil {
 		return "", err
 	}
@@ -76,7 +75,7 @@ func (w worktrees) Ensure(ctx context.Context, project, item string) (string, er
 
 // create refreshes the clone of the project and adds the worktree dir of the item from it.
 func (w worktrees) create(ctx context.Context, project config.Project, dir, item string) (string, error) {
-	clone := filepath.Join(w.repos, escapeName(project.Name))
+	clone := filepath.Join(w.repos, model.SafeName(project.Name))
 	if err := w.refresh(ctx, project, clone); err != nil {
 		return "", err
 	}
@@ -178,14 +177,9 @@ func (w worktrees) run(ctx context.Context, dir string, args ...string) error {
 	return nil
 }
 
-// escapeName makes a project or item name safe as one folder name: a separator or a dot never changes the folder.
-func escapeName(name string) string {
-	return strings.ReplaceAll(url.PathEscape(name), ".", "%2E")
-}
-
 // Path returns the worktree of the item, or an empty path when the item has none.
 func (w worktrees) Path(ctx context.Context, project, item string) (string, error) {
-	dir := filepath.Join(w.root, escapeName(project), escapeName(item))
+	dir := filepath.Join(w.root, model.SafeName(project), model.SafeName(item))
 
 	want, err := filepath.EvalSymlinks(dir)
 	if errors.Is(err, os.ErrNotExist) {

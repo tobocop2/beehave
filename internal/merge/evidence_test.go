@@ -241,7 +241,7 @@ func TestFailedLogs_EachFailedCheckLogIsWrittenBeforeTheRunRefuses(t *testing.T)
 	}, e.logCalls, "a check that failed or was canceled has a log; a check that passed has none")
 
 	assert.Equal(t, "lint says no\n", saved(t, dir, "pr5-11-lint.log"))
-	assert.Equal(t, "race at line 4\n", saved(t, dir, "pr5-12-unit_race.log"))
+	assert.Equal(t, "race at line 4\n", saved(t, dir, "pr5-12-unit_2Frace.log"))
 	assert.Equal(t, "canceled\n", saved(t, dir, "pr5-13-docs.log"))
 
 	assert.Contains(t, result.Lines, "check log: lint saved to "+filepath.Join(dir, "check-logs", "pr5-11-lint.log"))
@@ -305,6 +305,23 @@ func TestFailedLogs_TwoChecksWithOneNameKeepTheirOwnLogs(t *testing.T) {
 
 	assert.Equal(t, "first\n", saved(t, dir, "pr5-21-test.log"))
 	assert.Equal(t, "second\n", saved(t, dir, "pr5-22-test.log"))
+}
+
+func TestFailedLogs_TwoCheckNamesThatDifferOnlyInASeparatorKeepTwoLogFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	e, req := failedWorld(t, dir)
+	e.checks = []model.Check{
+		{Name: "a/b", Bucket: model.CheckFail, Link: "https://github.com/o/r/actions/runs/1/job/31"},
+		{Name: "a_b", Bucket: model.CheckFail, Link: "https://github.com/o/r/actions/runs/1/job/31"},
+	}
+	e.logs["https://github.com/o/r/actions/runs/1/job/31"] = "same job\n"
+
+	e.runWith(req)
+
+	assert.Equal(t, "same job\n", saved(t, dir, "pr5-31-a_2Fb.log"))
+	assert.Equal(t, "same job\n", saved(t, dir, "pr5-31-a_5Fb.log"))
 }
 
 func TestFailedLogs_AnEmptyLogIsNotWrittenAndTheNextPollReadsItAgain(t *testing.T) {

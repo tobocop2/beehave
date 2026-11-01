@@ -9,6 +9,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/batch"
+	forgepkg "github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/review"
 )
@@ -303,13 +304,17 @@ func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {
 }
 
 // gateStanding reads the pull request of a gate once. The second value is false for a call that is not a gate, a project with no forge and a pull request that cannot be read:
-// the gate then keeps the normal place, and a line says so for a failed read.
+// the gate then keeps the normal place. A project with no forge says nothing, and a failed read of a forge logs a line.
 func (e *Engine) gateStanding(ctx context.Context, in ExclusiveInput) (review.Standing, bool) {
 	if in.Kind != kindGate || e.deps.Forge == nil {
 		return review.Standing{}, false
 	}
 
 	standing, err := e.deps.Forge.Pull(ctx, in.Project, in.Item)
+	if errors.Is(err, forgepkg.ErrNoForge) {
+		return review.Standing{}, false
+	}
+
 	if err != nil {
 		e.logger.WarnContext(ctx, "cannot read the pull request, so its gate keeps the normal place in the queue", "item", in.Item, "error", err)
 

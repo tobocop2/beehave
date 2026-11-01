@@ -403,6 +403,18 @@ func TestOutputFile_ASeparatorOrADotInAnItemOrAStepNeverMakesTwoPairsShareAFile(
 	}
 }
 
+func TestOutputFile_TheVerdictPathHoldsOnlyLettersDigitsAndFewMarks(t *testing.T) {
+	t.Parallel()
+
+	state := t.TempDir()
+	path := outputFile(state, "review#5 \"x\"/y", "check it")
+
+	rel, err := filepath.Rel(state, path)
+	require.NoError(t, err)
+	assert.Regexp(t, `^[A-Za-z0-9._/-]+$`, rel)
+	assert.Equal(t, outputsFolder, filepath.Dir(rel), "one folder holds every output file")
+}
+
 func TestAgentStep_APinOnAFolderThatIsNotARepositoryFailsTheStep(t *testing.T) {
 	t.Parallel()
 
@@ -665,6 +677,30 @@ func TestAgentStep_AReplayAfterTheAgentEndedButBeforeTheReadReadsTheFileTheAgent
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the agent left")
 	assert.Len(t, rig.h.agents.seen(), 1, "the agent does not run again")
+}
+
+func TestAgentStep_AReplayReadsTheOutputFileThatTheRecordedPromptNames(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply(`{"verdict":"ok"}`, exited)
+
+	file := writeFlow(t, afterVerdictFlow)
+	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("Write to {{ .output_file }}\n"), 0o600))
+
+	rig.crashAfterThePhaseEnded(t, file)
+	require.FileExists(t, outputFile(rig.h.opts.StateDir, testItem, aStep))
+
+	// The name function now gives another path: the engine computes the file in another folder. The record still names the first one.
+	next := rig.h.engine(t)
+	next.dir = t.TempDir()
+
+	_, err := next.RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the recorded prompt names")
+	assert.NoFileExists(t, outputFile(next.dir, testItem, aStep), "the replay does not use the path the name function gives today")
 }
 
 var afterVerdictFlow = bodyFlow("a = " + agentCallText(`outputs = ["verdict"], `) + `command(run = ["after", a.verdict])` + "\n")
