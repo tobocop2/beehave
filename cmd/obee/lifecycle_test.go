@@ -27,6 +27,13 @@ type pullForge struct {
 	state   string
 	drafts  []draftCall
 	asked   [][]string
+	// refs and refsErr are the answer of ClosingRefs.
+	refs    model.ClosingRefs
+	refsErr error
+}
+
+func (f *pullForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	return f.refs, f.refsErr
 }
 
 type draftCall struct {
@@ -180,6 +187,45 @@ func TestPulls_AnItemWithoutOrWithManyPullRequestsIsAnError(t *testing.T) {
 	_, err = pullsOver(broken).Pull(t.Context(), "p", "bb-1")
 	require.ErrorIs(t, err, errFake)
 	require.ErrorContains(t, err, "find the pull request of item bb-1")
+}
+
+func TestPulls_ClosingIssuesGivesTheIssuesOfTheForgeAndAnItemWithNoPullRequestIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refs: model.ClosingRefs{Issues: []int{12}}}
+
+	issues, found, err := pullsOver(f).ClosingIssues(t.Context(), "p", "bb-1")
+
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, []int{12}, issues)
+
+	_, found, err = pullsOver(&pullForge{}).ClosingIssues(t.Context(), "p", "bb-1")
+
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	noForge := pulls{projects: map[string]config.Project{"p": {}}, forge: func(model.Project) (forge.Forge, error) { return nil, forge.ErrNoForge }}
+
+	_, found, err = noForge.ClosingIssues(t.Context(), "p", "bb-1")
+
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+func TestPulls_ClosingIssuesFailsClosedWhenTheForgeOrTheSearchFails(t *testing.T) {
+	t.Parallel()
+
+	f := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 7}}}, refsErr: errFake}
+
+	_, found, err := pullsOver(f).ClosingIssues(t.Context(), "p", "bb-1")
+
+	require.ErrorIs(t, err, errFake)
+	require.ErrorContains(t, err, "read the issues that pull request 7 closes")
+	assert.False(t, found)
+
+	_, _, err = pullsOver(&pullForge{listErr: errFake}).ClosingIssues(t.Context(), "p", "bb-1")
+	require.ErrorIs(t, err, errFake)
 }
 
 func TestPulls_AProjectTheConfigLacksIsAnErrorForEveryCall(t *testing.T) {

@@ -236,6 +236,10 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, fmt.Errorf("gate %q could not run: %w", label, err)
 	}
 
+	if err := s.fixScope(label); err != nil {
+		return nil, err
+	}
+
 	return s.durable("gate", label, func(context.Context, string) (stepResult, error) {
 		return stepResult{Outputs: ran.Outputs}, nil
 	})

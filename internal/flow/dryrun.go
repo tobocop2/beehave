@@ -342,6 +342,10 @@ func (f dryForge) Reviewed(ctx context.Context, project, item, _ string) (review
 
 func (dryForge) Ready(context.Context, string, string) error { return nil }
 
+func (dryForge) ClosingIssues(context.Context, string, string) ([]int, bool, error) {
+	return nil, true, nil
+}
+
 // dryWatch shows the pull request as merged.
 type dryWatch struct{}
 
