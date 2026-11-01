@@ -109,6 +109,10 @@ type gatedBeats struct {
 	release   chan struct{}
 }
 
+func (gatedBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+
 func (g gatedBeats) Beat(ctx context.Context, _, _ string) (string, error) {
 	deadline, _ := ctx.Deadline()
 	g.deadlines <- deadline

@@ -75,6 +75,28 @@ func (c *Claims) Beat(ctx context.Context, owner string) (string, error) {
 	return "", nil
 }
 
+// Renewed returns when the lease of the claim of the owner on the item was last renewed: the end of the lease, less the time a take or a renewal grants.
+// It returns the zero time when the owner holds no claim on the item, or the claim has no lease. The row of another holder gives the zero time.
+func (c *Claims) Renewed(ctx context.Context, owner, item string) (time.Time, error) {
+	holder, err := checked(owner, item)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	rows, err := c.held(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	for _, row := range rows {
+		if row.Item == item && row.Holder == holder && !row.LeaseEnds.IsZero() {
+			return row.LeaseEnds.Add(-model.ClaimLease), nil
+		}
+	}
+
+	return time.Time{}, nil
+}
+
 // checked validates the owner token and the item and returns the holder name.
 func checked(owner, item string) (string, error) {
 	me, err := OwnerOf(owner)

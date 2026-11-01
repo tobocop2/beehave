@@ -22,6 +22,10 @@ import (
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
 type hangingBeats struct{}
 
+func (hangingBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+
 func (hangingBeats) Beat(ctx context.Context, _, _ string) (string, error) {
 	<-ctx.Done()
 

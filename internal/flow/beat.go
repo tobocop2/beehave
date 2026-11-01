@@ -32,6 +32,9 @@ type claimHold struct {
 	project string
 	owner   string
 	renewed time.Time
+	// before is the last renewal of the claim lease that the store held when this process took the run over, or the zero time when the store held none.
+	// It is the last time the process that ran the item before this one was alive.
+	before  time.Time
 	failure string
 	lost    string
 	stop    func()
@@ -162,6 +165,25 @@ func (h *holds) renew(id string, start time.Time, stop func()) bool {
 	h.rows[id] = row
 
 	return true
+}
+
+// remember keeps the last renewal that the store held for the claim of a run before this process renewed it.
+func (h *holds) remember(id string, before time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if row, found := h.rows[id]; found {
+		row.before = before
+		h.rows[id] = row
+	}
+}
+
+// renewedBefore returns what remember kept for the run, or the zero time.
+func (h *holds) renewedBefore(id string) time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return h.rows[id].before
 }
 
 // note keeps the text of a renewal that failed, so the reason of a lost claim names it.

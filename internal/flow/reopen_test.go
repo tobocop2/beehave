@@ -219,3 +219,19 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 
 	assert.Equal(t, []string{"Work on the item.\n", "Second.\n", "Second.\n"}, prompts, "the first agent does not run again and the second does")
 }
+
+func TestOpenStart_AFinishedAgentStepClosesTheMarksBeforeIt(t *testing.T) {
+	t.Parallel()
+
+	steps := []dbos.StepInfo{
+		{StepID: 0, StepName: startStepPrefix + "1"},
+		{StepID: 1, StepName: agentStepName},
+		{StepID: 2, StepName: "later"},
+	}
+
+	assert.Equal(t, len(steps), openStart(steps), "a rewind must not go back before a finished agent step")
+
+	reopened := append([]dbos.StepInfo{}, steps...)
+	reopened = append(reopened, dbos.StepInfo{StepID: 3, StepName: startStepPrefix + "1"})
+	assert.Equal(t, 3, openStart(reopened), "only the marks after the agent step are open")
+}

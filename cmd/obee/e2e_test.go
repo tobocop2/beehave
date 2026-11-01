@@ -145,6 +145,10 @@ func (f e2eFiles) Ensure(context.Context, string, string) (string, error) {
 
 func (e2eFiles) Beat(context.Context, string, string) (string, error) { return "", nil }
 
+func (e2eFiles) Renewed(context.Context, string, string, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+
 func errJoin(first, second error) error {
 	if first != nil {
 		return first

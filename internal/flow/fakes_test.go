@@ -357,11 +357,15 @@ type fakeBeats struct {
 	text    string
 	err     error
 	onBeat  func()
+	renewed time.Time
+
+	renewedErr error
 }
 
 func (b *fakeBeats) Beat(_ context.Context, project, owner string) (string, error) {
 	b.mu.Lock()
 	b.calls = append(b.calls, project+"/"+owner)
+	b.renewed = time.Now() // a renewal moves the lease to now, as the claim store does
 	hook, failing, text, err := b.onBeat, owner == b.failFor, b.text, b.err
 	b.mu.Unlock()
 
@@ -374,6 +378,30 @@ func (b *fakeBeats) Beat(_ context.Context, project, owner string) (string, erro
 	}
 
 	return "", nil
+}
+
+// Renewed answers with the time that setRenewed set, or the time of the last Beat when one came after: the last renewal of the claim lease of any item.
+func (b *fakeBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.renewed, b.renewedErr
+}
+
+// failRenewed makes every later read of the last renewal fail with err.
+func (b *fakeBeats) failRenewed(err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.renewedErr = err
+}
+
+// setRenewed sets the last renewal of the claim lease that the store reports. The zero time is an item with no claim.
+func (b *fakeBeats) setRenewed(at time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.renewed = at
 }
 
 // hook sets the function that runs in each renewal.

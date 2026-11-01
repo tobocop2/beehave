@@ -329,6 +329,10 @@ type dryBeats struct{}
 
 func (dryBeats) Beat(context.Context, string, string) (string, error) { return "", nil }
 
+func (dryBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
+	return time.Time{}, nil
+}
+
 // dryForge shows an open pull request at the dry-run commit.
 type dryForge struct{ head string }
 
