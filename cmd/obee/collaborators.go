@@ -671,7 +671,7 @@ func (p pulls) request(name string, project config.Project, item string, number 
 	names, unaudited := audited(name, project.Tracker, item)
 
 	return merge.Request{
-		AuditClosing: names != nil, Names: names, Unaudited: unaudited,
+		AuditClosing: names != nil, Names: names, Kept: settings.Kept, Unaudited: unaudited,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,

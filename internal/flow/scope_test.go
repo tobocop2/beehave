@@ -50,6 +50,22 @@ func TestScope_AnOwnerLineThatNamesTheNewIssueLetsTheMergeGo(t *testing.T) {
 	assert.Len(t, h.merge.asked, 1)
 }
 
+func TestScope_TheIssuesTheOwnerKeptGoToTheMergeAsKept(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.closing = [][]int{{12}, {13, 12}}
+	h.flowIs(t, gateThenMerge(1))
+	done := runInBackground(h.engine(t), testItem)
+
+	waitForTheOwner(t, h)
+	require.NoError(t, h.client(t, testVersion).Answer(testItem, "keep #13"))
+
+	require.NoError(t, (<-done).err)
+	require.Len(t, h.merge.given, 1)
+	assert.Equal(t, []int{13}, h.merge.given[0].Kept)
+}
+
 func TestScope_AnIssueThatLeftTheSetNeedsNoQuestion(t *testing.T) {
 	t.Parallel()
 

@@ -30,6 +30,14 @@ func TestPullsRequest_AGithubItemIdThatIsAPlainPositiveNumberNamesThatIssue(t *t
 	assert.Empty(t, req.Unaudited)
 }
 
+func TestPullsRequest_TheIssuesTheOwnerKeptReachTheMergeRequest(t *testing.T) {
+	t.Parallel()
+
+	req := pulls{}.request("p", trackerProject(model.TrackerGithub), "12", 5, gated, flow.MergeSettings{Kept: []int{13}}, nil)
+
+	assert.Equal(t, []int{13}, req.Kept)
+}
+
 func TestPullsMerge_AGithubItemOnAForgeThatCannotReadClosingReferencesIsRefusedAndNothingMerges(t *testing.T) {
 	t.Parallel()
 

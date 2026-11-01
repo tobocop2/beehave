@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"go.starlark.net/starlark"
 
@@ -38,6 +39,8 @@ type MergeSettings struct {
 	GatedTree string
 	// Intent is the record that batch_merge wrote before the merge. It lets a pull request that is already merged count as done.
 	Intent *merge.Intent
+	// Kept are the issues that the owner kept by an answer at the scope check. A closing keyword in a commit message may name them.
+	Kept []int
 }
 
 // mergeArgs are the arguments of a merge call: the head to merge, whether to merge, the label of the call and the settings of a merge.
@@ -243,6 +246,8 @@ func (s *script) readyAndMerge(m mergeArgs) error {
 		if err := s.holdScope(m.label); err != nil {
 			return err
 		}
+
+		m.settings.Kept = slices.Clone(s.owned)
 	}
 
 	pinned, err := s.e.readyStep(s.ctx, s.in.Project, s.in.Item, m.head)

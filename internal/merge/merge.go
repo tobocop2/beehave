@@ -134,6 +134,8 @@ type Request struct {
 	// AuditClosing turns on the audit of the closing references. Names are the issues the item names: the pull request must close exactly those.
 	AuditClosing bool
 	Names        []int
+	// Kept are issues that the owner kept by an answer. A closing keyword in a commit message may name them besides Names.
+	Kept []int
 	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
 	Unaudited string
 }
