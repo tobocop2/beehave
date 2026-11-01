@@ -104,7 +104,8 @@ func runFake(adapter agent.Adapter, dir string, out io.Writer) agent.Result {
 func checkSeen(r Reporter, profile agent.Profile, dir string, seen []string) {
 	r.Helper()
 
-	expect(r, slices.Contains(seen, "args="+strings.Join(profile.Args, " ")), "the CLI did not get the arguments of the profile %q", profile.Args)
+	args := append(slices.Clone(profile.Args), profile.EditArgs...)
+	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI did not get the arguments of the profile %q", args)
 	expect(r, slices.Contains(seen, "stdin="+prompt), "the CLI did not get the prompt on stdin")
 
 	for _, name := range profile.ConfigVars {

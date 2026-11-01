@@ -51,6 +51,7 @@ func TestExample_TheReviewIsReadOnlyAndTheFixIsNot(t *testing.T) {
 			reviews++
 
 			assert.Contains(t, request.Forbid, model.FindingGitWrite, "the review must not change a repository")
+			assert.True(t, request.NoEdits, "the review starts without the permission to edit files")
 
 			continue
 		}

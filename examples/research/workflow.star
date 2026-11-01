@@ -51,6 +51,7 @@ def summarize(item, findings):
         prompt = "prompts/conclude.md",
         model = "sonnet",
         outputs = ["summary"],
+        edits = False,
         inputs = {"item": item, "findings": findings},
     )
     capped(step, "summary", item)
@@ -84,6 +85,7 @@ def main(item):
         prompt = "prompts/scope.md",
         model = "sonnet",
         outputs = ["questions"],
+        edits = False,
         inputs = {"item": item},
     )
     capped(scope, "scope", item)
@@ -108,6 +110,7 @@ def main(item):
             outputs = ["verdict", "open"],
             follow_ups = "forbid",
             output_tries = 2,
+            edits = False,
             inputs = {"item": item, "summary": summary},
         )
         capped(review, "review", item)

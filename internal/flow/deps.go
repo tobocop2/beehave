@@ -30,6 +30,8 @@ type AgentRequest struct {
 	IdleTimeout time.Duration
 	Forbid      []model.FindingKind
 	Protect     []string
+	// NoEdits starts the agent so that it cannot edit files. Shell commands stay allowed.
+	NoEdits bool
 	// OutputFile is the file where the agent writes its declared outputs as a JSON object. Outputs names them. Outputs is empty for a call that declares none.
 	OutputFile string
 	Outputs    []string

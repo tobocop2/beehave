@@ -70,7 +70,7 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited}, got)
-	assert.Equal(t, "-p --output-format stream-json --verbose", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits", record(t, f.records, "args"))
 	assert.Equal(t, "do the step", record(t, f.records, "stdin"))
 	assert.Equal(t, f.work, record(t, f.records, "cwd"))
 
@@ -91,7 +91,7 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, "-p --output-format stream-json --verbose --model opus --resume sess-1", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --model opus --resume sess-1", record(t, f.records, "args"))
 }
 
 func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -133,12 +133,23 @@ func TestRunner_PassesTheTurnAndBudgetCapsAsFlagsAndNoCapAddsNone(t *testing.T) 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, "-p --output-format stream-json --verbose --max-turns 40 --max-budget-usd 2.5", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --max-turns 40 --max-budget-usd 2.5", record(t, f.records, "args"))
 
 	f.spec.MaxTurns, f.spec.MaxBudget = 0, 0
 	agent.Runner{}.Run(context.Background(), f.spec)
 
-	assert.Equal(t, "-p --output-format stream-json --verbose", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits", record(t, f.records, "args"))
+}
+
+func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "")
+	f.spec.NoEdits = true
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash", record(t, f.records, "args"))
+	assert.NotContains(t, record(t, f.records, "args"), "--permission-mode")
 }
 
 func TestRunner_RefusesACapThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process

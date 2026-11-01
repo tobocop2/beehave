@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -63,4 +64,19 @@ func TestAwaitPhase_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *tes
 
 	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
 	require.ErrorIs(t, err, stopped)
+}
+
+func TestPhaseInput_AStoredStepWithoutTheEditsKeyKeepsEditsAndANoEditsStepStaysWithout(t *testing.T) {
+	t.Parallel()
+
+	var old PhaseInput
+	require.NoError(t, json.Unmarshal([]byte(`{"run":"r1","item":"i1"}`), &old))
+	assert.False(t, old.NoEdits, "a step recorded before the key existed keeps the edit mode")
+
+	raw, err := json.Marshal(PhaseInput{Run: "r1", Kind: "review", NoEdits: true})
+	require.NoError(t, err)
+
+	var replayed PhaseInput
+	require.NoError(t, json.Unmarshal(raw, &replayed))
+	assert.True(t, replayed.NoEdits, "a replayed edits = False step does not gain the edit mode")
 }

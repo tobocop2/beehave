@@ -17,10 +17,15 @@ type Adapter struct{}
 func New() Adapter { return Adapter{} }
 
 // Profile returns the command line and the login variables of Claude Code.
+// Print mode cannot ask for permission, so a call that needs it is refused. "--allowedTools Bash" runs shell commands; the PreToolUse hook of Guard
+// stays the check for the forbidden kinds. "--permission-mode acceptEdits" (EditArgs, left out for a step with edits = False) accepts the file tools
+// inside the work folder and refuses them outside it. It does not fence Bash: a shell command can write outside the work folder unless forbid_commands refuses it.
+// The prompt arrives on stdin, so the list after --allowedTools takes no prompt by mistake.
 func (Adapter) Profile() agent.Profile {
 	return agent.Profile{ //nolint:gosec // the token variable name, not a credential
 		Binary:     "claude",
-		Args:       []string{"-p", "--output-format", streamJSON, "--verbose"},
+		Args:       []string{"-p", "--output-format", streamJSON, "--verbose", "--allowedTools", bashTool},
+		EditArgs:   []string{"--permission-mode", "acceptEdits"},
 		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",

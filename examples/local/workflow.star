@@ -7,7 +7,7 @@ def capped(step, name, item):
         fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
 
 def main(item):
-    plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", inputs = {"item": item})
+    plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", edits = False, inputs = {"item": item})
     capped(plan, "plan", item)
     implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", inputs = {"item": item, "plan": plan.text})
     capped(implement, "implement", item)
@@ -26,6 +26,7 @@ def main(item):
                 model = "sonnet",
                 pin = check.head,
                 outputs = ["verdict"],
+                edits = False,
                 inputs = {"item": item},
             )
             capped(review, "review", item)

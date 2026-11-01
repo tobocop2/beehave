@@ -48,20 +48,22 @@ type agentArgs struct {
 	declared      []string
 	resume        string
 	noFollowUps   bool
-	tries         int
-	dir           string
-	file          string
+	// edits is the edits argument: false starts the step so that Claude Code refuses each file edit.
+	edits bool
+	tries int
+	dir   string
+	file  string
 }
 
 // agentCall unpacks the arguments of the agent builtin. The second result is the label of the call.
 func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (agentArgs, string, error) {
-	a := agentArgs{tries: 1}
+	a := agentArgs{tries: 1, edits: true}
 	raw := agentRaw{followUps: workflow.FollowUpsAllow}
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
+		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -273,7 +275,7 @@ func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
-		OutputFile: a.file, Outputs: a.declared,
+		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared,
 	}
 }
 

@@ -4,8 +4,10 @@ package agent
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
 // ModelFlag and ResumeFlag are the flags that take a model name and a session id. An empty flag means the CLI has no such option.
 type Profile struct {
-	Binary     string
-	Args       []string
+	Binary string
+	Args   []string
+	// EditArgs follow Args unless the spec sets NoEdits. They let the CLI edit files in the work folder.
+	EditArgs   []string
 	ConfigVars []string
 	TokenVar   string
 	ModelFlag  string
