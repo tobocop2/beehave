@@ -6,7 +6,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook mutation \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation \
 	governance-generate governance-validate governance-verify clean check
 
 setup:  ## Install the Go tools and generate the agent files
@@ -71,6 +71,9 @@ smoke-agent: build  ## Run examples/local once with the real claude CLI (costs a
 
 smoke-hook: build  ## Run one step with the real claude CLI and check that the command hook blocks git add -A (costs an agent run; not part of check)
 	sh scripts/smoke-hook.sh
+
+smoke-sandbox: build  ## Run one step with the real claude CLI and check what the sandbox denies and allows (costs an agent run, at most 0.30 USD; not part of check)
+	sh scripts/smoke-sandbox.sh
 
 # Run on one package: make mutation PKG=./internal/cli/...
 mutation:
