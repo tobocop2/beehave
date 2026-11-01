@@ -57,7 +57,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"merge unknown keyword", `merge("h", force = True)`, "merge takes no argument force"},
 		{"merge missing head", `merge(repo = "r")`, "merge needs the `head` keyword"},
 		{"merge bad children", `merge("h", children = "drop")`, `children is "drop". Use one of: refuse, retarget.`},
-		{"merge text for a bool", `merge("h", merge = "yes", steps = item.steps)`, "merge must be a bool, not a text."},
+		{"merge text for a bool", `merge("h", merge = "yes", steps = item.id)`, "merge must be a bool, not a text."},
 		{"preflight unknown keyword", `preflight(state = "open")`, "preflight takes no argument state"},
 		{"preflight number for head", `preflight(head = 3)`, "head must be a text, not an int."},
 		{"preflight list for hold", `preflight(hold = ["hold"])`, "hold must be a text, not a list."},
@@ -186,7 +186,7 @@ func TestCheck_AMergeCallThatDoesNotMergeOrNamesStepsPasses(t *testing.T) {
 	calls := []string{
 		`merge("h")`,
 		`merge("h", merge = False)`,
-		`merge("h", merge = True, steps = item.steps)`,
+		`merge("h", merge = True, steps = item.id)`,
 		`merge("h", *item)`,
 		`merge("h", **item)`,
 	}

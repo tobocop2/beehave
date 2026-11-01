@@ -401,6 +401,17 @@ func TestRunStar_TheFieldsOfTheItemFillTheItemArgument(t *testing.T) {
 	assert.Equal(t, []string{testItem + " a title"}, h.commands.ran())
 }
 
+func TestRunStar_AFieldThatTheItemDoesNotHaveFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	_, err := walkText(t, h, "def main(item):\n    command(run = [item.parent])\n")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parent")
+	assert.Empty(t, h.commands.ran())
+}
+
 func TestRunStar_AnErrorNamesTheFileTheLineAndTheColumn(t *testing.T) {
 	t.Parallel()
 
