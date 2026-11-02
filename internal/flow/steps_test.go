@@ -413,7 +413,7 @@ func TestStepLine_TheOutputsTheEngineRecordsDecodeIntoTheFieldsOfTheLine(t *test
 	assert.Nil(t, noOutcome.ExitCode, "the child workflow of a gate has no outcome, so the gate line has no exit code")
 	assert.False(t, noOutcome.OutputUnreadable)
 
-	read := callLine([]dbos.StepInfo{record("agent:a#1/read1", stepResult{Outputs: withVerdict(agentOutputs("t", "s", "p", "h2", "", "turns"), "approve")})}, "agent:a#1/read1")
+	read := callLine([]dbos.StepInfo{record("agent:a#1/read1", stepResult{Outputs: withVerdict(agentOutputs("t", "s", "p", "h2", "", "turns", 0.5), "approve")})}, "agent:a#1/read1")
 	assert.Equal(t, "h2", read.Head)
 	assert.Equal(t, "turns", read.Stop)
 	assert.Equal(t, "approve", read.Verdict)

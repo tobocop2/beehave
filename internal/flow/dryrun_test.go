@@ -43,6 +43,20 @@ func TestDryRun_PrintsEachStepOfTheExampleInOrderAndEndsClean(t *testing.T) {
 	assert.NotContains(t, text, "FAILED")
 }
 
+func TestDryRun_AnAgentWithAStepCapRunsAtCostZero(t *testing.T) {
+	t.Parallel()
+
+	file := dryFile(t, bodyFlow(`a = agent(model = "m", prompt = "a.md", max_budget_usd = 2.5, name = "a")
+command(run = ["show", str(a.cost_usd)], name = "show")
+`))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "a.md"), []byte("hello\n"), 0o600))
+
+	var out bytes.Buffer
+
+	require.NoError(t, DryRun(t.Context(), file, "12", map[string]string{}, &out), out.String())
+	assert.NotContains(t, out.String(), "FAILED")
+}
+
 func TestDryRun_AFailedRunNamesTheErrorWithItsLineAndTheLastStepOnItsOwnLine(t *testing.T) {
 	t.Parallel()
 

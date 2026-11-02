@@ -115,6 +115,28 @@ func noneFor(name string, dest any) error {
 	return errors.New(strings.TrimPrefix(err.Error(), ": "))
 }
 
+// budgetKeyword is the keyword of the agent builtin that caps the dollars of one step.
+const budgetKeyword = "max_budget_usd"
+
+// budgetRule is the rule of a keyword that takes a cap in dollars: an int or a float of 0 or more.
+func budgetRule(name string) func(starlark.Value) error {
+	return func(v starlark.Value) error {
+		_, err := Dollars(name, v)
+
+		return err
+	}
+}
+
+// Dollars reads a cap in dollars: an int or a float of 0 or more, finite.
+func Dollars(name string, v starlark.Value) (float64, error) {
+	dollars, ok := starlark.AsFloat(v)
+	if !ok {
+		return 0, fmt.Errorf("%s must be a number of dollars. Write %s = 2.5, or 0 for no cap", name, name)
+	}
+
+	return dollars, Budget(name, dollars)
+}
+
 func triesRule(v starlark.Value) error {
 	if v == starlark.None {
 		var tries int
@@ -174,7 +196,7 @@ func agentParams() []Param {
 		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), one("lane", Lanes()), ruled("timeout", KindText, durationRule("timeout")),
-		ruled("idle_timeout", KindText, durationRule("idle_timeout")), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 	}
 }
 

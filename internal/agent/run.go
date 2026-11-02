@@ -73,7 +73,9 @@ type Spec struct {
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
 // Session, Transcript, Text, Skills and Violations describe the finished session: its id, the path of its transcript, its last message, the skills it called
 // and one line for each Bash call that broke a forbidden kind. The Runner leaves them empty. The caller that owns the Adapter fills them from the output lines.
+// Cost is the total cost in dollars that the CLI reported on its result line, filled the same way.
 type Result struct {
+	Cost       float64
 	Outcome    Outcome
 	ExitCode   int
 	Stderr     string

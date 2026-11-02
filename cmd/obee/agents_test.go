@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,15 @@ func (lineAdapter) Calls(line string) agent.Seen {
 
 	if subtype, ok := cutPrefix(line, "failed="); ok {
 		seen.Failed = subtype
+	}
+
+	if dollars, ok := cutPrefix(line, "cost="); ok {
+		parsed, err := strconv.ParseFloat(dollars, 64)
+		if err != nil {
+			panic(err)
+		}
+
+		seen.Cost = parsed
 	}
 
 	seen.Result = line == "result=end"
@@ -539,6 +549,41 @@ func TestAgents_TheCapsOfTheConfigGoToTheSpecOfEveryRun(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 12, f.spec.MaxTurns)
 	assert.InDelta(t, 1.5, f.spec.MaxBudget, 0)
+}
+
+func TestAgents_TheCostOfTheResultLineIsTheCostOfTheRunWhetherOrNotACapStoppedIt(t *testing.T) {
+	t.Parallel()
+
+	for _, output := range []string{"session=s1\ncost=0.75\n", "session=s1\nstop=budget\ncost=2.5\n"} {
+		f := newAgentFixture(output, agent.Result{Outcome: agent.OutcomeExited})
+
+		got, err := f.agents.Run(t.Context(), request())
+
+		require.NoError(t, err)
+		assert.InDelta(t, map[bool]float64{true: 2.5, false: 0.75}[strings.Contains(output, "stop=")], got.Cost, 0)
+	}
+}
+
+func TestAgents_TheStepCapGoesToTheSpecAndTheLowerOfTheStepCapAndTheGlobalCapWins(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ global, step, want float64 }{
+		{0, 0, 0},
+		{5, 0, 5},
+		{0, 2, 2},
+		{5, 2, 2},
+		{1, 2, 1},
+	} {
+		f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+		f.agents.maxBudget = tc.global
+		req := request()
+		req.MaxBudget = tc.step
+
+		_, err := f.agents.Run(t.Context(), req)
+
+		require.NoError(t, err)
+		assert.InDelta(t, tc.want, f.spec.MaxBudget, 0, "global %v, step %v", tc.global, tc.step)
+	}
 }
 
 func TestAgents_ACapOnTheResultLineEndsTheRunAsACapWhateverTheExitCode(t *testing.T) {

@@ -20,6 +20,7 @@ const (
 	envMaxReviewConcurrent = "OBEE_AGENTS_MAX_REVIEW_CONCURRENT"
 	envMaxTurns            = "OBEE_AGENTS_MAX_TURNS"
 	envMaxBudget           = "OBEE_AGENTS_MAX_BUDGET_USD"
+	envMaxRunBudget        = "OBEE_AGENTS_MAX_RUN_BUDGET_USD"
 	envReviewPoll          = "OBEE_REVIEW_POLL_MINUTES"
 	envFiveHourMax         = "OBEE_POOL_FIVE_HOUR_MAX"
 	envSevenDayMax         = "OBEE_POOL_SEVEN_DAY_MAX"
@@ -191,14 +192,22 @@ func (c *Config) applyCapEnv(env map[string]string) error {
 		c.Agents.MaxTurns = turns
 	}
 
-	if value := env[envMaxBudget]; value != "" {
-		budget, err := strconv.ParseFloat(value, floatBits)
-		if err != nil || math.IsInf(budget, 0) || math.IsNaN(budget) {
-			return refuse("%s=%s is not a number. Write dollars, for example 5, or 0 for no cap.", envMaxBudget, value)
-		}
+	return errors.Join(overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD), overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD))
+}
 
-		c.Agents.MaxBudgetUSD = budget
+// overlayDollars reads a cap in dollars from the environment into into. The example is the number that the error shows.
+func overlayDollars(env map[string]string, name, example string, into *float64) error {
+	value := env[name]
+	if value == "" {
+		return nil
 	}
+
+	dollars, err := strconv.ParseFloat(value, floatBits)
+	if err != nil || math.IsInf(dollars, 0) || math.IsNaN(dollars) {
+		return refuse("%s=%s is not a number. Write dollars, for example %s, or 0 for no cap.", name, value, example)
+	}
+
+	*into = dollars
 
 	return nil
 }
@@ -263,14 +272,29 @@ func (c Config) Validate() Problems {
 		problems = append(problems, refuse("agents.max_turns must be 0 (no cap) or more. Set it in %s or in %s.", runnersPath, envMaxTurns))
 	}
 
-	// The negated form also refuses NaN, which fails every comparison. An infinite budget is no number of dollars.
-	if !(c.Agents.MaxBudgetUSD >= 0) || math.IsInf(c.Agents.MaxBudgetUSD, 0) {
-		problems = append(problems, refuse("agents.max_budget_usd must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", runnersPath, envMaxBudget))
-	}
-
+	problems = append(problems, c.budgetProblems(runnersPath)...)
 	problems = append(problems, c.pollProblems(runnersPath)...)
 
 	return append(problems, c.poolProblems(runnersPath)...)
+}
+
+// budgetProblems refuses a cap in dollars that is negative, infinite or not a number. The negated form also refuses NaN, which fails every comparison.
+func (c Config) budgetProblems(runnersPath string) Problems {
+	var problems Problems
+
+	for _, limit := range []struct {
+		name, env string
+		dollars   float64
+	}{
+		{"agents.max_budget_usd", envMaxBudget, c.Agents.MaxBudgetUSD},
+		{"agents.max_run_budget_usd", envMaxRunBudget, c.Agents.MaxRunBudgetUSD},
+	} {
+		if !(limit.dollars >= 0) || math.IsInf(limit.dollars, 0) {
+			problems = append(problems, refuse("%s must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", limit.name, runnersPath, limit.env))
+		}
+	}
+
+	return problems
 }
 
 func (c Config) pollProblems(runnersPath string) Problems {
