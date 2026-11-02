@@ -112,7 +112,7 @@ func TestBatchMerge_TheProjectGateReportsTheTreeOfTheUnionItRanOn(t *testing.T) 
 	assert.Equal(t, rig.repo.must(t, "rev-parse", "main^{tree}"), rig.merger.given[len(rig.merger.given)-1].GatedTree)
 }
 
-func TestBatchMerge_AGateWithAnUnknownStepLandsNoMemberEvenWhenItReportsPassed(t *testing.T) {
+func TestBatchMerge_AGateWithAnUnknownStepAndNoFailureIsVoidAndLandsNoMemberEvenWhenItReportsPassed(t *testing.T) {
 	t.Parallel()
 
 	rig := newBatchRig(t)
@@ -120,7 +120,8 @@ func TestBatchMerge_AGateWithAnUnknownStepLandsNoMemberEvenWhenItReportsPassed(t
 
 	_, err := rig.walk(t, rig.call("1 3", ""))
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, batch.ErrGateVoid)
+	assert.Len(t, rig.gate.ran(), 1, "a gate with an unknown step has no verdict, so the batch does not split")
 	assert.Empty(t, rig.merger.landed(), "an unknown step is not a pass, so no member lands")
 	assert.Equal(t, "README", rig.mainFiles(t))
 }
@@ -139,14 +140,17 @@ func TestBatchMerge_AVoidGateStopsTheBatchAndNoItemIsGatedAlone(t *testing.T) {
 	assert.Empty(t, rig.merger.landed())
 }
 
-func TestVoidReason_OnlyAGateWithEveryStepUnknownIsVoidAndItAlwaysHasAReason(t *testing.T) {
+func TestVoidReason_AGateWithAnUnknownStepAndNoFailedStepIsVoidAndItAlwaysHasAReason(t *testing.T) {
 	t.Parallel()
 
 	unknown := []GateStep{{Name: "command", Status: "unknown"}}
+	mixed := []GateStep{{Name: "command", Status: "pass"}, {Name: "tests", Status: "unknown"}}
 
-	assert.Equal(t, "every step of the gate is unknown", voidReason(GateResult{Steps: unknown}))
+	assert.Equal(t, "a step of the gate is unknown", voidReason(GateResult{Steps: unknown}))
 	assert.Equal(t, "pin", voidReason(GateResult{Steps: unknown, Report: "pin"}))
-	assert.Empty(t, voidReason(GateResult{Steps: append(unknown, GateStep{Name: "tests", Status: "pass"})}))
+	assert.Equal(t, "a step of the gate is unknown", voidReason(GateResult{Steps: mixed}))
+	assert.Empty(t, voidReason(GateResult{Steps: []GateStep{{Name: "command", Status: "fail"}, {Name: "tests", Status: "unknown"}}}), "a failed step is a red gate")
+	assert.Empty(t, voidReason(GateResult{Steps: []GateStep{{Name: "command", Status: "pass"}, {Name: "tests", Status: "pass"}}}))
 	assert.Empty(t, voidReason(GateResult{}))
 }
 

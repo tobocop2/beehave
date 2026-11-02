@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -350,6 +351,83 @@ func TestExample_AGateKilledByASignalIsUnresolvedAndEveryLaterStepDoesNotRun(t *
 	require.ErrorIs(t, err, gatepkg.ErrNoVerdict)
 	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "no fix round, no review, no settle: they stay unknown")
 	assert.Equal(t, 1, rig.h.gate.calls, "no second round")
+}
+
+func voidResult(rig *agentRig, report string) GateResult {
+	return GateResult{Passed: false, Head: rig.head, Tree: exampleTree, Report: report, Steps: stepsUnknown}
+}
+
+func TestExample_AVoidGateIsRerunInTheRunAndAPassAfterItGivesAPassWithNoFixAgent(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.h.gate.results = []GateResult{voidResult(rig, "the gate wrote no report"), {Passed: true, Head: rig.head, Tree: exampleTree}}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"opus", "sonnet", "opus"}, rig.models(), "a void gate is not red: the implementer and the review run, and no fix agent")
+	assert.Equal(t, 2, rig.h.gate.calls, "the rerun is a new gate step")
+}
+
+func TestExample_AGateThatIsVoidEveryTimeAsksTheOwnerAndRefusesAfterTheLastAnswerWithNoFixRound(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.h.gate.results = []GateResult{voidResult(rig, "")}
+	client := rig.h.client(t, testVersion)
+	done := make(chan runOutcome, 1)
+	engine := rig.h.engine(t)
+
+	go func() {
+		result, err := engine.RunFile(testItem, testProject, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	for range 3 {
+		eventually(t, func() bool { return client.Answer(testItem, "run it again") == nil })
+	}
+
+	outcome := <-done
+
+	require.ErrorContains(t, outcome.err, "the gate gave no result")
+	require.ErrorContains(t, outcome.err, "tests", "the refusal names the step with no result, also when the report is empty")
+	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "no fix agent starts")
+	assert.Equal(t, 6, rig.h.gate.calls, "the gate, two reruns, and one gate after each of the three answers")
+}
+
+func TestExample_AnAnswerToAVoidGateQuestionRunsTheGateAgainAndAPassGoesToTheReview(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.h.gate.results = []GateResult{voidResult(rig, "x"), voidResult(rig, "x"), voidResult(rig, "x"), {Passed: true, Head: rig.head, Tree: exampleTree}}
+	client := rig.h.client(t, testVersion)
+	done := make(chan runOutcome, 1)
+	engine := rig.h.engine(t)
+
+	go func() {
+		result, err := engine.RunFile(testItem, testProject, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	eventually(t, func() bool { return client.Answer(testItem, "run it again") == nil })
+
+	require.NoError(t, (<-done).err)
+	assert.Equal(t, 4, rig.h.gate.calls, "the answer, which the refusal-free question names, ran the gate again")
+	assert.Equal(t, []string{"opus", "sonnet", "opus"}, rig.models())
+}
+
+func TestExample_AGateWithAFailedStepAndAnUnknownStepIsRedAndStillGetsAFixRound(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	steps := []GateStep{{Name: "command", Status: "fail"}, {Name: "tests", Status: "unknown"}}
+	rig.h.gate.results = []GateResult{{Passed: false, Head: rig.head, Tree: exampleTree, Report: "red", Steps: steps}}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	assert.NotContains(t, fmt.Sprint(err), "the gate gave no result")
+	assert.Greater(t, rig.h.gate.calls, 1, "a failed step is a real red, so the loop fixes and gates again")
 }
 
 func TestExample_AReviewIsOnlyReadAgainstTheHeadTheGatePassed(t *testing.T) {

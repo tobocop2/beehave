@@ -27,6 +27,36 @@ def stopped_before(item, name, head, guard):
     check = preflight(name = name, id = item.id, head = head, **guard)
     return None if check.ok else check
 
+# A gate with no failed step and an unknown step gave no verdict about the code: it is void, not red. The loop reruns a void gate
+# VOID_RERUNS times at once. Each rerun is a new gate step, so the engine records each, and a replay never reads an old void as the answer.
+# Then it asks the owner up to VOID_ASKS times; an answer reruns the gate. The wait is the way back: a resume would replay the recorded void.
+VOID_RERUNS = 2
+VOID_ASKS = 3
+
+def is_void(check):
+    return not check.passed and not [s for s in check.steps if s["status"] == "fail"] and [s for s in check.steps if s["status"] == "unknown"] != []
+
+def void_names(check):
+    names = [s["name"] for s in check.steps if s["status"] == "unknown"]
+    return ", ".join(names) if names else "unknown"
+
+def settled_gate(item):
+    """Runs the gate and reruns it while it is void. Returns the first result that is not void, or the last void result after the bound."""
+    check = gate(name = "check")
+    for attempt in range(1, VOID_RERUNS + VOID_ASKS + 1):
+        if not is_void(check):
+            return check
+
+        if attempt > VOID_RERUNS:
+            wait(
+                "The gate gave no result for %s (steps with no result: %s). %s Fix the cause, then answer to run the gate again." % (item.id, void_names(check), check.report),
+                name = "gate-void-%d" % attempt,
+            )
+
+        check = gate(name = "check-void-%d" % attempt)
+
+    return check
+
 def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = []):
     """Runs the loop and returns a struct with stopped, exhausted, rejected, design, gate and review.
 
@@ -64,8 +94,12 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
     decided = {}
 
     for round in range(1, rounds + 1):
-        check = gate(name = "check")
+        check = settled_gate(item)
         review = None
+
+        # A gate that is still void after the reruns and the asks gave no verdict about the code. No fix agent reads its report.
+        if is_void(check):
+            fail("REFUSE: the gate gave no result for %s after %d reruns and %d questions (steps with no result: %s). %s" % (item.id, VOID_RERUNS, VOID_ASKS, void_names(check), check.report))
 
         if check.passed:
             if stopped_before(item, "before-review-%d" % round, check.head, guard) != None:
