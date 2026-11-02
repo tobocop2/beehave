@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	authorKey   = regexp.MustCompile(`(?i)^(user|author|committer)\.(name|email)$`)
-	authorEnv   = regexp.MustCompile(`^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$`)
-	overrideEnv = regexp.MustCompile(`^(PATH|BASH_ENV|ENV|ZDOTDIR|PROMPT_COMMAND|NODE_OPTIONS|GIT_EXEC_PATH|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG_COUNT|LD_[A-Z_]+|DYLD_[A-Z_]+)$`)
+	// remoteDeleteKey names the remote settings that make a plain push delete or mirror branches with no flag.
+	remoteDeleteKey = regexp.MustCompile(`(?i)^remote\..+\.(mirror|push)$`)
+	authorKey       = regexp.MustCompile(`(?i)^(user|author|committer)\.(name|email)$`)
+	authorEnv       = regexp.MustCompile(`^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$`)
+	overrideEnv     = regexp.MustCompile(`^(PATH|BASH_ENV|ENV|ZDOTDIR|PROMPT_COMMAND|NODE_OPTIONS|GIT_EXEC_PATH|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG_COUNT|LD_[A-Z_]+|DYLD_[A-Z_]+)$`)
 )
 
 const (
@@ -216,7 +218,7 @@ func (s *scanner) scanSubcommand(named []string, set flagSet) {
 	}
 }
 
-// skipsSafeguard reports whether a git command skips the hooks, hides work in a stash or overwrites a remote branch.
+// skipsSafeguard reports whether a git command skips the hooks, hides work in a stash, or overwrites or deletes a remote branch.
 func skipsSafeguard(sub string, set flagSet) bool {
 	switch sub {
 	case subStash:
@@ -224,7 +226,7 @@ func skipsSafeguard(sub string, set flagSet) bool {
 	case subCommit:
 		return set.has("n", noVerify) || hasLong(set, noVerify)
 	case "push":
-		return pushForces(set) || hasLong(set, noVerify)
+		return pushForces(set) || pushDeletes(set) || hasLong(set, noVerify)
 	case "merge", "rebase", "am", "cherry-pick":
 		return hasLong(set, noVerify)
 	}
@@ -245,7 +247,7 @@ func (s *scanner) scanGlobals(options []string) {
 		switch {
 		case authorKey.MatchString(key):
 			s.add(model.FindingGitAuthor, []string{cmdGit, option, setting})
-		case strings.EqualFold(key, "core.hooksPath"):
+		case strings.EqualFold(key, "core.hooksPath"), remoteDeleteKey.MatchString(key):
 			s.add(model.FindingGitBypass, []string{cmdGit, option, setting})
 		}
 	}
@@ -307,6 +309,15 @@ func pushForces(set flagSet) bool {
 	}
 
 	return slices.ContainsFunc(set.pos, func(word string) bool { return strings.HasPrefix(word, "+") })
+}
+
+// pushDeletes reports whether a push removes a remote branch: `--delete`, `-d`, a refspec with no source (`:b`), or `--prune` and `--mirror`, which remove each remote branch that the local side lacks.
+func pushDeletes(set flagSet) bool {
+	if set.has("d", "--delete") || hasLong(set, "--delete") || hasLong(set, "--prune") || hasLong(set, "--mirror") {
+		return true
+	}
+
+	return slices.ContainsFunc(set.pos, func(word string) bool { return strings.HasPrefix(word, ":") })
 }
 
 // hasLong reports whether a long option is the given one or a unique start of it, as git accepts, with or without `=value`.

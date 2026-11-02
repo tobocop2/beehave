@@ -19,10 +19,12 @@ const (
 
 // Outcome is the result of one watch read. Reason is set for SendBack and Closed.
 // Draft is true when a SendBack read finds the pull request already in draft: the draft call has nothing left to do.
+// Head is the head commit of the pull request at the read, for a Waiting or SendBack read: the watch compares it with the head that was marked ready.
 type Outcome struct {
 	Kind   OutcomeKind
 	Reason string
 	Draft  bool
+	Head   string
 }
 
 // Watch reads a ready pull request once. A merged pull request ends the watch. A change request or a conflict sends it back to draft.
@@ -43,8 +45,8 @@ func Watch(ctx context.Context, reads Pulls, pr int) (Outcome, error) {
 	}
 
 	if reasons := standing.sendBack(); len(reasons) > 0 {
-		return Outcome{Kind: SendBack, Reason: strings.Join(reasons, ", "), Draft: standing.Draft}, nil
+		return Outcome{Kind: SendBack, Reason: strings.Join(reasons, ", "), Draft: standing.Draft, Head: standing.Head}, nil
 	}
 
-	return Outcome{Kind: Waiting}, nil
+	return Outcome{Kind: Waiting, Head: standing.Head}, nil
 }
