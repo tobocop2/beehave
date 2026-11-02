@@ -17,6 +17,11 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"agent idle_timeout", `agent("p", "m", idle_timeout = "10")`, `agent: idle_timeout is "10", which is not a duration`},
 		{"command timeout", `command(run = ["x"], timeout = "1 hour")`, `command: timeout is "1 hour", which is not a duration`},
 		{"gate timeout", `gate(timeout = "later")`, `gate: timeout is "later", which is not a duration`},
+		{"wait timeout text", `wait(question = "q", timeout = "soon")`, `wait: timeout is "soon", which is not a duration`},
+		{"wait timeout zero", `wait(question = "q", timeout = "0s")`, `wait: timeout is "0s", which must be above zero`},
+		{"wait timeout bare zero", `wait(question = "q", timeout = "0")`, `wait: timeout is "0", which must be above zero`},
+		{"wait timeout negative", `wait(question = "q", timeout = "-5s")`, `wait: timeout is "-5s", which must be above zero`},
+		{"wait timeout empty", `wait(question = "q", timeout = "")`, `wait: timeout is "", which must be above zero`},
 		{"stop_on_rc zero", `command(run = ["x"], stop_on_rc = [0])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
 		{"stop_on_rc text", `command(run = ["x"], stop_on_rc = ["2"])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
 		{"stop_on_rc large", `command(run = ["x"], stop_on_rc = [256])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
@@ -60,6 +65,7 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    agent(\"p\", \"m\", output_tries = 3, timeout = \"90s\", idle_timeout = \"10m\", allow_paths = [\"a/**\", \"./b\"], outputs = [\"o\"], require_skills = [\"s\"], inputs = {\"k\": [1, 2.5, None]})\n"+
 		"    agent(\"p\", \"m\", output_tries = 1, timeout = D, allow_paths = [D])\n"+
 		"    command(run = [\"x\"], stop_on_rc = [1, 255], max_new_processes = 5, timeout = \"\")\n"+
+		"    wait(question = \"q\", timeout = \"48h\")\n"+
 		"    command(run = [\"x\"], host = \"h\")\n"+
 		"    command(run = [\"x\"], max_new_processes = 5, host = \"\")\n")
 

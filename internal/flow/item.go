@@ -253,20 +253,26 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 // waitOwner blocks until the owner answers through obee answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
 func (e *Engine) waitOwner(ctx dbos.Context, item, question string) (string, error) {
+	answer, _, err := e.waitOwnerUntil(ctx, item, question, 0)
+	return answer, err
+}
+
+// waitOwnerUntil is waitOwner with a deadline. A deadline of zero is no deadline. When the deadline passes first, the answer is empty and timedOut is true.
+func (e *Engine) waitOwnerUntil(ctx dbos.Context, item, question string, deadline time.Duration) (answer string, timedOut bool, err error) {
 	if err := show(ctx, item, questionKey, question, "its question"); err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	answer, err := e.receiveAnswer(ctx)
+	answer, timedOut, err = e.receiveAnswer(ctx, deadline)
 	if err == nil {
 		err = dbos.SetEvent(ctx, questionKey, "")
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("item %s waits for the owner: %w. Answer with obee answer %s <text>", item, err, item)
+		return "", false, fmt.Errorf("item %s waits for the owner: %w. Answer with obee answer %s <text>", item, err, item)
 	}
 
-	return answer, nil
+	return answer, timedOut, nil
 }
 
 // show sets an event of the run that status reads. what names the event for the error.
@@ -278,12 +284,22 @@ func show[T any](ctx dbos.Context, item, key string, value T, what string) error
 	return nil
 }
 
-// receiveAnswer waits for the answer of the owner. The owner has no deadline: a wait that times out starts again.
-func (e *Engine) receiveAnswer(ctx dbos.Context) (string, error) {
+// receiveAnswer waits for the answer of the owner. With a deadline, one receive ends at the deadline and reports timedOut.
+// With no deadline, a receive that times out starts again.
+func (e *Engine) receiveAnswer(ctx dbos.Context, deadline time.Duration) (answer string, timedOut bool, err error) {
+	if deadline > 0 {
+		answer, err = dbos.Recv[string](ctx, ownerTopic, deadline)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "", true, nil
+		}
+
+		return answer, false, err
+	}
+
 	for {
-		answer, err := dbos.Recv[string](ctx, ownerTopic, cmp.Or(e.deps.Clock.OwnerWait, ownerWaitLimit))
+		answer, err = dbos.Recv[string](ctx, ownerTopic, cmp.Or(e.deps.Clock.OwnerWait, ownerWaitLimit))
 		if !errors.Is(err, context.DeadlineExceeded) {
-			return answer, err
+			return answer, false, err
 		}
 	}
 }

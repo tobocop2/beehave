@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"go.starlark.net/starlark"
 
@@ -268,25 +269,45 @@ func recordedKey(gated GateResult, key GateKey) string {
 	return ""
 }
 
+// waitArgs reads the arguments of a wait: its question, its label and its deadline. No timeout is a deadline of zero.
+func waitArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (question, label string, deadline time.Duration, err error) {
+	question = "The workflow waits for your answer."
+
+	var timeout string
+
+	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"question": &question, "timeout": &timeout, nameKeyword: &label,
+	}); err != nil {
+		return "", "", 0, err
+	}
+
+	// A timeout that the call gives is a deadline above zero, even as an empty text. A call without the keyword has no deadline.
+	if !slices.ContainsFunc(kwargs, func(pair starlark.Tuple) bool { return pair[0] == starlark.String("timeout") }) {
+		return question, label, 0, nil
+	}
+
+	deadline, err = workflow.Deadline("timeout", timeout)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("wait: %w", err)
+	}
+
+	return question, label, deadline, nil
+}
+
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.
 func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	question := "The workflow waits for your answer."
-
-	var label string
-
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"question": &question, nameKeyword: &label,
-	}); err != nil {
+	question, label, deadline, err := waitArgs(b, args, kwargs)
+	if err != nil {
 		return nil, err
 	}
 
-	answer, err := s.e.waitOwner(s.ctx, s.in.Item, question)
+	answer, timedOut, err := s.e.waitOwnerUntil(s.ctx, s.in.Item, question, deadline)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.durable("wait", label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: answerOutputs(answer)}, nil
+		return stepResult{Outputs: answerOutputs(answer, timedOut)}, nil
 	})
 }
 

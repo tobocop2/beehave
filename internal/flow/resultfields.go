@@ -18,7 +18,10 @@ func teardownOutputs(down bool, reason string) map[string]any {
 
 func upOutputs(started bool) map[string]any { return map[string]any{"started": started} }
 
-func answerOutputs(answer string) map[string]any { return map[string]any{"answer": answer} }
+// answerOutputs records the answer of a wait. timed_out is true when the deadline of the wait passed first, and the answer is then empty.
+func answerOutputs(answer string, timedOut bool) map[string]any {
+	return map[string]any{"answer": answer, "timed_out": timedOut}
+}
 
 func mergeOutputs(state, reason string) map[string]any {
 	return map[string]any{"state": state, reasonKey: reason}

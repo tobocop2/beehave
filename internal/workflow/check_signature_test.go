@@ -250,6 +250,6 @@ func TestUnpack_RefusesDestinationsThatDifferFromTheSignature(t *testing.T) {
 	const want = "destinations that differ from the keywords of its signature"
 
 	require.ErrorContains(t, workflow.Unpack("command", nil, nil, map[string]any{"run": &one}), want)
-	require.ErrorContains(t, workflow.Unpack("wait", nil, nil, map[string]any{"question": &one, "label": &two}), want)
+	require.ErrorContains(t, workflow.Unpack("wait", nil, nil, map[string]any{"question": &one, "timeout": &two, "other": &two}), want)
 	assert.ErrorContains(t, workflow.Unpack("nope", nil, nil, nil), want)
 }
