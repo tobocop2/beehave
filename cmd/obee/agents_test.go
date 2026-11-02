@@ -154,6 +154,21 @@ func TestAgents_ABashCallOfAListedKindIsAViolationAndTheRunStillSucceeds(t *test
 	assert.Equal(t, []string{"bulk-staging: git add -A", "local-delete: rm -rf $dir"}, got.Violations)
 }
 
+func TestAgents_ACommitThatSetsAnAuthorIsAViolationOfTheKindGitAuthor(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.bash = []string{"git commit -m x", "git commit --author='A <a@x>' -m x", "GIT_AUTHOR_NAME=me git commit -m y"}
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingGitAuthor}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"git-author: git commit", "git-author: GIT_AUTHOR_NAME"}, got.Violations)
+	assert.Equal(t, "'/bin/obee' check command --forbid git-author", f.spec.Guard)
+}
+
 func TestAgents_ACleanTranscriptHasNoViolations(t *testing.T) {
 	t.Parallel()
 
