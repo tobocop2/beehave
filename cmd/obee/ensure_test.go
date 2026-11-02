@@ -272,7 +272,8 @@ func TestWorktrees_EnsureReportsAFolderItCannotRead(t *testing.T) {
 		t.Parallel()
 
 		trees, _, _ := ensureFixture(t)
-		require.NoError(t, os.WriteFile(trees.repos, nil, 0o600))
+		require.NoError(t, os.MkdirAll(trees.repos, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(trees.repos, "p"), nil, 0o600))
 
 		_, err := trees.Ensure(t.Context(), "p", "bb-1")
 
