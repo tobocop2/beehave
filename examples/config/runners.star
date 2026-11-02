@@ -26,6 +26,9 @@ pool(
 # limits are separate: an idle review slot does not run implement work. The default is 2.
 # max_turns and max_budget_usd cap one agent run, in agentic turns and in dollars. 0 means no cap,
 # which is the default. A run that reaches a cap ends the step with the output stop. Both are optional.
+# max_run_budget_usd caps the dollars that all agent steps of one item run spend, failed runs included. An agent step does not start when the sum is at or past
+# the cap, so the last step can pass it by its own cost (set max_budget_usd to limit that). A child workflow of the run starts its own sum.
+# A step can set a lower cap for itself with max_budget_usd in its agent() call.
 # review_poll_minutes is the time between two polls of the open pull requests that wait for your
 # review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
 # `obee status` shows the newest poll.
@@ -35,6 +38,7 @@ agents(
     # max_review_concurrent = 2,
     # max_turns = 60,
     # max_budget_usd = 5,
+    # max_run_budget_usd = 20,
     # review_poll_minutes = 60,
 )
 

@@ -122,9 +122,22 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 		Sandbox: box,
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
-		MaxTurns: a.maxTurns, MaxBudget: a.maxBudget,
+		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits,
 	}
+}
+
+// lowerCap returns the lower of two caps in dollars, where 0 means no cap. The cap of a step can lower the global cap and never raise it.
+func lowerCap(global, step float64) float64 {
+	if global <= 0 {
+		return step
+	}
+
+	if step <= 0 {
+		return global
+	}
+
+	return min(global, step)
 }
 
 // noGuardNote returns the reason why a step that lists forbid_commands cannot start, or "" when the step can start.
@@ -160,6 +173,7 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 
 	tap := newSessionTap(adapter)
 	result := a.run(ctx, a.specOf(request, runner, dir, adapter, tap, guard, box))
+	result.Cost = tap.spent()
 
 	return describe(adapter, runner, dir, tap, result, request.Forbid, protect)
 }
@@ -328,6 +342,8 @@ type sessionTap struct {
 	ended            bool
 	stop             agent.Stop
 	failed           string
+	// cost is the total cost in dollars of the last result line that reported one.
+	cost float64
 }
 
 func newSessionTap(adapter agent.Adapter) *sessionTap {
@@ -377,8 +393,7 @@ func (t *sessionTap) see(line string) {
 	}
 
 	t.ended = t.ended || seen.Result
-	t.stop = cmp.Or(seen.Stop, t.stop)
-	t.failed = cmp.Or(seen.Failed, t.failed)
+	t.stop, t.failed, t.cost = cmp.Or(seen.Stop, t.stop), cmp.Or(seen.Failed, t.failed), cmp.Or(seen.Cost, t.cost)
 
 	if seen.Invalid {
 		t.invalid++
@@ -428,6 +443,14 @@ func (t *sessionTap) skillCalls() []string {
 	defer t.mu.Unlock()
 
 	return slices.Clone(t.skills)
+}
+
+// spent returns the cost in dollars that the result line reported, or 0 when it reported none.
+func (t *sessionTap) spent() float64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.cost
 }
 
 // stopped returns the cap that the result line reported, or "" when it reported none.

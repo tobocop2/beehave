@@ -30,14 +30,16 @@ const (
 
 // agentArgs are the arguments of an agent call, and the folder and output file of its step.
 type agentArgs struct {
-	prompt        string
-	data          map[string]any
-	runner        string
-	kind          string
-	lane          string
-	model         string
-	timeout       time.Duration
-	idleTimeout   time.Duration
+	prompt      string
+	data        map[string]any
+	runner      string
+	kind        string
+	lane        string
+	model       string
+	timeout     time.Duration
+	idleTimeout time.Duration
+	// maxBudget is the max_budget_usd of the step: the most dollars that the agent may spend. 0 means the step sets no cap.
+	maxBudget     float64
 	pin           string
 	requireSkills []string
 	forbid        []model.FindingKind
@@ -66,7 +68,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, "lane": &a.lane, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
+		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, "lane": &a.lane, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -83,7 +85,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 type agentRaw struct {
 	label, timeout, idle, followUps string
 	inputs, outputs, skills, kinds  starlark.Value
-	allow, protect, sandbox         starlark.Value
+	allow, protect, sandbox, budget starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -107,13 +109,21 @@ func (a *agentArgs) read(raw agentRaw) (err error) {
 	return a.lists(raw)
 }
 
-// limits reads the timeout and the idle timeout of an agent call.
+// limits reads the timeout, the idle timeout and the dollar cap of an agent call.
 func (a *agentArgs) limits(raw agentRaw) (err error) {
 	if a.timeout, err = workflow.Duration("timeout", raw.timeout); err != nil {
 		return err
 	}
 
-	a.idleTimeout, err = workflow.Duration("idle_timeout", raw.idle)
+	if a.idleTimeout, err = workflow.Duration("idle_timeout", raw.idle); err != nil {
+		return err
+	}
+
+	if raw.budget == nil { // the keyword is left out: the step sets no cap
+		return nil
+	}
+
+	a.maxBudget, err = workflow.Dollars("max_budget_usd", raw.budget)
 
 	return err
 }
@@ -318,7 +328,7 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Lane: a.lane, Prompt: prompt,
-		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
+		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
 		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
 	}
 }
@@ -408,25 +418,103 @@ func (s *script) attempts(name string, a agentArgs, in PhaseInput) (stepResult, 
 // attempt removes the old output file in a recorded step, runs the agent once and reads what it left.
 // The removal is recorded, so a replay after the agent finished never removes the file again.
 func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (stepResult, error) {
-	_, err := runStep(s.e, s.ctx, name+"/clear"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
-		if rmErr := os.Remove(a.file); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-			return stepResult{}, fmt.Errorf("remove the old output file: %w", rmErr)
-		}
+	if err := s.clearOutput(name, a.file, try); err != nil {
+		return stepResult{}, err
+	}
 
-		return stepResult{}, nil
-	})
-	if err != nil {
+	if err := s.checkRunBudget(name, try); err != nil {
 		return stepResult{}, err
 	}
 
 	ended, err := s.e.queuePhase(s.ctx, in)
 	if err != nil {
+		s.countFailedRun(name, try, ended.Cost)
+
 		return stepResult{}, err
 	}
 
-	return runStep(s.e, s.ctx, name+"/read"+strconv.Itoa(try), func(ctx context.Context) (stepResult, error) {
+	return s.read(name, a, ended, try)
+}
+
+// read reads what a finished run left, in a recorded step, and adds its cost to the sum of the run cap. The cost of a failed read stays out of the sum.
+func (s *script) read(name string, a agentArgs, ended PhaseOutput, try int) (stepResult, error) {
+	done, err := runStep(s.e, s.ctx, name+"/read"+strconv.Itoa(try), func(ctx context.Context) (stepResult, error) {
 		return readAgent(ctx, a, ended)
 	})
+	if err != nil {
+		return done, err
+	}
+
+	s.spent += costOf(done.Outputs)
+
+	return done, nil
+}
+
+// countFailedRun records the cost of a run that failed and adds it to the sum of the run cap. A failed run spent money too, and the recorded step
+// gives a replay the same sum. The error of the failed run stays the error of the step, so a failure to record the cost is not reported over it.
+func (s *script) countFailedRun(name string, try int, cost float64) {
+	// A stopped wait leaves its reading goroutine running, and it shares the step counter of the run: a stopped run records no step.
+	if s.ctx.Err() != nil {
+		return
+	}
+
+	done, err := runStep(s.e, s.ctx, name+"/spent"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
+		return stepResult{Outputs: map[string]any{costField: cost}}, nil
+	})
+	if err != nil {
+		return
+	}
+
+	s.spent += costOf(done.Outputs)
+}
+
+// clearOutput removes the old output file of an agent call in a recorded step.
+func (s *script) clearOutput(name, file string, try int) error {
+	_, err := runStep(s.e, s.ctx, name+"/clear"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
+		if rmErr := os.Remove(file); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			return stepResult{}, fmt.Errorf("remove the old output file: %w", rmErr)
+		}
+
+		return stepResult{}, nil
+	})
+
+	return err
+}
+
+// checkRunBudget fails an agent step that would start when the agent steps of the item run have already spent the cap. It does nothing for a run with no cap.
+// The cap is for one item run. A child workflow that the run spawns starts its own sum at 0 and has its own cap.
+// The check runs when a step starts, so one step can pass the cap by its own cost, which the cap of the step or the global cap limits.
+// The sum is spent: the cost of each earlier read step as the run recorded it, added again in the same order when the run replays.
+// The check is a step, so a replay of a step that started under the cap never fails it again if the cap has changed since.
+func (s *script) checkRunBudget(name string, try int) error {
+	limit := s.e.maxRunBudget
+	if limit <= 0 {
+		return nil
+	}
+
+	_, err := runStep(s.e, s.ctx, name+"/budget"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
+		if s.spent < limit {
+			return stepResult{}, nil
+		}
+
+		return stepResult{}, fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s and the agent steps of the item run spent $%s. "+
+			"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
+			"Raise agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD), or set it to 0 for no cap", name, dollars(limit), dollars(s.spent))
+	})
+
+	return err
+}
+
+// dollars writes an amount of dollars with at most four decimals and no trailing zero.
+func dollars(amount float64) string {
+	return strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 4, floatBits), "0"), ".")
+}
+
+// costOf returns the cost_usd that a read step recorded, or 0 when the outputs hold none.
+func costOf(outputs map[string]any) float64 {
+	cost, _ := outputs[costField].(float64) //nolint:errcheck // a missing or ill-typed cost reads as 0
+
+	return cost
 }
 
 // readAgent checks the skills of a finished run, records its violations and reads its declared outputs.
@@ -446,10 +534,11 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome))
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome), ended.Cost)
 
+	// A run that left a bad output file still cost money, so its outputs stay in the result and the run cap counts them.
 	if problem := a.readOutputs(outputs); problem != "" {
-		return stepResult{Note: problem}, nil
+		return stepResult{Note: problem, Outputs: map[string]any{costField: ended.Cost}}, nil
 	}
 
 	return stepResult{Outputs: outputs}, nil

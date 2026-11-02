@@ -15,6 +15,9 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"output_tries negative", `agent("p", "m", output_tries = -2)`, "agent: output_tries must be a whole number of 1 or more"},
 		{"agent timeout", `agent("p", "m", timeout = "soon")`, `agent: timeout is "soon", which is not a duration`},
 		{"agent idle_timeout", `agent("p", "m", idle_timeout = "10")`, `agent: idle_timeout is "10", which is not a duration`},
+		{"agent max_budget_usd negative", `agent("p", "m", max_budget_usd = -1)`, "agent: max_budget_usd must be 0 (no cap) or more, in dollars"},
+		{"agent max_budget_usd text", `agent("p", "m", max_budget_usd = "5")`, "agent: max_budget_usd must be a number of dollars"},
+		{"agent max_budget_usd none", `agent("p", "m", max_budget_usd = None)`, "agent: max_budget_usd must be a number of dollars"},
 		{"command timeout", `command(run = ["x"], timeout = "1 hour")`, `command: timeout is "1 hour", which is not a duration`},
 		{"gate timeout", `gate(timeout = "later")`, `gate: timeout is "later", which is not a duration`},
 		{"wait timeout text", `wait(question = "q", timeout = "soon")`, `wait: timeout is "soon", which is not a duration`},
@@ -64,6 +67,8 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 	got := checkText(t, "D = \"5s\"\n\ndef main(item):\n"+
 		"    agent(\"p\", \"m\", output_tries = 3, timeout = \"90s\", idle_timeout = \"10m\", allow_paths = [\"a/**\", \"./b\"], outputs = [\"o\"], require_skills = [\"s\"], inputs = {\"k\": [1, 2.5, None]})\n"+
 		"    agent(\"p\", \"m\", output_tries = 1, timeout = D, allow_paths = [D])\n"+
+		"    agent(\"p\", \"m\", max_budget_usd = 2.5)\n"+
+		"    agent(\"p\", \"m\", max_budget_usd = 0)\n"+
 		"    command(run = [\"x\"], stop_on_rc = [1, 255], max_new_processes = 5, timeout = \"\")\n"+
 		"    wait(question = \"q\", timeout = \"48h\")\n"+
 		"    command(run = [\"x\"], host = \"h\")\n"+

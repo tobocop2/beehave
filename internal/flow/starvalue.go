@@ -35,6 +35,9 @@ type script struct {
 	// counts holds the number of calls so far of each builtin, which numbers its steps.
 	counts map[string]int
 
+	// spent is the sum in dollars of the costs that the agent steps of this run recorded so far. A replay adds the same recorded costs again in the same order.
+	spent float64
+
 	// merge and sentBack are what a merge builtin reported. They go into the result of the item.
 	mergeState, sentBack, closed string
 

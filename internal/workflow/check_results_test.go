@@ -13,7 +13,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct{ name, call, want string }{
-		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop."},
+		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd."},
 		{"batch_merge", `batch_merge([], "b", "r", name = "n")`, "3:11 haed is not a field of the result of batch_merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps."},
@@ -53,7 +53,7 @@ func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
     m = merge("h")
     s = spawn(["1"])
     w = wait()
-    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, b.merged, b.tip, b.tree, b.gates, c.stdout, c.rc])
+    command(["x", a.text, a.verdict, a.findings, a.session, a.transcript, a.head_sha, a.violations, a.stop, a.cost_usd, b.merged, b.tip, b.tree, b.gates, c.stdout, c.rc])
     command(["x", g.passed, g.head, g.tree, g.report, h.results, i.id, i.created, m.state, m.reason, s.runs, w.answer, b.rejected, b.deferred])
 `)
 
@@ -66,7 +66,7 @@ func TestCheck_AnAgentWithLiteralOutputsHasThemAsFields(t *testing.T) {
 	got := checkText(t, "def main(item):\n    out = agent(\"p\", \"m\", outputs = [\"verdict\"])\n    command([out.verdikt])\n    command([out.verdict])\n")
 
 	require.Len(t, got, 1)
-	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, verdict.")
+	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, verdict.")
 }
 
 func TestCheck_AnAgentWhoseOutputsAreNotLiteralHasItsOwnFieldsLeftToTheRun(t *testing.T) {

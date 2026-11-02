@@ -41,7 +41,9 @@ type Call struct {
 // Result is true for the line that ends a run. Invalid is true for a line that the adapter cannot read; an empty line is not invalid.
 // Stop is the cap that the CLI reports on its result line: StopTurns, StopBudget, or empty when the line reports no cap.
 // Failed is the error subtype of a result line that reports an error and no cap, or empty when the line reports none.
+// Cost is the total cost in dollars that the CLI reports on its result line, or 0 when the line reports none.
 type Seen struct {
+	Cost    float64
 	Stop    Stop
 	Failed  string
 	Shell   []Call

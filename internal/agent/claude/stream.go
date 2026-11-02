@@ -2,6 +2,7 @@ package claude
 
 import (
 	"cmp"
+	"math"
 	"sort"
 	"strings"
 
@@ -38,6 +39,7 @@ func (Adapter) Calls(line string) agent.Seen {
 	}
 
 	return agent.Seen{
+		Cost:    costOf(value),
 		Stop:    stopOf(value),
 		Failed:  failedOf(value),
 		Shell:   toolCalls(value, bashTool, bashKey, false),
@@ -55,6 +57,22 @@ func skillNames(value any) []string {
 	}
 
 	return skills
+}
+
+// costOf returns the total_cost_usd of a result line, or 0 for any other line and for a cost that is no number of 0 or more.
+func costOf(value any) float64 {
+	if lineType(value) != resultType {
+		return 0
+	}
+
+	line, _ := value.(map[string]any)           //nolint:errcheck // lineType found an object
+	cost, _ := line["total_cost_usd"].(float64) //nolint:errcheck // a missing or ill-typed cost reads as 0
+
+	if !(cost >= 0) || math.IsInf(cost, 0) { // the negated form also refuses NaN
+		return 0
+	}
+
+	return cost
 }
 
 // stopOf returns the cap that a result line reports in its subtype, or "" for any other line.

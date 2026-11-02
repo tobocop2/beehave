@@ -616,6 +616,34 @@ func TestLoadFolder_AgentsMaxTurnsAndBudgetDefaultToNoCapAndRefuseANegative(t *t
 	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_BUDGET_USD")
 }
 
+func TestLoadFolder_AgentsMaxRunBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadValue(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.InDelta(t, 0.0, cfg.Agents.MaxRunBudgetUSD, 0)
+
+	cfg, problems = loadRunnersText(t, "agents(max_run_budget_usd = 12.5)\n")
+	require.Empty(t, problems)
+	require.InDelta(t, 12.5, cfg.Agents.MaxRunBudgetUSD, 0)
+
+	_, problems = loadRunnersText(t, "agents(max_run_budget_usd = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.max_run_budget_usd must be 0 (no cap) or more")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_RUN_BUDGET_USD")
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_run_budget_usd = 1)\n")
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_RUN_BUDGET_USD": "7.5"})
+	require.Empty(t, problems)
+	require.InDelta(t, 7.5, cfg.Agents.MaxRunBudgetUSD, 0)
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_MAX_RUN_BUDGET_USD": "lots"})
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_MAX_RUN_BUDGET_USD=lots is not a number")
+}
+
 func TestLoadFolder_TheCapVariablesOverlayTheFileAndABadValueIsRefused(t *testing.T) {
 	t.Parallel()
 

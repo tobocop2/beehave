@@ -61,6 +61,10 @@ type Options struct {
 	MaxConcurrent       int
 	MaxReviewConcurrent int
 	Env                 map[string]string
+	// MaxRunBudget is agents.max_run_budget_usd: the dollars that the agent steps of one item run may spend in all. 0 means no cap.
+	// A child workflow that the run spawns starts its own sum. A step may pass the cap by its own cost, because the check runs when the step starts.
+	// An agent step does not start when the recorded costs of the earlier agent steps of its run reach the cap.
+	MaxRunBudget float64
 	// ReviewPoll is the time between two review polls. 0 means no poll.
 	ReviewPoll time.Duration
 	// OverCap lets the first agent step of a run take a runner that is over its usage cap when no runner has room. The step records that it did.
@@ -129,6 +133,8 @@ type Engine struct {
 	deps           Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
+	// maxRunBudget is Options.MaxRunBudget.
+	maxRunBudget float64
 	// reviewPoll is the time between two review polls. 0 means no poll.
 	reviewPoll time.Duration
 	// overCap is Options.OverCap.
@@ -182,7 +188,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 // newEngine makes the engine value for an opened store and a held folder lock.
 func newEngine(opts Options, deps Deps, state store, held *flock.Flock) *Engine {
 	engine := &Engine{
-		deps: deps, maxConcurrent: opts.MaxConcurrent, reviewPoll: opts.ReviewPoll, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, maxConcurrent: opts.MaxConcurrent, maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress},
 	}
 	engine.progress.redact = engine.redact

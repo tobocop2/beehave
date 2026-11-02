@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -107,6 +108,15 @@ func Deadline(name, text string) (time.Duration, error) {
 	}
 
 	return d, nil
+}
+
+// Budget refuses a cap in dollars that is negative, infinite or not a number. 0 means no cap.
+func Budget(name string, dollars float64) error {
+	if !(dollars >= 0) || math.IsInf(dollars, 0) { // the negated form also refuses NaN
+		return fmt.Errorf("%s must be 0 (no cap) or more, in dollars, and a finite number", name)
+	}
+
+	return nil
 }
 
 // OutputTries refuses a number of tries below one.
