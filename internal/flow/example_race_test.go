@@ -122,15 +122,22 @@ func TestExampleClaim_TwoRunsThatStartTogetherOnOneItemGiveOneClaimAndOneStop(t 
 	lives := make([]*claimingLife, len(names))
 	results := make(chan raceOutcome, len(names))
 
+	engines := make([]*Engine, len(names))
+	files := make([]string, len(names))
+
+	// Both engines launch before either run starts: a launch can take longer than the wait at the barrier on a loaded host.
 	for i, name := range names {
 		rig, file := exampleRig(t, func(int) string { return "approve" })
 		rig.h.agents.gate = proceed
 		rigs[i] = rig
+		files[i] = file
 		lives[i] = &claimingLife{fakeLifecycle: rig.h.life, claims: claims[i], owner: name, start: start}
-		engine := engineWith(t, rig, lives[i])
+		engines[i] = engineWith(t, rig, lives[i])
+	}
 
+	for i, name := range names {
 		go func() {
-			_, err := engine.RunFile(testItem, testProject, file)
+			_, err := engines[i].RunFile(testItem, testProject, files[i])
 			results <- raceOutcome{who: name, err: err}
 		}()
 	}

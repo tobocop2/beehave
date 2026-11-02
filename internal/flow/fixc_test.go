@@ -65,8 +65,35 @@ func TestClient_DropClaimGivesNothingBackWhenResumeTookNoClaim(t *testing.T) {
 	harness := newHarness(t)
 	client := harness.client(t, testVersion)
 
-	require.NoError(t, client.dropClaim(testProject, testItem, ""))
+	require.NoError(t, client.dropClaim(testProject, testItem, "run-12", ""))
 	assert.Empty(t, harness.life.releasedBy())
+}
+
+func TestClient_DropClaimRemovesTheTokenResumeSavedSoNoPhaseWaitsForAReopenThatFailed(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	client := harness.client(t, testVersion)
+
+	require.NoError(t, saveOwner(client.dir, "run-12", "owner-12"))
+	require.NoError(t, client.dropClaim(testProject, testItem, "run-12", "owner-12"))
+
+	saved, err := savedOwner(client.dir, "run-12")
+	require.NoError(t, err)
+	assert.Empty(t, saved)
+	assert.Equal(t, []string{"owner-12"}, harness.life.releasedBy())
+}
+
+func TestSavedOwnerAge_ReportsAStateFolderItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ownersDir), []byte("not a folder"), ownerMode))
+
+	_, found, err := savedOwnerAge(dir, "run-12")
+
+	require.ErrorContains(t, err, "read the claim of run run-12")
+	assert.False(t, found)
 }
 
 func TestClient_DropClaimStopsWaitingForATrackerThatHangs(t *testing.T) {
@@ -81,7 +108,7 @@ func TestClient_DropClaimStopsWaitingForATrackerThatHangs(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { done <- client.dropClaim(testProject, testItem, "owner-12") }()
+	go func() { done <- client.dropClaim(testProject, testItem, "run-12", "owner-12") }()
 
 	select {
 	case err := <-done:

@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -579,6 +580,69 @@ func TestAwaitClaim_AGraceTimeLetsARunThatIsNotOpenYetTakeItsClaim(t *testing.T)
 
 	require.NoError(t, err)
 	require.NoError(t, claim.Err())
+}
+
+func TestAwaitClaim_AResumeThatTookAClaimForTheRunKeepsThePhaseWaitingPastTheGraceTime(t *testing.T) {
+	t.Parallel()
+
+	engine := idleEngine(t, newHarness(t))
+	engine.deps.Clock.Grace = 20 * time.Millisecond
+	engine.deps.Clock.Poll = storePoll
+
+	// obee resume saves the fresh token before it reopens the phase, and the run itself reopens later, as slowly as the host is.
+	require.NoError(t, saveOwner(engine.dir, "item-12-r9", "owner-12"))
+
+	go func() {
+		time.Sleep(20 * engine.deps.Clock.Grace)
+		engine.holds.add("item-12-r9", claimHold{renewed: time.Now()})
+	}()
+
+	claim, err := engine.awaitClaim(t.Context(), PhaseInput{Run: "item-12-r9", Item: testItem})
+
+	require.NoError(t, err)
+	require.NoError(t, claim.Err())
+}
+
+func TestAwaitClaim_ATokenThatIsNotYoungerThanTheClaimLeaseDoesNotKeepThePhaseWaiting(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]time.Duration{
+		"older than the lease": -model.ClaimLease - time.Minute,
+		"dated in the future":  time.Hour,
+		"far in the future":    24 * time.Hour,
+		"just past the lease":  -model.ClaimLease - time.Second,
+	}
+
+	for name, offset := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			stopsByItself(t, offset)
+		})
+	}
+}
+
+// stopsByItself saves a token whose file time is offset from now and expects the phase to stop with the claim lost, not to wait for its context.
+// A resume that died, or a run that failed, leaves its token behind, and a clock that was wrong when it wrote the file leaves one dated ahead.
+func stopsByItself(t *testing.T, offset time.Duration) {
+	t.Helper()
+
+	engine := idleEngine(t, newHarness(t))
+	engine.deps.Clock.Grace = 20 * time.Millisecond
+	engine.deps.Clock.Poll = storePoll
+
+	require.NoError(t, saveOwner(engine.dir, "item-12-r9", "owner-12"))
+
+	old := time.Now().Add(offset)
+	require.NoError(t, os.Chtimes(ownerPath(engine.dir, "item-12-r9"), old, old))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	_, err := engine.awaitClaim(ctx, PhaseInput{Run: "item-12-r9", Item: testItem})
+
+	require.ErrorIs(t, err, errClaimLost)
+	require.NoError(t, ctx.Err(), "the phase stopped by itself and not by the end of the context")
 }
 
 func TestAwaitClaim_ARunThatEndedWithNoTrustStopsTheWaitWhenTheGraceTimeIsOver(t *testing.T) {

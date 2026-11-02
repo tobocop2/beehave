@@ -153,7 +153,7 @@ func (c *Client) reopenHere(item string, last run) error {
 	}
 
 	if err != nil {
-		return errors.Join(err, c.dropClaim(project, item, owner))
+		return errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
 	}
 
 	return nil

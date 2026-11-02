@@ -134,7 +134,7 @@ func (c *Client) reopenClaimed(row dbos.WorkflowStatus, opts ...dbos.RewindWorkf
 	}
 
 	if err := c.reopenAgain(row, opts...); err != nil {
-		return errors.Join(err, c.dropClaim(project, item, owner))
+		return errors.Join(err, c.dropClaim(project, item, row.ID, owner))
 	}
 
 	return nil
