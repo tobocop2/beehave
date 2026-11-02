@@ -178,6 +178,22 @@ func agentParams() []Param {
 	}
 }
 
+// writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
+func writeParams() []Param {
+	return []Param{
+		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), opt("env", KindDict),
+		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
+	}
+}
+
+// runParam is the required keyword run of a builtin that starts a program.
+func runParam() Param {
+	return Param{Name: runWord, Kind: KindList, Required: true, Rule: wordsRule(runWord)}
+}
+
+// runWord is the keyword that names the program of a call.
+const runWord = "run"
+
 // stepSignatures holds the builtins that run something.
 func stepSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
@@ -186,13 +202,14 @@ func stepSignatures() map[string][]Param {
 		agentName:   agentParams(),
 		sandboxName: {opt("network", KindList), opt("allow_write", KindList)},
 		commandName: {
-			{Name: "run", Kind: KindList, Required: true, Rule: wordsRule("run")},
+			runParam(),
 			opt("host", KindText), opt("stdin", KindText), opt("env", KindDict),
 			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), opt("max_new_processes", KindInt), label,
 		},
-		"env": {req(nameKeyword, KindText), opt("default", KindText)},
+		writeName: writeParams(),
+		"env":     {req(nameKeyword, KindText), opt("default", KindText)},
 		gateName: {
-			words("run"), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
+			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
 		waitName:         {opt("question", KindText), ruled("timeout", KindText, deadlineRule("timeout")), label},
 		hostTeardownName: {label},

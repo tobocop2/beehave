@@ -41,6 +41,9 @@ type script struct {
 	// batches holds the names of the batch_merge calls of this run, so that a name is never used twice.
 	batches map[string]bool
 
+	// undos are the finished writes of this run that name an undo, in the order of the writes. A failed run runs them in reverse.
+	undos []undoStep
+
 	// stopped is the command that ended the item on a code of its stop_on_rc.
 	stopped *Stopped
 

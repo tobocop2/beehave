@@ -29,6 +29,7 @@ const (
 const (
 	builtinAgent   = "agent"
 	builtinCommand = "command"
+	builtinWrite   = "write"
 )
 
 // stopOnRC is the stop reason of a command that ended the item on a code of its stop_on_rc.

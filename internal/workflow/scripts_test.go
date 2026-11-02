@@ -55,6 +55,27 @@ func TestPin_PinsAScriptOfTheRepositoryThatACommandNames(t *testing.T) {
 	require.ErrorContains(t, err, "script//scripts/check.sh changed since the run started")
 }
 
+func TestPin_PinsTheReadBackAndTheUndoOfAWriteLikeItsRun(t *testing.T) {
+	t.Parallel()
+
+	file := repository(t, map[string]string{
+		"flow.star":       "def main(item):\n    write(run = [\"make\"], read_back = [\"./scripts/look.sh\"], undo = [\"./scripts/drop.sh\", \"-f\"])\n",
+		"scripts/look.sh": "echo look\n",
+		"scripts/drop.sh": "echo one\n",
+	}, "flow.star")
+
+	pins, err := workflow.Pin(file)
+
+	require.NoError(t, err)
+	assert.Contains(t, pinnedPaths(pins), "script//scripts/look.sh")
+	assert.Contains(t, pinnedPaths(pins), "script//scripts/drop.sh")
+
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "scripts", "drop.sh"), []byte("echo two\n"), 0o600))
+
+	_, err = workflow.Open(file, pins)
+	require.ErrorContains(t, err, "script//scripts/drop.sh changed since the run started")
+}
+
 func TestPin_LeavesAProgramOnThePathAndAHostCommandUnpinned(t *testing.T) {
 	t.Parallel()
 

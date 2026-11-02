@@ -50,6 +50,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"host_up":       keysOf(upOutputs(true)),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
 		"wait":          keysOf(answerOutputs("", false)),
+		"write":         keysOf(writeOutputs("", "", 0, "", false)),
 	}
 
 	for builtin, keys := range got {
