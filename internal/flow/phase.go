@@ -191,9 +191,9 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}
 
-	out, err := awaitResult(ctx, handle, e.deps.Clock.resultOptions())
-	// A stopped wait leaves the reading goroutine running, and it shares the step counter of the workflow: a stopped run reads no cost.
-	if err != nil && ctx.Err() == nil {
+	out, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
+	// A stopped wait leaves the reading goroutine running, and it shares the step counter of the workflow: a stopped run, or a run of a stopped engine, reads no cost.
+	if err != nil && ctx.Err() == nil && e.ctx.Err() == nil {
 		out.Cost = failedCost(ctx, handle.GetWorkflowID())
 	}
 
@@ -213,24 +213,37 @@ func failedCost(ctx dbos.Context, phaseID string) float64 {
 	return cost
 }
 
-// awaitResult waits for the result of a child workflow. A cancel of ctx ends the wait at once:
-// the polling handle of the workflow library does not watch the context, so a stopped engine would wait for the phase to end.
-func awaitResult[T any](ctx dbos.Context, handle dbos.WorkflowHandle[T], options []dbos.GetResultOption) (T, error) { //nolint:ireturn // the result is the type of the child workflow
-	type outcome struct {
-		out T
-		err error
+// childResult is how a child workflow ended.
+type childResult[T any] struct {
+	out T
+	err error
+}
+
+// settle returns the result of a child. The child run sees the stop of the engine before the context of the waiting run is canceled, and its error can arrive first.
+// An error that arrives after the engine stopped is the stop, not a failure of the phase: the run stays open for the next start.
+func (r childResult[T]) settle(engine dbos.Context) (T, error) { //nolint:ireturn // the result is the type of the child workflow
+	if r.err != nil && engine.Err() != nil {
+		var none T
+
+		return none, stopError(engine)
 	}
 
-	done := make(chan outcome, 1)
+	return r.out, r.err
+}
+
+// awaitResult waits for the result of a child workflow. A stop of the engine (its context) ends the wait without a failure, even when the error of the child comes first. A cancel of ctx ends the wait at once:
+// the polling handle of the workflow library does not watch the context, so a stopped engine would wait for the phase to end.
+func awaitResult[T any](ctx, engine dbos.Context, handle dbos.WorkflowHandle[T], options []dbos.GetResultOption) (T, error) { //nolint:ireturn // the result is the type of the child workflow
+	done := make(chan childResult[T], 1)
 
 	go func() {
 		out, err := handle.GetResult(options...)
-		done <- outcome{out: out, err: err}
+		done <- childResult[T]{out: out, err: err}
 	}()
 
 	select {
 	case finished := <-done:
-		return finished.out, finished.err
+		return finished.settle(engine)
 	case <-ctx.Done():
 		var none T
 

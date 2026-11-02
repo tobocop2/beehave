@@ -60,7 +60,33 @@ func TestAwaitPhase_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *tes
 	stopped := assert.AnError
 	stop(stopped)
 
-	_, err := awaitResult(ctx, blockedHandle{}, nil)
+	_, err := awaitResult(ctx, ctx, blockedHandle{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
+	require.ErrorIs(t, err, stopped)
+}
+
+// shutdownHandle is a phase handle whose phase already ended with the shutdown cause of the library: the child run saw the stop of the engine
+// and recorded it before the context of the waiting run was canceled.
+type shutdownHandle struct {
+	dbos.WorkflowHandle[PhaseOutput]
+}
+
+func (shutdownHandle) GetResult(...dbos.GetResultOption) (PhaseOutput, error) {
+	return PhaseOutput{}, errors.New("DBOS is shutting down")
+}
+
+func TestAwaitPhase_APhaseThatEndedWithTheShutdownOfAStoppedEngineLeavesTheRunOpen(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	waiting := rig.h.engine(t).ctx // not canceled: the stop of the engine reaches the context of the run after the child run saw it
+
+	engineCtx, stopEngine := dbos.WithCancelCause(waiting)
+	stopped := assert.AnError
+	stopEngine(stopped)
+
+	_, err := awaitResult(waiting, engineCtx, shutdownHandle{}, nil)
 
 	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
 	require.ErrorIs(t, err, stopped)
