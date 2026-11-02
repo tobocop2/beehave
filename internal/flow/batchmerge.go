@@ -327,21 +327,26 @@ func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch
 	return batch.GateOutcome{Tree: tree, Passed: out.RC == 0, Report: out.Stdout}, err
 }
 
-// voidReason is the report of a gate whose every step is unknown: the gate did not run, for example when a pinned tool is at another version.
-// It is empty for a gate that ran. A gate with no step has no result either, but it stays a red gate as before.
+// voidReason is the report of a gate that gave no verdict about the code: no step failed and at least one step is unknown.
+// The pinned tool at another version leaves every step unknown. A command that passed with no test result leaves one.
+// A failed step is a real red gate, so it is never void. A gate with no step has no result either, but it stays a red gate as before.
 func voidReason(gated GateResult) string {
-	if len(gated.Steps) == 0 {
+	unknown := false
+
+	for _, s := range gated.Steps {
+		if s.Status == failStatus {
+			return ""
+		}
+
+		unknown = unknown || s.Status == unknownStatus
+	}
+
+	if !unknown {
 		return ""
 	}
 
-	for _, s := range gated.Steps {
-		if s.Status != unknownStatus {
-			return ""
-		}
-	}
-
 	if strings.TrimSpace(gated.Report) == "" {
-		return "every step of the gate is unknown"
+		return "a step of the gate is unknown"
 	}
 
 	return gated.Report

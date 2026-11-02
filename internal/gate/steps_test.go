@@ -56,6 +56,57 @@ func TestSteps_AGateThatExitsZeroWithNoResultLineIsUnknownAndNeverAPass(t *testi
 	}
 }
 
+func TestSteps_AGateThatExitsZeroWithAFailedTestCaseFailsTheTestsStepAndNamesTheCount(t *testing.T) {
+	t.Parallel()
+
+	for name, content := range map[string]string{
+		"a failure element":                `<testsuite tests="2"><testcase/><testcase><failure/></testcase></testsuite>`,
+		"an error element":                 `<testsuite tests="2"><testcase/><testcase><error/></testcase></testsuite>`,
+		"a failures attribute":             `<testsuites><testsuite tests="3" failures="1"><testcase/></testsuite></testsuites>`,
+		"an errors attribute":              `<testsuite tests="3" errors="1"/>`,
+		"a failure inside a nested suite":  `<testsuites><testsuite tests="1"><testsuite tests="1"><testcase><failure/></testcase></testsuite></testsuite></testsuites>`,
+		"a failed case with the attribute": `<testsuite tests="1" failures="1"><testcase><failure/></testcase></testsuite>`,
+	} {
+		result, err := runWithReports(t, 0, "r/*.xml", map[string]string{"r/a.xml": content})
+
+		require.NoError(t, err, name)
+		assert.Equal(t, []gate.Step{step(gate.StepCommand, gate.StatusPass), step(gate.StepTests, gate.StatusFail)}, result.Steps, name)
+		assert.False(t, result.Passed, name)
+		assert.Contains(t, result.Report, "1 failed", name)
+	}
+}
+
+func TestSteps_AReportThatCountsNoTestsButHoldsAFailureFailsTheTestsStep(t *testing.T) {
+	t.Parallel()
+
+	for name, content := range map[string]string{
+		"a suite with tests=0 and a failures attribute":       `<testsuite tests="0" failures="1"/>`,
+		"a suite with tests=0 and an errors attribute":        `<testsuites><testsuite tests="0" errors="2"/></testsuites>`,
+		"a testsuites root with a failures attribute only":    `<testsuites tests="3" failures="1"><testsuite tests="3"><testcase/></testsuite></testsuites>`,
+		"a testsuites root with an errors attribute only":     `<testsuites tests="3" errors="1"><testsuite tests="3"/></testsuites>`,
+		"a testsuites root that counts no tests and failures": `<testsuites tests="0" failures="1"/>`,
+	} {
+		result, err := runWithReports(t, 0, "r/*.xml", map[string]string{"r/a.xml": content})
+
+		require.NoError(t, err, name)
+		assert.Equal(t, []gate.Step{step(gate.StepCommand, gate.StatusPass), step(gate.StepTests, gate.StatusFail)}, result.Steps, name)
+		assert.False(t, result.Passed, name)
+	}
+}
+
+func TestSteps_AReportWithFailuresAndAnotherWithNoneCountsTheFailuresOnce(t *testing.T) {
+	t.Parallel()
+
+	result, err := runWithReports(t, 0, "r/*.xml", map[string]string{
+		"r/a.xml": `<testsuite tests="2" failures="2"><testcase><failure/></testcase><testcase><failure/></testcase></testsuite>`,
+		"r/b.xml": rootSuite,
+	})
+
+	require.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.Contains(t, result.Report, "2 failed")
+}
+
 func TestSteps_AFailedCommandLeavesTheTestsStepUnknownBecauseTheReportIsNotRead(t *testing.T) {
 	t.Parallel()
 
