@@ -16,6 +16,7 @@ const (
 	gateName    = "gate"
 
 	hostTeardownName = "host_teardown"
+	hostUpName       = "host_up"
 	reasonField      = "reason"
 	waitName         = "wait"
 	mergeName        = "merge"
@@ -39,6 +40,7 @@ func resultFields() map[string][]string {
 		gateName:         {"passed", "head", "tree", "report", "steps"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
+		hostUpName:       {"started"},
 		itemCommentName:  {"id"},
 		itemCreateName:   {"id", "created"},
 		itemStatusName:   {"id", "status"},

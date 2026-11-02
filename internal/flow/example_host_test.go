@@ -52,6 +52,17 @@ type fakeHosts struct {
 	unbanked bool
 	private  string
 	asked    []string
+	ups      []string
+	live     bool // the host was up before the run, so Up starts nothing
+}
+
+func (f *fakeHosts) Up(_ context.Context, project string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.ups = append(f.ups, project)
+
+	return !f.live, nil
 }
 
 func (f *fakeHosts) Teardown(ctx context.Context, project string) error {
@@ -93,11 +104,26 @@ func hostExample(t *testing.T, teardown string) (*agentRig, string, *fakeHosts, 
 	rig.h.hosts = hosts
 	rig.h.writer = writer
 
+	rig.h.opts.Env["HOST_UP"] = "true"
+
 	if teardown != "" {
 		rig.h.opts.Env["HOST_TEARDOWN"] = teardown
 	}
 
 	return rig, file, hosts, writer
+}
+
+func TestExample_ARunWithoutHostUpStartsNoHost(t *testing.T) {
+	t.Parallel()
+
+	rig, file, hosts, _ := hostExample(t, "")
+	delete(rig.h.opts.Env, "HOST_UP")
+
+	result, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, "merged", result.Merge)
+	assert.Empty(t, hosts.ups, "HOST_UP is not true, so the run starts no host")
 }
 
 func TestExample_AHostRunStopsTheHostAfterItsWorkIsBanked(t *testing.T) {
@@ -145,7 +171,36 @@ func TestExample_ARunWithoutAHostCallsNoTeardown(t *testing.T) {
 	assert.Empty(t, writer.notes)
 }
 
+func TestExample_AHostRunStartsTheHostOnceBeforeTheItem(t *testing.T) {
+	t.Parallel()
+
+	rig, file, hosts, _ := hostExample(t, "")
+
+	result, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, "merged", result.Merge)
+	assert.Equal(t, []string{testProject}, hosts.ups, "the host is started once")
+}
+
+func TestExample_ARunThatFoundTheHostLiveDoesNotStopIt(t *testing.T) {
+	t.Parallel()
+
+	rig, file, hosts, writer := hostExample(t, "true")
+	hosts.live = true
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Empty(t, hosts.asked, "no teardown call for a host that another run started")
+	assert.Zero(t, hosts.host.downs)
+	require.Len(t, writer.notes, 1)
+	assert.Contains(t, writer.notes[0], "did not start the host")
+}
+
 type failingHosts struct{ err error }
+
+func (failingHosts) Up(context.Context, string) (bool, error) { return false, nil }
 
 func (f failingHosts) Teardown(context.Context, string) error { return f.err }
 

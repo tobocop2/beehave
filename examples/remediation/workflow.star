@@ -88,12 +88,17 @@ def land(item, pins):
         fail("REFUSE: the batch landed, but the issues are not as they must be. Fix the state of each issue by hand:\n" + "\n".join(out.findings))
 
 def main(item):
+    # HOST_UP="true" launches the build host when it is absent. Without it the run starts no host, so a run that needs none costs nothing.
+    # A project with no host, or a host that is already up, starts nothing. The host deletes itself when idle (host.idle_minutes).
+    if env("HOST_UP", default = "") == "true":
+        host_up(name = "host")
+
     pipeline(item)
 
 def finish(item):
     """The engine calls finish after main on every end of the run except a cancel: success, error and command stop.
-    It stops the build host when HOST_TEARDOWN is "true". A run with no host sets nothing and calls nothing.
-    HOST_TEARDOWN is for a run with one item on the host: the stop deletes the host, so a second item on it would lose its agent. Teardown for a shared host is not done.
+    It stops the build host when HOST_TEARDOWN is "true" and this run launched the host (host_up started it). A host that was already up is never stopped: another run may use it.
+    HOST_TEARDOWN is for one item on the host: the stop deletes the host, so a second item on it would lose its agent. Two runs that start together can both report `started`, and then both stop the host. Teardown for a shared host is not done.
     The stop banks the work on the host first. A host that cannot bank its work stays up, and the item gets a comment with the reason, so the cost is not silent."""
     if env("HOST_TEARDOWN", default = "") != "true":
         return

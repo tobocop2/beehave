@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/model"
 )
+
+var errHostState = errors.New("the host is not absent or up")
 
 var errNoTeardown = errors.New("the host of the project cannot bank its work and stop. Use a host provider that has a teardown")
 
@@ -13,9 +18,47 @@ type bankingHost interface {
 	Teardown(ctx context.Context) error
 }
 
-// hostStop stops the build host of a project for the host_teardown builtin. The provider banks the work first and keeps the host up when it cannot.
+// hostStop starts and stops the build host of a project for the host_up and host_teardown builtins.
+// On a stop the provider banks the work first and keeps the host up when it cannot.
 type hostStop struct {
 	programs programs
+}
+
+// Up launches the host of the project when it is absent, and reports started. A host that is up is left alone (started is false).
+// Any other state is refused with its name, because a launch over a host in a state that obee does not know could replace work.
+// A project with no host block has nothing to start: started is false and there is no error.
+func (s hostStop) Up(ctx context.Context, project string) (bool, error) {
+	h, err := s.programs.hosts(project)
+	if errors.Is(err, errNoHost) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	status, err := h.Status(ctx)
+	if err != nil {
+		return false, fmt.Errorf("project %s: read the host before the start: %w", project, err)
+	}
+
+	return launchIfAbsent(ctx, h, project, status.State)
+}
+
+// launchIfAbsent launches the host only in the state absent. It leaves a host that is up alone and refuses every other state by name.
+func launchIfAbsent(ctx context.Context, h host.Host, project string, state model.HostState) (bool, error) {
+	switch {
+	case state == model.HostUp:
+		return false, nil
+	case state != model.HostAbsent:
+		return false, fmt.Errorf("project %s: %w: the host is %q. Stop it or wait until it is up, then run again", project, errHostState, string(state))
+	}
+
+	if err := h.Up(ctx); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // Teardown stops the host of the project. A project with no host block, or a provider with no teardown, is an error.

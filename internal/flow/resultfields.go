@@ -16,6 +16,8 @@ func teardownOutputs(down bool, reason string) map[string]any {
 	return map[string]any{"down": down, reasonKey: reason}
 }
 
+func upOutputs(started bool) map[string]any { return map[string]any{"started": started} }
+
 func answerOutputs(answer string) map[string]any { return map[string]any{"answer": answer} }
 
 func mergeOutputs(state, reason string) map[string]any {

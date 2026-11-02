@@ -136,13 +136,13 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{
-		"claim", "item", "env:LAND#1", "env:EXPECT_HEAD#2", "env:BASE#3", "env:OWNER_LOGIN#4", "preflight:intake#1", "env:LANE_KIND#5", "login#1",
-		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#6",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#7", "env:OWNER_LOGIN#8", "env:SOURCE_CHECKOUT#9",
+		"claim", "item", "env:HOST_UP#1", "env:LAND#2", "env:EXPECT_HEAD#3", "env:BASE#4", "env:OWNER_LOGIN#5", "preflight:intake#1", "env:LANE_KIND#6", "login#1",
+		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#7",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#8", "env:OWNER_LOGIN#9", "env:SOURCE_CHECKOUT#10",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-review-1#2",
 		"agent:review#3/render", "agent:review#3/clear1", "phase", "DBOS.getResult", "agent:review#3/read1",
-		"env:MERGE#10", "env:REPO#11", "env:BASE#12", "env:OWNER_LOGIN#13", "env:OWNER_EMAIL#14", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
-		"env:HOST_TEARDOWN#15", "worktree", "release",
+		"env:MERGE#11", "env:REPO#12", "env:BASE#13", "env:OWNER_LOGIN#14", "env:OWNER_EMAIL#15", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#16", "worktree", "release",
 	}, names)
 }
 

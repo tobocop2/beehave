@@ -252,8 +252,8 @@ type Deps struct {
 	Others orchestrators
 	// Poll serves the scheduled review poll. A nil Poll means the build cannot read the forges: the engine sets no poll schedule.
 	Poll pollReader
-	// Hosts serves host_teardown. A nil Hosts means the build cannot stop a host: a host_teardown call fails.
-	Hosts hostStopper
+	// Hosts serves host_up and host_teardown. A nil Hosts means the build cannot start or stop a host: both calls fail.
+	Hosts hostKeeper
 	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
 	SandboxDefault func(project string) bool
 	// Kept lists errors, besides the errors of the gate and the host, that a gate or a merge keeps for errors.Is when it fails. A call that runs in
