@@ -19,6 +19,8 @@ const (
 	exclusiveQueueName = "exclusive"
 	// gateTipName is the step that reads the standing of the pull request before a gate is queued. The per-run view names a waiting gate from it.
 	gateTipName = "gate:tip"
+	// gateJobName is the step that records the host job of a gate, or the earlier pass that the gate reuses, before the gate waits.
+	gateJobName = "gate:job"
 
 	kindGate      = "gate"
 	kindMerge     = "merge"
@@ -94,7 +96,7 @@ func (e *Engine) trackGate(parent dbos.Context) (dbos.Context, func()) { //nolin
 func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (err error) {
 	switch in.Kind {
 	case kindGate:
-		out.Outputs, err = runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) { return e.keyedGate(c, in, out) })
+		out.Outputs, err = e.gateCall(ctx, in, out)
 	case kindMerge:
 		out.Merge, err = runStep(e, ctx, mergeStep, func(c context.Context) (merge.Result, error) {
 			return e.deps.Merge.Merge(c, in.Project, in.Item, in.Head, in.Settings)
@@ -110,17 +112,49 @@ func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *Exclusi
 	return err
 }
 
-// keyedGate runs the gate and stores its key and project in out. The key is set only when the step runs here:
-// a replay reads the recorded outputs and sets no key, so it can only reuse less.
-func (e *Engine) keyedGate(ctx context.Context, in ExclusiveInput, out *ExclusiveOutput) (map[string]any, error) {
-	outputs, key, err := e.gateOutputs(ctx, in.Request, in.Head)
-	out.Key = key
-
-	if key != "" {
-		out.Project = in.Request.Project
+// gateCall runs the gate of a call as recorded steps. A call that names a program is one step.
+// A project gate is two: "gate:job" reuses an earlier pass or submits the host job, and "gate" waits for that job. DBOS cannot record from inside a step,
+// so the job id is the output of a step of its own. A crash between the two leaves the id on record: the replay skips the first step and the second
+// reads the same job, so the host gets one job. A crash inside the first step, between the host accepting the job and the record, can still submit twice.
+// The key is set only when the step runs here: a replay reads the recorded outputs and sets no key, so it can only reuse less.
+func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (map[string]any, error) {
+	if len(in.Request.Run) > 0 {
+		return runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) {
+			return e.programGateOutputs(c, in.Request, in.Head)
+		})
 	}
 
-	return outputs, err
+	return e.projectGateCall(ctx, in, out)
+}
+
+// projectGateCall is the two steps of a project gate, see gateCall.
+func (e *Engine) projectGateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (map[string]any, error) {
+	start, err := runStep(e, ctx, gateJobName, func(c context.Context) (gateStart, error) {
+		started, err := e.startProjectGate(c, in.Request)
+		if started.Reused != nil {
+			out.setKey(started.Key.ID, in.Request.Project)
+		}
+
+		return started, err
+	})
+	if err != nil || start.Reused != nil {
+		return start.Reused, err
+	}
+
+	return runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) {
+		outputs, key, err := e.finishProjectGate(c, in.Request, start)
+		out.setKey(key, in.Request.Project)
+
+		return outputs, err
+	})
+}
+
+func (o *ExclusiveOutput) setKey(key, project string) {
+	o.Key = key
+
+	if key != "" {
+		o.Project = project
+	}
 }
 
 // queueExclusive runs a gate or a merge as a child workflow on the exclusive queue, keyed by the repository, and waits for it.

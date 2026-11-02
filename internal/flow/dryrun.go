@@ -309,7 +309,9 @@ type dryGate struct{ head string }
 
 func (dryGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
 
-func (g dryGate) Run(context.Context, string, string) (GateResult, error) {
+func (dryGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+
+func (g dryGate) Run(context.Context, string, string, GateJob) (GateResult, error) {
 	return GateResult{Passed: true, Head: g.head, Tree: dryTree}, nil
 }
 

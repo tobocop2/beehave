@@ -228,7 +228,9 @@ type treeGate struct {
 	void bool
 }
 
-func (g *treeGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
+func (*treeGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+
+func (g *treeGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
 	tree := strings.TrimSpace(g.repo.Run(ctx, []string{"rev-parse", "HEAD^{tree}"}).Stdout)
 	head := strings.TrimSpace(g.repo.Run(ctx, []string{"rev-parse", "HEAD"}).Stdout)
 	passed := g.repo.Run(ctx, []string{"cat-file", "-e", "HEAD:bad.txt"}).ExitCode != 0

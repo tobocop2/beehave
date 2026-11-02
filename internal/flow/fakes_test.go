@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -131,6 +132,9 @@ type fakeGate struct {
 	calls   int
 	err     error
 	via     gate
+	// submits counts the calls of Submit. jobs are the host jobs that Run was given.
+	submits atomic.Int32
+	jobs    []GateJob
 	// keys are the answers of Key in order; keyReads counts them.
 	keys     []GateKey
 	keyReads int
@@ -166,14 +170,29 @@ func (slowGate) Key(context.Context, string, string) (GateKey, error) { return G
 
 func (cancelGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
 
-func (g *fakeGate) Run(ctx context.Context, project, item string) (GateResult, error) {
+// Submit counts the host jobs that it started and gives each one an id.
+func (g *fakeGate) Submit(context.Context, string, string) (GateJob, error) {
+	return GateJob{ID: fmt.Sprintf("job-%d", g.submits.Add(1)), Head: gatedHead}, nil
+}
+
+// waitedOn lists the host jobs that Run was given, in order.
+func (g *fakeGate) waitedOn() []GateJob {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	return slices.Clone(g.jobs)
+}
+
+func (g *fakeGate) Run(ctx context.Context, project, item string, job GateJob) (GateResult, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.jobs = append(g.jobs, job)
 
 	if g.via != nil {
 		g.calls++
 
-		return g.via.Run(ctx, project, item)
+		return g.via.Run(ctx, project, item, job)
 	}
 
 	index := min(g.calls, len(g.results)-1)

@@ -275,6 +275,52 @@ func TestRun_AFrozenHostJobIsReadAgainByItsIDAndNotSubmittedTwice(t *testing.T) 
 	assert.Equal(t, []model.JobID{"job-3"}, remote.waited)
 }
 
+func TestSubmit_AHostGateStartsItsJobForTheHeadOfTheTreeAndDoesNotWait(t *testing.T) {
+	t.Parallel()
+
+	remote := &fakeRemote{state: model.JobSucceeded}
+	g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, remote)
+
+	got, err := g.Submit(context.Background(), hostRequest(project("gpu-a")))
+
+	require.NoError(t, err)
+	assert.Equal(t, gate.Job{ID: "job-7", Head: headA}, got)
+	assert.Len(t, remote.submitted, 1)
+	assert.Empty(t, remote.waited)
+}
+
+var errNoSuchHost = errors.New("no such host")
+
+func TestSubmit_AProjectWhoseHostCannotBeFoundIsRefusedBeforeAnyJobStarts(t *testing.T) {
+	t.Parallel()
+
+	missing := errNoSuchHost
+	g := gate.New((&fakeShell{}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return nil, missing })
+
+	_, err := g.Submit(context.Background(), hostRequest(project("gpu-a")))
+
+	require.ErrorIs(t, err, missing)
+}
+
+func TestSubmit_ALocalGateStartsNothingAndAnUncleanTreeIsRefused(t *testing.T) {
+	t.Parallel()
+
+	shell := &fakeShell{}
+	g := build(shell, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
+
+	got, err := g.Submit(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
+	require.NoError(t, err)
+	assert.Equal(t, gate.Job{}, got)
+	assert.Empty(t, shell.ran)
+
+	remote := &fakeRemote{}
+	dirty := build(shell, &fakeTree{states: []gate.State{{Head: headA}}}, remote)
+
+	_, err = dirty.Submit(context.Background(), hostRequest(project("gpu-a")))
+	require.ErrorIs(t, err, gate.ErrTreeChanged)
+	assert.Empty(t, remote.submitted)
+}
+
 func TestRun_AResumedHostGateJudgesTheHeadItWasSubmittedWithNotTheHeadOfTheTree(t *testing.T) {
 	t.Parallel()
 

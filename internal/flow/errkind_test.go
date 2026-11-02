@@ -154,7 +154,9 @@ func TestKnownErrors_AKeptErrorAddsToTheProductionListAndNeverReplacesIt(t *test
 type deadlineGate struct{}
 
 // Run hits a real deadline of its own and returns the error of it.
-func (deadlineGate) Run(ctx context.Context, _, _ string) (GateResult, error) {
+func (deadlineGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+
+func (deadlineGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
 	limited, cancel := context.WithTimeout(ctx, time.Millisecond)
 	defer cancel()
 

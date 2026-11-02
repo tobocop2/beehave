@@ -141,6 +141,34 @@ func (g Gate) Run(ctx context.Context, request Request) (Result, error) {
 	return result, g.unchanged(ctx, request.Dir, before)
 }
 
+// Job is the host job that Submit started, with the head that it judges. A local gate has no host job, so its Job is empty.
+type Job struct {
+	ID   model.JobID
+	Head string
+}
+
+// Submit starts the host job of a gate and returns without waiting for it. A caller records the Job, then passes it to Run as Resume and ResumeHead:
+// a run that starts again from the record reads the same job and submits none. The tree must be clean, as for Run. A local gate starts nothing.
+func (g Gate) Submit(ctx context.Context, request Request) (Job, error) {
+	before, err := g.clean(ctx, request.Dir)
+	if err != nil {
+		return Job{}, err
+	}
+
+	if request.Project.BuildHost == config.LocalHost {
+		return Job{}, nil
+	}
+
+	host, err := g.hosts(request.Project)
+	if err != nil {
+		return Job{}, fmt.Errorf("project %s builds on %s: %w", request.Project.Name, request.Project.BuildHost, err)
+	}
+
+	id, head, err := job(ctx, host, request, before.Head)
+
+	return Job{ID: id, Head: head}, err
+}
+
 func (g Gate) unchanged(ctx context.Context, dir string, before State) error {
 	after, err := g.read(ctx, dir)
 	if err == nil && after != before {

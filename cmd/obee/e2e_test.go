@@ -170,7 +170,11 @@ func e2eHeadOf(ctx context.Context, dir string) (string, error) {
 // e2eGate passes every item.
 type e2eGate struct{ dir string }
 
-func (g e2eGate) Run(ctx context.Context, _, _ string) (flow.GateResult, error) {
+func (e2eGate) Submit(context.Context, string, string) (flow.GateJob, error) {
+	return flow.GateJob{}, nil
+}
+
+func (g e2eGate) Run(ctx context.Context, _, _ string, _ flow.GateJob) (flow.GateResult, error) {
 	head, err := e2eHeadOf(ctx, g.dir)
 
 	return flow.GateResult{Passed: true, Head: head, Tree: "tree-of-" + head}, err

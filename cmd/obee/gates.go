@@ -34,20 +34,41 @@ type projectGate struct {
 
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
 // has a host gate check out the head that it reports, and refuses a tree that changes during the run.
-func (g projectGate) Run(ctx context.Context, project, item string) (flow.GateResult, error) {
+// A non-empty job is a host job that Submit started: the gate waits for it and submits none.
+func (g projectGate) Run(ctx context.Context, project, item string, job flow.GateJob) (flow.GateResult, error) {
 	request, err := g.request(ctx, project, item)
 	if err != nil {
 		return flow.GateResult{}, err
 	}
 
-	hosts := func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) }
+	request.Resume, request.ResumeHead = model.JobID(job.ID), job.Head
 
-	result, err := gate.New(g.shell, g.tree, hosts).Run(ctx, request)
+	result, err := g.gate(project).Run(ctx, request)
 	if err != nil {
 		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
 	}
 
 	return flow.GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: gateSteps(result.Steps)}, nil
+}
+
+// Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
+// A project that builds here has no host job, and its job is empty.
+func (g projectGate) Submit(ctx context.Context, project, item string) (flow.GateJob, error) {
+	request, err := g.request(ctx, project, item)
+	if err != nil {
+		return flow.GateJob{}, err
+	}
+
+	job, err := g.gate(project).Submit(ctx, request)
+	if err != nil {
+		return flow.GateJob{}, fmt.Errorf("start the gate of item %s: %w", item, err)
+	}
+
+	return flow.GateJob{ID: string(job.ID), Head: job.Head}, nil
+}
+
+func (g projectGate) gate(project string) gate.Gate {
+	return gate.New(g.shell, g.tree, func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) })
 }
 
 // Key reads the key of the gate that Run would start on the worktree of the item.
