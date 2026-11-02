@@ -128,7 +128,13 @@ def pipeline(item):
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
     # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix round.
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md")
+    # Before each review, design and fix agent, the loop reads the pull request again, with the head the gate ran on (the head of the worktree), the base, the hold label and the own logins.
+    # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
+    guard = {"base": env("BASE"), "hold": "hold", "own": {"logins": [env("OWNER_LOGIN")]}}
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard)
+
+    if loop.stopped:
+        return
 
     # A reject verdict ends the loop with no fix round. The item gets the text of the review as the reason and the hold status.
     if loop.rejected:
