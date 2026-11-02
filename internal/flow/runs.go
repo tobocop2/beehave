@@ -118,6 +118,11 @@ func strandedError(stranded run, version string) error {
 			errStranded, stranded.Status.ID, stored, version)
 	}
 
-	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it",
-		errStranded, stranded.Status.ID, stored, version, buildVersion(stored))
+	moveWith := ""
+	if in, err := stranded.input(); err == nil {
+		moveWith = fmt.Sprintf(", or run obee resume %s --on-this-build to move the run to this build from its last finished step", in.Item)
+	}
+
+	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it%s",
+		errStranded, stranded.Status.ID, stored, version, buildVersion(stored), moveWith)
 }

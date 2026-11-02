@@ -52,6 +52,8 @@ type Steering interface {
 	PinnedFile(item string) (string, error)
 	Answer(item, text string) error
 	Resume(item string) error
+	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
+	ResumeOnThisBuild(item string) error
 	Cancel(item string) error
 	Close() error
 }
@@ -587,22 +589,38 @@ func (f flowCommands) answerCommand() *cobra.Command {
 	return command
 }
 
+const resumeLong = "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as the cancelled run state
+	"Resume takes a fresh claim on the item first, and refuses if another holder has it.\n" +
+	"A canceled run that left its claim gives it back at the next obee run.\n" +
+	"Run obee run for the item next: it continues the reopened run and renews the claim.\n" +
+	"A run that another build of obee started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
+	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned."
+
+// resumeItem reopens the run of an item, and moves it to this build first when the owner asked for that.
+func resumeItem(client Steering, item string, onThisBuild bool) error {
+	if onThisBuild {
+		return client.ResumeOnThisBuild(item)
+	}
+
+	return client.Resume(item)
+}
+
 func (f flowCommands) resumeCommand() *cobra.Command {
 	var flag string
+
+	var onThisBuild bool
 
 	command := &cobra.Command{
 		Use:   "resume <item>",
 		Short: "Reopen the cancelled or failed run of an item", //nolint:misspell // user-facing state word, same as the cancelled run state
-		Long: "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as the cancelled run state
-			"Resume takes a fresh claim on the item first, and refuses if another holder has it.\n" +
-			"A canceled run that left its claim gives it back at the next obee run.\n" +
-			"Run obee run for the item next: it continues the reopened run and renews the claim.",
-		Args: oneItem,
+		Long:  resumeLong,
+		Args:  oneItem,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.withClient(cmd, flag, func(client Steering) error { return client.Resume(args[0]) })
+			return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], onThisBuild) })
 		},
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().BoolVar(&onThisBuild, "on-this-build", false, "move a run that another build started to this build")
 
 	return command
 }

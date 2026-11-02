@@ -51,8 +51,10 @@ func (e *Engine) removeTree(ctx context.Context, project, item string) (string, 
 // The engine uses it for a canceled run, and the client for a run that no engine executes.
 type ReleaseDeps struct {
 	Lifecycle lifecycle
-	Trees     trees
-	Clock     clock
+	// Beats reads the claim lease of a run, so a move to this build refuses a run whose holder is alive. A nil value reads none.
+	Beats beats
+	Trees trees
+	Clock clock
 }
 
 func (d ReleaseDeps) removeTree(ctx context.Context, project, item string) (string, error) {

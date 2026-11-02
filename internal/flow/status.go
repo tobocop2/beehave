@@ -431,6 +431,11 @@ func (c *Client) Cancel(item string) error {
 		return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, last.Status.ID, stateOf(last.Status.Status))
 	}
 
+	return c.cancelRun(item, last)
+}
+
+// cancelRun cancels an open run and its children, and gives back what the run held when no engine runs.
+func (c *Client) cancelRun(item string, last run) error {
 	// The marker comes first. An engine that stops before its release ends leaves it, and the next start finishes the release.
 	// A marker for a run that stays open is harmless: the start drops it.
 	project, err := c.markCancel(item, last)
@@ -502,6 +507,20 @@ func (c *Client) PinnedFile(item string) (string, error) {
 
 // latest returns the newest run of an item, and refuses a run that another version of obee started.
 func (c *Client) latest(item string) (run, error) {
+	last, err := c.newest(item)
+	if err != nil {
+		return run{}, err
+	}
+
+	if last.Status.ApplicationVersion != c.version && !last.terminal() {
+		return run{}, strandedError(last, c.version)
+	}
+
+	return last, nil
+}
+
+// newest returns the newest run of an item, whatever build started it.
+func (c *Client) newest(item string) (run, error) {
 	if model.ItemKind(item) == "" {
 		return run{}, fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, item)
 	}
@@ -513,10 +532,6 @@ func (c *Client) latest(item string) (run, error) {
 
 	if !found {
 		return run{}, fmt.Errorf("%w: start item %s with obee run %s", errNoRun, item, item)
-	}
-
-	if last.Status.ApplicationVersion != c.version && !last.terminal() {
-		return run{}, strandedError(last, c.version)
 	}
 
 	return last, nil
