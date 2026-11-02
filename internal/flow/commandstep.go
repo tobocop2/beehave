@@ -77,7 +77,7 @@ func (s *script) request(run starlark.Value, host, timeout string) (CommandReque
 // environment returns the whole environment of the program: the allowed names of the caller, then the variables of the call.
 // No other variable of the caller reaches the program. A call with a host gets none, because a host job takes a command line only.
 func (s *script) environment(request CommandRequest, own starlark.Value) ([]string, error) {
-	pairs, err := variables(own)
+	pairs, err := workflow.EnvAssignments(own)
 	if err != nil {
 		return nil, err
 	}
@@ -91,53 +91,6 @@ func (s *script) environment(request CommandRequest, own starlark.Value) ([]stri
 	}
 
 	return nil, nil
-}
-
-// variables reads the env dict of a command call as NAME=value pairs, sorted by name. An absent dict is empty.
-func variables(v starlark.Value) ([]string, error) {
-	dict, ok := workflow.Optional[*starlark.Dict](v)
-	if !ok {
-		return nil, errors.New("env must be a dict of strings. Write env = {\"NAME\": \"value\"}")
-	}
-
-	if dict == nil {
-		return nil, nil
-	}
-
-	return assignments(dict)
-}
-
-// assignments makes the sorted NAME=value pairs of an env dict.
-func assignments(dict *starlark.Dict) ([]string, error) {
-	var pairs []string
-
-	for _, pair := range dict.Items() {
-		assignment, err := assignmentOf(pair[0], pair[1])
-		if err != nil {
-			return nil, err
-		}
-
-		pairs = append(pairs, assignment)
-	}
-
-	slices.Sort(pairs)
-
-	return pairs, nil
-}
-
-// assignmentOf makes one NAME=value pair of the env dict of a command call.
-func assignmentOf(key, val starlark.Value) (string, error) {
-	name, nameOK := starlark.AsString(key)
-	value, valueOK := starlark.AsString(val)
-
-	switch {
-	case !nameOK || !valueOK:
-		return "", fmt.Errorf("env must hold strings only, and %s is not. Write the value in quotes", key)
-	case workflow.ReservedEnvName(name):
-		return "", fmt.Errorf("env cannot set `%s`. %s", name, workflow.ReservedEnvAdvice())
-	}
-
-	return name + "=" + value, nil
 }
 
 // command runs a program. A code in stop_on_rc ends the item: the step records it, so a replay stops at the same call.

@@ -2,12 +2,9 @@ package workflow
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 
 	"go.starlark.net/syntax"
-
-	"github.com/tobocop2/obee/internal/model"
 )
 
 // sandboxKeyword is the keyword of an agent call that sets the sandbox, and sandboxName the builtin that builds its value.
@@ -51,18 +48,10 @@ func (g *graph) sandboxes(parsed *syntax.File) {
 	})
 }
 
-// sandboxCall checks one call: the sandbox keyword of an agent call, or the lists of a sandbox call. A name that the file defines is not the builtin.
+// sandboxCall checks the sandbox keyword of an agent call. The lists of a sandbox call are keywords like any other. A name that the file defines is not the builtin.
 func (g *graph) sandboxCall(call *syntax.CallExpr, shadowed []string) {
-	name := callee(call)
-	if slices.Contains(shadowed, name) {
-		return
-	}
-
-	switch name {
-	case agentName:
+	if name := callee(call); name == agentName && !slices.Contains(shadowed, name) {
 		g.sandboxValue(call)
-	case sandboxName:
-		g.sandboxLists(call)
 	}
 }
 
@@ -84,42 +73,4 @@ func (g *graph) sandboxValue(call *syntax.CallExpr) {
 	case *syntax.Literal, *syntax.ListExpr, *syntax.TupleExpr, *syntax.DictExpr:
 		g.report(placeOf(syntax.Start(value)), "sandbox must be sandbox(...) or None, not "+rawText(value)+". Write sandbox = sandbox(network = [...]) to turn the sandbox on, or leave the keyword out to use the default of the project.")
 	}
-}
-
-// sandboxLists checks the literal items of a sandbox call: a network entry must be a domain name, and an allow_write entry must be a path.
-func (g *graph) sandboxLists(call *syntax.CallExpr) {
-	if splat(call) {
-		return
-	}
-
-	for i, key := range []string{"network", "allow_write"} {
-		list, ok := argument(call, key, i).(*syntax.ListExpr)
-		if !ok {
-			continue
-		}
-
-		g.sandboxItems(key, list)
-	}
-}
-
-// sandboxItems checks the literal items of one list of a sandbox call.
-func (g *graph) sandboxItems(key string, list *syntax.ListExpr) {
-	for _, item := range list.List {
-		text, isText := literal(item)
-		if !isText {
-			continue
-		}
-
-		if err := checkSandboxItem(key, text); err != nil {
-			g.report(placeOf(syntax.Start(item)), fmt.Sprintf("%v.", err))
-		}
-	}
-}
-
-func checkSandboxItem(key, text string) error {
-	if key == "network" {
-		return model.CheckNetwork([]string{text})
-	}
-
-	return model.CheckAllowWrite([]string{text})
 }

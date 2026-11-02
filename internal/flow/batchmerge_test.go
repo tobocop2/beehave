@@ -361,6 +361,9 @@ func TestBatchMerge_ACallThatTheBuildOrTheArgumentsCannotServeFailsWithAFix(t *t
 		"empty repo": {body: func(r *batchRig) string {
 			return `batch_merge(prs = [` + member(r, "") + `], base = "main", repo = "", name = "b")`
 		}, want: "repo must not be empty"},
+		"computed empty base": {body: func(r *batchRig) string {
+			return `batch_merge(prs = [` + member(r, "") + `], base = "" + "", repo = "o/r", name = "b")`
+		}, want: "base must not be empty"},
 		"gate_run not a list": {body: func(r *batchRig) string {
 			return r.call("1", `gate_run = 3, `)
 		}, want: "gate_run"},

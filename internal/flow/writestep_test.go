@@ -60,6 +60,14 @@ func TestWrite_AFileCannotSetTheKeyVariableItself(t *testing.T) {
 	require.ErrorContains(t, err, writeKeyEnv)
 }
 
+func TestWrite_AComputedEnvEntryThatIsNoTextIsRefusedByTheRun(t *testing.T) {
+	t.Parallel()
+
+	_, err := walkBody(t, newHarness(t), "write(run = [\"push\"], env = {\"A\": 1 + 0})\n")
+
+	require.ErrorContains(t, err, "env must hold strings only")
+}
+
 func TestWrite_AReadBackThatReportsDoneStopsTheWriteFromRunning(t *testing.T) {
 	t.Parallel()
 

@@ -146,7 +146,7 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 func (c *batchCall) fill(prs, gateRun, forbid, own starlark.Value) (err error) {
 	set := &c.settings
 
-	if err = errors.Join(need("base", set.Base), need("repo", set.Repo)); err != nil {
+	if err = errors.Join(workflow.NotEmpty("base", set.Base), workflow.NotEmpty("repo", set.Repo)); err != nil {
 		return err
 	}
 

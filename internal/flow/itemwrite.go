@@ -23,15 +23,6 @@ var errNoWriter = errors.New("this build cannot write to a tracker. Use a build 
 // scoped joins the key of a file to the run id, so two runs never share a key. The run id is the id of the DBOS workflow, which a replay keeps.
 func (s *script) scoped(key string) string { return workflowID(s.ctx) + ":" + key }
 
-// need returns an error that names the argument when its value is empty.
-func need(name, value string) error {
-	if value == "" {
-		return errors.New(name + " must not be empty")
-	}
-
-	return nil
-}
-
 // check returns the first problem of a write call before the step starts: an empty argument, a status that is not known, or a build with no writer.
 func (s *script) check(problems ...error) error {
 	if s.e.deps.Writer == nil {
@@ -60,7 +51,7 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, err
 	}
 
-	if err := s.check(need("title", title), need("key", key)); err != nil {
+	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty("key", key)); err != nil {
 		return nil, err
 	}
 
@@ -82,7 +73,7 @@ func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	}
 
 	status, parseErr := trackerstore.ParseStatus(text)
-	if err := s.check(need("id", id), parseErr); err != nil {
+	if err := s.check(workflow.NotEmpty("id", id), parseErr); err != nil {
 		return nil, err
 	}
 
@@ -101,7 +92,7 @@ func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []
 		return nil, err
 	}
 
-	if err := s.check(need("id", id), need("text", text), need("key", key)); err != nil {
+	if err := s.check(workflow.NotEmpty("id", id), workflow.NotEmpty("text", text), workflow.NotEmpty("key", key)); err != nil {
 		return nil, err
 	}
 

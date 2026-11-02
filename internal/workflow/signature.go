@@ -257,7 +257,7 @@ func roundsRule(v starlark.Value) error {
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
 func writeParams() []Param {
 	return []Param{
-		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), opt("env", KindDict),
+		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled("env", KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
 	}
 }
@@ -282,10 +282,10 @@ func stepSignatures() map[string][]Param {
 
 	return map[string][]Param{
 		agentName:   agentParams(),
-		sandboxName: {opt("network", KindList), opt("allow_write", KindList)},
+		sandboxName: {ruled("network", KindList, networkRule), ruled("allow_write", KindList, writableRule)},
 		commandName: {
 			runParam(),
-			opt("host", KindText), opt("stdin", KindText), opt("env", KindDict),
+			opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
 			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), label,
 		},
 		writeName: writeParams(),
@@ -306,7 +306,7 @@ func swarmSignatures() map[string][]Param {
 	return map[string][]Param{
 		batchMergeName: {
 			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule},
-			req("base", KindText), req("repo", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule),
+			filled("base"), filled("repo"), opt("hold", KindText), ruled("own", KindDict, ownRule),
 			words("forbid_text"), words("gate_run"), opt("integration", KindInt),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
@@ -322,12 +322,12 @@ func itemSignatures() map[string][]Param {
 
 	return map[string][]Param{
 		itemCommentName: {
-			req("id", KindText), req("text", KindText), req("key", KindText), label,
+			filled("id"), filled("text"), filled("key"), label,
 		},
 		itemCreateName: {
-			req("title", KindText), req("key", KindText), opt("body", KindText), opt("parent", KindText), label,
+			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), label,
 		},
-		itemStatusName: {req("id", KindText), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
+		itemStatusName: {filled("id"), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("approved", KindBool),
@@ -761,14 +761,15 @@ func (g *graph) closedSet(value syntax.Expr, got Kind, param Param) {
 	}
 }
 
-// rule applies the rule of the run to a value that is a literal, and reports the error of the run with the name of the step. A value that is
-// not a literal is left to the run.
+// rule applies the rule of the run to a value that is a literal, and reports the error of the run with the name of the step. A list, tuple or dict
+// with computed members is checked on its literal members, because each rule of a collection judges its members one by one. A value that is
+// not a literal, and a collection with no literal member, is left to the run.
 func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
 	if param.Rule == nil {
 		return
 	}
 
-	v, ok := literalValue(value)
+	v, ok := literalPart(value)
 	if !ok {
 		return
 	}
@@ -793,6 +794,71 @@ func literalValue(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn //
 	}
 
 	return literalCollection(expr)
+}
+
+// literalPart is the value of an expression made of literals, or for a list, tuple or dict with computed members, the same collection with only
+// its literal members: a dict entry stays when its key and its value are literal, at any depth. ok is false when nothing literal is left.
+func literalPart(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	if v, ok := literalValue(expr); ok {
+		return v, true
+	}
+
+	if paren, isParen := expr.(*syntax.ParenExpr); isParen {
+		return literalPart(paren.X)
+	}
+
+	return collectionPart(expr)
+}
+
+// collectionPart is literalPart for a list, a tuple or a dict expression.
+func collectionPart(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
+	switch e := expr.(type) {
+	case *syntax.ListExpr:
+		items := literalParts(e.List)
+
+		return starlark.NewList(items), len(items) > 0
+	case *syntax.TupleExpr:
+		items := literalParts(e.List)
+
+		return starlark.Tuple(items), len(items) > 0
+	case *syntax.DictExpr:
+		dict := literalEntries(e)
+
+		return dict, dict.Len() > 0
+	}
+
+	return nil, false
+}
+
+// literalParts keeps the members that literalPart reads.
+func literalParts(exprs []syntax.Expr) []starlark.Value {
+	var items []starlark.Value
+
+	for _, expr := range exprs {
+		if item, ok := literalPart(expr); ok {
+			items = append(items, item)
+		}
+	}
+
+	return items
+}
+
+// literalEntries keeps the entries of a dict expression whose key is a literal and whose value has a literal part.
+func literalEntries(e *syntax.DictExpr) *starlark.Dict {
+	dict := starlark.NewDict(len(e.List))
+
+	for _, entry := range e.List {
+		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
+
+		key, keyOK := literalValue(pair.Key)
+		val, valOK := literalPart(pair.Value)
+
+		if keyOK && valOK {
+			_ = dict.SetKey(key, val) //nolint:errcheck // an entry with an unhashable key is left to the run
+		}
+	}
+
+	return dict
 }
 
 // literalCollection is the value of a list, a tuple or a dict of literals.
