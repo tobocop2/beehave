@@ -72,6 +72,7 @@ func TestExclusivePriority_TheWarningNamesOnlyAFailedReadOfAForge(t *testing.T) 
 		wantWarn bool
 	}{
 		{"a_project_with_no_forge_says_nothing", fmt.Errorf("project p: %w", forgepkg.ErrNoForge), false},
+		{"an_item_with_no_pull_request_yet_says_nothing", fmt.Errorf("no pull request is on the branch 12: %w", forgepkg.ErrNoPull), false},
 		{"a_read_that_fails_warns", errFake, true},
 	}
 

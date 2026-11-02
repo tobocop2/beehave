@@ -10,6 +10,9 @@ import (
 // ErrNoForge is the cause when a project has no forge and a caller asks for one. A caller that must have a forge tests for it with errors.Is.
 var ErrNoForge = errors.New("no forge")
 
+// ErrNoPull is the cause when the forge has no pull request on the branch of an item. An item that is not pushed yet is in this state, and it is not a failed read.
+var ErrNoPull = errors.New("the item has no pull request")
+
 // CodeRefused is the exit code of a refusal: the forge cannot be read, so the caller must not go on.
 const CodeRefused = 2
 

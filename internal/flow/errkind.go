@@ -42,7 +42,7 @@ func (e *Engine) failureOf(err error) *Failure {
 func productionKnown() []error {
 	return []error{
 		context.Canceled, context.DeadlineExceeded, fs.ErrNotExist,
-		forgepkg.ErrNoForge, ErrMemberNotOpen, batch.ErrGateVoid,
+		forgepkg.ErrNoForge, forgepkg.ErrNoPull, ErrMemberNotOpen, batch.ErrGateVoid,
 		gatepkg.ErrNoTests, gatepkg.ErrTreeChanged, gatepkg.ErrNoVerdict, gatepkg.ErrNoHead, gatepkg.ErrNoCloneURL, gatepkg.ErrCloneOutsideRoot,
 		host.ErrUnbanked, host.ErrNoRepos, host.ErrDiskLow, host.ErrDiskRead, host.ErrInUse, host.ErrInUseRead, host.ErrJobState, host.ErrLost, host.ErrNotDeleted,
 	}

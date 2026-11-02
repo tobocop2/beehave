@@ -281,7 +281,7 @@ func TestBatchHost_IntentFailsForAReadThatFailsAndForAPullRequestThatIsNotFound(
 	require.ErrorContains(t, err, "read the pull request of item item")
 
 	_, err = hostOver("", hostForge{}, nil).Intent(t.Context(), "p", "item", "o/r", "main", "t", time.Time{})
-	require.ErrorIs(t, err, errNoPull)
+	require.ErrorIs(t, err, forge.ErrNoPull)
 
 	_, err = hostOver("", hostForge{state: "OPEN", listed: listed}, nil).Intent(t.Context(), "p", "item", "other/repo", "main", "t", time.Time{})
 	require.ErrorContains(t, err, "other/repo")

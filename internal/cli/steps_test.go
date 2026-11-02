@@ -51,6 +51,21 @@ func TestStatus_ARunIdListsTheStepsOneLineEach(t *testing.T) {
 	assert.True(t, rig.steering.closeOK)
 }
 
+func TestStatus_AnAgentLineSaysWhenTheAgentRewroteTheHistory(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	rig.steering.view = flow.RunSteps{Run: "item-14-r1", State: "done", Steps: []flow.StepLine{
+		{Name: "agent:fix#1", State: "done", Started: start, Ended: start, Head: "9bbc2f5", Rewrote: true},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "item-14-r1")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "agent:fix#1\t2026-10-31T09:00:00Z\t0s\tdone\thead=9bbc2f5 rewrote=yes\nrun\tdone\n", stdout)
+}
+
 func TestStatus_AnAgentLineOfARunNamesItsKindAsTheLaneLedger(t *testing.T) {
 	t.Parallel()
 

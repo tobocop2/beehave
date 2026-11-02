@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -48,8 +49,10 @@ type agentArgs struct {
 	protect       []string
 	scope         scope
 	start         startMark
-	declared      []string
-	resume        string
+	// startHead is the commit of the item folder when the render step ran, which is before the agent starts. It is the baseline of the whole call, not of one try. It is empty for a record made before the render step kept it.
+	startHead string
+	declared  []string
+	resume    string
 	// followUps is the follow_ups mode that sets the verdict from the findings, or empty for the mode "allow".
 	followUps string
 	// edits is the edits argument: false starts the step so that Claude Code refuses each file edit.
@@ -289,6 +292,7 @@ func (s *script) promptOf(a *agentArgs, name string) (string, error) {
 // whatever the name function gives today. A record made before the path was pinned keeps the computed path.
 func (a *agentArgs) recall(outputs map[string]any) (err error) {
 	a.file = recalledOutputFile(outputs, a.file)
+	a.startHead, _ = outputs[recordedStartHead].(string) //nolint:errcheck // a record made before the start head was kept has none
 
 	if err = os.MkdirAll(filepath.Dir(a.file), outputsMode); err != nil {
 		return fmt.Errorf("make the folder of the output file: %w", err)
@@ -307,7 +311,12 @@ func (s *script) renderStep(a agentArgs) func(context.Context) (stepResult, erro
 			return stepResult{Note: prompt}, err
 		}
 
-		outputs := map[string]any{recordedOutputFile: a.file}
+		head, err := folderHead(ctx, a.dir)
+		if err != nil {
+			return stepResult{Note: prompt}, err
+		}
+
+		outputs := map[string]any{recordedOutputFile: a.file, recordedStartHead: head}
 		maps.Copy(outputs, recordSandbox(a.sandbox.effective(s.sandboxDefault())))
 
 		return stepResult{Note: prompt, Outputs: outputs}, nil
@@ -534,16 +543,12 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	head, err := folderHead(ctx, a.dir)
+	head, rewrote, err := a.checkEnd(ctx)
 	if err != nil {
 		return stepResult{}, err
 	}
 
-	if err = a.scope.check(ctx, a.dir, a.start); err != nil {
-		return stepResult{}, err
-	}
-
-	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome), ended.Cost)
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome), ended.Cost, rewrote)
 
 	// A run that left a bad output file still cost money, so its outputs stay in the result and the run cap counts them.
 	if problem := a.readOutputs(outputs); problem != "" {
@@ -643,6 +648,42 @@ func stringOutput(written map[string]any, name string) (string, string) {
 	}
 
 	return text, ""
+}
+
+// checkEnd reads the head of the folder, checks the paths the agent changed against the scope and tells whether it rewrote the history.
+func (a agentArgs) checkEnd(ctx context.Context) (head string, rewrote bool, err error) {
+	if head, err = folderHead(ctx, a.dir); err != nil {
+		return "", false, err
+	}
+
+	if err = a.scope.check(ctx, a.dir, a.start); err != nil {
+		return "", false, err
+	}
+
+	rewrote, err = rewroteHistory(ctx, a.dir, a.startHead, head)
+
+	return head, rewrote, err
+}
+
+// rewroteHistory is true when the commit the agent started on is not in the history of the commit it ended on: the agent amended, squashed or reset.
+// The ancestor test of git answers with exit code 1 for "not an ancestor"; any other failure is an error.
+func rewroteHistory(ctx context.Context, dir, start, head string) (bool, error) {
+	if start == "" || start == head {
+		return false, nil
+	}
+
+	_, err := git(ctx, dir, "merge-base", "--is-ancestor", start, head)
+
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return true, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("compare the start of the agent with HEAD of the item folder: %w", err)
+	}
+
+	return false, nil
 }
 
 // folderHead returns the commit at HEAD of the item folder.

@@ -340,14 +340,14 @@ func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {
 }
 
 // gateStanding reads the pull request of a gate once. The second value is false for a call that is not a gate, a project with no forge and a pull request that cannot be read:
-// the gate then keeps the normal place. A project with no forge says nothing, and a failed read of a forge logs a line.
+// the gate then keeps the normal place. A project with no forge and an item with no pull request yet say nothing, and a failed read of a forge logs a line.
 func (e *Engine) gateStanding(ctx context.Context, in ExclusiveInput) (review.Standing, bool) {
 	if in.Kind != kindGate || e.deps.Forge == nil {
 		return review.Standing{}, false
 	}
 
 	standing, err := e.deps.Forge.Pull(ctx, in.Project, in.Item)
-	if errors.Is(err, forgepkg.ErrNoForge) {
+	if errors.Is(err, forgepkg.ErrNoForge) || errors.Is(err, forgepkg.ErrNoPull) {
 		return review.Standing{}, false
 	}
 

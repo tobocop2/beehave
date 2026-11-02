@@ -48,8 +48,9 @@ func commentOutputs(id string) map[string]any { return map[string]any{"id": id} 
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
-func agentOutputs(text, session, transcript, head, violations, stop string, cost float64) map[string]any {
-	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop, costField: cost}
+// rewrote is true when the commit the run started on is not in the history of the commit it ended on.
+func agentOutputs(text, session, transcript, head, violations, stop string, cost float64, rewrote bool) map[string]any {
+	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop, costField: cost, "rewrote": rewrote}
 }
 
 // costField is the output of an agent call that holds the cost of the run in dollars.
@@ -68,4 +69,5 @@ type agentFields struct {
 	Violations string  `json:"violations"`
 	Stop       string  `json:"stop"`
 	Cost       float64 `json:"cost_usd"`
+	Rewrote    bool    `json:"rewrote"`
 }
