@@ -197,7 +197,14 @@ func agentParams() []Param {
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), one("lane", Lanes()), ruled("timeout", KindText, durationRule("timeout")),
 		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
+		ruled(RoundsKeyword, KindAny, roundsRule),
 	}
+}
+
+func roundsRule(v starlark.Value) error {
+	_, err := Rounds(v)
+
+	return err
 }
 
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.

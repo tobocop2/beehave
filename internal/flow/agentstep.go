@@ -39,7 +39,9 @@ type agentArgs struct {
 	timeout     time.Duration
 	idleTimeout time.Duration
 	// maxBudget is the max_budget_usd of the step: the most dollars that the agent may spend. 0 means the step sets no cap.
-	maxBudget     float64
+	maxBudget float64
+	// rounds is the rounds keyword: the cap of the loop that the call belongs to. 0 means the call names none.
+	rounds        int
 	pin           string
 	requireSkills []string
 	forbid        []model.FindingKind
@@ -68,7 +70,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, "lane": &a.lane, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
+		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, "lane": &a.lane, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "sandbox": &raw.sandbox, nameKeyword: &raw.label, workflow.RoundsKeyword: &raw.rounds,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -86,6 +88,7 @@ type agentRaw struct {
 	label, timeout, idle, followUps string
 	inputs, outputs, skills, kinds  starlark.Value
 	allow, protect, sandbox, budget starlark.Value
+	rounds                          starlark.Value
 }
 
 // read checks the raw arguments of an agent call and keeps the result in a.
@@ -117,6 +120,12 @@ func (a *agentArgs) limits(raw agentRaw) (err error) {
 
 	if a.idleTimeout, err = workflow.Duration("idle_timeout", raw.idle); err != nil {
 		return err
+	}
+
+	if raw.rounds != nil {
+		if a.rounds, err = workflow.Rounds(raw.rounds); err != nil {
+			return err
+		}
 	}
 
 	if raw.budget == nil { // the keyword is left out: the step sets no cap
@@ -329,7 +338,7 @@ func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Lane: a.lane, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
-		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
+		Rounds: a.rounds, NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
 	}
 }
 

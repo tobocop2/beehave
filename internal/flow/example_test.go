@@ -241,6 +241,27 @@ func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t
 	}
 }
 
+func TestReviewFix_TheStatusShowsTheRoundsUsedAgainstTheCapsOfTheLoop(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
+		if review == 1 {
+			return `[{"class":"deferred","text":"later"}]`
+		}
+
+		return "[]"
+	})
+	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(`, follow_ups = "forbid", rounds = 4`)), 0o600))
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	require.NoError(t, err)
+
+	info := onlyRun(t, rig.h.client(t, testVersion))
+
+	assert.Equal(t, Rounds{Used: 1, Cap: 3}, info.Fix, "a loop of 4 rounds has 3 fix rounds")
+	assert.Equal(t, Rounds{Used: 2, Cap: 4}, info.Review)
+}
+
 func TestExample_FiveFixRoundsAreEachFollowedByAReviewAndTheSixthReviewIsTheLast(t *testing.T) {
 	t.Parallel()
 

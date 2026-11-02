@@ -108,6 +108,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             review = agent(
                 name = "review",
                 lane = "review",
+                rounds = rounds,
                 prompt = review_prompt,
                 model = "opus",
                 pin = check.head,
@@ -181,6 +182,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
         fix = agent(
             name = "fix",
             lane = "rework",
+            rounds = rounds - 1,
             prompt = fix_prompt,
             model = "sonnet" if round <= 3 else "opus",
             resume = impl.session if round <= 3 else "",
