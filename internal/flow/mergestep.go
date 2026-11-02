@@ -2,7 +2,6 @@ package flow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -75,54 +74,12 @@ func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 // mergeProof reads the `tree` and `steps` arguments of a merge call that merges. It returns the gated tree.
 func mergeProof(tree, steps starlark.Value) (string, error) {
-	gated, err := gatedTree(tree)
+	gated, err := workflow.GatedTree(tree)
 	if err != nil {
 		return "", err
 	}
 
-	return gated, everyStepPassed(steps)
-}
-
-// everyStepPassed reads the `steps` argument of a merge call that merges: the steps of the gate at the head.
-// A call that leaves it out is refused, a list with no step is refused, and so is a step that is not a pass. An unknown step is not a pass.
-func everyStepPassed(v starlark.Value) error {
-	if v == nil {
-		return errStepsMissing
-	}
-
-	steps, err := workflow.ToGo[[]any](v)
-	if err != nil {
-		return errStepsShape
-	}
-
-	if len(steps) == 0 {
-		return errors.New("`steps` is empty. The gate recorded no step for this head, so its result is unknown. Pass `steps = <gate>.steps` from a gate that ran")
-	}
-
-	for _, each := range steps {
-		if err := stepPassed(each); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// stepPassed checks one step of the `steps` argument of a merge call.
-func stepPassed(each any) error {
-	step, ok := each.(map[string]any)
-	name, named := step["name"].(string)
-	status, stated := step[statusKeyword].(string)
-
-	if !ok || !named || !stated {
-		return errStepsShape
-	}
-
-	if status != passStatus {
-		return fmt.Errorf("the gate step %q is %s. A merge needs every step of the gate to pass at the head. Run the gate again", name, status)
-	}
-
-	return nil
+	return gated, workflow.GateSteps(steps)
 }
 
 // The statuses of a gate step, as the gate package names them.
@@ -132,32 +89,6 @@ const (
 	// unknownStatus is a step that gave no result, as a voided gate leaves every step.
 	unknownStatus = string(gatepkg.StatusUnknown)
 )
-
-// errStepsMissing is returned when a merge call that merges names no gate steps. A merge with no gate result would land a head that no check passed.
-var errStepsMissing = errors.New("this merge call names no gate steps. Add `steps = <gate>.steps` to the call, or remove `merge = True` and the owner merges")
-
-// errStepsShape is returned when the `steps` argument of a merge call is not the list that a gate records.
-var errStepsShape = errors.New("`steps` must be the steps of a gate. Pass `steps = <gate>.steps`")
-
-// gatedTree reads the `tree` argument of a merge call. A call that leaves it out asks for no proof. A call that sets it to the empty text is refused:
-// a program gate, or a resumed host job, records no tree, and the proof would be skipped without a word.
-func gatedTree(v starlark.Value) (string, error) {
-	if v == nil {
-		return "", nil
-	}
-
-	tree, isText := starlark.AsString(v)
-	if !isText {
-		return "", fmt.Errorf("`tree` must be text, not %s", v.Type())
-	}
-
-	if tree == "" {
-		return "", errors.New("`tree` is empty. The gate recorded no tree for this head (a gate that runs a program, or a resumed host job, records none). " +
-			"Leave out `tree` to merge without the proof")
-	}
-
-	return tree, nil
-}
 
 // read checks the `children`, `forbid_text` and `own` arguments of a merge call and keeps them in s.
 func (s *MergeSettings) read(children string, forbid, own starlark.Value) (err error) {
@@ -169,7 +100,7 @@ func (s *MergeSettings) read(children string, forbid, own starlark.Value) (err e
 		return err
 	}
 
-	s.Logins, s.Emails, err = ownerIdentity(own)
+	s.Logins, s.Emails, err = workflow.OwnerIdentity(own)
 
 	return err
 }
@@ -184,36 +115,6 @@ func retarget(children string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("`children` is %q. Use \"refuse\" or \"retarget\"", children)
-}
-
-// ownerIdentity reads the `own` dict into its logins and its addresses. An absent dict has none.
-func ownerIdentity(v starlark.Value) (logins, emails []string, err error) {
-	dict, ok := workflow.Optional[*starlark.Dict](v)
-	if !ok {
-		return nil, nil, errors.New("`own` must be a dict with `logins` and `emails`. Write {\"logins\": [...], \"emails\": [...]}")
-	}
-
-	if dict == nil {
-		return nil, nil, nil
-	}
-
-	if logins, err = ownerList(dict, "logins"); err != nil {
-		return nil, nil, err
-	}
-
-	emails, err = ownerList(dict, "emails")
-
-	return logins, emails, err
-}
-
-// ownerList reads one list of the `own` dict. A list that the dict leaves out is empty.
-func ownerList(dict *starlark.Dict, key string) ([]string, error) {
-	list, found, err := dict.Get(starlark.String(key))
-	if !found {
-		return nil, err
-	}
-
-	return workflow.Words("own."+key, list)
 }
 
 // merge pins the commit in `head`, marks the pull request ready, and merges it only when `merge` is true.

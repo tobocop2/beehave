@@ -14,7 +14,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 
 	cases := []struct{ name, call, want string }{
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd."},
-		{"batch_merge", `batch_merge([], "b", "r", name = "n")`, "3:11 haed is not a field of the result of batch_merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note."},
+		{"batch_merge", `batch_merge(item.id, "b", "r", name = "n")`, "3:11 haed is not a field of the result of batch_merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
@@ -45,7 +45,7 @@ func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
 
 	got := checkText(t, `def main(item):
     a = agent("p", "m", outputs = ["verdict", "findings"])
-    b = batch_merge([], "b", "r", name = "n")
+    b = batch_merge(item.id, "b", "r", name = "n")
     c = command(["a"])
     g = gate()
     h = gather([])
