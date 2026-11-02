@@ -1,8 +1,10 @@
 package flow
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -242,6 +244,123 @@ func TestScope_ASetThatChangesBetweenGatesIsComparedWithTheFirstGate(t *testing.
 	require.ErrorIs(t, err, errScopeRefused)
 	require.ErrorContains(t, err, "#13 has no owner line")
 	assert.Empty(t, h.merge.asked)
+}
+
+func TestScope_ANewRunOfTheItemKeepsTheScopeOfItsFirstReview(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.closing = [][]int{{12}, {12, 13}}
+	engine := h.engine(t)
+
+	h.flowIs(t, bodyFlow("gate(name = \"g\")\n"))
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	h.flowIs(t, gateThenMerge(1))
+	done := runInBackground(engine, testItem)
+
+	client := h.client(t, testVersion)
+	eventually(t, func() bool {
+		infos, statusErr := client.Status()
+
+		return statusErr == nil && slices.ContainsFunc(infos, func(info RunInfo) bool { return info.Question != "" })
+	})
+	require.NoError(t, client.Answer(testItem, "no"))
+
+	err = (<-done).err
+
+	require.ErrorIs(t, err, errScopeRefused, "the second run compares with the first review of the first run")
+	require.ErrorContains(t, err, "#13 has no owner line")
+	assert.Empty(t, h.merge.asked)
+}
+
+func TestScope_AnEarlierRunThatFixedNoScopeLeavesTheNewRunToReadTheForge(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.closing = [][]int{{12}, {12, 13}}
+	engine := h.engine(t)
+
+	h.flowIs(t, bodyFlow("pass\n"))
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	h.flowIs(t, gateThenMerge(1))
+	done := runInBackground(engine, testItem)
+
+	client := h.client(t, testVersion)
+	eventually(t, func() bool {
+		infos, statusErr := client.Status()
+
+		return statusErr == nil && slices.ContainsFunc(infos, func(info RunInfo) bool { return info.Question != "" })
+	})
+	require.NoError(t, client.Answer(testItem, "keep #13"))
+
+	require.NoError(t, (<-done).err)
+	assert.Len(t, h.merge.asked, 1)
+}
+
+func TestScope_AnItemWhoseNameEndsInAnAttemptMarkerLendsNoScopeToAnItemWithTheShorterName(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.closing = [][]int{{5}, {7}}
+	engine := h.engine(t)
+
+	h.flowIs(t, bodyFlow("gate(name = \"g\")\n"))
+	_, err := engine.Run(testItem+"-r2", testProject)
+	require.NoError(t, err)
+
+	h.flowIs(t, gateThenMerge(1))
+	done := runInBackground(engine, testItem)
+
+	select {
+	case out := <-done:
+		require.NoError(t, out.err, "the item has its own scope and merges without a question")
+		assert.Len(t, h.merge.asked, 1)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run asked the owner about an issue of another item")
+	}
+}
+
+func TestScope_TheEarlierRunsOfAnItemComeNewestAttemptFirstAndNumericallyAndWithoutTheRunItself(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+
+	h.flowIs(t, bodyFlow("pass\n"))
+
+	for range 10 {
+		_, err := engine.Run(testItem, testProject)
+		require.NoError(t, err)
+	}
+
+	// The engine context is outside a workflow, so no run is excluded as the current one.
+	ids, err := (&script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}).earlierRuns()
+	require.NoError(t, err)
+
+	want := []string{}
+	for attempt := 10; attempt >= 1; attempt-- {
+		want = append(want, runID(testItem, attempt))
+	}
+
+	assert.Equal(t, want, ids, "attempt 10 comes before attempt 9, which a text sort would not give")
+}
+
+func TestScope_AStoreThatIsShutDownRefusesTheReadOfAnEarlierScope(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).earlierScope()
+	require.ErrorContains(t, err, "list the earlier runs of item 12")
+
+	_, err = recordedScope(engine.ctx, "item-12-r1")
+	require.ErrorContains(t, err, "read the steps of item-12-r1")
 }
 
 func TestKeptIssues_ReadsOnlyTheKeepForm(t *testing.T) {
