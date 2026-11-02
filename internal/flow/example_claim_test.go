@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // The engine takes the claim of the item before the first step of workflow.star and gives it back after the last one.
@@ -47,6 +48,31 @@ func TestExampleClaim_AFailedClaimStartsNoAgent(t *testing.T) {
 	require.ErrorIs(t, err, errFake)
 	assert.Empty(t, rig.h.agents.seen(), "a run that holds no claim starts no agent, so a store that cannot be read fails closed")
 	assert.Empty(t, rig.h.life.releasedBy(), "a claim that was not taken is not released")
+}
+
+func TestExample_EveryAgentStepOfTheExampleThatCanEditForbidsACommitAuthor(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, rig.h.agents.seen())
+
+	edits := 0
+
+	for _, request := range rig.h.agents.seen() {
+		if request.NoEdits {
+			continue
+		}
+
+		edits++
+
+		assert.Contains(t, request.Forbid, model.FindingGitAuthor, "an agent step that omits the kind lets a lane set a commit author")
+	}
+
+	assert.Positive(t, edits, "the run holds a step that can edit")
 }
 
 func TestExampleClaim_TheItemIsReleasedWhenAStepOfTheExampleFails(t *testing.T) {
