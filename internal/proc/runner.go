@@ -57,19 +57,16 @@ type ExecRunner struct {
 
 	// abs makes a path absolute. Nil means filepath.Abs. Tests set it with WithAbs.
 	abs func(string) (string, error)
+
+	// executable returns the path of the running program, which the cap helper re-executes. Nil means os.Executable. Tests set it with WithExecutable.
+	executable func() (string, error)
+	// procSelf is the path of the running program image on Linux. Empty means /proc/self/exe. Tests set it with WithProcSelf.
+	procSelf string
 }
 
 // ExitCapFailed is the exit code of a call whose process cap could not be counted or set. The command did not start.
 // The result holds the cause in SetupErr. The exit code alone does not tell this failure from a command that exits with 125.
 const ExitCapFailed = 125
-
-// capScript sets the process limit of the user to $1, then replaces the shell with the command.
-// The error of ulimit goes to file descriptor 3, a pipe that only this script writes. The script closes it before exec, so the command never holds it.
-// Text on that pipe means the limit was not set. The count is made before the start, in Go, so no count tool is looked up in the PATH of the request.
-// The exit code in the script is ExitCapFailed.
-const capScript = `ulimit -u "$1" 2>&3 || exit 125
-shift
-exec "$@" 3>&-`
 
 // NewExecRunner returns a runner for the binary in dir that stops a call after DefaultTimeout.
 func NewExecRunner(binary, dir string) ExecRunner {
@@ -144,7 +141,7 @@ func (r ExecRunner) execute(ctx context.Context, args []string) model.CommandRes
 }
 
 // collect runs cmd to its end and returns its result. With a cap, cmd gets a pipe as file descriptor 3.
-// Text on that pipe means the script did not set the limit: the result then holds it in SetupErr, and nothing else.
+// Text on that pipe means the helper did not set the limit: the result then holds it in SetupErr, and nothing else.
 func (r ExecRunner) collect(ctx context.Context, cmd *exec.Cmd, capped bool) model.CommandResult {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -183,7 +180,7 @@ func runWithPipe(cmd *exec.Cmd, capped bool) (*os.File, error) {
 }
 
 // pipeError reads read to its end and closes it. It returns the text as an error, or nil for an empty pipe or no pipe.
-// The call comes after the command ends. At that time no process holds the write end: the script closes it before exec, and the parent has closed its copy. So the read ends at the end of the pipe.
+// The call comes after the command ends. At that time no process holds the write end: the helper closes it before exec, and the parent has closed its copy. So the read ends at the end of the pipe.
 func pipeError(read *os.File) error {
 	if read == nil {
 		return nil
@@ -217,8 +214,8 @@ func addNote(stderr *bytes.Buffer, binary, note string) {
 	stderr.WriteString(binary + ": " + note)
 }
 
-// command returns the command to start, and whether it is the shell of the cap. With a cap, it counts the processes of the user, then returns a shell that sets the limit and runs the binary.
-// A binary that is not found keeps its name, so the call reads as not found and not as a shell failure.
+// command returns the command to start, and whether it is the helper of the cap. With a cap, it counts the processes of the user, then returns this program started as the helper (see capexec.go): it sets the limit with setrlimit and runs the binary.
+// A binary that is not found keeps its name, so the call reads as not found and not as a helper failure.
 func (r ExecRunner) command(ctx context.Context, args []string) (*exec.Cmd, bool, error) {
 	if r.MaxNewProcesses > 0 {
 		cmd, err := r.cappedCommand(ctx, args)
@@ -230,7 +227,7 @@ func (r ExecRunner) command(ctx context.Context, args []string) (*exec.Cmd, bool
 	return GroupCommand(ctx, r.Binary, args, r.Dir), false, nil
 }
 
-// cappedCommand returns the shell of the cap for a binary that is found. It returns nil and no error for a binary that is not found.
+// cappedCommand returns the helper of the cap for a binary that is found. It returns nil and no error for a binary that is not found.
 func (r ExecRunner) cappedCommand(ctx context.Context, args []string) (*exec.Cmd, error) {
 	target, err := r.resolved()
 	if err != nil {
@@ -247,7 +244,49 @@ func (r ExecRunner) cappedCommand(ctx context.Context, args []string) (*exec.Cmd
 		return nil, err
 	}
 
-	return GroupCommand(ctx, "/bin/sh", append([]string{"-c", capScript, "sh", strconv.Itoa(limit), found}, args...), r.Dir), nil
+	return r.helperCommand(ctx, limit, found, args)
+}
+
+// helperCommand returns this program, started with the name of the cap helper, for the limit and the program found.
+func (r ExecRunner) helperCommand(ctx context.Context, limit int, found string, args []string) (*exec.Cmd, error) {
+	executable := r.executable
+	if executable == nil {
+		executable = os.Executable
+	}
+
+	self, err := executable()
+	if err != nil {
+		return nil, fmt.Errorf("could not find the running program: %w", err)
+	}
+
+	self, err = r.startablePath(self)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := GroupCommand(ctx, self, nil, r.Dir)
+	cmd.Args = append([]string{capArg0, strconv.Itoa(limit), found}, args...)
+
+	return cmd, nil
+}
+
+// startablePath returns a path that starts this program. If the file at self is gone (the program was replaced or deleted after it started), Linux still runs the open image through /proc/self/exe.
+// Elsewhere the call fails with the path of this program: the step then reads as a cap failure, not as a missing wrapped command.
+func (r ExecRunner) startablePath(self string) (string, error) {
+	if info, err := os.Stat(self); err == nil && !info.IsDir() && info.Mode().Perm()&executableBits != 0 {
+		return self, nil
+	}
+
+	procSelf := r.procSelf
+	if procSelf == "" {
+		procSelf = "/proc/self/exe"
+	}
+
+	if _, err := os.Stat(procSelf); err == nil {
+		return procSelf, nil
+	}
+
+	return "", fmt.Errorf("could not set max_new_processes = %d: the running program %s cannot start", r.MaxNewProcesses, self)
 }
 
 // resolved returns the binary to look up. A program path with a separator is relative to Dir, because the program runs there, so the lookup joins it to Dir and makes it absolute.
