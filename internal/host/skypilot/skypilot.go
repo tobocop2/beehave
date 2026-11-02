@@ -36,6 +36,7 @@ const (
 	defaultStale = 20 * time.Minute
 	lostAfter    = 5 * time.Minute // the time without an answered read before a wait ends as lost
 	stopLimit    = 5 * time.Minute // the time a job may take to end after the cancel
+	timeoutExit  = "124"           // the exit status of `timeout` for a command that it stopped
 	diedGrace    = time.Minute     // the time an empty record repeats before it reads as died: the accounting record can come late
 	runLimitKey  = "gcp.managed_instance_group.run_duration="
 	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
@@ -513,7 +514,7 @@ func (h *Host) jobState(ctx context.Context, id string) (model.JobState, error) 
 
 // recorded reads the state of a job from sacct, which keeps it after the controller forgets the job.
 func (h *Host) recorded(ctx context.Context, id string) (model.JobState, error) {
-	result := h.ssh.Run(ctx, h.sshArgs("sacct", "-X", "-n", "-P", "-j", id, "-o", "State"))
+	result := h.ssh.Run(ctx, h.sshArgs("sacct", "-X", "-n", "-P", "-j", id, "-o", "State,ExitCode"))
 
 	switch {
 	case result.ExitCode == sshFailed:

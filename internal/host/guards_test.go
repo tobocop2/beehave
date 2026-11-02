@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,7 @@ func (s *stubHost) Status(context.Context) (model.HostStatus, error) { return s.
 
 func (s *stubHost) Down(context.Context) error {
 	s.downs++
+	s.status.State = model.HostAbsent
 
 	return nil
 }
@@ -141,6 +143,69 @@ func TestWithDiskFloor_UnderTheFloorNamesTheFreeAndTheNeededSpace(t *testing.T) 
 	_, err := host.WithDiskFloor(stub, 50).Submit(t.Context(), model.JobSpec{Name: "j"})
 
 	require.ErrorContains(t, err, "10 GB free, floor 50 GB")
+}
+
+// freeing is a host whose free space grows by 30 GB at each Status call, from a start value.
+type freeing struct {
+	*stubHost
+
+	free  uint64
+	reads int
+}
+
+func (f *freeing) Status(context.Context) (model.HostStatus, error) {
+	f.reads++
+	f.free += 30 * gb
+
+	return model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: f.free, Readable: true}}, nil
+}
+
+func TestWithDiskWait_AJobWaitsForTheSpaceInsteadOfRefusing(t *testing.T) {
+	t.Parallel()
+
+	stub := &freeing{stubHost: &stubHost{}, free: 0}
+	id, err := host.WithDiskWait(stub, 50, time.Minute, time.Millisecond).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+
+	require.NoError(t, err)
+	assert.Equal(t, model.JobID("1"), id)
+	assert.Equal(t, 2, stub.reads, "one read under the floor, one above it")
+	assert.Equal(t, 1, stub.submits)
+}
+
+func TestWithDiskWait_AJobStillUnderTheFloorWhenTheWaitEndsIsRefused(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}}
+	_, err := host.WithDiskWait(stub, 50, 20*time.Millisecond, time.Millisecond).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+
+	require.ErrorIs(t, err, host.ErrDiskLow)
+	require.ErrorContains(t, err, "10 GB free, floor 50 GB")
+	assert.Zero(t, stub.submits)
+}
+
+func TestWithDiskWait_AnUnreadableDiskIsRefusedAtOnceWithoutWaiting(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 900 * gb}}}
+	started := time.Now()
+	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+
+	require.ErrorIs(t, err, host.ErrDiskRead)
+	assert.Less(t, time.Since(started), time.Minute)
+	assert.Zero(t, stub.submits)
+}
+
+func TestWithDiskWait_ACanceledContextEndsTheWait(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour).Submit(ctx, model.JobSpec{Name: "gate-p"})
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, stub.submits)
 }
 
 func TestWithDiskFloor_EveryOtherMethodIsTheMethodOfTheHost(t *testing.T) {
@@ -274,6 +339,40 @@ func TestTeardown_ReturnsTheErrorOfDown(t *testing.T) {
 
 	err := host.Teardown(t.Context(), downFails{&stubHost{root: "/work"}}, emptyRepo(), find, privateURL)
 
+	require.ErrorIs(t, err, errDown)
+}
+
+// downKeeps is a host whose Down returns no error and does nothing, as a provider whose delete call is lost does.
+type downKeeps struct{ *stubHost }
+
+func (d downKeeps) Down(context.Context) error {
+	d.downs++
+
+	return nil
+}
+
+func TestTeardown_AuditsThatTheHostIsGoneAfterDown(t *testing.T) {
+	t.Parallel()
+
+	find := &proctest.Scripted{}
+	find.Plan("/work/a/.git\x00", "/work")
+
+	kept := &stubHost{root: "/work", status: model.HostStatus{State: model.HostUp}}
+	err := host.Teardown(t.Context(), downKeeps{kept}, emptyRepo(), find, privateURL)
+
+	require.ErrorIs(t, err, host.ErrNotDeleted)
+	require.ErrorContains(t, err, "up")
+}
+
+func TestTeardown_AHostThatCannotBeReadAfterDownIsNotConfirmedDeleted(t *testing.T) {
+	t.Parallel()
+
+	find := &proctest.Scripted{}
+	find.Plan("/work/a/.git\x00", "/work")
+
+	err := host.Teardown(t.Context(), downKeeps{&stubHost{root: "/work", statusErr: errDown}}, emptyRepo(), find, privateURL)
+
+	require.ErrorIs(t, err, host.ErrNotDeleted)
 	require.ErrorIs(t, err, errDown)
 }
 

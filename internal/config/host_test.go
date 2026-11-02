@@ -25,13 +25,13 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, DiskFloorGB: 50}, project.Host)
 
-	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, stale_minutes = 5, max_run = "12h", disk_floor_gb = 20,
+	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, stale_minutes = 5, max_run = "12h", disk_floor_gb = 20, disk_wait_minutes = 15,
   private_remote = "git@example.com:org/repo.git",
   skypilot = skypilot(cloud = "gcp", region = "us-central1", instance_type = "n2-standard-8"))`))
 
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{
-		Provider: model.HostSkyPilot, IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, DiskFloorGB: 20, PrivateRemote: "git@example.com:org/repo.git",
+		Provider: model.HostSkyPilot, IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
 		SkyPilot: model.SkyPilotConfig{Cloud: "gcp", Region: "us-central1", InstanceType: "n2-standard-8"},
 	}, project.Host)
 }
@@ -67,6 +67,7 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 		{"negative_idle", call(clusterProject + ", host = " + hostCall(", idle_minutes = -1")), "`host.idle_minutes` must be above zero"},
 		{"zero_stale", call(clusterProject + ", host = " + hostCall(", stale_minutes = 0")), "`host.stale_minutes` must be above zero"},
 		{"negative_stale", call(clusterProject + ", host = " + hostCall(", stale_minutes = -5")), "`host.stale_minutes` must be above zero"},
+		{"negative_disk_wait", call(clusterProject + ", host = " + hostCall(", disk_wait_minutes = -1")), "`host.disk_wait_minutes` must be zero or above and at most 1048576; got -1"},
 		{"bad_max_run", call(clusterProject + ", host = " + hostCall(`, max_run = "soon"`)), "`host.max_run` must be a duration above zero"},
 		{"zero_max_run", call(clusterProject + ", host = " + hostCall(`, max_run = "0s"`)), "`host.max_run` must be a duration above zero"},
 		{"path_private_remote", call(clusterProject + ", host = " + hostCall(`, private_remote = "/srv/repo.git"`)), "`host.private_remote` must name a machine"},

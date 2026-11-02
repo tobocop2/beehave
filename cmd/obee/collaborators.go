@@ -354,6 +354,8 @@ func hostAdvice(state model.JobState) string {
 		return "the job died: the scheduler holds no record of it. Run the command again"
 	case model.JobStale:
 		return "the job was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the command is slow, then run it again"
+	case model.JobTimedOut:
+		return "the job was stopped by the run limit `host.max_run`. Raise `host.max_run` if the command is slow, then run it again"
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost, model.JobSucceeded, model.JobFailed:
 	}
 

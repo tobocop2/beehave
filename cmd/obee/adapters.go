@@ -33,7 +33,12 @@ type adapters struct {
 	hosts    map[model.HostProvider]func(model.Project) (host.Host, error)
 	bd       proc.Runner
 	state    func() (string, error)
+	// diskPoll is how often a job that waits for disk space reads the disk again.
+	diskPoll time.Duration
 }
+
+// defaultDiskPoll is the gap between two disk readings of a job that waits for space.
+const defaultDiskPoll = 30 * time.Second
 
 // claimStore is the claim rows of one project and the way to end its use. closer is nil for a store that holds no file.
 type claimStore struct {
@@ -68,8 +73,9 @@ func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,
 		},
-		bd:    bd,
-		state: state,
+		bd:       bd,
+		state:    state,
+		diskPoll: defaultDiskPoll,
 	}
 }
 
@@ -182,7 +188,9 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 		return nil, err
 	}
 
-	return host.WithDiskFloor(built, project.Host.DiskFloorGB), nil
+	wait := time.Duration(project.Host.DiskWaitMinutes) * time.Minute
+
+	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll), nil
 }
 
 // agent builds the adapter of the agent. It returns nil for an agent that has no adapter yet, and a run with no adapter does not start.

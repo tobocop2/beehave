@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
@@ -433,6 +435,8 @@ func plainWord(word string) bool {
 // a clone of the repository at cloneURL, a detached checkout of head, a check that the checkout is head, and then the gate command.
 // A trap on exit, hang-up, interrupt and terminate writes the marker line and then deletes the folder by its literal path, so the result
 // is written first and the folder goes whether the gate passes, fails or is stopped. The exit status of the gate is kept.
+// When the host has a run limit (`host.max_run`), the gate command runs under `timeout` with that limit, so a hung step ends the job
+// with exit status 124 and the trap still writes the marker and deletes the clone.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, cloneURL, head, clone string) string {
 	path := quote(clone)
@@ -451,7 +455,7 @@ func hostCommand(project model.Project, cloneURL, head, clone string) string {
 	before, after := reportChecks(project.TestReport)
 
 	words = append(words, before...)
-	words = append(words, "sh -c "+quote(project.Gate))
+	words = append(words, limited(project, "sh -c "+quote(project.Gate)))
 
 	return strings.Join(append(words, after...), " && ")
 }
@@ -480,6 +484,15 @@ func globWord(glob string) string {
 // literalRun matches a run of glob text with no wildcard.
 var literalRun = regexp.MustCompile(`[^*?\[\]]+`)
 
+// limited puts command under `timeout` with the run limit of the host, when the project has a host block.
+func limited(project model.Project, command string) string {
+	if project.Host == nil || project.Host.MaxRun < time.Second {
+		return command
+	}
+
+	return "timeout " + strconv.FormatInt(int64(project.Host.MaxRun/time.Second), 10) + " " + command
+}
+
 // quote returns the word as one word for a POSIX shell.
 func quote(word string) string {
 	if word != "" && strings.Trim(word, safeWordRune) == "" {
@@ -504,6 +517,8 @@ func verdict(project model.Project, state model.JobState) (Result, error) {
 		return Result{}, fmt.Errorf("%w: the job died on %s: the scheduler holds no record of it. Run the gate again", ErrNoVerdict, cluster)
 	case model.JobStale:
 		return Result{}, fmt.Errorf("%w: the job on %s was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again", ErrNoVerdict, cluster)
+	case model.JobTimedOut:
+		return Result{}, fmt.Errorf("%w: the gate on %s was stopped by the run limit `host.max_run` and did not finish: it is not run. Raise `host.max_run` if the gate is slow, then run the gate again", ErrNoVerdict, cluster)
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
 

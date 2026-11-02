@@ -128,7 +128,9 @@ func slurmJobState(name string) (model.JobState, bool) {
 		return model.JobRunning, true
 	case "COMPLETED":
 		return model.JobSucceeded, true
-	case "FAILED", "TIMEOUT", "NODE_FAIL", "OUT_OF_MEMORY", "BOOT_FAIL", "DEADLINE", "PREEMPTED", "REVOKED":
+	case "TIMEOUT":
+		return model.JobTimedOut, true
+	case "FAILED", "NODE_FAIL", "OUT_OF_MEMORY", "BOOT_FAIL", "DEADLINE", "PREEMPTED", "REVOKED":
 		return model.JobFailed, true
 	case "CANCELLED": //nolint:misspell // Slurm's spelling
 		return model.JobCanceled, true
@@ -145,10 +147,16 @@ func parseJobState(out string) (model.JobState, error) {
 	}
 
 	word, _, _ := strings.Cut(lines[0], " ")
+	word, exit, _ := strings.Cut(word, "|")
 
 	state, found := slurmJobState(strings.TrimSuffix(word, "+"))
 	if !found {
 		return model.JobUnknown, fmt.Errorf("%w: %q", errJobText, lines[0])
+	}
+
+	// `timeout` ends a command with exit status 124. Slurm calls that job FAILED, so the exit code tells the run limit from a red run.
+	if state == model.JobFailed && strings.HasPrefix(exit, timeoutExit+":") {
+		return model.JobTimedOut, nil
 	}
 
 	return state, nil

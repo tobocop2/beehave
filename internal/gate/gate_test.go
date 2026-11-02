@@ -368,6 +368,8 @@ func TestRun_ADiedOrStaleHostJobSaysWhatAPersonCanDo(t *testing.T) {
 	cases := map[model.JobState]string{
 		model.JobDied:  "Run the gate again",
 		model.JobStale: "raise `host.stale_minutes`",
+		// A gate that the run limit stopped is not run: it is neither a red gate nor a green one.
+		model.JobTimedOut: "it is not run. Raise `host.max_run`",
 	}
 
 	for state, advice := range cases {
