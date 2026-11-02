@@ -193,7 +193,7 @@ func (e *Engine) enqueueExclusive(run dbos.Context, in ExclusiveInput) (dbos.Wor
 
 // awaitExclusive waits for the queued run. The error of a gate that was canceled names the head that replaced it.
 func (e *Engine) awaitExclusive(run dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], in ExclusiveInput) (ExclusiveOutput, error) {
-	out, err := awaitResult(run, handle, e.deps.Clock.resultOptions())
+	out, err := awaitResult(run, e.ctx, handle, e.deps.Clock.resultOptions())
 	if errors.Is(err, dbos.ErrAwaitedWorkflowCancelled) && in.Kind == kindGate {
 		return ExclusiveOutput{}, e.supersededError(run, in, err)
 	}

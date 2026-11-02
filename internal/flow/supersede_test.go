@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -85,6 +86,26 @@ func queueGate(engine *Engine, head string) <-chan gateEnd {
 
 // queueGateOf queues the gate of an item of a project from a run, and returns the channel of its end.
 func queueGateOf(engine *Engine, project, item, head string) <-chan gateEnd {
+	_, ended := queueGateRunOf(engine, project, item, head)
+
+	return ended
+}
+
+// queueGateRun queues the gate of head of the test item, and returns the id of the run that queues it with the channel of its end.
+func queueGateRun(engine *Engine, head string) (string, <-chan gateEnd) {
+	return queueGateRunOf(engine, testProject, testItem, head)
+}
+
+// stopRecorded is true when the run that queued a gate has recorded its stop of the old gates. A gate that queues before that is an old gate to it.
+func stopRecorded(engine *Engine, run string) func() bool {
+	return func() bool {
+		steps, err := dbos.GetWorkflowSteps(engine.ctx, run)
+
+		return err == nil && slices.ContainsFunc(steps, func(s dbos.StepInfo) bool { return s.StepName == "gate:stop" })
+	}
+}
+
+func queueGateRunOf(engine *Engine, project, item, head string) (string, <-chan gateEnd) {
 	ended := make(chan gateEnd, 1)
 	id := fmt.Sprintf("queue-gate-%d", gateRuns.Add(1))
 	gateEndsMu.Lock()
@@ -96,7 +117,7 @@ func queueGateOf(engine *Engine, project, item, head string) <-chan gateEnd {
 		ended <- gateEnd{err: err}
 	}
 
-	return ended
+	return id, ended
 }
 
 func supersedeEngine(t *testing.T, gated supersedeGate, head string) (*harness, *Engine) {
@@ -246,15 +267,21 @@ func TestSuperseded_AGateOfAnOldHeadThatQueuesLateStopsNoGateOfTheCurrentHead(t 
 	t.Parallel()
 
 	gated := newSupersedeGate("")
-	_, engine := supersedeEngine(t, gated, "B")
+	h, engine := supersedeEngine(t, gated, "B")
 
-	current := queueGate(engine, "B")
+	run, current := queueGateRun(engine, "B")
 
+	// The gate of head B runs before the run that queued it records its stop of the old gates. A gate of head A that queues in between is an old gate to it.
 	eventually(t, startedCount(gated, 1))
+	eventually(t, stopRecorded(engine, run))
 
-	late := queueGate(engine, "A")
+	lateRun, late := queueGateRun(engine, "A")
 
-	time.Sleep(3 * time.Second)
+	// The late gate has queued and recorded its own stop. A running gate stops at a tick of the engine, so the ticks come before the release.
+	eventually(t, stopRecorded(engine, lateRun))
+	h.tick(t)
+	assert.Zero(t, gated.stopped.Load(), "the gate of the current head is never stopped by a late gate")
+
 	close(gated.release)
 
 	require.NoError(t, (<-current).err)
