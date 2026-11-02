@@ -48,6 +48,7 @@ func TestRun_ListsTheOtherOrchestratorsAtTheStartAndStatusShowsThem(t *testing.T
 	assert.Contains(t, harness.others.asked[0], testProject+"/")
 
 	require.NoError(t, client.Cancel(testItem))
+	harness.tick(t)
 	<-done
 }
 

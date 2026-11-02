@@ -428,10 +428,29 @@ func TestExample_AGateWithAFailedStepAndAnUnknownStepIsRedAndStillGetsAFixRound(
 	steps := []GateStep{{Name: "command", Status: "fail"}, {Name: "tests", Status: "unknown"}}
 	rig.h.gate.results = []GateResult{{Passed: false, Head: rig.head, Tree: exampleTree, Report: "red", Steps: steps}}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	client := rig.h.client(t, testVersion)
+	engine := rig.h.engine(t)
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := engine.RunFile(testItem, testProject, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	// The red gate repeats until the rounds cap, and then the run waits for a person for the whole claim lease. The test ends it after
+	// the second gate, which is the claim of the test.
+	eventually(t, func() bool {
+		rig.h.gate.mu.Lock()
+		defer rig.h.gate.mu.Unlock()
+
+		return rig.h.gate.calls > 1
+	})
+	require.NoError(t, client.Cancel(testItem))
+	rig.h.tick(t)
+
+	err := (<-done).err
 
 	assert.NotContains(t, fmt.Sprint(err), "the gate gave no result")
-	assert.Greater(t, rig.h.gate.calls, 1, "a failed step is a real red, so the loop fixes and gates again")
 }
 
 func TestExample_AReviewIsOnlyReadAgainstTheHeadTheGatePassed(t *testing.T) {
