@@ -29,6 +29,8 @@ type stubHost struct {
 
 func (s *stubHost) WorkRoot(context.Context) (string, error) { return s.root, s.rootErr }
 
+func (*stubHost) Log(context.Context, model.JobID) (string, error) { return "", nil }
+
 func (*stubHost) Up(context.Context) error { return nil }
 
 func (s *stubHost) Status(context.Context) (model.HostStatus, error) { return s.status, s.statusErr }

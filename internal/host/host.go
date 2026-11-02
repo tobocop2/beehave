@@ -30,6 +30,8 @@ type Host interface {
 	Cancel(ctx context.Context, id model.JobID) error
 	// WorkRoot is the one absolute path under which the host keeps its repositories. It is the same in every call.
 	WorkRoot(ctx context.Context) (string, error)
+	// Log is the end of the log of a job: the last part of what the job wrote.
+	Log(ctx context.Context, id model.JobID) (string, error)
 	Drain(ctx context.Context) error
 	Resume(ctx context.Context) error
 }

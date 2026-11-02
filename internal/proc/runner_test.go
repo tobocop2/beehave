@@ -25,6 +25,7 @@ const fakeScript = `#!/bin/sh
 case "$1" in
 out) echo "out:$2"; echo "err" >&2 ;;
 fail) exit 7 ;;
+exit124) exit 124 ;;
 half) printf partial >&2; exec sleep 5 ;;
 line) printf 'partial\n' >&2; exec sleep 5 ;;
 crlf) printf 'a\r\nb' ; printf 'e\r\n' >&2; exit 3 ;;
@@ -91,6 +92,15 @@ func TestExecRunner_ATimeoutReadsAsExitCode124(t *testing.T) { //nolint:parallel
 	done := proc.ExecRunner{Binary: "bd", Timeout: 100 * time.Millisecond}.Run(context.Background(), []string{"slow"})
 	assert.Equal(t, 124, done.ExitCode)
 	assert.Equal(t, "bd: timed out", done.Stderr)
+	assert.True(t, done.TimedOut, "the result says the limit killed the call, so a command that exits 124 on its own is not mistaken for it")
+}
+
+func TestExecRunner_ACommandThatExits124OnItsOwnIsNotTimedOut(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	fakeOnPath(t, "bd", fakeScript)
+
+	done := proc.ExecRunner{Binary: "bd", Timeout: time.Minute}.Run(context.Background(), []string{"exit124"})
+	assert.Equal(t, 124, done.ExitCode)
+	assert.False(t, done.TimedOut)
 }
 
 func TestExecRunner_AMissingBinaryReadsAsExitCode127(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process

@@ -102,6 +102,8 @@ func (m *memHost) Cancel(_ context.Context, id model.JobID) error {
 	return m.fail()
 }
 
+func (m *memHost) Log(context.Context, model.JobID) (string, error) { return "", m.fail() }
+
 func (m *memHost) WorkRoot(context.Context) (string, error) {
 	if m.root != "" {
 		return m.root, m.fail()

@@ -428,6 +428,23 @@ func TestCancel_WritesTheMarkerOfTheSlotJobAfterScancel(t *testing.T) {
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".obee-banked-lane-host-5-n"}, ssh.Calls[2])
 }
 
+func TestLog_ReadsTheTailOfTheSlurmLogOfTheJob(t *testing.T) {
+	t.Parallel()
+
+	h, _, ssh := newScripted(t)
+	ssh.Plan("line\nobee-gate-done\n", "tail")
+
+	log, err := h.Log(deadline(t), "5-n")
+
+	require.NoError(t, err)
+	assert.Equal(t, "line\nobee-gate-done\n", log)
+	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "tail", "-c", "16384", "slurm-5.out"}, ssh.Calls[0])
+
+	_, err = h.Log(deadline(t), "5; rm -rf x")
+	require.Error(t, err)
+	assert.Len(t, ssh.Calls, 1)
+}
+
 func TestCancel_BanksTheWorkOfTheCanceledJobBeforeTheSlotEnds(t *testing.T) {
 	t.Parallel()
 

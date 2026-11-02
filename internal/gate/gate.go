@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/config"
@@ -30,7 +31,17 @@ const (
 
 	// cloneMarker is the line that the job writes when the gate has ended, before it deletes the clone.
 	cloneMarker = "obee-gate-done"
+
+	// noTestsMarker is the line that the job writes when the gate command passed and the report glob matched no test case.
+	noTestsMarker = "obee-gate-no-tests"
+
+	// trackedMarker starts the line that the job writes when the repository tracks a file that the report glob matches. The file name follows.
+	trackedMarker = "obee-gate-tracked-report"
 )
+
+// ExitTimedOut is the code that a Shell returns for a command that the time limit of the shell itself killed. It is not an exit code of the command,
+// so a command that exits 124 on its own is a failure, and a command that the limit killed is unresolved.
+const ExitTimedOut = -2
 
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
 var ErrTreeChanged = errors.New("the tree is not the commit the gate judges")
@@ -174,6 +185,10 @@ func (g Gate) local(ctx context.Context, request Request, head string) (Result, 
 		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
 	}
 
+	if code == ExitTimedOut {
+		return timedOut(request, head, output), nil
+	}
+
 	result := Result{Report: tail(output), Head: head, Steps: []Step{{Name: StepCommand, Status: exitStatus(code)}}}
 
 	if request.Project.TestReport != "" {
@@ -187,12 +202,25 @@ func (g Gate) local(ctx context.Context, request Request, head string) (Result, 
 
 // voided is the result of a gate that did not run because a pinned tool is not at its pinned version. Every step is unknown: neither a pass nor a fail.
 func voided(request Request, head, reason string) Result {
+	return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version, then run the gate again.\n"), Head: head, Steps: unknownSteps(request.Project)}
+}
+
+// timedOut is the result of a gate that the time limit of the shell killed. The command did not finish, so it is neither green nor red:
+// every step is unknown, and the report keeps the output up to the kill.
+func timedOut(request Request, head, output string) Result {
+	note := "the gate command ran past its time limit and was killed. The gate has no result. Run the gate again, or raise the limit.\n"
+
+	return Result{Report: tail(output + "\n" + note), Head: head, Steps: unknownSteps(request.Project)}
+}
+
+// unknownSteps is one step of unknown for each step that the gate of the project gives: the command, and the tests when the project sets test_report.
+func unknownSteps(project model.Project) []Step {
 	steps := []Step{{Name: StepCommand, Status: StatusUnknown}}
-	if request.Project.TestReport != "" {
+	if project.TestReport != "" {
 		steps = append(steps, Step{Name: StepTests, Status: StatusUnknown})
 	}
 
-	return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version, then run the gate again.\n"), Head: head, Steps: steps}
+	return steps
 }
 
 // exitStatus is the result of a command from its exit code.
@@ -244,11 +272,13 @@ func (g Gate) remote(ctx context.Context, request Request, head string) (Result,
 		return Result{}, err
 	}
 
-	return wait(ctx, host, project.BuildHost, id, head)
+	return wait(ctx, host, project, id, head)
 }
 
 // wait waits for the host job and maps its state to a result for head.
-func wait(ctx context.Context, host Remote, cluster string, id model.JobID, head string) (Result, error) {
+func wait(ctx context.Context, host Remote, project model.Project, id model.JobID, head string) (Result, error) {
+	cluster := project.BuildHost
+
 	state, err := host.Wait(ctx, id)
 	if err != nil {
 		// A wait that ends because the context ended leaves the job running on the host: stop it, so a stopped gate frees the host.
@@ -259,10 +289,63 @@ func wait(ctx context.Context, host Remote, cluster string, id model.JobID, head
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 
-	result, err := verdict(cluster, state)
+	result, err := verdict(project, state)
+
+	if err == nil && state == model.JobFailed && project.TestReport != "" {
+		result = explainFailure(ctx, host, project, id, result)
+	}
+
 	result.Head = head
 
 	return result, err
+}
+
+// LogReader is a Remote that can read the log of a job. A host that does not have it gives a failed job a report that names both causes.
+type LogReader interface {
+	Log(ctx context.Context, id model.JobID) (string, error)
+}
+
+// explainFailure reads the marker lines in the log of a failed job and says which step failed. The job writes a marker when the report check
+// refuses (a tracked report file) or fails (no test case), so the log tells those apart from a gate command that failed.
+// A log that cannot be read leaves the result as the job state gave it, with a report that names both causes.
+func explainFailure(ctx context.Context, host Remote, project model.Project, id model.JobID, result Result) Result {
+	reader, ok := host.(LogReader)
+	if !ok {
+		return withCauses(result, project)
+	}
+
+	log, err := reader.Log(ctx, id)
+	if err != nil {
+		return withCauses(result, project)
+	}
+
+	if marked, found := markedResult(log, project); found {
+		return marked
+	}
+
+	return result
+}
+
+// markedResult is the result that the first marker line in the log gives, and whether the log holds one.
+func markedResult(log string, project model.Project) (Result, bool) {
+	for _, line := range strings.Split(log, "\n") {
+		if file, found := strings.CutPrefix(line, trackedMarker+" "); found {
+			return Result{Report: fmt.Sprintf("the repository tracks %s, which matches test_report %q. A tracked file cannot show that the tests ran. Stop tracking the file, then run the gate again.", file, project.TestReport), Steps: hostSteps(project, StatusUnknown, StatusFail)}, true
+		}
+
+		if line == noTestsMarker {
+			return Result{Report: fmt.Sprintf("the gate command passed on %s, but no test case was found in the files that test_report %q matches. The tests step failed.", project.BuildHost, project.TestReport), Steps: hostSteps(project, StatusPass, StatusFail)}, true
+		}
+	}
+
+	return Result{}, false
+}
+
+// withCauses adds the two causes of a failed host job to the report, for a host whose log obee cannot read.
+func withCauses(result Result, project model.Project) Result {
+	result.Report += fmt.Sprintf(" The gate command failed, or the job found no test case in the files that test_report %q matches.", project.TestReport)
+
+	return result
 }
 
 // stopJob stops the host job under a context that the end of ctx does not reach. A job that cannot be stopped keeps its slot for at most max_run,
@@ -363,11 +446,39 @@ func hostCommand(project model.Project, cloneURL, head, clone string) string {
 		"cd tree",
 		"git checkout --detach " + quote(head),
 		`[ "$(git rev-parse HEAD)" = ` + quote(head) + ` ]`,
-		"sh -c " + quote(project.Gate),
 	}
 
-	return strings.Join(words, " && ")
+	before, after := reportChecks(project.TestReport)
+
+	words = append(words, before...)
+	words = append(words, "sh -c "+quote(project.Gate))
+
+	return strings.Join(append(words, after...), " && ")
 }
+
+// reportChecks returns the words of the report checks: the word before the gate refuses a report file that the repository tracks, as such a file
+// would satisfy the count with no test run, and the word after the gate fails when the files that the glob matches hold no test case.
+// Each word writes a marker line first, so the log tells the failed check from a failed gate command. A project with no glob has no check.
+func reportChecks(glob string) (before, after []string) {
+	if glob == "" {
+		return nil, nil
+	}
+
+	tracked := "git ls-files -- " + quote(glob) + " | head -n 1"
+
+	before = []string{`{ [ -z "$(` + tracked + `)" ] || { echo "` + trackedMarker + ` $(` + tracked + `)"; false; }; }`}
+	after = []string{`{ [ "$(cat ` + globWord(glob) + ` 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo ` + noTestsMarker + `; false; }; }`}
+
+	return before, after
+}
+
+// globWord returns the glob as one shell word that still expands: each literal run is quoted and each wildcard (`*`, `?`, `[`, `]`) stays bare.
+func globWord(glob string) string {
+	return literalRun.ReplaceAllStringFunc(glob, quote)
+}
+
+// literalRun matches a run of glob text with no wildcard.
+var literalRun = regexp.MustCompile(`[^*?\[\]]+`)
 
 // quote returns the word as one word for a POSIX shell.
 func quote(word string) string {
@@ -379,12 +490,16 @@ func quote(word string) string {
 }
 
 // verdict maps the final state of a host job to a result. Only a job that succeeded passes, and only one that failed is a failed gate.
-func verdict(cluster string, state model.JobState) (Result, error) {
+// The host command ends with the test count check, so a job that succeeded found a test case: both steps pass. A job that failed gives no
+// result line for the tests step, so that step is unknown.
+func verdict(project model.Project, state model.JobState) (Result, error) {
+	cluster := project.BuildHost
+
 	switch state {
 	case model.JobSucceeded:
-		return Result{Passed: true, Steps: []Step{{Name: StepCommand, Status: StatusPass}}}, nil
+		return Result{Passed: true, Steps: hostSteps(project, StatusPass, StatusPass)}, nil
 	case model.JobFailed:
-		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: []Step{{Name: StepCommand, Status: StatusFail}}}, nil
+		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: hostSteps(project, StatusFail, StatusUnknown)}, nil
 	case model.JobDied:
 		return Result{}, fmt.Errorf("%w: the job died on %s: the scheduler holds no record of it. Run the gate again", ErrNoVerdict, cluster)
 	case model.JobStale:
@@ -393,6 +508,16 @@ func verdict(cluster string, state model.JobState) (Result, error) {
 	}
 
 	return Result{}, fmt.Errorf("%w: its state on %s is %s. Read the job in the scheduler of the host", ErrNoVerdict, cluster, state)
+}
+
+// hostSteps is the steps of a host gate: the command, and the tests when the project sets test_report.
+func hostSteps(project model.Project, command, tests Status) []Step {
+	steps := []Step{{Name: StepCommand, Status: command}}
+	if project.TestReport != "" {
+		steps = append(steps, Step{Name: StepTests, Status: tests})
+	}
+
+	return steps
 }
 
 // tail returns the last reportLimit bytes of the output, without a cut character at the start.

@@ -76,7 +76,7 @@ func NewExecRunner(binary, dir string) ExecRunner {
 // Run starts the binary in its own process group. A canceled call reads as exit code 130, a timeout as 124 and a binary that cannot start as 127.
 func (r ExecRunner) Run(ctx context.Context, args []string) model.CommandResult {
 	if code, note := interrupted(ctx); note != "" {
-		return model.CommandResult{ExitCode: code, Stderr: r.Binary + ": " + note}
+		return model.CommandResult{ExitCode: code, Stderr: r.Binary + ": " + note, TimedOut: code == exitTimeout}
 	}
 
 	if r.Timeout > 0 {
@@ -155,7 +155,7 @@ func (r ExecRunner) collect(ctx context.Context, cmd *exec.Cmd, capped bool) mod
 	code, note := exitCodeOf(ctx, err)
 	addNote(&stderr, r.Binary, note)
 
-	return model.CommandResult{ExitCode: code, Stdout: stdout.String(), Stderr: stderr.String()}
+	return model.CommandResult{ExitCode: code, Stdout: stdout.String(), Stderr: stderr.String(), TimedOut: err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)}
 }
 
 // runWithPipe runs cmd to its end. With a cap, cmd gets the write end of a pipe as file descriptor 3, and the read end is returned. Without a cap, the read end is nil.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,8 @@ type projectGate struct {
 	projects map[string]config.Project
 	programs programs
 	forge    func(model.Project) (forge.Forge, error)
+	// timeout is the time that a local gate command may run. Zero means gateTimeout.
+	timeout time.Duration
 }
 
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
@@ -112,7 +115,11 @@ func (g projectGate) cloneURL(project config.Project) (string, error) {
 
 // shell runs the gate command in dir on this machine and returns its output and exit code.
 func (g projectGate) shell(ctx context.Context, dir, command string) (string, int) {
-	result := g.programs.local("sh", dir, gateTimeout).Run(ctx, []string{"-c", command})
+	result := g.programs.local("sh", dir, cmp.Or(g.timeout, gateTimeout)).Run(ctx, []string{"-c", command})
+
+	if result.TimedOut {
+		return result.Stdout + result.Stderr, gate.ExitTimedOut
+	}
 
 	return result.Stdout + result.Stderr, result.ExitCode
 }

@@ -551,6 +551,19 @@ func (h *Host) Cancel(ctx context.Context, id model.JobID) error {
 	return err
 }
 
+// logTailBytes is the most bytes that Log reads from the end of the log of a job.
+const logTailBytes = 16384
+
+// Log returns the end of the log of a job, at most logTailBytes bytes.
+func (h *Host) Log(ctx context.Context, id model.JobID) (string, error) {
+	job, err := parseJobID(id)
+	if err != nil {
+		return "", err
+	}
+
+	return h.remote(ctx, "tail", "tail", "-c", strconv.Itoa(logTailBytes), "slurm-"+job.slurm+".out")
+}
+
 // Drain makes every node refuse new jobs. Running jobs finish.
 func (h *Host) Drain(ctx context.Context) error {
 	return h.setNodes(ctx, "DRAIN", "Reason="+drainReason)
