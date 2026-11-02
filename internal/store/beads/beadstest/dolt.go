@@ -25,6 +25,8 @@ const (
 	dialTimeout = time.Second
 	dirMode     = 0o750
 
+	startAttempts = 3
+
 	// The ports of a server that the owner may run. No test may use them.
 	livePortA = 3306
 	livePortB = 3307
@@ -93,13 +95,50 @@ func FreePort(tb testing.TB) int {
 
 // StartDolt runs the dolt server binary on a free port that is not a live port, with its home and data folders under root,
 // and stops the server group when the test ends. It returns when the server accepts connections.
+//
+// Another process can take the free port before the server binds it. The server then ends, and StartDolt starts it again on a new port, up to startAttempts times.
 func StartDolt(tb testing.TB, root, binary string) int {
+	tb.Helper()
+
+	home, data := serverFolders(tb, root)
+
+	var (
+		port int
+		ok   bool
+	)
+
+	for attempt := 0; attempt < startAttempts && !ok; attempt++ {
+		port, ok = startOnFreePort(tb, home, data, binary)
+	}
+
+	check(tb, ok, "the private dolt server did not start")
+
+	return port
+}
+
+// startOnFreePort starts the server on a free port and reports whether it accepts connections before it ends or the wait is over.
+func startOnFreePort(tb testing.TB, home, data, binary string) (int, bool) {
 	tb.Helper()
 
 	port := FreePort(tb)
 	check(tb, port != livePortA && port != livePortB, "port %d belongs to the live server: a test may never use it", port)
 
-	home, data := serverFolders(tb, root)
+	cmd := launch(tb, home, data, binary, port)
+	ctx, done := watchServer(tb, cmd)
+
+	tb.Cleanup(func() { stopServer(tb, cmd, done) })
+
+	ok := reachable(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), serverWait)
+	if !ok {
+		stopServer(tb, cmd, done) // a server that never answered must not outlive its attempt
+	}
+
+	return port, ok
+}
+
+// launch starts the server binary on the port in its own process group.
+func launch(tb testing.TB, home, data, binary string, port int) *exec.Cmd {
+	tb.Helper()
 
 	args := []string{"DOLT_ROOT_PATH=" + home, binary, "sql-server", "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
 
@@ -109,11 +148,26 @@ func StartDolt(tb testing.TB, root, binary string) int {
 	err := cmd.Start()
 	check(tb, err == nil, "start the private server: %v", err)
 
-	tb.Cleanup(func() { stopServer(tb, cmd) })
+	return cmd
+}
 
-	check(tb, reachable(tb.Context(), net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), serverWait), "the private dolt server did not start")
+// watchServer waits for the server in the background. The context ends, and done closes, when the server ends.
+func watchServer(tb testing.TB, cmd *exec.Cmd) (context.Context, <-chan struct{}) {
+	tb.Helper()
 
-	return port
+	ctx, ended := context.WithCancel(tb.Context())
+	done := make(chan struct{})
+
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			tb.Logf("the private server ended: %v", err) // a killed server does not exit cleanly
+		}
+
+		close(done)
+		ended()
+	}()
+
+	return ctx, done
 }
 
 // serverFolders makes the home folder and the data folder of the private server under root.
@@ -131,20 +185,19 @@ func serverFolders(tb testing.TB, root string) (home, data string) {
 
 // stopServer kills the group of the server and waits for it.
 // A group that already exited reads as ESRCH, or as EPERM on macOS when only a zombie is left: that is a stopped server, not a failure.
-func stopServer(tb testing.TB, cmd *exec.Cmd) {
+func stopServer(tb testing.TB, cmd *exec.Cmd, done <-chan struct{}) {
 	tb.Helper()
 
 	killed := proc.KillGroup(cmd)
-	check(tb, killed == nil || errors.Is(killed, syscall.ESRCH) || errors.Is(killed, syscall.EPERM), "stop the private server: %v", killed)
 
-	if err := cmd.Wait(); err != nil {
-		tb.Logf("the private server ended: %v", err) // a killed server does not exit cleanly
-	}
+	<-done
+
+	check(tb, killed == nil || errors.Is(killed, syscall.ESRCH) || errors.Is(killed, syscall.EPERM), "stop the private server: %v", killed)
 }
 
-// reachable polls until a connection to the address works, and reports whether one did within wait.
+// reachable polls until a connection to the address works, and reports whether one did within wait or before ctx ends.
 func reachable(ctx context.Context, address string, wait time.Duration) bool {
-	for deadline := time.Now().Add(wait); time.Now().Before(deadline); time.Sleep(serverPoll) {
+	for deadline := time.Now().Add(wait); time.Now().Before(deadline) && ctx.Err() == nil; time.Sleep(serverPoll) {
 		conn, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", address)
 		if err == nil {
 			_ = conn.Close()
