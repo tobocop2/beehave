@@ -311,7 +311,7 @@ func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch
 	}
 
 	if len(in.GateRun) == 0 {
-		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item)
+		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item, GateJob{})
 
 		void := voidReason(gated)
 		if void != "" && gated.Tree == "" {

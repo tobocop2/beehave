@@ -169,7 +169,9 @@ type passThenHold struct{ runs atomic.Int32 }
 
 func (g *passThenHold) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
 
-func (g *passThenHold) Run(ctx context.Context, _, _ string) (GateResult, error) {
+func (*passThenHold) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+
+func (g *passThenHold) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
 	if g.runs.Add(1) == 1 {
 		return GateResult{Passed: true, Head: gatedHead, Steps: commandStep(true)}, nil
 	}

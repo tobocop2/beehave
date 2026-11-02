@@ -54,7 +54,7 @@ func TestProjectGate_RefusesAnItemWithNoWorktree(t *testing.T) {
 	calls := &gateCalls{}
 	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt(""), local: gateRunner(calls, model.CommandResult{Stdout: "abc"}, model.CommandResult{})}}
 
-	_, err := gate.Run(t.Context(), "p", "1")
+	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
 
 	require.ErrorIs(t, err, errNoGateFolder)
 	assert.Empty(t, calls.binaries, "the gate never runs in the folder of the obee process")

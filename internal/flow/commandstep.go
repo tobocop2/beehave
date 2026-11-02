@@ -211,16 +211,11 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	})
 }
 
-// gateOutputs runs the project gate when the request names no program, and the program otherwise.
-// The key it returns is empty unless the gate passed on every step and read the tree it judged: only such a pass may stand in for a later gate.
-func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head string) (outputs map[string]any, key string, err error) {
-	if len(request.Run) == 0 {
-		return e.projectGateOutputs(ctx, request)
-	}
-
+// programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.
+func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
 	out, err := e.deps.Commands.Run(ctx, request)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	status := passStatus
@@ -228,26 +223,42 @@ func (e *Engine) gateOutputs(ctx context.Context, request CommandRequest, head s
 		status = failStatus
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), "", nil
+	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), nil
 }
 
-// projectGateOutputs reuses the pass of an earlier gate with the same key, and runs the project gate when there is none.
-func (e *Engine) projectGateOutputs(ctx context.Context, request CommandRequest) (map[string]any, string, error) {
+// gateStart is what the first step of a project gate records: the pass of an earlier gate that the key reuses, or the host job that the gate submitted.
+// A replay reads it and submits nothing.
+type gateStart struct {
+	Job    GateJob        `json:"job"`
+	Reused map[string]any `json:"reused,omitempty"`
+	Key    GateKey        `json:"key"`
+}
+
+// startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
+func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
 	key := e.gateKey(ctx, request)
 
 	if earlier, ok := e.earlierPass(key, request.Project); ok {
 		line := fmt.Sprintf("reused the gate pass of run %s: the tree %s, the gate command and the pins are the same. The gate did not run.", earlier.run, key.Tree)
 		e.logger.InfoContext(ctx, line, "item", request.Item)
 
-		return gateOutputs(true, key.Head, key.Tree, line, earlier.steps), key.ID, nil
+		return gateStart{Reused: gateOutputs(true, key.Head, key.Tree, line, earlier.steps), Key: key}, nil
 	}
 
-	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item)
+	job, err := e.deps.Gate.Submit(ctx, request.Project, request.Item)
+
+	return gateStart{Job: job, Key: key}, err
+}
+
+// finishProjectGate waits for the host job of the project gate and judges it. The key it returns is empty unless the gate passed on every step
+// and read the tree it judged: only such a pass may stand in for a later gate. The key to compare with is the one that the first step read and recorded.
+func (e *Engine) finishProjectGate(ctx context.Context, request CommandRequest, start gateStart) (map[string]any, string, error) {
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, start.Job)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), recordedKey(gated, key), nil
+	return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), recordedKey(gated, start.Key), nil
 }
 
 // gateKey reads the key of the project gate. A key that cannot be read is an empty key: the gate then runs and reports the same problem.

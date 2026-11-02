@@ -31,6 +31,7 @@ func TestGateReuse_ASecondGateOnTheSameKeyReusesThePassAndRunsNoGate(t *testing.
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, h.gate.calls)
+	assert.EqualValues(t, 1, h.gate.submits.Load(), "the reused pass submitted no host job")
 	require.Len(t, h.commands.ran(), 1)
 	assert.Contains(t, h.commands.ran()[0], rewrittenHead, "the reused pass is for the commit of the second gate")
 	assert.Contains(t, h.commands.ran()[0], "reused the gate pass of run ")

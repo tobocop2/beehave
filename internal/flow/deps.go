@@ -73,9 +73,18 @@ type GateKey struct {
 	Tree string
 }
 
+// GateJob is the host job that a gate started: its id and the head that it judges. A gate with no host job has an empty GateJob.
+// The engine records it as a step of its own, so a run that starts again waits on the same job and starts none.
+type GateJob struct {
+	ID   string `json:"id,omitempty"`
+	Head string `json:"head,omitempty"`
+}
+
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.
+// Submit starts the host job and returns at once. Run then waits for that job and judges the result; given an empty GateJob it starts the job itself.
 type gate interface {
-	Run(ctx context.Context, project, item string) (GateResult, error)
+	Submit(ctx context.Context, project, item string) (GateJob, error)
+	Run(ctx context.Context, project, item string, job GateJob) (GateResult, error)
 	Key(ctx context.Context, project, item string) (GateKey, error)
 }
 
