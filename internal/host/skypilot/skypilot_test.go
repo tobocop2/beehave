@@ -335,7 +335,7 @@ func TestWait_ReadsTheStateFromSlurmAndMapsEachName(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]model.JobState{
-		"COMPLETED": model.JobSucceeded, "FAILED": model.JobFailed, "TIMEOUT": model.JobFailed, "OUT_OF_MEMORY": model.JobFailed,
+		"COMPLETED": model.JobSucceeded, "FAILED": model.JobFailed, "TIMEOUT": model.JobTimedOut, "OUT_OF_MEMORY": model.JobFailed,
 		"NODE_FAIL": model.JobFailed, "CANCELLED": model.JobCanceled, "CANCELLED by 0": model.JobCanceled, "CANCELLED+": model.JobCanceled, //nolint:misspell // Slurm's spelling
 	}
 
@@ -350,6 +350,24 @@ func TestWait_ReadsTheStateFromSlurmAndMapsEachName(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, want, got)
 		})
+	}
+}
+
+func TestWait_AJobThatEndedWithExit124IsTimedOutNotFailed(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]model.JobState{
+		"FAILED|124:0\n": model.JobTimedOut, "FAILED|1:0\n": model.JobFailed, "FAILED|0:124\n": model.JobFailed,
+	}
+
+	for text, want := range tests {
+		h, _, ssh := newScripted(t)
+		ssh.PlanFail("slurm_load_jobs error: Invalid job id specified", "squeue")
+		ssh.Plan(text, "sacct")
+
+		got, err := h.Wait(deadline(t), "5-n")
+		require.NoError(t, err, text)
+		assert.Equal(t, want, got, text)
 	}
 }
 

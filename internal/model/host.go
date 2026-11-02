@@ -38,13 +38,15 @@ const MaxDiskFloorGB = 1 << 20
 
 // HostConfig is the [host] table of a project: the keys every provider shares, and the table of the chosen provider.
 type HostConfig struct {
-	Provider      HostProvider
-	IdleMinutes   int
-	StaleMinutes  int // zero means the default of the provider
-	MaxRun        time.Duration
-	DiskFloorGB   int
-	PrivateRemote string
-	SkyPilot      SkyPilotConfig
+	Provider     HostProvider
+	IdleMinutes  int
+	StaleMinutes int // zero means the default of the provider
+	MaxRun       time.Duration
+	DiskFloorGB  int
+	// DiskWaitMinutes is how long a job waits for free space when the disk is under the floor. Zero means the job is refused at once.
+	DiskWaitMinutes int
+	PrivateRemote   string
+	SkyPilot        SkyPilotConfig
 }
 
 // SkyPilotConfig is the [host.skypilot] table. An empty field leaves the choice to SkyPilot.
@@ -107,13 +109,15 @@ const (
 	JobDied JobState = "died"
 	// JobStale means the log of the job did not grow for host.stale_minutes. The wait stopped the job.
 	JobStale JobState = "stale"
+	// JobTimedOut means the run limit (host.max_run) stopped the job: `timeout` ended it with exit status 124, or the scheduler did. It has no result.
+	JobTimedOut JobState = "timed_out"
 	// JobLost means the link to the host stayed down. The job may still run on the host. It is not a final state of the job.
 	JobLost JobState = "lost"
 )
 
 // Terminal reports whether the job has ended. A lost job has not: the wait cannot tell.
 func (s JobState) Terminal() bool {
-	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale
+	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale || s == JobTimedOut
 }
 
 // RemoteHasHost reports whether a git remote names a machine: a URL with a scheme other than file and a host, or a user@host:path address. A local path or a file URL names none.

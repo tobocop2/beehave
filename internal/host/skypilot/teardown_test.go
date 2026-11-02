@@ -23,8 +23,20 @@ func newTeardown(t *testing.T, private string) (*Host, *proctest.Scripted, *proc
 	ssh.Plan("", "worktree", "list")
 	ssh.PlanResult(model.CommandResult{ExitCode: 1}, "config", "--get-regexp")
 	sky.Plan("", "down")
+	sky.Plan(`[{"name": "other", "status": "UP"}]`, "status")
 
 	return h, sky, ssh
+}
+
+func TestTeardown_AClusterThatSkyStillListsAfterTheDeleteIsNotConfirmedGone(t *testing.T) {
+	t.Parallel()
+
+	h, sky, _ := newTeardown(t, "")
+	sky.Plan(`[{"name": "lane-host", "status": "UP"}]`, "status")
+
+	err := h.Teardown(deadline(t))
+
+	require.ErrorIs(t, err, host.ErrNotDeleted)
 }
 
 func TestTeardown_BanksOnTheHeadNodeThenDeletesTheCluster(t *testing.T) {
@@ -34,7 +46,7 @@ func TestTeardown_BanksOnTheHeadNodeThenDeletesTheCluster(t *testing.T) {
 
 	require.NoError(t, h.Teardown(deadline(t)))
 	assert.True(t, ssh.Called("lane-host", "git", "-C", "/home/lane/repo", "worktree", "list", "--porcelain"), "git runs on the head node")
-	assert.Equal(t, [][]string{{"down", "-y", "lane-host"}}, sky.Calls)
+	assert.Equal(t, [][]string{{"down", "-y", "lane-host"}, {"status", "-r", "-o", "json"}}, sky.Calls, "the delete is followed by a read of the status")
 }
 
 func TestTeardown_KeepsTheClusterWhileTheHeadNodeHoldsUnbankedWork(t *testing.T) {

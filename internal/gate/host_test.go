@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,6 +52,32 @@ func TestRun_EveryWordOfTheHostCommandIsQuoted(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
 	assert.Contains(t, remote.submitted[0].Command, `sh -c 'make '\''check'\''; rm x'`)
+}
+
+func TestRun_TheGateCommandOnAHostRunsUnderTheRunLimitOfTheHost(t *testing.T) {
+	t.Parallel()
+
+	project := hostProject()
+	project.Host = &model.HostConfig{MaxRun: 90 * time.Minute}
+	remote := &fakeRemote{state: model.JobSucceeded}
+	g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, remote)
+
+	_, err := g.Run(context.Background(), hostRequest(project))
+	require.NoError(t, err)
+	require.Len(t, remote.submitted, 1)
+	assert.Contains(t, remote.submitted[0].Command, `[ "$(git rev-parse HEAD)" = a1b2c3 ] && timeout 5400 sh -c 'make check'`)
+}
+
+func TestRun_AHostWithNoRunLimitGetsAGateCommandWithNoTimeout(t *testing.T) {
+	t.Parallel()
+
+	remote := &fakeRemote{state: model.JobSucceeded}
+	g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, remote)
+
+	_, err := g.Run(context.Background(), hostRequest(hostProject()))
+	require.NoError(t, err)
+	require.Len(t, remote.submitted, 1)
+	assert.NotContains(t, remote.submitted[0].Command, "timeout")
 }
 
 func TestRun_AWorkRootWithASpaceAndADollarIsQuotedEverywhereThePathIsUsed(t *testing.T) {

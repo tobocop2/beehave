@@ -360,6 +360,7 @@ func TestHostOutput_ADiedOrStaleJobSaysWhatAPersonCanDo(t *testing.T) {
 	}{
 		{model.JobDied, "scheduler holds no record"},
 		{model.JobStale, "host.stale_minutes"},
+		{model.JobTimedOut, "host.max_run"},
 		{model.JobCanceled, "the state is canceled"},
 	}
 

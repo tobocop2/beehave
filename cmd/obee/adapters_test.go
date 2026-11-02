@@ -332,11 +332,36 @@ type statusHost struct {
 	host.Host
 
 	disk    model.DiskReading
+	grow    uint64 // free bytes added after each Status call
 	submits int
 }
 
 func (s *statusHost) Status(context.Context) (model.HostStatus, error) {
-	return model.HostStatus{Disk: s.disk}, nil
+	status := model.HostStatus{Disk: s.disk}
+	s.disk.FreeBytes += s.grow
+
+	return status, nil
+}
+
+func TestAdapters_HostWaitsForDiskSpaceForTheMinutesTheProjectAllows(t *testing.T) {
+	t.Parallel()
+
+	const gigabyte = 1 << 30
+
+	freeing := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}, grow: 30 * gigabyte}
+	table := newAdapters(beadstest.NewBd(t), nil)
+	table.diskPoll = time.Millisecond
+	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return freeing, nil }
+
+	project := hostProject(model.HostSkyPilot, "lane-host")
+	project.Host.DiskWaitMinutes = 1
+
+	built, err := table.host(project)
+	require.NoError(t, err)
+
+	_, err = built.Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, freeing.submits)
 }
 
 func (s *statusHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {

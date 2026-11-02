@@ -35,6 +35,10 @@ func (h *stubHost) Down(context.Context) error {
 	return nil
 }
 
+func (*stubHost) Status(context.Context) (model.HostStatus, error) {
+	return model.HostStatus{State: model.HostAbsent}, nil
+}
+
 // scriptRunner answers a command line from a function, so a test says what the host holds without a real git.
 type scriptRunner func(args []string) model.CommandResult
 

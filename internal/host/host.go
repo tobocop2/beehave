@@ -38,12 +38,13 @@ type Host interface {
 
 // The refusals of the guards.
 var (
-	ErrUnbanked  = errors.New("work on the host is not on a remote")
-	ErrNoRepos   = errors.New("no repository found on the host")
-	ErrDiskLow   = errors.New("the host is under its free-space floor. Free disk space on the host, or lower `host.disk_floor_gb`")
-	ErrDiskRead  = errors.New("cannot read the free space of the host. Check that the host is up and answers `df`")
-	ErrInUse     = errors.New("a process uses the directory")
-	ErrInUseRead = errors.New("cannot tell whether a process uses the directory. Run the scan as the user that owns the processes")
-	ErrLost      = errors.New("the link to the host stayed down, so the wait cannot tell where the job stands")
-	ErrJobState  = errors.New("the scheduler gave no final state for the job. Read the state of the job in the scheduler of the host")
+	ErrUnbanked   = errors.New("work on the host is not on a remote")
+	ErrNoRepos    = errors.New("no repository found on the host")
+	ErrDiskLow    = errors.New("the host is under its free-space floor. Free disk space on the host, or lower `host.disk_floor_gb`")
+	ErrDiskRead   = errors.New("cannot read the free space of the host. Check that the host is up and answers `df`")
+	ErrNotDeleted = errors.New("the delete call returned, but the host is not confirmed gone. Check the host in the console of the provider and delete it there; a host left up keeps billing")
+	ErrInUse      = errors.New("a process uses the directory")
+	ErrInUseRead  = errors.New("cannot tell whether a process uses the directory. Run the scan as the user that owns the processes")
+	ErrLost       = errors.New("the link to the host stayed down, so the wait cannot tell where the job stands")
+	ErrJobState   = errors.New("the scheduler gave no final state for the job. Read the state of the job in the scheduler of the host")
 )

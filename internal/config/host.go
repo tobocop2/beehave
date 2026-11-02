@@ -25,6 +25,7 @@ type rawHost struct {
 	StaleMinutes  int
 	MaxRun        string
 	DiskFloorGB   int
+	DiskWaitMins  int
 	PrivateRemote string
 	SkyPilot      *rawSkyPilot
 }
@@ -37,7 +38,7 @@ type rawSkyPilot struct {
 
 // The schemas of the host and skypilot constructors.
 func hostSpec() spec {
-	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "private_remote?", "skypilot?"}}
+	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "private_remote?", "skypilot?"}}
 }
 
 func skypilotSpec() spec { return spec{"skypilot", []string{"cloud?", "region?", "instance_type?"}} }
@@ -48,7 +49,7 @@ func newHost(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
 
 	skypilot := nested[rawSkyPilot]{want: skypilotSpec().name}
 
-	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.PrivateRemote, &skypilot)
+	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.PrivateRemote, &skypilot)
 	raw.SkyPilot = skypilot.block
 
 	return raw, err
@@ -131,6 +132,11 @@ func fillCounts(raw rawHost, host *model.HostConfig) error {
 		return err
 	}
 
+	if raw.DiskWaitMins < 0 || raw.DiskWaitMins > maxCount {
+		return refuseAt(raw.At, "`host.disk_wait_minutes` must be zero or above and at most %d; got %d. Fix the value.", maxCount, raw.DiskWaitMins)
+	}
+
+	host.DiskWaitMinutes = raw.DiskWaitMins
 	host.DiskFloorGB, err = positive(raw.At, "host.disk_floor_gb", raw.DiskFloorGB)
 
 	return err
