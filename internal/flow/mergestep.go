@@ -232,19 +232,20 @@ func (s *script) merge(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		m.settings = MergeSettings{}
 	}
 
-	if err := s.readyAndMerge(m); err != nil {
+	pinned, err := s.readyAndMerge(m)
+	if err != nil {
 		return nil, err
 	}
 
-	return s.awaitOwner(m.label, !m.merges)
+	return s.awaitOwner(m.label, pinned, !m.merges)
 }
 
 // readyAndMerge marks the pull request ready at the head of the call. It merges the pull request only when the call merges.
-// A call that merges first checks the scope of the pull request against the first review.
-func (s *script) readyAndMerge(m mergeArgs) error {
+// A call that merges first checks the scope of the pull request against the first review. It returns the head that was marked ready, which the watch compares with each later head.
+func (s *script) readyAndMerge(m mergeArgs) (string, error) {
 	if m.merges {
 		if err := s.holdScope(m.label); err != nil {
-			return err
+			return "", err
 		}
 
 		m.settings.Kept = slices.Clone(s.owned)
@@ -252,20 +253,20 @@ func (s *script) readyAndMerge(m mergeArgs) error {
 
 	pinned, err := s.e.readyStep(s.ctx, s.in.Project, s.in.Item, m.head)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if !m.merges {
-		return nil
+		return pinned, nil
 	}
 
-	return s.e.mergeReady(s.ctx, s.in.Project, s.in.Item, pinned, m.settings)
+	return pinned, s.e.mergeReady(s.ctx, s.in.Project, s.in.Item, pinned, m.settings)
 }
 
 // awaitOwner reads the pull request until the owner merges it or sends it back. When ownerMerges is true, the run first shows that it waits for the owner.
 // The state and the reason go into the result of the item. The reason is empty after a merge.
-func (s *script) awaitOwner(label string, ownerMerges bool) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	end, err := s.watchOwner(ownerMerges)
+func (s *script) awaitOwner(label, pinned string, ownerMerges bool) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	end, err := s.watchOwner(pinned, ownerMerges)
 	if err != nil {
 		return nil, err
 	}
@@ -287,12 +288,12 @@ func (s *script) awaitOwner(label string, ownerMerges bool) (starlark.Value, err
 }
 
 // watchOwner shows that the run waits for the owner when ownerMerges is true, then watches the pull request.
-func (s *script) watchOwner(ownerMerges bool) (watchEnd, error) {
+func (s *script) watchOwner(pinned string, ownerMerges bool) (watchEnd, error) {
 	if ownerMerges {
 		if err := show(s.ctx, s.in.Item, mergeKey, mergeOwner, "that it waits for the owner to merge"); err != nil {
 			return watchEnd{}, err
 		}
 	}
 
-	return s.e.watchReady(s.ctx, s.in.Project, s.in.Item)
+	return s.e.watchReady(s.ctx, s.in.Project, s.in.Item, pinned)
 }

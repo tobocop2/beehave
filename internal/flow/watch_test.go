@@ -68,6 +68,63 @@ func TestRun_TheWatchStepSendsAPullRequestBackToDraftAndEnds(t *testing.T) {
 	}
 }
 
+func TestRun_APushToTheHeadWhileTheWatchWaitsSendsThePullRequestBackToDraft(t *testing.T) {
+	t.Parallel()
+
+	const pushed = "cccccccccccccccccccccccccccccccccccccccc"
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting, Head: gatedHead}, {Kind: review.Waiting, Head: pushed}}
+	engine := harness.engine(t)
+
+	result, err := runWithin(t, engine)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "sent_back", SentBack: "the head moved to " + pushed + " after the review of " + gatedHead}, result)
+
+	_, drafts := harness.watch.seen()
+	assert.Equal(t, []int{testPull}, drafts, "the unreviewed head goes back to draft")
+}
+
+func TestRun_APushThatTheFreshReadDoesNotShowKeepsWatching(t *testing.T) {
+	t.Parallel()
+
+	const pushed = "cccccccccccccccccccccccccccccccccccccccc"
+
+	harness := shipHarness(t)
+	harness.watch.outcomes = []review.Outcome{{Kind: review.Waiting, Head: pushed}, {Kind: review.Waiting, Head: gatedHead}, {Kind: review.Merged}}
+	engine := harness.engine(t)
+
+	result, err := runWithin(t, engine)
+
+	require.NoError(t, err)
+	assert.Equal(t, ItemResult{Item: testItem, Merge: "merged"}, result)
+
+	_, drafts := harness.watch.seen()
+	assert.Empty(t, drafts)
+}
+
+// runWithin runs the item and fails the test when the run does not end within eventTimeout, so a watch that never ends is an assertion and not a hang to the go test timeout.
+func runWithin(t *testing.T, engine *Engine) (ItemResult, error) {
+	t.Helper()
+
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := engine.Run(testItem, testProject)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	select {
+	case outcome := <-done:
+		return outcome.result, outcome.err
+	case <-time.After(eventTimeout):
+		t.Fatalf("the watch did not end within %s", eventTimeout)
+	}
+
+	return ItemResult{}, nil
+}
+
 func TestRun_TheSendBackReadsTheStateAgainAndDoesNotDraftAMergedPullRequest(t *testing.T) {
 	t.Parallel()
 
