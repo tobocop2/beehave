@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
@@ -51,6 +52,20 @@ func savedOwner(dir, id string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// savedOwnerAge returns when obee resume saved the token of a run, and false when it saved none.
+func savedOwnerAge(dir, id string) (time.Time, bool, error) {
+	info, err := os.Stat(ownerPath(dir, id))
+	if errors.Is(err, os.ErrNotExist) {
+		return time.Time{}, false, nil
+	}
+
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read the claim of run %s: %w", id, err)
+	}
+
+	return info.ModTime(), true, nil
 }
 
 // currentOwner returns the token of the claim a run holds: the one that obee resume saved, else the one of the recorded claim step.

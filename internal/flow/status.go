@@ -338,14 +338,15 @@ func (c *Client) Resume(item string) error {
 	}
 
 	if err := c.reopenRun(last); err != nil {
-		return errors.Join(err, c.dropClaim(project, item, owner))
+		return errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
 	}
 
 	return nil
 }
 
-// dropClaim gives back a claim that Resume took, when the run did not reopen. An empty owner means Resume took none.
-func (c *Client) dropClaim(project, item, owner string) error {
+// dropClaim gives back a claim that Resume took for run id, when the run did not reopen, and removes the token it saved: a phase waits for the reopen of a run that has one.
+// An empty owner means Resume took none.
+func (c *Client) dropClaim(project, item, id, owner string) error {
 	if owner == "" {
 		return nil
 	}
@@ -353,7 +354,7 @@ func (c *Client) dropClaim(project, item, owner string) error {
 	ctx, cancel := c.give.limit(context.Background())
 	defer cancel()
 
-	return c.give.Lifecycle.Release(ctx, project, item, owner)
+	return errors.Join(c.give.Lifecycle.Release(ctx, project, item, owner), removeFile(ownerPath(c.dir, id)))
 }
 
 // requireResumable refuses a run that is not canceled or failed, and a run that another version of obee started.
@@ -414,7 +415,7 @@ func (c *Client) claimFresh(project, item, id string) (string, error) {
 	}
 
 	if err := saveOwner(c.dir, id, owner); err != nil {
-		return "", errors.Join(err, c.dropClaim(project, item, owner))
+		return "", errors.Join(err, c.dropClaim(project, item, id, owner))
 	}
 
 	return owner, nil

@@ -365,6 +365,14 @@ func (e *Engine) waitOrStop(in PhaseInput, reason string, early bool, graceEnd t
 		if err != nil || open || e.deps.Clock.now().Before(graceEnd) {
 			return err
 		}
+
+		// obee resume saves the token of its fresh claim before it reopens the phase. A token younger than the claim lease means the reopen of
+		// the run is still to come, however long a slow host takes for it, so the phase keeps waiting. An older token belongs to a resume that
+		// died or to a run that failed, and the phase stops. So does a token dated in the future: a wrong clock wrote it, and its age is unknown.
+		saved, found, err := savedOwnerAge(e.dir, in.Run)
+		if age := e.deps.Clock.now().Sub(saved); err != nil || (found && age >= 0 && age < model.ClaimLease) {
+			return err
+		}
 	}
 
 	return e.lostError(in.Item, reason)
