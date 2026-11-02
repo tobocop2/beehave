@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -507,10 +508,26 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-3-r1\trunning\tstranded: start obee version v1 to finish it\n"+
 		"item-4-r1\tdone\tsent back to draft: a review asks for changes\n"+
 		"item-5-r1\trunning\tmerge: owner_merge\n"+
-		"item-6-r1\tstopped\tstopped at check rc 2\n"+
+		"item-6-r1\tstopped\tstopped at check rc 2: refused\n"+
 		"item-7-r1\trunning\tstranded: made by an older step format. Start the obee build that made it to finish it\n"+
 		"item-8-r1\tdone\tended: the pull request was closed\n", stdout)
 	assert.True(t, rig.steering.closeOK)
+}
+
+func TestStatus_CutsLongStopOutputAndOmitsEmptyOutput(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.infos = []flow.RunInfo{
+		{ID: "a-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 3}},
+		{ID: "b-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 3, Output: strings.Repeat("x", 200)}},
+	}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "a-r1\tstopped\tstopped at check rc 3\n"+
+		"b-r1\tstopped\tstopped at check rc 3: "+strings.Repeat("x", 120)+"…\n", stdout)
 }
 
 func TestStatus_SaysWhenThereAreNoRunsAndReportsAnError(t *testing.T) {
