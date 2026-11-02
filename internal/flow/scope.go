@@ -2,12 +2,16 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
 // The recorded steps that keep the scope of a pull request. The first gate of an item fixes the scope. A merge that merges checks it.
@@ -38,9 +42,7 @@ func (s *script) fixScope(label string) error {
 		return nil
 	}
 
-	read, err := runStep(s.e, s.ctx, s.name(scopeStep, label), func(c context.Context) (scopeRead, error) {
-		return s.readClosing(c)
-	})
+	read, err := runStep(s.e, s.ctx, s.name(scopeStep, label), s.firstRead)
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", scopeStep, s.in.Item, err)
 	}
@@ -50,6 +52,87 @@ func (s *script) fixScope(label string) error {
 	}
 
 	return nil
+}
+
+// firstRead is the body of the scope step. A new run of the item (a restart after a cancel, a send-back round) takes the scope of the newest earlier run that fixed one,
+// so the issues of the first review stay the baseline. The forge is read only when no earlier run fixed a scope.
+func (s *script) firstRead(ctx context.Context) (scopeRead, error) {
+	earlier, err := s.earlierScope()
+	if err != nil || earlier.Found {
+		return earlier, err
+	}
+
+	return s.readClosing(ctx)
+}
+
+// earlierScope returns the scope of the newest earlier run of the item that recorded one, or a read with Found false.
+func (s *script) earlierScope() (scopeRead, error) {
+	ids, err := s.earlierRuns()
+	if err != nil {
+		return scopeRead{}, err
+	}
+
+	for _, id := range ids {
+		if read, err := recordedScope(s.e.ctx, id); err != nil || read.Found {
+			return read, err
+		}
+	}
+
+	return scopeRead{}, nil
+}
+
+// earlierRuns lists the ids of the other runs of the item, the newest attempt first.
+func (s *script) earlierRuns() ([]string, error) {
+	prefix := runPrefix + s.in.Item + attemptMarker
+
+	rows, err := dbos.ListWorkflows(s.e.ctx, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
+	if err != nil {
+		return nil, fmt.Errorf("list the earlier runs of item %s: %w", s.in.Item, err)
+	}
+
+	// The prefix of item 12 also matches a run of item 12-r2, whose tail is not a number: only a numbered id is an attempt of this item.
+	attempts := map[string]int{}
+
+	for _, row := range rows {
+		if attempt, numbered := attemptOf(row.ID, prefix); numbered && row.ID != workflowID(s.ctx) {
+			attempts[row.ID] = attempt
+		}
+	}
+
+	ids := slices.Collect(maps.Keys(attempts))
+	slices.SortFunc(ids, func(a, b string) int { return attempts[b] - attempts[a] })
+
+	return ids, nil
+}
+
+// recordedScope returns the scope that the scope step of a run recorded. Found is false when the run recorded none: it never found a pull request.
+func recordedScope(ctx dbos.Context, id string) (scopeRead, error) {
+	steps, err := dbos.GetWorkflowSteps(ctx, id, dbos.WithStepsLoadOutput(true))
+	if err != nil {
+		return scopeRead{}, fmt.Errorf("read the steps of %s: %w", id, err)
+	}
+
+	for _, step := range steps {
+		if read := scopeOutput(step); read.Found {
+			return read, nil
+		}
+	}
+
+	return scopeRead{}, nil
+}
+
+// scopeOutput returns what a scope step recorded, or a read with Found false for any other step and for a step that failed.
+// The store keeps the output of a step as JSON text.
+func scopeOutput(step dbos.StepInfo) scopeRead {
+	text, isText := step.Output.(string)
+	named := strings.HasPrefix(step.StepName, scopeStep+"#") || strings.HasPrefix(step.StepName, scopeStep+":")
+
+	var read scopeRead
+	if !isText || !named || step.Error != nil || json.Unmarshal([]byte(text), &read) != nil {
+		return scopeRead{}
+	}
+
+	return read
 }
 
 // readClosing reads the closing issues of the pull request of the item, sorted and without a repeat.
