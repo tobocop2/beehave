@@ -27,7 +27,7 @@ def stopped_before(item, name, head, guard):
     check = preflight(name = name, id = item.id, head = head, **guard)
     return None if check.ok else check
 
-def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}):
+def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = []):
     """Runs the loop and returns a struct with stopped, exhausted, rejected, design, gate and review.
 
     guard holds the settings of the preflight call that runs before every review, design and fix agent: base, hold and own.
@@ -48,11 +48,15 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
     again for that mechanism. Replace and delete end the loop at once: design holds the mechanism, the decision and the reason, and no fix round runs.
     A finding on another mechanism, and a finding with no mechanism, keep the normal fix rounds.
 
+    allow lists the globs that a fix may change, as allow_paths does for an agent step. A fix that changes any other path fails the step.
+    An empty list adds no check.
+
     follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
     and the review prompt must ask the agent to write a `findings` list beside the verdict. A reject needs the list too: a call that writes the verdict reject and no `findings` fails the step. With "audit", any open finding of any class
     gives the verdict "findings"; the method sets no threshold, so the prompt decides what the agent lists.
     """
     extra = ["protected-path"] if protect else []
+    scope = {"allow_paths": allow} if allow else {}
     violations = impl.violations
     check = None
     review = None
@@ -149,6 +153,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             forbid_commands = FORBID + extra,
             protect_paths = protect,
             inputs = {"item": item, "round": round, "findings": findings},
+            **scope
         )
         capped(fix, "fix", item)
         violations = fix.violations
