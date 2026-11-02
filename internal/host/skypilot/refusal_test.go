@@ -66,6 +66,9 @@ func TestWait_AnSSHFailureIsNotAnOrdinaryFailure(t *testing.T) {
 	h, _, ssh := newScripted(t)
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
 	h.now, h.sleep = clock.read, clock.sleep
+	// The fake clock moves one poll per pause, and the wait ends after lostAfter on that clock.
+	// A 1 ms poll makes 300 000 reads, which is more than the 5 s deadline on a busy host. A 10 s poll makes 30.
+	h.poll = 10 * time.Second
 	ssh.PlanResult(model.CommandResult{ExitCode: sshFailed, Stderr: "no route"}, "squeue")
 	ssh.Plan("COMPLETED\n", "sacct")
 
