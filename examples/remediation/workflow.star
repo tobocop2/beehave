@@ -186,6 +186,11 @@ def pipeline(item):
             "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",
             name = "adjudicate",
         )
+
+        # The ruling can take days. The settle agent is a dispatch like the others, so the pull request is read again first, with the head the last gate ran on.
+        if not preflight(name = "before-settle", id = item.id, head = loop.gate.head, **guard).ok:
+            return
+
         settle = agent(
             name = "settle",
             prompt = "prompts/settle.md",
