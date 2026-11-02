@@ -22,13 +22,16 @@ import (
 )
 
 const (
-	testVersion  = "v1"
-	testLogin    = "alice"
-	testItem     = "12"
-	testPull     = 7
-	testProject  = "p"
-	testOwner    = "owner-"
-	eventTimeout = 30 * time.Second
+	testVersion = "v1"
+	testLogin   = "alice"
+	testItem    = "12"
+	testPull    = 7
+	testProject = "p"
+	testOwner   = "owner-"
+	// eventTimeout bounds a wait on a condition that is sure to come, such as the last of fourteen durable agent steps. A passing test never waits
+	// the full time. The old bound of 30 s was below the real time of such a run under the race detector in a full gate with four gates on the
+	// host: the same runs took 34 s to 52 s there, so the bound failed correct runs and told nothing about a hang.
+	eventTimeout = 3 * time.Minute
 	pollEvery    = 5 * time.Millisecond
 	// storePoll is the interval at which the two queues of an engine and a result wait read the store. Each poll parses a statement, which
 	// costs most of the CPU of the package under the race detector, and the engines of the parallel tests all poll at once.
