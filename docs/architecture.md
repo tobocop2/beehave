@@ -638,7 +638,7 @@ The loop ends when the gate passed and the review approved. A gate that ran and 
 
 The `review` call has a `pin` of `check.head`, the head that the gate passed, so the review reads only that head.
 
-If the loop used all its rounds, the `exhausted` field of its result is true. The `wait` call in the example then sets a question for the owner and waits for a durable receive with no deadline: the receive starts again every seven days. `obee status` shows the question. `obee answer <item> <text>` sends the answer. The `settle` agent step applies the answer, and the run continues.
+If the loop used all its rounds, the `exhausted` field of its result is true. The `wait` call in the example then sets a question for the owner and waits for a durable receive. With no `timeout` argument the wait has no deadline: the receive starts again every seven days. With `timeout = "48h"` the wait ends at the deadline, the `timed_out` field of its result is true, and the `answer` field is empty. A `timeout` of zero or below is refused by `obee check workflow` and by the run, because it would read as no deadline; leave the argument out for a wait with no deadline. DBOS records the deadline of the wait, so a run that stops and resumes after the deadline times out at once, and a run that resumes before it waits for the time left. An answer that arrives after the deadline and before the engine clears the question is kept for the next `wait` of the same run. `obee status` shows the question. `obee answer <item> <text>` sends the answer. The `settle` agent step applies the answer, and the run continues.
 
 ### Claim beat
 

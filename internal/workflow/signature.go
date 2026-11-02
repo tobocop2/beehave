@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -83,6 +84,15 @@ func wordsRule(name string) func(starlark.Value) error {
 
 // durationRule is the rule of a timeout keyword.
 func durationRule(name string) func(starlark.Value) error {
+	return timeoutRule(name, Duration)
+}
+
+// deadlineRule is the rule of a timeout keyword that sets a deadline: the value must be above zero.
+func deadlineRule(name string) func(starlark.Value) error {
+	return timeoutRule(name, Deadline)
+}
+
+func timeoutRule(name string, read func(name, text string) (time.Duration, error)) func(starlark.Value) error {
 	return func(v starlark.Value) error {
 		if v == starlark.None {
 			var text string
@@ -91,7 +101,7 @@ func durationRule(name string) func(starlark.Value) error {
 		}
 
 		text, _ := starlark.AsString(v)
-		_, err := Duration(name, text)
+		_, err := read(name, text)
 
 		return err
 	}
@@ -184,7 +194,7 @@ func stepSignatures() map[string][]Param {
 		gateName: {
 			words("run"), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
-		waitName:         {opt("question", KindText), label},
+		waitName:         {opt("question", KindText), ruled("timeout", KindText, deadlineRule("timeout")), label},
 		hostTeardownName: {label},
 		hostUpName:       {label},
 	}

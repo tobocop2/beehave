@@ -95,6 +95,20 @@ func Duration(name, text string) (time.Duration, error) {
 	return d, nil
 }
 
+// Deadline reads a timeout argument that the caller gave and that sets a deadline. A deadline of zero or less would mean no deadline, so it is refused.
+func Deadline(name, text string) (time.Duration, error) {
+	d, err := Duration(name, text)
+	if err != nil {
+		return 0, err
+	}
+
+	if d <= 0 {
+		return 0, fmt.Errorf("%s is %q, which must be above zero. Write a duration such as \"48h\", or leave %s out to wait with no deadline", name, text, name)
+	}
+
+	return d, nil
+}
+
 // OutputTries refuses a number of tries below one.
 func OutputTries(n int) error {
 	if n < 1 {
