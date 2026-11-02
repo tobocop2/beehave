@@ -151,12 +151,20 @@ func runGateCommand(t *testing.T, gateCommand string, env ...string) (int, strin
 func runGateCommandWithOutput(t *testing.T, gateCommand string, env ...string) (int, string, bool, string) {
 	t.Helper()
 
+	project := hostProject()
+	project.Gate = gateCommand
+
+	return runProjectCommand(t, project, env...)
+}
+
+// runProjectCommand runs the command that the gate sends to the host for project, with the shim as git.
+func runProjectCommand(t *testing.T, project model.Project, env ...string) (int, string, bool, string) {
+	t.Helper()
+
 	home, bin := t.TempDir(), t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), gitShim))
 
 	remote := &fakeRemote{state: model.JobSucceeded, root: home}
-	project := hostProject()
-	project.Gate = gateCommand
 	_, err := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, remote).Run(context.Background(), hostRequest(project))
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
@@ -244,6 +252,28 @@ func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
 	left, err := filepath.Glob(filepath.Join(home, "obee-gate-*"))
 	require.NoError(t, err)
 	assert.Empty(t, left)
+}
+
+func TestHostCommand_ARealShellFailsAGateThatPassedWithNoTestCaseInItsReportAndPassesOneWithATest(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		report   string
+		wantCode bool
+		wantMark bool
+	}{
+		"a report with a test case": {report: `<testsuite><testcase name="a"/></testsuite>`, wantCode: true},
+		"a report with no test":     {report: `<testsuite tests="0"></testsuite>`, wantMark: true},
+	} {
+		project := hostProject()
+		project.TestReport = "reports/*.xml"
+		project.Gate = "mkdir reports && echo '" + test.report + "' > reports/a.xml"
+
+		code, _, _, out := runProjectCommand(t, project, "SHIM_HEAD="+headA)
+
+		assert.Equal(t, test.wantCode, code == 0, name)
+		assert.Equal(t, test.wantMark, strings.Contains(out, "obee-gate-no-tests"), name)
+	}
 }
 
 func TestHostCommand_PassesWhenTheCheckedOutHeadIsTheSentCommit(t *testing.T) {
