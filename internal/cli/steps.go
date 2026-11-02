@@ -75,6 +75,15 @@ func stepLine(step flow.StepLine) string {
 	return strings.Join(columns, "\t")
 }
 
+// rewroteWord is "yes" for an agent that rewrote the history, and empty otherwise.
+func rewroteWord(rewrote bool) string {
+	if rewrote {
+		return "yes"
+	}
+
+	return ""
+}
+
 // stepFields lists the fields of a step as `name=value`, in a fixed order.
 func stepFields(step flow.StepLine) []string {
 	var fields []string
@@ -88,6 +97,7 @@ func stepFields(step flow.StepLine) []string {
 
 	fields = appendText(fields, "verdict", step.Verdict)
 	fields = appendText(fields, "head", step.Head)
+	fields = appendText(fields, "rewrote", rewroteWord(step.Rewrote))
 
 	if step.Passed != nil {
 		fields = append(fields, "gate="+gateWord(*step.Passed), gateSteps(step.Gate))

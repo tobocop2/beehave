@@ -178,7 +178,7 @@ func TestPulls_AnItemWithoutOrWithManyPullRequestsIsAnError(t *testing.T) {
 
 	none := &pullForge{}
 	_, err := pullsOver(none).Pull(t.Context(), "p", "bb-1")
-	require.ErrorIs(t, err, errNoPull)
+	require.ErrorIs(t, err, forge.ErrNoPull)
 
 	many := &pullForge{listed: map[string][]model.PullRequest{"open": {{Number: 1}, {Number: 2}}}}
 	_, err = pullsOver(many).Pull(t.Context(), "p", "bb-1")
@@ -260,7 +260,7 @@ func TestPulls_ReadyTakesThePullRequestOutOfDraft(t *testing.T) {
 	assert.Equal(t, []draftCall{{7, false}}, f.drafts)
 
 	none := &pullForge{}
-	require.ErrorIs(t, pullsOver(none).Ready(t.Context(), "p", "bb-1"), errNoPull)
+	require.ErrorIs(t, pullsOver(none).Ready(t.Context(), "p", "bb-1"), forge.ErrNoPull)
 }
 
 func TestPulls_WatchReadsOnceAndSetDraftChangesThePullRequest(t *testing.T) {

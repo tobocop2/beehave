@@ -126,7 +126,21 @@ func (r *agentRig) crashAfterThePhaseEnded(t *testing.T, file string) {
 func (r *agentRig) crashItemAfterThePhaseEnded(t *testing.T, item, file string) {
 	t.Helper()
 
-	r.crashItemAfterThePhaseEndedArmedBy(t, item, file, func(arm func()) { arm() })
+	// The render step reads HEAD before the agent starts, so the pipe goes into the folder config when the agent ends: the first git command that blocks is the read.
+	r.crashItemAfterThePhaseEndedArmedBy(t, item, file, func(arm func()) {
+		prior := r.h.agents.result
+
+		r.h.agents.result = func(request AgentRequest) agent.Result {
+			result := agent.Result{Outcome: agent.OutcomeExited}
+			if prior != nil {
+				result = prior(request)
+			}
+
+			arm()
+
+			return result
+		}
+	})
 }
 
 // crashItemAfterThePhaseEndedArmedBy is crashItemAfterThePhaseEnded with a choice of when the pipe goes into the folder config.

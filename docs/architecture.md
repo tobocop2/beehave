@@ -625,6 +625,8 @@ Phases run on the queue `agents`, or on the queue `reviews` for an agent call wi
 
 ### Cost budgets
 
+Every agent call returns `rewrote`: true when the commit of the item folder before the agent started is not in the history of its commit after the run, so the agent amended, squashed or reset. The render step records that first commit once for the whole call, so a replay keeps it and every try of `output_tries` compares with it. A try that amends a commit of an earlier try of the same call is not a rewrite, because that history did not exist before the step. The render step fails when the item folder has no git commit, before the agent starts. `obee status <run id>` shows `rewrote=yes` on the line of such a step. A record made before the render step kept the commit gives false.
+
 Every agent call returns `cost_usd`: the total cost in dollars that the agent CLI reports on its result line (`total_cost_usd` for `claude`). The value is 0 when the CLI reports none, and for a dry run. The cost is recorded in the phase and in the read step of the agent call, so a replay returns the recorded cost and never asks the CLI again. A run that fails before its result line leaves no cost.
 
 Three caps use the cost.

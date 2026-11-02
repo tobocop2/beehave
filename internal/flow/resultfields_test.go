@@ -39,7 +39,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 	t.Parallel()
 
 	got := map[string][]string{
-		"agent":         keysOf(agentOutputs("", "", "", "", "", "", 0)),
+		"agent":         keysOf(agentOutputs("", "", "", "", "", "", 0, false)),
 		"command":       keysOf(commandOutputs("", "", 0)),
 		"gate":          keysOf(gateOutputs(true, "", "", "", nil)),
 		"item_comment":  keysOf(commentOutputs("")),

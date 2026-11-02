@@ -429,10 +429,7 @@ func closeAfter(err error, opened any) error {
 	return err
 }
 
-var (
-	errNoPull   = errors.New("the item has no pull request")
-	errManyPull = errors.New("the item has more than one pull request")
-)
+var errManyPull = errors.New("the item has more than one pull request")
 
 // pullListLimit is the limit of one pull request search. A list at the limit is refused, so it must be larger than one.
 const pullListLimit = 5
@@ -535,7 +532,7 @@ func (p pulls) numberOf(ctx context.Context, built opened, item string) (opened,
 		}
 	}
 
-	return opened{}, 0, fmt.Errorf("%w: no pull request is on the branch %s", errNoPull, item)
+	return opened{}, 0, fmt.Errorf("%w: no pull request is on the branch %s", forge.ErrNoPull, item)
 }
 
 // listed returns the number of the one pull request in the state on the branch of the item, or 0 when there is none.
@@ -594,7 +591,7 @@ func (p pulls) Ready(ctx context.Context, project, item string) error {
 // GitHub lists closing references only for a pull request into the default branch, so a pull request into another base has an empty set.
 func (p pulls) ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error) {
 	built, number, err := p.find(ctx, project, item)
-	if errors.Is(err, errNoPull) || errors.Is(err, forge.ErrNoForge) {
+	if errors.Is(err, forge.ErrNoPull) || errors.Is(err, forge.ErrNoForge) {
 		return nil, false, nil
 	}
 

@@ -57,10 +57,12 @@ type StepLine struct {
 	// Rounds is the cap of the loop that an agent step named with its rounds keyword. It is 0 for a step that named none.
 	Rounds int `json:"rounds,omitempty"`
 	// Cost is the dollars that the agent runs of the call spent, failed runs included. It is 0 for a step that is not an agent.
-	Cost    float64    `json:"cost_usd,omitempty"`
-	Stop    string     `json:"stop,omitempty"`
-	Verdict string     `json:"verdict,omitempty"`
-	Head    string     `json:"head,omitempty"`
+	Cost    float64 `json:"cost_usd,omitempty"`
+	Stop    string  `json:"stop,omitempty"`
+	Verdict string  `json:"verdict,omitempty"`
+	Head    string  `json:"head,omitempty"`
+	// Rewrote is set when the commit the agent started on is not in the history of its head: the agent amended, squashed or reset.
+	Rewrote bool       `json:"rewrote,omitempty"`
 	Passed  *bool      `json:"passed,omitempty"`
 	Gate    []GateStep `json:"gate,omitempty"`
 	// OutputUnreadable is set when a recorded output of the step did not decode into the type the engine wrote. The other fields are then incomplete.
@@ -323,7 +325,7 @@ func (l *StepLine) fromPhase(phase PhaseOutput) {
 
 // fromAgentRead takes the head, the cap that stopped the agent and the verdict from the read of its outputs.
 func (l *StepLine) fromAgentRead(read agentRead) {
-	l.Head, l.Stop, l.Verdict = read.Head, read.Stop, read.Verdict
+	l.Head, l.Stop, l.Verdict, l.Rewrote = read.Head, read.Stop, read.Verdict, read.Rewrote
 	l.Cost += read.Cost
 }
 
