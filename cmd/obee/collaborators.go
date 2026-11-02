@@ -20,6 +20,7 @@ import (
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/lease"
+	"github.com/tobocop2/obee/internal/lockfile"
 	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/preflight"
@@ -38,6 +39,8 @@ var (
 const (
 	folderMode  = 0o700
 	gitWorktree = "worktree"
+	// lockRetry is how often a start that waits for the lock of a clone tries it again.
+	lockRetry = 25 * time.Millisecond
 )
 
 // worktrees finds the worktree of an item under root, in the folder <root>/<project>/<item>. The folder must be a worktree that git lists.
@@ -74,9 +77,25 @@ func (w worktrees) Ensure(ctx context.Context, project, item string) (string, er
 }
 
 // create refreshes the clone of the project and adds the worktree dir of the item from it.
-func (w worktrees) create(ctx context.Context, project config.Project, dir, item string) (string, error) {
+// It holds a file lock of the project for the whole call. The clone and every worktree add of one project run one at a time,
+// so the first start makes the clone and each later start finds it ready. A file lock also holds across engines that share the repos folder.
+func (w worktrees) create(ctx context.Context, project config.Project, dir, item string) (added string, err error) {
+	if err = os.MkdirAll(w.repos, folderMode); err != nil {
+		return "", fmt.Errorf("make the folder for the clone of project %s: %w", project.Name, err)
+	}
+
 	clone := filepath.Join(w.repos, model.SafeName(project.Name))
-	if err := w.refresh(ctx, project, clone); err != nil {
+
+	held := lockfile.Open(clone + ".lock")
+	if _, err = held.TryLockContext(ctx, lockRetry); err != nil {
+		return "", fmt.Errorf("lock the clone of project %s: %w", project.Name, err)
+	}
+
+	defer func() { err = errors.Join(err, held.Unlock()) }()
+
+	// The lock also covers the fetch, because two fetches into one clone race on its ref locks.
+
+	if err = w.refresh(ctx, project, clone); err != nil {
 		return "", err
 	}
 
@@ -138,10 +157,6 @@ func (w worktrees) clone(ctx context.Context, project config.Project, dir string
 
 	if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("read the clone of project %s: %w", project.Name, err)
-	}
-
-	if err = os.MkdirAll(w.repos, folderMode); err != nil {
-		return fmt.Errorf("make the folder for the clone of project %s: %w", project.Name, err)
 	}
 
 	remote, err := cloneSource(project.Project, w.forge)
