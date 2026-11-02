@@ -47,6 +47,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"item_status":   keysOf(statusOutputs("", "")),
 		"merge":         keysOf(mergeOutputs("", "")),
 		"host_teardown": keysOf(teardownOutputs(true, "")),
+		"host_up":       keysOf(upOutputs(true)),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
 		"wait":          keysOf(answerOutputs("")),
 	}

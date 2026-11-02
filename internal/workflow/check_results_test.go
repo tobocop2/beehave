@@ -147,7 +147,7 @@ func TestCheck_ATopLevelStatementThatIsNotAFunctionIsSkipped(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "batch_merge", "command", "gate", "gather", "host_teardown", "item_comment", "item_create", "item_status", "merge", "preflight", "queue", "spawn", "wait"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "batch_merge", "command", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_status", "merge", "preflight", "queue", "spawn", "wait"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

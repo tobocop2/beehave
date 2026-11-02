@@ -44,6 +44,9 @@ type script struct {
 	// stopped is the command that ended the item on a code of its stop_on_rc.
 	stopped *Stopped
 
+	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
+	hostStarted bool
+
 	// fixed is true once the first gate has recorded scope, the closing issues of the pull request at the first review.
 	// owned holds the issues that the owner kept by an answer.
 	fixed bool

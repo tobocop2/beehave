@@ -453,7 +453,7 @@ type harness struct {
 	commands  *fakeCommands
 	items     *fakeItems
 	writer    writer      // nil unless a test sets it
-	hosts     hostStopper // nil unless a test sets it
+	hosts     hostKeeper  // nil unless a test sets it
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
 	others    *fakeOthers // nil unless a test sets it

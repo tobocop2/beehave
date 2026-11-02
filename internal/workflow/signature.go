@@ -186,6 +186,7 @@ func stepSignatures() map[string][]Param {
 		},
 		waitName:         {opt("question", KindText), label},
 		hostTeardownName: {label},
+		hostUpName:       {label},
 	}
 }
 
