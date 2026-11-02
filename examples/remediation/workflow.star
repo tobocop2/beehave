@@ -12,6 +12,24 @@ FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "gi
 def protected():
     return [env("SOURCE_CHECKOUT")]
 
+def lane_scope():
+    """Returns the allow_paths setting of the lane, as a dict to pass with `**`.
+    The environment variable LANE_KIND names the kind of lane: impl (the default), papers or design.
+    An impl lane may change any path. A papers or design lane may change only the globs in ALLOW_PATHS, split by spaces.
+    The implement step and every fix step fail, and the message names each path outside the globs, when they change another path."""
+    kind = env("LANE_KIND", default = "impl")
+    if kind == "impl":
+        return {}
+
+    if kind not in ["papers", "design"]:
+        fail("REFUSE: LANE_KIND is %r. The kinds are impl, papers or design" % kind)
+
+    globs = env("ALLOW_PATHS", default = "").split()
+    if len(globs) == 0:
+        fail("REFUSE: a %s lane changes no source path, so ALLOW_PATHS must list the globs it may change, split by spaces" % kind)
+
+    return {"allow_paths": globs}
+
 def land(item, pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `pins` is id=sha: the item and the full SHA the owner reviewed, as EXPECT_HEAD is for one item.
@@ -99,6 +117,8 @@ def pipeline(item):
     if not intake.ok:
         return
 
+    scope = lane_scope()
+
     plan = agent(
         name = "plan",
         prompt = "prompts/plan.md",
@@ -118,6 +138,7 @@ def pipeline(item):
         forbid_commands = FORBID,
         protect_paths = protected(),
         inputs = {"item": item, "plan": plan.text},
+        **scope
     )
 
     # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the gate and the review.
@@ -131,7 +152,7 @@ def pipeline(item):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head the gate ran on (the head of the worktree), the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     guard = {"base": env("BASE"), "hold": "hold", "own": {"logins": [env("OWNER_LOGIN")]}}
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard)
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []))
 
     if loop.stopped:
         return
@@ -165,6 +186,7 @@ def pipeline(item):
             prompt = "prompts/settle.md",
             model = "sonnet",
             inputs = {"ruling": ruling.answer},
+            **scope
         )
 
         if settle.stop != "":
