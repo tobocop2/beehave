@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/tobocop2/obee/internal/exectest"
 	"github.com/tobocop2/obee/internal/model"
@@ -294,10 +295,12 @@ func TestKillGroupID_KillsTheGroupOfAStartedCommand(t *testing.T) {
 
 // forkScript starts 40 sleeps of 2 seconds in the background. A start that the kernel refuses ends the shell with a non-zero code.
 // The loop ends by itself, and the exit trap kills every sleep it started.
-const forkScript = `trap 'kill $(jobs -p) 2>/dev/null' EXIT
+const forkScript = `pids=
+trap 'kill $pids 2>/dev/null' EXIT
 i=0
 while [ $i -lt 40 ]; do
   sleep 2 &
+  pids="$pids $!"
   i=$((i + 1))
 done
 echo started $i`
@@ -336,6 +339,161 @@ func TestExecRunner_ACapDoesNotReadTheRequestPath(t *testing.T) { //nolint:paral
 	assert.Zero(t, done.ExitCode, done.Stderr)
 	assert.Equal(t, "ok\n", done.Stdout)
 	assert.Empty(t, done.Stderr, "no count tool is looked up in the PATH of the request")
+}
+
+func TestExecRunner_AProcessCapSetsTheLimitWhateverShellIsBinSh(t *testing.T) { //nolint:paralleltest // see above
+	if _, err := os.Stat("/proc/self/limits"); err != nil {
+		t.Skip("the limits of a process are read from /proc")
+	}
+
+	count := func() (int, error) { return 2000, nil }
+	done := proc.WithCount(proc.ExecRunner{Binary: "cat", Dir: t.TempDir(), Timeout: 30 * time.Second, MaxNewProcesses: 1000}, count).Run(context.Background(), []string{"/proc/self/limits"})
+
+	require.NoError(t, done.SetupErr)
+	require.Zero(t, done.ExitCode, done.Stderr)
+	assert.Regexp(t, `(?m)^Max processes\s+3000\s+3000\s`, done.Stdout)
+}
+
+// capHelperRun runs the cap helper with fake system calls and returns what it wrote on its error file, its exit code (-1 for none), the limit it set and the program it ran.
+func capHelperRun(t *testing.T, argv []string, setErr, execErr error) (written string, code int, limit uint64, program string) {
+	t.Helper()
+
+	fail, err := os.Create(filepath.Join(t.TempDir(), "fd3"))
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = fail.Close() })
+
+	code = -1
+	require.NoError(t, proc.RunCapHelper(argv, fail,
+		func(_ int, rlim *unix.Rlimit) error { limit = rlim.Cur; return setErr },
+		func(path string, _, _ []string) error { program = path; return execErr },
+		func(c int) { code = c }))
+
+	data, err := os.ReadFile(fail.Name())
+	require.NoError(t, err)
+
+	return string(data), code, limit, program
+}
+
+func TestExecRunner_AProgramThatCannotBeExecutedFailsTheStepWithTheCause(t *testing.T) { //nolint:paralleltest // see above
+	program := filepath.Join(t.TempDir(), "noformat")
+	require.NoError(t, os.WriteFile(program, []byte("not a program\n"), 0o700)) //nolint:gosec // the test needs an executable file
+
+	done := proc.ExecRunner{Binary: program, Timeout: 30 * time.Second, MaxNewProcesses: 1000}.Run(context.Background(), nil)
+
+	assert.Equal(t, proc.ExitCapFailed, done.ExitCode)
+	require.Error(t, done.SetupErr)
+	assert.Contains(t, done.SetupErr.Error(), "could not set max_new_processes = ")
+	assert.Contains(t, done.SetupErr.Error(), program+": exec format error")
+}
+
+func TestExecRunner_ACapWithoutTheRunningProgramFailsTheStepAndTheCommandDoesNotRun(t *testing.T) { //nolint:paralleltest // see above
+	marker := filepath.Join(t.TempDir(), "ran")
+	executable := func() (string, error) { return "", errors.New("no executable") }
+	done := proc.WithExecutable(proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), MaxNewProcesses: 50}, executable).Run(context.Background(), []string{"-c", "touch " + marker})
+
+	assert.Equal(t, proc.ExitCapFailed, done.ExitCode)
+	require.ErrorContains(t, done.SetupErr, "could not find the running program")
+	assert.NoFileExists(t, marker)
+}
+
+func TestExecRunner_ACapWithAProgramThatCannotStartFailsTheStepNamingThePath(t *testing.T) { //nolint:paralleltest // see above
+	gone := filepath.Join(t.TempDir(), "obee-gone")
+	runner := proc.WithProcSelf(proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), MaxNewProcesses: 50}, filepath.Join(t.TempDir(), "no-proc-self"))
+	done := proc.WithExecutable(runner, func() (string, error) { return gone, nil }).Run(context.Background(), []string{"-c", "exit 0"})
+
+	assert.Equal(t, proc.ExitCapFailed, done.ExitCode)
+	require.ErrorContains(t, done.SetupErr, "could not set max_new_processes")
+	require.ErrorContains(t, done.SetupErr, gone)
+}
+
+func TestExecRunner_ACapRunsThroughTheOpenImageWhenTheProgramFileIsGone(t *testing.T) { //nolint:paralleltest // see above
+	image, err := os.Executable()
+	require.NoError(t, err)
+
+	gone := filepath.Join(t.TempDir(), "obee-gone")
+	runner := proc.WithProcSelf(proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), Timeout: 30 * time.Second, MaxNewProcesses: 1000}, image)
+	done := proc.WithExecutable(runner, func() (string, error) { return gone, nil }).Run(context.Background(), []string{"-c", "printf ran"})
+
+	require.NoError(t, done.SetupErr)
+	assert.Equal(t, "ran", done.Stdout)
+	assert.Zero(t, done.ExitCode)
+}
+
+func TestExecRunner_ACapWithTheProgramFileGoneUsesTheOpenImageOfThisSystem(t *testing.T) { //nolint:paralleltest // see above
+	_, err := os.Stat("/proc/self/exe")
+	gone := filepath.Join(t.TempDir(), "obee-gone")
+	runner := proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), Timeout: 30 * time.Second, MaxNewProcesses: 1000}
+	done := proc.WithExecutable(runner, func() (string, error) { return gone, nil }).Run(context.Background(), []string{"-c", "printf ran"})
+
+	if err != nil {
+		assert.Equal(t, proc.ExitCapFailed, done.ExitCode)
+		require.ErrorContains(t, done.SetupErr, gone)
+
+		return
+	}
+
+	require.NoError(t, done.SetupErr)
+	assert.Equal(t, "ran", done.Stdout)
+}
+
+func TestExecRunner_ACappedCommandGetsExactlyTheEnvironmentItIsGiven(t *testing.T) { //nolint:paralleltest // see above
+	runner := proc.ExecRunner{Binary: "env", Timeout: 30 * time.Second, Env: []string{"OBEE_PROC_TEST=seen", "OBEE_OTHER=two"}}
+	plain := runner.Run(context.Background(), nil)
+	runner.MaxNewProcesses = 1000
+	capped := runner.Run(context.Background(), nil)
+
+	require.NoError(t, capped.SetupErr)
+	require.Zero(t, plain.ExitCode, plain.Stderr)
+	assert.Contains(t, capped.Stdout, "OBEE_PROC_TEST=seen")
+	assert.ElementsMatch(t, strings.Split(plain.Stdout, "\n"), strings.Split(capped.Stdout, "\n"))
+}
+
+func TestCapHelper_AnotherProgramNameDoesNothing(t *testing.T) {
+	t.Parallel()
+
+	written, code, _, _ := capHelperRun(t, []string{"obee", "5", "/bin/true"}, nil, nil)
+	assert.Empty(t, written)
+	assert.Equal(t, -1, code)
+
+	written, code, _, _ = capHelperRun(t, nil, nil, nil)
+	assert.Empty(t, written)
+	assert.Equal(t, -1, code)
+}
+
+func TestCapHelper_SetsTheLimitThenRunsTheProgram(t *testing.T) {
+	t.Parallel()
+
+	written, code, limit, program := capHelperRun(t, []string{proc.CapArg0, "42", "/bin/true", "x"}, nil, errors.New("exec returned"))
+
+	assert.Equal(t, uint64(42), limit)
+	assert.Equal(t, "/bin/true", program)
+	assert.Equal(t, proc.ExitCapFailed, code, "an exec that returns is a failure")
+	assert.Contains(t, written, "/bin/true: exec returned")
+}
+
+func TestCapHelper_AFailureIsWrittenAndTheProgramDoesNotRun(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		argv   []string
+		setErr error
+		want   string
+	}{
+		"no program":      {[]string{proc.CapArg0, "5"}, nil, "needs a limit and a program"},
+		"not a number":    {[]string{proc.CapArg0, "many", "/bin/true"}, nil, "invalid syntax"},
+		"limit not taken": {[]string{proc.CapArg0, "5", "/bin/true"}, syscall.EPERM, "setrlimit: operation not permitted"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			written, code, _, program := capHelperRun(t, test.argv, test.setErr, errors.New("must not run"))
+
+			assert.Contains(t, written, test.want)
+			assert.Equal(t, proc.ExitCapFailed, code)
+			assert.Empty(t, program)
+		})
+	}
 }
 
 func TestExecRunner_AFailedCountFailsTheStepAndTheCommandDoesNotRun(t *testing.T) { //nolint:paralleltest // see above
