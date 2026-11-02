@@ -24,9 +24,8 @@ const unknownReads = 3
 const settleEvery = 10 * time.Second
 
 var (
-	errNoBatch  = &absentError{message: "this build cannot run batch_merge. Use a build that sets a batch host", step: "merge a batch of pull requests"}
-	errNoScope  = errors.New("batch_merge runs only inside a workflow run. Call it from main() of a workflow file")
-	errNoMember = errors.New("`prs` is empty. Pass a list of struct(item = ..., head = ...), one for each pull request to land")
+	errNoBatch = &absentError{message: "this build cannot run batch_merge. Use a build that sets a batch host", step: "merge a batch of pull requests"}
+	errNoScope = errors.New("batch_merge runs only inside a workflow run. Call it from main() of a workflow file")
 
 	// ErrMemberNotOpen is what the batch host returns from Intent for a pull request that is not OPEN. The batch rejects that member and goes on.
 	ErrMemberNotOpen = errors.New("not OPEN")
@@ -188,50 +187,17 @@ func (s *script) batchScope(name string) error {
 
 // members reads the `prs` argument: a list of structs with the text fields `item` and `head`.
 func members(v starlark.Value) ([]batch.Member, error) {
-	notList := errors.New("`prs` must be a list of struct(item = ..., head = ...)")
-
-	list, err := workflow.ListOfEach(v, member, notList)
+	prs, err := workflow.PullRequests(v)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(list) == 0 {
-		return nil, errNoMember
+	list := make([]batch.Member, len(prs))
+	for i, pr := range prs {
+		list[i] = batch.Member{Item: pr.Item, Head: pr.Head}
 	}
 
 	return list, nil
-}
-
-// member reads one entry of `prs`.
-func member(entry starlark.Value) (batch.Member, error) {
-	pr, isStruct := entry.(*starlarkstruct.Struct)
-	if !isStruct {
-		return batch.Member{}, fmt.Errorf("`prs` holds a %s. Use struct(item = ..., head = ...)", entry.Type())
-	}
-
-	item, err := field(pr, itemName)
-	if err != nil {
-		return batch.Member{}, err
-	}
-
-	head, err := field(pr, "head")
-
-	return batch.Member{Item: item, Head: head}, err
-}
-
-// field reads a text field of a member struct.
-func field(pr *starlarkstruct.Struct, name string) (string, error) {
-	value, err := pr.Attr(name)
-	if err != nil {
-		return "", fmt.Errorf("a member of `prs` has no `%s`. Use struct(item = ..., head = ...)", name)
-	}
-
-	text, ok := starlark.AsString(value)
-	if !ok || text == "" {
-		return "", fmt.Errorf("`%s` of a member of `prs` must be text that is not empty", name)
-	}
-
-	return text, nil
 }
 
 // batchResult turns the result of a batch and the report of the read after it into the struct of the builtin.

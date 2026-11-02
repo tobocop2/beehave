@@ -23,8 +23,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for the protected paths", `agent(prompt = "p", model = "m", protect_paths = "/own/checkout")`, "protect_paths must be a list, not a text."},
 		{"agent text for the edits switch", `agent(prompt = "p", model = "m", edits = "no")`, "edits must be a bool, not a text."},
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
-		{"batch_merge unknown keyword", `batch_merge(prs = [], base = "b", repo = "r", name = "n", limit = 2)`, "batch_merge takes no argument limit"},
-		{"batch_merge missing base", `batch_merge(prs = [], repo = "r", name = "n")`, "batch_merge needs the `base` keyword"},
+		{"batch_merge unknown keyword", `batch_merge(prs = item.id, base = "b", repo = "r", name = "n", limit = 2)`, "batch_merge takes no argument limit"},
+		{"batch_merge missing base", `batch_merge(prs = item.id, repo = "r", name = "n")`, "batch_merge needs the `base` keyword"},
 		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, name."},
 		{"command cap as text", `command(run = ["a"], max_new_processes = "5")`, "max_new_processes must be an int, not a text."},
 		{"command cap of zero", `command(run = ["a"], max_new_processes = 0)`, "command: max_new_processes must be a whole number from 1 to 100000."},
@@ -86,7 +86,7 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 	calls := []string{
 		`agent("p", "m", follow_ups = "forbid", outputs = ["verdict"], output_tries = 2, inputs = {"a": 1}, allow_paths = ["papers/**"])`,
 		`agent("p", "m", forbid_commands = ["protected-path"], protect_paths = ["/own/checkout"])`,
-		`batch_merge([], "b", "r", name = "n", gate_run = ["make"])`,
+		`batch_merge(item.id, "b", "r", name = "n", gate_run = ["make"])`,
 		`command(["a"], env = {"A": "b"}, stop_on_rc = [1], name = "n")`,
 		`command(["a"], max_new_processes = 50)`,
 		`command(["a"], max_new_processes = len(item))`,
@@ -252,4 +252,42 @@ func TestUnpack_RefusesDestinationsThatDifferFromTheSignature(t *testing.T) {
 	require.ErrorContains(t, workflow.Unpack("command", nil, nil, map[string]any{"run": &one}), want)
 	require.ErrorContains(t, workflow.Unpack("wait", nil, nil, map[string]any{"question": &one, "timeout": &two, "other": &two}), want)
 	assert.ErrorContains(t, workflow.Unpack("nope", nil, nil, nil), want)
+}
+
+func TestUnpack_RefusesADestinationOfAnotherTypeThanTheKindOfItsKeyword(t *testing.T) {
+	t.Parallel()
+
+	var (
+		value starlark.Value
+		text  string
+		tries int
+		edits bool
+	)
+
+	const want = "destinations that differ from the keywords of its signature"
+
+	agent := func(overrides map[string]any) error {
+		into := map[string]any{}
+		for _, name := range []string{"prompt", "model", "runner", "pin", "resume", "follow_ups", "kind", "lane", "timeout", "idle_timeout", "name"} {
+			into[name] = &text
+		}
+
+		for _, name := range []string{"inputs", "outputs", "require_skills", "forbid_commands", "allow_paths", "protect_paths", "max_budget_usd", "sandbox", "rounds"} {
+			into[name] = &value
+		}
+
+		into["output_tries"], into["edits"] = &tries, &edits
+
+		for name, dest := range overrides {
+			into[name] = dest
+		}
+
+		return workflow.Unpack("agent", nil, nil, into)
+	}
+
+	assert.NotContains(t, agent(nil).Error(), want) // the right types reach the unpack, which then misses the required prompt
+	require.ErrorContains(t, agent(map[string]any{"output_tries": &text}), want)
+	require.ErrorContains(t, agent(map[string]any{"edits": &tries}), want)
+	require.ErrorContains(t, agent(map[string]any{"prompt": &value}), want)
+	require.ErrorContains(t, agent(map[string]any{"inputs": &text}), want)
 }

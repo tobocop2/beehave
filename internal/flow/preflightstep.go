@@ -66,7 +66,7 @@ func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.T
 		return req, "", "", "", err
 	}
 
-	req.Own, _, err = ownerIdentity(own)
+	req.Own, _, err = workflow.OwnerIdentity(own)
 
 	return req, hold, label, id, err
 }

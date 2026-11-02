@@ -41,6 +41,9 @@ type Param struct {
 	Rule func(starlark.Value) error
 	// Why ends the message for a missing required keyword. It says what the keyword is for, when that is not plain.
 	Why string
+	// AsValue is true when the run reads the keyword as a Starlark value and not into a Go text, number or flag. A None then reaches Rule,
+	// and the run does not refuse it at unpack.
+	AsValue bool
 }
 
 // StatusValues lists the values of the status argument of an item_status call.
@@ -94,24 +97,69 @@ func deadlineRule(name string) func(starlark.Value) error {
 
 func timeoutRule(name string, read func(name, text string) (time.Duration, error)) func(starlark.Value) error {
 	return func(v starlark.Value) error {
-		if v == starlark.None {
-			var text string
-
-			return noneFor(name, &text)
-		}
-
-		text, _ := starlark.AsString(v)
+		text, _ := starlark.AsString(v) // the unpack check has refused a value that is not text
 		_, err := read(name, text)
 
 		return err
 	}
 }
 
-// noneFor is the error of the run for a None in a keyword that it reads into a Go value of the type of dest.
-func noneFor(name string, dest any) error {
-	err := starlark.UnpackArgs("", nil, []starlark.Tuple{{starlark.String(name), starlark.None}}, name+"?", dest)
+// goDestination is a new Go value of the type that the run reads a keyword of the kind into, or nil for a kind that the run reads as a value.
+func goDestination(kind Kind) any {
+	switch kind {
+	case KindText:
+		return new(string)
+	case KindInt:
+		return new(int)
+	case KindBool:
+		return new(bool)
+	case KindAny, KindList, KindDict:
+	}
 
-	// A None never fits a text, a whole number or a flag, so err is set. The step name goes in front when the check reports it.
+	return nil
+}
+
+// takes reports whether dest is the destination that the run must read the keyword into: the Go type of goDestination for a typed keyword, and a
+// Starlark value for any other. The check refuses a literal by the same table, so the run cannot read a keyword into another type than the check assumes.
+func (p Param) takes(dest any) bool {
+	want := goDestination(p.Kind)
+	if p.AsValue || want == nil {
+		want = new(starlark.Value)
+	}
+
+	switch want.(type) {
+	case *string:
+		return is[*string](dest)
+	case *int:
+		return is[*int](dest)
+	case *bool:
+		return is[*bool](dest)
+	}
+
+	return is[*starlark.Value](dest)
+}
+
+// is reports whether v has the type T.
+func is[T any](v any) bool {
+	_, ok := v.(T)
+
+	return ok
+}
+
+// unpackError is the error of the run for a literal that the Go destination of its keyword cannot take: a None, or a number beyond the range
+// of the destination. It is nil for a keyword that the run reads as a value, and for a kind with no Go destination.
+func unpackError(param Param, v starlark.Value) error {
+	dest := goDestination(param.Kind)
+	if param.AsValue || dest == nil {
+		return nil
+	}
+
+	err := starlark.UnpackArgs("", nil, []starlark.Tuple{{starlark.String(param.Name), v}}, param.Name+"?", dest)
+	if err == nil {
+		return nil
+	}
+
+	// The step name goes in front when the check reports the error.
 	return errors.New(strings.TrimPrefix(err.Error(), ": "))
 }
 
@@ -138,22 +186,21 @@ func Dollars(name string, v starlark.Value) (float64, error) {
 }
 
 func triesRule(v starlark.Value) error {
-	if v == starlark.None {
-		var tries int
+	tries, _ := starlark.AsInt32(v) //nolint:errcheck // the unpack check has refused a value that the destination cannot take
 
-		return noneFor("output_tries", &tries)
-	}
+	return OutputTries(tries)
+}
 
-	n, err := starlark.AsInt32(v)
-	if err != nil {
-		if i, isInt := v.(starlark.Int); isInt && i.Sign() < 0 { // a number beyond 32 bits is below one only when it is negative
-			return OutputTries(0)
-		}
+func ownRule(v starlark.Value) error {
+	_, _, err := OwnerIdentity(v)
 
-		return nil
-	}
+	return err
+}
 
-	return OutputTries(n)
+func prsRule(v starlark.Value) error {
+	_, err := PullRequests(v)
+
+	return err
 }
 
 func stopRule(v starlark.Value) error {
@@ -223,6 +270,12 @@ func runParam() Param {
 // runWord is the keyword that names the program of a call.
 const runWord = "run"
 
+// treeKeyword is the keyword of merge that carries the tree that the gate recorded, and the name of that field in a result.
+const treeKeyword = "tree"
+
+// processCap is the keyword max_new_processes of command. The run reads it as a value, so a None reaches the check of the hostWithCap pair.
+func processCap() Param { return Param{Name: "max_new_processes", Kind: KindInt, AsValue: true} }
+
 // stepSignatures holds the builtins that run something.
 func stepSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
@@ -233,10 +286,10 @@ func stepSignatures() map[string][]Param {
 		commandName: {
 			runParam(),
 			opt("host", KindText), opt("stdin", KindText), opt("env", KindDict),
-			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), opt("max_new_processes", KindInt), label,
+			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), label,
 		},
 		writeName: writeParams(),
-		"env":     {req(nameKeyword, KindText), opt("default", KindText)},
+		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
@@ -252,7 +305,8 @@ func swarmSignatures() map[string][]Param {
 
 	return map[string][]Param{
 		batchMergeName: {
-			req("prs", KindList), req("base", KindText), req("repo", KindText), opt("hold", KindText), opt("own", KindDict),
+			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule},
+			req("base", KindText), req("repo", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule),
 			words("forbid_text"), words("gate_run"), opt("integration", KindInt),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
@@ -274,10 +328,11 @@ func itemSignatures() map[string][]Param {
 			req("title", KindText), req("key", KindText), opt("body", KindText), opt("parent", KindText), label,
 		},
 		itemStatusName: {req("id", KindText), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
-		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("id", KindText), label},
+		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), label},
 		mergeName: {
-			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), opt("own", KindDict), opt("approved", KindBool),
-			opt("tree", KindText), opt("steps", KindList), words("forbid_text"), one("children", ChildrenValues()), opt("merge", KindBool), label,
+			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("approved", KindBool),
+			{Name: treeKeyword, Kind: KindText, AsValue: true},
+			opt("steps", KindList), words("forbid_text"), one("children", ChildrenValues()), opt("merge", KindBool), label,
 		},
 	}
 }
@@ -334,7 +389,7 @@ func keywordPairs(builtin string, into map[string]any) ([]any, bool) {
 
 	for _, param := range params {
 		dest, found := into[param.Name]
-		if !found {
+		if !found || !param.takes(dest) {
 			return nil, false
 		}
 
@@ -435,6 +490,50 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.protection(call, params)
 	case commandName:
 		g.hostWithCap(call, params)
+	case mergeName:
+		g.proof(call, params)
+	}
+}
+
+// proof checks the tree and steps arguments of a merge call with the rules of the run. The run reads them only when the call sets merge to True,
+// so the check does the same. An empty list of steps is reported by mergeNeedsSteps, and a value of the wrong kind by the kind check.
+func (g *graph) proof(call *syntax.CallExpr, params []Param) {
+	index := func(name string) int {
+		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
+	}
+
+	if merges, isIdent := argument(call, "merge", index("merge")).(*syntax.Ident); !isIdent || merges.Name != trueName {
+		return
+	}
+
+	if tree := argument(call, treeKeyword, index(treeKeyword)); tree != nil && g.proofFits(tree, KindText) {
+		_, err := GatedTree(g.literal(tree))
+		g.proofError(tree, err)
+	}
+
+	if steps := argument(call, "steps", index("steps")); steps != nil && !emptyList(steps) && g.proofFits(steps, KindList) {
+		g.proofError(steps, GateSteps(g.literal(steps)))
+	}
+}
+
+// proofFits reports whether an argument is a literal of the kind, or None.
+func (g *graph) proofFits(arg syntax.Expr, kind Kind) bool {
+	value, ok := literalValue(arg)
+
+	return ok && (value == starlark.None || kindOf(arg) == kind)
+}
+
+// literal returns the value of an argument that proofFits accepted.
+func (g *graph) literal(arg syntax.Expr) starlark.Value { //nolint:ireturn // the value is any of the Starlark types
+	value, _ := literalValue(arg)
+
+	return value
+}
+
+// proofError reports an error of the run for an argument of a merge call.
+func (g *graph) proofError(arg syntax.Expr, err error) {
+	if err != nil {
+		g.report(placeOf(syntax.Start(arg)), mergeName+": "+err.Error()+".")
 	}
 }
 
@@ -613,7 +712,7 @@ func (g *graph) value(builtin string, value syntax.Expr, param Param) {
 		return
 	}
 
-	if !g.kindFits(value, got, param) {
+	if !g.kindFits(value, got, param) || !g.unpacks(builtin, value, param) {
 		return
 	}
 
@@ -634,9 +733,25 @@ func (g *graph) kindFits(value syntax.Expr, got Kind, param Param) bool {
 
 // none applies the rule of the run to a literal None, which has no kind. The rule says whether the run takes it.
 func (g *graph) none(builtin string, value syntax.Expr, param Param) {
-	if v, ok := literalValue(value); ok && v == starlark.None {
+	if v, ok := literalValue(value); ok && v == starlark.None && g.unpacks(builtin, value, param) {
 		g.rule(builtin, value, param)
 	}
+}
+
+// unpacks reports whether the Go destination of the keyword takes the literal, as the run reads it, and reports the error of the run when it does not.
+// A value that is not a literal is left to the run.
+func (g *graph) unpacks(builtin string, value syntax.Expr, param Param) bool {
+	v, ok := literalValue(value)
+	if !ok {
+		return true
+	}
+
+	err := unpackError(param, v)
+	if err != nil {
+		g.report(placeOf(syntax.Start(value)), builtin+": "+err.Error()+".")
+	}
+
+	return err == nil
 }
 
 // closedSet reports a literal that is not one of the values of its keyword.

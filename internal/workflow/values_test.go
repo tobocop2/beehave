@@ -66,7 +66,7 @@ func TestCheck_ReadsEveryKindOfLiteralBeforeApplyingTheRulesOfTheRun(t *testing.
 		{"float element", `agent("p", "m", outputs = [1.5])`, "outputs must hold strings only"},
 		{"big element", `agent("p", "m", outputs = [100000000000000000000])`, "outputs must hold strings only"},
 		{"negative float element", `agent("p", "m", outputs = [-1.5])`, "outputs must hold strings only"},
-		{"negative big", `agent("p", "m", output_tries = -100000000000000000000)`, "output_tries must be a whole number of 1 or more"},
+		{"negative big", `agent("p", "m", output_tries = -100000000000000000000)`, "output_tries\": -100000000000000000000 out of range"},
 		{"tuple of False", `agent("p", "m", outputs = (False,))`, "outputs must hold strings only"},
 		{"parenthesis and None", `agent("p", "m", outputs = ([None]))`, "outputs must hold strings only"},
 		{"negative in a keyword with a closed set", `agent("p", "m", follow_ups = -1)`, "follow_ups is -1"},
@@ -91,7 +91,7 @@ func TestCheck_LeavesAValueThatIsNotAWholeLiteralToTheRun(t *testing.T) {
 		"    agent(\"p\", \"m\", output_tries = N, outputs = [\"a\", N], allow_paths = [\"a\"] + [\"[\"], inputs = {N: 1}, timeout = N)\n"+
 		"    agent(\"p\", \"m\", outputs = [b\"x\"])\n"+
 		"    agent(\"p\", \"m\", outputs = [-N],inputs = {\"a\": N}, require_skills = [not True])\n"+
-		"    agent(\"p\", \"m\", output_tries = 100000000000000000000, protect_paths = [\"a\"], forbid_commands = [\"protected-path\"])\n"+
+		"    agent(\"p\", \"m\", output_tries = 5, protect_paths = [\"a\"], forbid_commands = [\"protected-path\"])\n"+
 		"    command(run = [\"x\"], host = N, max_new_processes = 5)\n"+
 		"    command(run = [\"x\"], max_new_processes = 5)\n")
 
