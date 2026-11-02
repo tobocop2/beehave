@@ -33,17 +33,13 @@ func programs(parsed *syntax.File) (found []string, dynamic int) {
 
 	syntax.Walk(parsed, func(n syntax.Node) bool {
 		call, ok := n.(*syntax.CallExpr)
-		if !ok || callee(call) != commandName || slices.Contains(shadowed, callee(call)) {
+		if !ok || (callee(call) != commandName && callee(call) != writeName) || slices.Contains(shadowed, callee(call)) {
 			return true
 		}
 
-		if first, known := firstWord(call); known {
-			if strings.Contains(first, "/") {
-				found = append(found, first)
-			}
-		} else if !hasHost(call) {
-			dynamic++
-		}
+		paths, unknown := callPrograms(call)
+		found = append(found, paths...)
+		dynamic += unknown
 
 		return true
 	})
@@ -51,35 +47,66 @@ func programs(parsed *syntax.File) (found []string, dynamic int) {
 	return found, dynamic
 }
 
-// hasHost reports whether a command call names a host, so its program runs on another machine.
-func hasHost(call *syntax.CallExpr) bool {
+// callPrograms returns the programs of one command or write call that name a path, and how many of its programs are not known before the run.
+func callPrograms(call *syntax.CallExpr) (found []string, dynamic int) {
+	for _, word := range programKeywords(call) {
+		first, known := firstWord(call, word)
+
+		switch {
+		case known && strings.Contains(first, "/"):
+			found = append(found, first)
+		case !known && isDynamic(call, word):
+			dynamic++
+		}
+	}
+
+	return found, dynamic
+}
+
+// isDynamic reports whether a keyword of a call on this machine names a program that is not known before the run. A read_back or undo that the call leaves out is not dynamic.
+func isDynamic(call *syntax.CallExpr, word string) bool {
+	return !has(call, "host") && (word == runWord || has(call, word))
+}
+
+// programKeywords returns the keywords of a call that name a program: run, and for a write also read_back and undo.
+func programKeywords(call *syntax.CallExpr) []string {
+	if callee(call) == writeName {
+		return []string{runWord, "read_back", "undo"}
+	}
+
+	return []string{runWord}
+}
+
+// has reports whether a call sets the keyword.
+func has(call *syntax.CallExpr, word string) bool {
 	return slices.ContainsFunc(call.Args, func(arg syntax.Expr) bool {
 		name, _ := keyword(arg)
 
-		return name == "host"
+		return name == word
 	})
 }
 
-// firstWord returns the first text of the literal run list of a command call, or false for a call with a host or a run list that is not a literal.
-func firstWord(call *syntax.CallExpr) (string, bool) {
-	list := runList(call)
+// firstWord returns the first text of the literal list of a keyword of a call, or false for a call with a host or a list that is not a literal.
+func firstWord(call *syntax.CallExpr, word string) (string, bool) {
+	list := programList(call, word)
 	if list == nil || len(list.List) == 0 {
 		return "", false
 	}
 
-	word, isLiteral := list.List[0].(*syntax.Literal)
+	first, isLiteral := list.List[0].(*syntax.Literal)
 	if !isLiteral {
 		return "", false
 	}
 
-	text, isText := word.Value.(string)
+	text, isText := first.Value.(string)
 
 	return text, isText
 }
 
-// runList returns the run list of a command call when it is a list, and nil for a call with a host or a run list that is not a list.
-func runList(call *syntax.CallExpr) *syntax.ListExpr {
-	var run syntax.Expr
+// programList returns the list of a keyword of a call when it is a list, and nil for a call with a host or a list that is not a list.
+// The first positional argument counts as the run list.
+func programList(call *syntax.CallExpr, word string) *syntax.ListExpr {
+	var found syntax.Expr
 
 	for i, arg := range call.Args {
 		name, pair := keyword(arg)
@@ -87,14 +114,14 @@ func runList(call *syntax.CallExpr) *syntax.ListExpr {
 		switch {
 		case name == "host":
 			return nil
-		case name == "run":
-			run = pair.Y
-		case pair == nil && i == 0:
-			run = arg
+		case name == word:
+			found = pair.Y
+		case pair == nil && i == 0 && word == runWord:
+			found = arg
 		}
 	}
 
-	if list, isList := run.(*syntax.ListExpr); isList {
+	if list, isList := found.(*syntax.ListExpr); isList {
 		return list
 	}
 

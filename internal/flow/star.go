@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	starjson "go.starlark.net/lib/json"
@@ -47,6 +48,16 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 // playScript runs main, then the finish of the workflow file, and returns what the item came to.
 func (e *Engine) playScript(s *script, sources *workflow.Sources, fields map[string]string) (ItemResult, error) {
 	err := s.end(s.main(e.thread(s.in.Item), sources, fields))
+
+	// A failed run undoes its finished writes. A stop, a cancel and a success undo nothing.
+	if err != nil && s.ctx.Err() == nil {
+		undone, undoErr := s.undoAll()
+		if len(undone) > 0 {
+			err = fmt.Errorf("%w (undone: %s)", err, strings.Join(undone, ", "))
+		}
+
+		err = errors.Join(err, undoErr)
+	}
 
 	if finishErr := s.finish(e.thread(s.in.Item), sources, fields); finishErr != nil {
 		err = errors.Join(err, finishErr)
@@ -129,7 +140,7 @@ func itemArg(fields map[string]string) *starlarkstruct.Struct {
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
 	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait,
+		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

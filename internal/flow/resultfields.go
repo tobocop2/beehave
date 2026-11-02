@@ -7,6 +7,14 @@ func commandOutputs(stdout, stderr string, rc int) map[string]any {
 	return map[string]any{"stdout": stdout, "stderr": stderr, "rc": rc}
 }
 
+// writeOutputs records the fields of a write: the fields of a command, the key of the call, and whether the read-back found the write done.
+func writeOutputs(stdout, stderr string, rc int, key string, skipped bool) map[string]any {
+	out := commandOutputs(stdout, stderr, rc)
+	out["key"], out["skipped"] = key, skipped
+
+	return out
+}
+
 // gateOutputs records the fields of a GateResult. A gate with no step records an empty list, never a null.
 func gateOutputs(passed bool, head, tree, report string, steps []GateStep) map[string]any {
 	return map[string]any{"passed": passed, "head": head, treeName: tree, "report": report, "steps": append([]GateStep{}, steps...)}

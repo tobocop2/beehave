@@ -14,6 +14,7 @@ import (
 const (
 	commandName = "command"
 	gateName    = "gate"
+	writeName   = "write"
 
 	hostTeardownName = "host_teardown"
 	hostUpName       = "host_up"
@@ -49,6 +50,7 @@ func resultFields() map[string][]string {
 		queueName:        {"rows", "free"},
 		spawnName:        {"runs"},
 		waitName:         {"answer", "timed_out"},
+		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
 	}
 }
 
