@@ -1,10 +1,92 @@
 # obee
 
-obee takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer agents build and prove the change. Reviewer agents check it at a pinned commit. obee merges only the head that was reviewed.
+**Stop babysitting your AI agents.**
+
+obee runs them through your own process (plan, build, test, review) and comes to you only for the decisions that need a person.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Go 1.27](https://img.shields.io/badge/go-1.27-00ADD8.svg)
+![Status: under construction](https://img.shields.io/badge/status-under%20construction-orange.svg)
+
+<!-- demo: terminal recording of a dry run, a kill and a resume -->
+
+```bash
+git clone https://github.com/tobocop2/obee && cd obee && make build   # writes bin/obee
+```
+
+## Runs survive a crash
+
+Each step result goes into a local SQLite database. Kill obee at step 6 of 9, run the same `obee run` again, and the run continues at the step that was running. A finished agent step does not run again, so it does not bill again.
+
+## The process is code
+
+The process is one Starlark file with loops, gates, reviewers, waits for a person and cost caps. `obee check workflow` finds mistakes before a run. `obee check workflow --dry-run` walks the whole file over fakes and calls no agent, forge, tracker or host.
+
+## Not only for code
+
+The same engine runs research and desk workflows. `examples/research` answers a question with notes and sources. A project still needs a git repository today. Issue #245 removes that need.
+
+## Quickstart
+
+```bash
+bin/obee check workflow examples/local/workflow.star --dry-run
+mkdir -p ~/.config/obee/projects && cp examples/local/project.star ~/.config/obee/projects/myrepo.star   # set source to your repository
+bin/obee item add myrepo fix-login --title "Fix the login" --body-file task.md
+bin/obee run fix-login myrepo --workflow examples/local/workflow.star
+```
+
+The result is a branch named `fix-login` in your repository. If the process stops, run the same `obee run` again. Use `obee status` to list the runs and the questions that wait for you.
+
+To work a whole backlog, use [`examples/queue`](examples/queue): it runs the open items of a project until no work remains.
+
+## A workflow
+
+This one plans, implements, then gates and reviews up to three times. It pushes only an approved commit. The reviewer reads the commit that the gate ran on (`pin = check.head`).
+
+```starlark
+# workflow.star
+def main(item):
+    plan = agent(name = "plan", model = "sonnet", prompt = "prompts/plan.md", inputs = {"item": item})
+    work = agent(name = "implement", model = "sonnet", prompt = "prompts/implement.md", inputs = {"item": item, "plan": plan.text})
+
+    approved = False
+    for _ in range(3):
+        check = gate(name = "check")  # runs the gate command of the project
+        if check.passed:
+            review = agent(name = "review", model = "sonnet", prompt = "prompts/review.md", pin = check.head, outputs = ["verdict"], inputs = {"item": item})
+            approved = review.verdict == "approve"
+            if approved:
+                break
+            findings = review.text
+        else:
+            findings = check.report
+        agent(name = "fix", model = "sonnet", prompt = "prompts/fix.md", inputs = {"item": item, "findings": findings})
+
+    if approved:
+        command(name = "push", run = ["git", "push", "origin", "HEAD:refs/heads/" + item.id])
+```
+
+## Examples
+
+| Folder | What it does |
+|---|---|
+| [`examples/local`](examples/local) | Implement, gate, review. One item, no tracker, no forge. The result is a branch. |
+| [`examples/remediation`](examples/remediation) | Issues from beads and GitHub to reviewed pull requests, with the merge guards. |
+| [`examples/research`](examples/research) | Answer a question with notes and sources. No code. |
+| [`examples/queue`](examples/queue) | Run the open items of a project until no work remains. |
+| [`examples/swarm`](examples/swarm) | Split a job into tasks, one agent for each, and land them with one batch merge. |
+
+The settings of each example are in [`docs/examples.md`](docs/examples.md).
 
 ## Status
 
-obee is under construction. The command line tool builds and prints its version. The packages land one milestone at a time; `docs/architecture.md` lists them.
+obee is private and under construction. The engine, the CLI, the examples and the merge guards exist today. Claude Code is the only agent today. OpenCode, pi, Hermes, Codex, Copilot and Gemini CLI are planned. Expect changes to the workflow API.
+
+## Docs
+
+- [`docs/examples.md`](docs/examples.md): the settings of each example.
+- [`docs/architecture.md`](docs/architecture.md): the packages, the durable loop and the reasons for DBOS and Starlark.
+- [`docs/claude-code-plugin.md`](docs/claude-code-plugin.md): the Claude Code plugin in `plugins/claude-code`, with `/obee:queue`, `/obee:run`, `/obee:status`, `/obee:answer` and `/obee:cancel`.
 
 ## Build
 
@@ -15,40 +97,6 @@ make setup    # install the Go tools and generate the agent files
 make check    # the full gate, the same as CI
 make build    # write bin/obee
 ```
-
-## Examples
-
-`examples/remediation` takes issues from beads and GitHub to reviewed pull requests. Set `MERGE` to `true` to let the workflow merge an approved pull request through the merge guards. With any other value, the owner merges. A run fails if `MERGE` is not set. Set `SOURCE_CHECKOUT` to the absolute path of the checkout of the owner: the implement, review and fix agents cannot write in it, and a git command there that is not a read is refused. A run that starts an agent fails if `SOURCE_CHECKOUT` is not set. Set `EXPECT_HEAD` to the full SHA the owner reviewed, and the run stops before any agent starts if the head of the pull request moved. When `EXPECT_HEAD` is not set, no head is checked. Set `LANE_KIND` to `papers` or `design` for a lane that changes no source path, and set `ALLOW_PATHS` to the globs it may change, split by spaces: the implement step and each fix step fail when they change any other path. The default `LANE_KIND` is `impl`, which has no path limit. A stop of this kind shows in the result of the run as `stopped`, with the step, the exit code and the reason. Set `LAND` to `id=sha` pairs, split by spaces, and the run starts no agent. Each `sha` is the full SHA the owner reviewed for that item. The run applies the stops of one item to each item, then lands the items that pass with one batch merge: one gate run, the same guards, and a split of the union if the gate is red. An item that stops, or whose head moved since the review, gets its reason as a comment and the hold status, and the other items still land. In that mode, `MERGE` works as for one item: a run fails if `MERGE` is not set, and a `MERGE` that is not `true` lands nothing.
-
-`examples/local` needs no tracker and no forge. The items are in `local.db`, and the result is a branch in a git repository on this machine. Copy `examples/local/project.star` to `<config folder>/projects/<name>.star`, set `source`, and run:
-
-```bash
-obee item add <name> fix-login --title "Fix the login" --body-file task.md
-obee run fix-login <name> --workflow examples/local/workflow.star
-```
-
-`obee run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
-
-```bash
-obee status
-obee status item-fix-login-r1
-```
-
-The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `obee run` writes its progress lines to stderr.
-
-`examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
-
-`examples/swarm` splits a job into tasks, runs one agent for each task, and lands the pull requests with one `batch_merge` and one gate run. Put one task on each line of the body of the parent item. Set `REPO`, `BASE`, `OWNER_LOGIN` and `OWNER_EMAIL` to name your repository and your identity. A pull request that the gate or a guard rejects gets a comment and the status `hold`.
-
-`examples/queue` runs the open items of a project until no work remains. The parent reads `queue`, starts the ready items in the free slots, and starts the next item when any run ends. A failed item gets a comment and the status `hold`, and the loop goes on. Set `BASE` to the integration branch, and `OWNER_LOGIN` to your own login: each item reads the forge before its agent starts, and an open pull request by another login holds the item. One login runs one agent step at a time. The pick of a login prefers a login with no agent step running or queued, so the items spread over your logins. The parent run holds no login. With one login, the items run one at a time.
-
-## Claude Code plugin
-
-`plugins/claude-code` adds five slash commands to Claude Code: `/obee:queue`, `/obee:run`, `/obee:status`, `/obee:answer` and `/obee:cancel`. Each one runs an obee command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.
-
-## Design
-
-`docs/architecture.md` describes the packages, their layers and the durable loop. The loop runs on DBOS Transact Go with SQLite. The terminal screens use Bubble Tea.
 
 ## License
 
