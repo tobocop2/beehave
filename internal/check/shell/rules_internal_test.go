@@ -346,7 +346,7 @@ func TestAVariableThatReachesACycleCostsTheSameWorkOnEveryUse(t *testing.T) {
 
 	assert.Equal(t, 10_000*perUse, s.resolutions, "work per use must not grow with the number of uses")
 
-	// A scan reads the text a use expands to, so its work per line is a constant too.
+	// A scan reads the text that many uses expand to once, so the work of a scan does not grow with the lines.
 	perLine := func(lines int) int {
 		scanned := newScanner()
 		text := cycleScript(levels, lines)
@@ -356,7 +356,7 @@ func TestAVariableThatReachesACycleCostsTheSameWorkOnEveryUse(t *testing.T) {
 		return scanned.resolutions
 	}
 
-	assert.Equal(t, 2*perLine(10), perLine(20))
+	assert.Equal(t, perLine(10), perLine(20))
 }
 
 func TestAnOpenValueIsKeptForOneLookupOnly(t *testing.T) {

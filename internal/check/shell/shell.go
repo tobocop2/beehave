@@ -483,7 +483,7 @@ func (s *scanner) scanShell(cmd *command, remote bool) {
 
 // scanRemote reads a remote command, and the script its stdin carries.
 func (s *scanner) scanRemote(cmd *command, remoteText string) {
-	s.scan(remoteText, true)
+	s.scanOnce(remoteText, true)
 
 	if !stdinIsScript(remoteText) {
 		return

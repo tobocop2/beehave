@@ -18,12 +18,24 @@ import (
 	"github.com/tobocop2/obee/internal/store/beads/beadstest"
 )
 
-const fakeServerName = "fakedolt"
+const (
+	fakeServerName  = "fakedolt"
+	clashServerName = "clashdolt"
+)
 
 // TestMain lets the test binary play the dolt server. StartDolt runs `<binary> sql-server --host H --port P`.
 // The tests pass a link to the test binary named fakedolt, and testscript runs the command of that name: it listens on P until it is killed.
+// The command clashdolt ends at its first start, like a server whose port another process took, and listens from its second start.
 func TestMain(m *testing.M) {
-	testscript.Main(m, map[string]func(){fakeServerName: serveFake})
+	testscript.Main(m, map[string]func(){fakeServerName: serveFake, clashServerName: serveAfterClash})
+}
+
+func serveAfterClash() {
+	if os.Mkdir("clashed", 0o700) == nil {
+		return
+	}
+
+	serveFake()
 }
 
 func serveFake() {
@@ -61,10 +73,16 @@ func serveFake() {
 func fakeServer(t *testing.T) string {
 	t.Helper()
 
+	return serverLink(t, fakeServerName)
+}
+
+func serverLink(t *testing.T, name string) string {
+	t.Helper()
+
 	self, err := os.Executable()
 	require.NoError(t, err)
 
-	link := filepath.Join(t.TempDir(), fakeServerName)
+	link := filepath.Join(t.TempDir(), name)
 	require.NoError(t, os.Symlink(self, link))
 
 	return link
@@ -188,6 +206,25 @@ func TestStartDolt_StartsAServerOnAFreePortAndStopsItAtTheEndOfTheTest(t *testin
 	require.NoError(t, err)
 	require.NoError(t, conn.Close())
 	assert.DirExists(t, filepath.Join(root, "dolt-home"))
+}
+
+func TestStartDolt_StartsAgainOnANewPortWhenTheServerEndsAtOnce(t *testing.T) {
+	t.Parallel()
+
+	port := beadstest.StartDolt(t, t.TempDir(), serverLink(t, clashServerName))
+
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	require.NoError(t, err)
+	require.NoError(t, conn.Close())
+}
+
+func TestStartDolt_StopsTheTestWhenTheServerEndsOnEveryAttempt(t *testing.T) {
+	t.Parallel()
+
+	assert.Contains(t, failure(t, func(tb testing.TB) {
+		tb.Helper()
+		beadstest.StartDolt(tb, t.TempDir(), "true")
+	}), "did not start")
 }
 
 func TestStartDolt_StopsTheTestWhenItsFoldersCannotBeMade(t *testing.T) {
