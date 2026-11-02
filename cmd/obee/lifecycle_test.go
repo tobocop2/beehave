@@ -289,6 +289,29 @@ func leasesOver(t *testing.T, owner string) (leases, *beads.Store) {
 	}, rows
 }
 
+func TestLeases_OthersNamesEachOtherOwnerWithItsItems(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, stateAt(t.TempDir()))
+	project := localProjectNamed("p")
+	first := leases{projects: map[string]config.Project{"p": {Project: project}}, rows: table.leases, owner: func() string { return "ownerone" }}
+	second := leases{projects: first.projects, rows: table.leases, owner: func() string { return "ownertwo" }}
+
+	one, err := first.Claim(t.Context(), "p", "fix-login")
+	require.NoError(t, err)
+
+	two, err := second.Claim(t.Context(), "p", "fix-logout")
+	require.NoError(t, err)
+
+	lines, err := first.Others(t.Context(), "p", one)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"session-" + two + ": fix-logout"}, lines)
+
+	_, err = first.Others(t.Context(), "zzz", one)
+	require.ErrorIs(t, err, errUnknownProject)
+}
+
 func TestLeases_TheLocalClaimStoreTakesRenewsAndReleasesAnItemAndEveryCallClosesTheStore(t *testing.T) {
 	t.Parallel()
 
