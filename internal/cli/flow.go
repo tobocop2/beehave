@@ -573,12 +573,32 @@ func finishedNote(info flow.RunInfo) string {
 	case info.Closed != "":
 		return "\tended: " + oneLine(info.Closed)
 	case info.Stopped != nil:
-		return fmt.Sprintf("\tstopped at %s rc %d", info.Stopped.Step, info.Stopped.RC)
+		return stoppedNote(info.Stopped)
 	case info.Merge != "":
 		return "\tmerge: " + info.Merge
 	}
 
 	return ""
+}
+
+// stoppedOutputLimit is the most characters of the output of a stopping step that a status line shows.
+const stoppedOutputLimit = 120
+
+// stoppedNote is the text for a run that a command ended: the step, the exit code and the start of what the step printed.
+// The output is the result of the stop, so the owner reads the cause without opening the step view.
+func stoppedNote(stopped *flow.Stopped) string {
+	note := fmt.Sprintf("\tstopped at %s rc %d", stopped.Step, stopped.RC)
+
+	text := []rune(oneLine(stopped.Output))
+	if len(text) == 0 {
+		return note
+	}
+
+	if len(text) > stoppedOutputLimit {
+		text = append(text[:stoppedOutputLimit], '…')
+	}
+
+	return note + ": " + string(text)
 }
 
 func oneLine(text string) string {
