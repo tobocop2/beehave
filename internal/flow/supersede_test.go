@@ -144,7 +144,7 @@ func waitsInTheQueue(engine *Engine, want int) func() bool {
 func endsAfterTicks(t *testing.T, h *harness, ended <-chan gateEnd) gateEnd {
 	t.Helper()
 
-	deadline := time.After(20 * time.Second)
+	deadline := time.After(eventTimeout)
 
 	for {
 		select {

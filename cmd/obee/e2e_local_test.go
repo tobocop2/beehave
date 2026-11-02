@@ -11,9 +11,11 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/config"
@@ -133,27 +135,34 @@ func cmdSubst(ts *testscript.TestScript, _ bool, args []string) {
 	}
 }
 
-// cmdIsolate is "isolate": it sets PATH to the fake claude of the script (the folder fake), the obee commands and one wrapper for each of e2eTools.
-// A wrapper runs the program of the machine by its full path, so the script sees git and sh and no other tool of the machine.
-func cmdIsolate(ts *testscript.TestScript, _ bool, _ []string) {
-	work := ts.Getenv("WORK")
-	tools := filepath.Join(work, "tools")
+// isolateFunc is the "isolate" command over the folder of the wrappers that writeTools made.
+// The wrappers are written once, before any script runs. A script that wrote them itself held a write descriptor open while a parallel script
+// forked, and Linux refuses to run a file that a forked child still holds open for writing (text file busy).
+func isolateFunc(tools string) func(*testscript.TestScript, bool, []string) {
+	return func(ts *testscript.TestScript, _ bool, _ []string) { cmdIsolate(ts, tools) }
+}
 
-	if err := os.MkdirAll(tools, e2eFolderMode); err != nil {
-		ts.Fatalf("isolate: %v", err)
-	}
+// writeTools writes one wrapper for each of e2eTools into a new folder of t and returns the folder.
+func writeTools(t *testing.T) string {
+	t.Helper()
+
+	tools := t.TempDir()
 
 	for _, name := range e2eTools() {
 		found, err := exec.LookPath(name)
-		if err != nil {
-			ts.Fatalf("isolate: %v", err)
-		}
+		require.NoError(t, err)
 
 		wrapper := "#!/bin/sh\nexec " + found + " \"$@\"\n"
-		if err := os.WriteFile(filepath.Join(tools, name), []byte(wrapper), e2eToolMode); err != nil {
-			ts.Fatalf("isolate: %v", err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(tools, name), []byte(wrapper), e2eToolMode))
 	}
+
+	return tools
+}
+
+// cmdIsolate sets PATH to the fake claude of the script (the folder fake), the obee commands and the wrappers in tools.
+// A wrapper runs the program of the machine by its full path, so the script sees git and sh and no other tool of the machine.
+func cmdIsolate(ts *testscript.TestScript, tools string) {
+	work := ts.Getenv("WORK")
 
 	var commands string
 

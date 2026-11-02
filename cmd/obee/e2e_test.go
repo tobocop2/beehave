@@ -472,12 +472,14 @@ func cmdWaitStatus(ts *testscript.TestScript, _ bool, args []string) {
 func TestScripts(t *testing.T) {
 	t.Parallel()
 
+	tools := writeTools(t)
+
 	testscript.Run(t, testscript.Params{
 		Dir:   "testdata/e2e",
 		Setup: e2eSetup,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
 			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus,
-			"example": cmdExample, "subst": cmdSubst, "isolate": cmdIsolate, "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
+			"example": cmdExample, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude,
 		},
 	})

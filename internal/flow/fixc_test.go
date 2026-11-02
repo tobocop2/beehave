@@ -368,7 +368,8 @@ func TestSweepCancels_AllTheMarkersShareOneReleaseTimeout(t *testing.T) {
 	t.Parallel()
 
 	const (
-		limit   = 2 * time.Second
+		// The bound is twice the limit and a separate timeout for each marker costs three times the limit, so the limit is also the room that a busy host has for the sweep itself.
+		limit   = 5 * time.Second
 		markers = 3
 	)
 
