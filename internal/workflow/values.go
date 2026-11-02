@@ -128,6 +128,24 @@ func OutputTries(n int) error {
 	return nil
 }
 
+// RoundsKeyword is the keyword of the agent builtin that names the cap of the loop that the call belongs to.
+const RoundsKeyword = "rounds"
+
+// Rounds reads the cap of a loop: a whole number of 1 or more. The status view shows the rounds used against it.
+func Rounds(v starlark.Value) (int, error) {
+	n, isInt := v.(starlark.Int)
+	if !isInt {
+		return 0, errors.New(RoundsKeyword + " must be a whole number of 1 or more")
+	}
+
+	limit, small := n.Int64()
+	if !small || limit < 1 || limit > math.MaxInt32 {
+		return 0, errors.New(RoundsKeyword + " must be a whole number of 1 or more")
+	}
+
+	return int(limit), nil
+}
+
 // StopCodes reads the stop_on_rc list. Each code must be a whole number from 1 to 255.
 func StopCodes(v starlark.Value) ([]int, error) {
 	return ListOfEach(v, func(item starlark.Value) (int, error) {

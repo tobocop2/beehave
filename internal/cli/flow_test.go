@@ -516,6 +516,28 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 	assert.True(t, rig.steering.closeOK)
 }
 
+func TestStatus_ShowsTheCostTheStepTheGateAndTheRoundsOfEachRun(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.infos = []flow.RunInfo{{
+		ID: "a-r1", State: "running",
+		RunProgress: flow.RunProgress{
+			Spent: 3.5, Cap: 20, Now: "agent:fix#2", Gate: &flow.GateSeen{Passed: false, Head: "abc123"},
+			Fix: flow.Rounds{Used: 2, Cap: 5}, Review: flow.Rounds{Used: 3, Cap: 6},
+		},
+	}, {
+		ID: "b-r1", State: "running", Question: "go on?",
+		RunProgress: flow.RunProgress{Deadline: time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "a-r1\trunning\tspent $3.5 of $20\tnow agent:fix#2\tgate fail at abc123\tfix 2 of 5\treview 3 of 6\n"+
+		"b-r1\trunning\tpaused: go on?\tanswer by 2026-11-03T12:00:00Z\n", stdout)
+}
+
 func TestStatus_CutsLongStopOutputAndOmitsEmptyOutput(t *testing.T) {
 	t.Parallel()
 

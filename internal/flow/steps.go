@@ -53,7 +53,11 @@ type StepLine struct {
 	Error    string  `json:"error,omitempty"`
 	ExitCode *int    `json:"exit_code,omitempty"`
 	// Kind is the kind of the lane of an agent step, as the ledger of the method names it: fix, rework, relay, review or design. A step that is not an agent, and an agent that an older version recorded, have none.
-	Kind    string     `json:"kind,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// Rounds is the cap of the loop that an agent step named with its rounds keyword. It is 0 for a step that named none.
+	Rounds int `json:"rounds,omitempty"`
+	// Cost is the dollars that the agent runs of the call spent, failed runs included. It is 0 for a step that is not an agent.
+	Cost    float64    `json:"cost_usd,omitempty"`
 	Stop    string     `json:"stop,omitempty"`
 	Verdict string     `json:"verdict,omitempty"`
 	Head    string     `json:"head,omitempty"`
@@ -71,6 +75,9 @@ type RunSteps struct {
 	State RunState   `json:"state"`
 	Error string     `json:"error,omitempty"`
 	Steps []StepLine `json:"steps"`
+
+	// RunProgress holds the same figures that the list of runs shows: the cost against the cap, the step that runs now, the deadline, the gate and the rounds.
+	RunProgress
 }
 
 // Steps lists the steps of one run from the store, with the outputs decoded. It reads the step listing of the workflow library and copies nothing.
@@ -87,13 +94,12 @@ func (c *Client) Steps(id string) (RunSteps, error) {
 	}
 
 	state := stateOf(row.Status)
+	lines := stepLines(records, state, !run{Status: row}.terminal(), time.Now())
 
-	return RunSteps{
-		Run:   id,
-		State: state,
-		Error: errorText(row.Error),
-		Steps: stepLines(records, state, !run{Status: row}.terminal(), time.Now()),
-	}, nil
+	progress := progressOf(lines, c.maxRunBudget, !run{Status: row}.terminal())
+	progress.Deadline, err = c.deadlineFor(row, records)
+
+	return RunSteps{Run: id, State: state, Error: errorText(row.Error), Steps: lines, RunProgress: progress}, err
 }
 
 // runRow reads the row of one run, with its error. The error is kept with the output of the row.
@@ -244,12 +250,24 @@ func (l *StepLine) decode(record dbos.StepInfo) bool {
 	switch {
 	case record.ChildWorkflowID != "":
 		return decodeThen(record.Output, l.fromPhase)
-	case split && strings.HasPrefix(sub, "read") && builtinOf(base) == builtinAgent:
-		return decodeThen(record.Output, func(read recorded[agentRead]) { l.fromAgentRead(read.Outputs) })
+	case split && builtinOf(base) == builtinAgent:
+		return l.decodeAgentSub(sub, record.Output)
 	case !split && builtinOf(base) == kindGate:
 		return decodeThen(record.Output, func(gate recorded[GateResult]) { l.fromGate(gate.Outputs) })
 	case !split && builtinOf(base) == builtinCommand:
 		return decodeThen(record.Output, l.fromCommand)
+	}
+
+	return true
+}
+
+// decodeAgentSub takes the fields of a sub-step of an agent call: the read of a finished run, or the cost record of a failed run. Any other sub-step decodes nothing.
+func (l *StepLine) decodeAgentSub(sub string, output any) bool {
+	switch {
+	case strings.HasPrefix(sub, "read"):
+		return decodeThen(output, func(read recorded[agentRead]) { l.fromAgentRead(read.Outputs) })
+	case strings.HasPrefix(sub, "spent"):
+		return decodeThen(output, func(spent recorded[agentFields]) { l.Cost += spent.Outputs.Cost })
 	}
 
 	return true
@@ -299,13 +317,14 @@ func decodeThen[T any](output any, use func(T)) bool {
 func (l *StepLine) fromPhase(phase PhaseOutput) {
 	if phase.Outcome != "" {
 		l.ExitCode = &phase.ExitCode
-		l.Kind = phase.Kind
+		l.Kind, l.Rounds = phase.Kind, phase.Rounds
 	}
 }
 
 // fromAgentRead takes the head, the cap that stopped the agent and the verdict from the read of its outputs.
 func (l *StepLine) fromAgentRead(read agentRead) {
 	l.Head, l.Stop, l.Verdict = read.Head, read.Stop, read.Verdict
+	l.Cost += read.Cost
 }
 
 // fromGate takes the result of a gate: pass or fail, the head and the status of each gate step.

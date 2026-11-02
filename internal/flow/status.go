@@ -57,6 +57,8 @@ type RunInfo struct {
 	Merge string
 	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did. A run with a Stopped has the state stopped.
 	Stopped *Stopped
+	// RunProgress holds the cost against the run cap, the step that runs now, the deadline of a wait, the last gate result and the rounds.
+	RunProgress
 }
 
 // questionReadLimit is how long status waits for an event that the run has not set.
@@ -66,10 +68,12 @@ const questionReadLimit = time.Millisecond
 type Client struct {
 	flow    dbos.Client
 	version string
-	dir     string
-	give    ReleaseDeps
-	logger  *slog.Logger
-	log     io.Closer
+	// maxRunBudget is Options.MaxRunBudget, the cap that the status shows the spent sum against.
+	maxRunBudget float64
+	dir          string
+	give         ReleaseDeps
+	logger       *slog.Logger
+	log          io.Closer
 }
 
 // OpenClient opens the state folder for the status, answer, resume and cancel commands.
@@ -80,7 +84,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 		return nil, err
 	}
 
-	client := &Client{version: applicationVersion(opts.Version), dir: state.dir, give: give, log: state.log}
+	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, dir: state.dir, give: give, log: state.log}
 	if err := client.connect(ctx, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), state.log.Close())
 	}
@@ -205,11 +209,27 @@ func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
 
 	info.OlderSteps = info.Stranded && info.Version == buildVersion(c.version)
 
-	if err := c.details(row, &info); err != nil {
-		return RunInfo{}, err
+	err := c.details(row, &info)
+
+	return info, errors.Join(err, c.addProgress(row, &info))
+}
+
+// addProgress reads the progress of a run from its step records. A run that asks a question waits on it, and the question is what it shows in place of a step.
+// A caller that gets an error ignores the info.
+func (c *Client) addProgress(row dbos.WorkflowStatus, info *RunInfo) error {
+	records, readErr := c.records(row.ID)
+	lines := stepLines(records, info.State, !run{Status: row}.terminal(), time.Now())
+
+	var deadlineErr error
+
+	info.RunProgress = progressOf(lines, c.maxRunBudget, !run{Status: row}.terminal())
+	info.Deadline, deadlineErr = c.deadlineFor(row, records)
+
+	if info.Question != "" {
+		info.Now = ""
 	}
 
-	return info, nil
+	return errors.Join(readErr, deadlineErr)
 }
 
 // details adds what the run shows besides its state. An open run shows its question and its merge state; a finished run shows its result.

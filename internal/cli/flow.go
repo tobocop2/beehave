@@ -434,6 +434,7 @@ const jsonFlag = "json"
 const itemFlag = "item"
 
 const statusHelp = "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
+	"A line also shows the cost so far against the run cap, the step that runs now, the deadline of a wait, the last gate result with its head, and the fix and review rounds used against their caps.\n\n" +
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the kind of the lane " +
@@ -563,11 +564,23 @@ func statusLine(info flow.RunInfo) string {
 		line += finishedNote(info)
 	}
 
+	line += notesTail(info)
+
 	if len(info.Others) > 0 {
 		line += "\tother orchestrators: " + oneLine(strings.Join(info.Others, "; "))
 	}
 
 	return line
+}
+
+// notesTail is the tab-separated progress notes of a run: its cost, step, wait deadline, gate and rounds. It is empty for a run with none.
+func notesTail(info flow.RunInfo) string {
+	notes := info.Notes()
+	if len(notes) == 0 {
+		return ""
+	}
+
+	return "\t" + strings.Join(notes, "\t")
 }
 
 // finishedNote is the tab and text that a run adds to its status line when it ended: a send back, a close, a stop or a merge state. It is empty for none.

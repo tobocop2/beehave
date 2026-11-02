@@ -39,6 +39,9 @@ type PhaseInput struct {
 	// MaxBudget is the max_budget_usd of the step. It is left out of a recorded phase for a step that sets none.
 	MaxBudget float64 `json:"max_budget_usd,omitempty"`
 
+	// Rounds is the rounds keyword of the step: the cap of the loop that the step belongs to. It is left out of a recorded phase for a step that names none.
+	Rounds int `json:"rounds,omitempty"`
+
 	// NoEdits is true for a step with edits = False. It is left out of a recorded phase for a step that may edit, so a stored phase keeps its form.
 	NoEdits bool `json:"no_edits,omitempty"`
 
@@ -66,6 +69,8 @@ type PhaseOutput struct {
 	Violations []string `json:"violations,omitempty"`
 	// Cost is the total cost in dollars that the agent CLI reported for the run. A record that an older version wrote has none, and reads as 0.
 	Cost float64 `json:"cost_usd,omitempty"`
+	// Rounds is the loop cap that the step named. The status view shows the rounds used against it.
+	Rounds int `json:"rounds,omitempty"`
 }
 
 // phase waits for the claim of its run, then runs the agent as a step, so a restart skips the work that finished.
@@ -120,7 +125,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 	})
 
 	out := phaseOutput(result)
-	out.Kind = workflow.LaneKind(in.Kind, in.Lane)
+	out.Kind, out.Rounds = workflow.LaneKind(in.Kind, in.Lane), in.Rounds
 
 	if err != nil {
 		return out, err

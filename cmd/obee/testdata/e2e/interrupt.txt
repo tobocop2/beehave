@@ -6,14 +6,14 @@ kill -INT
 wait
 
 exec obee status
-stdout '^item-7-r1\trunning$'
+stdout '^item-7-r1\trunning\tnow '
 ! grep '^release' events.log
 
 exec obee run 7 --workflow flow/workflow.star
 stdout 'item 7 finished'
 
 exec obee status
-stdout '^item-7-r1\tdone\tmerge: merged$'
+stdout '^item-7-r1\tdone\tmerge: merged'
 ! stdout 'item-7-r2'
 
 grep -count=1 '^plan ' calls.log
