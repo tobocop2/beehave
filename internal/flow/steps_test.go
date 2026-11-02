@@ -522,3 +522,23 @@ func TestStepLines_AWaitingGateIsNamedFromItsTipRecordAndAnOtherRecordFromItself
 	require.Len(t, other, 1)
 	assert.Equal(t, "DBOS.sleep", other[0].Name)
 }
+
+func TestStepLine_AnAgentLineNamesTheKindOfItsPhase(t *testing.T) {
+	t.Parallel()
+
+	record := func(name string, output any) dbos.StepInfo {
+		data, err := json.Marshal(output)
+		require.NoError(t, err)
+
+		return dbos.StepInfo{StepName: name, Output: string(data)}
+	}
+
+	review := callLine([]dbos.StepInfo{withChild(record("any-name", PhaseOutput{Outcome: "exited", Kind: "review"}))}, "agent:a#1")
+	assert.Equal(t, "review", review.Kind)
+
+	rework := callLine([]dbos.StepInfo{withChild(record("any-name", PhaseOutput{Outcome: "exited", Kind: "rework"}))}, "agent:a#1")
+	assert.Equal(t, "rework", rework.Kind)
+
+	gate := callLine([]dbos.StepInfo{withChild(record("gate:stop", map[string]any{"holder": "x"}))}, "gate:g#1")
+	assert.Empty(t, gate.Kind, "a gate is not a lane, so its line has no kind")
+}

@@ -51,6 +51,66 @@ func TestStatus_ARunIdListsTheStepsOneLineEach(t *testing.T) {
 	assert.True(t, rig.steering.closeOK)
 }
 
+func TestStatus_AnAgentLineOfARunNamesItsKindAsTheLaneLedger(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	rig.steering.view = flow.RunSteps{Run: "item-14-r1", State: "done", Steps: []flow.StepLine{
+		{Name: "agent:work#1", State: "done", Started: start, Ended: start, Kind: "rework", ExitCode: intPtr(0)},
+		{Name: "agent:look#1", State: "done", Started: start, Ended: start, Kind: "review", ExitCode: intPtr(0)},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "item-14-r1")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "agent:work#1\t2026-10-31T09:00:00Z\t0s\tdone\texit_code=0 kind=rework\n"+
+		"agent:look#1\t2026-10-31T09:00:00Z\t0s\tdone\texit_code=0 kind=review\n"+
+		"run\tdone\n", stdout)
+
+	code, stdout, stderr = rig.execute(t.Context(), "status", "item-14-r1", "--json")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, `"kind":"review"`)
+}
+
+func TestStatus_AnItemListsItsLanesAcrossItsRunsOneLineEach(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	start := time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
+	rig.steering.lanes = flow.ItemLanes{Item: "14", Lanes: []flow.LaneLine{
+		{Run: "item-14-r1", StepLine: flow.StepLine{Name: "agent:work#1", State: "done", Started: start, Kind: "fix", ExitCode: intPtr(0)}},
+		{Run: "item-14-r2", StepLine: flow.StepLine{Name: "agent:work#1", State: "done", Started: start, Kind: "rework", ExitCode: intPtr(0)}},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "--item", "14")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item-14-r1\tagent:work#1\t2026-10-31T09:00:00Z\t0s\tdone\texit_code=0 kind=fix\n"+
+		"item-14-r2\tagent:work#1\t2026-10-31T09:00:00Z\t0s\tdone\texit_code=0 kind=rework\n", stdout)
+	assert.Equal(t, []string{"lanes 14"}, rig.steering.calls)
+
+	code, stdout, stderr = rig.execute(t.Context(), "status", "--item", "14", "--json")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, `"item":"14"`)
+	assert.Contains(t, stdout, `"run":"item-14-r2"`)
+	assert.Contains(t, stdout, `"kind":"rework"`)
+}
+
+func TestStatus_AnItemAndARunIdTogetherAreRefused(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "status", "--item", "14", "item-14-r1")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "give a run id or --item, not both")
+	assert.Empty(t, rig.steering.calls)
+}
+
 func TestStatus_AFailedRunEndsWithTheErrorOfTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -159,6 +219,17 @@ func TestStatus_JSONWithNoRunIdIsRefusedAndAMissingRunReportsItsError(t *testing
 
 	rig.steering.err = errFake
 	code, _, stderr = rig.execute(t.Context(), "status", "item-99-r1")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
+}
+
+func TestStatus_AnItemWhoseLanesCannotBeReadFails(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.err = errFake
+
+	code, _, stderr := rig.execute(t.Context(), "status", "--item", "14")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "fake failure")
 }

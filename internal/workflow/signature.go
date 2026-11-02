@@ -163,7 +163,7 @@ func agentParams() []Param {
 		opt("pin", KindText), opt("resume", KindText), words("require_skills"),
 		{Name: "forbid_commands", Kind: KindList, Each: ForbidKinds()},
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
-		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), ruled("timeout", KindText, durationRule("timeout")),
+		opt("edits", KindBool), one("follow_ups", FollowUpModes()), one("kind", AgentKinds()), one("lane", Lanes()), ruled("timeout", KindText, durationRule("timeout")),
 		ruled("idle_timeout", KindText, durationRule("idle_timeout")), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 	}
 }

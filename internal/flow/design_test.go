@@ -36,6 +36,27 @@ func TestExample_TheThirdRoundOnOneMechanismRunsTheDesignStepAndAReplaceEndsTheL
 	assert.Empty(t, result.Merge)
 }
 
+func TestExample_TheLanesOfTheItemAreFixReviewReworkAndDesignInTheLedgerOfTheMethod(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRigWithDesign(t, alwaysChanges, noFindings, sameMechanism, `{"decision":"replace","reason":"the framework already retries"}`)
+	rig.h.writer = newFakeWriter()
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	require.NoError(t, err)
+
+	lanes, err := rig.h.client(t, testVersion).Lanes(testItem)
+	require.NoError(t, err)
+
+	var kinds []string
+	for _, lane := range lanes.Lanes {
+		kinds = append(kinds, lane.Kind)
+	}
+
+	assert.Equal(t, []string{"fix", "fix", "review", "rework", "review", "rework", "review", "design"}, kinds,
+		"the plan and the implement step are fix lanes, each fix after a review is a rework lane, and the design step is a design lane")
+}
+
 func TestExample_ADeleteDecisionAlsoEndsTheLoop(t *testing.T) {
 	t.Parallel()
 

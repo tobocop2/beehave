@@ -23,6 +23,8 @@ type PhaseInput struct {
 	Login   string `json:"login"`
 	// Kind is the agent kind of the step: review or implement. It is empty, and so left out of a recorded phase, for the kind implement.
 	Kind string `json:"kind,omitempty"`
+	// Lane is the lane argument of the step: fix, rework, relay or design. It is empty, and so left out of a recorded phase, for a call that sets none.
+	Lane string `json:"lane,omitempty"`
 
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
@@ -49,14 +51,16 @@ type PhaseInput struct {
 // PhaseOutput records how the agent of a phase ended. Session, Transcript, Text, Skills and Violations describe the session that ended.
 // The phase is a recorded step, so a replay reads Violations from the record and scans no transcript again.
 type PhaseOutput struct {
-	Outcome    agent.Outcome `json:"outcome"`
-	ExitCode   int           `json:"exit_code"`
-	Note       string        `json:"note"`
-	Session    string        `json:"session,omitempty"`
-	Transcript string        `json:"transcript,omitempty"`
-	Text       string        `json:"text,omitempty"`
-	Skills     []string      `json:"skills,omitempty"`
-	Violations []string      `json:"violations,omitempty"`
+	Outcome  agent.Outcome `json:"outcome"`
+	ExitCode int           `json:"exit_code"`
+	// Kind is the kind of the lane in the ledger of the method: fix, rework, relay, review or design. It is empty in a record that an older version wrote.
+	Kind       string   `json:"kind,omitempty"`
+	Note       string   `json:"note"`
+	Session    string   `json:"session,omitempty"`
+	Transcript string   `json:"transcript,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	Skills     []string `json:"skills,omitempty"`
+	Violations []string `json:"violations,omitempty"`
 }
 
 // phase waits for the claim of its run, then runs the agent as a step, so a restart skips the work that finished.
@@ -95,6 +99,8 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 	})
 
 	out := phaseOutput(result)
+	out.Kind = workflow.LaneKind(in.Kind, in.Lane)
+
 	if err != nil {
 		return out, err
 	}

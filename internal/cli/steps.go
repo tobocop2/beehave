@@ -32,6 +32,26 @@ func printSteps(stdout io.Writer, client Steering, id string, asJSON bool) error
 	return nil
 }
 
+// printLanes writes the lanes of one item across its runs: one line each by default, or one JSON object.
+// A line is the run id, then the line of the step, so the kind of the lane and the fields that decide the flow read as in the view of one run.
+func printLanes(stdout io.Writer, client Steering, item string, asJSON bool) error {
+	view, err := client.Lanes(item)
+	if err != nil {
+		return err
+	}
+
+	if asJSON {
+		return json.NewEncoder(stdout).Encode(view)
+	}
+
+	for _, lane := range view.Lanes {
+		// A failed write to stdout has no recovery.
+		_, _ = fmt.Fprintln(stdout, lane.Run+"\t"+stepLine(lane.StepLine))
+	}
+
+	return nil
+}
+
 // runLine is the last line of the view: the word run, the state of the run and, for a run that failed, the error that the store keeps for it.
 // A run that fails outside a step has no failed step, so this line holds the cause.
 func runLine(view flow.RunSteps) string {
@@ -63,6 +83,7 @@ func stepFields(step flow.StepLine) []string {
 		fields = append(fields, "exit_code="+strconv.Itoa(*step.ExitCode))
 	}
 
+	fields = appendText(fields, "kind", step.Kind)
 	fields = appendText(fields, "stop", step.Stop)
 
 	fields = appendText(fields, "verdict", step.Verdict)

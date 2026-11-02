@@ -34,6 +34,7 @@ type agentArgs struct {
 	data          map[string]any
 	runner        string
 	kind          string
+	lane          string
 	model         string
 	timeout       time.Duration
 	idleTimeout   time.Duration
@@ -65,7 +66,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
 		"resume": &a.resume, "require_skills": &raw.skills, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
-		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
+		"edits": &a.edits, "follow_ups": &raw.followUps, "kind": &a.kind, "lane": &a.lane, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "sandbox": &raw.sandbox, nameKeyword: &raw.label,
 	})
 	if err == nil && a.model == "" {
 		err = errors.New("an agent call needs a model. Add model = \"sonnet\" or the name of another model")
@@ -119,6 +120,14 @@ func (a *agentArgs) limits(raw agentRaw) (err error) {
 
 // checkKind refuses a kind that is not one of the two kinds. An empty kind is the kind implement.
 func (a agentArgs) checkKind() error {
+	if a.lane != "" && !slices.Contains(workflow.Lanes(), a.lane) {
+		return fmt.Errorf("lane is %q. Use one of: %s", a.lane, strings.Join(workflow.Lanes(), ", "))
+	}
+
+	if a.kind == workflow.AgentKindReview && a.lane != "" && a.lane != workflow.LaneReview {
+		return fmt.Errorf("lane is %q and kind is %q. A call of kind review has the lane review", a.lane, a.kind)
+	}
+
 	if a.kind == "" || slices.Contains(workflow.AgentKinds(), a.kind) {
 		return nil
 	}
@@ -308,7 +317,7 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 // phase makes the input of the phase that runs the agent.
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
-		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Prompt: prompt,
+		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Lane: a.lane, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect,
 		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
 	}

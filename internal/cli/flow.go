@@ -39,17 +39,24 @@ type Runner interface {
 	Shutdown() error
 }
 
-// Steering reads and steers runs without running any.
-type Steering interface {
+// Reading reads runs, their steps and their lanes without changing any.
+type Reading interface {
 	Status() ([]flow.RunInfo, error)
 	// Steps lists the steps of one run, in order.
 	Steps(id string) (flow.RunSteps, error)
+	// Lanes lists the lanes of one item across all its runs, oldest attempt first.
+	Lanes(item string) (flow.ItemLanes, error)
 	// Poll returns the newest review poll that finished. The second value is false when none has.
 	Poll() (flow.PollOutput, bool, error)
 	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
 	PollNotScheduled() (string, error)
 	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
 	PinnedFile(item string) (string, error)
+}
+
+// Steering reads and steers runs without running any.
+type Steering interface {
+	Reading
 	Answer(item, text string) error
 	Resume(item string) error
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
@@ -401,20 +408,20 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 func (f flowCommands) statusCommand() *cobra.Command {
 	var (
 		flag   string
+		item   string
 		asJSON bool
 	)
 
 	command := &cobra.Command{
 		Use:   "status [run id]",
 		Short: "List the runs, or the steps of one run",
-		Long: "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
-			"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
-			"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.",
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, args, asJSON) },
+		Long:  statusHelp,
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, item, args, asJSON) },
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the steps of the run as JSON (needs a run id)")
+	command.Flags().StringVar(&item, itemFlag, "", "list the lanes of this item across all its runs")
+	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the steps of the run, or the lanes of the item, as JSON (needs a run id or --"+itemFlag+")")
 
 	return command
 }
@@ -422,29 +429,49 @@ func (f flowCommands) statusCommand() *cobra.Command {
 // jsonFlag is the name of the flag that makes the per-run view print JSON.
 const jsonFlag = "json"
 
+// itemFlag is the name of the flag that makes status list the lanes of one item.
+const itemFlag = "item"
+
+const statusHelp = "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
+	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
+	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
+	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the kind of the lane " +
+	"(fix, rework, relay, review or design), the outcome and the fields that decide the flow."
+
+// errItemAndRun is returned when status gets both a run id and --item: the two views answer different questions.
+var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")
+
 // errJSONNeedsRun is returned when --json comes with no run id: the list of runs has no JSON form.
 var errJSONNeedsRun = errors.New("--" + jsonFlag + " prints the steps of one run: give the run id after status")
 
 // status prints the runs of the store, or the steps of the run that the command names.
-func (f flowCommands) status(cmd *cobra.Command, flag string, args []string, asJSON bool) error {
-	if len(args) == 1 {
-		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(cmd.OutOrStdout(), client, args[0], asJSON) })
-	}
+func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []string, asJSON bool) error {
+	out := cmd.OutOrStdout()
 
-	if asJSON {
+	switch {
+	case item != "" && len(args) == 1:
+		return errItemAndRun
+	case item != "":
+		return f.withClient(cmd, flag, func(client Steering) error { return printLanes(out, client, item, asJSON) })
+	case len(args) == 1:
+		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(out, client, args[0], asJSON) })
+	case asJSON:
 		return errJSONNeedsRun
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error {
-		infos, err := client.Status()
-		if err != nil {
-			return err
-		}
+	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client) })
+}
 
-		printStatus(cmd.OutOrStdout(), infos)
+// printRuns writes the runs of the store, then the review poll section.
+func printRuns(out io.Writer, client Steering) error {
+	infos, err := client.Status()
+	if err != nil {
+		return err
+	}
 
-		return printPollSection(cmd.OutOrStdout(), client)
-	})
+	printStatus(out, infos)
+
+	return printPollSection(out, client)
 }
 
 // printPollSection writes the newest review poll, then the cause when the last launch could not schedule the poll.

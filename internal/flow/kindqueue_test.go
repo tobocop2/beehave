@@ -67,6 +67,46 @@ func TestAgentKind_ARunOfAKindWaitsWhenTheCapOfItsQueueIsFull(t *testing.T) {
 	}
 }
 
+// An agent phase is its own workflow on the agent queue and ends with the agent, so an item that waits for the owner after its agent call holds no agent slot.
+func TestAgentQueue_AnItemThatWaitsForTheOwnerHoldsNoAgentSlot(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.opts.MaxConcurrent, harness.opts.MaxReviewConcurrent = 1, 1
+	harness.flowIs(t, waitFlow)
+
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+	run := runInBackground(engine, testItem)
+
+	eventually(t, func() bool { return len(harness.agents.seen()) == 1 })
+	eventually(t, func() bool { return activePhases(t, engine) == 0 })
+
+	select {
+	case <-run:
+		t.Fatal("the item must still wait for the owner")
+	default:
+	}
+
+	eventually(t, func() bool { return client.Answer(testItem, "go") == nil })
+	require.NoError(t, (<-run).err)
+}
+
+func activePhases(t *testing.T, engine *Engine) int {
+	t.Helper()
+
+	total := 0
+
+	for _, status := range []dbos.WorkflowStatusType{dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued} {
+		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(phaseName), dbos.WithFilterStatus(status))
+		require.NoError(t, err)
+
+		total += len(rows)
+	}
+
+	return total
+}
+
 func TestAgentKind_TheCapsOfTheTwoQueuesAreIndependent(t *testing.T) {
 	t.Parallel()
 

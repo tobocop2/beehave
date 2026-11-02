@@ -48,14 +48,16 @@ type StepLine struct {
 	// Ended is the zero time while the step runs.
 	Ended time.Time `json:"ended,omitzero"`
 	// Seconds is how long the step took, or how long it has run when it is not over.
-	Seconds  float64    `json:"duration_seconds"`
-	Error    string     `json:"error,omitempty"`
-	ExitCode *int       `json:"exit_code,omitempty"`
-	Stop     string     `json:"stop,omitempty"`
-	Verdict  string     `json:"verdict,omitempty"`
-	Head     string     `json:"head,omitempty"`
-	Passed   *bool      `json:"passed,omitempty"`
-	Gate     []GateStep `json:"gate,omitempty"`
+	Seconds  float64 `json:"duration_seconds"`
+	Error    string  `json:"error,omitempty"`
+	ExitCode *int    `json:"exit_code,omitempty"`
+	// Kind is the kind of the lane of an agent step, as the ledger of the method names it: fix, rework, relay, review or design. A step that is not an agent, and an agent that an older version recorded, have none.
+	Kind    string     `json:"kind,omitempty"`
+	Stop    string     `json:"stop,omitempty"`
+	Verdict string     `json:"verdict,omitempty"`
+	Head    string     `json:"head,omitempty"`
+	Passed  *bool      `json:"passed,omitempty"`
+	Gate    []GateStep `json:"gate,omitempty"`
 	// OutputUnreadable is set when a recorded output of the step did not decode into the type the engine wrote. The other fields are then incomplete.
 	OutputUnreadable bool `json:"output_unreadable,omitempty"`
 }
@@ -296,6 +298,7 @@ func decodeThen[T any](output any, use func(T)) bool {
 func (l *StepLine) fromPhase(phase PhaseOutput) {
 	if phase.Outcome != "" {
 		l.ExitCode = &phase.ExitCode
+		l.Kind = phase.Kind
 	}
 }
 
