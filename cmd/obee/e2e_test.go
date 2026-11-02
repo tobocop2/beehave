@@ -211,6 +211,7 @@ const e2eClaude = `#!/bin/sh
 # A review writes the next line of the file verdicts to the output file that its prompt names, with no open finding.
 # When the file obey-hook exists, the fake obeys --settings as Claude Code does: it runs the hook command of the settings before each Bash call.
 # A hook that exits with code 2 blocks the call: the fake adds a line to blocked.log and prints the tool_result of the refusal.
+# The implement step also makes one Bash call for each line of the file cmds, when it exists.
 # When the file edit-file exists, the implement step writes edited.txt with the Write tool. As with the real claude in print mode,
 # the write is refused unless the start arguments hold --permission-mode acceptEdits: the fake adds a line to refused.log and prints the tool_result of the refusal.
 hook=
@@ -263,6 +264,13 @@ echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill
 if [ "$step" = implement ]; then
   if [ -e edit-file ]; then write_call toolu_edit edited.txt; fi
   bash_call toolu_impl "git add -A"
+  if [ -e cmds ]; then
+    i=0
+    while IFS= read -r c; do
+      i=$((i + 1))
+      bash_call "toolu_cmd$i" "$c"
+    done < cmds
+  fi
 fi
 if [ "$step" = fix ]; then
   n=$(grep -c '^fix ' calls.log)
