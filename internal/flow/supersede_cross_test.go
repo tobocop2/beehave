@@ -39,6 +39,9 @@ func TestSuperseded_AGateOfAnotherItemOfTheProjectIsNotStopped(t *testing.T) {
 
 	require.ErrorIs(t, endsAfterTicks(t, h, first).err, errSuperseded)
 
+	// The cancel ends the run before the gate code sees its context end, so the count is read once the stop arrives.
+	eventually(t, func() bool { return gated.stopped.Load() >= 1 })
+
 	close(gated.release)
 
 	require.NoError(t, (<-other).err, "a gate of another item is not a gate of the same pull request")

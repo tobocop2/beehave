@@ -73,7 +73,7 @@ func TestExclusive_AMergeOfARepositoryStartsOnlyAfterTheGateOfThatRepositoryEnds
 
 	select {
 	case <-merged:
-	case <-time.After(20 * time.Second):
+	case <-time.After(eventTimeout):
 		t.Fatal("the merge never started after the gate ended")
 	}
 
@@ -116,7 +116,7 @@ func TestExclusive_AGateOfOneProjectDoesNotHoldTheMergeOfAnotherProject(t *testi
 
 	select {
 	case <-merged:
-	case <-time.After(10 * time.Second):
+	case <-time.After(eventTimeout):
 		t.Fatal("the merge of project B waited for the gate of project A")
 	}
 
