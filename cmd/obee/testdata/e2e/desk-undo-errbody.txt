@@ -1,0 +1,49 @@
+# The reply fails after the credit, and the read-back of the credit answers an HTTP error whose JSON body carries a status field that is not "applied".
+# The reader must not trust that body: the undo cannot tell whether the credit stands, so it fails and posts no uncredit.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+subst home/.desk/config
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+
+exec obeereal item add desk shift-1 --title 'Morning shift' --body-file body.txt
+exec obeereal run shift-1 desk --workflow desk/workflow.star
+stdout 'item shift-1 finished'
+
+grep -count=1 '^credit-' writes.log
+! grep '^uncredit-' writes.log
+exec obeereal status item-desk-2-r1
+stdout 'undo:write:credit#1\t.*\tfailed\t'
+! exists mail.out
+
+-- body.txt --
+The morning shift.
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=@WORK@/home/.desk/mail
+CHAT_SPOOL=@WORK@/home/.desk/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/mail/cur/keep --
+-- home/.desk/chat/keep --
+-- home/.desk/mail/new/m1 --
+Message-Id: <m1@mail.test>
+From: Ann Smith <ann@example.com>
+Subject: Refund BK-123456
+
+Thanks, Ann Smith. Please refund 80 for BK-123456.
+-- resp/_bookings_BK-123456 --
+{"ref":"BK-123456","status":"cancelled","paid":120,"currency":"EUR","date":"2026-12-01","customer_name":"Ann Smith","customer_email":"ann@example.com","refunded":0}
+-- resp/_eligibility_refund --
+{"eligible":true}
+-- resp/sendmail.fail --
+-- resp/readback.fail --
+{"status":"error"}

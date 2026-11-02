@@ -1,0 +1,72 @@
+# The refund desk with the stand-ins for the system of record, the chat service and the mail agent. The command is obeereal, the real composition root.
+# One email asks for a refund of 80, which is under the limit of 100. The clerk proposes it, the desk checks the proposal against the policy and the live
+# system, approves it by policy, and runs the saga: a credit with its read-back, then the reply. The case closes and the shift closes.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+subst home/.desk/config
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+
+exec obeereal check workflow desk/workflow.star
+! stdout .
+! stderr .
+exec obeereal check workflow desk/eval.star
+! stdout .
+! stderr .
+
+exec obeereal item add desk shift-1 --title 'Morning shift' --body-file body.txt
+stdout 'added item shift-1 to project desk'
+
+exec obeereal run shift-1 desk --workflow desk/workflow.star
+stdout 'item shift-1 finished'
+
+# The clerk ran once. The mask kept the address and the name out of its prompt.
+cmp calls.log expected-calls.log
+grep 'M_EMAIL_' last-prompt.txt
+! grep 'ann@example.com' last-prompt.txt
+! grep 'Ann Smith' last-prompt.txt
+
+# The credit was written once, with the key of the engine, and read back. The reply went out once, to the real address.
+grep -count=1 '^credit-' writes.log
+! grep 'uncredit' writes.log
+grep -count=1 'ann@example.com' mail.out
+grep 'We refund 80 EUR for BK-123456' mail.out
+
+# The mail moved to the folder cur, so a second shift finds no new message.
+! exists home/.desk/mail/new/m1
+exists home/.desk/mail/cur/m1
+
+exec obeereal status
+stdout 'shift-1-r1\tdone'
+stdout 'desk-2-r1\tdone'
+
+-- body.txt --
+The morning shift.
+-- expected-calls.log --
+clerk
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=@WORK@/home/.desk/mail
+CHAT_SPOOL=@WORK@/home/.desk/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/mail/cur/keep --
+-- home/.desk/chat/keep --
+-- home/.desk/mail/new/m1 --
+Message-Id: <m1@mail.test>
+From: Ann Smith <ann@example.com>
+Subject: Refund BK-123456
+
+Thanks, Ann Smith. Please refund 80 for BK-123456.
+-- resp/_bookings_BK-123456 --
+{"ref":"BK-123456","status":"cancelled","paid":120,"currency":"EUR","date":"2026-12-01","customer_name":"Ann Smith","customer_email":"ann@example.com","refunded":0}
+-- resp/_eligibility_refund --
+{"eligible":true}
