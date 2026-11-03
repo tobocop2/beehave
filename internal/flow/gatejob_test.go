@@ -64,6 +64,8 @@ func TestGateJob_ACrashAfterTheSubmitAndBeforeTheWaitIsRecordedSubmitsOnceAndThe
 	gated := newHostGate()
 	deps := h.deps()
 	deps.Gate = gated
+	h.migrated(t)
+
 	engine, err := NewEngine(t.Context(), h.opts, deps)
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())

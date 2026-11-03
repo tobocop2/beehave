@@ -164,6 +164,7 @@ func (r *loopRig) engine(t *testing.T) *Engine {
 
 	deps := r.h.deps()
 	deps.Agents = r.agents
+	r.h.migrated(t)
 
 	engine, err := NewEngine(t.Context(), r.h.opts, deps)
 	require.NoError(t, err)
@@ -178,6 +179,7 @@ func (r *loopRig) crashEngine(t *testing.T) (*Engine, func()) {
 
 	deps := r.h.deps()
 	deps.Agents = r.agents
+	r.h.migrated(t)
 
 	stopCtx, stop := context.WithCancel(t.Context())
 	engine, err := NewEngine(stopCtx, r.h.opts, deps)
