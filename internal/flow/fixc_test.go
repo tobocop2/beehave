@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,13 +50,38 @@ func TestResume_ARunThatFailedAtTheClaimStepTakesOneClaim(t *testing.T) {
 	harness.life.failing["claim"] = false
 	harness.life.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-	assert.Equal(t, 1, countOf(harness.life.seen(), "claim"), "the resume takes no claim: the claim step of the run runs again")
+	// The run is held at its claim step, so the count is read while the resumed run has not yet replayed the step.
+	atClaim := make(chan struct{})
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(unblock)
 
-	_, err = engine.Run(testItem, testProject)
+	reached := sync.OnceFunc(func() { close(atClaim) })
+
+	harness.life.onClaim = func() {
+		reached()
+
+		select {
+		case <-release:
+		case <-time.After(eventTimeout):
+		}
+	}
+
+	handle := resumeRun(t, engine, client)
+
+	select {
+	case <-atClaim:
+	case <-time.After(eventTimeout):
+		t.Fatal("the resumed run did not reach its claim step")
+	}
+
+	assert.Equal(t, 1, countOf(harness.life.seen(), "claim"), "the resume takes no claim: the claim step of the run runs again")
+	unblock()
+
+	_, err = joinRun(handle)
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, countOf(harness.life.seen(), "claim"))
+	assert.Equal(t, 2, countOf(harness.life.seen(), "claim"), "the claim step ran once on the resume")
 	assert.Equal(t, []string{"owner-12#2"}, harness.life.releasedBy(), "the one claim is released")
 }
 
@@ -133,10 +159,17 @@ func TestFinish_TheTokenFileEndsWithTheRun(t *testing.T) {
 	harness.agents.err = nil
 	harness.agents.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-	require.FileExists(t, ownerPath(harness.opts.StateDir, testRun), "the resume saves the token")
+	// The renewal of the fresh claim hangs, so the resumed run is held while the token file is read.
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(unblock)
+	harness.beats.hook(func() { <-release })
 
-	_, err = engine.Run(testItem, testProject)
+	handle := resumeRun(t, engine, client)
+	require.FileExists(t, ownerPath(harness.opts.StateDir, testRun), "the resume saves the token")
+	unblock()
+
+	_, err = joinRun(handle)
 	require.NoError(t, err)
 
 	assert.NoFileExists(t, ownerPath(harness.opts.StateDir, testRun), "the release ends the token file")
@@ -180,8 +213,7 @@ func TestLaunch_AReusedRunIdTakesItsOwnClaim(t *testing.T) {
 	harness.agents.err = nil
 	harness.agents.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-	_, err = first.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, first, client)
 	require.NoError(t, err)
 	require.NoError(t, first.Shutdown())
 	time.Sleep(10 * time.Millisecond)

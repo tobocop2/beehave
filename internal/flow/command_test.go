@@ -245,9 +245,7 @@ func TestWalk_AStepThatStoppedOnACodeStaysStoppedOnReplayAndRunsNoMoreThanOnce(t
 	h.commands.reply = func(CommandRequest) (CommandOutput, error) { return CommandOutput{RC: 0, Stdout: "second answer"}, nil }
 	h.commands.mu.Unlock()
 
-	require.NoError(t, h.client(t, testVersion).Resume(testItem))
-
-	result, err := engine.RunFile(testItem, testProject, file)
+	result, err := resumeAndJoin(t, engine, h.client(t, testVersion))
 
 	require.NoError(t, err)
 	assert.Equal(t, &Stopped{Step: "command:check#1", RC: 2, Output: "first answer"}, result.Stopped, "the replay reads the record, not a second run")

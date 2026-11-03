@@ -148,9 +148,7 @@ func TestGateRefusal_AReplayOfARecordedGateReturnsTheRecordedPassAfterTheSandbox
 			h.life.failing["release"] = false
 			h.life.mu.Unlock()
 
-			require.NoError(t, h.client(t, testVersion).Resume(testItem))
-
-			_, err = engine.RunFile(testItem, testProject, file)
+			_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 
 			require.NoError(t, err, "the replay returns the recorded pass and is not refused")
 		})

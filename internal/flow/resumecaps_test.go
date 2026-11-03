@@ -38,9 +38,7 @@ func TestResume_TheCostSumOfAnItemSurvivesTheResumeSoAStepPastTheCapIsRefusedAga
 	require.ErrorContains(t, err, "the agent steps of the item run spent $6")
 	require.Len(t, rig.h.agents.seen(), 2, "a and b ran, c was refused at the cap")
 
-	require.NoError(t, client.Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, client)
 
 	require.ErrorContains(t, err, "the agent steps of the item run spent $6", "the resume replays the recorded costs of a and b: the sum is not reset")
 	assert.Len(t, rig.h.agents.seen(), 2, "no agent started after the resume: c is refused again")
@@ -75,9 +73,7 @@ command(run = ["done"])
 	require.ErrorContains(t, err, "ended as exited (exit 3)")
 	require.Len(t, rig.h.agents.seen(), 2, "round 1 ran, round 2 failed")
 
-	require.NoError(t, client.Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, client)
 
 	require.NoError(t, err)
 	assert.Len(t, rig.h.agents.seen(), 4, "round 1 is replayed and not run again: round 2 again, then round 3. The loop of 3 rounds does not start over")

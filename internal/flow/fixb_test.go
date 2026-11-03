@@ -284,8 +284,7 @@ func TestRun_APoolThatFailsToPickFailsTheFirstAgentStepAndResumeTriesAgain(t *te
 	require.ErrorContains(t, err, "usage unreadable")
 	assert.Empty(t, harness.agents.seen())
 
-	require.NoError(t, client.Resume(testItem))
-	_, err = engine.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err, "the resume reads the pool again, not the failed record")
 	assert.Equal(t, []string{"alice"}, harness.agents.logins())
 }
@@ -379,8 +378,7 @@ func TestResume_AnAgentThatResumesASessionRunsOnTheLoginThatOwnsIt(t *testing.T)
 	_, err := engine.Run(testItem, testProject)
 	require.ErrorContains(t, err, "bad exit")
 
-	require.NoError(t, client.Resume(testItem))
-	_, err = engine.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"alice", "alice", "alice"}, harness.agents.logins(), "the resumed step keeps the login of the run")

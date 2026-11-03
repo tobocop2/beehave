@@ -101,8 +101,7 @@ func TestPhase_AFailedAgentStepThatResumesGetsNoNote(t *testing.T) {
 	harness.agents.result = nil
 	harness.agents.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-	_, err = engine.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
 	requests := harness.agents.seen()
@@ -245,9 +244,7 @@ func TestPhase_ACanceledAgentStepThatResumesInTheSameEngineGetsNoNoteAndNoLostRe
 	<-done
 
 	close(harness.agents.gate)
-	require.NoError(t, client.Resume(testItem))
-
-	_, err := engine.Run(testItem, testProject)
+	_, err := resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
 	requests := harness.agents.seen()
@@ -307,8 +304,7 @@ func TestPhase_ALostStartThatFailsAndResumesLeavesNoOldLossToDerive(t *testing.T
 	harness.beats.setRenewed(time.Now().Add(50 * time.Minute))
 
 	client := harness.client(t, testVersion)
-	require.NoError(t, client.Resume(testItem))
-	_, err = engine.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
 	requests := harness.agents.seen()

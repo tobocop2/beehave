@@ -91,9 +91,7 @@ func TestGateJob_ACrashAfterTheSubmitAndBeforeTheWaitIsRecordedSubmitsOnceAndThe
 	}
 
 	require.EqualValues(t, 1, gated.submits.Load(), "the first run submitted the host job")
-	require.NoError(t, client.Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, client)
 
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, gated.submits.Load(), "the replay submitted no second job")

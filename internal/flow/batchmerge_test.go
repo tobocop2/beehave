@@ -547,9 +547,7 @@ func TestBatchMerge_ACancelWhileTheMergeStepRunsThenAResumeMergesTheMemberOnce(t
 	_, err := engine.RunFile(testItem, testProject, file)
 
 	require.Error(t, err)
-	require.NoError(t, rig.h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "1", "3"}, rig.merger.landed(), "the cut-off merge step ran again")
@@ -618,9 +616,7 @@ func TestBatchMerge_ARecordedGateThatRanOnAnotherTreeStopsTheReplayToo(t *testin
 	rig.gate.lie = ""
 	rig.gate.mu.Unlock()
 
-	require.NoError(t, rig.h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
 
 	require.ErrorContains(t, err, "the recorded gate ran on tree", "the replay reads the recorded gate and does not run it again")
 	assert.Len(t, rig.gate.ran(), 1)
@@ -673,9 +669,7 @@ func TestBatchMerge_AFailureThatStaysIsRecordedAndAResumeRunsTheStepAgain(t *tes
 
 	reads := rig.host.tipReads()
 
-	require.NoError(t, rig.h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
 
 	require.NoError(t, err)
 	assert.Greater(t, rig.host.tipReads(), reads, "the resume drops the failed record, so the tip is read again")
