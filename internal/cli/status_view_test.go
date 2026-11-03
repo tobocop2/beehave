@@ -37,6 +37,35 @@ func TestStatus_AWaitingRunShowsItsItemItsProjectAndTheTimeLeft(t *testing.T) {
 		"answer by 2026-11-03T12:00:00Z, 1h30m left\titem 12 of p\n", stdout)
 }
 
+func TestStatus_AWaitWithRemindersShowsTheNextOneInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	run := waitingRun()
+	run.Asked = &flow.Asked{From: []string{"ana"}, Quorum: 1, Reminders: 2, Reminded: 1, NextRemind: statusNow.Add(20 * time.Minute)}
+
+	rig := newRig(t)
+	rig.steering.infos = []flow.RunInfo{run}
+
+	_, stdout, _ := rig.execute(t.Context(), "status")
+	assert.Contains(t, stdout, "asks ana, 0 of 1 answered; next reminder 2026-11-03T10:50:00Z (1 of 2 sent)")
+
+	_, stdout, _ = rig.execute(t.Context(), "status", "--json")
+	assert.Contains(t, stdout, `"reminders":2,"reminded":1,"next_remind":"2026-11-03T10:50:00Z"`)
+}
+
+func TestStatus_AWaitWhoseRemindersAreAllSentShowsNoNextReminder(t *testing.T) {
+	t.Parallel()
+
+	run := waitingRun()
+	run.Asked = &flow.Asked{From: []string{"ana"}, Quorum: 1, Reminders: 2, Reminded: 2}
+
+	rig := newRig(t)
+	rig.steering.infos = []flow.RunInfo{run}
+
+	_, stdout, _ := rig.execute(t.Context(), "status")
+	assert.NotContains(t, stdout, "reminder")
+}
+
 func TestStatus_ADeadlineThatPassedSaysSo(t *testing.T) {
 	t.Parallel()
 

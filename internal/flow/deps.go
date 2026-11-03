@@ -134,7 +134,7 @@ type beats interface {
 // Beat replaces the time that one claim renewal may take. OwnerWait replaces the time of one wait for the owner before the wait starts again.
 // Retain replaces the age at which Launch deletes a finished run. Now replaces the monotonic reading of the clock that measures the time since the last good claim renewal.
 // Wall replaces the wall reading of that clock: when it is nil, the wall reading is the one that Now returns.
-// Reading replaces the time that the now builtin returns, and nothing else: the lease age keeps using Wall.
+// Reading replaces the time that the now builtin returns, and the time from which a wait counts its deadline and its reminders. The lease age keeps using Wall.
 // After replaces the timer that ends the trust in a claim: it starts f once d has passed, and the function it returns stops the timer.
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
 // Watch replaces the time of the durable sleep between two reads of a ready pull request.

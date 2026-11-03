@@ -247,16 +247,30 @@ func waitArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple)
 	var kw waitKeywords
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"question": &plan.question, "timeout": &kw.timeout, nameKeyword: &plan.label, "to": &kw.to, "quorum": &kw.quorum, "choices": &kw.choices,
+		"question": &plan.question, "timeout": &kw.timeout, nameKeyword: &plan.label, "to": &kw.to, "quorum": &kw.quorum, "choices": &kw.choices, "remind": &kw.remind,
 	}); err != nil {
 		return waitPlan{}, err
 	}
 
-	if err := errors.Join(plan.ask(kw, gave(kwargs, "quorum")), plan.limit(kw, gave(kwargs, "timeout"))); err != nil {
+	if err := errors.Join(plan.ask(kw, gave(kwargs, "quorum")), plan.limit(kw, gave(kwargs, "timeout")), plan.reminders(kw, gave(kwargs, "timeout"))); err != nil {
 		return waitPlan{}, fmt.Errorf("wait: %w", err)
 	}
 
 	return plan, nil
+}
+
+// reminders reads the shares of the window at which a wait reminds its people. A wait that sets none sends none.
+func (p *waitPlan) reminders(kw waitKeywords, timeoutGiven bool) error {
+	if kw.remind == nil {
+		return nil
+	}
+
+	var err error
+	if p.remind, err = workflow.Remind(kw.remind); err != nil {
+		return err
+	}
+
+	return workflow.CheckRemind(timeoutGiven, len(p.asked.From) > 0)
 }
 
 // limit reads the deadline of a wait. A timeout that the call gives is a deadline above zero, even as an empty text. A call without the keyword has no deadline.
@@ -276,6 +290,7 @@ type waitKeywords struct {
 	timeout string
 	to      starlark.Value
 	choices starlark.Value
+	remind  starlark.Value
 	quorum  int
 }
 

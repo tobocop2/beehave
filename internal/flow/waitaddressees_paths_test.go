@@ -20,7 +20,7 @@ func TestWaitVoices_ReportAnEventThatCannotBeShown(t *testing.T) {
 	_, err = engine.listen(engine.ctx, testItem, waitPlan{question: "q", asked: Asked{Choices: []string{"a"}}})
 	require.Error(t, err, "the id of a wait is a recorded step of a run")
 
-	_, err = engine.within(engine.ctx, testItem, time.Hour, &Asked{}, &tally{})
+	_, err = engine.within(engine.ctx, testItem, time.Hour, nil, &Asked{}, &tally{})
 	require.Error(t, err, "the end of a deadline is recorded as a step of a run")
 }
 

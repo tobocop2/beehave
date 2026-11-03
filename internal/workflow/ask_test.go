@@ -1,6 +1,7 @@
 package workflow_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,6 +73,39 @@ func TestCheckQuorum_AQuorumOfZeroIsNoQuorum(t *testing.T) {
 
 	require.NoError(t, workflow.CheckQuorum(0, nil))
 	require.NoError(t, workflow.CheckQuorum(2, []string{"a", "b"}))
+}
+
+func TestRemind_ReadsAListOrATupleOfSharesInOrder(t *testing.T) {
+	t.Parallel()
+
+	shares, err := workflow.Remind(starlark.NewList([]starlark.Value{starlark.Float(0.5), starlark.Float(0.9)}))
+	require.NoError(t, err)
+	assert.Equal(t, []float64{0.5, 0.9}, shares)
+
+	shares, err = workflow.Remind(starlark.Tuple{starlark.Float(0.25)})
+	require.NoError(t, err)
+	assert.Equal(t, []float64{0.25}, shares)
+}
+
+func TestRemind_RefusesWhatIsNotAnOrderedListOfSharesBelowOne(t *testing.T) {
+	t.Parallel()
+
+	_, err := workflow.Remind(starlark.Float(0.5))
+	require.ErrorContains(t, err, "remind must be a list of shares of the window")
+
+	_, err = workflow.Remind(starlark.NewList([]starlark.Value{starlark.Float(math.NaN())}))
+	require.ErrorContains(t, err, "not a share of the window")
+
+	_, err = workflow.Remind(starlark.NewList([]starlark.Value{starlark.MakeInt(1)}))
+	require.ErrorContains(t, err, "remind holds 1, which is not a share of the window")
+}
+
+func TestCheckRemind_NeedsAWindowAndPeople(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, workflow.CheckRemind(true, true))
+	require.ErrorContains(t, workflow.CheckRemind(false, true), "remind needs `timeout`")
+	require.ErrorContains(t, workflow.CheckRemind(true, false), "remind needs `to`")
 }
 
 func TestCheck_ALiteralQuorumNeedsALiteralListToBeChecked(t *testing.T) {
