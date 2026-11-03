@@ -486,6 +486,7 @@ func TestScripts(t *testing.T) {
 			"example": cmdExample, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude, "deskfakes": cmdDeskFakes, "deskinit": cmdDeskInit,
 			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit,
+			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 		},
 	})
 }

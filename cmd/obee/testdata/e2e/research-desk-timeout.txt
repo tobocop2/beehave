@@ -1,0 +1,44 @@
+# The two waits of the desk have a deadline. With BUDGET_TIMEOUT the pause for a larger call cap ends as a failed run with a reason when nobody answers.
+# With REVIEW_TIMEOUT the review of the draft ends the same way, and the finished sections stay in the store.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+env BUDGET_TIMEOUT=2s
+env MAX_AGENT_CALLS=2
+
+exec obeereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec obeereal run cold-cost research-desk --workflow rd/workflow.star
+stderr 'REFUSE: no answer to the budget question within 2s'
+! exists wiki.log
+
+
+# The review wait, on a second item with a large cap. Its draft is ready, nobody answers, and the run fails with the reason.
+env MAX_AGENT_CALLS=40
+env REVIEW_TIMEOUT=2s
+exec obeereal item add research-desk warm-cost --title 'Warm and cost' --body-file body.txt
+! exec obeereal run warm-cost research-desk --workflow rd/workflow.star
+stderr 'REFUSE: no answer to the review of the draft within 2s'
+grep 'done' store/warm-cost/s1.1/status
+grep 'done' store/warm-cost/s2.1/status
+! exists wiki.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

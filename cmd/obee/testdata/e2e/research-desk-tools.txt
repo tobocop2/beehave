@@ -1,0 +1,71 @@
+# The scripts of tools/ on their own, against a store written by hand: the edge cases that the agent paths do not reach.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env PATH=$WORK/fake:$PATH
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+mkdir store/r1/snap
+mkdir store/r1/s2.1
+cp page.txt store/r1/snap/s1.txt
+
+# A quote with a newline is refused. A fixed-string search treats each line of it as a pattern, and an empty line matches every line of the page.
+stdin quote-newline.json
+exec sh rd/tools/claims.sh add r1 1 1
+stdout 'REJECT'
+exec jq -r '.quote_ok' store/r1/s1.1/claims.jsonl
+stdout 'false'
+# A quote with a tab is refused too: the staleness table splits its rows at tabs.
+stdin quote-tab.json
+exec sh rd/tools/claims.sh add r1 1 2
+stdout 'REJECT'
+# A quote on one line of the page is accepted.
+stdin quote-good.json
+exec sh rd/tools/claims.sh add r1 1 3
+! stdout 'REJECT'
+
+# A number in the prose must be a whole number of a cited quote: 3 is not in 30 percent.
+cp claims-cited.jsonl store/r1/s2.1/claims.jsonl
+cp prose-substring.md store/r1/s2.1/prose.md
+! exec sh rd/tools/cites.sh $WORK/store r1 2 1
+stdout 'states the number 3, which is not in a cited quote'
+cp prose-whole.md store/r1/s2.1/prose.md
+exec sh rd/tools/cites.sh $WORK/store r1 2 1
+
+# A search that fails is an error, not an empty list.
+! exec sh rd/tools/search.sh nothing 3
+! stdout .
+
+# A fetch refuses an address with user information, the 172.16 range and a bracketed address.
+! exec sh rd/tools/fetch.sh r1 http://x@127.0.0.1/page
+stderr 'private network'
+! exec sh rd/tools/fetch.sh r1 http://172.20.0.5/page
+stderr 'private network'
+! exec sh rd/tools/fetch.sh r1 'http://[::1]/page'
+stderr 'IPv6'
+
+# A staleness check that tested no quote fails.
+! exec sh rd/tools/staleness.sh $WORK/store nothing-here
+stdout 'no quote to test'
+
+-- page.txt --
+Winter tests.
+At -20 C the output fell by 30 percent.
+-- quote-newline.json --
+[{"text":"A claim.","source":1,"quote":"not on the page\n\nAt -20 C the output fell by 30 percent."}]
+-- quote-tab.json --
+[{"text":"A claim.","source":1,"quote":"Winter\ttests."}]
+-- quote-good.json --
+[{"text":"A claim.","source":1,"quote":"At -20 C the output fell by 30 percent."}]
+-- claims-cited.jsonl --
+{"id":"c1","text":"Cold cut it.","source":"s1","quote":"At -20 C the output fell by 30 percent.","quote_ok":true,"canary":false,"verdict":"supported"}
+-- prose-substring.md --
+The output fell by 3 percent. [c1]
+-- prose-whole.md --
+The output fell by 30 percent. [c1]
