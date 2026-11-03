@@ -54,6 +54,12 @@ and count it with the skips. A void step is not red and not green.
 test name). A red that the base tree has too is not counted: print `BASE-RED <name>: base=<n> head=<n>`.
 **A result counts only with the number of tests that ran.** Write "10 of 10 runs passed, <n> tests in each run",
 never "10 of 10". A run with 0 tests is not a pass.
+**A mutation run is its own job after the gate**, never a gate step. Start it when the gate steps are done.
+**Before each push, search the diff for `TODO` and `FIXME`.** Each one that the change adds names its author, as `TODO(name)`.
+**Capture the exit code before any pipe**: `cmd > out 2>&1; rc=$?; grep ... out`. After a pipe, `$?` is the exit code of the last stage.
+**A `while read` loop gives its stdin to every command inside it.** Read the list on fd 3 (`while read -r x <&3; do ...; done 3< list`) or put `</dev/null` on the inner command, and assert the loop count against the input count.
+**A regeneration is evidence for its own tree only.** Compare the output with a fresh tree of the same commit. A regeneration that wrote nothing looks the same as one that wrote identical bytes.
+**A gate that covers only the diff becomes a full run in two cases**: the diff touches a shared foundation (the workflow files, a lockfile, the schema, a widely used helper), or a red has no explanation. Name the trigger in the report. An unfinished full run never blocks a verdict: report it as a named gap.
 
 ## Evidence rules that are not optional
 
@@ -92,6 +98,10 @@ A loop that needs POSIX word splitting goes in a `#!/bin/sh` file, because the i
 Wait loops have a timeout. Test commands read `</dev/null`. Report no background commands left.
 **Before EVERY build, check `df` on the build host.** If the free space is under the floor that the rules of the
 project name, wait. A build that starts on a nearly full disk fails partway with void results.
+**Disk is per lane.** Share a compile cache between lanes, never a target directory.
+**Job scripts, bundles and inputs live in a jobs folder of the host** (`jobs/<lane>/` under the work root that the brief names), never in `/tmp`.
+**Name your target directory in the report as soon as you have no further build**, so that the orchestrator deletes it at once, by its literal path.
+**Sweep dangling docker volumes as a backstop.** Report `docker volume ls -qf dangling=true | wc -l`. The sweep prunes volumes that no running container uses, and never images.
 
 ## Compiled code
 
@@ -124,6 +134,12 @@ subset of the union of the two parents' versions of that file; the control is th
 parent alone, which must be nonzero.
 Restore a mutated file from a snapshot and **assert the blob**; `git checkout -- <file>` resets to HEAD and
 silently discards other uncommitted edits.
+
+## Brief rules
+
+**The closing keyword depends on the base.** On a round branch, the pull request body says `Addresses #N`. When the base is the default branch, it says `Closes #N`.
+**Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
+**A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
 
 ## Project rules
 

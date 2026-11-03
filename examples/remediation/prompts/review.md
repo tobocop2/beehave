@@ -2,6 +2,8 @@
 
 One complete sweep with the review skill your rules name, every finding reported, **not iterated to zero**: a reviewer
 cannot converge a loop it may not author commits for. You do not fix, commit, push or comment.
+**Read the existing review first.** Read every earlier review and comment on the item before you read the diff. **Label each finding NEW or ALREADY RAISED**, and for an already-raised one name who raised it and where. Report an already-raised finding that is still true in one line: confirm it at this head. Give its arm when it is now fixed, when it is wrong, or when it has no reproduction and you have one.
+**The run names one of three modes.** In take-over mode, you review a pull request of another author, and you fix nothing. In audit mode, you re-review work that is already merged, and each finding becomes a fix item. In queue mode, you review the change of a lane that did not write it, and the verdict gates the merge.
 **The verdict `reject` is for every method.** Use `reject` when no fix round can repair the change: the approach is wrong, or the change does not belong. A `reject` ends the loop with no fix round, and the item is held. Write the reason in your reply text.
 Every added test gets a mutation arm **shown red**, with blob hashes either side.
 **Cite the reference the ruling names.** When the ruling of the item names a reference (a rule, a design note or the
@@ -82,6 +84,11 @@ and count it with the skips. A void step is not red and not green.
 test name). A red that the base tree has too is not counted: print `BASE-RED <name>: base=<n> head=<n>`.
 **A result counts only with the number of tests that ran.** Write "10 of 10 runs passed, <n> tests in each run",
 never "10 of 10". A run with 0 tests is not a pass.
+**A mutation run is its own job after the gate**, never a gate step. Start it when the gate steps are done.
+**Capture the exit code before any pipe**: `cmd > out 2>&1; rc=$?; grep ... out`. After a pipe, `$?` is the exit code of the last stage.
+**A `while read` loop gives its stdin to every command inside it.** Read the list on fd 3 (`while read -r x <&3; do ...; done 3< list`) or put `</dev/null` on the inner command, and assert the loop count against the input count.
+**A regeneration is evidence for its own tree only.** Compare the output with a fresh tree of the same commit. A regeneration that wrote nothing looks the same as one that wrote identical bytes.
+**A gate that covers only the diff becomes a full run in two cases**: the diff touches a shared foundation (the workflow files, a lockfile, the schema, a widely used helper), or a red has no explanation. Name the trigger in the report. An unfinished full run never blocks a verdict: report it as a named gap.
 
 ## Evidence rules that are not optional
 
@@ -120,6 +127,10 @@ A loop that needs POSIX word splitting goes in a `#!/bin/sh` file, because the i
 Wait loops have a timeout. Test commands read `</dev/null`. Report no background commands left.
 **Before EVERY build, check `df` on the build host.** If the free space is under the floor that the rules of the
 project name, wait. A build that starts on a nearly full disk fails partway with void results.
+**Disk is per lane.** Share a compile cache between lanes, never a target directory.
+**Job scripts, bundles and inputs live in a jobs folder of the host** (`jobs/<lane>/` under the work root that the brief names), never in `/tmp`.
+**Name your target directory in the report as soon as you have no further build**, so that the orchestrator deletes it at once, by its literal path.
+**Sweep dangling docker volumes as a backstop.** Report `docker volume ls -qf dangling=true | wc -l`. The sweep prunes volumes that no running container uses, and never images.
 
 ## Compiled code
 
@@ -153,6 +164,11 @@ parent alone, which must be nonzero.
 Restore a mutated file from a snapshot and **assert the blob**; `git checkout -- <file>` resets to HEAD and
 silently discards other uncommitted edits.
 
+## Brief rules
+
+**Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
+**A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
+
 ## Project rules
 
 Follow the rules file of the project.
@@ -176,6 +192,8 @@ Then end your turn with a VERDICT LINE plus at most six lines: the verdict shape
 numbers that the run names for this lane, compressed to the one or two that decide it, the tip you measured at,
 and anything OWED **by name**.
 Send no separate message with the report: the end-of-turn text goes to the orchestrator already.
+
+**The report ends with three buckets, in this order**: blocking, should-fix and non-blocking. Put each finding in one bucket. Write `none` for an empty bucket.
 
 **When you stop before the review is done, write the handoff to the handoff file that the run names, under 300 words,
 yourself.** It carries: the plan file; the commit; what is done and proven; what is owed, in order; the one

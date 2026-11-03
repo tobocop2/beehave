@@ -57,6 +57,11 @@ issue was filed against before you inherit its mechanism.
 **Before asserting what a runtime path does, LIST THE FILES IT TRAVERSES and name which one you read.**
 When a claim depends on a branch, find where its variable is SET and not only where it is tested.
 
+## Brief rules
+
+**Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
+**A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
+
 ## Project rules
 
 Follow the rules file of the project.
