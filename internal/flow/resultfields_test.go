@@ -49,7 +49,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"host_teardown": keysOf(teardownOutputs(true, "")),
 		"host_up":       keysOf(upOutputs(true)),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
-		"wait":          keysOf(answerOutputs("", false)),
+		"wait":          keysOf(answerOutputs("", nil, false)),
 		"write":         keysOf(writeOutputs("", "", 0, "", false)),
 	}
 

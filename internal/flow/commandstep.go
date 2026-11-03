@@ -237,45 +237,101 @@ func recordedKey(gated GateResult, key GateKey) string {
 	return ""
 }
 
-// waitArgs reads the arguments of a wait: its question, its label and its deadline. No timeout is a deadline of zero.
-func waitArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (question, label string, deadline time.Duration, err error) {
-	question = "The workflow waits for your answer."
+// waitArgs reads the arguments of a wait: its question, its label, its deadline, the people it asks, its quorum and its choices.
+// No timeout is a deadline of zero. A call that names no people has a quorum of one.
+func waitArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (waitPlan, error) {
+	plan := waitPlan{question: "The workflow waits for your answer."}
 
-	var timeout string
+	var kw waitKeywords
 
-	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"question": &question, "timeout": &timeout, nameKeyword: &label,
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"question": &plan.question, "timeout": &kw.timeout, nameKeyword: &plan.label, "to": &kw.to, "quorum": &kw.quorum, "choices": &kw.choices,
 	}); err != nil {
-		return "", "", 0, err
+		return waitPlan{}, err
 	}
 
-	// A timeout that the call gives is a deadline above zero, even as an empty text. A call without the keyword has no deadline.
-	if !slices.ContainsFunc(kwargs, func(pair starlark.Tuple) bool { return pair[0] == starlark.String("timeout") }) {
-		return question, label, 0, nil
+	if err := errors.Join(plan.ask(kw, gave(kwargs, "quorum")), plan.limit(kw, gave(kwargs, "timeout"))); err != nil {
+		return waitPlan{}, fmt.Errorf("wait: %w", err)
 	}
 
-	deadline, err = workflow.Deadline("timeout", timeout)
-	if err != nil {
-		return "", "", 0, fmt.Errorf("wait: %w", err)
+	return plan, nil
+}
+
+// limit reads the deadline of a wait. A timeout that the call gives is a deadline above zero, even as an empty text. A call without the keyword has no deadline.
+func (p *waitPlan) limit(kw waitKeywords, timeoutGiven bool) error {
+	if !timeoutGiven {
+		return nil
 	}
 
-	return question, label, deadline, nil
+	var err error
+	p.deadline, err = workflow.Deadline("timeout", kw.timeout)
+
+	return err
+}
+
+// waitKeywords are the keywords of a wait as the call gave them. A keyword that the call leaves out holds its zero value.
+type waitKeywords struct {
+	timeout string
+	to      starlark.Value
+	choices starlark.Value
+	quorum  int
+}
+
+// gave reports whether the call sets a keyword, whatever its value.
+func gave(kwargs []starlark.Tuple, keyword string) bool {
+	return slices.ContainsFunc(kwargs, func(pair starlark.Tuple) bool { return pair[0] == starlark.String(keyword) })
+}
+
+// ask reads the people, the choices and the quorum of a wait with the rules of the check.
+func (p *waitPlan) ask(kw waitKeywords, quorumGiven bool) error {
+	var err error
+
+	if p.asked.From, err = workflow.OptionalNames("to", kw.to); err != nil {
+		return err
+	}
+
+	if p.asked.Choices, err = workflow.OptionalNames("choices", kw.choices); err != nil {
+		return err
+	}
+
+	return p.needs(kw.quorum, quorumGiven)
+}
+
+// needs reads the quorum of a wait. A wait that names people and sets no quorum needs one answer.
+func (p *waitPlan) needs(quorum int, given bool) error {
+	if given {
+		if _, err := workflow.Quorum(starlark.MakeInt(quorum)); err != nil {
+			return err
+		}
+	}
+
+	if err := workflow.CheckQuorum(quorum, p.asked.From); err != nil {
+		return err
+	}
+
+	p.asked.Quorum = quorum
+	if len(p.asked.From) > 0 {
+		p.asked.Quorum = max(quorum, 1)
+	}
+
+	return nil
 }
 
 // wait asks the owner a question and returns the answer. The wait is durable and holds no queue slot.
+// A wait that names people or choices counts their answers; any other wait takes the first plain answer.
 func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	question, label, deadline, err := waitArgs(b, args, kwargs)
+	plan, err := waitArgs(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
 
-	answer, timedOut, err := s.e.waitOwnerUntil(s.ctx, s.in.Item, question, deadline)
+	heard, err := s.e.listen(s.ctx, s.in.Item, plan)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.durable("wait", label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: answerOutputs(answer, timedOut)}, nil
+	return s.durableWith("wait", plan.label, waitZeros(), func(context.Context, string) (stepResult, error) {
+		return stepResult{Outputs: answerOutputs(heard.answer, heard.answers, heard.timedOut)}, nil
 	})
 }
 

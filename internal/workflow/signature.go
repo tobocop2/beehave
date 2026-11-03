@@ -294,7 +294,7 @@ func stepSignatures() map[string][]Param {
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
-		waitName:         {opt("question", KindText), ruled("timeout", KindText, deadlineRule("timeout")), label},
+		waitName:         waitParams(),
 		hostTeardownName: {label},
 		hostUpName:       {label},
 	}
@@ -493,6 +493,8 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.hostWithCap(call, params)
 	case mergeName:
 		g.proof(call, params)
+	case waitName:
+		g.asking(call, params)
 	}
 }
 

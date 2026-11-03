@@ -49,7 +49,7 @@ func resultFields() map[string][]string {
 		preflightName:    {"ok", "stop", "code", reasonField},
 		queueName:        {"rows", "free"},
 		spawnName:        {"runs"},
-		waitName:         {"answer", "timed_out"},
+		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
 	}
 }
