@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -137,10 +138,40 @@ func itemArg(fields map[string]string) *starlarkstruct.Struct {
 	return arg
 }
 
+// builtinFunc is the Go function of a workflow builtin.
+type builtinFunc = func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)
+
+// hasRepository reports whether the project of the run has a git repository.
+func (s *script) hasRepository() bool {
+	return s.e.deps.Repository == nil || s.e.deps.Repository(s.in.Project)
+}
+
+// withRepository refuses a call of a builtin that reads git or a forge when the project has no repository, before the call reads its arguments.
+// A call whose exempt keyword holds a non-empty program is not refused: a gate that names its own program with run reads no git. The message names the builtin and the fix.
+func (s *script) withRepository(call builtinFunc, exempt string) builtinFunc {
+	return func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if !s.hasRepository() && !namesKeyword(kwargs, exempt) {
+			return nil, fmt.Errorf("%s needs a repository, and project %s has no repository. Set `source` or `forge` in the project file, or remove the %s call", b.Name(), s.in.Project, b.Name())
+		}
+
+		return call(b, args, kwargs)
+	}
+}
+
+// namesKeyword reports whether a call passes the keyword with a non-empty list or tuple. None and an empty list name no program.
+func namesKeyword(kwargs []starlark.Tuple, keyword string) bool {
+	return keyword != "" && slices.ContainsFunc(kwargs, func(pair starlark.Tuple) bool {
+		name, ok := pair[0].(starlark.String)
+		program, isSequence := pair[1].(starlark.Sequence)
+
+		return ok && string(name) == keyword && isSequence && program.Len() > 0
+	})
+}
+
 // steps maps the name of each builtin that is a Go function to that function.
-func (s *script) steps() map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
-	return map[string]func(*starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error){
-		"agent": s.agent, "batch_merge": s.batchMerge, "command": s.command, "env": s.env, "gate": s.gate, "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.merge, "preflight": s.preflight, "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
+func (s *script) steps() map[string]builtinFunc {
+	return map[string]builtinFunc{
+		"agent": s.agent, "batch_merge": s.withRepository(s.batchMerge, ""), "command": s.command, "env": s.env, "gate": s.withRepository(s.gate, "run"), "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.withRepository(s.merge, ""), "preflight": s.withRepository(s.preflight, ""), "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

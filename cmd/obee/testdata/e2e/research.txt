@@ -7,11 +7,7 @@ exec git --version
 ! exec bd version
 ! exec gh version
 
-exec git init -q -b main origin
-exec git -C origin add readme.txt
-exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
-
-# The files of examples/research are the files of the example. Only the source of the project differs.
+# The files of examples/research are the files of the example, with no change. The project has no repository, so the work folder of the item is a plain folder.
 example research/workflow.star
 example research/project.star config/projects/research.star
 example research/prompts/scope.md
@@ -21,7 +17,6 @@ example research/prompts/revise.md
 example research/prompts/conclude.md
 example research/tools/check.sh
 example research/tools/report.sh
-replace config/projects/research.star '~/work/your-repo' $WORK/origin
 fakeclaude
 serve
 
@@ -56,12 +51,6 @@ grep -count=1 '^- http://127.0.0.1:[0-9]+/ok$' out/weigh-ab.md
 ! grep 'Open findings' out/weigh-ab.md
 ! exists out/weigh-ab-unreviewed.md
 
-# The agents wrote notes in the work folder of the item. The checkout of the user has no change.
-exec git -C origin status --porcelain
-! stdout .
-
--- origin/readme.txt --
-The source repository.
 -- body.txt --
 Compare A and B.
 -- six --

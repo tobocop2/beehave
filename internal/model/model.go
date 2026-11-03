@@ -70,6 +70,10 @@ type Project struct {
 	GateAllowWrite []string
 }
 
+// HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.
+// A project with no repository runs its items in plain folders, and it cannot call gate, merge, batch_merge or preflight.
+func (p Project) HasRepository() bool { return p.Source != "" || p.Forge != "" }
+
 // The programs that the adapters of a project start.
 const (
 	ToolGit = "git"

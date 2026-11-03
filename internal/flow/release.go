@@ -44,7 +44,7 @@ type read struct {
 // It keeps the tree on any doubt: a git error, a timeout, a dirty tree, or a HEAD that no remote branch tip shows.
 // One timeout covers every git call.
 func (e *Engine) removeTree(ctx context.Context, project, item string) (string, error) {
-	return ReleaseDeps{Trees: e.deps.Trees, Clock: e.deps.Clock}.removeTree(ctx, project, item)
+	return ReleaseDeps{Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.removeTree(ctx, project, item)
 }
 
 // ReleaseDeps holds what gives an item back outside its workflow: the worktree and the claim.
@@ -55,9 +55,16 @@ type ReleaseDeps struct {
 	Beats beats
 	Trees trees
 	Clock clock
+	// Repository says whether a project has a git repository, as Deps.Repository does. A nil value means every project has one.
+	// obee keeps the plain item folder of a project with no repository: it has no remote branch to show that its work is safe.
+	Repository func(project string) bool
 }
 
 func (d ReleaseDeps) removeTree(ctx context.Context, project, item string) (string, error) {
+	if d.Repository != nil && !d.Repository(project) {
+		return "the project has no repository, so its folder holds work that no remote shows", nil
+	}
+
 	dir, err := d.Trees.Path(ctx, project, item)
 	if err != nil {
 		return "", fmt.Errorf("find the worktree of item %s: %w", item, err)

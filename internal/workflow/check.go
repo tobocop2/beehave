@@ -92,6 +92,8 @@ type graph struct {
 	programs []string
 	// dynamic counts the command calls on this machine whose run list is not a literal.
 	dynamic int
+	// repositoryCalls are the calls of the builtins that need a repository. The text of each is the name of the builtin.
+	repositoryCalls []Diagnostic
 }
 
 func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
@@ -183,6 +185,7 @@ func finishTakesNoItem(parsed *syntax.File) bool {
 // inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
+	g.repositoryCalls = append(g.repositoryCalls, repositoryCalls(g.display(name), parsed)...)
 	found, dynamic := programs(parsed)
 	g.programs = append(g.programs, found...)
 	g.dynamic += dynamic
@@ -256,6 +259,88 @@ func placeOf(pos syntax.Position) Diagnostic {
 }
 
 func sentence(text string) string { return strings.TrimRight(text, ".") + "." }
+
+// repositoryBuiltins are the builtins that read git or a forge. A project with no repository cannot call them.
+func repositoryBuiltins() []string {
+	return []string{gateName, mergeName, batchMergeName, preflightName}
+}
+
+// repositoryCalls lists the calls of repositoryBuiltins in a parsed file. A name that the file defines is not the builtin.
+func repositoryCalls(file string, parsed *syntax.File) []Diagnostic {
+	shadowed := definedNames(parsed)
+
+	var calls []Diagnostic
+
+	syntax.Walk(parsed, func(n syntax.Node) bool {
+		call, ok := n.(*syntax.CallExpr)
+		if !ok || !needsRepository(call) || slices.Contains(shadowed, callee(call)) {
+			return true
+		}
+
+		at := placeOf(call.Lparen)
+		at.File = file
+		at.Text = callee(call)
+		calls = append(calls, at)
+
+		return true
+	})
+
+	return calls
+}
+
+// needsRepository reports whether the call is one of repositoryBuiltins. A gate call that names run runs its own program and reads no git.
+func needsRepository(call *syntax.CallExpr) bool {
+	name := callee(call)
+
+	return slices.Contains(repositoryBuiltins(), name) && (name != gateName || !namesKeyword(call, "run"))
+}
+
+// namesKeyword reports whether a call passes the keyword with a value that can hold a program. A literal empty list, empty tuple or None cannot.
+// A gate that names its own program with run reads no git.
+func namesKeyword(call *syntax.CallExpr, keyword string) bool {
+	for _, arg := range call.Args {
+		pair, isPair := arg.(*syntax.BinaryExpr)
+		if !isPair || pair.Op != syntax.EQ {
+			continue
+		}
+
+		if key, isName := pair.X.(*syntax.Ident); isName && key.Name == keyword {
+			return !emptyLiteral(pair.Y)
+		}
+	}
+
+	return false
+}
+
+// emptyLiteral reports whether the expression is the literal None, [] or ().
+func emptyLiteral(expr syntax.Expr) bool {
+	switch value := expr.(type) {
+	case *syntax.Ident:
+		return value.Name == "None"
+	case *syntax.ListExpr:
+		return len(value.List) == 0
+	case *syntax.TupleExpr:
+		return len(value.List) == 0
+	case *syntax.ParenExpr:
+		return emptyLiteral(value.X)
+	}
+
+	return false
+}
+
+// CheckNoRepository returns one diagnostic for each call of gate, merge, batch_merge or preflight in the workflow file and the files it loads.
+// The project has no repository, and these builtins refuse it at run time. A gate call that names run is not one of them: it runs its own program.
+// It runs no workflow code.
+func CheckNoRepository(file, project string) []Diagnostic {
+	var found []Diagnostic
+
+	for _, call := range scan(file).repositoryCalls {
+		call.Text = fmt.Sprintf("%s needs a repository, and project %s has no repository. Set `source` or `forge` in the project file, or remove the call.", call.Text, project)
+		found = append(found, call)
+	}
+
+	return found
+}
 
 // Check reads the workflow file and the files it loads and returns one diagnostic for each problem: a syntax error, a name that is not defined,
 // a load that cannot be read or loops, and a missing main. unparsed is true when a file cannot be read or parsed. It runs no workflow code.
