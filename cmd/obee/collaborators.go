@@ -311,6 +311,8 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 // sandboxed runs the program of a gate under the sandbox of its project. Stdin and the process cap of the request do not apply to a sandboxed gate.
 // The output is the plan, then what the program printed, with stdout and stderr in one stream.
 func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, dir string) (flow.CommandOutput, error) {
+	own := dir == ""
+
 	dir, cleanup, err := commandFolder(dir, request.Item)
 	if err != nil {
 		return flow.CommandOutput{}, err
@@ -318,7 +320,12 @@ func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, di
 
 	defer cleanup()
 
-	out, code := p.sandbox.run(ctx, request.Project, dir, request.Run, request.Env, request.Timeout)
+	run := p.sandbox.run
+	if own {
+		run = p.sandbox.runOwn
+	}
+
+	out, code := run(ctx, request.Project, dir, request.Run, request.Env, request.Timeout)
 
 	return flow.CommandOutput{Stdout: out, RC: code}, nil
 }
