@@ -45,11 +45,11 @@ func writeMarker(dir, id string, in ItemInput) error {
 	}
 
 	data, err := json.Marshal(in)
-	if err != nil {
-		return err
+	if err == nil {
+		err = renameio.WriteFile(cancelPath(dir, id), append(data, '\n'), ownerMode, renameio.WithTempDir(folder))
 	}
 
-	return renameio.WriteFile(cancelPath(dir, id), append(data, '\n'), ownerMode, renameio.WithTempDir(folder))
+	return err
 }
 
 // pendingCancels reads every cancel marker, by run id. A marker that cannot be read is logged and skipped: it must not stop the sweep of the other runs.
