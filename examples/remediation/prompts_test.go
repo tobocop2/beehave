@@ -170,6 +170,51 @@ func reviewRules() []rule {
 	}
 }
 
+func gateEvidenceRules() []rule {
+	return []rule{
+		{"gate_evidence", "A red that the base tree has too is not counted", workAndReview()},
+		{"gate_evidence", "A mutation run is its own job after the gate", workAndReview()},
+		{"gate_evidence", "Capture the exit code before any pipe", workAndReview()},
+		{"gate_evidence", "gives its stdin to every command inside it", workAndReview()},
+		{"gate_evidence", "A regeneration is evidence for its own tree only", workAndReview()},
+		{"gate_evidence", "becomes a full run in two cases", workAndReview()},
+		{"gate_evidence", "assert the loop count against the input count", workAndReview()},
+		{"gate_evidence", "search the diff for `TODO` and `FIXME`", workLanes()},
+		{"gate_evidence", "names its author, as `TODO(name)`", workLanes()},
+	}
+}
+
+func hostAndDiskRules() []rule {
+	return []rule{
+		{"host_disk_rules", "Disk is per lane", workAndReview()},
+		{"host_disk_rules", "live in a jobs folder of the host", workAndReview()},
+		{"host_disk_rules", "so that the orchestrator deletes it at once", workAndReview()},
+		{"host_disk_rules", "Sweep dangling docker volumes as a backstop", workAndReview()},
+	}
+}
+
+func reviewFormatRules() []rule {
+	return []rule{
+		{"review_format", "Read the existing review first", []string{review}},
+		{"review_format", "Label each finding NEW or ALREADY RAISED", []string{review}},
+		{"review_format", "The report ends with three buckets", []string{review}},
+		{"review_format", "Write `none` for an empty bucket", []string{review}},
+		{"review_format", "The run names one of three modes", []string{review}},
+		{"review_format", "In take-over mode, you review a pull request of another author, and you fix nothing", []string{review}},
+		{"review_format", "In audit mode, you re-review work that is already merged, and each finding becomes a fix item", []string{review}},
+		{"review_format", "In queue mode, you review the change of a lane that did not write it, and the verdict gates the merge", []string{review}},
+	}
+}
+
+func briefRules() []rule {
+	return []rule{
+		{"brief_rules", "On a round branch, the pull request body says `Addresses #N`", workLanes()},
+		{"brief_rules", "When the base is the default branch, it says `Closes #N`", workLanes()},
+		{"brief_rules", "Read an issue or pull request thread from the thread file", everyLane()},
+		{"brief_rules", "A reproduction is self-contained", everyLane()},
+	}
+}
+
 // squash drops the bold marks and joins the words of a text with one space, so that a phrase matches across the line breaks and the bold spans of a prompt.
 func squash(text string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(text, "**", "")), " ")
@@ -188,7 +233,7 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 		texts[name] = squash(string(raw))
 	}
 
-	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules()}
+	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules()}
 
 	held, counted := 0, 0
 
@@ -208,6 +253,6 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 100, counted)
+	assert.Equal(t, 125, counted)
 	assert.Positive(t, held)
 }
