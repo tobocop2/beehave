@@ -354,9 +354,25 @@ The adapter does not set `excludedCommands`, `allowLocalBinding`, `allowAllUnixS
 
 The step ends as `not-started`, with a note, in these cases: the adapter of the runner has no sandbox, the system is Windows (Claude Code runs commands there with no sandbox), the Claude Code version is below the minimum, the version cannot be read, or `allow_write` overlaps a credential path. A Claude Code that does not know a sandbox key ignores it and exits with code 0, so the minimum version is the only guard. No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = None` on purpose.
 
+### The gate under the sandbox
+
+When a project turns the sandbox on, the gate command runs under the same policy as the shell of an agent step: the home folder and the credential paths are unreadable, `.env*` files are unreadable, the write deny list is the same, and the network is closed. `obee` runs the gate command through `srt`, the command of the sandbox runtime that Anthropic publishes (`@anthropic-ai/sandbox-runtime`) and that Claude Code is built on. Seatbelt enforces the policy on macOS and bubblewrap on Linux. `obee` writes no profile of its own: it writes the settings file of `srt` from the same plan as the agent step and removes the file when the gate ends.
+
+`srt` is required only for a project with the sandbox on and a gate on this machine. If `srt` is not on the path, the gate does not run and the error says how to install it: `npm install -g @anthropic-ai/sandbox-runtime`. `srt` needs Node 22.12 or later. Linux also needs `bubblewrap` and `socat`, and on Ubuntu 24.04 the setting `kernel.apparmor_restrict_unprivileged_userns=0`, because the default blocks `bubblewrap`. macOS needs `ripgrep`. A plan that cannot start, for example a `sandbox_read` path that holds the home folder, stops the gate before any program starts. A `srt` that does not start also stops the gate: `obee` runs `srt` once on the command `true` first, and a non-zero exit ends the run with the note "the sandbox could not start" and the output of `srt`. Each stop is neither a pass nor a fail.
+
+The project file sets two lists for the gate. `gate_network` lists the domains that the gate command can reach, and the default is an empty list, so the gate has no network. `gate_allow_write` lists extra paths that the gate command can write; a relative path starts at the work folder. The work folder and the temporary folder are writable already. The home folder is unreadable, so a gate that needs a toolchain or a cache under it lists the folder in `sandbox_read`, and in `gate_allow_write` when it writes there.
+
+A gate on a build host (a `build_host` other than `local`) runs outside the sandbox. The sandbox covers only a command that `obee` starts on this machine. `obee check config` prints a note for each such project that has the sandbox on. The pin-file and tool-version reads that come before the gate command run outside the sandbox.
+
+A pattern such as `.env*` is a denied read in the gate. `srt` takes only literal paths for a denied write on Linux, so a `.env*` file that exists is unreadable but a step could still write one.
+
+The key of a recorded gate verdict does not depend on the sandbox. A verdict from a run with the sandbox off is reused after the sandbox is turned on, for the same tree and the same command.
+
+`bubblewrap` hides the home folder, so a denied read shows "No such file or directory" and not "Permission denied". A gate failure that shows this text for a path under the home folder is a denied read.
+
 ### What stays open
 
-The gate is not under the sandbox. A sandboxed agent step protects the owner from the shell of the agent. It does not protect the owner from code that the agent leaves for the gate: the agent can write a Makefile target, a package script or a git hook path, and `make check` or a later `git commit` then runs that code outside the sandbox, as the owner. This is the largest gap left. A later change runs the gate under the same sandbox settings.
+A sandboxed agent step protects the owner from the shell of the agent. It does not protect the owner from code that the agent leaves for the gate: the agent can write a Makefile target, a package script or a git hook path, and a later `git commit` then runs that code outside the sandbox, as the owner. A gate on this machine runs under the sandbox (see above). A gate on a build host does not, and it runs that code as the user of the host.
 
 A linked work tree shares objects and refs with the main repository, and a commit needs them. The shell of the agent can move another branch of that repository, for example with `git update-ref`. That is a risk to the integrity of the branches of the owner. It is not a way to run code. `forbid_commands` with `git-write` does not see it in a sandboxed step.
 

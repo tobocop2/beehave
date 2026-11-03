@@ -256,6 +256,7 @@ linters:
             - "**/internal/forge/**"
             - "**/internal/proc/**"
             - "**/internal/agent/**"
+            - "**/internal/srt/**"
             - "**/internal/host/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
@@ -268,6 +269,7 @@ linters:
             - github.com/tobocop2/obee/internal/forge
             - github.com/tobocop2/obee/internal/proc
             - github.com/tobocop2/obee/internal/agent
+            - github.com/tobocop2/obee/internal/srt
             - github.com/tobocop2/obee/internal/host
         layer-2:
           list-mode: lax
@@ -339,6 +341,7 @@ linters:
             - "!**/internal/forge/**"
             - "!**/internal/proc/**"
             - "!**/internal/agent/**"
+            - "!**/internal/srt/**"
             - "!**/internal/host/**"
             - "!**/internal/check/**"
             - "!**/internal/batch/**"
