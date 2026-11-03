@@ -169,6 +169,12 @@ silently discards other uncommitted edits.
 **Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
 **A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
 
+## Merge rules
+
+**Never use the merge queue of GitHub.** A merge is `gh pr merge` on a pinned head. A pull request that waits in a queue is not reviewed at its head.
+**A finding that survives the review is filed before the merge.** Name each surviving finding in the report so that an issue is filed for it. A finding that only lives in the review thread is lost when the pull request merges.
+**Known base reds are in one file.** The run names the file. A red that the file lists is not a finding of this change: re-derive it at the tip, and cite the line of the file.
+
 ## Project rules
 
 Follow the rules file of the project.

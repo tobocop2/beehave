@@ -85,6 +85,12 @@ func ledgerCommands() []command {
 			run:     ledgerCommand,
 		},
 		{
+			name:    "recount",
+			usage:   recountSyntax,
+			summary: "count the rows of the integration pull request, and refuse a heading or title that says another number, or a count that did not change after a write",
+			run:     recountCommand,
+		},
+		{
 			name:    "scope",
 			usage:   scopeSyntax,
 			summary: "refuse a pull request that closes an issue it did not close at its first review, unless the ledger holds an owner-add row for it",
