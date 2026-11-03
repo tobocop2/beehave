@@ -214,21 +214,7 @@ func protectPaths(v starlark.Value, forbid []model.FindingKind) ([]string, error
 		return nil, err
 	}
 
-	if slices.Contains(paths, "") {
-		return nil, errors.New("protect_paths holds an empty path, which would name the folder of the step. Give a path")
-	}
-
-	for _, kind := range forbid {
-		if kind.NeedsPaths() && len(paths) == 0 {
-			return nil, fmt.Errorf("forbid_commands lists %s, so protect_paths must list at least one directory", kind)
-		}
-	}
-
-	if len(paths) > 0 && !slices.ContainsFunc(forbid, model.FindingKind.NeedsPaths) {
-		return nil, errors.New("protect_paths is set, but forbid_commands lists no kind that uses it. Add \"protected-path\" to forbid_commands")
-	}
-
-	return paths, nil
+	return paths, workflow.Protection(forbid, paths)
 }
 
 // outputFile is the path where the agent of a step writes its declared outputs. It is in the state folder of the engine, named by item and step,
