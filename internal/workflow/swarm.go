@@ -78,7 +78,14 @@ func (g *graph) keywords(call *syntax.CallExpr, builtin string, allowed []string
 			continue
 		}
 
-		if key, isName := pair.X.(*syntax.Ident); isName && !slices.Contains(allowed, key.Name) {
+		key, isName := pair.X.(*syntax.Ident)
+		if !isName || slices.Contains(allowed, key.Name) {
+			continue
+		}
+
+		if len(allowed) == 0 {
+			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, key.Name))
+		} else {
 			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, key.Name, strings.Join(allowed, ", ")))
 		}
 	}

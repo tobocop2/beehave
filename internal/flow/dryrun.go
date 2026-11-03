@@ -35,6 +35,9 @@ const (
 	dryFileMode = 0o600
 )
 
+// dryNow is the reading of now() in every dry run, so two dry runs of one workflow print the same text.
+func dryNow() time.Time { return time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC) }
+
 // DryRun takes one item through a workflow file over fakes, in a state folder that it deletes at the end, and prints each step in order with its result.
 // The engine gets only the fakes of this file, so no forge, agent, tracker or host is reachable. A step that needs a collaborator the fakes lack fails.
 // A failed run prints the failed step and its error, and returns the error.
@@ -136,7 +139,7 @@ func dryDeps(tree, head, item string, skills []string) Deps {
 		Agents: dryAgents{skills: skills}, Gate: dryGate{head: head}, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Watch: dryWatch{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Preflight: dryPreflight{},
-		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait},
+		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryNow},
 	}
 }
 

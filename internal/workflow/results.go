@@ -31,7 +31,7 @@ const (
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
 // and a test of the run compares the fields of each function with this table, so a field added to one and not to the other fails a test.
 // A step that the run recorded before a change still builds its struct from the recorded fields, so the run does not enforce the table.
-// env returns text, struct takes any field and json is a module, so none of them is listed. The fields of an agent that its outputs declare
+// env and now return text, struct takes any field and json is a module, so none of them is listed. The fields of an agent that its outputs declare
 // come in addition to the fields listed here.
 func resultFields() map[string][]string {
 	return map[string][]string{

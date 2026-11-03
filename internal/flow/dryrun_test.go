@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -285,6 +286,28 @@ func TestDryRun_TheTemplateDirOfTheEnvironmentCopiesNothingIntoTheDryRepository(
 	var out bytes.Buffer
 
 	require.NoError(t, DryRun(t.Context(), dryFile(t, "def main(item):\n    pass\n"), "12", map[string]string{}, &out), out.String())
+}
+
+func TestDryDeps_NowIsTheFixedClockOfADryRun(t *testing.T) {
+	t.Parallel()
+
+	deps := dryDeps("/t", "h", "12", nil)
+
+	assert.Equal(t, dryNow(), deps.Clock.reading())
+	assert.Equal(t, "2030-01-02T03:04:05Z", dryNow().Format(time.RFC3339))
+}
+
+func TestDryRun_NowPrintsTheSameTextInTwoRuns(t *testing.T) {
+	t.Parallel()
+
+	file := dryFile(t, "def main(item):\n    fail(\"AT \" + now())\n")
+
+	var first, second bytes.Buffer
+
+	require.Error(t, DryRun(t.Context(), file, "12", map[string]string{}, &first))
+	require.Error(t, DryRun(t.Context(), file, "12", map[string]string{}, &second))
+	assert.Contains(t, first.String(), "AT 2030-01-02T03:04:05Z")
+	assert.Equal(t, first.String(), second.String())
 }
 
 func TestDryDeps_EveryCollaboratorIsADryOne(t *testing.T) {

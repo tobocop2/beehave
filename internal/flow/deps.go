@@ -134,6 +134,7 @@ type beats interface {
 // Beat replaces the time that one claim renewal may take. OwnerWait replaces the time of one wait for the owner before the wait starts again.
 // Retain replaces the age at which Launch deletes a finished run. Now replaces the monotonic reading of the clock that measures the time since the last good claim renewal.
 // Wall replaces the wall reading of that clock: when it is nil, the wall reading is the one that Now returns.
+// Reading replaces the time that the now builtin returns, and nothing else: the lease age keeps using Wall.
 // After replaces the timer that ends the trust in a claim: it starts f once d has passed, and the function it returns stops the timer.
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
 // Watch replaces the time of the durable sleep between two reads of a ready pull request.
@@ -149,6 +150,7 @@ type clock struct {
 	Retain    time.Duration
 	Now       func() time.Time
 	Wall      func() time.Time
+	Reading   func() time.Time
 	After     func(d time.Duration, f func()) (stop func())
 	Grace     time.Duration
 	Watch     time.Duration
@@ -171,6 +173,15 @@ func (c clock) wall() time.Time {
 	}
 
 	return c.now().Round(0)
+}
+
+// reading is the time that the now builtin returns. It is the wall clock, unless Reading replaces it; the lease age never uses Reading.
+func (c clock) reading() time.Time {
+	if c.Reading != nil {
+		return c.Reading()
+	}
+
+	return c.wall()
 }
 
 // age returns how long ago since began, a reading of now. It counts the larger of the monotonic and the wall time, because the monotonic clock stops
