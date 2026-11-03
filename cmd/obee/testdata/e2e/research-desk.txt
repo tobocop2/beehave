@@ -1,0 +1,69 @@
+# The research desk end to end, with a fake agent and a stand-in for curl. A question splits into two sections. One child run reads each section.
+# The reader of the first section also states a claim whose quote is not on the page: the quote check drops it. The judge gets a planted false claim and rejects it.
+# A person approves the draft. The desk reads the cited pages again, and publishes the report once.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+
+exec obeereal check workflow rd/workflow.star
+! stdout .
+! stderr .
+
+exec obeereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+exec obeereal run cold-cost research-desk --workflow rd/workflow.star &
+
+waitstatus 'paused: Review the draft report of cold-cost'
+! exists wiki.log
+exec obeereal answer cold-cost approve
+wait
+stdout 'item cold-cost finished'
+
+cmp calls.log expected-calls.log
+
+# The invented quote is kept in the store as not found, and it does not reach the judge or the report.
+grep -count=1 '"quote_ok":false' store/cold-cost/s1.1/claims.jsonl
+! grep '90 percent' store/cold-cost/report.md
+
+# The planted claim was in the claims of the judge, got the verdict unsupported, and is not in the report.
+grep -count=1 '"canary":true' store/cold-cost/s1.1/claims.jsonl
+grep '"canary":true.*"verdict":"unsupported"' store/cold-cost/s1.1/claims.jsonl
+! grep 'opposite' store/cold-cost/report.md
+
+# The report cites the claims that passed. It was published once, and the page holds the same text.
+grep 'Cold cut the output by 30 percent. .c1.' store/cold-cost/report.md
+grep 'The unit costs 12 euro per month. .c4.' store/cold-cost/report.md
+grep -count=1 '^cold-cost-' wiki.log
+cmp store/cold-cost/report.md wiki.page
+
+exec obeereal status
+stdout 'item-cold-cost-r1\tdone'
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- expected-calls.log --
+plan
+read cold
+judge
+write Output
+read cost
+judge
+write Cost
+abstract
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

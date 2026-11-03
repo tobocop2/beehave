@@ -1,0 +1,48 @@
+# The way back after a wait timeout. The review wait ends as a failed run. A second obee run is refused. obee resume reopens the run, and obee run then continues it
+# at the review with the plan and the finished sections kept: the planner does not run again.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+env MAX_AGENT_CALLS=40
+env REVIEW_TIMEOUT=2s
+
+exec obeereal item add research-desk warm-cost --title 'Warm and cost' --body-file body.txt
+! exec obeereal run warm-cost research-desk --workflow rd/workflow.star
+stderr 'REFUSE: no answer to the review of the draft within 2s'
+grep -count=1 '^plan$' calls.log
+
+# A second run of the failed item is refused.
+env REVIEW_TIMEOUT=72h
+! exec obeereal run warm-cost research-desk --workflow rd/workflow.star
+stderr .
+
+# The documented way back: resume reopens the failed run, then run continues it.
+exec obeereal resume warm-cost
+exec obeereal run warm-cost research-desk --workflow rd/workflow.star &
+waitstatus 'paused: Review the draft report of warm-cost, round 1'
+exec obeereal answer warm-cost approve
+wait
+stdout 'item warm-cost finished'
+grep -count=1 '^warm-cost-' wiki.log
+grep -count=1 '^plan$' calls.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

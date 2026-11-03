@@ -1,0 +1,65 @@
+# The call budget is 4. The planner and the three agents of section 1 use it up. The reader of section 2 does not run: the section waits for a person.
+# The person adds 2 calls. The reader and the judge of section 2 run, and the writer waits again. The run is cancelled, as an upgrade would strand it,
+# and the item runs again with a larger cap. The new run keeps the plan and the finished section 1, so the planner and the agents of section 1 do not run twice.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+env MAX_AGENT_CALLS=4
+
+exec obeereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec obeereal run cold-cost research-desk --workflow rd/workflow.star &
+
+waitstatus 'paused: The run used all 4 agent calls'
+grep -count=1 '^4$' store/cold-cost/calls
+grep 'done' store/cold-cost/s1.1/status
+! exists wiki.log
+
+# The answer goes to the child run of section 2, whose id is the third run of the desk: research-desk-3.
+exec obeereal answer research-desk-3 2
+waitstatus 'paused: The run used all 6 agent calls'
+grep -count=1 '^6$' store/cold-cost/calls
+exec obeereal cancel cold-cost
+wait
+
+env MAX_AGENT_CALLS=40
+exec obeereal run cold-cost research-desk --workflow rd/workflow.star &
+waitstatus 'paused: Review the draft report of cold-cost, round 1'
+exec obeereal answer cold-cost approve
+wait
+stdout 'item cold-cost finished'
+
+# The planner ran once and section 1 ran once. Section 2 ran again from its start, because it was not done.
+cmp calls.log expected-calls.log
+grep -count=1 '^cold-cost-' wiki.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- expected-calls.log --
+plan
+read cold
+judge
+write Output
+read cost
+judge
+read cost
+judge
+write Cost
+abstract
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

@@ -1,0 +1,57 @@
+# The person asks to redo section 2 with a note. Only section 2 runs again, as generation 2, and then the abstract runs again.
+# Section 1 keeps its generation 1. The second draft is approved and published once, with the revised section 2.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+
+exec obeereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+exec obeereal run cold-cost research-desk --workflow rd/workflow.star &
+
+waitstatus 'paused: Review the draft report of cold-cost, round 1'
+exec obeereal answer cold-cost redo 2: state the price per month
+waitstatus 'paused: Review the draft report of cold-cost, round 2'
+exec obeereal answer cold-cost approve
+wait
+stdout 'item cold-cost finished'
+
+cmp calls.log expected-calls.log
+grep 'state the price per month' store/cold-cost/s2.2/note
+! exists store/cold-cost/s1.2
+grep -count=1 'Revised per the note' wiki.page
+grep -count=1 'The unit costs 12 euro per month. Revised per the note' wiki.page
+! grep 'Cold cut the output by 30 percent. Revised' wiki.page
+grep -count=1 '^cold-cost-' wiki.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- expected-calls.log --
+plan
+read cold
+judge
+write Output
+read cost
+judge
+write Cost
+abstract
+read cost
+judge
+write Cost
+abstract
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>
