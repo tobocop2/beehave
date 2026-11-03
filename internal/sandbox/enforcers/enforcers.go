@@ -5,14 +5,15 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/sandbox"
 	"github.com/tobocop2/obee/internal/sandbox/landlock"
+	"github.com/tobocop2/obee/internal/sandbox/seatbelt"
 )
 
 // Order lists the enforcers from the best to the weakest. Auto picks the first that can run here.
-func Order() []string { return []string{landlock.Name} }
+func Order() []string { return []string{landlock.Name, seatbelt.Name} }
 
 // Table maps the name of each enforcer to the enforcer. Pass it with Order to sandbox.Choose.
 func Table() map[string]sandbox.Enforcer {
-	return map[string]sandbox.Enforcer{landlock.Name: landlock.New()}
+	return map[string]sandbox.Enforcer{landlock.Name: landlock.New(), seatbelt.Name: seatbelt.New()}
 }
 
 // Refusal returns the reason why the gate of the project does not run on this machine, or "" when it runs. A gate is refused when the project has its
