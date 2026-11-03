@@ -112,6 +112,7 @@ func TestAgentStep_ARefusedSandboxValueStopsTheStepBeforeTheAgentStarts(t *testi
 		`sandbox = sandbox(allow_write = [""]), `:           "empty path",
 		`sandbox = sandbox(allow_write = ["../outside"]), `: `holds ".."`,
 		`sandbox = sandbox(read = []), `:                    "sandbox takes no argument read. Use one of: network, allow_write.",
+		`sandbox = sandbox(network = [3] + []), `:           "network must hold strings only",
 	} {
 		t.Run(extra, func(t *testing.T) {
 			t.Parallel()
