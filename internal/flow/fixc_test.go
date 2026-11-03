@@ -320,6 +320,18 @@ func TestPendingCancels_LogsAndSkipsAMarkerThatCannotBeRead(t *testing.T) {
 	assert.Contains(t, out.String(), "aaa-corrupt")
 }
 
+func TestMarkCancel_WritesTheMarkerWithModeOwnerOnly(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	require.NoError(t, markCancel(dir, testRun, ItemInput{Item: testItem, Project: testProject}))
+
+	info, err := os.Stat(cancelPath(dir, testRun))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
 func TestMarkCancel_LeavesNoTemporaryFileAndAFolderThatCannotBeWrittenIsAnError(t *testing.T) {
 	t.Parallel()
 

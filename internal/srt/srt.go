@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/tobocop2/obee/internal/agent"
 )
@@ -98,4 +99,10 @@ func Missing(lookPath func(string) (string, error)) string {
 }
 
 // join returns the lists one after another, as a list that is never nil, so the JSON holds [] and never null.
-func join(lists ...[]string) []string { return agent.Join(lists...) }
+func join(lists ...[]string) []string {
+	if all := slices.Concat(lists...); all != nil {
+		return all
+	}
+
+	return []string{}
+}

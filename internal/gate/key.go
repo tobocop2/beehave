@@ -110,7 +110,7 @@ func (g Gate) pins(ctx context.Context, request Request) (string, bool) {
 		return "", true
 	}
 
-	data, code := g.shell(ctx, request.Dir, "git show "+quote("origin/"+request.Project.BaseBranch+":"+file))
+	data, code := g.shell(ctx, request.Dir, "git show "+model.ShellQuote("origin/"+request.Project.BaseBranch+":"+file))
 
 	return data, code == 0
 }

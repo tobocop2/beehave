@@ -240,6 +240,7 @@ linters:
             - "**/internal/model/**"
             - "**/internal/config/**"
             - "**/internal/lockfile/**"
+            - "**/internal/atomicfile/**"
             - "**/internal/exectest/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
@@ -248,6 +249,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/atomicfile
             - github.com/tobocop2/obee/internal/exectest
         layer-1:
           list-mode: lax
@@ -291,6 +293,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/atomicfile
             - github.com/tobocop2/obee/internal/exectest
             - github.com/tobocop2/obee/internal/check/shell
             - github.com/tobocop2/obee/internal/batch
@@ -313,6 +316,7 @@ linters:
             - github.com/tobocop2/obee/internal/model
             - github.com/tobocop2/obee/internal/config
             - github.com/tobocop2/obee/internal/lockfile
+            - github.com/tobocop2/obee/internal/atomicfile
             - github.com/tobocop2/obee/internal/exectest
             - github.com/tobocop2/obee/internal/store
             - github.com/tobocop2/obee/internal/forge
@@ -336,6 +340,7 @@ linters:
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/lockfile/**"
+            - "!**/internal/atomicfile/**"
             - "!**/internal/exectest/**"
             - "!**/internal/store/**"
             - "!**/internal/forge/**"

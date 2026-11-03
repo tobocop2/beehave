@@ -12,7 +12,8 @@ import (
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/google/renameio/v2"
+
+	"github.com/tobocop2/obee/internal/atomicfile"
 )
 
 const cancelsDir = "canceled"
@@ -46,7 +47,7 @@ func writeMarker(dir, id string, in ItemInput) error {
 
 	data, err := json.Marshal(in)
 	if err == nil {
-		err = renameio.WriteFile(cancelPath(dir, id), append(data, '\n'), ownerMode, renameio.WithTempDir(folder))
+		err = atomicfile.Write(cancelPath(dir, id), append(data, '\n'), ownerMode)
 	}
 
 	return err

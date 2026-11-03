@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/renameio/v2"
-
+	"github.com/tobocop2/obee/internal/atomicfile"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -244,5 +243,5 @@ func (a *attempt) saveLog(logs Logs, row model.Check, path string) error {
 
 // writeWhole writes text to a temporary file in the folder of path and renames it to path, so a file at path is never partial.
 func writeWhole(path, text string) error {
-	return renameio.WriteFile(path, []byte(text), logMode, renameio.WithTempDir(filepath.Dir(path)))
+	return atomicfile.Write(path, []byte(text), logMode)
 }

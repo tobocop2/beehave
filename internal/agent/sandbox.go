@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
-	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -28,15 +27,6 @@ type SandboxPlan struct {
 	DenyWrite    []string
 	Network      []string
 	AllowWrite   []string
-}
-
-// Join returns the lists one after another, as a list that is never nil, so that the JSON of a sandbox setting holds [] and never null.
-func Join(lists ...[]string) []string {
-	if all := slices.Concat(lists...); all != nil {
-		return all
-	}
-
-	return []string{}
 }
 
 // versionOf reads the version that the CLI prints for --version.

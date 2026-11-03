@@ -22,9 +22,6 @@ const (
 	// signalBase is the exit code that a shell reports for a command that a signal ended: 128 plus the signal number.
 	signalBase = 128
 
-	// safeWordRune holds the characters that a shell word may hold without a quote.
-	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
-
 	// plainRune holds the characters of a word in the folder name of a clone.
 	plainRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
 
@@ -486,23 +483,23 @@ func plainWord(word string) bool {
 // with exit status 124 and the trap still writes the marker and deletes the clone.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, cloneURL, head, clone string) string {
-	path := quote(clone)
+	path := model.ShellQuote(clone)
 	words := []string{
-		"trap " + quote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
+		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
 		"trap 'exit 143' HUP INT TERM",
 		"rm -rf " + path,
 		"mkdir " + path,
 		"cd " + path,
-		"git clone -- " + quote(cloneURL) + " tree",
+		"git clone -- " + model.ShellQuote(cloneURL) + " tree",
 		"cd tree",
-		"git checkout --detach " + quote(head),
-		`[ "$(git rev-parse HEAD)" = ` + quote(head) + ` ]`,
+		"git checkout --detach " + model.ShellQuote(head),
+		`[ "$(git rev-parse HEAD)" = ` + model.ShellQuote(head) + ` ]`,
 	}
 
 	before, after := reportChecks(project.TestReport)
 
 	words = append(words, before...)
-	words = append(words, limited(project, "sh -c "+quote(project.Gate)))
+	words = append(words, limited(project, "sh -c "+model.ShellQuote(project.Gate)))
 
 	return strings.Join(append(words, after...), " && ")
 }
@@ -515,7 +512,7 @@ func reportChecks(glob string) (before, after []string) {
 		return nil, nil
 	}
 
-	tracked := "git ls-files -- " + quote(glob) + " | head -n 1"
+	tracked := "git ls-files -- " + model.ShellQuote(glob) + " | head -n 1"
 
 	before = []string{`{ [ -z "$(` + tracked + `)" ] || { echo "` + trackedMarker + ` $(` + tracked + `)"; false; }; }`}
 	after = []string{`{ [ "$(cat ` + globWord(glob) + ` 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo ` + noTestsMarker + `; false; }; }`}
@@ -525,7 +522,7 @@ func reportChecks(glob string) (before, after []string) {
 
 // globWord returns the glob as one shell word that still expands: each literal run is quoted and each wildcard (`*`, `?`, `[`, `]`) stays bare.
 func globWord(glob string) string {
-	return literalRun.ReplaceAllStringFunc(glob, quote)
+	return literalRun.ReplaceAllStringFunc(glob, model.ShellQuote)
 }
 
 // literalRun matches a run of glob text with no wildcard.
@@ -538,15 +535,6 @@ func limited(project model.Project, command string) string {
 	}
 
 	return "timeout " + strconv.FormatInt(int64(project.Host.MaxRun/time.Second), 10) + " " + command
-}
-
-// quote returns the word as one word for a POSIX shell.
-func quote(word string) string {
-	if word != "" && strings.Trim(word, safeWordRune) == "" {
-		return word
-	}
-
-	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
 }
 
 // verdict maps the final state of a host job to a result. Only a job that succeeded passes, and only one that failed is a failed gate.
