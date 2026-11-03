@@ -17,7 +17,8 @@ import (
 func repoWithCommit(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
+	// git reports real paths, and on macOS the temp folder sits behind a link.
+	dir := evaluated(t, t.TempDir())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README"), []byte("hi\n"), 0o600))
 	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "add", "README")
