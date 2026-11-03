@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -89,6 +90,8 @@ type fakeSteering struct {
 	pinnedErr error
 	calls     []string
 	closeOK   bool
+	// answerErrs makes the answer of one item fail, whatever s.err holds.
+	answerErrs map[string]error
 }
 
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
@@ -120,13 +123,13 @@ func (s *fakeSteering) PollNotScheduled() (string, error) { return s.notSched, s
 func (s *fakeSteering) Answer(item, text string) error {
 	s.calls = append(s.calls, "answer "+item+" "+text)
 
-	return s.err
+	return cmp.Or(s.answerErrs[item], s.err)
 }
 
 func (s *fakeSteering) AnswerAs(item, from, text string) error {
 	s.calls = append(s.calls, "answer-as "+from+" "+item+" "+text)
 
-	return s.err
+	return cmp.Or(s.answerErrs[item], s.err)
 }
 
 func (s *fakeSteering) Resume(item string) error {

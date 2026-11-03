@@ -44,6 +44,8 @@ type RunInfo struct {
 	State    RunState
 	Version  string
 	Stranded bool
+	// Item and Project are what the run started with. Both are empty when the stored input does not read.
+	Item, Project string
 	// OlderSteps marks a stranded run that has the build version of this client, but was made by an older step format.
 	OlderSteps bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
@@ -62,6 +64,11 @@ type RunInfo struct {
 	Stopped *Stopped
 	// RunProgress holds the cost against the run cap, the step that runs now, the deadline of a wait, the last gate result and the rounds.
 	RunProgress
+}
+
+// Waiting reports whether the run is open and shows a question for the owner.
+func (i RunInfo) Waiting() bool {
+	return (i.State == runRunning || i.State == runQueued) && i.Question != ""
 }
 
 // questionReadLimit is how long status waits for an event that the run has not set.
@@ -116,7 +123,7 @@ func (c *Client) Close() error {
 
 // Status lists every run of every item, oldest first.
 func (c *Client) Status() ([]RunInfo, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
+	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("list the runs: %w", err)
 	}
@@ -211,6 +218,11 @@ func (c *Client) info(row dbos.WorkflowStatus) (RunInfo, error) {
 	}
 
 	info.OlderSteps = info.Stranded && info.Version == buildVersion(c.version)
+
+	// A row whose input does not read has no item and no project.
+	if in, err := (run{Status: row}).input(); err == nil {
+		info.Item, info.Project = in.Item, in.Project
+	}
 
 	err := c.details(row, &info)
 

@@ -695,23 +695,187 @@ func sendAnswer(client Steering, item, as, text string) error {
 	return client.AnswerAs(item, as, text)
 }
 
+// manyAnswer holds the flags that make obee answer reply to many waiting runs.
+type manyAnswer struct {
+	all             bool
+	project, asking string
+	items           []string
+}
+
+// given returns the selector flags that the owner typed, even with an empty value.
+func given(cmd *cobra.Command) []string {
+	var names []string
+
+	for _, name := range []string{"project", "question", "items"} {
+		if cmd.Flags().Changed(name) {
+			names = append(names, name)
+		}
+	}
+
+	return names
+}
+
+// emptySelector returns an error for a selector flag that the owner typed with an empty value.
+func (m manyAnswer) emptySelector(names []string) error {
+	for _, name := range names {
+		if (name == "project" && m.project == "") || (name == "question" && m.asking == "") ||
+			(name == "items" && len(m.items) == 0) {
+			return fmt.Errorf("%w: --%s is empty, and an empty selector would pick every run. Give a value or remove the flag", errAnswerShape, name)
+		}
+	}
+
+	return nil
+}
+
+// picks reports whether the run waits for an answer and fits every selector that is set.
+func (m manyAnswer) picks(info flow.RunInfo) bool {
+	return info.Waiting() && info.Item != "" &&
+		(m.project == "" || info.Project == m.project) &&
+		strings.Contains(info.Question, m.asking) &&
+		(len(m.items) == 0 || slices.Contains(m.items, info.Item))
+}
+
+// errNoWaiting is returned when obee answer --all finds no waiting run that fits the selectors.
+var errNoWaiting = errors.New("no waiting run matches. Run obee status to see the runs that wait for an answer")
+
+// errNotTaken is returned when at least one run of obee answer --all refused the answer.
+var errNotTaken = errors.New("some runs did not take the answer")
+
+// errAnswerShape is returned when the item and the --all flag do not fit together.
+var errAnswerShape = errors.New("give an item and the text, or --all with the text and no item")
+
+// answerArgs checks the arguments of obee answer: an item and the text, or with --all the text alone.
+func (m *manyAnswer) answerArgs(cmd *cobra.Command, args []string) error {
+	names := given(cmd)
+
+	switch {
+	case m.all && len(args) == 0:
+		return fmt.Errorf("%w: the text is missing", errAnswerShape)
+	case m.all && len(args) > 1 && itemID(args[0]) == nil:
+		return fmt.Errorf("%w: %q looks like an item, and --all sends the text to every run. Use --items %s to pick the item, or quote the text as one argument", errAnswerShape, args[0], args[0])
+	case m.all:
+		return errors.Join(m.emptySelector(names), m.checkItems())
+	case len(names) > 0:
+		return fmt.Errorf("%w: a selector needs --all", errAnswerShape)
+	}
+
+	return itemArgs(nil, args)
+}
+
+// checkItems refuses an entry of the --items list that is not an item id.
+func (m manyAnswer) checkItems() error {
+	for _, item := range m.items {
+		if err := itemID(item); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// answerMany answers every waiting run that fits the selectors, one run at a time through the answer of a single run.
+// It prints one line for each run and goes on after a refusal. The error says how many runs refused.
+func answerMany(out io.Writer, client Steering, m manyAnswer, as, text string) error {
+	infos, err := client.Status()
+	if err != nil {
+		return err
+	}
+
+	items := m.picked(infos)
+	if len(items) == 0 {
+		return errNoWaiting
+	}
+
+	if refused := replyAll(out, client, items, as, text); refused > 0 {
+		return fmt.Errorf("%w: %d of %d runs did not take the answer", errNotTaken, refused, len(items))
+	}
+
+	return nil
+}
+
+// replyAll answers each item in turn and returns how many refused.
+func replyAll(out io.Writer, client Steering, items []string, as, text string) int {
+	refused := 0
+
+	for _, item := range items {
+		if !replyTo(out, client, item, as, text) {
+			refused++
+		}
+	}
+
+	return refused
+}
+
+// replyTo answers one item, prints its line, and reports whether the run took the answer.
+func replyTo(out io.Writer, client Steering, item, as, text string) bool {
+	err := sendAnswer(client, item, as, text)
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "%s\trefused: %s\n", item, oneLine(err.Error()))
+
+		return false
+	}
+
+	_, _ = fmt.Fprintf(out, "%s\tanswered\n", item)
+
+	return true
+}
+
+// picked returns the item of each run that the selectors pick, once each, in the order of the status list.
+func (m manyAnswer) picked(infos []flow.RunInfo) []string {
+	var items []string
+
+	for _, info := range infos {
+		if m.picks(info) && !slices.Contains(items, info.Item) {
+			items = append(items, info.Item)
+		}
+	}
+
+	return items
+}
+
+// addFlags adds the flags of obee answer --all.
+func (m *manyAnswer) addFlags(command *cobra.Command) {
+	command.Flags().BoolVar(&m.all, "all", false, "answer every paused run that fits the selectors; give the text and no item")
+	command.Flags().StringVar(&m.project, "project", "", "with --all: answer only runs of this project")
+	command.Flags().StringVar(&m.asking, "question", "", "with --all: answer only runs whose question holds this text")
+	command.Flags().StringSliceVar(&m.items, "items", nil, "with --all: answer only these items, a comma-separated list")
+}
+
+// answer runs obee answer: one item, or with --all every run that the selectors pick.
+func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, as string, args []string) error {
+	if many.all {
+		return f.withClient(cmd, flag, func(client Steering) error {
+			return answerMany(cmd.OutOrStdout(), client, many, as, strings.Join(args, " "))
+		})
+	}
+
+	return f.withClient(cmd, flag, func(client Steering) error { return sendAnswer(client, args[0], as, strings.Join(args[1:], " ")) })
+}
+
+const answerLong = "Answer the question of a paused item.\n" +
+	"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
+	"A wait that sets choices takes only those texts. obee status shows the people, the choices and who answered.\n" +
+	"obee does not prove the name: anyone who can run obee answer on the run can give any name that the wait asks.\n\n" +
+	"Add --all to give the same answer to every run that obee status shows as paused with a question, and give the text alone, with no item. " +
+	"Narrow the runs with --project (the project of the run), --question (a text that the question holds) and --items (a list of item ids). A run must fit every selector that is set.\n" +
+	"Each run takes the answer as obee answer <item> would send it, and keeps every refusal rule of that command: a run that refuses prints one line with the reason, and the other runs still take the answer. " +
+	"The command prints one line for each run. It exits 0 only when every run took the answer, and exits 1 when a run refused or when no run waits."
+
 func (f flowCommands) answerCommand() *cobra.Command {
 	var flag, as string
 
+	var many manyAnswer
+
 	command := &cobra.Command{
-		Use:   "answer <item> <text>",
-		Short: "Answer the question of a paused item",
-		Long: "Answer the question of a paused item.\n" +
-			"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
-			"A wait that sets choices takes only those texts. obee status shows the people, the choices and who answered.\n" +
-			"obee does not prove the name: anyone who can run obee answer on the run can give any name that the wait asks.",
-		Args: itemArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.withClient(cmd, flag, func(client Steering) error { return sendAnswer(client, args[0], as, strings.Join(args[1:], " ")) })
-		},
+		Use:   "answer <item> <text> | answer --all [selectors] <text>",
+		Short: "Answer the question of a paused item, or of many",
+		Long:  answerLong,
+		Args:  many.answerArgs,
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.answer(cmd, flag, many, as, args) },
 	}
 	addConfigFlag(command, &flag)
 	command.Flags().StringVar(&as, "as", "", "name of the person who answers a wait that names people")
+	many.addFlags(command)
 
 	return command
 }
