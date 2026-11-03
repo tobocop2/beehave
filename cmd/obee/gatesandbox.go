@@ -69,6 +69,24 @@ func (g gateSandbox) applies(project string, program bool) bool {
 // run runs argv in dir under the plan of the project and returns what it printed and its exit code. The first line of the output is the plan,
 // so the report of the gate step records it. The gate command ran no code when the code is sandboxFailed and the first words are "obee sandbox".
 func (g gateSandbox) run(ctx context.Context, project, dir string, argv, env []string, limit time.Duration) (out string, code int) {
+	return g.runAt(ctx, project, folder{path: dir}, argv, env, limit)
+}
+
+// folder is the folder that a gate command works in. own is true for an empty folder that obee made for the command: the command may write it. A folder
+// that is not own and has no .git is the real work folder of a project with no repository.
+type folder struct {
+	path string
+	own  bool
+}
+
+// runOwn is run for a folder that obee made for the command alone.
+func (g gateSandbox) runOwn(ctx context.Context, project, dir string, argv, env []string, limit time.Duration) (out string, code int) {
+	return g.runAt(ctx, project, folder{path: dir, own: true}, argv, env, limit)
+}
+
+// runAt is run for the folder at. A folder with no .git that is not own is read-only for the project gate and the program gate alike.
+func (g gateSandbox) runAt(ctx context.Context, project string, at folder, argv, env []string, limit time.Duration) (out string, code int) {
+	dir := at.path
 	found := g.projects[project]
 
 	enforcer, err := g.enforcer(found.SandboxEnforcer)
@@ -83,7 +101,7 @@ func (g gateSandbox) run(ctx context.Context, project, dir string, argv, env []s
 
 	defer func() { out += discard(context.WithoutCancel(ctx), tmp, dir) }()
 
-	return g.runIn(ctx, enforcer, found, tmp, dir, argv, env, limit)
+	return g.runIn(ctx, enforcer, found, tmp, at, argv, env, limit)
 }
 
 // discard removes the copy of a gate, also when the context is done, and then tells the repository in dir to forget the records of gate copies whose folder
@@ -279,7 +297,9 @@ func gitIn(ctx context.Context, dir string, args ...string) (string, error) {
 }
 
 // runIn makes the disposable work folder of dir under the temporary folder tmp, makes the plan for it and runs the command there.
-func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, project config.Project, tmp, dir string, argv, env []string, limit time.Duration) (string, int) {
+func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, project config.Project, tmp string, at folder, argv, env []string, limit time.Duration) (string, int) {
+	dir := at.path
+
 	work, release, err := disposableTree(ctx, dir, tmp)
 	if err != nil {
 		return notStarted(err.Error())
@@ -287,7 +307,9 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 
 	defer release()
 
-	plan, note := g.plan(ctx, project, dir, work, tmp)
+	// A folder with no .git has no copy. The plan then never grants it for writing, unless obee made it for the command: a write there would change the
+	// real folder, where a planted hook folder or agent setting runs later as the owner. A project with no repository still writes through gate_allow_write.
+	plan, note := g.plan(ctx, project, dir, work, tmp, work == dir && !at.own)
 	if note != "" {
 		return notStarted(note)
 	}
@@ -342,9 +364,9 @@ func execute(ctx context.Context, enforcer sandbox.Enforcer, plan sandbox.Plan, 
 
 // plan makes the plan of a gate command. The command may read the system folders, the work folder work (the disposable copy), the shared git directories
 // of the real work tree dir and the sandbox_read paths of the project, and nothing else under the home folder. It may write the whole work folder, its own
-// temporary folder and the gate_allow_write paths. It may reach the gate_network domains through the proxy and nothing else. The real work folder and the real
+// temporary folder and the gate_allow_write paths. A real folder with no .git has no copy, so it is read-only unless obee made it for the command. It may reach the gate_network domains through the proxy and nothing else. The real work folder and the real
 // git folder are never writable: a gate_allow_write path that is or holds one of them, or the hooks folder that core.hooksPath names, is refused.
-func (g gateSandbox) plan(ctx context.Context, project config.Project, dir, work, tmp string) (sandbox.Plan, string) {
+func (g gateSandbox) plan(ctx context.Context, project config.Project, dir, work, tmp string, readOnly bool) (sandbox.Plan, string) {
 	home, err := g.home()
 	if err != nil {
 		return sandbox.Plan{}, "obee cannot find the home folder, so the sandbox cannot deny it. The gate did not run."
@@ -364,14 +386,19 @@ func (g gateSandbox) plan(ctx context.Context, project config.Project, dir, work
 		return sandbox.Plan{}, strings.Replace(note, " The step did not start.", "", 1) + " The gate did not run."
 	}
 
-	return planOf(project.GateNetwork, work, tmp, read, write), ""
+	return planOf(project.GateNetwork, work, tmp, read, write, readOnly), ""
 }
 
-// planOf joins the system paths, the work folder, the temporary folder and the lists of the project into one plan.
-func planOf(network []string, work, tmp string, read, write []string) sandbox.Plan {
+// planOf joins the system paths, the work folder, the temporary folder and the lists of the project into one plan. The work folder is read-only when readOnly is true.
+func planOf(network []string, work, tmp string, read, write []string, readOnly bool) sandbox.Plan {
+	own := []string{work, tmp}
+	if readOnly {
+		own = []string{tmp}
+	}
+
 	return sandbox.Plan{
 		Read:    slices.Concat(sandbox.SystemRead(), []string{work}, sharedGitDirs(work), read),
-		Write:   slices.Concat(sandbox.SystemWrite(), []string{work, tmp}, write),
+		Write:   slices.Concat(sandbox.SystemWrite(), own, write),
 		Network: len(network) > 0,
 		Domains: slices.Clone(network),
 	}

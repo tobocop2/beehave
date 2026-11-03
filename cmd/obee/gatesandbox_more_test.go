@@ -158,7 +158,7 @@ func TestPrograms_AGateProgramOfASandboxedProjectRunsUnderTheEnforcerAndAnotherP
 	assert.Equal(t, 4, got.RC)
 	assert.Contains(t, got.Stdout, "sandbox fake plan: {")
 	assert.Equal(t, []string{"make", "check"}, fake.argv)
-	assert.Contains(t, fake.plan.Write, dir)
+	assert.Contains(t, fake.plan.Read, dir)
 }
 
 func TestPrograms_AGateProgramWhoseFolderCannotBeMadeIsAnError(t *testing.T) {

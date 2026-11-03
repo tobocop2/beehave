@@ -70,7 +70,7 @@ func TestGateSandbox_RunsTheCommandUnderTheEnforcerAndRecordsThePlanFirst(t *tes
 	assert.Equal(t, []string{"sh", "-c", "make check"}, fake.argv)
 	assert.Contains(t, out, "sandbox fake plan: {")
 	assert.Contains(t, out, "ran\n")
-	assert.Contains(t, fake.plan.Write, dir, "the gate writes the work folder")
+	assert.NotContains(t, fake.plan.Write, dir, "a plain folder is the real folder, so the gate does not write it")
 	assert.Contains(t, fake.plan.Read, dir)
 	assert.Equal(t, []string{"proxy.golang.org"}, fake.plan.Domains)
 	assert.True(t, fake.plan.Network)
