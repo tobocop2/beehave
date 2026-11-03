@@ -25,7 +25,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"preflight", `preflight()`, "3:11 haed is not a field of the result of preflight. It has: ok, stop, code, reason."},
 		{"queue", `queue()`, "3:11 haed is not a field of the result of queue. It has: rows, free."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
-		{"wait", `wait()`, "3:11 haed is not a field of the result of wait. It has: answer, timed_out."},
+		{"wait", `wait()`, "3:11 haed is not a field of the result of wait. It has: answer, answers, timed_out."},
 	}
 
 	for _, tc := range cases {

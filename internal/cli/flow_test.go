@@ -123,6 +123,12 @@ func (s *fakeSteering) Answer(item, text string) error {
 	return s.err
 }
 
+func (s *fakeSteering) AnswerAs(item, from, text string) error {
+	s.calls = append(s.calls, "answer-as "+from+" "+item+" "+text)
+
+	return s.err
+}
+
 func (s *fakeSteering) Resume(item string) error {
 	s.calls = append(s.calls, "resume "+item)
 
@@ -670,6 +676,32 @@ func TestSteeringCommands_PassTheItemAndTheJoinedAnswerToTheClient(t *testing.T)
 	}
 
 	assert.Equal(t, []string{"answer 12 use option b", "resume 12", "cancel 12"}, rig.steering.calls)
+}
+
+func TestAnswerCommand_TheAsFlagNamesThePersonWhoAnswers(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "answer", "12", "--as", "ana", "yes", "please")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"answer-as ana 12 yes please"}, rig.steering.calls)
+}
+
+func TestStatus_ShowsThePeopleTheChoicesAndWhoAnswered(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.infos = []flow.RunInfo{{
+		ID: "run-1", State: "running", Question: "Ship it?",
+		Asked: &flow.Asked{From: []string{"ana", "bo", "cy"}, Quorum: 2, Choices: []string{"yes", "no"}, Heard: []string{"ana"}},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Contains(t, stdout, "paused: Ship it?\tasks ana, bo, cy, 1 of 2 answered (ana); choices yes, no")
 }
 
 func TestResumeCommand_TheOnThisBuildFlagMovesTheRunToThisBuild(t *testing.T) {

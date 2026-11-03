@@ -29,6 +29,16 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"wait timeout bare zero", `wait(question = "q", timeout = "0")`, `wait: timeout is "0", which must be above zero`},
 		{"wait timeout negative", `wait(question = "q", timeout = "-5s")`, `wait: timeout is "-5s", which must be above zero`},
 		{"wait timeout empty", `wait(question = "q", timeout = "")`, `wait: timeout is "", which must be above zero`},
+		{"wait to empty", `wait(question = "q", to = [])`, "to is an empty list"},
+		{"wait to element", `wait(question = "q", to = [1])`, "to must hold strings only"},
+		{"wait to twice", `wait(question = "q", to = ["a", "a"])`, `to holds "a" twice`},
+		{"wait to blank", `wait(question = "q", to = [""])`, `to holds "", which is empty`},
+		{"wait choices empty", `wait(question = "q", choices = [])`, "choices is an empty list"},
+		{"wait choices twice", `wait(question = "q", choices = ["y", "y"])`, `choices holds "y" twice`},
+		{"wait quorum zero", `wait(question = "q", to = ["a"], quorum = 0)`, "wait: quorum must be a whole number of 1 or more"},
+		{"wait quorum text", `wait(question = "q", to = ["a"], quorum = "2")`, "quorum must be an int, not a text"},
+		{"wait quorum without to", `wait(question = "q", quorum = 2)`, "wait: quorum needs `to`"},
+		{"wait quorum above to", `wait(question = "q", to = ["a", "b"], quorum = 3)`, "wait: quorum is 3, and `to` names 2 people"},
 		{"stop_on_rc zero", `command(run = ["x"], stop_on_rc = [0])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
 		{"stop_on_rc text", `command(run = ["x"], stop_on_rc = ["2"])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
 		{"stop_on_rc large", `command(run = ["x"], stop_on_rc = [256])`, "command: stop_on_rc must hold whole numbers from 1 to 255"},
@@ -90,7 +100,7 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 	t.Parallel()
 
-	got := checkText(t, "D = \"5s\"\n\ndef main(item):\n"+
+	got := checkText(t, "D = \"5s\"\nwho = [\"a\"]\n\ndef main(item):\n"+
 		"    agent(\"p\", \"m\", output_tries = 3, timeout = \"90s\", idle_timeout = \"10m\", allow_paths = [\"a/**\", \"./b\"], outputs = [\"o\"], require_skills = [\"s\"], inputs = {\"k\": [1, 2.5, None]})\n"+
 		"    agent(\"p\", \"m\", output_tries = 1, timeout = D, allow_paths = [D])\n"+
 		"    agent(\"p\", \"m\", max_budget_usd = 2.5)\n"+
@@ -98,6 +108,9 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    agent(\"p\", \"m\", rounds = 5)\n"+
 		"    command(run = [\"x\"], stop_on_rc = [1, 255], max_new_processes = 5, timeout = \"\")\n"+
 		"    wait(question = \"q\", timeout = \"48h\")\n"+
+		"    wait(question = \"q\", to = [\"a\", \"b\"], quorum = 2, choices = [\"yes\", \"no\"], timeout = \"1h\")\n"+
+		"    wait(question = \"q\", choices = [\"yes\"])\n"+
+		"    wait(question = \"q\", to = who, quorum = 3)\n"+
 		"    command(run = [\"x\"], host = \"h\")\n"+
 		"    command(run = [\"x\"], max_new_processes = 5, host = \"\")\n"+
 		"    merge(head = \"h\", merge = True, steps = [{\"name\": \"a\", \"status\": \"pass\"}], tree = \"abc\", own = {\"logins\": [\"me\"], \"emails\": [\"a@b\"]})\n"+

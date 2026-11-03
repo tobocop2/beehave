@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,6 +48,8 @@ type RunInfo struct {
 	OlderSteps bool
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
 	Question string
+	// Asked names the people and the choices of the open wait, and who answered so far. It is nil for a wait that names neither.
+	Asked *Asked
 	// Others names the other orchestrators that held items when an open run started, one line for each: the owner and its items. It is empty when none did.
 	Others []string
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
@@ -262,6 +265,12 @@ func (c *Client) openDetails(id string, info *RunInfo) error {
 		return err
 	}
 
+	if info.Asked, err = c.askedOf(id); err != nil {
+		return err
+	}
+
+	info.Question = cmp.Or(info.Question, info.Asked.questionText())
+
 	if info.Others, err = c.othersOf(id); err != nil {
 		return err
 	}
@@ -335,35 +344,22 @@ func stateOf(status dbos.WorkflowStatusType) RunState {
 }
 
 // Answer sends the answer of the owner to the open run of an item.
-func (c *Client) Answer(item, text string) error {
-	if text == "" {
-		return fmt.Errorf("%w: write the answer after the item", errEmptyAnswer)
-	}
-
-	last, err := c.latest(item)
-	if err != nil {
-		return err
-	}
-
-	if err := c.requireQuestion(item, last); err != nil {
-		return err
-	}
-
-	return dbos.Send(c.flow, last.Status.ID, text, ownerTopic)
-}
+// A wait that names people refuses an answer with no name; AnswerAs gives one.
+func (c *Client) Answer(item, text string) error { return c.AnswerAs(item, "", text) }
 
 // requireQuestion refuses a run that is finished or that asks the owner nothing: a message to such a run would answer the next question at once.
-func (c *Client) requireQuestion(item string, last run) error {
+// It returns the info of the run, which holds the question and who it asks.
+func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {
 	if last.terminal() {
-		return fmt.Errorf("%w: %s is %s and waits for no answer. Run obee run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
+		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run obee run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
 	}
 
-	asked, err := c.info(last.Status)
-	if err == nil && asked.Question == "" {
+	info, err := c.info(last.Status)
+	if err == nil && info.Question == "" {
 		err = fmt.Errorf("%w: %s asks no question. Run obee status to see which run waits for an answer", errWrongState, last.Status.ID)
 	}
 
-	return err
+	return info, err
 }
 
 // Resume reopens the canceled or failed run of an item, from its last finished step. Run obee run for the item to continue it.

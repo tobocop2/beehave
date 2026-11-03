@@ -58,7 +58,9 @@ type Reading interface {
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Reading
+	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
 	Answer(item, text string) error
+	AnswerAs(item, from, text string) error
 	Resume(item string) error
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
 	ResumeOnThisBuild(item string) error
@@ -581,7 +583,7 @@ func statusLine(info flow.RunInfo) string {
 	case info.Stranded:
 		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
 	case info.Question != "":
-		line += "\tpaused: " + oneLine(info.Question)
+		line += "\tpaused: " + oneLine(info.Question) + askedTail(info.Asked)
 	default:
 		line += finishedNote(info)
 	}
@@ -593,6 +595,30 @@ func statusLine(info flow.RunInfo) string {
 	}
 
 	return line
+}
+
+// askedTail describes the people and the choices of a wait: who is asked, how many must answer, who did, and the texts an answer may be.
+// It is empty for a wait that names neither.
+func askedTail(asked *flow.Asked) string {
+	if asked == nil {
+		return ""
+	}
+
+	var parts []string
+
+	if len(asked.From) > 0 {
+		parts = append(parts, fmt.Sprintf("asks %s, %d of %d answered", strings.Join(asked.From, ", "), len(asked.Heard), asked.Quorum))
+
+		if len(asked.Heard) > 0 {
+			parts[0] += " (" + strings.Join(asked.Heard, ", ") + ")"
+		}
+	}
+
+	if len(asked.Choices) > 0 {
+		parts = append(parts, "choices "+strings.Join(asked.Choices, ", "))
+	}
+
+	return "\t" + oneLine(strings.Join(parts, "; "))
 }
 
 // notesTail is the tab-separated progress notes of a run: its cost, step, wait deadline, gate and rounds. It is empty for a run with none.
@@ -660,18 +686,32 @@ func (f flowCommands) withClient(cmd *cobra.Command, flag string, fn func(Steeri
 	return errors.Join(fn(client), client.Close())
 }
 
+// sendAnswer sends the text as a plain answer, or as the answer of the person that --as names.
+func sendAnswer(client Steering, item, as, text string) error {
+	if as == "" {
+		return client.Answer(item, text)
+	}
+
+	return client.AnswerAs(item, as, text)
+}
+
 func (f flowCommands) answerCommand() *cobra.Command {
-	var flag string
+	var flag, as string
 
 	command := &cobra.Command{
 		Use:   "answer <item> <text>",
 		Short: "Answer the question of a paused item",
-		Args:  itemArgs,
+		Long: "Answer the question of a paused item.\n" +
+			"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
+			"A wait that sets choices takes only those texts. obee status shows the people, the choices and who answered.\n" +
+			"obee does not prove the name: anyone who can run obee answer on the run can give any name that the wait asks.",
+		Args: itemArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.withClient(cmd, flag, func(client Steering) error { return client.Answer(args[0], strings.Join(args[1:], " ")) })
+			return f.withClient(cmd, flag, func(client Steering) error { return sendAnswer(client, args[0], as, strings.Join(args[1:], " ")) })
 		},
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().StringVar(&as, "as", "", "name of the person who answers a wait that names people")
 
 	return command
 }

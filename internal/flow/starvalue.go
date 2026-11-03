@@ -76,6 +76,12 @@ func (s *script) name(builtin, label string) string {
 // durable runs one call of a builtin as a recorded DBOS step named `<builtin>:<label>#<n>` and returns the struct of the outputs it recorded.
 // fn gets the step name. A step that carries a stop unwinds the run instead.
 func (s *script) durable(builtin, label string, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	return s.durableWith(builtin, label, nil, fn)
+}
+
+// durableWith is durable for a builtin that gained result fields after its first records. A record that lacks a field reads it as the zero in zeros,
+// so a run that an older build recorded replays under a file that reads the new field.
+func (s *script) durableWith(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	name := s.name(builtin, label)
 
 	done, err := runStep(s.e, s.ctx, name, func(ctx context.Context) (stepResult, error) { return fn(ctx, name) })
@@ -89,7 +95,7 @@ func (s *script) durable(builtin, label string, fn func(ctx context.Context, nam
 		return nil, errStopped
 	}
 
-	return result(done.Outputs)
+	return result(withZeros(done.Outputs, zeros))
 }
 
 // result makes the struct that a builtin returns from the outputs it recorded.
