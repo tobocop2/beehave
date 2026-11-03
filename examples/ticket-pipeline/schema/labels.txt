@@ -1,0 +1,6 @@
+billing
+bug
+how-to
+account
+other
+unsure
