@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,7 +38,14 @@ const (
 // e2eTools are the programs that the scripts of the examples find on PATH. Nothing else is there: no bd and no gh.
 // The local example needs sh, git, sed, mkdir and make. The check and report scripts of the research example also use grep, sort, cat, dirname, curl and date.
 func e2eTools() []string {
-	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date"}
+	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date", "awk", "tr", "head", "wc", "mv", "cut"}
+}
+
+// e2eOptionalTools are the programs that only some scripts need. A machine without one still runs the other scripts, and a script that needs one
+// starts with the condition [!exec:name] skip. The desk example needs jq for its gateway and eval scripts, and a SHA-256 tool for its mask:
+// sha256sum on Linux and shasum on macOS.
+func e2eOptionalTools() []string {
+	return []string{"jq", "sha256sum", "shasum"}
 }
 
 // e2eReal is the obeereal command of the scripts.
@@ -148,8 +156,12 @@ func writeTools(t *testing.T) string {
 
 	tools := t.TempDir()
 
-	for _, name := range e2eTools() {
+	for _, name := range append(e2eTools(), e2eOptionalTools()...) {
 		found, err := exec.LookPath(name)
+		if err != nil && slices.Contains(e2eOptionalTools(), name) {
+			continue
+		}
+
 		require.NoError(t, err)
 
 		wrapper := "#!/bin/sh\nexec " + found + " \"$@\"\n"

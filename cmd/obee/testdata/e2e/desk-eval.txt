@@ -1,0 +1,84 @@
+# An eval run of the refund intent. The clerk runs on each practice case of the gold set as shadow work, and the judge grades each calibration reply.
+# Case g1 asks for a refund of 80 and the people answered refund 80, so the clerk is right. Case g2 is not a request of this desk, the clerk declines, and the people sent it to a person, so the clerk is right.
+# The held-out case g3 is never read in a practice run. The judge grades every reply good, and the people graded two of four replies poor, so the judge is not trusted.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+
+exec obeereal item add desk eval-refund --title 'Eval of refund' --body-file body.txt
+exec obeereal run eval-refund desk --workflow desk/eval.star
+stdout 'item eval-refund finished'
+
+# The clerk ran on the two practice cases and not on the held-out case. The judge ran on each of the two cases and the four replies.
+grep -count=2 '^clerk$' calls.log
+grep -count=6 '^judge$' calls.log
+! grep 'Please refund 50' last-prompt.txt
+
+# The records are outside every work folder, one for each case and one for each reply.
+exists home/.desk/evals/eval-refund/cases/g1.json
+exists home/.desk/evals/eval-refund/cases/g2.json
+! exists home/.desk/evals/eval-refund/cases/g3.json
+exists home/.desk/evals/eval-refund/calib/r4.json
+grep '"kind":"refund"' home/.desk/evals/eval-refund/cases/g1.json
+grep '"amount":80' home/.desk/evals/eval-refund/cases/g1.json
+grep '"kind":"none"' home/.desk/evals/eval-refund/cases/g2.json
+
+# The score and the agreement are scripts of the desk, so the test reads them as the workflow does.
+exec sh desk/evals/score.sh refund eval-refund
+stdout '"accuracy": 1.000'
+stdout '"mean_cost": 0.000'
+exec sh desk/evals/agreement.sh refund eval-refund
+stdout '"judge_trusted": false'
+
+exec obeereal status
+stdout 'eval-refund-r1\tdone'
+
+# The mean cost is 0, so the score allows a promotion. A practice run only says so: it asks no one and opens no item.
+exec obeereal item list desk
+! stdout 'Promote'
+! stdout 'Demote'
+
+-- body.txt --
+refund
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=/nonexistent/mail
+CHAT_SPOOL=/nonexistent/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/gold/refund.tsv --
+id	held	ka	aa	kb	ab	file
+g1	no	refund	80	refund	80	g1.txt
+g2	no	person	0	person	0	g2.txt
+g3	yes	refund	50	refund	50	g3.txt
+-- home/.desk/gold/g1.txt --
+Please refund 80 for BK-123456.
+-- home/.desk/gold/g2.txt --
+Hello there.
+-- home/.desk/gold/g3.txt --
+Please refund 50 for BK-123456.
+-- home/.desk/gold/costs.tsv --
+none	person	2
+-- home/.desk/gold/refund-replies.tsv --
+id	case	reply	ga	gb
+r1	g1.txt	r1.txt	good	good
+r2	g2.txt	r2.txt	good	good
+r3	g3.txt	r3.txt	poor	poor
+r4	g1.txt	r4.txt	poor	poor
+-- home/.desk/gold/r1.txt --
+reply one
+-- home/.desk/gold/r2.txt --
+reply two
+-- home/.desk/gold/r3.txt --
+reply three
+-- home/.desk/gold/r4.txt --
+reply four

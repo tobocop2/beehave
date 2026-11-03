@@ -1,0 +1,55 @@
+# The refund tier is transact, and the refund is 250, above the limit of 100. The limit holds at every tier that writes: the case waits for a person
+# and nothing is written until the answer approve.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+[!exec:sed] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+subst home/.desk/config
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+
+exec sed 's/tier = TIER.CONTAIN/tier = TIER.TRANSACT/' desk/policy.star
+cp stdout desk/policy.star
+grep 'TIER.TRANSACT,' desk/policy.star
+
+exec obeereal item add desk shift-1 --title 'Morning shift' --body-file body.txt
+exec obeereal run shift-1 desk --workflow desk/workflow.star &
+
+waitstatus 'paused: [billing] The clerk proposes'
+! exists writes.log
+! exists mail.out
+
+exec obeereal answer desk-2 approve: within the agreed amount
+wait
+stdout 'item shift-1 finished'
+
+grep -count=1 '^credit-' writes.log
+grep 'We refund 250 EUR for BK-123456' mail.out
+
+-- body.txt --
+The morning shift.
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=@WORK@/home/.desk/mail
+CHAT_SPOOL=@WORK@/home/.desk/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/mail/cur/keep --
+-- home/.desk/chat/keep --
+-- home/.desk/mail/new/m1 --
+Message-Id: <m1@mail.test>
+From: Ann Smith <ann@example.com>
+Subject: Refund BK-123456
+
+Thanks, Ann Smith. Please refund 250 for BK-123456.
+-- resp/_bookings_BK-123456 --
+{"ref":"BK-123456","status":"cancelled","paid":300,"currency":"EUR","date":"2026-12-01","customer_name":"Ann Smith","customer_email":"ann@example.com","refunded":0}
+-- resp/_eligibility_refund --
+{"eligible":true}
