@@ -91,12 +91,14 @@ func (e *Engine) readQueue(ctx context.Context, project, holdLabel string) (queu
 		return queued{}, fmt.Errorf("read the open pull requests of project %s: %w", project, err)
 	}
 
-	rows, err := e.queueRows(items, joinPulls(pulls, holdLabel))
+	// The slots are read before the rows. A run that ended before the slots were read shows as not running in the rows, so a caller can tell a slot
+	// that is free from a slot that a run left a moment ago. In the other order, a run could end between the two reads and show as running with a free slot.
+	free, err := e.freeSlots()
 	if err != nil {
 		return queued{}, err
 	}
 
-	free, err := e.freeSlots()
+	rows, err := e.queueRows(items, joinPulls(pulls, holdLabel))
 
 	return queued{Rows: rows, Free: free}, err
 }

@@ -108,6 +108,11 @@ def start_ready(swarm, p):
     """Starts the ready items by priority, no more than the free slots. Returns True when nothing is ready, running or waiting."""
     queued = queue(name = "q-%d" % p, hold = HOLD)
     ready = ready_ids(swarm, queued.rows)
+    # A run that ended but is not gathered yet still counts as live here, and a slot of it looks free. Its landing can file a fix item of priority P0.
+    # So nothing starts until the pass has gathered it and landed it: the pass goes on to wait_for_one, which returns at once.
+    running = [r.item for r in queued.rows if r.state == "running"]
+    if any([run.item not in running for run in swarm.live]):
+        return False
     for kind in [TASK, RESOLVE]:
         chosen = [i for i in ready[:queued.free] if swarm.kind[i] == kind]
         if len(chosen) > 0:

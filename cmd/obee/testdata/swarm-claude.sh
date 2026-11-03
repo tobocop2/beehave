@@ -62,15 +62,30 @@ case $first in
       set -- "$work"/running/*
       echo $# >> "$work/concurrency.log"
     fi
-    # A task with a body that starts with late waits (at most 20 seconds) until a resolve call is in calls.log, and writes the file starved if none came.
+    # A body of the form "<mode> <file>" makes a task wait for an event before it ends. The file is the file that the task writes.
+    #   late          waits until a resolve call is in calls.log, and then adds the line "late-end <id>" to calls.log.
+    #   after-start   waits until three tasks started.
+    #   in-landing    waits until the forge merged one pull request. The forge then waits for the end of this run (see pauseAfterMerge).
+    # The deadlines are a hang guard only. A task that reaches one writes a line to the file harness-fault and goes on, and the script fails on that file
+    # with its own message, so a hang is never counted as a failed claim. A script decides by the order of the lines in calls.log, never by time.
+    mode=
+    file=${body:-$id.txt}
     case $body in
-      late*)
-        n=0
-        while ! grep -q '^resolve ' "$work/calls.log" && [ $n -lt 100 ]; do sleep 0.2; n=$((n + 1)); done
-        grep -q '^resolve ' "$work/calls.log" || : > "$work/starved"
+      'late '* | 'after-start '* | 'in-landing '*)
+        mode=${body%% *}
+        file=${body#* }
         ;;
     esac
-    file=${body:-$id.txt}
+    n=0
+    case $mode in
+      late) until grep -q '^resolve ' "$work/calls.log" || [ $n -ge 600 ]; do sleep 0.2; n=$((n + 1)); done ;;
+      after-start) until [ "$(grep -c '^task ' "$work/calls.log")" -ge 3 ] || [ $n -ge 300 ]; do sleep 0.2; n=$((n + 1)); done ;;
+      in-landing) until grep -q '^MergePR ' "$work/forge/calls.log" 2> /dev/null || [ $n -ge 300 ]; do sleep 0.2; n=$((n + 1)); done ;;
+    esac
+    if [ -n "$mode" ] && [ $n -ge 300 ] && { [ "$mode" != late ] || [ $n -ge 600 ]; }; then
+      echo "$mode $id" >> "$work/harness-fault"
+    fi
+    [ "$mode" = late ] && echo "late-end $id" >> "$work/calls.log"
     echo "$id" > "$file"
     echo "$id" > "$id.txt"
     git add "$file" "$id.txt"

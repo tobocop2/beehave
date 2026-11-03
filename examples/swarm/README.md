@@ -5,7 +5,7 @@ A swarm runs one backlog with many agents at once. Each line of the parent item 
 ## How it runs
 
 - **Backlog.** Each line of the body of the parent item is a priority (`P0` to `P3`), a tab, a title, and optionally a tab and a body. A bad line refuses the whole backlog.
-- **Priority at the door.** The parent calls `queue`, sorts the ready items by priority, and calls `spawn` for no more than `queue.free` items. `agents(max_concurrent)` in `runners.star` sets the slots.
+- **Priority at the door.** The parent calls `queue`, sorts the ready items by priority, and calls `spawn` for no more than `queue.free` items. `agents(max_concurrent)` in `runners.star` sets the slots. If a run ended and the parent has not gathered it, nothing starts in that pass. The parent gathers and lands the run first, so a fix item that the landing files starts before any task of lower priority.
 - **Merge queue.** Finished tasks wait until `BATCH` pull requests are ready or no agent runs. Then one `batch_merge` runs for each priority, `P0` first, so a high priority lands before a low one and one gate run covers each union.
 - **Conflicts.** A pull request that conflicts gets a fix item, at most twice. The fix agent merges the base into the branch and pushes it. After two tries, or for any other reason, the item gets a comment and the status `hold`.
 - **Limits.** `CAP_USD` stops new runs when the ledger reaches it. A file `$HOME/.swarm/<swarm>/STOP` stops new runs. `DEADLINE_MIN` stops new runs after that many minutes. A limit never stops a run that already started.
