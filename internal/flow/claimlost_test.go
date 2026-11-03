@@ -552,7 +552,7 @@ func TestAwaitClaim_TheGraceTimeCountsOnTheClockOfTheEngine(t *testing.T) {
 	select {
 	case err := <-done:
 		t.Fatalf("the wait ended before the grace time passed on the clock of the engine: %v", err)
-	case <-time.After(10 * storePoll):
+	case <-time.After(3 * time.Second):
 	}
 
 	clk.advance(time.Minute)
