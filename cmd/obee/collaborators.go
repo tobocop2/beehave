@@ -58,6 +58,10 @@ type worktrees struct {
 // If the branch of the item exists, the worktree uses it as it is, so earlier commits stay. A resume finds the worktree again and changes nothing.
 // A folder that git does not list as a worktree is an error. Ensure never deletes it.
 func (w worktrees) Ensure(ctx context.Context, project, item string) (string, error) {
+	if w.plain(project) {
+		return w.ensurePlain(project, item)
+	}
+
 	dir, err := w.Path(ctx, project, item)
 	if err != nil || dir != "" {
 		return dir, err
@@ -74,6 +78,24 @@ func (w worktrees) Ensure(ctx context.Context, project, item string) (string, er
 	}
 
 	return w.create(ctx, found, dir, item)
+}
+
+// plain reports whether the named project has no repository. Its item folder is then a plain folder that obee makes, and git never reads it.
+// A project that the finder does not know is not plain.
+func (w worktrees) plain(project string) bool {
+	found, ok := w.projects[project]
+
+	return ok && !found.HasRepository()
+}
+
+// ensurePlain returns the plain folder of the item and makes it when it is missing. A resume finds the folder again with its files.
+func (w worktrees) ensurePlain(project, item string) (string, error) {
+	dir := filepath.Join(w.root, model.SafeName(project), model.SafeName(item))
+	if err := os.MkdirAll(dir, folderMode); err != nil {
+		return "", fmt.Errorf("make the folder of item %s: %w", item, err)
+	}
+
+	return dir, nil
 }
 
 // create refreshes the clone of the project and adds the worktree dir of the item from it.
@@ -201,6 +223,10 @@ func (w worktrees) Path(ctx context.Context, project, item string) (string, erro
 		return "", nil
 	} else if err != nil {
 		return "", fmt.Errorf("read the folder %s: %w", dir, err)
+	}
+
+	if w.plain(project) {
+		return dir, nil
 	}
 
 	return w.ifListed(ctx, dir, want)

@@ -88,7 +88,7 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
 			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
 
-			client, err := flow.OpenClient(ctx, opts, releaseDeps(newLife(cfg, table), opts))
+			client, err := flow.OpenClient(ctx, opts, releaseDeps(newLife(cfg, table), cfg.Projects, opts))
 			if err != nil {
 				return nil, err
 			}
@@ -126,7 +126,17 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Kept:   backendErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
+		Repository:     repositoryOf(cfg.Projects),
 	})
+}
+
+// repositoryOf tells whether a project has a git repository. A project that the config does not hold counts as one that has it.
+func repositoryOf(projects map[string]config.Project) func(string) bool {
+	return func(project string) bool {
+		found, ok := projects[project]
+
+		return !ok || found.HasRepository()
+	}
 }
 
 // backendErrors lists the sentinel errors of the backends. A gate or a merge on a host returns them, and the engine cannot import a backend.
@@ -135,8 +145,9 @@ func backendErrors() []error {
 }
 
 // releaseDeps builds what the client needs: the claim to take and give back, the lease reader of a move to this build, and the worktrees.
-func releaseDeps(life itemLife, opts flow.Options) flow.ReleaseDeps {
-	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: newWorktrees(nil, opts, nil)}
+// The projects tell the worktrees and the release which projects have no repository, so a release never reads git in a plain folder.
+func releaseDeps(life itemLife, projects map[string]config.Project, opts flow.Options) flow.ReleaseDeps {
+	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: newWorktrees(projects, opts, nil), Repository: repositoryOf(projects)}
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.
@@ -154,7 +165,7 @@ func newLife(cfg config.Config, table adapters) itemLife {
 }
 
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.
-// The client of the commands only reads worktrees and passes no projects.
+// The client of the commands only reads worktrees; it passes the projects so that it knows which have no repository.
 // Every git call sets GIT_TERMINAL_PROMPT=0, so a private repository fails and never waits for a password.
 func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error)) worktrees {
 	return worktrees{

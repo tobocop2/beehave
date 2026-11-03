@@ -57,6 +57,36 @@ func TestRun_AWorkflowFileWithAProblemIsRefusedBeforeTheEngineOpens(t *testing.T
 	assert.Empty(t, rig.runner.files)
 }
 
+func TestRun_AGateCallInAProjectWithNoRepositoryIsRefusedBeforeTheEngineOpens(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	opened := false
+	rig.engineOf = func() error { opened = true; return nil }
+	writeConfig(t, rig.dir, "projects/p.star", "project()\n")
+	dir := t.TempDir()
+	writeConfig(t, dir, "gate.star", "def main(item):\n    gate(name = \"check\")\n    gate(run = [\"true\"], name = \"links\")\n")
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12", "--workflow", filepath.Join(dir, "gate.star"))
+
+	require.Equal(t, 1, code, stderr)
+	assert.Contains(t, stderr, "gate.star:2:9: gate needs a repository, and project p has no repository")
+	assert.NotContains(t, stderr, "gate.star:3")
+	assert.False(t, opened)
+}
+
+func TestRun_AProjectWithNoRepositoryRunsAWorkflowThatCallsNoGitBuiltin(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "projects/p.star", "project()\n")
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 finished\n", stdout)
+}
+
 func TestRun_WorkflowStarInTheCurrentFolderIsUsedWhenNoFileIsNamed(t *testing.T) {
 	rig := newRig(t)
 	rig.useFile = false

@@ -267,6 +267,9 @@ type Deps struct {
 	Hosts hostKeeper
 	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
 	SandboxDefault func(project string) bool
+	// Repository says whether a project has a git repository. A nil Repository means every project has one.
+	// The item folder of a project with no repository is a plain folder: no step reads git there, and the git builtins refuse the project.
+	Repository func(project string) bool
 	// Kept lists errors, besides the errors of the gate and the host, that a gate or a merge keeps for errors.Is when it fails. A call that runs in
 	// a child run returns its error as text, and the parent finds each listed error again from that text.
 	Kept []error

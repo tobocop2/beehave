@@ -16,7 +16,6 @@ example research/prompts/revise.md
 example research/prompts/conclude.md
 example research/tools/check.sh
 example research/tools/report.sh
-replace config/projects/research.star '~/work/your-repo' $WORK/origin
 fakeclaude
 serve
 

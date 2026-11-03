@@ -17,6 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/workflow"
 )
 
 const (
@@ -196,7 +197,7 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 		return err
 	}
 
-	file, err := f.checkedWorkflow(cmd, workflowFile)
+	file, err := f.checkedWorkflow(cmd, workflowFile, cfg.Projects[project])
 	if err != nil && !errors.Is(err, errNoWorkflow) {
 		return err
 	}
@@ -205,6 +206,23 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	opts.OverCap = overCap
 
 	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
+}
+
+// refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one.
+// A run with no file continues a pinned run, which passed this check when it started.
+func refuseNoRepositoryCalls(stderr io.Writer, project config.Project, file string) error {
+	if file == "" || project.HasRepository() {
+		return nil
+	}
+
+	calls := workflow.CheckNoRepository(file, project.Name)
+	if len(calls) == 0 {
+		return nil
+	}
+
+	printProblems(stderr, file, calls)
+
+	return &ExitError{Code: exitWorkflowProblems}
 }
 
 // target returns the project that run names, after it checks that the project knows the item.
@@ -217,14 +235,18 @@ func (f flowCommands) target(cfg config.Config, args []string) (string, error) {
 	return project, f.knownItem(cfg.Projects[project].Project, args[0])
 }
 
-// checkedWorkflow returns the workflow file that run uses after it passes the check.
-func (f flowCommands) checkedWorkflow(cmd *cobra.Command, named string) (string, error) {
+// checkedWorkflow returns the workflow file that run uses after it passes the check, and the check of the calls that the project cannot make.
+func (f flowCommands) checkedWorkflow(cmd *cobra.Command, named string, project config.Project) (string, error) {
 	file, err := chooseWorkflow(named)
 	if err != nil {
 		return "", err
 	}
 
-	return file, runCheckWorkflow(cmd.ErrOrStderr(), file)
+	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil {
+		return file, err
+	}
+
+	return file, refuseNoRepositoryCalls(cmd.ErrOrStderr(), project, file)
 }
 
 // missingWorkflow is the refusal of a run that has no workflow file to start with.

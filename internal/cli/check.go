@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -64,6 +65,16 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"Exit 3: the run ended early at a step the dry run does not fake, and the steps after it were not checked. " +
 	"The last line says what that step does."
 
+// runCheckedWorkflow refuses the calls that the named project cannot make, then checks the file and runs it as runDryWorkflow does.
+func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, named projectCheck, args []string, item string, dryRun bool) error {
+	file, err := named.fileOf(cmd.ErrOrStderr(), env, args)
+	if err != nil {
+		return err
+	}
+
+	return runDryWorkflow(ctx, cmd, env, file, item, dryRun)
+}
+
 // runDryWorkflow checks the file, and with dryRun set it then runs the file over fakes and prints the steps.
 func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dryRun bool) error {
 	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dryRun {
@@ -90,22 +101,88 @@ func newCheckWorkflowCommand(ctx context.Context, env map[string]string) *cobra.
 
 	var item string
 
+	var named projectCheck
+
 	command := &cobra.Command{
 		Use:   "workflow [file]",
 		Short: "Check a workflow file and print one line for each problem",
 		Long:  checkWorkflowLong,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			file := defaultWorkflowFile
-			if len(args) > 0 {
-				file = args[0]
-			}
-
-			return runDryWorkflow(ctx, cmd, env, file, item, dryRun)
+			return runCheckedWorkflow(ctx, cmd, env, named, args, item, dryRun)
 		},
 	}
 
-	return addDryRunFlags(command, &dryRun, &item)
+	return addDryRunFlags(named.flags(command), &dryRun, &item)
+}
+
+// flags adds --project and --config to the command.
+func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
+	command.Flags().StringVar(&p.project, projectFlag, "", "a project of the config: refuse each call of gate, merge, batch_merge or preflight when the project has no repository")
+	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+
+	return command
+}
+
+// projectCheck is the project that `check workflow` judges the calls against, and the config folder that holds it. The project is empty when none is named.
+type projectCheck struct {
+	project string
+	folder  string
+}
+
+// find loads the config folder and returns the named project. An unreadable config or an unknown name prints its problems and exits with code 2.
+func (p projectCheck) find(stderr io.Writer, env map[string]string) (config.Project, error) {
+	dir, err := config.FolderPath(env, p.folder)
+	if err != nil {
+		return config.Project{}, err
+	}
+
+	cfg, problems := config.LoadFolder(dir, env)
+	if found, ok := cfg.Projects[p.project]; len(problems) == 0 && ok {
+		return found, nil
+	}
+
+	if len(problems) == 0 {
+		problems = config.Problems{fmt.Errorf("no project %q in the config: use one of %s", p.project, strings.Join(slices.Sorted(maps.Keys(cfg.Projects)), ", "))}
+	}
+
+	for _, problem := range problems {
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintln(stderr, problem)
+	}
+
+	return config.Project{}, &ExitError{Code: exitProblems}
+}
+
+// fileOf returns the workflow file that the arguments name, or the default file. It first refuses the calls that the named project cannot make.
+func (p projectCheck) fileOf(stderr io.Writer, env map[string]string, args []string) (string, error) {
+	file := defaultWorkflowFile
+	if len(args) > 0 {
+		file = args[0]
+	}
+
+	return file, p.run(stderr, env, file)
+}
+
+// run refuses each call of a builtin that needs a repository when the named project has none. It does nothing when no project is named.
+func (p projectCheck) run(stderr io.Writer, env map[string]string, file string) error {
+	if p.project == "" {
+		return nil
+	}
+
+	found, err := p.find(stderr, env)
+	if err != nil || found.HasRepository() {
+		return err
+	}
+
+	calls := workflow.CheckNoRepository(file, p.project)
+	if len(calls) == 0 {
+		return nil
+	}
+
+	printProblems(stderr, file, calls)
+
+	return &ExitError{Code: exitWorkflowProblems}
 }
 
 func addDryRunFlags(command *cobra.Command, dryRun *bool, item *string) *cobra.Command {

@@ -65,7 +65,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch", "gate", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -138,12 +138,26 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return "", "", err
 	}
 
-	source, err := sourceOf(raw, names.forge, host)
+	source, err := sourceOf(raw, host)
 	if err != nil {
 		return "", "", err
 	}
 
+	if source == "" && names.forge == "" {
+		return host, source, noRepositoryKeys(raw)
+	}
+
 	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw), pinFile(raw, host))
+}
+
+// noRepositoryKeys checks a project with no source and no forge. Its items run in plain folders, so base_branch, gate and test_report are optional.
+// A pin_file is read from the base commit, so it needs a repository.
+func noRepositoryKeys(raw rawProject) error {
+	if raw.PinFile.Set {
+		return refuseAt(raw.At, "`pin_file` is set, and the project has no `source` and no `forge`. The pin file is read from the base commit. Set `source` or `forge`, or remove `pin_file`.")
+	}
+
+	return nil
 }
 
 // tables returns the host block, the visibility and the sandbox mode of a project.
@@ -370,14 +384,10 @@ func requireRepo(raw rawProject) error {
 // urlSource matches a git URL: a scheme with "://", or the scp form [user@]host:path. As git reads it, a colon before any slash makes the scp form.
 var urlSource = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*://|([^/\s@:]+@)?[^/\s@:]+:)`)
 
-// sourceOf checks the source of the project and returns it. A project with no forge must have one. A path expands a
+// sourceOf checks the source of the project and returns it. A project may have none: its clone URL then comes from its forge, or it has no repository. A path expands a
 // leading "~", must be absolute and needs a local build host, because a remote host cannot read a path on this machine.
-func sourceOf(raw rawProject, forge model.ForgeName, host string) (string, error) {
+func sourceOf(raw rawProject, host string) (string, error) {
 	if !raw.Source.Set {
-		if forge == "" {
-			return "", refuseAt(raw.At, "the project has no forge and no `source`. Set `source` to a git URL or an absolute path, or set `forge = \"github\"`.")
-		}
-
 		return "", nil
 	}
 

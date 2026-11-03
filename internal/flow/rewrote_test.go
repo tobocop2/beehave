@@ -197,6 +197,35 @@ func TestAgentRead_ARecordFromBeforeRewroteWasKeptDecodesWithRewroteFalse(t *tes
 	assert.Equal(t, "abc", line.Head)
 }
 
+func TestAgentArgs_ARenderRecordInTheShapeOfAGitRunReplaysAndComparesWithItsStartHead(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	start := gitIn(t, rig.dir, "rev-parse", "HEAD")
+
+	// This is the output map of the render step as a run of a project with a repository records it: no field about a repository.
+	record := map[string]any{recordedOutputFile: filepath.Join(t.TempDir(), "out", "x.json"), recordedStartHead: start}
+
+	a := agentArgs{dir: rig.dir}
+	require.NoError(t, a.recall(record))
+	assert.False(t, a.plain, "a recorded git run has a repository")
+	assert.Equal(t, start, a.startHead)
+
+	gitIn(t, rig.dir, "commit", "-q", "--allow-empty", "-m", "next")
+
+	head, rewrote, err := a.checkEnd(t.Context())
+	require.NoError(t, err)
+	assert.NotEqual(t, start, head)
+	assert.False(t, rewrote, "a new commit on top keeps the start in the history")
+
+	gitIn(t, rig.dir, "reset", "-q", "--hard", start)
+	gitIn(t, rig.dir, "commit", "-q", "--allow-empty", "--amend", "-m", "again")
+
+	_, rewrote, err = a.checkEnd(t.Context())
+	require.NoError(t, err)
+	assert.True(t, rewrote, "an amended start is a rewrite")
+}
+
 func TestAgentArgs_ARenderRecordWithoutStartHeadRecallsEmptyAndNeverRewrites(t *testing.T) {
 	t.Parallel()
 

@@ -478,8 +478,10 @@ type harness struct {
 	others    *fakeOthers // nil unless a test sets it
 	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
 	sandboxDefault func(project string) bool
-	ticks          chan time.Time
-	sleep          time.Duration
+	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
+	repository func(project string) bool
+	ticks      chan time.Time
+	sleep      time.Duration
 	// wall replaces the wall clock of the engine when a test sets it.
 	wall    func() time.Time
 	capWait time.Duration
@@ -561,6 +563,7 @@ func (h *harness) deps() Deps {
 	}
 
 	deps.SandboxDefault = h.sandboxDefault
+	deps.Repository = h.repository
 
 	if h.picker != nil {
 		deps.Logins = h.picker

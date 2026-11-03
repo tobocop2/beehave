@@ -93,7 +93,7 @@ func ensureFixture(t *testing.T) (worktrees, *fakeGit, string) {
 	git := &fakeGit{}
 	trees := worktrees{
 		root: filepath.Join(state, "trees"), repos: filepath.Join(state, "repos"),
-		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", BaseBranch: "main"}}},
+		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: model.ForgeGithub, BaseBranch: "main"}}},
 		git:      git.runner, forge: fakeForges,
 	}
 
@@ -136,19 +136,6 @@ func TestWorktrees_EnsureClonesFromTheSourceOfTheProjectAndNeverAsksTheForge(t *
 			assert.Equal(t, filepath.Join(state, "repos")+": clone "+source+" "+filepath.Join(state, "repos", "p"), git.calls[0])
 		})
 	}
-}
-
-func TestWorktrees_EnsureWithNoSourceAndNoForgeSaysThereIsNoForge(t *testing.T) {
-	t.Parallel()
-
-	trees, git, _ := ensureFixture(t)
-	trees.forge = newAdapters(nil, nil).forge
-	trees.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", BaseBranch: "main"}}}
-
-	_, err := trees.Ensure(t.Context(), "p", "fix-login")
-
-	require.ErrorIs(t, err, forge.ErrNoForge)
-	assert.Empty(t, git.calls)
 }
 
 func TestWorktrees_EnsureAddsTheWorktreeOnAnExistingItemBranchAndNeverResetsIt(t *testing.T) {

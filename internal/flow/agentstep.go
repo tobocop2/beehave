@@ -49,6 +49,8 @@ type agentArgs struct {
 	protect       []string
 	scope         scope
 	start         startMark
+	// plain is true when the project has no repository: the item folder is a plain folder, and no step reads git there.
+	plain bool
 	// startHead is the commit of the item folder when the render step ran, which is before the agent starts. It is the baseline of the whole call, not of one try. It is empty for a record made before the render step kept it.
 	startHead string
 	declared  []string
@@ -311,7 +313,7 @@ func (s *script) renderStep(a agentArgs) func(context.Context) (stepResult, erro
 			return stepResult{Note: prompt}, err
 		}
 
-		head, err := folderHead(ctx, a.dir)
+		head, err := a.currentHead(ctx)
 		if err != nil {
 			return stepResult{Note: prompt}, err
 		}
@@ -333,10 +335,31 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 		return fmt.Errorf("item %s of project %s has no folder for the agent", s.in.Item, s.in.Project)
 	}
 
+	a.plain = !s.hasRepository()
+	if err = a.refusePlain(s.in.Project); err != nil {
+		return err
+	}
+
 	a.file = outputFile(s.e.dir, s.in.Item, name)
 
 	if err = os.MkdirAll(filepath.Dir(a.file), outputsMode); err != nil {
 		return fmt.Errorf("make the folder of the output file: %w", err)
+	}
+
+	return nil
+}
+
+// refusePlain refuses the keywords that read git in an item folder of a project with no repository: the pin and the allowed paths.
+// It accepts every call of a project with a repository.
+func (a agentArgs) refusePlain(project string) error {
+	if !a.plain {
+		return nil
+	}
+
+	for keyword, set := range map[string]bool{"pin": a.pin != "", "allow_paths": a.scope.active()} {
+		if set {
+			return fmt.Errorf("agent keyword %s reads git, and project %s has no repository. Set `source` or `forge` in the project file, or remove %s", keyword, project, keyword)
+		}
 	}
 
 	return nil
@@ -650,8 +673,22 @@ func stringOutput(written map[string]any, name string) (string, string) {
 	return text, ""
 }
 
+// currentHead reads the commit at HEAD of the item folder. A plain folder has no commit, so it reads nothing and returns an empty head.
+func (a agentArgs) currentHead(ctx context.Context) (string, error) {
+	if a.plain {
+		return "", nil
+	}
+
+	return folderHead(ctx, a.dir)
+}
+
 // checkEnd reads the head of the folder, checks the paths the agent changed against the scope and tells whether it rewrote the history.
+// A plain folder has no history: the head is empty, nothing is checked, and rewrote is false.
 func (a agentArgs) checkEnd(ctx context.Context) (head string, rewrote bool, err error) {
+	if a.plain {
+		return "", false, nil
+	}
+
 	if head, err = folderHead(ctx, a.dir); err != nil {
 		return "", false, err
 	}

@@ -1,8 +1,11 @@
 package config_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -128,8 +131,6 @@ func TestLoadFolder_TheSourceRefusals(t *testing.T) {
 		text  string
 		words string
 	}{
-		{"no_forge_and_no_source", call(tail), "p.star:1:8: the project has no forge and no `source`. Set `source` to a git URL or an absolute path, or set `forge = \"github\"`."},
-		{"no_forge_and_no_source_with_local_adapters", call(`tracker = "local", ` + tail), "p.star:1:8: the project has no forge and no `source`"},
 		{"relative_source", call(`source = "work/repo", ` + tail), "p.star:1:8: `source` must be a git URL or an absolute path; got `work/repo`. Fix the value."},
 		{"dot_source", call(`source = "./repo", ` + tail), "p.star:1:8: `source` must be a git URL or an absolute path; got `./repo`"},
 		{"blank_source", call(`source = " ", ` + tail), "p.star:1:8: `source` must be a non-empty string"},
@@ -157,4 +158,48 @@ func TestLoadFolder_TheSourceRefusals(t *testing.T) {
 			require.ErrorContains(t, problems[0], tc.words)
 		})
 	}
+}
+
+func TestLoadFolder_AProjectWithNoSourceAndNoForgeLoadsWithoutGateTestReportOrBaseBranch(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(``))
+
+	require.Empty(t, problems)
+	require.False(t, project.HasRepository())
+	require.Empty(t, project.Source)
+	require.Empty(t, project.Gate)
+	require.Empty(t, project.TestReport)
+}
+
+func TestLoadFolder_AProjectWithASourceStillNeedsBaseBranchGateAndTestReport(t *testing.T) {
+	t.Parallel()
+
+	for _, missing := range []string{"gate", "base_branch", "test_report"} {
+		args := map[string]string{"source": `source = "/srv/repo"`, "base_branch": `base_branch = "main"`, "gate": `gate = "g"`, "test_report": `test_report = "r.xml"`}
+		delete(args, missing)
+
+		_, problems := loadProjectText(t, call(strings.Join(slices.Collect(maps.Values(args)), ", ")))
+
+		require.Len(t, problems, 1, missing)
+		require.Contains(t, problems[0].Error(), missing, missing)
+	}
+}
+
+func TestLoadFolder_AProjectWithAForgeHasARepository(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(`repo = "o/n", forge = "github", `+tail))
+
+	require.Empty(t, problems)
+	require.True(t, project.HasRepository())
+}
+
+func TestLoadFolder_APinFileNeedsARepository(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadProjectText(t, call(`pin_file = "tools.txt"`))
+
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "pin_file")
 }

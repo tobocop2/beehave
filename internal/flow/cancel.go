@@ -219,7 +219,7 @@ func (e *Engine) giveBack(ctx context.Context, open openRun) {
 func (e *Engine) giveBackClaim(ctx context.Context, open openRun) {
 	owner, err := currentOwner(e.ctx, e.dir, open.id)
 	if err == nil {
-		err = ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock}.giveBack(ctx, e.logger, open.in.Project, open.in.Item, owner)
+		err = ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.giveBack(ctx, e.logger, open.in.Project, open.in.Item, owner)
 	}
 
 	if err != nil && !errors.Is(err, errNoOwner) {
