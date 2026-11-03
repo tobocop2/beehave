@@ -1,0 +1,58 @@
+# Security signs. The document changes while the others read. The sign-off binds to the old version, so the tally lists it as stale and the
+# security role is missing again. The ledger keeps the row. The brief agent gets the diff, the roles are told about the new version,
+# and the approval is for the new version.
+[!exec:jq] skip
+[!exec:ssh-keygen] skip
+[!exec:sqlite3] skip
+[!exec:flock] skip
+[!exec:git] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+approvalsinit
+approvalsfakes
+approvalskeys ann sam pat
+subst home/.approval/config
+env HOME=$WORK/home
+env APPROVALS_DIR=$WORK/ops
+env APPROVALS_WINDOW_SECONDS=300
+env APPROVAL_POLL=1
+
+exec sh ops/scripts/submit.sh msa msa.md ann
+exec obeereal item add approvals req-1 --title 'Release' --body-file body.txt
+exec obeereal run req-1 approvals --workflow ops/workflow.star &
+waitfile notices.log
+exec signoff sam security approve req-1 msa
+exec sh ops/scripts/tally.sh req-1
+stdout '"security":\{[^}]*"approved":\["sam"\]'
+exec sh ops/scripts/submit.sh msa msa-v2.md ann
+waitfile prompt-brief-1.txt
+exec sh ops/scripts/tally.sh req-1
+stdout '"stale":\[\{"who":"sam","role":"security"'
+stdout '"satisfied":0'
+grep -count=1 '^brief$' calls.log
+grep 'delivers in 45 days' prompt-brief-1.txt
+
+exec signoff sam security approve req-1 msa
+exec signoff pat product approve req-1 msa
+wait
+stdout 'item req-1 finished'
+grep -count=2 '^version-req-1-' notices.log
+exec sh -c 'sh ops/scripts/audit.sh req-1 $(git hash-object msa-v2.md) $(jq -r .head home/.approval/certs/req-1.json)'
+stdout -count=2 '\tsignoff\tsam\tsecurity\tapprove\t'
+stdout '\tclosed\t.*\tapproved\t'
+exec sh -c 'git hash-object msa-v2.md > want.txt; jq -r .state.hash home/.approval/certs/req-1.json > got.txt'
+cmp got.txt want.txt
+
+-- body.txt --
+{"doc":"msa","kind":"release","author":"ann"}
+-- msa.md --
+The supplier delivers in 30 days.
+-- msa-v2.md --
+The supplier delivers in 45 days.
+-- home/.approval/config --
+NOTIFY_API=http://notify.test
+-- home/.approval/credential.header --
+Authorization: Bearer TESTONLY
