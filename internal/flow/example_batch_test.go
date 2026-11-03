@@ -289,8 +289,11 @@ func TestExampleSwarm_TheLandCallPassesTheIntegrationAndActsOnFindingsAndNote(t 
 
 	text := string(mustRead(t, filepath.Join("..", "..", "examples", "swarm", "workflow.star")))
 
-	assert.Contains(t, text, `integration = int(env("INTEGRATION_PR", default = "0"))`)
-	assert.Contains(t, text, "out.findings")
-	assert.Contains(t, text, `fail("REFUSE`)
-	assert.Contains(t, text, "the issue check did not run: ")
+	assert.Contains(t, text, `base = env("BASE")`)
+	assert.Contains(t, text, `repo = env("REPO")`)
+	assert.Contains(t, text, "out.merged")
+	assert.Contains(t, text, "out.rejected")
+	assert.Contains(t, text, "out.deferred")
+	assert.Contains(t, text, `"Not landed: " + rejected.reason`)
+	assert.Contains(t, text, "the forge could not settle")
 }

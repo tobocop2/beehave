@@ -111,7 +111,11 @@ func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow
 
 // newEngineReading builds the engine with the reader of the usage that the pool pick uses.
 func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader) (*flow.Engine, error) {
-	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
+	return newEngineOn(ctx, cfg, opts, read, newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir)))
+}
+
+// newEngineOn builds the engine over a table of adapters. A test passes a table with one adapter replaced.
+func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader, table adapters) (*flow.Engine, error) {
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table)
 	commands := newPrograms(cfg, trees, table)

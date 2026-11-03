@@ -429,7 +429,6 @@ func TestDryRun_EveryExampleThatNeedsNoServiceRunsToTheEnd(t *testing.T) {
 		"local":       {},
 		"remediation": dryExampleEnv,
 		"research":    {"RESEARCH_TOOLS": "/tools", "RESEARCH_OUT": "/out"},
-		"swarm":       dryExampleEnv,
 	}
 
 	for name, env := range envs {
@@ -441,6 +440,21 @@ func TestDryRun_EveryExampleThatNeedsNoServiceRunsToTheEnd(t *testing.T) {
 			require.NoError(t, DryRun(t.Context(), filepath.Join("..", "..", "examples", name, "workflow.star"), "12", env, &out), out.String())
 		})
 	}
+}
+
+func TestDryRun_TheSwarmExampleFilesItsBacklogAndChecksTheBudgetThenEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{"SWARM_DIR": "/swarm", "SWARM": "s1", "REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "CAP_USD": "100"}
+
+	var out bytes.Buffer
+
+	err := DryRun(t.Context(), filepath.Join("..", "..", "examples", "swarm", "workflow.star"), "12", env, &out)
+	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
+
+	assert.Contains(t, out.String(), "item_create:create-1")
+	assert.Contains(t, out.String(), "command:budget-0")
+	assert.Contains(t, out.String(), "not run in a dry run: read the open work of the project")
 }
 
 func TestDryRun_TheQueueExampleEndsEarlyAtTheReadOfTheOpenWork(t *testing.T) {
