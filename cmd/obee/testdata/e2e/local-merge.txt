@@ -17,7 +17,7 @@ stderr 'project local: no forge; set forge = "github" in the project file'
 # The claim of the item is released, and the run ends as failed.
 noclaims local
 exec obeereal status
-stdout '^item-ship-it-r1\tfailed$'
+stdout '^item-ship-it-r1\tfailed\titem ship-it of [a-z]+$'
 
 -- origin/readme.txt --
 The source repository.

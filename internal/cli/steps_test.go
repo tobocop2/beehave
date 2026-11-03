@@ -222,18 +222,13 @@ func TestStatus_ARunIdWithJSONPrintsOneObjectForScripts(t *testing.T) {
 	assert.Empty(t, got.Steps[3].Ended, "a step that runs has no end time")
 }
 
-func TestStatus_JSONWithNoRunIdIsRefusedAndAMissingRunReportsItsError(t *testing.T) {
+func TestStatus_AMissingRunReportsItsError(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
 
-	code, _, stderr := rig.execute(t.Context(), "status", "--json")
-	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "give the run id after status")
-	assert.Empty(t, rig.steering.calls)
-
 	rig.steering.err = errFake
-	code, _, stderr = rig.execute(t.Context(), "status", "item-99-r1")
+	code, _, stderr := rig.execute(t.Context(), "status", "item-99-r1")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "fake failure")
 }

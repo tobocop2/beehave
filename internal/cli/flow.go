@@ -72,6 +72,8 @@ type Steering interface {
 type Flow struct {
 	Engine func(context.Context, config.Config, flow.Options) (Runner, error)
 	Client func(context.Context, config.Config, flow.Options) (Steering, error)
+	// Now is the clock that status counts the time left to a deadline against. A nil value reads the system clock.
+	Now func() time.Time
 }
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
@@ -446,7 +448,7 @@ func (f flowCommands) statusCommand() *cobra.Command {
 	}
 	addConfigFlag(command, &flag)
 	command.Flags().StringVar(&item, itemFlag, "", "list the lanes of this item across all its runs")
-	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the steps of the run, or the lanes of the item, as JSON (needs a run id or --"+itemFlag+")")
+	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
 
 	return command
 }
@@ -458,7 +460,11 @@ const jsonFlag = "json"
 const itemFlag = "item"
 
 const statusHelp = "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
-	"A line also shows the cost so far against the run cap, the step that runs now, the deadline of a wait, the last gate result with its head, and the fix and review rounds used against their caps.\n\n" +
+	"A line also shows the item and the project of the run, the cost so far against the run cap, the step that runs now, the last gate result with its head, and the fix and review rounds used against their caps. " +
+	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, and the deadline with the time left. " +
+	"A run that stopped or was sent back shows the fields of its result.\n\n" +
+	"Add --" + jsonFlag + " to the list for one JSON array with the same data: one object for each run, with the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
+	"A field with no value is left out. The list reads recorded state only; it shows no schedule or per-day figure.\n\n" +
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the kind of the lane " +
@@ -466,9 +472,6 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 
 // errItemAndRun is returned when status gets both a run id and --item: the two views answer different questions.
 var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")
-
-// errJSONNeedsRun is returned when --json comes with no run id: the list of runs has no JSON form.
-var errJSONNeedsRun = errors.New("--" + jsonFlag + " prints the steps of one run: give the run id after status")
 
 // status prints the runs of the store, or the steps of the run that the command names.
 func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []string, asJSON bool) error {
@@ -481,21 +484,32 @@ func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []strin
 		return f.withClient(cmd, flag, func(client Steering) error { return printLanes(out, client, item, asJSON) })
 	case len(args) == 1:
 		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(out, client, args[0], asJSON) })
-	case asJSON:
-		return errJSONNeedsRun
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client) })
+	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client, f.clock(), asJSON) })
 }
 
-// printRuns writes the runs of the store, then the review poll section.
-func printRuns(out io.Writer, client Steering) error {
+// clock returns the clock of the status view.
+func (f flowCommands) clock() func() time.Time {
+	if f.factory.Now == nil {
+		return time.Now
+	}
+
+	return f.factory.Now
+}
+
+// printRuns writes the runs of the store, then the review poll section. With asJSON it writes the runs as one JSON array and no poll section.
+func printRuns(out io.Writer, client Steering, clock func() time.Time, asJSON bool) error {
 	infos, err := client.Status()
 	if err != nil {
 		return err
 	}
 
-	printStatus(out, infos)
+	if asJSON {
+		return printRunsJSON(out, infos, clock())
+	}
+
+	printStatus(out, infos, clock())
 
 	return printPollSection(out, client)
 }
@@ -560,7 +574,7 @@ func printPollProject(stdout io.Writer, project flow.PollProject) {
 }
 
 // printStatus writes one line for each run. A paused run shows its question; a stranded run names the version that finishes it.
-func printStatus(stdout io.Writer, infos []flow.RunInfo) {
+func printStatus(stdout io.Writer, infos []flow.RunInfo, now time.Time) {
 	if len(infos) == 0 {
 		// A failed write to stdout has no recovery.
 		_, _ = fmt.Fprintln(stdout, "no runs")
@@ -569,12 +583,12 @@ func printStatus(stdout io.Writer, infos []flow.RunInfo) {
 	}
 
 	for _, info := range infos {
-		_, _ = fmt.Fprintln(stdout, statusLine(info))
+		_, _ = fmt.Fprintln(stdout, statusLine(info, now))
 	}
 }
 
-// statusLine describes one run: its id and state, then the one thing that the run waits for or ended with.
-func statusLine(info flow.RunInfo) string {
+// statusLine describes one run: its id and state, the one thing that the run waits for or ended with, then its item and project.
+func statusLine(info flow.RunInfo, now time.Time) string {
 	line := fmt.Sprintf("%s\t%s", info.ID, info.State)
 
 	switch {
@@ -588,13 +602,25 @@ func statusLine(info flow.RunInfo) string {
 		line += finishedNote(info)
 	}
 
-	line += notesTail(info)
+	line += notesTail(info, now)
 
 	if len(info.Others) > 0 {
 		line += "\tother orchestrators: " + oneLine(strings.Join(info.Others, "; "))
 	}
 
-	return line
+	return line + itemTail(info)
+}
+
+// itemTail is the tab and text that names the item of a run and its project. It is empty when the stored input does not read.
+func itemTail(info flow.RunInfo) string {
+	switch {
+	case info.Item == "":
+		return ""
+	case info.Project == "":
+		return "\titem " + info.Item
+	}
+
+	return "\titem " + info.Item + " of " + info.Project
 }
 
 // askedTail describes the people and the choices of a wait: who is asked, how many must answer, who did, and the texts an answer may be.
@@ -622,8 +648,8 @@ func askedTail(asked *flow.Asked) string {
 }
 
 // notesTail is the tab-separated progress notes of a run: its cost, step, wait deadline, gate and rounds. It is empty for a run with none.
-func notesTail(info flow.RunInfo) string {
-	notes := info.Notes()
+func notesTail(info flow.RunInfo, now time.Time) string {
+	notes := info.NotesAt(now)
 	if len(notes) == 0 {
 		return ""
 	}

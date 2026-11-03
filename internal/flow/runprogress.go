@@ -27,9 +27,9 @@ type GateSeen struct {
 // the step records, the events and the options of the client. The store holds no table for it.
 type RunProgress struct {
 	// Spent is the dollars that the agent steps of the run spent, failed runs included: the sum that the run cap checks.
-	Spent float64 `json:"spent_usd,omitempty"`
+	Spent float64 `json:"spent_usd"`
 	// Cap is agents.max_run_budget_usd. It is 0 for no cap.
-	Cap float64 `json:"cap_usd,omitempty"`
+	Cap float64 `json:"cap_usd"`
 	// Now is the step that an open run is in. It is empty for a finished run.
 	Now string `json:"now,omitempty"`
 	// Deadline is the time that the wait of an open run ends. It is the zero time for a run that waits with no timeout, or does not wait.
@@ -37,13 +37,18 @@ type RunProgress struct {
 	// Gate is the last gate result. It is nil for a run that ran no gate.
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Fix counts the agent calls of the lane rework against the rounds cap that they named. Review does the same for the lane review.
-	Fix    Rounds `json:"fix_rounds,omitzero"`
-	Review Rounds `json:"review_rounds,omitzero"`
+	Fix    Rounds `json:"fix_rounds"`
+	Review Rounds `json:"review_rounds"`
 }
 
 // Notes lists the facts of the progress as short texts, one for each fact the run has: the cost, the step that runs now, the deadline of a wait,
 // the last gate result and the rounds. A run with none has no notes.
 func (p RunProgress) Notes() []string {
+	return p.NotesAt(time.Time{})
+}
+
+// NotesAt is Notes with the time left to the deadline of a wait, counted from now. A zero now leaves the time left out.
+func (p RunProgress) NotesAt(now time.Time) []string {
 	notes := p.spentNotes()
 
 	if p.Now != "" {
@@ -51,7 +56,7 @@ func (p RunProgress) Notes() []string {
 	}
 
 	if !p.Deadline.IsZero() {
-		notes = append(notes, "answer by "+p.Deadline.Format(time.RFC3339))
+		notes = append(notes, p.deadlineNote(now))
 	}
 
 	if p.Gate != nil {
@@ -61,6 +66,36 @@ func (p RunProgress) Notes() []string {
 	notes = append(notes, p.Fix.notes("fix")...)
 
 	return append(notes, p.Review.notes("review")...)
+}
+
+// deadlineNote is the note of the deadline of a wait, with the time left when now is set.
+func (p RunProgress) deadlineNote(now time.Time) string {
+	note := "answer by " + p.Deadline.Format(time.RFC3339)
+	if now.IsZero() {
+		return note
+	}
+
+	return note + ", " + TimeLeft(p.Deadline.Sub(now))
+}
+
+// day is the length of the largest unit that TimeLeft shows.
+const day = 24 * time.Hour
+
+// TimeLeft says how long a wait has to its deadline: days and hours, hours and minutes, minutes, or seconds in the last minute.
+// A deadline that has passed gives "deadline passed".
+func TimeLeft(left time.Duration) string {
+	switch {
+	case left <= 0:
+		return "deadline passed"
+	case left < time.Minute:
+		return fmt.Sprintf("%ds left", int(left/time.Second))
+	case left < time.Hour:
+		return fmt.Sprintf("%dm left", int(left/time.Minute))
+	case left < day:
+		return fmt.Sprintf("%dh%dm left", int(left/time.Hour), int(left%time.Hour/time.Minute))
+	}
+
+	return fmt.Sprintf("%dd%dh left", int(left/day), int(left%day/time.Hour))
 }
 
 // spentNotes is the cost note: the dollars spent, against the cap when one is set. A run that spent nothing has none.
@@ -165,13 +200,11 @@ func waitDeadline(records []dbos.StepInfo, question string) time.Time {
 	return at
 }
 
-// deadlineFor reads the deadline of the wait of an open run. A finished run has none.
-func (c *Client) deadlineFor(row dbos.WorkflowStatus, records []dbos.StepInfo) (time.Time, error) {
+// deadlineFor returns the deadline of the wait of an open run, given the question that the wait shows (see waitOf). A finished run has none.
+func deadlineFor(row dbos.WorkflowStatus, records []dbos.StepInfo, question string) time.Time {
 	if (run{Status: row}).terminal() {
-		return time.Time{}, nil
+		return time.Time{}
 	}
 
-	question, err := c.questionOf(row.ID)
-
-	return waitDeadline(records, question), err
+	return waitDeadline(records, question)
 }

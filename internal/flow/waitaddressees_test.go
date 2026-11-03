@@ -332,3 +332,22 @@ func TestWait_ALateVoiceOfAnEarlierWaitIsNotCounted(t *testing.T) {
 	require.NoError(t, client.AnswerAs(testItem, "ana", "second"))
 	require.NoError(t, (<-done).err)
 }
+
+func TestStatus_AWaitThatNamesPeopleShowsItsDeadline(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.flowIs(t, "def main(item):\n    wait(name = \"ask\", question = \"Ship it?\", to = [\"ana\"], timeout = \"1h\")\n")
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+
+	before := time.Now()
+	done := runInBackground(engine, testItem)
+	waitForTheOwner(t, harness)
+
+	eventually(t, func() bool { return !onlyRun(t, client).Deadline.IsZero() })
+	assert.WithinDuration(t, before.Add(time.Hour), onlyRun(t, client).Deadline, time.Minute)
+
+	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	require.NoError(t, (<-done).err)
+}
