@@ -57,7 +57,7 @@ def settled_gate(item):
 
     return check
 
-def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = [], review_outputs = []):
+def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = [], review_outputs = [], facts = {}):
     """Runs the loop and returns a struct with stopped, exhausted, rejected, design, gate and review.
 
     guard holds the settings of the preflight call that runs before every review, design and fix agent: base, hold and own.
@@ -83,6 +83,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
     review_outputs lists more outputs that the review writes beside the verdict, for a workflow that reads a field of the review, such as a count.
     The review prompt must ask the agent to write each one, and the returned review holds them. An empty list adds none.
+    facts is the value of the facts() builtin, or an empty dict. The loop passes it as the input `facts` of each review, design and fix agent, so a prompt can state the facts of the project.
 
     follow_ups is passed to each review call. With "forbid", a review that leaves any finding open gets the verdict "changes",
     and the review prompt must ask the agent to write a `findings` list beside the verdict. A reject needs the list too: a call that writes the verdict reject and no `findings` fails the step. With "audit", any open finding of any class
@@ -121,7 +122,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 follow_ups = follow_ups,
                 output_tries = 2,
                 edits = False,
-                inputs = {"item": item, "violations": violations},
+                inputs = {"item": item, "violations": violations, "facts": facts},
             )
             capped(review, "review", item)
 
@@ -159,7 +160,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 protect_paths = protect,
                 output_tries = 2,
                 edits = False,
-                inputs = {"item": item, "mechanism": mechanism, "fixes": fixes[mechanism], "findings": findings},
+                inputs = {"item": item, "mechanism": mechanism, "fixes": fixes[mechanism], "findings": findings, "facts": facts},
             )
             capped(design, "design", item)
 
@@ -191,7 +192,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             resume = impl.session if round <= 3 else "",
             forbid_commands = FORBID + extra,
             protect_paths = protect,
-            inputs = {"item": item, "round": round, "findings": findings},
+            inputs = {"item": item, "round": round, "findings": findings, "facts": facts},
             **scope
         )
         capped(fix, "fix", item)

@@ -133,7 +133,13 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
 		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
 		Repository:     repositoryOf(cfg.Projects),
+		Facts:          factsOf(cfg.Projects),
 	})
+}
+
+// factsOf returns the project as the config holds it. A project that the config does not hold has no facts.
+func factsOf(projects map[string]config.Project) func(string) model.Project {
+	return func(project string) model.Project { return projects[project].Project }
 }
 
 // repositoryOf tells whether a project has a git repository. A project that the config does not hold counts as one that has it.

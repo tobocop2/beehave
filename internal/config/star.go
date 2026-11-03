@@ -302,6 +302,32 @@ func (p *paths) collect(seq starlark.Sequence) error {
 	return nil
 }
 
+// table is an argument that takes a dict of strings to strings.
+type table map[string]string
+
+// Unpack stores a dict of strings. It refuses any other value.
+func (t *table) Unpack(v starlark.Value) error {
+	dict, ok := v.(*starlark.Dict)
+	if !ok {
+		return fmt.Errorf("got %s, want a dict of strings", v.Type())
+	}
+
+	*t = table{}
+
+	for _, item := range dict.Items() {
+		key, keyOK := starlark.AsString(item[0])
+		value, valueOK := starlark.AsString(item[1])
+
+		if !keyOK || !valueOK {
+			return fmt.Errorf("the entry %s holds a %s and a %s, want a dict of strings", item[0].String(), item[0].Type(), item[1].Type())
+		}
+
+		(*t)[key] = value
+	}
+
+	return nil
+}
+
 // text is a string argument that records whether the file gave it.
 type text struct {
 	Value string

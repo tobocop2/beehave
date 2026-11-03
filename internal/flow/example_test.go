@@ -219,7 +219,7 @@ func libraryLoop(extra string) string {
 	return "load(\"@obee//review_fix.star\", \"review_fix\")\n" +
 		"def main(item):\n" +
 		"    impl = struct(violations = \"\", session = \"\")\n" +
-		"    review_fix(item, impl, \"prompts/review.md\", \"prompts/fix.md\"" + extra + ")\n"
+		"    review_fix(item, impl, \"prompts/review.md\", \"prompts/fix.md\", facts = facts()" + extra + ")\n"
 }
 
 func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t *testing.T) {

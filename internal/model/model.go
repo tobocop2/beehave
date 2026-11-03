@@ -70,6 +70,21 @@ type Project struct {
 	GateAllowWrite []string
 	// SandboxEnforcer is "auto" or the name of the enforcer that runs the gate under the sandbox. Empty means "auto".
 	SandboxEnforcer string
+
+	// The facts of the repository for the agents of a workflow. Each one is empty when the project file leaves it out, and the `facts` builtin hands them to the workflow.
+	// People maps a role to a login, for example owner, and the hours of idle time after which a pull request of a third party counts as stale. Epics maps a queue to its epic.
+	People map[string]string
+	Epics  map[string]string
+	// GateFiles are the workflow files that the list of gate commands comes from, and Conventions the files to review against.
+	GateFiles   []string
+	Conventions []string
+	// BriefRules, StackedRules, Limits, Traps and TokenRules are the rules for the brief, for a pull request that stacks on another, the hard limits with the commands never run
+	// and the real user data, the measured traps with the ownership rules, and the token discipline with the cross-repository and release steps.
+	BriefRules   []string
+	StackedRules []string
+	Limits       []string
+	Traps        []string
+	TokenRules   []string
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.

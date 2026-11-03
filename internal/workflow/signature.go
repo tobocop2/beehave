@@ -249,6 +249,7 @@ func one(name string, values []string) Param {
 // so the check and the run cannot disagree. struct takes any keyword and json is a module, so neither is listed.
 func signatures() map[string][]Param {
 	all := stepSignatures()
+	maps.Copy(all, valueSignatures())
 	maps.Copy(all, swarmSignatures())
 	maps.Copy(all, itemSignatures())
 
@@ -296,6 +297,15 @@ const treeKeyword = "tree"
 // processCap is the keyword max_new_processes of command. The run reads it as a value, so a None reaches the check of the hostWithCap pair.
 func processCap() Param { return Param{Name: "max_new_processes", Kind: KindInt, AsValue: true} }
 
+// valueSignatures holds the builtins that return text or a struct of facts and start nothing.
+func valueSignatures() map[string][]Param {
+	return map[string][]Param{
+		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
+		"now":     {},
+		factsName: {},
+	}
+}
+
 // stepSignatures holds the builtins that run something.
 func stepSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
@@ -309,8 +319,6 @@ func stepSignatures() map[string][]Param {
 			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), label,
 		},
 		writeName: writeParams(),
-		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
-		"now":     {},
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
