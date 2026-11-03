@@ -299,7 +299,7 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	infos, err := other.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runRunning, Version: testVersion, Stranded: true, Question: "What now?"}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", Item: testItem, Project: testProject, State: runRunning, Version: testVersion, Stranded: true, Question: "What now?"}, infos[0])
 
 	infos, err = same.Status()
 	require.NoError(t, err)

@@ -178,6 +178,15 @@ func TestStatus_ARunThatWaitsWithADeadlineShowsTheQuestionAndTheDeadline(t *test
 	require.NoError(t, (<-done).err)
 }
 
+func TestRunInfo_WaitingIsAnOpenRunWithAQuestion(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, RunInfo{State: runRunning, Question: "Q?"}.Waiting())
+	assert.True(t, RunInfo{State: runQueued, Question: "Q?"}.Waiting())
+	assert.False(t, RunInfo{State: runRunning}.Waiting(), "no question")
+	assert.False(t, RunInfo{State: runDone, Question: "Q?"}.Waiting(), "a finished run")
+}
+
 func TestStatus_ARunThatWaitsWithNoDeadlineShowsNone(t *testing.T) {
 	t.Parallel()
 

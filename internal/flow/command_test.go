@@ -328,7 +328,7 @@ func TestRunInfo_AStoppedItemShowsTheStepAndTheCode(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
 	assert.Equal(t, RunInfo{
-		ID: "item-12-r1", State: runStopped, Version: testVersion,
+		ID: "item-12-r1", Item: testItem, Project: testProject, State: runStopped, Version: testVersion,
 		Stopped: &Stopped{Step: "command:check#1", RC: 2, Output: "refused: no scope\n"},
 	}, infos[0])
 }

@@ -189,7 +189,7 @@ func TestRun_AClosedPullRequestIsNotSentBackAndStatusShowsIt(t *testing.T) {
 	infos, err := client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runDone, Version: testVersion, Merge: "closed", Closed: "the pull request was closed"}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", Item: testItem, Project: testProject, State: runDone, Version: testVersion, Merge: "closed", Closed: "the pull request was closed"}, infos[0])
 	assert.Empty(t, infos[0].SentBack, "a closed pull request has no rework")
 }
 
@@ -227,7 +227,7 @@ func TestRun_ASentBackItemStartsANewAttemptAndStatusShowsTheReason(t *testing.T)
 	infos, err := client.Status()
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
-	assert.Equal(t, RunInfo{ID: "item-12-r1", State: runDone, Version: testVersion, Merge: "sent_back", SentBack: reason}, infos[0])
+	assert.Equal(t, RunInfo{ID: "item-12-r1", Item: testItem, Project: testProject, State: runDone, Version: testVersion, Merge: "sent_back", SentBack: reason}, infos[0])
 	require.ErrorIs(t, client.Resume(testItem), errWrongState, "a sent-back run is finished, so it does not resume")
 
 	result, err := engine.Run(testItem, testProject)
