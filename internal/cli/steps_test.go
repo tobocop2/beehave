@@ -157,6 +157,23 @@ func TestStatus_APassingGateShowsPassAndAnEmptyStepList(t *testing.T) {
 	assert.Equal(t, "gate:g#1\t2026-10-31T09:00:00Z\t3s\tdone\tgate=pass steps=\nrun\tdone\n", stdout)
 }
 
+func TestStatus_AFailedGateShowsEveryLaterStepAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.view = flow.RunSteps{Run: "item-14-r1", State: "done", Steps: []flow.StepLine{
+		{
+			Name: "gate:g#1", State: "done", Started: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Seconds: 3,
+			Passed: boolPtr(false), Gate: []flow.GateStep{{Name: "command", Status: "fail"}, {Name: "tests", Status: "unknown"}},
+		},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "item-14-r1")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "gate:g#1\t2026-10-31T09:00:00Z\t3s\tdone\tgate=fail steps=command:fail,tests:unknown\nrun\tdone\n", stdout)
+}
+
 func TestStatus_AStepWhoseOutputCannotBeReadSaysSo(t *testing.T) {
 	t.Parallel()
 
