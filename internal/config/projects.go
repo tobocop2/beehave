@@ -152,11 +152,15 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw), pinFile(raw, host))
 }
 
-// noRepositoryKeys checks a project with no source and no forge. Its items run in plain folders, so base_branch, gate and test_report are optional.
-// A pin_file is read from the base commit, so it needs a repository.
+// noRepositoryKeys checks a project with no source and no forge. Its items run in plain folders, so base_branch, gate and test_report are optional unless a gate is set.
+// A pin_file is read from the base commit, so it needs a repository. A gate that is set needs a test_report: a gate with no test count passes with no test run.
 func noRepositoryKeys(raw rawProject) error {
 	if raw.PinFile.Set {
 		return refuseAt(raw.At, "`pin_file` is set, and the project has no `source` and no `forge`. The pin file is read from the base commit. Set `source` or `forge`, or remove `pin_file`.")
+	}
+
+	if raw.Gate != "" {
+		return testReport(raw)
 	}
 
 	return nil

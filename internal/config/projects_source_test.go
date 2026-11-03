@@ -172,6 +172,20 @@ func TestLoadFolder_AProjectWithNoSourceAndNoForgeLoadsWithoutGateTestReportOrBa
 	require.Empty(t, project.TestReport)
 }
 
+func TestLoadFolder_AProjectWithNoRepositoryThatSetsAGateStillNeedsATestReport(t *testing.T) {
+	t.Parallel()
+
+	_, problems := loadProjectText(t, call(`gate = "make check"`))
+
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "test_report")
+
+	project, problems := loadProjectText(t, call(`gate = "make check", test_report = "r.xml"`))
+
+	require.Empty(t, problems)
+	require.Equal(t, "r.xml", project.TestReport)
+}
+
 func TestLoadFolder_AProjectWithASourceStillNeedsBaseBranchGateAndTestReport(t *testing.T) {
 	t.Parallel()
 
