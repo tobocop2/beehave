@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // toolName is a program name that the gate starts by name. A pin file line with another name is refused, so a name never reaches the shell as code.
@@ -20,7 +22,7 @@ type pin struct {
 // The format is the one of .tool-versions: one tool and its version on each line, a # starts a comment.
 // A file that is absent at the base commit, a line without a version, a name that is not a program name, or a file with no line is an error.
 func (g Gate) readPins(ctx context.Context, dir, base, file string) ([]pin, error) {
-	data, code := g.shell(ctx, dir, "git show "+quote("origin/"+base+":"+file))
+	data, code := g.shell(ctx, dir, "git show "+model.ShellQuote("origin/"+base+":"+file))
 	if code != 0 {
 		return nil, fmt.Errorf("the pin file %s cannot be read at origin/%s (exit code %d): %s", file, base, code, firstLine(data))
 	}
@@ -81,7 +83,7 @@ func (g Gate) pinProblem(ctx context.Context, request Request) string {
 
 // installed asks the tool for its version, the same way for the pin check and for the gate key.
 func (g Gate) installed(ctx context.Context, dir string, p pin) (string, int) {
-	return g.shell(ctx, dir, quote(p.tool)+" version 2>&1 || "+quote(p.tool)+" --version 2>&1")
+	return g.shell(ctx, dir, model.ShellQuote(p.tool)+" version 2>&1 || "+model.ShellQuote(p.tool)+" --version 2>&1")
 }
 
 func (g Gate) toolProblem(ctx context.Context, dir string, p pin) string {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/tobocop2/obee/internal/agent"
 )
@@ -97,12 +98,11 @@ func Missing(lookPath func(string) (string, error)) string {
 		"and on Ubuntu 24.04 the setting `kernel.apparmor_restrict_unprivileged_userns=0`. macOS needs ripgrep. Or set sandbox = \"off\" in the project file."
 }
 
-// join returns the lists one after another, as a new list that is never nil, so the JSON holds [] and never null.
+// join returns the lists one after another, as a list that is never nil, so the JSON holds [] and never null.
 func join(lists ...[]string) []string {
-	all := []string{}
-	for _, list := range lists {
-		all = append(all, list...)
+	if all := slices.Concat(lists...); all != nil {
+		return all
 	}
 
-	return all
+	return []string{}
 }

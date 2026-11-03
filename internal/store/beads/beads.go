@@ -279,12 +279,3 @@ func (s *Store) list(ctx context.Context, command []string, what, failure string
 
 	return store.DecodeRows[bdRow]("bd "+command[0], done.Stdout, bdPage, what)
 }
-
-func firstRunes(text string, limit int) string {
-	runes := []rune(text)
-	if len(runes) > limit {
-		runes = runes[:limit]
-	}
-
-	return string(runes)
-}

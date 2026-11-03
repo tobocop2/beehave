@@ -176,9 +176,14 @@ func firstRunes(text *string) string {
 		return nullWord
 	}
 
-	runes := []rune(*text)
+	return FirstRunes(*text, threadCommentWidth)
+}
 
-	return string(runes[:min(len(runes), threadCommentWidth)])
+// FirstRunes returns at most limit characters of text, cut at a character and never inside one.
+func FirstRunes(text string, limit int) string {
+	runes := []rune(text)
+
+	return string(runes[:min(len(runes), limit)])
 }
 
 // shaWidth is how many characters of a commit id a change request shows.

@@ -10,12 +10,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/obee/internal/atomicfile"
 	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
 	logsFolder = "check-logs"
 	logsMode   = 0o700
+	logMode    = 0o600
 	indent     = "        "
 
 	// maxLogReads is the number of check logs that one poll reads. A check that the cap leaves out is read by the next poll.
@@ -241,21 +243,5 @@ func (a *attempt) saveLog(logs Logs, row model.Check, path string) error {
 
 // writeWhole writes text to a temporary file in the folder of path and renames it to path, so a file at path is never partial.
 func writeWhole(path, text string) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".tmp-*") // The file is made with mode 0600, the mode of a log.
-	if err != nil {
-		return err
-	}
-
-	_, err = file.WriteString(text)
-
-	err = errors.Join(err, file.Close())
-	if err == nil {
-		err = os.Rename(file.Name(), path)
-	}
-
-	if err != nil {
-		_ = os.Remove(file.Name()) // The log is not there, so only the temporary file is left to remove.
-	}
-
-	return err
+	return atomicfile.Write(path, []byte(text), logMode)
 }

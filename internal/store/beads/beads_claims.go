@@ -241,7 +241,7 @@ func (s *Store) claim(ctx context.Context, rowID, holder string) error {
 
 // stderrText is the stderr of a failed bd call, trimmed and cut for an error message.
 func stderrText(done model.CommandResult) string {
-	return firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes)
+	return model.FirstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes)
 }
 
 // refusedWith reports a bd refusal: exit 1 with one of the sentinel texts. Any other exit 1 is an error.
@@ -277,7 +277,7 @@ func (s *Store) updateIf(ctx context.Context, rowID string, guard []string, args
 
 func (s *Store) createRow(ctx context.Context, rowID string, row model.ClaimRow) (*bdRow, error) {
 	title := s.itemTitle(ctx, row.Item)
-	rowTitle := strings.TrimRight(fmt.Sprintf("%s%s-%s %s", lockPrefix, model.ItemKind(row.Item), row.Item, firstRunes(title, maxTitleRunes)), " \t\r\n")
+	rowTitle := strings.TrimRight(fmt.Sprintf("%s%s-%s %s", lockPrefix, model.ItemKind(row.Item), row.Item, model.FirstRunes(title, maxTitleRunes)), " \t\r\n")
 
 	s.run.Run(ctx, []string{argCreate, argID, rowID, argTitle, rowTitle, argType, "task", "--priority", "3", "--silent", argDescription, claimNote})
 

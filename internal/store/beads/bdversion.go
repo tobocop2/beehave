@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store"
 )
@@ -39,12 +40,12 @@ func (s *Store) requireGuards(ctx context.Context) error {
 func RequireBd(ctx context.Context, run proc.Runner) error {
 	done := run.Run(ctx, []string{"--version"})
 	if done.ExitCode != 0 {
-		return store.Refuse("store: cannot run `bd --version`: %s. obee needs bd %s or newer for claims", firstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes), minBd)
+		return store.Refuse("store: cannot run `bd --version`: %s. obee needs bd %s or newer for claims", model.FirstRunes(strings.TrimSpace(done.Stderr), maxStderrRunes), minBd)
 	}
 
 	found := bdVersion.FindString(done.Stdout)
 	if !semver.IsValid("v" + found) {
-		return store.Refuse("obee needs bd %s or newer for claims; cannot read a version from %q", minBd, firstRunes(strings.TrimSpace(done.Stdout), maxStderrRunes))
+		return store.Refuse("obee needs bd %s or newer for claims; cannot read a version from %q", minBd, model.FirstRunes(strings.TrimSpace(done.Stdout), maxStderrRunes))
 	}
 
 	if semver.Compare("v"+found, "v"+minBd) < 0 {

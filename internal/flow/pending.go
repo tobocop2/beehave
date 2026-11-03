@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/obee/internal/atomicfile"
 )
 
 const cancelsDir = "canceled"
@@ -43,18 +45,9 @@ func writeMarker(dir, id string, in ItemInput) error {
 		return err
 	}
 
-	file, err := os.CreateTemp(folder, tempPrefix+"*")
-	if err != nil {
-		return err
-	}
-
-	err = errors.Join(json.NewEncoder(file).Encode(in), file.Close())
+	data, err := json.Marshal(in)
 	if err == nil {
-		err = os.Rename(file.Name(), cancelPath(dir, id))
-	}
-
-	if err != nil {
-		_ = os.Remove(file.Name()) // The marker is not there, so only the temporary file is left to remove.
+		err = atomicfile.Write(cancelPath(dir, id), append(data, '\n'), ownerMode)
 	}
 
 	return err

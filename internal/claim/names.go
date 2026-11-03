@@ -48,7 +48,7 @@ func held(format string, args ...any) *Error {
 
 // OwnerOf returns the holder name of an owner token: a run of letters, digits and underscores.
 func OwnerOf(token string) (string, error) {
-	if token == "" || strings.IndexFunc(token, func(r rune) bool { return notAlnum(r) && r != underscore }) >= 0 {
+	if token == "" || strings.IndexFunc(token, func(r rune) bool { return model.NotAlnum(r) && r != underscore }) >= 0 {
 		return "", refuse("claim: '%s' is not an owner token (letters, digits, underscore)", token)
 	}
 
@@ -69,8 +69,4 @@ func age(span time.Duration) string {
 	whole := int(span.Seconds())
 
 	return fmt.Sprintf("%dh%02dm", whole/secondsPerHour, whole%secondsPerHour/secondsPerMinute)
-}
-
-func notAlnum(r rune) bool {
-	return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
 }

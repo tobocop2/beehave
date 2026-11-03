@@ -244,6 +244,10 @@ func TestFailedLogs_EachFailedCheckLogIsWrittenBeforeTheRunRefuses(t *testing.T)
 	assert.Equal(t, "race at line 4\n", saved(t, dir, "pr5-12-unit_2Frace.log"))
 	assert.Equal(t, "canceled\n", saved(t, dir, "pr5-13-docs.log"))
 
+	info, err := os.Stat(filepath.Join(dir, "check-logs", "pr5-11-lint.log"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "a saved log is private to the owner")
+
 	assert.Contains(t, result.Lines, "check log: lint saved to "+filepath.Join(dir, "check-logs", "pr5-11-lint.log"))
 }
 

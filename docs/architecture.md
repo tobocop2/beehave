@@ -147,6 +147,7 @@ flowchart TD
         config["config<br/>settings and state folder"]
         model["model<br/>types, enums, contracts"]
         lockfile["lockfile<br/>file lock opener"]
+        atomicfile["atomicfile<br/>whole-file writes"]
         exectest["exectest<br/>writes the programs that tests start"]
     end
 
@@ -199,7 +200,7 @@ flowchart TD
 
 Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
 
-File locks come from `github.com/gofrs/flock`. `flow` and `merge` open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked.
+File locks come from `github.com/gofrs/flock`. `flow` and `merge` open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked. `flow` and `merge` write the cancel marker and the saved check logs through `atomicfile.Write`, a layer 0 package. It writes a temporary file in the same folder, syncs it and renames it over the target, and it sets the mode every time.
 
 Layer 2 packages declare the small interfaces they need and do not import layer 1. For example, `claim` declares `Rows` and does not import `store`. The composition root builds the adapters and passes them into the layer 2 constructors.
 ## Composition root

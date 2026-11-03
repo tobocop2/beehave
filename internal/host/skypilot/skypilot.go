@@ -39,7 +39,6 @@ const (
 	timeoutExit  = "124"           // the exit status of `timeout` for a command that it stopped
 	diedGrace    = time.Minute     // the time an empty record repeats before it reads as died: the accounting record can come late
 	runLimitKey  = "gcp.managed_instance_group.run_duration="
-	safeWordRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-"
 )
 
 var wordPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -606,7 +605,7 @@ func (h *Host) sshArgs(words ...string) []string {
 	args := []string{"-o", "BatchMode=yes", h.cluster}
 
 	for _, word := range words {
-		args = append(args, quote(word))
+		args = append(args, model.ShellQuote(word))
 	}
 
 	return args
@@ -619,13 +618,4 @@ func run(ctx context.Context, runner proc.Runner, name string, args []string) (s
 	}
 
 	return result.Stdout, nil
-}
-
-// quote returns the word as one word for a POSIX shell.
-func quote(word string) string {
-	if word != "" && strings.Trim(word, safeWordRune) == "" {
-		return word
-	}
-
-	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
 }

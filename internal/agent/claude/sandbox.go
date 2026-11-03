@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/agent"
@@ -88,9 +89,9 @@ func settingsOf(plan agent.SandboxPlan) sandboxSettings {
 				DenyRead:   join([]string{homeFolder}, plan.Deny, plan.DenyPatterns),
 				AllowRead:  join([]string{plan.Work}, plan.GitDirs, plan.Read),
 				DenyWrite:  join(plan.Deny, plan.DenyPatterns, plan.DenyWrite),
-				AllowWrite: nonNil(plan.AllowWrite),
+				AllowWrite: join(plan.AllowWrite),
 			},
-			Network: network{AllowedDomains: nonNil(plan.Network), StrictAllowlist: true},
+			Network: network{AllowedDomains: join(plan.Network), StrictAllowlist: true},
 		},
 		Permissions: permissions{BlockReadsOutsideWorkingDirectories: true, Deny: append(append(webTools(), fileRules(plan.Deny, plan.DenyPatterns)...), editRules(plan.DenyWrite)...)},
 	}
@@ -127,15 +128,11 @@ func readEdit(pattern string) []string {
 	return []string{"Read(" + pattern + ")", "Edit(" + pattern + ")"}
 }
 
-// join returns the lists one after another, as a new list that is never nil.
+// join returns the lists one after another, as a list that is never nil, so that the JSON holds [] and never null.
 func join(lists ...[]string) []string {
-	all := []string{}
-	for _, list := range lists {
-		all = append(all, list...)
+	if all := slices.Concat(lists...); all != nil {
+		return all
 	}
 
-	return all
+	return []string{}
 }
-
-// nonNil returns the list, or an empty list for nil, so that the JSON holds [] and never null.
-func nonNil(list []string) []string { return join(list) }
