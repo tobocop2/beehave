@@ -290,6 +290,7 @@ func stepSignatures() map[string][]Param {
 		},
 		writeName: writeParams(),
 		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
+		"now":     {},
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},

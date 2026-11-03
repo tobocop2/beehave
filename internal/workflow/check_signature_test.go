@@ -15,6 +15,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 
 	cases := []struct{ name, call, want string }{
 		{"agent unknown keyword", `agent(prompt = "p", model = "m", stop_on_code = 1)`, "agent takes no argument stop_on_code. Use one of: prompt, model,"},
+		{"now with an argument", `now(zone = "utc")`, "now takes no argument, and the call gives zone."},
 		{"agent missing prompt", `agent(model = "m")`, "agent needs the `prompt` keyword"},
 		{"agent missing model", `agent(prompt = "p")`, "agent needs the `model` keyword"},
 		{"agent bad follow_ups", `agent(prompt = "p", model = "m", follow_ups = "maybe")`, `follow_ups is "maybe". Use one of: allow, forbid, audit.`},

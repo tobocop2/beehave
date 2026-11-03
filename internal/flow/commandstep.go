@@ -308,6 +308,19 @@ func (e *Engine) variableOr(name string, fallback starlark.Value) (string, error
 	return e.variable(name)
 }
 
+// now reads the wall clock in a step and returns it as RFC 3339 text in UTC. DBOS records the text, so a replay returns the first reading.
+func (s *script) now(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{}); err != nil {
+		return nil, err
+	}
+
+	value, err := runStep(s.e, s.ctx, s.name("now", ""), func(context.Context) (string, error) {
+		return s.e.deps.Clock.reading().UTC().Format(time.RFC3339), nil
+	})
+
+	return starlark.String(value), err
+}
+
 // env reads a variable of the engine in a step, so a replay sees the value of the first run. It refuses the names of secrets and of the engine.
 func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var name string

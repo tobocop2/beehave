@@ -225,6 +225,7 @@ func TestRunStar_AReplayIssuesTheSameStepNamesAndRunsNoRecordedStepAgain(t *test
 // goldenFlow calls every builtin that records a step. Its step names are the contract that stepsVersion guards.
 const goldenFlow = `def main(item):
     env("HOME")
+    now()
     command(name = "c", run = ["c"])
     checked = gate(name = "g")
     agent(name = "a", prompt = "prompts/work.md", model = "m")
@@ -235,7 +236,7 @@ const goldenFlow = `def main(item):
 // goldenSteps are the step names that goldenFlow records under stepsVersion star14.
 // A change to this list is a change to the sequence of a builtin: bump stepsVersion in the same commit.
 var goldenSteps = []string{
-	"env:HOME#1", "command:c#1", "scope:g#1", "gate:g#1",
+	"env:HOME#1", "now#1", "command:c#1", "scope:g#1", "gate:g#1",
 	"login#1", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1",
 	"wait:w#1", "merge:m#1",
 }
