@@ -41,6 +41,7 @@ func TestDryRun_PrintsEachStepOfTheExampleInOrderAndEndsClean(t *testing.T) {
 	assert.Positive(t, strings.Index(text, " agent:plan#1"), text)
 	assert.Less(t, strings.Index(text, " agent:plan#1"), strings.Index(text, " agent:implement#2"), text)
 	assert.Less(t, strings.Index(text, " agent:implement#2"), strings.Index(text, " agent:review#3"), text)
+	assert.NotContains(t, text, "agent:fix")
 	assert.NotContains(t, text, "FAILED")
 }
 
@@ -146,12 +147,82 @@ func TestDryRun_TheCleanupStepsReadARemoteInsteadOfPrintingAGitError(t *testing.
 	assert.NotContains(t, out.String(), "does not appear to be a git repository")
 }
 
-func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
+const dryGateAndStop = "def main(item):\n    g = gate(name = \"check\")\n    if not g.passed:\n        fail(\"the gate is red\")\n"
+
+func TestDryRun_ADefaultRunPassesAWorkflowThatStopsAtARedGate(t *testing.T) {
 	t.Parallel()
 
 	var out bytes.Buffer
 
-	require.NoError(t, DryRun(t.Context(), filepath.Join("..", "..", "examples", "remediation", "workflow.star"), "12", dryExampleEnv, &out), out.String())
+	require.NoError(t, DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out), out.String())
+}
+
+func TestDryRun_ARedGateRunEndsAWorkflowThatStopsAtARedGateWithAnError(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	err := DryRun(t.Context(), dryFile(t, dryGateAndStop), "12", map[string]string{}, &out, WithRedGate())
+
+	require.Error(t, err)
+	assert.Contains(t, out.String(), "the gate is red")
+}
+
+func TestDryRun_TheFirstGateIsRedAndTheRunWalksAFixRoundBeforeTheGatePasses(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	require.NoError(t, DryRun(t.Context(), filepath.Join("..", "..", "examples", "remediation", "workflow.star"), "12", dryExampleEnv, &out, WithRedGate()), out.String())
+
+	text := out.String()
+	fix := strings.Index(text, "agent:fix")
+	require.GreaterOrEqual(t, fix, 0, "no fix round ran:\n"+text)
+
+	first := strings.Index(text, "gate:check#1")
+	last := strings.LastIndex(text, "gate:check#")
+	assert.Less(t, first, fix, "the fix round follows the red gate")
+	assert.Greater(t, last, fix, "a gate follows the fix round")
+}
+
+func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate("h", false)
+
+	for range 2 {
+		green, err := gate.Run(t.Context(), "p", "i", GateJob{})
+		require.NoError(t, err)
+		assert.True(t, green.Passed)
+		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
+	}
+}
+
+func TestDryGate_WithTheRedGateTheFirstRunIsRedWithAFailedStepAndEveryLaterRunPasses(t *testing.T) {
+	t.Parallel()
+
+	gate := newDryGate("h", true)
+
+	red, err := gate.Run(t.Context(), "p", "i", GateJob{})
+	require.NoError(t, err)
+	assert.False(t, red.Passed)
+	assert.Equal(t, []GateStep{{Name: "command", Status: "fail"}}, red.Steps)
+
+	for range 2 {
+		green, err := gate.Run(t.Context(), "p", "i", GateJob{})
+		require.NoError(t, err)
+		assert.True(t, green.Passed)
+		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
+	}
+}
+
+// remediationStepNames dry-runs the remediation example and returns the names of its steps in order.
+func remediationStepNames(t *testing.T, options ...DryOption) []string {
+	t.Helper()
+
+	var out bytes.Buffer
+
+	require.NoError(t, DryRun(t.Context(), filepath.Join("..", "..", "examples", "remediation", "workflow.star"), "12", dryExampleEnv, &out, options...), out.String())
 
 	var names []string
 
@@ -163,6 +234,12 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 		names = append(names, strings.TrimSuffix(fields[2], ":"))
 	}
 
+	return names
+}
+
+func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
+	t.Parallel()
+
 	assert.Equal(t, []string{
 		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:HOST_UP#3", "env:LAND#4", "env:EXPECT_HEAD#5", "env:BASE#6", "env:OWNER_LOGIN#7", "preflight:intake#1", "env:LANE_KIND#8", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#9",
@@ -171,7 +248,23 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 		"agent:review#3/render", "agent:review#3/clear1", "phase", "DBOS.getResult", "agent:review#3/read1",
 		"env:MERGE#13", "env:REPO#14", "env:BASE#15", "env:OWNER_LOGIN#16", "env:OWNER_EMAIL#17", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
 		"env:HOST_TEARDOWN#18", "worktree", "release",
-	}, names)
+	}, remediationStepNames(t))
+}
+
+func TestDryRun_TheStepListOfTheRemediationExampleWithARedGateHoldsTheFixRound(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{
+		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:HOST_UP#3", "env:LAND#4", "env:EXPECT_HEAD#5", "env:BASE#6", "env:OWNER_LOGIN#7", "preflight:intake#1", "env:LANE_KIND#8", "login#1",
+		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#9",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#10", "env:OWNER_LOGIN#11", "env:SOURCE_CHECKOUT#12",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-fix-1#2",
+		"agent:fix#3/render", "agent:fix#3/clear1", "phase", "DBOS.getResult", "agent:fix#3/read1",
+		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:check#2", "preflight:before-review-2#3",
+		"agent:review#4/render", "agent:review#4/clear1", "phase", "DBOS.getResult", "agent:review#4/read1",
+		"env:MERGE#13", "env:REPO#14", "env:BASE#15", "env:OWNER_LOGIN#16", "env:OWNER_EMAIL#17", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#18", "worktree", "release",
+	}, remediationStepNames(t, WithRedGate()))
 }
 
 func TestPrintDrySteps_FailsWhenTheStoreCannotOpenAndWhenTheClientIsClosed(t *testing.T) {
@@ -304,7 +397,7 @@ func TestDryRun_TheTemplateDirOfTheEnvironmentCopiesNothingIntoTheDryRepository(
 func TestDryDeps_NowIsTheFixedClockOfADryRun(t *testing.T) {
 	t.Parallel()
 
-	deps := dryDeps("/t", "h", "12", nil)
+	deps := dryDeps("/t", "h", "12", nil, false)
 
 	assert.Equal(t, dryNow(), deps.Clock.reading())
 	assert.Equal(t, "2030-01-02T03:04:05Z", dryNow().Format(time.RFC3339))
@@ -326,7 +419,7 @@ func TestDryRun_NowPrintsTheSameTextInTwoRuns(t *testing.T) {
 func TestDryDeps_EveryCollaboratorIsADryOne(t *testing.T) {
 	t.Parallel()
 
-	deps := dryDeps("/t", "h", "12", nil)
+	deps := dryDeps("/t", "h", "12", nil, false)
 
 	for name, held := range map[string]any{
 		"Agents": deps.Agents, "Gate": deps.Gate, "Logins": deps.Logins, "Lifecycle": deps.Lifecycle, "Forge": deps.Forge, "Watch": deps.Watch,

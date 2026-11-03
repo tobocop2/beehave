@@ -48,6 +48,21 @@ func TestCheckWorkflowDryRun_APlainRunWithoutTheFlagPrintsNoSteps(t *testing.T) 
 	assert.Empty(t, stdout)
 }
 
+func TestCheckWorkflowDryRun_TheRedGateFlagMakesAWorkflowThatStopsAtARedGateExitOneAndTheDefaultExitsZero(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    g = gate(name = \"check\")\n    if not g.passed:\n        fail(\"the gate is red\")\n")
+	file := filepath.Join(dir, "workflow.star")
+
+	code, _, _ := runDry(t, map[string]string{}, file)
+	require.Equal(t, 0, code)
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--red-gate", file)
+	require.Equal(t, 1, code)
+	assert.Contains(t, stdout, "the gate is red")
+}
+
 func TestCheckWorkflowDryRun_AFailureInTheFilePrintsTheErrorAndExitsOne(t *testing.T) {
 	t.Parallel()
 

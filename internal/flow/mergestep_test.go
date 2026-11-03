@@ -23,7 +23,7 @@ func shipCall(extra string) string {
 	before := ""
 
 	if strings.Contains(extra, "merge = ") && !strings.Contains(extra, "steps = ") && !strings.Contains(extra, "merge = False") {
-		before, extra = "ship_gate = gate(run = [\"true\"], head = \"" + gatedHead + "\", name = \"ship-gate\")\n", extra+"steps = ship_gate.steps, "
+		before, extra = "ship_gate = gate(run = [\"true\"], head = \""+gatedHead+"\", name = \"ship-gate\")\n", extra+"steps = ship_gate.steps, "
 	}
 
 	return before + "merge(head = \"" + gatedHead + "\", " + extra + "name = \"ship\")\n"
