@@ -61,18 +61,33 @@ func TestRunShell_ACancelKillsTheCommandAndItsChildren(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(150*time.Millisecond, cancel)
+	defer cancel()
 
 	pidFile := filepath.Join(t.TempDir(), "child")
-	_, code := proc.RunShell(ctx, t.TempDir(), "sleep 30 & echo $! > "+pidFile+"; sleep 30")
+	codes := make(chan int, 1)
 
-	assert.Equal(t, 128+9, code)
+	go func() {
+		_, code := proc.RunShell(ctx, t.TempDir(), "sleep 30 & echo $! > "+pidFile+"; sleep 30")
+		codes <- code
+	}()
 
-	text, err := os.ReadFile(pidFile) //nolint:gosec // the test names its own file
-	require.NoError(t, err)
+	// The cancel waits until the file holds the pid, so the shell has started the child before the group dies.
+	var child int
 
-	child, err := strconv.Atoi(strings.TrimSpace(string(text)))
-	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		text, err := os.ReadFile(pidFile) //nolint:gosec // the test names its own file
+		if err != nil {
+			return false
+		}
+
+		child, err = strconv.Atoi(strings.TrimSpace(string(text)))
+
+		return err == nil
+	}, 20*time.Second, 5*time.Millisecond, "the shell did not write the pid of the child")
+
+	cancel()
+
+	assert.Equal(t, 128+9, <-codes)
 	// The background sleep dies with the group. The wait is for the signal to land, and it ends at once when the child is gone.
 	assert.Eventually(t, func() bool { return errors.Is(syscall.Kill(child, 0), syscall.ESRCH) }, 20*time.Second, 10*time.Millisecond, "the background sleep is still alive")
 }

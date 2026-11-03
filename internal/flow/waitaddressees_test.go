@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"encoding/base64"
+	"strconv"
 	"testing"
 	"time"
 
@@ -174,23 +176,50 @@ func TestWait_AWaitWithNoNamesRefusesAName(t *testing.T) {
 func TestWait_ADeadlineEndsAQuorumThatNobodyReached(t *testing.T) {
 	t.Parallel()
 
-	harness := newHarness(t)
-	harness.flowIs(t, `def main(item):
-    r = wait(name = "ask", question = "Ship it?", to = ["ana", "bo"], quorum = 2, timeout = "2s")
+	// The wait has a deadline of one hour. The test records the answer, stops the engine, and moves the recorded deadline into the past,
+	// the way the resume tests do, so no wall-clock limit decides the order of the answer and the deadline.
+	h := newHarness(t)
+	h.flowIs(t, `def main(item):
+    r = wait(name = "ask", question = "Ship it?", to = ["ana", "bo"], quorum = 2, timeout = "1h")
     if not r.timed_out:
         fail("NOT TIMED OUT")
     if r.answer != "" or r.answers != {"ana": "yes"}:
         fail("WRONG " + str(r.answers))
 `)
-	engine := harness.engine(t)
-	client := harness.client(t, testVersion)
+	h.migrated(t)
 
-	done := runInBackground(engine, testItem)
-	waitForTheOwner(t, harness)
+	stopCtx, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopCtx, h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	ended := make(chan error, 1)
+
+	go func() {
+		_, runErr := first.Run(testItem, testProject)
+		ended <- runErr
+	}()
+
+	waitForTheOwner(t, h)
+
+	client := h.client(t, testVersion)
 	eventually(t, func() bool { return askedOf(t, client) != nil })
 	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	eventually(t, func() bool { a := askedOf(t, client); return a != nil && len(a.Heard) == 1 })
 
-	require.NoError(t, (<-done).err)
+	stop()
+	require.NoError(t, first.Shutdown())
+	require.Error(t, <-ended)
+
+	past := base64.StdEncoding.EncodeToString([]byte(strconv.FormatInt(time.Now().Add(-time.Second).UnixMilli(), 10)))
+	// The deadline of the wait and the end of the receive that DBOS recorded for the second voice are both moved.
+	moved, err := sqlOf(t, h).ExecContext(t.Context(), "UPDATE operation_outputs SET output = ? WHERE workflow_uuid = ? AND function_name IN (?, 'DBOS.sleep')", past, testRun, deadlineStep)
+	require.NoError(t, err)
+	rows, err := moved.RowsAffected()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, rows, int64(2), "the wait recorded its deadline and the end of its receive")
+
+	require.NoError(t, (<-runInBackground(h.engine(t), testItem)).err)
 }
 
 func TestWait_AReplayCountsTheSameAnswers(t *testing.T) {
