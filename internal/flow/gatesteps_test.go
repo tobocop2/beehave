@@ -150,6 +150,44 @@ func TestMergeStep_AStepsListThatHoldsAValueThatCannotBeReadIsRefused(t *testing
 	assert.Empty(t, h.merge.given)
 }
 
+func TestMergeStep_AStepsListMadeByHandIsRefusedWhenNoGateOfTheRunGaveIt(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	_, err := walkText(t, h, bodyFlow("merge(head = \""+gatedHead+"\", steps = [{\"name\": \"command\", \"status\": \"pass\"}], merge = True, name = \"ship\")\n"))
+
+	require.ErrorContains(t, err, "not the steps of a gate call in this run")
+	require.ErrorContains(t, err, "Pass `steps = <gate>.steps`")
+	require.ErrorContains(t, err, "a child run cannot merge with steps that its parent gated, so call the gate in the run that merges")
+	assert.Empty(t, h.merge.given)
+	assert.Empty(t, h.merge.asked)
+}
+
+func TestMergeStep_StepsOfAGateAtAnotherHeadAreRefusedAtTheHeadOfTheMerge(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+
+	_, err := walkText(t, h, bodyFlow("g = gate(run = [\"true\"], head = \"aaaa\", name = \"check\")\nmerge(head = \""+gatedHead+"\", steps = g.steps, merge = True, name = \"ship\")\n"))
+
+	require.ErrorContains(t, err, "at the head of this merge")
+	assert.Empty(t, h.merge.given)
+	assert.Empty(t, h.merge.asked)
+}
+
+func TestMergeStep_AStepsListEditedAfterTheGateIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.gate.results = []GateResult{{Passed: false, Head: gatedHead, Steps: stepsUnknown}}
+
+	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\nmerge(head = c.head, steps = [{\"name\": \"command\", \"status\": \"pass\"}, {\"name\": \"tests\", \"status\": \"pass\"}], merge = True, name = \"ship\")\n"))
+
+	require.ErrorContains(t, err, "not the steps of a gate call in this run")
+	assert.Empty(t, h.merge.given)
+}
+
 func TestMergeStep_AnUnknownStepIsNotReadWhenTheCallDoesNotMerge(t *testing.T) {
 	t.Parallel()
 

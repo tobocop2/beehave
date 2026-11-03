@@ -47,6 +47,9 @@ type script struct {
 	// undos are the finished writes of this run that name an undo, in the order of the writes. A failed run runs them in reverse.
 	undos []undoStep
 
+	// gated holds the head and the steps of each gate call of this run. A merge call that merges takes only the steps of a gate call at the head of the merge.
+	gated []gatedCall
+
 	// stopped is the command that ended the item on a code of its stop_on_rc.
 	stopped *Stopped
 
@@ -82,6 +85,16 @@ func (s *script) durable(builtin, label string, fn func(ctx context.Context, nam
 // durableWith is durable for a builtin that gained result fields after its first records. A record that lacks a field reads it as the zero in zeros,
 // so a run that an older build recorded replays under a file that reads the new field.
 func (s *script) durableWith(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	fields, err := s.durableFields(builtin, label, zeros, fn)
+	if err != nil {
+		return nil, err
+	}
+
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, fields), nil
+}
+
+// durableFields runs a recorded step and returns the Starlark value of each output field, by name.
+func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.StringDict, error) {
 	name := s.name(builtin, label)
 
 	done, err := runStep(s.e, s.ctx, name, func(ctx context.Context) (stepResult, error) { return fn(ctx, name) })
@@ -95,11 +108,21 @@ func (s *script) durableWith(builtin, label string, zeros map[string]any, fn fun
 		return nil, errStopped
 	}
 
-	return result(withZeros(done.Outputs, zeros))
+	return fields(withZeros(done.Outputs, zeros))
 }
 
 // result makes the struct that a builtin returns from the outputs it recorded.
 func result(outputs map[string]any) (*starlarkstruct.Struct, error) {
+	dict, err := fields(outputs)
+	if err != nil {
+		return nil, err
+	}
+
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, dict), nil
+}
+
+// fields converts each recorded output to a Starlark value.
+func fields(outputs map[string]any) (starlark.StringDict, error) {
 	dict := starlark.StringDict{}
 
 	for name, v := range outputs {
@@ -111,7 +134,7 @@ func result(outputs map[string]any) (*starlarkstruct.Struct, error) {
 		dict[name] = value
 	}
 
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, dict), nil
+	return dict, nil
 }
 
 // toStarlark converts a recorded value through its JSON text with the decoder of the Starlark JSON library. A first run holds a Go int and

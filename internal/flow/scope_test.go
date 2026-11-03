@@ -104,16 +104,42 @@ func TestScope_AGateBeforeThePullRequestExistsFixesNoScope(t *testing.T) {
 	assert.Equal(t, 1, h.forge.closingReads)
 }
 
-func TestScope_AMergeWithNoGateHasNoScopeToCompareAndReadsNothing(t *testing.T) {
+func TestScope_AGateThatFixedNoScopeLeavesTheMergeToReadNothing(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.noPull = true
+
+	_, err := walkText(t, h, gateThenMerge(1))
+
+	require.NoError(t, err)
+}
+
+func TestRecordGate_AStepThatCannotBeRecordedFailsTheCall(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	s := &script{e: engine, ctx: engine.ctx, counts: map[string]int{}}
+
+	_, err = s.recordGate("g", gateOutputs(true, "h", "", "", nil))
+
+	require.Error(t, err)
+	assert.Empty(t, s.gated)
+}
+
+func TestScope_AMergeWithNoGateOfTheRunIsRefusedAndReadsNothing(t *testing.T) {
 	t.Parallel()
 
 	h := mergeHarness(t, merge.Result{Stop: merge.Done})
 	h.forge.closing = [][]int{{12, 13}}
 
-	_, err := walkText(t, h, shipFlow("merge = True, "))
+	_, err := walkText(t, h, bodyFlow("merge(head = \""+gatedHead+"\", steps = [{\"name\": \"command\", \"status\": \"pass\"}], merge = True, name = \"ship\")\n"))
 
-	require.NoError(t, err)
-	assert.Len(t, h.merge.asked, 1)
+	require.Error(t, err)
+	assert.Empty(t, h.merge.asked)
 	assert.Zero(t, h.forge.closingReads)
 }
 

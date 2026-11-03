@@ -17,13 +17,16 @@ func shipFlow(extra string) string {
 	return bodyFlow(shipCall(extra))
 }
 
-// shipCall is a merge call. A call that merges and names no steps gets passing steps, because the check and the call refuse a merge without them.
+// shipCall is a merge call. A call that merges and names no steps gets the steps of a program gate that passes, because the check and the call
+// refuse a merge without the steps of a gate of the run.
 func shipCall(extra string) string {
+	before := ""
+
 	if strings.Contains(extra, "merge = ") && !strings.Contains(extra, "steps = ") && !strings.Contains(extra, "merge = False") {
-		extra += `steps = [{"name": "command", "status": "pass"}], `
+		before, extra = "ship_gate = gate(run = [\"true\"], head = \""+gatedHead+"\", name = \"ship-gate\")\n", extra+"steps = ship_gate.steps, "
 	}
 
-	return "merge(head = \"" + gatedHead + "\", " + extra + "name = \"ship\")\n"
+	return before + "merge(head = \"" + gatedHead + "\", " + extra + "name = \"ship\")\n"
 }
 
 func TestMergeStep_AWorkflowThatDoesNotSetMergeMarksReadyAndLeavesTheMergeToTheOwner(t *testing.T) {

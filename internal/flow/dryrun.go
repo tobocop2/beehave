@@ -12,11 +12,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
+	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/review"
 	trackerstore "github.com/tobocop2/obee/internal/store"
@@ -60,11 +62,34 @@ func dryReading() func() time.Time {
 	}
 }
 
+// dryChoice holds what the caller chose for a dry run.
+type dryChoice struct{ redGate bool }
+
+// DryOption is a choice for a dry run.
+type DryOption func(*dryChoice)
+
+// WithRedGate makes the first gate of the dry run red, with one failed step, so that the run walks the fix round of the workflow. Each later gate passes.
+func WithRedGate() DryOption { return func(c *dryChoice) { c.redGate = true } }
+
+// chooseDry applies the options of a dry run in order.
+func chooseDry(options []DryOption) dryChoice {
+	var chosen dryChoice
+
+	for _, option := range options {
+		option(&chosen)
+	}
+
+	return chosen
+}
+
 // DryRun takes one item through a workflow file over fakes, in a state folder that it deletes at the end, and prints each step in order with its result.
 // The engine gets only the fakes of this file, so no forge, agent, tracker or host is reachable. A step that needs a collaborator the fakes lack fails.
 // A failed run prints the failed step and its error, and returns the error.
 // The dry fakes return fixed values and never reach a real service. The fakes of the tests keep their own knobs and are a separate set.
-func DryRun(ctx context.Context, file, item string, env map[string]string, out io.Writer) (err error) {
+// Every gate passes, unless the call has WithRedGate.
+func DryRun(ctx context.Context, file, item string, env map[string]string, out io.Writer, options ...DryOption) (err error) {
+	chosen := chooseDry(options)
+
 	root, err := os.MkdirTemp("", "obee-dry-run-")
 	if err != nil {
 		return fmt.Errorf("make the dry-run folder: %w", err)
@@ -74,7 +99,7 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 
 	opts := Options{StateDir: filepath.Join(root, "state"), Version: "dry-run", MaxConcurrent: minMaxConcurrent, MaxReviewConcurrent: minMaxConcurrent, Env: env}
 
-	deps, err := dryPrepare(ctx, root, file, item)
+	deps, err := dryPrepare(ctx, root, file, item, chosen)
 	if err != nil {
 		return err
 	}
@@ -86,7 +111,7 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 }
 
 // dryPrepare makes the worktree of the item in the folder of the run and returns the fakes that serve it.
-func dryPrepare(ctx context.Context, root, file, item string) (Deps, error) {
+func dryPrepare(ctx context.Context, root, file, item string, chosen dryChoice) (Deps, error) {
 	tree := filepath.Join(root, "tree")
 
 	head, err := dryRepo(ctx, tree, filepath.Join(root, "origin.git"))
@@ -99,7 +124,7 @@ func dryPrepare(ctx context.Context, root, file, item string) (Deps, error) {
 		return Deps{}, err
 	}
 
-	return dryDeps(tree, head, item, skills), nil
+	return dryDeps(tree, head, item, skills, chosen.redGate), nil
 }
 
 // dryWalk opens an engine over the deps, takes the item through the file and stops the engine.
@@ -156,9 +181,9 @@ func onlyAbsent(err error) bool {
 }
 
 // dryDeps holds the only collaborators of a dry run. Each one answers from a fixed value and touches nothing outside the folder of the run.
-func dryDeps(tree, head, item string, skills []string) Deps {
+func dryDeps(tree, head, item string, skills []string, redGate bool) Deps {
 	return Deps{
-		Agents: dryAgents{skills: skills}, Gate: dryGate{head: head}, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
+		Agents: dryAgents{skills: skills}, Gate: newDryGate(head, redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Watch: dryWatch{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Preflight: dryPreflight{},
 		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryReading()},
@@ -329,15 +354,27 @@ func dryOutput(name string) string {
 	return "dry"
 }
 
-// dryGate passes on the commit of the dry-run folder.
-type dryGate struct{ head string }
+// dryGate runs on the commit of the dry-run folder and passes. With red set, its first run is red, with one failed step, so that a dry run walks the fix round of a workflow.
+type dryGate struct {
+	head string
+	red  bool
+	runs *atomic.Int32
+}
+
+func newDryGate(head string, red bool) dryGate {
+	return dryGate{head: head, red: red, runs: new(atomic.Int32)}
+}
 
 func (dryGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
 
 func (dryGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
 
 func (g dryGate) Run(context.Context, string, string, GateJob) (GateResult, error) {
-	return GateResult{Passed: true, Head: g.head, Tree: dryTree}, nil
+	if g.runs.Add(1) == 1 && g.red {
+		return GateResult{Passed: false, Head: g.head, Tree: dryTree, Steps: []GateStep{{Name: gatepkg.StepCommand, Status: failStatus}}}, nil
+	}
+
+	return GateResult{Passed: true, Head: g.head, Tree: dryTree, Steps: []GateStep{{Name: gatepkg.StepCommand, Status: passStatus}}}, nil
 }
 
 type dryLogins struct{}
