@@ -1,4 +1,7 @@
-GO_TEST_FLAGS := -race -count=1 -p 2
+# GO_TEST_P is the number of test packages that run at once. Empty keeps the Go default (one for each CPU).
+# A small machine passes GO_TEST_P=2.
+GO_TEST_P ?=
+GO_TEST_FLAGS := -race -count=1 $(if $(GO_TEST_P),-p $(GO_TEST_P))
 GOLANGCI_LINT_VERSION := v2.15.0
 AI_RULEZ_VERSION := v5.9.2
 BIN := bin/obee
