@@ -28,17 +28,18 @@ func ItemKind(item string) string {
 }
 
 func validPrefix(prefix string) bool {
-	if prefix == "" || strings.IndexFunc(prefix[:1], notAlnum) >= 0 {
+	if prefix == "" || strings.IndexFunc(prefix[:1], NotAlnum) >= 0 {
 		return false
 	}
 
-	return strings.IndexFunc(prefix, func(r rune) bool { return notAlnum(r) && r != underscore }) < 0
+	return strings.IndexFunc(prefix, func(r rune) bool { return NotAlnum(r) && r != underscore }) < 0
 }
 
-func notAlnum(r rune) bool {
+// NotAlnum reports whether r is not an ASCII letter or digit.
+func NotAlnum(r rune) bool {
 	return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
 }
 
 func notIDRune(r rune) bool {
-	return notAlnum(r) && r != underscore && r != '.' && r != idSeparator
+	return NotAlnum(r) && r != underscore && r != '.' && r != idSeparator
 }

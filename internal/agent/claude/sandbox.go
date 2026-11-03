@@ -85,9 +85,9 @@ func settingsOf(plan agent.SandboxPlan) sandboxSettings {
 			Enabled:           true,
 			FailIfUnavailable: true,
 			Filesystem: filesystem{
-				DenyRead:   join([]string{homeFolder}, plan.Deny, plan.DenyPatterns),
-				AllowRead:  join([]string{plan.Work}, plan.GitDirs, plan.Read),
-				DenyWrite:  join(plan.Deny, plan.DenyPatterns, plan.DenyWrite),
+				DenyRead:   agent.Join([]string{homeFolder}, plan.Deny, plan.DenyPatterns),
+				AllowRead:  agent.Join([]string{plan.Work}, plan.GitDirs, plan.Read),
+				DenyWrite:  agent.Join(plan.Deny, plan.DenyPatterns, plan.DenyWrite),
 				AllowWrite: nonNil(plan.AllowWrite),
 			},
 			Network: network{AllowedDomains: nonNil(plan.Network), StrictAllowlist: true},
@@ -127,15 +127,5 @@ func readEdit(pattern string) []string {
 	return []string{"Read(" + pattern + ")", "Edit(" + pattern + ")"}
 }
 
-// join returns the lists one after another, as a new list that is never nil.
-func join(lists ...[]string) []string {
-	all := []string{}
-	for _, list := range lists {
-		all = append(all, list...)
-	}
-
-	return all
-}
-
 // nonNil returns the list, or an empty list for nil, so that the JSON holds [] and never null.
-func nonNil(list []string) []string { return join(list) }
+func nonNil(list []string) []string { return agent.Join(list) }

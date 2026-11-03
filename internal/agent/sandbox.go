@@ -7,7 +7,10 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // SandboxPlan is what an adapter needs to confine the shell of one run. Every path is absolute, except that an adapter may write the home folder as "~/".
@@ -25,6 +28,15 @@ type SandboxPlan struct {
 	DenyWrite    []string
 	Network      []string
 	AllowWrite   []string
+}
+
+// Join returns the lists one after another, as a list that is never nil, so that the JSON of a sandbox setting holds [] and never null.
+func Join(lists ...[]string) []string {
+	if all := slices.Concat(lists...); all != nil {
+		return all
+	}
+
+	return []string{}
 }
 
 // versionOf reads the version that the CLI prints for --version.
@@ -75,29 +87,21 @@ func versionText(p Profile, out string) string {
 		return fmt.Sprintf("the profile of %s names the minimum version %q, which is not a version number, so the sandbox is not started.", p.Binary, p.MinVersion)
 	}
 
-	if compareVersions(found[1:], least[1:]) < 0 {
+	if semver.Compare(semverOf(found), semverOf(least)) < 0 {
 		return fmt.Sprintf("%s is at version %s.%s.%s and the sandbox needs %s or later. Update it, or set sandbox = None on the step.", p.Binary, found[1], found[2], found[3], p.MinVersion)
 	}
 
 	return ""
 }
 
-// compareVersions compares two lists of three numbers as text.
-func compareVersions(a, b []string) int {
-	for i := range a {
-		if order := compareNumbers(a[i], b[i]); order != 0 {
-			return order
-		}
+// semverOf writes the three numbers of a match as a semantic version. The leading zeros go, because semver refuses a number with one.
+func semverOf(found []string) string {
+	var numbers []string
+	for _, digits := range found[1:] {
+		numbers = append(numbers, cmp.Or(strings.TrimLeft(digits, "0"), "0"))
 	}
 
-	return 0
-}
-
-// compareNumbers compares two texts of digits as numbers: the longer number is larger once leading zeros are gone.
-func compareNumbers(a, b string) int {
-	a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
-
-	return cmp.Or(cmp.Compare(len(a), len(b)), cmp.Compare(a, b))
+	return "v" + strings.Join(numbers, ".")
 }
 
 // runVersion starts the CLI with --version in the environment of the run and returns what it prints.
