@@ -152,6 +152,8 @@ func TestExclusive_ACancelWhileTheGateRunsThenAResumeEndsTheItemWithOneMerge(t *
 	gated := cancelGate{started: make(chan struct{}, 1), runs: &atomic.Int32{}}
 	deps := h.deps()
 	deps.Gate = gated
+	h.migrated(t)
+
 	engine, err := NewEngine(t.Context(), h.opts, deps)
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
@@ -194,6 +196,7 @@ func TestExclusive_ABatchMergeOfARepositoryStartsOnlyAfterTheGateOfThatRepositor
 	gated := slowGate{started: make(chan struct{}, 1), release: make(chan struct{})}
 	deps := rig.deps()
 	deps.Gate = gated
+	rig.h.migrated(t)
 
 	engine, err := NewEngine(t.Context(), rig.h.opts, deps)
 	require.NoError(t, err)

@@ -64,6 +64,7 @@ func TestCancel_WithNoEngineTheCancelReleasesTheClaimItself(t *testing.T) {
 
 	harness := newHarness(t)
 	harness.agents.gate = make(chan struct{})
+	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)

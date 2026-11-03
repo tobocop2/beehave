@@ -32,6 +32,7 @@ func loseAgent(t *testing.T, harness *harness, ran time.Duration) {
 	t.Helper()
 
 	harness.agents.gate = make(chan struct{})
+	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
