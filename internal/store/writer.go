@@ -26,11 +26,12 @@ func ParseStatus(text string) (Status, error) {
 	return "", fmt.Errorf("status %q is not known. Use \"open\", \"closed\" or \"hold\"", text)
 }
 
-// NewItem is the item that Create files. Parent is the id of the parent item, or empty.
+// NewItem is the item that Create files. Parent is the id of the parent item, or empty. Assignee is the login or name that the item is assigned to, or empty for no assignee.
 type NewItem struct {
-	Title  string
-	Body   string
-	Parent string
+	Title    string
+	Body     string
+	Parent   string
+	Assignee string
 }
 
 // KeyPrefix starts the marker line that makes a write safe to repeat.
@@ -62,11 +63,13 @@ func HasMarker(text, key string) bool {
 // Writer is a tracker that a workflow can change. It is a separate contract from Tracker, so a tracker with no write support stays valid.
 //
 // Create files an item once for each key. The same key again returns the id of the first item and created = false: a step that runs twice because of a crash
-// writes one item. SetStatus is idempotent: the same status twice leaves one state. Comment adds a comment once for each item and key.
+// writes one item. SetStatus is idempotent: the same status twice leaves one state. Assign sets the one assignee of an item, and the same assignee twice leaves one state.
+// A tracker that keeps no assignee refuses Create with an assignee and refuses Assign. Comment adds a comment once for each item and key.
 // An adapter records the key in the item body or in the comment text, as the line Marker(key), and looks it up before it writes.
 // A key and a call are for one writer: callers pass the run id inside the key, so two runs never share a key.
 type Writer interface {
 	Create(ctx context.Context, key string, item NewItem) (id string, created bool, err error)
 	SetStatus(ctx context.Context, id string, status Status) error
 	Comment(ctx context.Context, id, key, text string) error
+	Assign(ctx context.Context, id, assignee string) error
 }

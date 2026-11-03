@@ -88,6 +88,21 @@ func TestCreate_FilesAnOpenItemTheTrackerReads(t *testing.T) {
 	assert.False(t, items[0].Hold)
 }
 
+func TestAssignee_TheLocalStoreRefusesItPlainly(t *testing.T) {
+	t.Parallel()
+
+	s, p := newWriter(t)
+
+	_, _, err := s.Create(t.Context(), "run:a", store.NewItem{Title: "plan", Assignee: "alice"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keeps no assignee")
+	assert.Zero(t, p.count(`SELECT count(*) FROM items`), "a refused item is not filed")
+
+	err = s.Assign(t.Context(), project+"-1", "alice")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keeps no assignee")
+}
+
 func TestCreate_NumbersTheNewIdsPastTheIdsInUse(t *testing.T) {
 	t.Parallel()
 

@@ -122,6 +122,12 @@ func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, err
 	return nil, true, nil
 }
 
+func (e2eFiles) Comment(context.Context, string, string, string, string) (int, error) { return 0, nil }
+
+func (e2eFiles) Assign(context.Context, string, string, string, bool) (int, []int, error) {
+	return 0, nil, nil
+}
+
 func (f e2eFiles) Release(_ context.Context, _, item, _ string) error {
 	return f.event("release", item)
 }

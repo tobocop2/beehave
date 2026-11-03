@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -23,9 +24,12 @@ const (
 	mergeName        = "merge"
 	preflightName    = "preflight"
 	queueName        = "queue"
+	itemAssignName   = "item_assign"
 	itemCommentName  = "item_comment"
 	itemCreateName   = "item_create"
 	itemStatusName   = "item_status"
+	prAssignName     = "pr_assign"
+	prCommentName    = "pr_comment"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -34,7 +38,7 @@ const (
 // env and now return text, struct takes any field and json is a module, so none of them is listed. The fields of an agent that its outputs declare
 // come in addition to the fields listed here.
 func resultFields() map[string][]string {
-	return map[string][]string{
+	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "rewrote"},
 		batchMergeName:   {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note"},
 		commandName:      {"stdout", "stderr", "rc"},
@@ -42,15 +46,27 @@ func resultFields() map[string][]string {
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started"},
-		itemCommentName:  {"id"},
-		itemCreateName:   {"id", "created"},
-		itemStatusName:   {"id", "status"},
 		mergeName:        {"state", reasonField},
 		preflightName:    {"ok", "stop", "code", reasonField},
 		queueName:        {"rows", "free"},
 		spawnName:        {"runs"},
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
+	}
+	maps.Copy(fields, trackerResultFields())
+
+	return fields
+}
+
+// trackerResultFields holds the fields of the builtins that write the tracker or the pull request.
+func trackerResultFields() map[string][]string {
+	return map[string][]string{
+		itemAssignName:  {"id"},
+		itemCommentName: {"id"},
+		itemCreateName:  {"id", "created"},
+		itemStatusName:  {"id", "status"},
+		prAssignName:    {"number", "issues"},
+		prCommentName:   {"number"},
 	}
 }
 

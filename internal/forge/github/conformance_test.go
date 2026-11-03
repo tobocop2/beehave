@@ -44,6 +44,7 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.Plan("", "pr", "merge")
 		run.Plan("", "pr", "edit")
 		run.Plan("", "api", "-X", "POST", "repos/owner/name/git/refs")
+		run.Plan("", "api", "-X", "POST", "repos/owner/name/issues/7/assignees")
 		run.Plan("github.com\n  - Token scopes: '"+forgetest.ScopeRepo+"', '"+forgetest.ScopeWorkflow+"'\n", "auth", "status")
 
 		return newForge(t, repo, run)

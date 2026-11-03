@@ -50,12 +50,24 @@ func statusOutputs(id, status string) map[string]any {
 
 func commentOutputs(id string) map[string]any { return map[string]any{"id": id} }
 
+// prCommentOutputs are the fields of pr_comment: the number of the pull request.
+func prCommentOutputs(number int) map[string]any { return map[string]any{"number": number} }
+
+// prOutputs are the fields of pr_assign: the number of the pull request, and the issues that the call assigned besides it. issues is an empty list, never null.
+func prOutputs(number int, issues []int) map[string]any {
+	if issues == nil {
+		issues = []int{}
+	}
+
+	return map[string]any{"number": number, "issues": issues}
+}
+
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
 // rewrote is true when the commit the run started on is not in the history of the commit it ended on.
 func agentOutputs(text, session, transcript, head, violations, stop string, cost float64, rewrote bool) map[string]any {
-	return map[string]any{"text": text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop, costField: cost, "rewrote": rewrote}
+	return map[string]any{textKeyword: text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop, costField: cost, "rewrote": rewrote}
 }
 
 // costField is the output of an agent call that holds the cost of the run in dollars.

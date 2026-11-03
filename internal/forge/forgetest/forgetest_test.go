@@ -269,6 +269,8 @@ func (m memForge) SetBase(context.Context, int, string) error { return m.fail() 
 
 func (m memForge) SetBody(context.Context, int, string) error { return m.fail() }
 
+func (m memForge) AddAssignee(context.Context, int, string) error { return m.fail() }
+
 func (m memForge) TokenScopes(context.Context) ([]string, error) {
 	return []string{forgetest.ScopeRepo, forgetest.ScopeWorkflow}, m.fail()
 }

@@ -377,6 +377,16 @@ func (dryForge) ClosingIssues(context.Context, string, string) ([]int, bool, err
 	return nil, true, nil
 }
 
+// Comment shows a comment as posted on the dry-run pull request.
+func (dryForge) Comment(context.Context, string, string, string, string) (int, error) {
+	return dryPull, nil
+}
+
+// Assign shows the dry-run pull request as assigned, with no linked issue.
+func (dryForge) Assign(context.Context, string, string, string, bool) (int, []int, error) {
+	return dryPull, nil, nil
+}
+
 // dryWatch shows the pull request as merged.
 type dryWatch struct{}
 
@@ -415,6 +425,8 @@ func (dryWriter) Create(context.Context, string, string, trackerstore.NewItem) (
 func (dryWriter) SetStatus(context.Context, string, string, trackerstore.Status) error { return nil }
 
 func (dryWriter) Comment(context.Context, string, string, string, string) error { return nil }
+
+func (dryWriter) Assign(context.Context, string, string, string) error { return nil }
 
 // dryPreflight finds the pull request as the owner left it.
 type dryPreflight struct{}

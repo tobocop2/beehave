@@ -39,6 +39,12 @@ func (r *recordingWriter) Comment(_ context.Context, id, key, text string) error
 	return r.err
 }
 
+func (r *recordingWriter) Assign(_ context.Context, id, assignee string) error {
+	r.calls = append(r.calls, "assign "+id+" "+assignee)
+
+	return r.err
+}
+
 func (r *recordingWriter) Close() error {
 	r.closed++
 
@@ -64,9 +70,10 @@ func TestTrackerWriter_CallsTheWriterOfTheProjectAndClosesItAfterEveryCall(t *te
 	assert.True(t, created)
 	require.NoError(t, w.SetStatus(t.Context(), "p", "n-1", store.StatusHold))
 	require.NoError(t, w.Comment(t.Context(), "p", "n-1", "run:c", "text"))
+	require.NoError(t, w.Assign(t.Context(), "p", "n-1", "alice"))
 
-	assert.Equal(t, []string{"create run:k t", "status n-1 hold", "comment n-1 run:c text"}, rec.calls)
-	assert.Equal(t, 3, rec.closed)
+	assert.Equal(t, []string{"create run:k t", "status n-1 hold", "comment n-1 run:c text", "assign n-1 alice"}, rec.calls)
+	assert.Equal(t, 4, rec.closed)
 }
 
 func TestTrackerWriter_AnErrorOfTheWriterPassesThrough(t *testing.T) {
@@ -79,6 +86,7 @@ func TestTrackerWriter_AnErrorOfTheWriterPassesThrough(t *testing.T) {
 	require.ErrorIs(t, err, errFake)
 	require.ErrorIs(t, w.SetStatus(t.Context(), "p", "1", store.StatusOpen), errFake)
 	require.ErrorIs(t, w.Comment(t.Context(), "p", "1", "k", "x"), errFake)
+	require.ErrorIs(t, w.Assign(t.Context(), "p", "1", "alice"), errFake)
 }
 
 func TestTrackerWriter_ATrackerWithNoWriterIsAnErrorThatNamesTheTracker(t *testing.T) {
@@ -91,7 +99,8 @@ func TestTrackerWriter_ATrackerWithNoWriterIsAnErrorThatNamesTheTracker(t *testi
 	require.EqualError(t, err, `project p: the tracker "beads" cannot be written. Use the "local", "beads" or "github" tracker for a workflow that creates items`)
 	require.Error(t, w.SetStatus(t.Context(), "p", "1", store.StatusOpen))
 	require.Error(t, w.Comment(t.Context(), "p", "1", "k", "x"))
-	assert.Equal(t, 3, closing.closed)
+	require.Error(t, w.Assign(t.Context(), "p", "1", "alice"))
+	assert.Equal(t, 4, closing.closed)
 }
 
 func TestTrackerWriter_AnUnknownProjectAndABuilderErrorFail(t *testing.T) {

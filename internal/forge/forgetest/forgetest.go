@@ -208,6 +208,8 @@ func checkWrites(c check, target forge.Forge) {
 	c.noError(target.CreateBranch(ctx, NewBranch, SevenTip), "CreateBranch")
 	c.noError(target.SetBase(ctx, Seven, NewBranch), "SetBase")
 	c.noError(target.SetBody(ctx, Seven, "new body"), "SetBody")
+	c.noError(target.AddAssignee(ctx, Seven, "alice"), "AddAssignee")
+	c.noError(target.AddAssignee(ctx, Seven, "alice"), "AddAssignee again")
 }
 
 func checkBranches(c check, target forge.Forge) {
@@ -367,6 +369,7 @@ func checkMergeFail(r Reporter, target forge.Forge) {
 		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
+		{"AddAssignee", func(ctx context.Context) error { return target.AddAssignee(ctx, Seven, "alice") }},
 		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
 		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
 	})

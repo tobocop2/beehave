@@ -20,7 +20,10 @@ type fakeWriter struct {
 	created  []string
 	statuses []string
 	notes    []string
-	err      error
+	// assigned holds each Assign call. assignees holds the assignee that each Create call carried, as key|assignee.
+	assigned  []string
+	assignees []string
+	err       error
 }
 
 func newFakeWriter() *fakeWriter { return &fakeWriter{keys: map[string]string{}} }
@@ -40,8 +43,18 @@ func (w *fakeWriter) Create(_ context.Context, project, key string, item tracker
 	id := "n-" + strconv.Itoa(len(w.keys)+1)
 	w.keys[key] = id
 	w.created = append(w.created, project+"|"+key+"|"+item.Title+"|"+item.Body+"|"+item.Parent)
+	w.assignees = append(w.assignees, key+"|"+item.Assignee)
 
 	return id, true, nil
+}
+
+func (w *fakeWriter) Assign(_ context.Context, project, id, assignee string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.assigned = append(w.assigned, project+"|"+id+"|"+assignee)
+
+	return w.err
 }
 
 func (w *fakeWriter) SetStatus(_ context.Context, project, id string, status trackerstore.Status) error {

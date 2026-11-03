@@ -91,5 +91,6 @@ func CheckWriterFails(r Reporter, writer store.Writer) {
 		}},
 		{"SetStatus", func(ctx context.Context) error { return writer.SetStatus(ctx, item, store.StatusClosed) }},
 		{"Comment", func(ctx context.Context) error { return writer.Comment(ctx, item, "note", "text") }},
+		{"Assign", func(ctx context.Context) error { return writer.Assign(ctx, item, "alice") }},
 	})
 }
