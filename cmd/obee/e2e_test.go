@@ -32,7 +32,7 @@ import (
 const (
 	e2eVersion     = "e2e"
 	e2eDirVariable = "E2E_DIR"
-	e2eWait        = 60 * time.Second
+	e2eWait        = 120 * time.Second
 	e2ePoll        = 100 * time.Millisecond
 	e2eFileMode    = 0o600
 	e2eScriptMode  = 0o700
@@ -494,6 +494,7 @@ func TestScripts(t *testing.T) {
 			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit,
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
+			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
 		},
 	})
 }

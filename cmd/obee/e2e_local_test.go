@@ -38,14 +38,14 @@ const (
 // e2eTools are the programs that the scripts of the examples find on PATH. Nothing else is there: no bd and no gh.
 // The local example needs sh, git, sed, mkdir and make. The check and report scripts of the research example also use grep, sort, cat, dirname, curl and date.
 func e2eTools() []string {
-	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date", "awk", "tr", "head", "wc", "mv", "cut", "sleep", "uniq", "comm", "cmp"}
+	return []string{"sh", "git", "sed", "mkdir", "make", "grep", "sort", "cat", "dirname", "curl", "date", "awk", "tr", "head", "wc", "mv", "cut", "sleep", "uniq", "comm", "cmp", "basename", "cp"}
 }
 
 // e2eOptionalTools are the programs that only some scripts need. A machine without one still runs the other scripts, and a script that needs one
 // starts with the condition [!exec:name] skip. The desk example needs jq for its gateway and eval scripts, and a SHA-256 tool for its mask:
-// sha256sum on Linux and shasum on macOS.
+// sha256sum on Linux and shasum on macOS. The approvals example also needs ssh-keygen for the signatures, sqlite3 for the ledger and flock for its lock.
 func e2eOptionalTools() []string {
-	return []string{"jq", "sha256sum", "shasum", "sqlite3"}
+	return []string{"jq", "sha256sum", "shasum", "ssh-keygen", "sqlite3", "flock"}
 }
 
 // e2eReal is the obeereal command of the scripts.
