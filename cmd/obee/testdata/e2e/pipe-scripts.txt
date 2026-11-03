@@ -1,0 +1,101 @@
+# The scripts of the ticket pipeline alone: the plan of a range, the readiness check, the extract, the reservation of the budget, the validation of the labels
+# (a label that is not allowed, a missing ticket, label drift) and the empty day.
+[!exec:jq] skip
+[!exec:sqlite3] skip
+isolate
+! exec bd version
+! exec gh version
+
+pipefakes
+pipeinit
+env HOME=$WORK/home
+env PIPE_HOME=$WORK/pipe
+env PIPE_VERSION=2
+env PIPE_BACKFILL=bf-1
+env PIPE_BUDGET_CENTS=3
+env PATH=$WORK/fake:$PATH
+
+# The plan refuses a date that does not exist, a range that runs backwards and a range above the limit.
+! exec sh pl/scripts/plan.sh 2026-02-30 2026-03-01
+stderr 'not a real date'
+! exec sh pl/scripts/plan.sh 2026-03-05 2026-03-01
+stderr 'is before the first day'
+env PIPE_MAX_DAYS=3
+! exec sh pl/scripts/plan.sh 2026-03-01 2026-03-09
+stderr 'limit is 3'
+env PIPE_MAX_DAYS=5000
+exec sh pl/scripts/plan.sh 2026-03-01 2026-03-03
+cmp stdout days.txt
+
+# The readiness check: a closed day gives 0, an open day gives 2.
+exec sh pl/scripts/ready.sh 2026-03-01
+! exec sh pl/scripts/ready.sh 2026-03-02
+stdout 'has not closed 2026-03-02'
+
+# The extract reads two pages for 5 tickets and holds each ticket once.
+exec sh pl/scripts/extract.sh 2026-03-03
+stdout '^5 tickets, sha '
+grep -count=2 'day=2026-03-03' curl.log
+exec sh pl/scripts/extract.sh 2026-03-01
+stdout '^3 tickets, sha '
+
+# The reservation is made once for each day, and a day that does not fit is refused.
+exec sh pl/scripts/budget.sh 2026-03-01
+stdout 'reserved 1 cents for 3 tickets'
+exec sh pl/scripts/budget.sh 2026-03-01
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM spend'
+stdout '^1$'
+exec sh pl/scripts/budget.sh 2026-03-03
+stdout 'reserved 2 cents'
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM spend'
+stdout '^2$'
+exec sh pl/scripts/extract.sh 2026-03-04
+! exec sh pl/scripts/budget.sh 2026-03-04
+stdout 'budget spent: 3 of 3 cents reserved, and 2026-03-04 needs 1'
+! exec sh pl/scripts/budget-left.sh
+stdout 'budget spent'
+
+# The validation: a label that is not allowed, a ticket with no label, and a good file.
+exec sh -c 'jq -c "{id, label: \"bug\"}" pipe/stage/2026-03-01/records.jsonl > pipe/stage/2026-03-01/labels.jsonl'
+exec sh pl/scripts/validate.sh 2026-03-01
+stdout '^valid: 3 tickets, 0 unsure'
+exec sh -c 'jq -c "{id, label: \"spam\"}" pipe/stage/2026-03-01/records.jsonl > pipe/stage/2026-03-01/labels.jsonl'
+! exec sh pl/scripts/validate.sh 2026-03-01
+stdout 'labels that are not allowed: spam'
+exec sh -c 'jq -c "{id, label: \"bug\"}" pipe/stage/2026-03-01/records.jsonl | head -2 > pipe/stage/2026-03-01/labels.jsonl'
+! exec sh pl/scripts/validate.sh 2026-03-01
+stdout '1 tickets have no label'
+
+# The load refuses labels that do not match the extract, and the warehouse stays empty.
+! exec sh pl/scripts/load.sh 2026-03-01
+stderr 'do not match the extract'
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest'
+stdout '^0$'
+
+# Label drift: three days load with the label bug, then a day whose tickets are all billing is odd.
+env PIPE_BUDGET_CENTS=100
+exec sh -c 'for d in 2026-03-01 2026-03-05 2026-03-06 2026-03-07; do sh pl/scripts/extract.sh $d > /dev/null; done'
+exec sh -c 'for d in 2026-03-01 2026-03-05 2026-03-06; do jq -c "{id, label: \"bug\"}" pipe/stage/$d/records.jsonl > pipe/stage/$d/labels.jsonl; sh pl/scripts/load.sh $d; done'
+exec sh -c 'jq -c "{id, label: \"billing\"}" pipe/stage/2026-03-07/records.jsonl > pipe/stage/2026-03-07/labels.jsonl'
+! exec sh pl/scripts/validate.sh 2026-03-07
+stdout 'drifted'
+
+# An empty day validates and loads with no rows.
+exec sh pl/scripts/extract.sh 2026-03-08
+exec sh pl/scripts/validate.sh 2026-03-08
+exec sh pl/scripts/load.sh 2026-03-08
+stdout 'loaded 0 rows for 2026-03-08 at version 2'
+
+-- days.txt --
+2026-03-01
+2026-03-02
+2026-03-03
+-- src/open-2026-03-02 --
+-- src/n-2026-03-03 --
+5
+-- src/n-2026-03-08 --
+0
+-- pipe/config --
+SOURCE_API=http://source.test
+-- pipe/credential.header --
+X-Token: TESTONLY
