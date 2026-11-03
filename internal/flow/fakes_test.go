@@ -480,6 +480,8 @@ type harness struct {
 	sandboxDefault func(project string) bool
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
 	repository func(project string) bool
+	// refuseGate is the refusal of a gate on this machine. It is nil, and so no gate is refused, unless a test sets it.
+	refuseGate func(project string, program bool) error
 	ticks      chan time.Time
 	sleep      time.Duration
 	// wall replaces the wall clock of the engine when a test sets it.
@@ -564,6 +566,7 @@ func (h *harness) deps() Deps {
 
 	deps.SandboxDefault = h.sandboxDefault
 	deps.Repository = h.repository
+	deps.RefuseGate = h.refuseGate
 
 	if h.picker != nil {
 		deps.Logins = h.picker

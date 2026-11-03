@@ -108,23 +108,13 @@ type Request struct {
 // Gate runs gates.
 type Gate struct {
 	shell Shell
-	// command runs the gate command of a local run. Nil means shell.
-	command Shell
-	tree    Tree
-	hosts   Hosts
+	tree  Tree
+	hosts Hosts
 }
 
 // New returns a gate that runs a local command with shell, reads trees with tree and finds the build host with hosts.
 func New(shell Shell, tree Tree, hosts Hosts) Gate {
 	return Gate{shell: shell, tree: tree, hosts: hosts}
-}
-
-// WithCommand returns the gate with command as the shell of the gate command of a local run. The other commands of the gate, such as the reads
-// of a pin file and of tool versions, keep the shell of New.
-func (g Gate) WithCommand(command Shell) Gate {
-	g.command = command
-
-	return g
 }
 
 // Run runs the gate command of the project in dir. A tree with uncommitted changes, or a head or tree that changes during the run, is an error:
@@ -215,18 +205,9 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 	return g.local(ctx, request, head)
 }
 
-// commandShell returns the shell that runs the gate command: the one of WithCommand, else the one of New.
-func (g Gate) commandShell() Shell {
-	if g.command != nil {
-		return g.command
-	}
-
-	return g.shell
-}
-
 func (g Gate) local(ctx context.Context, request Request, head string) (Result, error) {
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
-	output, code := g.commandShell()(ctx, request.Dir, request.Project.Gate)
+	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
 	if code > signalBase {
 		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
 	}

@@ -278,6 +278,10 @@ type Deps struct {
 	Hosts hostKeeper
 	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
 	SandboxDefault func(project string) bool
+	// RefuseGate returns the error of a gate that must not run on this machine, or nil. program is true for a gate that names its own program.
+	// A nil RefuseGate means every gate runs. The engine asks inside a recorded step that comes before the gate key, an earlier pass, any git work or any program
+	// (for batch_merge, the first step of the call), so a replay of a recorded gate returns the record and is never refused.
+	RefuseGate func(project string, program bool) error
 	// Repository says whether a project has a git repository. A nil Repository means every project has one.
 	// The item folder of a project with no repository is a plain folder: no step reads git there, and the git builtins refuse the project.
 	Repository func(project string) bool

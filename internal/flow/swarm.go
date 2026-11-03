@@ -29,6 +29,7 @@ const (
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
 	nameKeyword    = "name"
 	runKeyword     = "run"
+	hostKeyword    = "host"
 	headKeyword    = "head"
 	baseKeyword    = "base"
 	holdKeyword    = "hold"

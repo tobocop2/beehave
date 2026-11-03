@@ -25,25 +25,20 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runn
 		return agent.SandboxPlan{}, "obee cannot find the home folder, so the sandbox cannot deny it. The step did not start."
 	}
 
-	return planOf(ctx, home, a.projects[request.Project].Project, dir, runner.ConfigDir, *request.Sandbox)
-}
-
-// planOf makes the plan of a command that runs in dir for a project: the agent shell of a step, or the gate command. configDir is the config folder of
-// the runner, which is a credential path, or "" for a command that has no runner. box holds the network list and the extra write paths of the command.
-func planOf(ctx context.Context, home string, project model.Project, dir, configDir string, box model.Sandbox) (agent.SandboxPlan, string) {
-	deny := credentialPaths(home, configDir, project.SandboxDeny)
+	project := a.projects[request.Project]
+	deny := credentialPaths(home, runner.ConfigDir, project.SandboxDeny)
 	read := expandAll(project.SandboxRead, home)
 
 	closed := closedPaths(ctx, dir, home)
 
-	write, note := checkedPaths(box.AllowWrite, read, home, dir, deny, closed)
+	write, note := checkedPaths(request.Sandbox.AllowWrite, read, home, dir, deny, closed)
 	if note != "" {
 		return agent.SandboxPlan{}, note
 	}
 
 	return agent.SandboxPlan{
 		Work: dir, GitDirs: sharedGitDirs(dir), Read: read, Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed),
-		Network: box.Network, AllowWrite: write,
+		Network: request.Sandbox.Network, AllowWrite: write,
 	}, ""
 }
 

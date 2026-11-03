@@ -108,6 +108,7 @@ type repoHost struct {
 	mu        sync.Mutex
 	tipErrs   []error // each Tip call takes the first one; a nil entry is a good call
 	tipCalls  int
+	gitLog    []string
 	intents   []string
 	checkouts []string
 	intentErr error
@@ -130,7 +131,29 @@ func (h *repoHost) Git(context.Context, string, string) (batch.Git, error) {
 		h.mu.Unlock()
 	}
 
-	return batch.GitCLI{Exec: h.repo}, h.gitErr
+	return batch.GitCLI{Exec: loggedGit{repo: h.repo, host: h}}, h.gitErr
+}
+
+// loggedGit runs a git command of the batch host and logs its arguments in the call log of the host.
+type loggedGit struct {
+	repo repoGit
+	host *repoHost
+}
+
+func (g loggedGit) Run(ctx context.Context, args []string) model.CommandResult {
+	g.host.mu.Lock()
+	g.host.gitLog = append(g.host.gitLog, strings.Join(args, " "))
+	g.host.mu.Unlock()
+
+	return g.repo.Run(ctx, args)
+}
+
+// gitCalls is every git command that the host ran.
+func (h *repoHost) gitCalls() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return append([]string(nil), h.gitLog...)
 }
 
 func (h *repoHost) Checkout(ctx context.Context, _, _, commit string) (string, error) {

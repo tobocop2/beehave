@@ -126,6 +126,7 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Kept:   backendErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
+		RefuseGate:     gateRefusal(cfg.Projects),
 		Repository:     repositoryOf(cfg.Projects),
 	})
 }

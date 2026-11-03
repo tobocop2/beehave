@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/cli"
+	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -60,6 +61,21 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 
 	require.Equal(t, 0, code, "a note changes no exit code")
 	require.Equal(t, "note: project far builds on the host gpu, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", stderr)
+}
+
+func TestCheckConfig_ALocalProjectWithTheSandboxOnGetsANoteThatNoSandboxCanEnforceItsGate(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	boxed := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+		"sandbox = \"on\", gate_network = [\"proxy.golang.org\"])\n"
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/near.star", boxed)
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Equal(t, "note: project near has the sandbox on, but "+config.GateSandboxRefusal+"\n", stderr)
 }
 
 func runWithAdapters(t *testing.T, adapters func(context.Context, model.Project) error, dir string) (int, string) {
