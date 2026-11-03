@@ -3,6 +3,26 @@
 
 load("@obee//review_fix.star", "review_fix")
 
+# A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the tool as flags.
+IDLE_HOURS = "1"
+GRACE_HOURS = "1"
+
+# The severities in the order of the queue, most severe first. A severity that is not in the list sorts last.
+SEVERITIES = ["P0", "P1", "P2", "P3", "P4"]
+
+def _severity(row):
+    if row.severity in SEVERITIES:
+        return SEVERITIES.index(row.severity)
+
+    return len(SEVERITIES)
+
+def rank(rows):
+    """Returns the ready rows in the order of work: the rows with an open pull request (work in flight) first, then the new rows.
+    Inside each group, the rows go by severity, then by item id. A row that is not ready is not offered.
+    The rows of the queue step carry no review request, no review state and no container, so the order by those is not here."""
+    ready = [r for r in rows if r.state == "ready"]
+    return sorted(ready, key = lambda r: (0 if r.pr > 0 else 1, _severity(r), r.item))
+
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
 FORBID = ["bulk-staging", "local-delete", "remote-delete", "opaque-command", "git-author", "git-bypass", "env-override", "config-read", "protected-path", "zsh-expansion", "laptop-copy"]
@@ -87,7 +107,66 @@ def land(item, pins):
     if len(out.findings) > 0:
         fail("REFUSE: the batch landed, but the issues are not as they must be. Fix the state of each issue by hand:\n" + "\n".join(out.findings))
 
+def sweep(item):
+    """Starts the ready items in the order of the queue, up to the free slots, and waits for the runs.
+    QUEUE_SWEEP="true" selects this pass. The queue is read again here, so a pull request that arrived since the last pass shows in the order.
+    The runs are the pipeline of one item each. The rank rule is above."""
+    # The run of the sweep claims the item id it is given, as every run does. That is wanted: the claim lets only one pass run for that id, so two passes cannot start the same items twice. Give the sweep an id that is no real item.
+    q = queue(name = "sweep-queue", hold = "hold")
+    take = [r.item for r in rank(q.rows)][:q.free]
+    if len(take) == 0:
+        return
+
+    gather(spawn(items = take, entry = "pipeline", name = "sweep-spawn").runs, name = "sweep-gather")
+
+def take_over(item, pr):
+    """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
+    1. A review agent posts the findings as a changes-requested review. The notice is refused until the review is on the pull request.
+    2. The tool posts the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
+    3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take. TAKE_AUTHOR names the author.
+    4. The tool takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the tool, and a person reads the replies.
+    The run of the item holds the claim, so the take writes none. A refusal of the tool (exit code 2) ends the item with the lines it printed."""
+    me = env("OWNER_LOGIN")
+    author = env("TAKE_AUTHOR")
+    base = ["remedy", "take", pr, "--me", me, "--idle", IDLE_HOURS, "--grace", GRACE_HOURS, "--item", item.id]
+
+    agent(
+        name = "take-review",
+        prompt = "prompts/take_review.md",
+        model = "opus",
+        edits = False,
+        kind = "review",
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        inputs = {"item": item, "pr": pr},
+    )
+
+    command(name = "take-notice", run = base + ["--apply"], stop_on_rc = [2])
+
+    grace = wait(
+        "The notice is on pull request %s. Answer KEEP to keep it, or RELEASE to hand it over. With no answer in %s hours, it is taken." % (pr, GRACE_HOURS),
+        name = "take-grace",
+        timeout = GRACE_HOURS + "h",
+        to = [author],
+        choices = ["KEEP", "RELEASE"],
+    )
+
+    if grace.answer == "KEEP":
+        return
+
+    command(name = "take-claim", run = base + ["--take"], stop_on_rc = [2])
+
 def main(item):
+    # QUEUE_SWEEP="true" runs one pass over the queue and starts no host: each run it starts is the pipeline of one item.
+    if env("QUEUE_SWEEP", default = "") == "true":
+        sweep(item)
+        return
+
+    # TAKE_PR names a pull request of somebody else to take over. The run does the take-over steps and then stops.
+    pr = env("TAKE_PR", default = "")
+    if pr != "":
+        take_over(item, pr)
+        return
+
     # HOST_UP="true" launches the build host when it is absent. Without it the run starts no host, so a run that needs none costs nothing.
     # A project with no host, or a host that is already up, starts nothing. The host deletes itself when idle (host.idle_minutes).
     if env("HOST_UP", default = "") == "true":
