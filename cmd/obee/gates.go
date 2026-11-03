@@ -5,19 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/srt"
 )
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
@@ -37,9 +32,6 @@ type projectGate struct {
 	forge    func(model.Project) (forge.Forge, error)
 	// timeout is the time that a local gate command may run. Zero means gateTimeout.
 	timeout time.Duration
-	// home and lookPath find the home folder and the srt program. Nil means os.UserHomeDir and exec.LookPath.
-	home     func() (string, error)
-	lookPath func(string) (string, error)
 }
 
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
@@ -53,14 +45,7 @@ func (g projectGate) Run(ctx context.Context, project, item string, job flow.Gat
 
 	request.Resume, request.ResumeHead = model.JobID(job.ID), job.Head
 
-	boxed, cleanup, err := g.boxed(ctx, project, request)
-	if err != nil {
-		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
-	}
-
-	defer cleanup()
-
-	result, err := boxed.Run(ctx, request)
+	result, err := g.gate(project).Run(ctx, request)
 	if err != nil {
 		return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
 	}
@@ -88,103 +73,17 @@ func (g projectGate) gate(project string) gate.Gate {
 	return gate.New(g.shell, g.tree, func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) })
 }
 
-// sandboxed is true when the gate command of the project runs in the sandbox: the project builds on this machine and its sandbox is on.
-// A gate on a build host runs outside the sandbox, because the sandbox covers only a command that obee starts here.
-func (g projectGate) sandboxed(project string) bool {
-	found := g.projects[project]
+// gateRefusal gives the engine the refusal of a gate that would run on this machine under the sandbox. No sandbox can enforce such a gate yet.
+// The engine asks at the start of each gate step, so a refused gate reads no key, reuses no earlier pass and runs no program.
+// program is true for a gate that names its own program. A project the config does not hold is not refused.
+func gateRefusal(projects map[string]config.Project) func(string, bool) error {
+	return func(project string, program bool) error {
+		if !config.GateRefused(projects[project].Project, program) {
+			return nil
+		}
 
-	return found.BuildHost == config.LocalHost && found.SandboxByDefault()
-}
-
-// boxed returns the gate for one run. For a gate that runs in the sandbox, it checks that srt is installed, makes the plan with the denied reads of an
-// agent step and the network list and write list of the project, and gives the gate a shell that runs the gate command through srt. The cleanup
-// removes the settings file of srt. A plan that cannot start refuses the run before any program starts.
-func (g projectGate) boxed(ctx context.Context, project string, request gate.Request) (gate.Gate, func(), error) {
-	plain := g.gate(project)
-	if !g.sandboxed(project) {
-		return plain, func() {}, nil
+		return fmt.Errorf("%w: %s", errGateSandbox, config.GateSandboxRefusal)
 	}
-
-	plan, home, err := g.gatePlan(ctx, project, request.Dir)
-	if err != nil {
-		return gate.Gate{}, nil, err
-	}
-
-	args, cleanup, err := g.wrapped(ctx, plan, home, request)
-	if err != nil {
-		return gate.Gate{}, nil, err
-	}
-
-	return plain.WithCommand(func(ctx context.Context, dir, _ string) (string, int) {
-		return g.run(ctx, srt.Program, dir, args)
-	}), cleanup, nil
-}
-
-// wrapped writes the settings file for the gate command and probes srt with it. A refused probe removes the file.
-func (g projectGate) wrapped(ctx context.Context, plan agent.SandboxPlan, home string, request gate.Request) ([]string, func(), error) {
-	args, cleanup, err := srt.Wrap(plan, home, request.Project.Gate)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if err = g.probe(ctx, request.Dir, args); err != nil {
-		cleanup()
-
-		return nil, nil, err
-	}
-
-	return args, cleanup, nil
-}
-
-// probe runs srt once on the command `true`. A start failure of srt or of the program under it (a settings file that srt rejects, a bubblewrap
-// that the system blocks) then refuses the run. Without the probe, the failure is the exit code of the gate command and reads as a red gate.
-func (g projectGate) probe(ctx context.Context, dir string, args []string) error {
-	out, code := g.run(ctx, srt.Program, dir, append(slices.Clone(args[:len(args)-1]), "true"))
-	if code != 0 {
-		return fmt.Errorf("%w: the sandbox could not start (srt exit code %d): %s", errGateSandbox, code, strings.TrimSpace(out))
-	}
-
-	return nil
-}
-
-// srtHome checks that srt is installed and returns the home folder.
-func (g projectGate) srtHome() (string, error) {
-	lookPath, homeOf := g.lookPath, g.home
-	if lookPath == nil {
-		lookPath = exec.LookPath
-	}
-
-	if homeOf == nil {
-		homeOf = os.UserHomeDir
-	}
-
-	if note := srt.Missing(lookPath); note != "" {
-		return "", fmt.Errorf("%w: %s", errGateSandbox, note)
-	}
-
-	home, err := homeOf()
-	if err != nil {
-		return "", fmt.Errorf("%w: obee cannot find the home folder, so the sandbox cannot deny it", errGateSandbox)
-	}
-
-	return home, nil
-}
-
-// gatePlan checks that srt is installed and makes the plan of the gate command with the lists of the project. It returns the plan and the home folder.
-func (g projectGate) gatePlan(ctx context.Context, project, dir string) (agent.SandboxPlan, string, error) {
-	home, err := g.srtHome()
-	if err != nil {
-		return agent.SandboxPlan{}, "", err
-	}
-
-	found := g.projects[project].Project
-
-	plan, note := planOf(ctx, home, found, dir, "", model.Sandbox{Network: found.GateNetwork, AllowWrite: found.GateAllowWrite})
-	if note != "" {
-		return agent.SandboxPlan{}, "", fmt.Errorf("%w: %s", errGateSandbox, strings.ReplaceAll(note, " The step did not start.", ""))
-	}
-
-	return plan, home, nil
 }
 
 // Key reads the key of the gate that Run would start on the worktree of the item.

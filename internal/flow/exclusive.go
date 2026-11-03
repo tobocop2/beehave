@@ -120,11 +120,28 @@ func (e *Engine) exclusiveCall(ctx dbos.Context, in ExclusiveInput, out *Exclusi
 func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (map[string]any, error) {
 	if len(in.Request.Run) > 0 {
 		return runStep(e, ctx, kindGate, func(c context.Context) (map[string]any, error) {
+			// A program gate that names a host runs there, so this machine does not refuse it.
+			if in.Request.Host == "" {
+				if err := e.refuseGate(in.Request.Project, true); err != nil {
+					return nil, err
+				}
+			}
+
 			return e.programGateOutputs(c, in.Request, in.Head)
 		})
 	}
 
 	return e.projectGateCall(ctx, in, out)
+}
+
+// refuseGate asks Deps.RefuseGate whether a gate may run on this machine. It runs inside the recorded step that starts the gate, before the gate key,
+// an earlier pass or any program, so a replay of a recorded step returns the record and is never refused. A nil RefuseGate refuses nothing.
+func (e *Engine) refuseGate(project string, program bool) error {
+	if e.deps.RefuseGate == nil {
+		return nil
+	}
+
+	return e.deps.RefuseGate(project, program)
 }
 
 // projectGateCall is the two steps of a project gate, see gateCall.

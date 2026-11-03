@@ -418,3 +418,9 @@ func sourcePath(raw rawProject, host string) (string, error) {
 
 	return path, nil
 }
+
+// GateRefused is true when a gate must not run on this machine: the project has its sandbox on and no sandbox can enforce a gate here yet.
+// A program gate (a gate call with run, or the gate_run of a batch merge) always runs here. The project gate runs here when the project builds here.
+func GateRefused(project model.Project, program bool) bool {
+	return project.SandboxByDefault() && (program || project.BuildHost == LocalHost)
+}

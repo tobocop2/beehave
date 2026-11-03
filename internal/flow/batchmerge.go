@@ -62,7 +62,7 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 		return nil, err
 	}
 
-	git, err := s.batchGit()
+	git, err := s.batchGit(call)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +75,19 @@ func (s *script) batchMerge(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	}
 
 	return s.batchOutcome(call, done)
+}
+
+// batchRefusal asks whether the gate of the call may run on this machine. It is the first recorded step of the call: a fresh call is refused
+// before the worktree, the union or any program, and a replay of a call that passed returns the record and is not refused.
+func (s *script) batchRefusal(call batchCall) error {
+	_, err := runStep(s.e, s.ctx, "batch:"+call.name+".refuse", func(context.Context) (struct{}, error) {
+		return struct{}{}, s.e.refuseGate(s.in.Project, len(call.gateRun) > 0)
+	})
+	if err != nil {
+		return fmt.Errorf("batch_merge %q: %w", call.name, err)
+	}
+
+	return nil
 }
 
 // batchOutcome reads the issues of the landed items and builds the result. The batch has landed and the merge cannot be undone,
@@ -106,7 +119,12 @@ func (s *script) batchIssues(call batchCall, done batch.Result) (batch.Report, e
 }
 
 // batchGit makes the worktree of the item, then returns git over it. The worktree exists before the first git call, as it does for an agent step.
-func (s *script) batchGit() (batch.Git, error) { //nolint:ireturn // the interface of the batch host returns it
+// It asks first whether the gate may run here, so a refused call touches no worktree.
+func (s *script) batchGit(call batchCall) (batch.Git, error) { //nolint:ireturn // the interface of the batch host returns it
+	if err := s.batchRefusal(call); err != nil {
+		return nil, err
+	}
+
 	dir, err := s.e.deps.Trees.Ensure(s.ctx, s.in.Project, s.in.Item)
 	if err != nil {
 		return nil, fmt.Errorf("find the folder of item %s: %w", s.in.Item, err)

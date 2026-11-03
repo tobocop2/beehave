@@ -94,6 +94,8 @@ type graph struct {
 	dynamic int
 	// repositoryCalls are the calls of the builtins that need a repository. The text of each is the name of the builtin.
 	repositoryCalls []Diagnostic
+	// gateCalls are the calls that run a gate on this machine. The text of each is the name of the builtin.
+	gateCalls []hereGate
 }
 
 func predeclared(name string) bool { return slices.Contains(Builtins(), name) }
@@ -185,7 +187,7 @@ func finishTakesNoItem(parsed *syntax.File) bool {
 // inspect checks the calls of a parsed file, and keeps the names that the workflow file binds.
 func (g *graph) inspect(name string, parsed *syntax.File) {
 	g.arguments(parsed)
-	g.repositoryCalls = append(g.repositoryCalls, repositoryCalls(g.display(name), parsed)...)
+	g.repositoryCalls, g.gateCalls = append(g.repositoryCalls, repositoryCalls(g.display(name), parsed)...), append(g.gateCalls, gateCalls(g.display(name), parsed)...)
 	found, dynamic := programs(parsed)
 	g.programs = append(g.programs, found...)
 	g.dynamic += dynamic
@@ -348,4 +350,79 @@ func Check(file string) (found []Diagnostic, unparsed bool) {
 	g := scan(file)
 
 	return g.found, g.unparsed
+}
+
+// CheckSandboxedGates returns one diagnostic for each gate or batch_merge call in the workflow file and the files it loads that runs a gate on this machine.
+// The project has its sandbox on and refusal says why such a gate does not run. A gate call that names run and a host runs there, so it is not listed.
+// A call that uses the project gate is listed only when projectGate is true, because a project that builds on a host runs its project gate there.
+// It runs no workflow code.
+func CheckSandboxedGates(file, project, refusal string, projectGate bool) []Diagnostic {
+	var found []Diagnostic
+
+	for _, call := range scan(file).gateCalls {
+		if call.program || projectGate {
+			call.at.Text = fmt.Sprintf("%s runs a gate on this machine, and project %s has the sandbox on: %s", call.at.Text, project, refusal)
+			found = append(found, call.at)
+		}
+	}
+
+	return found
+}
+
+// hereGate is a call that runs a gate on this machine. program is true when the call names the program of the gate.
+type hereGate struct {
+	at      Diagnostic
+	program bool
+}
+
+// gateCalls lists the calls in a parsed file that run a gate on this machine: each batch_merge, each gate without a program and each gate with a program and no host.
+// A name that the file defines is not the builtin.
+func gateCalls(file string, parsed *syntax.File) []hereGate {
+	shadowed := definedNames(parsed)
+
+	var calls []hereGate
+
+	syntax.Walk(parsed, func(n syntax.Node) bool {
+		call, ok := n.(*syntax.CallExpr)
+		if !ok || slices.Contains(shadowed, callee(call)) {
+			return true
+		}
+
+		if program, here := runsHere(call); here {
+			at := placeOf(call.Lparen)
+			at.File, at.Text = file, callee(call)
+			calls = append(calls, hereGate{at: at, program: program})
+		}
+
+		return true
+	})
+
+	return calls
+}
+
+// runsHere reports whether the call runs a gate on this machine, and whether that gate is a program that the call names.
+// A batch_merge always does. A gate does unless it names both a program and a host.
+func runsHere(call *syntax.CallExpr) (program, here bool) {
+	switch callee(call) {
+	case batchMergeName:
+		return namesKeyword(call, "gate_run"), true
+	case gateName:
+		program = namesKeyword(call, "run")
+
+		return program, !program || !namesHost(call)
+	}
+
+	return false, false
+}
+
+// namesHost reports whether a call passes a host keyword that is not the literal empty text.
+func namesHost(call *syntax.CallExpr) bool {
+	host := argument(call, "host", len(call.Args))
+	if host == nil {
+		return false
+	}
+
+	text, isText := literal(host)
+
+	return !isText || text != ""
 }

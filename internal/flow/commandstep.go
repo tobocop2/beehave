@@ -19,7 +19,7 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 	var c commandRaw
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		runKeyword: &c.run, "host": &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, "stop_on_rc": &c.codes, nameKeyword: &c.label,
 	})
 	if err != nil {
 		return CommandRequest{}, nil, "", err
@@ -131,7 +131,7 @@ func (s *script) gateCall(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	)
 
 	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		runKeyword: &run, "host": &host, timeoutKeyword: &timeout, headKeyword: &head, nameKeyword: &label,
+		runKeyword: &run, hostKeyword: &host, timeoutKeyword: &timeout, headKeyword: &head, nameKeyword: &label,
 	}); err != nil {
 		return request, head, label, err
 	}
@@ -189,6 +189,10 @@ type gateStart struct {
 
 // startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
 func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
+	if err := e.refuseGate(request.Project, false); err != nil {
+		return gateStart{}, err
+	}
+
 	key := e.gateKey(ctx, request)
 
 	if earlier, ok := e.earlierPass(key, request.Project); ok {

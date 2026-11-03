@@ -171,11 +171,11 @@ func (p projectCheck) run(stderr io.Writer, env map[string]string, file string) 
 	}
 
 	found, err := p.find(stderr, env)
-	if err != nil || found.HasRepository() {
+	if err != nil {
 		return err
 	}
 
-	calls := workflow.CheckNoRepository(file, p.project)
+	calls := p.refusedCalls(found, file)
 	if len(calls) == 0 {
 		return nil
 	}
@@ -183,6 +183,21 @@ func (p projectCheck) run(stderr io.Writer, env map[string]string, file string) 
 	printProblems(stderr, file, calls)
 
 	return &ExitError{Code: exitWorkflowProblems}
+}
+
+// refusedCalls lists the calls that the named project cannot make: the git builtins of a project with no repository, and the gates that its sandbox refuses on this machine.
+func (p projectCheck) refusedCalls(found config.Project, file string) []workflow.Diagnostic {
+	var calls []workflow.Diagnostic
+
+	if !found.HasRepository() {
+		calls = workflow.CheckNoRepository(file, p.project)
+	}
+
+	if config.GateRefused(found.Project, true) {
+		calls = append(calls, workflow.CheckSandboxedGates(file, p.project, config.GateSandboxRefusal, config.GateRefused(found.Project, false))...)
+	}
+
+	return calls
 }
 
 func addDryRunFlags(command *cobra.Command, dryRun *bool, item *string) *cobra.Command {
@@ -259,13 +274,23 @@ func printLines(stderr io.Writer, problems config.Problems) {
 	}
 }
 
-// printHostNotes prints a note for each project that has the sandbox on and builds on a host, because its gate runs there with no sandbox.
+// printHostNotes prints a note for each project that has the sandbox on. A project on a host runs its gate there with no sandbox.
+// A project on this machine cannot run its gate, because no sandbox can enforce it yet.
 func printHostNotes(stderr io.Writer, cfg config.Config) {
 	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
-		if project := cfg.Projects[name]; project.SandboxByDefault() && project.BuildHost != config.LocalHost {
-			// A failed write to stderr has no recovery.
-			_, _ = fmt.Fprintf(stderr, "note: project %s builds on the host %s, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", name, project.BuildHost)
+		project := cfg.Projects[name]
+		if !project.SandboxByDefault() {
+			continue
 		}
+
+		// A failed write to stderr has no recovery.
+		if project.BuildHost == config.LocalHost {
+			_, _ = fmt.Fprintf(stderr, "note: project %s has the sandbox on, but %s\n", name, config.GateSandboxRefusal)
+
+			continue
+		}
+
+		_, _ = fmt.Fprintf(stderr, "note: project %s builds on the host %s, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", name, project.BuildHost)
 	}
 }
 
