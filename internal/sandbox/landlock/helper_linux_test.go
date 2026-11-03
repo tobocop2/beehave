@@ -7,6 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -393,14 +397,65 @@ func TestRun_ACanceledContextKillsTheWholeGroupOfTheCommand(t *testing.T) {
 
 	e := runnable(t)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	started := time.Now()
-	code, err := run(t, e, ctx, "sleep 30 & wait", sandbox.Command{})
-	require.NoError(t, err)
-	assert.Equal(t, 128+9, code)
-	assert.Less(t, time.Since(started), runTimeout/2, "the command did not wait for its sleep")
+	var out syncBuffer
+
+	type result struct {
+		code int
+		err  error
+	}
+
+	done := make(chan result, 1)
+
+	go func() {
+		code, err := run(t, e, ctx, "sleep 30 & echo $!; wait", sandbox.Command{Stdout: &out})
+		done <- result{code, err}
+	}()
+
+	// The cancel waits until the command prints the pid of its child, so the group exists before it dies, however long the helper took to start.
+	var child int
+
+	require.Eventually(t, func() bool {
+		pid, err := strconv.Atoi(strings.TrimSpace(out.String()))
+		child = pid
+
+		return err == nil
+	}, 20*time.Second, 5*time.Millisecond, "the command did not print the pid of its child")
+
+	cancel()
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		assert.Equal(t, 128+9, got.code)
+	case <-time.After(runTimeout / 2):
+		t.Fatal("the command outlived its canceled context")
+	}
+
+	// The background sleep dies with the group. The wait is for the signal to land, and it ends at once when the child is gone.
+	assert.Eventually(t, func() bool { return errors.Is(syscall.Kill(child, 0), syscall.ESRCH) }, 20*time.Second, 10*time.Millisecond, "the background sleep is still alive")
+}
+
+// syncBuffer is a writer that the test reads while the command still writes to it.
+type syncBuffer struct {
+	mu   sync.Mutex
+	data bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.data.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.data.String()
 }
 
 func TestRun_AHelperThatCannotStartIsAnErrorAndRunsNoCommand(t *testing.T) {
