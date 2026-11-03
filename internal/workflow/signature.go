@@ -56,6 +56,26 @@ func ChildrenValues() []string { return []string{"refuse", "retarget"} }
 // The check and the run both read it.
 func ForbidKinds() []string { return model.FindingKindNames() }
 
+// Protection is the rule that ties forbid_commands to protect_paths: a kind that needs paths takes at least one, paths need such a kind, and an
+// empty path is always wrong. The run applies it to the values it read, and the check applies it to literals, so this function owns the rule.
+func Protection(kinds []model.FindingKind, paths []string) error {
+	if slices.Contains(paths, "") {
+		return errors.New("protect_paths holds an empty path, which would name the folder of the step. Give a path")
+	}
+
+	for _, kind := range kinds {
+		if kind.NeedsPaths() && len(paths) == 0 {
+			return fmt.Errorf("forbid_commands lists %s, so protect_paths must list at least one directory", kind)
+		}
+	}
+
+	if len(paths) > 0 && !slices.ContainsFunc(kinds, model.FindingKind.NeedsPaths) {
+		return fmt.Errorf("protect_paths is set, but forbid_commands lists no kind that uses it. Add %q to forbid_commands", model.FindingProtected)
+	}
+
+	return nil
+}
+
 func req(name string, kind Kind) Param { return Param{Name: name, Kind: kind, Required: true} }
 
 // isBoolName reports whether name is one of the two boolean constants of Starlark.
@@ -602,7 +622,7 @@ func (g *graph) protection(call *syntax.CallExpr, params []Param) {
 	paths, pathsKnown := textList(pathsArg)
 
 	if hasEmptyText(pathsArg) {
-		g.report(placeOf(call.Lparen), "protect_paths holds an empty path, which would name the folder of the step. Give a path.")
+		g.reportRule(call, Protection(nil, []string{""}))
 
 		return
 	}
@@ -619,13 +639,18 @@ func (g *graph) pair(call *syntax.CallExpr, kinds, paths []string) {
 		return
 	}
 
-	needs := slices.ContainsFunc(kinds, func(kind string) bool { return model.FindingKind(kind).NeedsPaths() })
+	found := make([]model.FindingKind, len(kinds))
+	for i, kind := range kinds {
+		found[i] = model.FindingKind(kind)
+	}
 
-	switch {
-	case needs && len(paths) == 0:
-		g.report(placeOf(call.Lparen), fmt.Sprintf("forbid_commands lists %s, so protect_paths must list at least one directory.", model.FindingProtected))
-	case !needs && len(paths) > 0:
-		g.report(placeOf(call.Lparen), fmt.Sprintf("protect_paths is set, but forbid_commands lists no kind that uses it. Add %q to forbid_commands.", model.FindingProtected))
+	g.reportRule(call, Protection(found, paths))
+}
+
+// reportRule reports the error of a rule that the run owns, at the call, with a full stop. It reports nothing for a nil error.
+func (g *graph) reportRule(call *syntax.CallExpr, err error) {
+	if err != nil {
+		g.report(placeOf(call.Lparen), err.Error()+".")
 	}
 }
 
