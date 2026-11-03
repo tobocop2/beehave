@@ -367,10 +367,13 @@ func TestQueue_AStoreThatIsClosedFailsTheReadsOfTheRunsAndTheSlots(t *testing.T)
 	require.NoError(t, engine.Shutdown())
 
 	_, err = engine.readQueue(t.Context(), testProject, "")
-	require.ErrorContains(t, err, "list the runs of item 21", "the run of an item cannot be read")
+	require.ErrorContains(t, err, "count the open runs", "the slots are read before the rows, so the slots fail first")
 
 	_, err = engine.freeSlots()
 	require.ErrorContains(t, err, "count the open runs")
+
+	_, err = engine.queueRows([]model.Item{queueItem("21", model.SeverityP1)}, nil)
+	require.ErrorContains(t, err, "list the runs of item 21", "the run of an item cannot be read")
 
 	_, err = engine.queueRows(nil, nil)
 	require.NoError(t, err, "no item has no run to read")

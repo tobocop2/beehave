@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
 
@@ -293,9 +295,37 @@ func (f swarmForgeAt) MergePR(ctx context.Context, pr int, sha string) error {
 	}
 
 	_, err = fmt.Fprintf(log, "MergePR %d %s\n", pr, sha)
+	if err = errJoin(err, log.Close()); err != nil {
+		return err
+	}
 
-	return errJoin(err, log.Close())
+	return f.pauseAfterMerge()
 }
+
+// pauseAfterMerge is the barrier of a landing. If the file pause-after-merge exists in the forge folder, the first merge waits, after it is recorded,
+// until the spend ledger holds the cost of the task that the file names. The cost is the last step of a task run, so the run is over when the landing goes on,
+// and a script can end a run in the middle of a landing on every run, and not only under load.
+// The wait has a deadline (30 seconds): a barrier that nothing opens is a fault of the script, and the merge fails with that text.
+func (f swarmForgeAt) pauseAfterMerge() error {
+	named, err := os.ReadFile(f.path("pause-after-merge"))
+	if err != nil {
+		return nil //nolint:nilerr // no barrier file: the merge goes on at once
+	}
+
+	want := "\t" + strings.TrimSpace(string(named)) + "\ttask\t"
+
+	for range 150 {
+		if ledger, err := os.ReadFile(filepath.Join(f.dir, "..", "home", ".swarm", "swarm-1", "ledger.tsv")); err == nil && strings.Contains(string(ledger), want) {
+			return nil
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return errBarrierClosed
+}
+
+var errBarrierClosed = errors.New("harness fault: the landing barrier was not opened within 30 seconds")
 
 // cmdSwarmFakes is "swarmfakes": it writes the fake claude of the swarm scripts to fake/claude, with the work folder in place of the marker.
 func cmdSwarmFakes(ts *testscript.TestScript, _ bool, args []string) {
