@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -59,12 +60,13 @@ func TestNewGateSandbox_ANameThatNoEnforcerHasIsRefusedWithTheNames(t *testing.T
 
 	found, err := box.enforcer("auto")
 	if err != nil {
-		require.ErrorIs(t, err, sandbox.ErrUnavailable, "a machine without Landlock refuses with the reason")
+		require.ErrorIs(t, err, sandbox.ErrUnavailable, "a machine without an enforcer refuses with the reason")
 
 		return
 	}
 
-	assert.Equal(t, "landlock", found.Name())
+	// auto picks the enforcer of the system: Landlock on Linux, Seatbelt on macOS.
+	assert.Equal(t, map[string]string{"linux": "landlock", "darwin": "seatbelt"}[runtime.GOOS], found.Name())
 }
 
 func TestGateSandbox_ACommandWithNoEnvironmentGetsTheOneTheSandboxWasMadeWithAndItsOwnTemporaryFolder(t *testing.T) {
