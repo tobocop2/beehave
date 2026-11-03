@@ -22,6 +22,11 @@ const (
 	deadlineStep = "wait:deadline"
 	// waitIDStep records the id of a wait with people, so a replay and the voices it counts name the same wait.
 	waitIDStep = "wait:id"
+	// remindStepPrefix starts the name of the step of each reminder: wait:remind-1, wait:remind-2 and so on.
+	remindStepPrefix = "wait:remind-"
+	// dueStep records, each time a receive of a wait with reminders ends with no voice, which reminders are owed and whether the deadline passed.
+	// A replay reads the record, so it takes the same steps the first run took.
+	dueStep = "wait:due"
 )
 
 // errRefusedAnswer is returned when an answer does not fit the open wait.
@@ -37,6 +42,10 @@ type Asked struct {
 	Quorum   int      `json:"quorum,omitempty"`
 	Choices  []string `json:"choices,omitempty"`
 	Heard    []string `json:"heard,omitempty"`
+	// Reminders is how many reminders the wait declares, and Reminded how many it sent. NextRemind is the moment of the next one, and is zero once all are sent.
+	Reminders  int       `json:"reminders,omitempty"`
+	Reminded   int       `json:"reminded,omitempty"`
+	NextRemind time.Time `json:"next_remind,omitzero"`
 }
 
 // voice is one answer to a wait that names people or choices. From is empty when the wait names no people.
@@ -52,6 +61,7 @@ type waitPlan struct {
 	id       string
 	label    string
 	deadline time.Duration
+	remind   []float64
 	asked    Asked
 }
 
@@ -121,7 +131,7 @@ func (e *Engine) waitVoices(ctx dbos.Context, item string, plan waitPlan) (heard
 		return heard{}, err
 	}
 
-	timedOut, err := e.within(ctx, item, plan.deadline, &asked, count)
+	timedOut, err := e.within(ctx, item, plan.deadline, plan.remind, &asked, count)
 	if err == nil {
 		err = dbos.SetEvent(ctx, askKey, Asked{})
 	}
@@ -133,14 +143,145 @@ func (e *Engine) waitVoices(ctx dbos.Context, item string, plan waitPlan) (heard
 	return count.outcome(timedOut), nil
 }
 
-// within records the end of the deadline and counts voices until the quorum or that end.
-func (e *Engine) within(ctx dbos.Context, item string, deadline time.Duration, asked *Asked, count *tally) (bool, error) {
+// within records the end of the deadline and counts voices until the quorum or that end. A wait with reminders sends each one when it falls due.
+func (e *Engine) within(ctx dbos.Context, item string, deadline time.Duration, shares []float64, asked *Asked, count *tally) (bool, error) {
 	end, err := e.endOf(ctx, deadline)
 	if err != nil {
 		return false, err
 	}
 
-	return e.collect(ctx, item, end, asked, count)
+	if len(shares) == 0 {
+		return e.collect(ctx, item, end, asked, count)
+	}
+
+	plan := remindersOf(end, deadline, shares)
+	asked.Reminders, asked.NextRemind = len(plan.dues), plan.next(0)
+
+	if err := show(ctx, item, askKey, *asked, "who it asks"); err != nil {
+		return false, err
+	}
+
+	return e.collectReminding(ctx, item, plan, asked, count)
+}
+
+// schedule is the moments at which the reminders of a wait fall due, in order, and the moment the wait ends.
+type schedule struct {
+	dues []time.Time
+	end  time.Time
+}
+
+// remindersOf places each share of the window, which starts deadline before end, on the clock.
+func remindersOf(end time.Time, deadline time.Duration, shares []float64) schedule {
+	start, dues := end.Add(-deadline), make([]time.Time, len(shares))
+
+	for i, share := range shares {
+		dues[i] = start.Add(time.Duration(float64(deadline) * share))
+	}
+
+	return schedule{dues: dues, end: end}
+}
+
+// next is the moment of the reminder after the sent ones, or the zero time when all are sent.
+func (s schedule) next(sent int) time.Time {
+	if sent >= len(s.dues) {
+		return time.Time{}
+	}
+
+	return s.dues[sent]
+}
+
+// due is what one look at the clock found: how many reminders have fallen due since the start, and whether the deadline has passed.
+type due struct {
+	Owed  int  `json:"owed"`
+	Ended bool `json:"ended"`
+}
+
+// collectReminding counts voices like collect, and each time a receive ends with no voice it sends the reminders that are owed.
+// A receive lasts until the next reminder, the deadline or one wait window, whichever comes first, so the clock is read often enough.
+func (e *Engine) collectReminding(ctx dbos.Context, item string, plan schedule, asked *Asked, count *tally) (bool, error) {
+	for !count.enough(*asked) {
+		v, err := dbos.Recv[voice](ctx, voiceTopic, e.reminderWindow(plan, asked.Reminded))
+
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			if ended, sendErr := e.remindDue(ctx, item, plan, asked); sendErr != nil || ended {
+				return ended, sendErr
+			}
+		case err != nil:
+			return false, err
+		case v.Wait == asked.Wait && asked.accepts(v):
+			count.take(asked, v)
+
+			if shown := show(ctx, item, askKey, *asked, "who it asks"); shown != nil {
+				return false, shown
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// reminderWindow is the time of one receive: until the next reminder, the deadline or one wait window, whichever comes first.
+func (e *Engine) reminderWindow(plan schedule, sent int) time.Duration {
+	now := e.deps.Clock.reading()
+
+	window := min(plan.end.Sub(now), e.waitWindow())
+	if next := plan.next(sent); !next.IsZero() {
+		window = min(window, next.Sub(now))
+	}
+
+	return max(window, time.Millisecond)
+}
+
+// owedAt counts the reminders that have fallen due at a moment.
+func (s schedule) owedAt(now time.Time) int {
+	owed := 0
+
+	for _, at := range s.dues {
+		if !at.After(now) {
+			owed++
+		}
+	}
+
+	return owed
+}
+
+// remindDue reads the clock once, in a recorded step, and sends every reminder that is owed and not sent, in order. It reports whether the deadline passed.
+// The reading is recorded, so a replay sends the same reminders and a restart never sends one twice.
+func (e *Engine) remindDue(ctx dbos.Context, item string, plan schedule, asked *Asked) (bool, error) {
+	look, err := runStep(e, ctx, dueStep, func(context.Context) (due, error) {
+		now := e.deps.Clock.reading()
+
+		return due{Owed: plan.owedAt(now), Ended: !now.Before(plan.end)}, nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	for number := asked.Reminded + 1; number <= look.Owed; number++ {
+		if err := e.remind(ctx, item, plan, asked, number); err != nil {
+			return false, err
+		}
+	}
+
+	return look.Ended, nil
+}
+
+// remind sends one reminder to the people of the wait. The notice is the ask event that obee status and obee answer read: it moves the count of sent
+// reminders and the moment of the next one. The log line is written inside the recorded step, so a replay does not write it again.
+func (e *Engine) remind(ctx dbos.Context, item string, plan schedule, asked *Asked, number int) error {
+	_, err := runStep(e, ctx, remindStepPrefix+strconv.Itoa(number), func(c context.Context) (struct{}, error) {
+		e.logger.InfoContext(c, fmt.Sprintf("reminder %d of %d to %s", number, len(plan.dues), strings.Join(asked.From, ", ")), "item", item)
+
+		return struct{}{}, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	asked.Reminded, asked.NextRemind = number, plan.next(number)
+
+	return show(ctx, item, askKey, *asked, "who it asks")
 }
 
 // heard is what a wait got: the answer that completed it, the answers by name, and whether the deadline passed first.
@@ -219,7 +360,7 @@ func (e *Engine) endOf(ctx dbos.Context, deadline time.Duration) (time.Time, err
 	}
 
 	millis, err := runStep(e, ctx, deadlineStep, func(context.Context) (int64, error) {
-		return time.Now().Add(deadline).UnixMilli(), nil
+		return e.deps.Clock.reading().Add(deadline).UnixMilli(), nil
 	})
 	if err != nil {
 		return time.Time{}, err
@@ -234,7 +375,7 @@ func (e *Engine) receiveVoice(ctx dbos.Context, end time.Time) (voice, error) {
 	window := e.waitWindow()
 
 	if !end.IsZero() {
-		window = max(time.Until(end), time.Millisecond)
+		window = max(end.Sub(e.deps.Clock.reading()), time.Millisecond)
 	}
 
 	return dbos.Recv[voice](ctx, voiceTopic, window)

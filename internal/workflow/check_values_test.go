@@ -33,6 +33,16 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"wait to element", `wait(question = "q", to = [1])`, "to must hold strings only"},
 		{"wait to twice", `wait(question = "q", to = ["a", "a"])`, `to holds "a" twice`},
 		{"wait to blank", `wait(question = "q", to = [""])`, `to holds "", which is empty`},
+		{"wait remind zero", `wait(question = "q", to = ["a"], timeout = "1h", remind = [0])`, "wait: remind holds 0, which is not a share of the window"},
+		{"wait remind one", `wait(question = "q", to = ["a"], timeout = "1h", remind = [0.5, 1.0])`, "remind holds 1.0, which is not a share of the window"},
+		{"wait remind percent", `wait(question = "q", to = ["a"], timeout = "1h", remind = [50])`, "remind holds 50, which is not a share of the window"},
+		{"wait remind text", `wait(question = "q", to = ["a"], timeout = "1h", remind = ["half"])`, `remind holds "half", which is not a share of the window`},
+		{"wait remind order", `wait(question = "q", to = ["a"], timeout = "1h", remind = [0.9, 0.5])`, "remind holds 0.5 after 0.9. List the shares from the smallest to the largest"},
+		{"wait remind twice", `wait(question = "q", to = ["a"], timeout = "1h", remind = [0.5, 0.5])`, "remind holds 0.5 twice"},
+		{"wait remind empty", `wait(question = "q", to = ["a"], timeout = "1h", remind = [])`, "remind is an empty list"},
+		{"wait remind not a list", `wait(question = "q", to = ["a"], timeout = "1h", remind = "half")`, "remind must be a list, not a text"},
+		{"wait remind without timeout", `wait(question = "q", to = ["a"], remind = [0.5])`, "wait: remind needs `timeout`, the window that the shares divide"},
+		{"wait remind without to", `wait(question = "q", timeout = "1h", remind = [0.5])`, "wait: remind needs `to`, the people who get the reminders"},
 		{"wait choices empty", `wait(question = "q", choices = [])`, "choices is an empty list"},
 		{"wait choices twice", `wait(question = "q", choices = ["y", "y"])`, `choices holds "y" twice`},
 		{"wait quorum zero", `wait(question = "q", to = ["a"], quorum = 0)`, "wait: quorum must be a whole number of 1 or more"},
@@ -110,6 +120,8 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    wait(question = \"q\", timeout = \"48h\")\n"+
 		"    wait(question = \"q\", to = [\"a\", \"b\"], quorum = 2, choices = [\"yes\", \"no\"], timeout = \"1h\")\n"+
 		"    wait(question = \"q\", choices = [\"yes\"])\n"+
+		"    wait(question = \"q\", to = [\"a\"], timeout = \"1h\", remind = [0.5, 0.9])\n"+
+		"    wait(question = \"q\", to = who, timeout = D, remind = (0.25,))\n"+
 		"    wait(question = \"q\", to = who, quorum = 3)\n"+
 		"    command(run = [\"x\"], host = \"h\")\n"+
 		"    command(run = [\"x\"], max_new_processes = 5, host = \"\")\n"+

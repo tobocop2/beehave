@@ -461,7 +461,7 @@ const itemFlag = "item"
 
 const statusHelp = "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
 	"A line also shows the item and the project of the run, the cost so far against the run cap, the step that runs now, the last gate result with its head, and the fix and review rounds used against their caps. " +
-	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, and the deadline with the time left. " +
+	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, the next reminder, and the deadline with the time left. " +
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"Add --" + jsonFlag + " to the list for one JSON array with the same data: one object for each run, with the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
 	"A field with no value is left out. The list reads recorded state only; it shows no schedule or per-day figure.\n\n" +
@@ -623,6 +623,16 @@ func itemTail(info flow.RunInfo) string {
 	return "\titem " + info.Item + " of " + info.Project
 }
 
+// peopleTail says who a wait asks, how many of the quorum answered and who.
+func peopleTail(asked *flow.Asked) string {
+	text := fmt.Sprintf("asks %s, %d of %d answered", strings.Join(asked.From, ", "), len(asked.Heard), asked.Quorum)
+	if len(asked.Heard) > 0 {
+		text += " (" + strings.Join(asked.Heard, ", ") + ")"
+	}
+
+	return text
+}
+
 // askedTail describes the people and the choices of a wait: who is asked, how many must answer, who did, and the texts an answer may be.
 // It is empty for a wait that names neither.
 func askedTail(asked *flow.Asked) string {
@@ -633,15 +643,15 @@ func askedTail(asked *flow.Asked) string {
 	var parts []string
 
 	if len(asked.From) > 0 {
-		parts = append(parts, fmt.Sprintf("asks %s, %d of %d answered", strings.Join(asked.From, ", "), len(asked.Heard), asked.Quorum))
-
-		if len(asked.Heard) > 0 {
-			parts[0] += " (" + strings.Join(asked.Heard, ", ") + ")"
-		}
+		parts = append(parts, peopleTail(asked))
 	}
 
 	if len(asked.Choices) > 0 {
 		parts = append(parts, "choices "+strings.Join(asked.Choices, ", "))
+	}
+
+	if !asked.NextRemind.IsZero() {
+		parts = append(parts, fmt.Sprintf("next reminder %s (%d of %d sent)", asked.NextRemind.UTC().Format(time.RFC3339), asked.Reminded, asked.Reminders))
 	}
 
 	return "\t" + oneLine(strings.Join(parts, "; "))

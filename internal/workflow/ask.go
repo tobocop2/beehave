@@ -3,7 +3,9 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -15,7 +17,59 @@ const (
 	fromKeyword    = "to"
 	quorumKeyword  = "quorum"
 	choicesKeyword = "choices"
+	remindKeyword  = "remind"
 )
+
+// Remind reads the reminders of a wait: a list of shares of the window, each above 0 and below 1, from the smallest to the largest, with no share twice.
+func Remind(v starlark.Value) ([]float64, error) {
+	seq, ok := v.(starlark.Indexable)
+	if !ok {
+		return nil, errors.New("remind must be a list of shares of the window, such as [0.5, 0.9]")
+	} else if seq.Len() == 0 {
+		return nil, errors.New("remind is an empty list. Leave the argument out, or give at least one share")
+	}
+
+	var shares []float64
+
+	for i := range seq.Len() {
+		share, err := nextShare(shares, seq.Index(i))
+		if err != nil {
+			return nil, err
+		}
+
+		shares = append(shares, share)
+	}
+
+	return shares, nil
+}
+
+// nextShare reads one share of a remind list that follows the shares before it.
+func nextShare(before []float64, v starlark.Value) (float64, error) {
+	share, isNumber := starlark.AsFloat(v)
+
+	switch {
+	case !isNumber || math.IsNaN(share) || share <= 0 || share >= 1:
+		return 0, fmt.Errorf("remind holds %s, which is not a share of the window. Use a number above 0 and below 1, such as 0.5", v)
+	case slices.Contains(before, share):
+		return 0, fmt.Errorf("remind holds %s twice", v)
+	case len(before) > 0 && share < before[len(before)-1]:
+		return 0, fmt.Errorf("remind holds %s after %s. List the shares from the smallest to the largest", v, strconv.FormatFloat(before[len(before)-1], 'g', -1, 64))
+	}
+
+	return share, nil
+}
+
+// CheckRemind refuses reminders that have no window to divide or no people to tell. The caller asks for a wait that sets remind. Each flag is true when the call sets that keyword.
+func CheckRemind(hasDeadline, hasPeople bool) error {
+	switch {
+	case !hasDeadline:
+		return errors.New("remind needs `timeout`, the window that the shares divide. Add timeout = \"48h\" to the call, or leave remind out")
+	case !hasPeople:
+		return errors.New("remind needs `to`, the people who get the reminders. Add to = [...] to the call, or leave remind out")
+	}
+
+	return nil
+}
 
 // Names reads a list of names that are each text, with no empty name, no name with spaces around it and no name twice.
 // The keyword is one of `to` and `choices`, and it names the list in the error.
@@ -92,8 +146,14 @@ func waitParams() []Param {
 	return []Param{
 		opt("question", KindText), ruled("timeout", KindText, deadlineRule("timeout")),
 		ruled(fromKeyword, KindList, fromRule), ruled(quorumKeyword, KindInt, quorumRule), ruled(choicesKeyword, KindList, choicesRule),
-		opt(nameKeyword, KindText),
+		ruled(remindKeyword, KindList, remindRule), opt(nameKeyword, KindText),
 	}
+}
+
+func remindRule(v starlark.Value) error {
+	_, err := Remind(v)
+
+	return err
 }
 
 func fromRule(v starlark.Value) error {
@@ -120,6 +180,8 @@ func (g *graph) asking(call *syntax.CallExpr, params []Param) {
 		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
 	}
 
+	g.reminding(call, index)
+
 	arg := argument(call, quorumKeyword, index(quorumKeyword))
 	quorum, ok := literalQuorum(arg)
 
@@ -133,6 +195,21 @@ func (g *graph) asking(call *syntax.CallExpr, params []Param) {
 
 	if err := CheckQuorum(quorum, from); err != nil {
 		g.report(placeOf(syntax.Start(arg)), waitName+": "+err.Error()+".")
+	}
+}
+
+// reminding checks that a wait with reminders sets a deadline and names people. The check reads only whether the keywords are there.
+func (g *graph) reminding(call *syntax.CallExpr, index func(string) int) {
+	remind := argument(call, remindKeyword, index(remindKeyword))
+	if remind == nil {
+		return
+	}
+
+	hasDeadline := argument(call, "timeout", index("timeout")) != nil
+	hasPeople := argument(call, fromKeyword, index(fromKeyword)) != nil
+
+	if err := CheckRemind(hasDeadline, hasPeople); err != nil {
+		g.report(placeOf(syntax.Start(remind)), waitName+": "+err.Error()+".")
 	}
 }
 

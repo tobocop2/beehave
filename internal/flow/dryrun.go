@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -37,6 +38,27 @@ const (
 
 // dryNow is the reading of now() in every dry run, so two dry runs of one workflow print the same text.
 func dryNow() time.Time { return time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC) }
+
+// dryReading returns the clock of one dry run. Its first reading is dryNow, and each later one adds the real time that passed since the first,
+// so now() starts at a fixed moment and the deadline of a wait still passes.
+func dryReading() func() time.Time {
+	var (
+		once  sync.Once
+		began time.Time
+	)
+
+	return func() time.Time {
+		first := false
+
+		once.Do(func() { began, first = time.Now(), true })
+
+		if first {
+			return dryNow()
+		}
+
+		return dryNow().Add(time.Since(began))
+	}
+}
 
 // DryRun takes one item through a workflow file over fakes, in a state folder that it deletes at the end, and prints each step in order with its result.
 // The engine gets only the fakes of this file, so no forge, agent, tracker or host is reachable. A step that needs a collaborator the fakes lack fails.
@@ -139,7 +161,7 @@ func dryDeps(tree, head, item string, skills []string) Deps {
 		Agents: dryAgents{skills: skills}, Gate: dryGate{head: head}, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Watch: dryWatch{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Preflight: dryPreflight{},
-		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryNow},
+		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryReading()},
 	}
 }
 
