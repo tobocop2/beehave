@@ -22,6 +22,7 @@ const (
 	fix       = "fix"
 	plan      = "plan"
 	review    = "review"
+	integrate = "integrate"
 )
 
 // everyLane lists the prompts of the agents that change or judge the product.
@@ -215,6 +216,30 @@ func briefRules() []rule {
 	}
 }
 
+func mergeRules() []rule {
+	return []rule{
+		{"merge_rules", "Open a draft pull request at the first checkpoint", workLanes()},
+		{"merge_rules", "Push every later commit to it at once", workLanes()},
+		{"merge_rules", "goes into a native stack", workLanes()},
+		{"merge_rules", "Link the branches from the bottom to the top with `gh stack link`", workLanes()},
+		{"merge_rules", "Never use the merge queue of GitHub", []string{implement, fix, review, integrate}},
+		{"merge_rules", "Known base reds are in one file", workAndReview()},
+		{"merge_rules", "A finding that survives the review is filed before the merge", []string{review}},
+		{"integrate_rules", "Add the integration row", []string{integrate}},
+		{"integrate_rules", "Recount the heading and the title from the rows", []string{integrate}},
+		{"integrate_rules", "Add a closing row for each issue that the merge resolves", []string{integrate}},
+		{"integrate_rules", "Close each resolved issue with the evidence", []string{integrate}},
+		{"merge_rules", "a commit that stays local is lost with the lane", workLanes()},
+		{"merge_rules", "check that all of them show the same non-empty id", workLanes()},
+		{"merge_rules", "the pull request body says `Addresses #N`", workLanes()},
+		{"merge_rules", "When the base is the default branch, it says `Closes #N`", workLanes()},
+		{"integrate_rules", "Never close an issue with no such comment", []string{integrate}},
+		{"integrate_rules", "Closing keywords belong to the integration pull request only", []string{integrate}},
+		{"integrate_rules", "A finding that survives is filed before the merge", []string{integrate}},
+		{"integrate_rules", "fails when the heading or the title says another number than the rows, or when the row count did not change", []string{integrate}},
+	}
+}
+
 // squash drops the bold marks and joins the words of a text with one space, so that a phrase matches across the line breaks and the bold spans of a prompt.
 func squash(text string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(text, "**", "")), " ")
@@ -226,14 +251,14 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	texts := map[string]string{}
 	folder := os.DirFS("prompts")
 
-	for _, name := range everyLane() {
+	for _, name := range append(everyLane(), integrate) {
 		raw, err := fs.ReadFile(folder, name+".md")
 		require.NoError(t, err)
 
 		texts[name] = squash(string(raw))
 	}
 
-	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules()}
+	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules()}
 
 	held, counted := 0, 0
 
@@ -253,6 +278,6 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 125, counted)
+	assert.Equal(t, 144, counted)
 	assert.Positive(t, held)
 }

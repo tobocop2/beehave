@@ -155,6 +155,78 @@ def take_over(item, pr):
 
     command(name = "take-claim", run = base + ["--take"], stop_on_rc = [2])
 
+def _count(line, name):
+    """Returns the number after `name=` in a line of the recount tool. A line with no such figure fails the step: an unknown count never turns the assert off."""
+    for word in line.split():
+        if word.startswith(name + "=") and word[len(name) + 1:].isdigit():
+            return int(word[len(name) + 1:])
+
+    fail("REFUSE: the line of recount-before has no `%s=<n>` figure, so the step cannot assert that the count moved. The line is %r" % (name, line))
+
+def record_merge(item, merged):
+    """Records the merge of the pull request `merged` in the integration pull request: its row, a closing row for each issue it resolves, the recount of the heading and the title, and the close of each resolved issue with the evidence.
+    INTEGRATION_PR names the integration pull request. "0" or "none" means the round tracks no rows, and the step does nothing. CLOSES lists the issues that the merge resolves, split by spaces.
+    The recount tool reads the pull request before and after the agent. It fails the step when the heading or the title says another number than the rows, when the row count did not change, and, when CLOSES is not empty, when the issue count did not change.
+    The method never uses the merge queue of GitHub: the merge step above runs one pinned merge of the head."""
+    integration = env("INTEGRATION_PR", default = "0")
+    if integration in ["0", "none", ""]:
+        return
+
+    closes = env("CLOSES", default = "")
+    before = command(name = "recount-before", run = ["remedy", "recount", "--pr", integration], stop_on_rc = [2])
+
+    # A before-line with no figure fails here, before the agent runs: the assert after it never runs without a known count.
+    was = ["--was-rows", str(_count(before.stdout, "rows"))]
+    if closes != "":
+        was += ["--was-issues", str(_count(before.stdout, "issues"))]
+
+    agent(
+        name = "integrate",
+        prompt = "prompts/integrate.md",
+        model = "sonnet",
+        edits = False,
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        inputs = {"item": item, "pr": merged, "integration": integration, "closes": closes if closes != "" else "none"},
+    )
+
+    command(name = "recount-after", run = ["remedy", "recount", "--pr", integration] + was, stop_on_rc = [1, 2])
+
+def next_round(item):
+    """Cuts the next round after the last pull request of the old round merged. NEXT_BASE names the new round branch. BASE is the old one, and INTEGRATION_PR is the integration pull request.
+    The cut tool refuses while the integration pull request is not merged (exit code 2), so no round starts before the one before it ended."""
+    command(
+        name = "next-round",
+        run = ["remedy", "cut", "--old", env("BASE"), "--new", env("NEXT_BASE"), "--pr", env("INTEGRATION_PR"), "--trunk", env("TRUNK", default = "main")],
+        stop_on_rc = [2],
+    )
+
+def record_base_reds(item):
+    """Writes the one record of the known base reds: the reds that BASE_REDS lists (split by spaces), the time and the tip of the base. Each new write replaces the file, so the file holds one record.
+    BASE_REDS_FILE names the file (base-reds.md by default). The prompts tell each lane to read this file and not to copy the list."""
+    tip = command(name = "base-tip", run = ["git", "rev-parse", "origin/" + env("BASE")], stop_on_rc = [2]).stdout.strip()
+    reds = env("BASE_REDS").split()
+    text = "# Known base reds\n\nMeasured at %s on the tip %s of %s.\n\n%s\n" % (now(), tip, env("BASE"), "\n".join(["- " + red for red in reds]))
+
+    write(name = "base-reds", run = ["tee", env("BASE_REDS_FILE", default = "base-reds.md")], stdin = text)
+
+def round_step(item):
+    """Runs the round step that the environment names and returns True, or returns False when no round step is named.
+    ROUND_STEP names the step, so a run with no round step reads one variable: "merge" runs record_merge for the pull request in MERGED_PR, "cut" runs next_round, and "reds" runs record_base_reds."""
+    step = env("ROUND_STEP", default = "")
+    if step == "":
+        return False
+
+    if step == "merge":
+        record_merge(item, env("MERGED_PR"))
+    elif step == "cut":
+        next_round(item)
+    elif step == "reds":
+        record_base_reds(item)
+    else:
+        fail("REFUSE: ROUND_STEP is %r. The steps are merge, cut or reds" % step)
+
+    return True
+
 def main(item):
     # QUEUE_SWEEP="true" runs one pass over the queue and starts no host: each run it starts is the pipeline of one item.
     if env("QUEUE_SWEEP", default = "") == "true":
@@ -165,6 +237,10 @@ def main(item):
     pr = env("TAKE_PR", default = "")
     if pr != "":
         take_over(item, pr)
+        return
+
+    # ROUND_STEP names a step of the round: the record of a merge, the cut of the next round, or the record of the base reds.
+    if round_step(item):
         return
 
     # HOST_UP="true" launches the build host when it is absent. Without it the run starts no host, so a run that needs none costs nothing.
