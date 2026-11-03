@@ -599,6 +599,30 @@ func TestAwaitClaim_AResumeThatTookAClaimForTheRunKeepsThePhaseWaitingPastTheGra
 	require.NoError(t, claim.Err())
 }
 
+// The wait reads the age of the saved token on the clock of the engine, so the test sets the clock and the file time and calls the check once.
+// No goroutine, sleep or poll takes part, so host load cannot change which branch runs.
+func TestWaitOrStop_ATokenYoungerThanTheClaimLeaseKeepsThePhaseWaitingOnceTheGraceTimeIsOver(t *testing.T) {
+	t.Parallel()
+
+	engine := idleEngine(t, newHarness(t))
+	clk := &leaseClock{now: time.Unix(1_000_000, 0)}
+	clk.install(&engine.deps.Clock)
+
+	require.NoError(t, saveOwner(engine.dir, "item-12-r9", "owner-12"))
+
+	saved := clk.Now().Add(-model.ClaimLease / 2)
+	require.NoError(t, os.Chtimes(ownerPath(engine.dir, "item-12-r9"), saved, saved))
+
+	in := PhaseInput{Run: "item-12-r9", Item: testItem}
+	graceEnd := clk.Now().Add(-time.Second)
+
+	require.NoError(t, engine.waitOrStop(in, "no trust yet", true, graceEnd), "the token is half a lease old, so the wait goes on")
+
+	clk.advance(model.ClaimLease)
+
+	require.ErrorIs(t, engine.waitOrStop(in, "no trust yet", true, graceEnd), errClaimLost, "the token is now older than the lease")
+}
+
 func TestAwaitClaim_ATokenThatIsNotYoungerThanTheClaimLeaseDoesNotKeepThePhaseWaiting(t *testing.T) {
 	t.Parallel()
 
