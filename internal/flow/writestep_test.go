@@ -145,9 +145,7 @@ func TestWrite_ACrashBetweenTheWriteAndItsRecordDoesNotRunTheWriteAgainWhenTheRe
 	_, err := engine.RunFile(testItem, testProject, file)
 
 	require.Error(t, err)
-	require.NoError(t, h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, strings.Count(strings.Join(h.commands.ran(), ","), "push"), "the write ran once")
@@ -187,9 +185,7 @@ func TestWrite_ACrashBetweenTheWriteAndItsRecordRunsTheWriteAgainWithTheSameKeyW
 	_, err := engine.RunFile(testItem, testProject, file)
 
 	require.Error(t, err)
-	require.NoError(t, h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 
 	require.NoError(t, err)
 	require.Len(t, h.commands.requests, 2)
@@ -298,9 +294,7 @@ func TestWrite_ACrashDuringTheUndosResumesThemAndDoesNotRepeatTheFinishedOnes(t 
 	_, err := engine.RunFile(testItem, testProject, file)
 
 	require.Error(t, err)
-	require.NoError(t, h.client(t, testVersion).Resume(testItem))
-
-	_, err = engine.RunFile(testItem, testProject, file)
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 
 	require.ErrorContains(t, err, "later step failed")
 

@@ -122,14 +122,7 @@ func TestWait_ARecordedWaitWithoutTimedOutReplays(t *testing.T) {
 	h.life.failing["release"] = false
 	h.life.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-
-	// Resume reopens the run under its own id and the queue starts it at once. The test waits for that run by its id: a RunFile call after a
-	// resumed run has ended starts a second attempt, which waits for an owner answer that no one gives.
-	handle, err := dbos.RetrieveWorkflow[ItemResult](engine.ctx, testRun)
-	require.NoError(t, err)
-
-	_, err = handle.GetResult(dbos.WithHandleTimeout(eventTimeout), dbos.WithHandlePollingInterval(storePoll))
+	_, err := resumeAndJoin(t, engine, client)
 
 	require.NoError(t, err)
 }

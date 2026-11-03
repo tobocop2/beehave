@@ -179,9 +179,7 @@ func TestExclusive_ACancelWhileTheGateRunsThenAResumeEndsTheItemWithOneMerge(t *
 	}
 
 	assert.Empty(t, h.merge.asked, "no merge ran before the gate ended")
-	require.NoError(t, client.Resume(testItem))
-
-	result, err := engine.RunFile(testItem, testProject, file)
+	result, err := resumeAndJoin(t, engine, client)
 
 	require.NoError(t, err)
 	assert.Equal(t, "merged", result.Merge)

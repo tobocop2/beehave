@@ -37,9 +37,7 @@ func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *te
 	harness.agents.err = nil
 	harness.agents.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-
-	result, err := engine.Run(testItem, testProject)
+	result, err := resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 	assert.Equal(t, ItemResult{Item: testItem}, result)
 
@@ -206,9 +204,7 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	harness.agents.result = nil
 	harness.agents.mu.Unlock()
 
-	require.NoError(t, client.Resume(testItem))
-
-	_, err = engine.Run(testItem, testProject)
+	_, err = resumeAndJoin(t, engine, client)
 	require.NoError(t, err)
 
 	var prompts []string

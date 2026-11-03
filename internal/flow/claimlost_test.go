@@ -294,19 +294,18 @@ func failedAtTheAgent(t *testing.T) (*harness, *Engine, *leaseClock, int) {
 
 // resumeTheRun puts the failed run back, as obee resume does. The claim step of the run then replays with the fresh claim that the resume took,
 // so the run does not know how old that lease is.
-func resumeTheRun(t *testing.T, harness *harness) {
+// It returns the result of that same run, joined by its id.
+func resumeTheRun(t *testing.T, harness *harness, engine *Engine) (ItemResult, error) {
 	t.Helper()
 
-	require.NoError(t, harness.client(t, testVersion).Resume(testItem))
+	return resumeAndJoin(t, engine, harness.client(t, testVersion))
 }
 
 func TestFirstTrust_ARunWithAReplayedClaimNeedsOneGoodRenewalBeforeItsWork(t *testing.T) {
 	t.Parallel()
 
 	harness, engine, _, _ := failedAtTheAgent(t)
-	resumeTheRun(t, harness)
-
-	_, err := engine.Run(testItem, testProject)
+	_, err := resumeTheRun(t, harness, engine)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{testProject + "/" + testOwner + testItem + "#2"}, harness.beats.seen(), "one renewal of the fresh claim ran before the work continued")
@@ -321,9 +320,7 @@ func TestFirstTrust_ARenewalThatFailsOnceIsTriedAgainBeforeTheWorkStarts(t *test
 	// The renewal fails once: the hook runs after the fake read that it fails, and it mends the tracker for the next renewal.
 	harness.beats.fail(owner, "", errFake)
 	harness.beats.hook(func() { harness.beats.fail("", "", nil) })
-	resumeTheRun(t, harness)
-
-	result, err := engine.Run(testItem, testProject)
+	result, err := resumeTheRun(t, harness, engine)
 	require.NoError(t, err, "a tracker call that was busy once does not end the resumed run")
 	assert.Equal(t, ItemResult{Item: testItem}, result)
 	assert.Equal(t, []string{testProject + "/" + owner, testProject + "/" + owner}, harness.beats.seen(), "the first renewal failed and the second worked")
@@ -335,9 +332,7 @@ func TestFirstTrust_ARunThatIsCanceledWhileItTriesTheRenewalAgainTriesNoMore(t *
 	harness, engine, _, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "", errFake)
 	harness.beats.hook(func() { engine.cancels.stop(runID(testItem, 1)) })
-	resumeTheRun(t, harness)
-
-	_, err := engine.Run(testItem, testProject)
+	_, err := resumeTheRun(t, harness, engine)
 	require.Error(t, err)
 	assert.Len(t, harness.beats.seen(), 1, "the cancel ended the wait before the second try")
 	assert.Len(t, harness.agents.seen(), agents)
@@ -349,9 +344,7 @@ func TestFirstTrust_ARenewalThatFailsUntilTheLimitKeepsTheWorkFromStarting(t *te
 	harness, engine, clk, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "", errFake)
 	harness.beats.hook(func() { clk.advance(2 * time.Minute) })
-	resumeTheRun(t, harness)
-
-	_, err := engine.Run(testItem, testProject)
+	_, err := resumeTheRun(t, harness, engine)
 	require.ErrorContains(t, err, "before the first agent starts")
 	require.ErrorContains(t, err, errFake.Error())
 	assert.Greater(t, len(harness.beats.seen()), 1, "the renewal was tried again until the limit passed")
@@ -364,9 +357,7 @@ func TestFirstTrust_ATrackerThatSaysTheClaimIsGoneEndsTheRunBeforeItsWork(t *tes
 
 	harness, engine, _, agents := failedAtTheAgent(t)
 	harness.beats.fail(testOwner+testItem+"#2", "heartbeat for session-x failed: it holds no claim row", nil)
-	resumeTheRun(t, harness)
-
-	_, err := engine.Run(testItem, testProject)
+	_, err := resumeTheRun(t, harness, engine)
 	require.ErrorContains(t, err, errClaimLost.Error())
 	require.ErrorContains(t, err, "it holds no claim row")
 	assert.Len(t, harness.agents.seen(), agents)
@@ -474,9 +465,14 @@ func TestRunAgent_APhaseReopenedByResumeWaitsForTheFirstTrustOfItsRunBeforeItSta
 	t.Cleanup(unblock)
 	harness.beats.hook(func() { <-release })
 
-	require.NoError(t, harness.client(t, testVersion).Resume(testItem))
+	handle := resumeRun(t, engine, harness.client(t, testVersion))
 
-	done := runInBackground(engine, testItem)
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := joinRun(handle)
+		done <- runOutcome{result: result, err: err}
+	}()
 
 	// A worker took the reopened phase from the queue: its status is pending.
 	eventually(t, func() bool { return phaseCount(t, engine, dbos.WorkflowStatusPending) == 1 })
