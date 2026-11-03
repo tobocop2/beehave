@@ -1,0 +1,51 @@
+# The obee process dies while the run waits for an answer about red tests. The next obee run continues the same run: the update and the three gate
+# runs do not repeat, and the question is the same. The answer retry runs the gate again, the gate passes, and the pull request opens once.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+maintinit
+maintfakes
+env HOME=$WORK/home
+env GIT_BASE=file://$WORK/remotes
+env UPKEEP_WEEK=2026-W44
+# A failed script leaves its run in the wait for an answer. The short deadline ends that run, so no process outlives the script.
+env RED_TIMEOUT=90s
+
+exec obeereal item add api bump-api-2026-W44 --title 'Bump dependencies in api (2026-W44)' --body-file body.json
+! exec obeereal run bump-api-2026-W44 api --workflow home/.upkeep/bump.star &
+waitstatus 'The tests of api fail after the bump'
+grep -count=2 '^fix$' calls.log
+kill -KILL
+wait
+
+exec obeereal status
+stdout 'item-bump-api-2026-W44-r1\trunning\tpaused: .*The tests of api fail'
+
+exec obeereal run bump-api-2026-W44 api --workflow home/.upkeep/bump.star &
+waitstatus 'The tests of api fail after the bump'
+exec obeereal answer bump-api-2026-W44 retry
+wait
+stdout 'item bump-api-2026-W44 finished'
+
+# Across both processes: one update, two fix rounds (both before the question), four gate runs (the fourth passes), one pull request.
+grep -count=1 '^update$' calls.log
+grep -count=2 '^fix$' calls.log
+grep -count=4 '^go test' tools.log
+grep -count=1 'gh pr create --draft --head upkeep/api-2026-W44' gh.log
+grep '^2026-W44\tapi\topened\thttps://github.example/acme/pull/1\tdraft pull request\t' home/.upkeep/runs.tsv
+grep '^last_pr=https://github.example/acme/pull/1$' home/.upkeep/state/api.env
+exec git -C remotes/acme/api show --stat upkeep/api-2026-W44
+stdout 'go.sum'
+exec obeereal status
+stdout 'item-bump-api-2026-W44-r1\tdone'
+
+-- body.json --
+{"repo":"api","week":"2026-W44","base":"main","fingerprint":"fp-1","table":"go\texample.com/lib\tv1.2.0\tv1.3.0"}
+-- gate-results --
+red
+red
+red
+green
+-- fixtures/go-api.json --
+{"Path":"acme/api","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0","Update":{"Path":"example.com/lib","Version":"v1.3.0"}}

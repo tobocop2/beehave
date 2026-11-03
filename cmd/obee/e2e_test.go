@@ -491,7 +491,7 @@ func TestScripts(t *testing.T) {
 			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus,
 			"example": cmdExample, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"swarmfakes": cmdSwarmFakes, "batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude, "deskfakes": cmdDeskFakes, "deskinit": cmdDeskInit,
-			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit,
+			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit, "maintfakes": cmdMaintFakes, "maintinit": cmdMaintInit,
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
