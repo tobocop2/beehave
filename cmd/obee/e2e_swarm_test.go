@@ -264,6 +264,10 @@ func (f swarmForgeAt) MergePR(ctx context.Context, pr int, sha string) error {
 	swarmLock.Lock()
 	defer swarmLock.Unlock()
 
+	if f.failsMerge(pr) {
+		return errFake
+	}
+
 	base, err := f.git(ctx, "rev-parse", "refs/heads/main")
 	if err != nil {
 		return err
@@ -300,6 +304,30 @@ func (f swarmForgeAt) MergePR(ctx context.Context, pr int, sha string) error {
 	}
 
 	return f.pauseAfterMerge()
+}
+
+// failsMerge is the stand-in of a landing that the forge defers. If the file fail-merge exists in the forge folder, a merge fails while a task runs,
+// and adds the line "MergeFail <pr>" to calls.log. The cause goes away by itself when the tasks end, as a transient cause does (checks that still run).
+func (f swarmForgeAt) failsMerge(pr int) bool {
+	if _, err := os.Stat(f.path("fail-merge")); err != nil {
+		return false
+	}
+
+	// A task of the fake claude holds a marker in the folder running while it runs.
+	running, err := os.ReadDir(filepath.Join(f.dir, "..", "running"))
+	if err != nil || len(running) == 0 {
+		return false
+	}
+
+	log, err := os.OpenFile(f.path("calls.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, e2eFileMode)
+	if err != nil {
+		return false
+	}
+
+	_, err = fmt.Fprintf(log, "MergeFail %d\n", pr)
+	_ = log.Close()
+
+	return err == nil
 }
 
 // pauseAfterMerge is the barrier of a landing. If the file pause-after-merge exists in the forge folder, the first merge waits, after it is recorded,

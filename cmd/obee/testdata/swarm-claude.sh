@@ -63,22 +63,27 @@ case $first in
       echo $# >> "$work/concurrency.log"
     fi
     # A body of the form "<mode> <file>" makes a task wait for an event before it ends. The file is the file that the task writes.
-    #   late          waits until a resolve call is in calls.log, and then adds the line "late-end <id>" to calls.log.
+    #   late          adds the line "late-start <id>" to calls.log, waits until a resolve call is in calls.log, and then adds the line "late-end <id>".
+    #   low           does not wait. It adds the line "low-start <id> merges=<n>" to calls.log, with n the number of pull requests that the forge merged so far.
     #   after-start   waits until three tasks started.
+    #   after-four    waits until four tasks started.
     #   in-landing    waits until the forge merged one pull request. The forge then waits for the end of this run (see pauseAfterMerge).
     # The deadlines are a hang guard only. A task that reaches one writes a line to the file harness-fault and goes on, and the script fails on that file
     # with its own message, so a hang is never counted as a failed claim. A script decides by the order of the lines in calls.log, never by time.
     mode=
     file=${body:-$id.txt}
     case $body in
-      'late '* | 'after-start '* | 'in-landing '*)
+      'late '* | 'after-start '* | 'after-four '* | 'in-landing '* | 'low '*)
         mode=${body%% *}
         file=${body#* }
         ;;
     esac
     n=0
     case $mode in
-      late) until grep -q '^resolve ' "$work/calls.log" || [ $n -ge 600 ]; do sleep 0.2; n=$((n + 1)); done ;;
+      low) echo "low-start $id merges=$(cat "$work/forge/calls.log" 2> /dev/null | grep -c '^MergePR ')" >> "$work/calls.log" ;;
+      late) echo "late-start $id" >> "$work/calls.log"
+        until grep -q '^resolve ' "$work/calls.log" || [ $n -ge 600 ]; do sleep 0.2; n=$((n + 1)); done ;;
+      after-four) until [ "$(grep -c '^task ' "$work/calls.log")" -ge 4 ] || [ $n -ge 300 ]; do sleep 0.2; n=$((n + 1)); done ;;
       after-start) until [ "$(grep -c '^task ' "$work/calls.log")" -ge 3 ] || [ $n -ge 300 ]; do sleep 0.2; n=$((n + 1)); done ;;
       in-landing) until grep -q '^MergePR ' "$work/forge/calls.log" 2> /dev/null || [ $n -ge 300 ]; do sleep 0.2; n=$((n + 1)); done ;;
     esac

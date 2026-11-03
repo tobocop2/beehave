@@ -70,7 +70,7 @@ def tip(name, branch):
     return found.stdout.split()[0] if found.stdout.strip() != "" else ""
 
 def new_swarm():
-    return struct(prio = {}, kind = {}, origin = {}, tries = {}, waiting = {}, live = [], held = [], landed = [], batches = [], stop = {"why": ""})
+    return struct(prio = {}, kind = {}, origin = {}, tries = {}, waiting = {}, live = [], held = [], landed = [], batches = [], deferred = [], stop = {"why": ""})
 
 def halt(swarm, why):
     swarm.stop["why"] = why
@@ -104,15 +104,33 @@ def ready_ids(swarm, rows):
     by_key = {swarm.prio[r.item] + " " + r.item: r.item for r in rows if r.state == "ready" and r.item in swarm.kind and r.item not in open_ids}
     return [by_key[key] for key in sorted(by_key.keys())]
 
-def start_ready(swarm, p):
+def read_ready(swarm, name):
+    """The free slots and the ready items. Stale is True when a live run has ended but is not gathered yet."""
+    queued = queue(name = name, hold = HOLD)
+    running = [r.item for r in queued.rows if r.state == "running"]
+    return struct(free = queued.free, ready = ready_ids(swarm, queued.rows), stale = any([run.item not in running for run in swarm.live]))
+
+def outranked(swarm, ready):
+    """True when a pull request waits to land and its priority is higher than that of the first ready item.
+    A pull request that the last landing deferred does not count: the next landing, early or not, tries it again."""
+    tries = [swarm.prio[i] for i in swarm.waiting.keys() if i not in swarm.deferred]
+    return len(tries) > 0 and len(ready) > 0 and min(tries) < swarm.prio[ready[0]]
+
+def start_ready(item, swarm, p):
     """Starts the ready items by priority, no more than the free slots. Returns True when nothing is ready, running or waiting."""
-    queued = queue(name = "q-%d" % p, hold = HOLD)
-    ready = ready_ids(swarm, queued.rows)
+    queued = read_ready(swarm, "q-%d" % p)
     # A run that ended but is not gathered yet still counts as live here, and a slot of it looks free. Its landing can file a fix item of priority P0.
     # So nothing starts until the pass has gathered it and landed it: the pass goes on to wait_for_one, which returns at once.
-    running = [r.item for r in queued.rows if r.state == "running"]
-    if any([run.item not in running for run in swarm.live]):
+    if queued.stale:
         return False
+    # A waiting pull request that outranks every ready item lands now, and does not wait for a full batch. Its fix item, if it conflicts, then starts first.
+    if outranked(swarm, queued.ready):
+        if land_pass(item, swarm):
+            return False
+        queued = read_ready(swarm, "q-%d-landed" % p)
+        if queued.stale:
+            return False
+    ready = queued.ready
     for kind in [TASK, RESOLVE]:
         chosen = [i for i in ready[:queued.free] if swarm.kind[i] == kind]
         if len(chosen) > 0:
@@ -194,6 +212,8 @@ def land_pass(item, swarm):
     number = len(swarm.batches) + 1
     out = land("%d" % number, swarm)
     swarm.batches.append(out)
+    swarm.deferred.clear()
+    swarm.deferred.extend([d.item for d in out.deferred])
     for merged_id in out.merged:
         item_comment(name = "merged-%d-%s" % (number, merged_id), id = merged_id, key = "merged", text = "Landed on %s in batch %d." % (env("BASE"), number))
         item_status(name = "close-%d-%s" % (number, merged_id), id = merged_id, status = "closed")
@@ -214,7 +234,7 @@ def run_pass(item, swarm, p, started):
     if swarm.stop["why"] != "":
         if len(swarm.live) == 0 and len(swarm.waiting) == 0:
             return False
-    elif start_ready(swarm, p):
+    elif start_ready(item, swarm, p):
         return False
     wait_for_one(swarm, p)
     if len(swarm.waiting) >= int(env("BATCH", default = "8")) or (len(swarm.live) == 0 and len(swarm.waiting) > 0):
