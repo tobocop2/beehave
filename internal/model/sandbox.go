@@ -68,8 +68,9 @@ func CredentialPatterns() []string {
 	}
 }
 
-// ClosedNames lists the names that the sandbox keeps closed to writes at any depth of the work folder: the git folder, the settings folder
-// of the agent CLI and the two usual hook folders. A write there runs later, outside the sandbox, as the owner.
+// ClosedNames lists the names that the sandbox of an agent keeps closed to writes at the top of the work folder: the git folder, the settings folder
+// of the agent CLI and the two usual hook folders. A write there runs later, outside the sandbox, as the owner. An allow_write path with one of these
+// names at any depth is refused.
 func ClosedNames() []string {
 	return []string{".git", ".claude", ".husky", ".githooks"}
 }

@@ -37,12 +37,28 @@ func (e *ExitError) Error() string {
 	return fmt.Sprintf("exit code %d", e.Code)
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
+// GateRefusal returns the reason why the gate of a project does not run on this machine, or "". program is true for a gate that names its own program.
+// A nil GateRefusal refuses every gate of a project that has its sandbox on and would run here, as if no enforcer could run.
+type GateRefusal func(project config.Project, program bool) string
+
+func (f GateRefusal) reason(project config.Project, program bool) string {
+	if f != nil {
+		return f(project, program)
+	}
+
+	if config.GateRefused(project.Project, program) {
+		return config.GateSandboxRefusal
+	}
+
+	return ""
+}
+
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters), newCheckWorkflowCommand(ctx, env), newCheckCommandCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters, refusal), newCheckWorkflowCommand(ctx, env, refusal), newCheckCommandCommand())
 
 	return check
 }
@@ -96,12 +112,12 @@ func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]stri
 	return nil
 }
 
-func newCheckWorkflowCommand(ctx context.Context, env map[string]string) *cobra.Command {
+func newCheckWorkflowCommand(ctx context.Context, env map[string]string, refusal GateRefusal) *cobra.Command {
 	var dryRun bool
 
 	var item string
 
-	var named projectCheck
+	named := projectCheck{refusal: refusal}
 
 	command := &cobra.Command{
 		Use:   "workflow [file]",
@@ -128,6 +144,7 @@ func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
 type projectCheck struct {
 	project string
 	folder  string
+	refusal GateRefusal
 }
 
 // find loads the config folder and returns the named project. An unreadable config or an unknown name prints its problems and exits with code 2.
@@ -193,8 +210,8 @@ func (p projectCheck) refusedCalls(found config.Project, file string) []workflow
 		calls = workflow.CheckNoRepository(file, p.project)
 	}
 
-	if config.GateRefused(found.Project, true) {
-		calls = append(calls, workflow.CheckSandboxedGates(file, p.project, config.GateSandboxRefusal, config.GateRefused(found.Project, false))...)
+	if reason := p.refusal.reason(found, true); reason != "" {
+		calls = append(calls, workflow.CheckSandboxedGates(file, p.project, reason, p.refusal.reason(found, false) != "")...)
 	}
 
 	return calls
@@ -228,7 +245,7 @@ func runCheckWorkflow(stderr io.Writer, file string) error {
 	return &ExitError{Code: exitWorkflowProblems}
 }
 
-func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error) *cobra.Command {
+func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal) *cobra.Command {
 	var flag string
 
 	command := &cobra.Command{
@@ -237,7 +254,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 		Long:  "Check runners.star and projects/*.star. Exit 0 when the folder is valid, 2 when it has problems.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, flag)
+			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, refusal, flag)
 		},
 	}
 	command.Flags().StringVar(&flag, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
@@ -245,7 +262,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 	return command
 }
 
-func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string, adapters func(context.Context, model.Project) error, flag string) error {
+func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal, flag string) error {
 	dir, err := config.FolderPath(env, flag)
 	if err != nil {
 		return err
@@ -257,7 +274,7 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 	}
 
 	if len(problems) == 0 {
-		printHostNotes(stderr, cfg)
+		printHostNotes(stderr, cfg, refusal)
 
 		return nil
 	}
@@ -275,8 +292,8 @@ func printLines(stderr io.Writer, problems config.Problems) {
 }
 
 // printHostNotes prints a note for each project that has the sandbox on. A project on a host runs its gate there with no sandbox.
-// A project on this machine cannot run its gate, because no sandbox can enforce it yet.
-func printHostNotes(stderr io.Writer, cfg config.Config) {
+// A project on this machine cannot run its gate when no sandbox enforcer can run here.
+func printHostNotes(stderr io.Writer, cfg config.Config, refusal GateRefusal) {
 	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
 		project := cfg.Projects[name]
 		if !project.SandboxByDefault() {
@@ -285,7 +302,9 @@ func printHostNotes(stderr io.Writer, cfg config.Config) {
 
 		// A failed write to stderr has no recovery.
 		if project.BuildHost == config.LocalHost {
-			_, _ = fmt.Fprintf(stderr, "note: project %s has the sandbox on, but %s\n", name, config.GateSandboxRefusal)
+			if reason := refusal.reason(project, false); reason != "" {
+				_, _ = fmt.Fprintf(stderr, "note: project %s has the sandbox on, but %s\n", name, reason)
+			}
 
 			continue
 		}

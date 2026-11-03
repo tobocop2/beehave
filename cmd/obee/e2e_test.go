@@ -22,6 +22,7 @@ import (
 	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/obee/internal/sandbox/landlock"
 	"github.com/tobocop2/obee/internal/workflow/workflowtest"
 )
 
@@ -39,6 +40,11 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	// The test binary also acts as the Landlock helper, as obee does in main, for the test that runs a gate under the real enforcer.
+	if code, helper := landlock.RunHelper(os.Args, os.Stderr); helper {
+		os.Exit(code)
+	}
+
 	testscript.Main(m, map[string]func(){"obee": e2eObee, "obeereal": e2eReal})
 }
 
