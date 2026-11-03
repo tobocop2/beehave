@@ -1,0 +1,27 @@
+# A pull request that waits to land and outranks every ready task lands before the swarm starts a task of lower priority, even if the batch is not full and another run is live.
+# Two P0 tasks and two P3 tasks. Two slots, BATCH=8. Task a ends at once. Task b (a P0 task of mode after-start) holds its slot until a third task started, so the run of b is live when a waits.
+# The next pass sees a free slot, a waiting P0 pull request and ready P3 tasks. Without the rule it starts a P3 task and the P0 pull request waits.
+# The claim is an order: every P3 task records the merges that the forge made when it started, and none records 0.
+isolate
+swarmfakes
+
+env BATCH=8
+exec obeeswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec obeeswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# Both P3 tasks started, and the P0 pull request of task a had landed before the first one.
+grep -count=2 '^low-start ' calls.log
+exec awk '/^low-start / && /merges=0$/ {print "PRIORITY INVERSION: a P3 task started before the waiting P0 pull request landed: " $0; bad = 1} END {exit bad}' calls.log
+
+# No task hit its hang guard.
+! exists harness-fault
+
+# Everything landed.
+grep -count=4 '^MergePR ' forge/calls.log
+exec grep -rhao '4 landed, 0 need a person, 0 not started' state
+
+-- backlog.txt --
+P0	zero-a	a.txt
+P0	zero-b	after-start b.txt
+P3	three-a	low l1.txt
+P3	three-b	low l2.txt
