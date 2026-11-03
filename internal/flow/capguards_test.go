@@ -129,7 +129,7 @@ var researchEnv = map[string]string{"RESEARCH_TOOLS": "/tools", "RESEARCH_OUT": 
 
 var capGuards = []capGuard{
 	{step: "queue implement", example: "queue", child: "work", env: map[string]string{"BASE": "main", "OWNER_LOGIN": "owner"}, at: 1, outcome: agent.OutcomeTurnCap, want: "the implement step stopped at the turns cap"},
-	{step: "swarm implement", example: "swarm", child: "task", env: map[string]string{"BASE": "main", "OWNER_LOGIN": "owner"}, at: 1, outcome: agent.OutcomeBudgetCap, want: "the implement step stopped at the budget cap"},
+	{step: "swarm implement", example: "swarm", child: "task", env: map[string]string{"SWARM_DIR": "/swarm", "SWARM": "s1", "REPO": "o/r", "BASE": "main", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "CAP_USD": "100"}, at: 1, outcome: agent.OutcomeBudgetCap, want: "the implement step stopped at the budget cap"},
 	{step: "local plan", example: "local", at: 1, outcome: agent.OutcomeTurnCap, want: "the plan step stopped at the turns cap"},
 	{step: "local implement", example: "local", at: 2, outcome: agent.OutcomeBudgetCap, want: "the implement step stopped at the budget cap"},
 	{step: "local review", example: "local", at: 3, outcome: agent.OutcomeTurnCap, want: "the review step stopped at the turns cap", noFile: true},

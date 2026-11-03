@@ -1,0 +1,25 @@
+# A merge task of a P0 item starts before the queued P3 tasks, even when the P3 tasks are ready and the slots are almost full.
+# Two P0 tasks write the same file, so the second conflicts and the swarm files a merge task of priority P0. The P3 tasks (a body that starts with late) hold their slots until a merge call is in calls.log.
+# If the merge task waited behind them, they would all hold both slots until the deadline of the fake agent, and it writes the file starved.
+isolate
+swarmfakes
+
+env BATCH=2
+exec obeeswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec obeeswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# The merge task ran once, and no P3 task waited for it in vain.
+grep -count=1 '^resolve ' calls.log
+! exists starved
+
+# Everything landed.
+grep -count=6 '^MergePR ' forge/calls.log
+exec grep -rhao '6 landed, 0 need a person, 0 not started' state
+
+-- backlog.txt --
+P3	three-a	late-a.txt
+P3	three-b	late-b.txt
+P3	three-c	late-c.txt
+P3	three-d	late-d.txt
+P0	zero-a	a.txt
+P0	zero-b	a.txt
