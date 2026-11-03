@@ -466,6 +466,7 @@ type harness struct {
 	picker    logins // replaces logins when set
 	life      *fakeLifecycle
 	merge     *fakeMerge
+	batch     batchHost   // nil unless a test sets it
 	preflight preflighter // nil unless a test sets it
 	forge     *fakeForge
 	watch     *fakeWatch
@@ -551,10 +552,14 @@ func (h *harness) deps() Deps {
 	deps := Deps{
 		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer,
 		Kept:  []error{errFake},
-		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond), Settle: cmp.Or(h.sleep, time.Millisecond), Wall: h.wall, CapWait: cmp.Or(h.capWait, time.Millisecond)},
+		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond), Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Wall: h.wall, CapWait: cmp.Or(h.capWait, time.Millisecond)},
 	}
 	if h.merge != nil {
 		deps.Merge = h.merge
+	}
+
+	if h.batch != nil {
+		deps.Batch = h.batch
 	}
 
 	deps.Preflight = h.preflight

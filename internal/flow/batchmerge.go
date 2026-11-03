@@ -403,8 +403,11 @@ func (b *batchBase) mergeReads(ctx context.Context, m batch.Member, settings Mer
 // mergeRead runs one merge of the member as a child run on the exclusive queue.
 func (b *batchBase) mergeRead(ctx context.Context, m batch.Member, settings MergeSettings) (merge.Result, error) {
 	ran, err := b.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindMerge, Project: b.s.in.Project, Item: m.Item, Head: m.Head, Settings: settings})
+	if err != nil {
+		return ran.Merge, err
+	}
 
-	return ran.Merge, err
+	return b.s.e.awaitQueued(b.s.ctx, b.stepName("poll", m.Item, 1), queuedRead{project: b.s.in.Project, item: m.Item, head: m.Head, settings: settings}, ran.Merge)
 }
 
 // intentRead is the record of the intent step: the intent, or the reason the member cannot be merged because its pull request is not OPEN.
@@ -463,7 +466,7 @@ func verdictOf(got merge.Result) (out batch.MergeOutcome, unsettled bool, err er
 	case merge.Transient:
 		// A transient refusal defers the member without a second read. The merge call may have reached the forge, and a second merge step is never run in one attempt.
 		return batch.MergeOutcome{Status: batch.StatusUnsettled, Reason: last}, false, nil
-	case merge.Plain:
+	case merge.Plain, merge.Queued:
 	}
 
 	return batch.MergeOutcome{Status: batch.StatusRefused, Reason: last}, false, nil

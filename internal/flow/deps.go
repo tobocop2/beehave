@@ -139,6 +139,7 @@ type beats interface {
 // Grace replaces the time that a phase waits for the first trust of a run that is not open.
 // Watch replaces the time of the durable sleep between two reads of a ready pull request.
 // Settle replaces the time of the durable sleep between two reads of a batch member whose mergeable state is UNKNOWN.
+// Queued replaces the time of the durable sleep between two reads of a pull request whose merge the forge holds.
 // CapWait replaces the least time of the durable sleep that waits for a usage cap to reset.
 type clock struct {
 	CapWait   time.Duration
@@ -155,6 +156,7 @@ type clock struct {
 	Grace     time.Duration
 	Watch     time.Duration
 	Settle    time.Duration
+	Queued    time.Duration
 }
 
 // now reads the clock of the process. The reading carries the monotonic clock, so a difference of two readings counts the time that the machine ran.

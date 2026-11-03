@@ -12,22 +12,46 @@ import (
 // The head and the tip are read again because a push can land between the guards and the merge. The merge call pins the head on the forge side.
 // A pull request that the intent shows merged by an earlier run of this step skips all of that and goes to the tree proof.
 // The children move last: a pull request that any guard refuses leaves its children where they are.
+// A pull request in a native stack is queued on the forge and returns Queued: its children move in Poll, after the forge has merged it.
+// A replay of a merge that the forge made moves the children that are still on the branch, then goes to the proofs.
 func (a *attempt) conclude() *refusal {
 	if a.replayed() {
+		if stop := a.retargetMerged(); stop != nil {
+			return stop
+		}
+
 		return a.landed(a.merged())
 	}
 
-	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.retarget} {
+	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.mergeNow} {
 		if stop := step(); stop != nil {
 			return stop
 		}
 	}
 
+	return a.landed(a.merged())
+}
+
+// mergeNow queues the merge of a pull request in a native stack and returns Queued, which ends the run. Any other pull request moves its children, then merges directly.
+func (a *attempt) mergeNow() *refusal {
+	if a.queue != nil {
+		return a.queued()
+	}
+
+	if stop := a.retarget(); stop != nil {
+		return stop
+	}
+
+	return a.mergeCall()
+}
+
+// mergeCall merges the pull request directly, pinned to the gated head.
+func (a *attempt) mergeCall() *refusal {
 	if err := a.forge.MergePR(a.ctx, a.req.PR, a.req.Gated); err != nil {
 		return transient("REFUSE: " + err.Error())
 	}
 
-	return a.landed(a.merged())
+	return nil
 }
 
 // landed proves the merge. The merged head must be an ancestor of the base, then the tree proof runs. The merge already happened, so a stop here leaves the lines of the merge in front of it.
@@ -133,18 +157,25 @@ func (a *attempt) baseTip() (string, *refusal) {
 	return tip, nil
 }
 
-// nativeStack refuses a pull request in a native stack, which merges through the asynchronous merge that obee does not run.
+// nativeStack decides how a pull request in a native stack merges. The forge merges it asynchronously, so the run queues the merge on the forge
+// when the request allows it and the forge can queue a merge. Otherwise the pull request is refused.
 func (a *attempt) nativeStack() *refusal {
 	stack, err := a.forge.StackID(a.ctx, a.req.PR)
 	if err != nil {
 		return refuse(fmt.Sprintf("REFUSE: cannot read which stack #%d is in", a.req.PR))
 	}
 
-	if stack != "" {
-		return refuse(fmt.Sprintf("REFUSE: #%d is in stack %s. A pull request in a native stack merges through the asynchronous merge, which obee does not run.", a.req.PR, stack))
+	if stack == "" {
+		return nil
 	}
 
-	return nil
+	if queue, ok := a.forge.(Queuer); ok && a.req.Queue {
+		a.queue = queue
+
+		return nil
+	}
+
+	return refuse(fmt.Sprintf("REFUSE: #%d is in stack %s. A pull request in a native stack merges through the asynchronous merge of the forge. This run does not queue merges, or the forge cannot queue a merge.", a.req.PR, stack))
 }
 
 // ready marks a draft ready and reads it again. A pull request that stays a draft refuses. A pull request that is not a draft needs nothing.

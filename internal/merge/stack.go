@@ -69,14 +69,23 @@ func (a *attempt) retarget() *refusal {
 		if err := a.forge.SetBase(a.ctx, kid, a.req.Base); err != nil {
 			left := listed(hashed(a.kids[i:]))
 
-			return refuse(fmt.Sprintf("REFUSE: cannot move #%d onto %s: %s. Moved: %s. Not moved: %s. #%d is not merged. Move %s by hand, then run the merge again.",
-				kid, a.req.Base, err, listed(hashed(a.kids[:i])), left, a.req.PR, left))
+			return refuse(fmt.Sprintf("REFUSE: cannot move #%d onto %s: %s. Moved: %s. Not moved: %s. #%d is %s. Move %s by hand, then run the merge again.",
+				kid, a.req.Base, err, listed(hashed(a.kids[:i])), left, a.req.PR, a.mergeWord(), left))
 		}
 
 		a.say(fmt.Sprintf("retargeted #%d onto %s before the merge of #%d", kid, a.req.Base, a.req.PR))
 	}
 
 	return nil
+}
+
+// mergeWord says whether the pull request is merged when the children move: they move after a queued merge, and before a direct one.
+func (a *attempt) mergeWord() string {
+	if text(a.view.State) == stateMerged {
+		return "merged"
+	}
+
+	return "not merged"
 }
 
 // listed joins names with commas. No name gives "none".
