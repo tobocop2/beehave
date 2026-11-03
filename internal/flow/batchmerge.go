@@ -306,7 +306,7 @@ func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch
 		return batch.GateOutcome{Tree: gated.Tree, Passed: gated.Passed && everyStepIsAPass(gated.Steps), Report: gated.Report, Void: void}, err
 	}
 
-	out, err := e.deps.Commands.Run(ctx, CommandRequest{Project: in.Project, Item: in.Item, Run: in.GateRun})
+	out, err := e.deps.Commands.Run(ctx, CommandRequest{Project: in.Project, Item: in.Item, Run: in.GateRun, Gate: true})
 
 	return batch.GateOutcome{Tree: tree, Passed: out.RC == 0, Report: out.Stdout}, err
 }

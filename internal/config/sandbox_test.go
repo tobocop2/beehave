@@ -42,6 +42,22 @@ func TestLoadFolder_TheSandboxReadAndDenyListsExtendTheEngineLists(t *testing.T)
 	require.Equal(t, []string{"~/.config/vault"}, project.SandboxDeny)
 }
 
+func TestLoadFolder_TheSandboxEnforcerKeyTakesATextAndRefusesAnEmptyOne(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject+`, sandbox_enforcer = "landlock"`))
+	require.Empty(t, problems)
+	require.Equal(t, "landlock", project.SandboxEnforcer)
+
+	project, problems = loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Empty(t, project.SandboxEnforcer, "an unset key means auto")
+
+	_, problems = loadProjectText(t, call(goodProject+`, sandbox_enforcer = ""`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "sandbox_enforcer")
+}
+
 func TestLoadFolder_ASandboxReadPathThatOpensTheHomeFolderOrACredentialIsRefused(t *testing.T) {
 	t.Parallel()
 

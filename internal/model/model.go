@@ -68,6 +68,8 @@ type Project struct {
 	// same denied reads as an agent step. A gate on a build host runs outside the sandbox.
 	GateNetwork    []string
 	GateAllowWrite []string
+	// SandboxEnforcer is "auto" or the name of the enforcer that runs the gate under the sandbox. Empty means "auto".
+	SandboxEnforcer string
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.

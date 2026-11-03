@@ -23,9 +23,9 @@ const (
 	// LocalHost is the build host that means this machine.
 	LocalHost = "local"
 	// GateSandboxRefusal says why a gate on this machine does not run when the sandbox is on.
-	GateSandboxRefusal = "no sandbox can enforce the gate on this machine yet, so the gate does not run here. " +
+	GateSandboxRefusal = "no sandbox enforcer can run on this machine, so the gate does not run here. " +
 		"This holds for the project gate, for a gate call that names run, and for the gate of batch_merge. " +
-		"Set sandbox = \"off\" in the project file, or build on a host. The project gate of a build host runs as before. The keys gate_network and gate_allow_write are kept for the day a sandbox can enforce them."
+		"Set sandbox = \"off\" in the project file, or build on a host. The project gate of a build host runs as before."
 )
 
 // The value goes into an ssh command, so a cluster name is a letter, then letters, digits, hyphens.

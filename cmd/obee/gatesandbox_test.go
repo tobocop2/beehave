@@ -21,13 +21,13 @@ func sandboxedProject(mode model.SandboxMode, host string) map[string]config.Pro
 func TestGateRefusal_ASandboxedLocalProjectRefusesTheProjectGateAndAProgramGate(t *testing.T) {
 	t.Parallel()
 
-	refuse := gateRefusal(sandboxedProject(model.SandboxOn, config.LocalHost))
+	refuse := gateRefusal(sandboxedProject(model.SandboxOn, config.LocalHost), noEnforcer)
 
 	for _, program := range []bool{false, true} {
 		err := refuse("p", program)
 
 		require.ErrorIs(t, err, errGateSandbox)
-		require.ErrorContains(t, err, "no sandbox can enforce the gate on this machine yet")
+		require.ErrorContains(t, err, "no sandbox enforcer can run on this machine")
 		require.ErrorContains(t, err, `sandbox = "off"`)
 	}
 }
@@ -35,7 +35,7 @@ func TestGateRefusal_ASandboxedLocalProjectRefusesTheProjectGateAndAProgramGate(
 func TestGateRefusal_ARemoteProjectRefusesOnlyAProgramGate(t *testing.T) {
 	t.Parallel()
 
-	refuse := gateRefusal(sandboxedProject(model.SandboxOn, "cluster"))
+	refuse := gateRefusal(sandboxedProject(model.SandboxOn, "cluster"), noEnforcer)
 
 	require.NoError(t, refuse("p", false), "the gate of the project runs on the host")
 	require.ErrorIs(t, refuse("p", true), errGateSandbox, "a program gate runs on this machine")
@@ -44,7 +44,7 @@ func TestGateRefusal_ARemoteProjectRefusesOnlyAProgramGate(t *testing.T) {
 func TestGateRefusal_ASandboxOffProjectAndAnUnknownProjectRefuseNothing(t *testing.T) {
 	t.Parallel()
 
-	refuse := gateRefusal(sandboxedProject(model.SandboxOff, config.LocalHost))
+	refuse := gateRefusal(sandboxedProject(model.SandboxOff, config.LocalHost), noEnforcer)
 
 	require.NoError(t, refuse("p", false))
 	require.NoError(t, refuse("p", true))

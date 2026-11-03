@@ -32,6 +32,8 @@ type BuildInfo struct {
 	Doctor Doctor
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
 	Flow Flow
+	// GateRefusal says why a gate does not run here. A nil value reads as: no sandbox enforcer can run here.
+	GateRefusal GateRefusal
 }
 
 // newRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
@@ -47,7 +49,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters), newDoctorCommand(ctx, env, info.Doctor))
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.GateRefusal), newDoctorCommand(ctx, env, info.Doctor))
 	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items}
 	commands.add(root)
 	commands.addItems(root)

@@ -166,6 +166,8 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 
 // programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.
 func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest, head string) (map[string]any, error) {
+	request.Gate = true
+
 	out, err := e.deps.Commands.Run(ctx, request)
 	if err != nil {
 		return nil, err

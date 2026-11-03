@@ -119,7 +119,7 @@ linters:
             - pkg: go.dbos.dev/dbos-enterprise-go
               desc: the enterprise module opens an outgoing connection; never import it
         no-http-client:
-          files: ["!$test"]
+          files: ["!$test", "!**/internal/sandbox/proxy.go"]
           deny:
             - pkg: net/http
               desc: obee's own code makes no HTTP calls; gh, bd and the agent CLIs do the network calls
@@ -142,6 +142,8 @@ linters:
             - pkg: github.com/tobocop2/obee/internal/proc/proctest
               desc: a conformance suite or fake is for tests only
             - pkg: github.com/tobocop2/obee/internal/host/hosttest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/sandbox/contract
               desc: a conformance suite or fake is for tests only
         dbos-only-in-flow:
           files: ["!**/internal/flow/**"]
@@ -259,6 +261,7 @@ linters:
             - "**/internal/proc/**"
             - "**/internal/agent/**"
             - "**/internal/host/**"
+            - "**/internal/sandbox/**"
           deny:
             - pkg: github.com/tobocop2/obee/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -271,6 +274,7 @@ linters:
             - github.com/tobocop2/obee/internal/proc
             - github.com/tobocop2/obee/internal/agent
             - github.com/tobocop2/obee/internal/host
+            - github.com/tobocop2/obee/internal/sandbox
         layer-2:
           list-mode: lax
           files:
@@ -345,6 +349,7 @@ linters:
             - "!**/internal/proc/**"
             - "!**/internal/agent/**"
             - "!**/internal/host/**"
+            - "!**/internal/sandbox/**"
             - "!**/internal/check/**"
             - "!**/internal/batch/**"
             - "!**/internal/claim/**"
@@ -374,6 +379,10 @@ linters:
         linters:
           - forbidigo
         text: fmt\.|os\.Exit|os\.Std|panic
+      - path: internal/sandbox/(landlock/contract|contract/run)_linux_test\.go
+        linters:
+          - forbidigo
+        text: os\.Exit|os\.Std
       - path: _test\.go
         linters:
           - funlen

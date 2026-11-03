@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
@@ -70,19 +71,36 @@ func (g projectGate) Submit(ctx context.Context, project, item string) (flow.Gat
 }
 
 func (g projectGate) gate(project string) gate.Gate {
-	return gate.New(g.shell, g.tree, func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) })
+	return gate.New(g.shellFor(project), g.tree, func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) })
 }
 
-// gateRefusal gives the engine the refusal of a gate that would run on this machine under the sandbox. No sandbox can enforce such a gate yet.
+// shellFor returns the function that runs the gate command of the project: under the sandbox when the project has it on and builds here, else as before.
+func (g projectGate) shellFor(project string) func(context.Context, string, string) (string, int) {
+	return func(ctx context.Context, dir, command string) (string, int) {
+		if g.programs.sandbox.applies(project, false) {
+			return g.programs.sandbox.run(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
+		}
+
+		return g.shell(ctx, dir, command)
+	}
+}
+
+// gateRefusal gives the engine the refusal of a gate that would run on this machine under the sandbox when no enforcer can run here.
 // The engine asks at the start of each gate step, so a refused gate reads no key, reuses no earlier pass and runs no program.
 // program is true for a gate that names its own program. A project the config does not hold is not refused.
-func gateRefusal(projects map[string]config.Project) func(string, bool) error {
+// refusal gives the reason for a project and a kind of gate, or "" when the gate runs.
+func gateRefusal(projects map[string]config.Project, refusal cli.GateRefusal) func(string, bool) error {
 	return func(project string, program bool) error {
-		if !config.GateRefused(projects[project].Project, program) {
+		found, ok := projects[project]
+		if !ok {
 			return nil
 		}
 
-		return fmt.Errorf("%w: %s", errGateSandbox, config.GateSandboxRefusal)
+		if reason := refusal(found, program); reason != "" {
+			return fmt.Errorf("%w: %s", errGateSandbox, reason)
+		}
+
+		return nil
 	}
 }
 
@@ -93,7 +111,7 @@ func (g projectGate) Key(ctx context.Context, project, item string) (flow.GateKe
 		return flow.GateKey{}, err
 	}
 
-	key, err := gate.New(g.shell, g.tree, nil).Key(ctx, request)
+	key, err := gate.New(g.shellFor(project), g.tree, nil).Key(ctx, request)
 	if err != nil {
 		return flow.GateKey{}, fmt.Errorf("read the gate key of item %s: %w", item, err)
 	}

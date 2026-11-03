@@ -17,6 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/pool"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/sandbox/enforcers"
 )
 
 var errUnknownProject = errors.New("the config has no project of this name")
@@ -126,7 +127,7 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 		Kept:   backendErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
-		RefuseGate:     gateRefusal(cfg.Projects),
+		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
 		Repository:     repositoryOf(cfg.Projects),
 	})
 }
@@ -183,7 +184,8 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 // newPrograms runs command steps in the worktree of the item, or on the host of the project.
 func newPrograms(cfg config.Config, trees treeFinder, table adapters) programs {
 	return programs{
-		trees: trees,
+		trees:   trees,
+		sandbox: newGateSandbox(cfg.Projects),
 		local: func(binary, dir string, timeout time.Duration) proc.Runner {
 			return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
 		},

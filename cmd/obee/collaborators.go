@@ -282,6 +282,8 @@ type programs struct {
 	// exec runs the program of a command step. Its spec holds the whole environment of the program (Only) and its stdin.
 	exec  func(spec proc.ExecRunner) proc.Runner
 	hosts func(project string) (host.Host, error)
+	// sandbox runs a gate under the sandbox of its project.
+	sandbox gateSandbox
 }
 
 // Run runs the program of the request and returns what it printed and its exit code.
@@ -299,7 +301,26 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
 	}
 
+	if request.Gate && p.sandbox.applies(request.Project, true) {
+		return p.sandboxed(ctx, request, dir)
+	}
+
 	return p.inFolder(ctx, request, dir)
+}
+
+// sandboxed runs the program of a gate under the sandbox of its project. Stdin and the process cap of the request do not apply to a sandboxed gate.
+// The output is the plan, then what the program printed, with stdout and stderr in one stream.
+func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, dir string) (flow.CommandOutput, error) {
+	dir, cleanup, err := commandFolder(dir, request.Item)
+	if err != nil {
+		return flow.CommandOutput{}, err
+	}
+
+	defer cleanup()
+
+	out, code := p.sandbox.run(ctx, request.Project, dir, request.Run, request.Env, request.Timeout)
+
+	return flow.CommandOutput{Stdout: out, RC: code}, nil
 }
 
 // inFolder runs the program of the request in dir, or in a new empty folder when dir is empty.

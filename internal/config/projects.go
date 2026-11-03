@@ -43,6 +43,8 @@ type rawProject struct {
 
 	GateNetwork    paths
 	GateAllowWrite paths
+
+	SandboxEnforcer text
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -65,7 +67,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -97,7 +99,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer)
 	raw.Host = host.block
 
 	return raw, err
@@ -123,7 +125,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
-		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite),
+		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, nil
 }
 
@@ -220,7 +222,7 @@ func absolutePaths(raw rawProject) error {
 // sandboxOf reads sandbox. An unset key gives the empty mode, which runs the steps with no sandbox. A set key that is empty or unknown is refused.
 // The sandbox_read and sandbox_deny paths must be absolute, or start with ~/, so that a path never depends on the folder of a step.
 func sandboxOf(raw rawProject) (model.SandboxMode, error) {
-	if err := absolutePaths(raw); err != nil {
+	if err := sandboxKeys(raw); err != nil {
 		return "", err
 	}
 
@@ -238,6 +240,19 @@ func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 	}
 
 	return mode, nil
+}
+
+// sandboxKeys refuses a relative sandbox path and a sandbox_enforcer that is set and empty.
+func sandboxKeys(raw rawProject) error {
+	if err := absolutePaths(raw); err != nil {
+		return err
+	}
+
+	if raw.SandboxEnforcer.Set {
+		return requireText(raw.At, "sandbox_enforcer", raw.SandboxEnforcer.Value)
+	}
+
+	return nil
 }
 
 // pinFile refuses a pin_file that is set and empty, or set for a gate on a build host. An unset key is allowed.
@@ -419,7 +434,7 @@ func sourcePath(raw rawProject, host string) (string, error) {
 	return path, nil
 }
 
-// GateRefused is true when a gate must not run on this machine: the project has its sandbox on and no sandbox can enforce a gate here yet.
+// GateRefused is true when a gate runs on this machine only under a sandbox enforcer: the project has its sandbox on. The gate is refused when no enforcer can run here.
 // A program gate (a gate call with run, or the gate_run of a batch merge) always runs here. The project gate runs here when the project builds here.
 func GateRefused(project model.Project, program bool) bool {
 	return project.SandboxByDefault() && (program || project.BuildHost == LocalHost)
