@@ -1,0 +1,94 @@
+# The weekly tick over three repositories. api has a newer Go dependency, web has a newer npm dependency, and tools has nothing newer.
+# api and web each get one run and one draft pull request. tools is skipped before any run exists. The report counts the three rows.
+# The update creates go.sum and package-lock.json for the first time: the commit must hold both, which only a status check sees.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+maintinit
+maintfakes
+env HOME=$WORK/home
+env GIT_BASE=file://$WORK/remotes
+env UPKEEP_WEEK=2026-W44
+# mkprojects.sh writes one project file for each repository, with the forge and the test command of the row. A file that a person wrote is kept.
+exec sh home/.upkeep/scripts/mkprojects.sh $WORK/generated
+stdout 'wrote .*/projects/api.star'
+grep 'repo = "acme/api"' generated/projects/api.star
+grep 'gate = "JEST_JUNIT_OUTPUT_DIR=reports npm test -- --reporters=jest-junit"' generated/projects/web.star
+cp person.star generated/projects/web.star
+exec sh home/.upkeep/scripts/mkprojects.sh $WORK/generated
+stderr 'kept .*/projects/web.star: not generated'
+grep 'my own' generated/projects/web.star
+# The project files of this script are the generated ones: repo and forge, no local source.
+grep 'forge = "github"' config/projects/api.star
+! grep 'source = "' config/projects/api.star
+exec obeereal check workflow home/.upkeep/bump.star
+! stdout .
+exec obeereal check workflow home/.upkeep/report.star
+! stdout .
+
+exec sh home/.upkeep/scripts/tick.sh
+stdout 'item bump-api-2026-W44 finished'
+stdout 'item bump-web-2026-W44 finished'
+stdout 'item report-2026-W44 finished'
+
+# One run for each repository with news. The skipped repository has no item and no tree work.
+exec obee status
+stdout 'item-bump-api-2026-W44-r1\tdone'
+stdout 'item-bump-web-2026-W44-r1\tdone'
+! stdout 'bump-tools'
+grep -count=2 '^update$' calls.log
+! grep '^fix' calls.log
+
+# The run log holds one row for each repository.
+grep '^2026-W44\tapi\topened\thttps://github.example/acme/pull/1\tdraft pull request\t' home/.upkeep/runs.tsv
+grep '^2026-W44\tweb\topened\thttps://github.example/acme/pull/2\tdraft pull request\t' home/.upkeep/runs.tsv
+grep '^2026-W44\ttools\tskipped\t\tskip: nothing is outdated\t' home/.upkeep/runs.tsv
+
+# The state holds the fingerprint, the week and the pull request, outside every worktree.
+grep '^last_week=2026-W44$' home/.upkeep/state/api.env
+grep '^last_pr=https://github.example/acme/pull/1$' home/.upkeep/state/api.env
+grep '^last_fp=' home/.upkeep/state/web.env
+! exists home/.upkeep/state/tools.env
+
+# The branch reached the remote with the manifest files. The pull request is a draft.
+exec git -C remotes/acme/api show --stat upkeep/api-2026-W44
+stdout 'go.mod'
+stdout 'go.sum'
+exec git -C remotes/acme/web show --stat upkeep/web-2026-W44
+stdout 'package-lock.json'
+grep -count=1 'gh pr create --draft --head upkeep/api-2026-W44 --base main' gh.log
+grep -count=1 'gh pr create --draft --head upkeep/web-2026-W44 --base main' gh.log
+! grep 'upkeep/tools' gh.log
+
+# The report counts the rows and names the pull requests that wait for review.
+grep '3 repositories listed. 2 opened a pull request, 1 skipped,' home/.upkeep/reports/2026-W44.md
+grep '^- api: opened, https://github.example/acme/pull/1' home/.upkeep/reports/2026-W44.md
+grep '^- tools: skipped' home/.upkeep/reports/2026-W44.md
+grep '^- web: https://github.example/acme/pull/2, opened in 2026-W44' home/.upkeep/reports/2026-W44.md
+exec obee status
+stdout 'item-report-2026-W44-r1\tdone'
+
+# A second tick in the same week costs nothing: every row says it already ran or has nothing to do.
+exec sh home/.upkeep/scripts/tick.sh
+grep -count=1 'gh pr create --draft --head upkeep/api-2026-W44' gh.log
+grep '^2026-W44\tapi\tskipped\t\tskip: already ran in 2026-W44\t' home/.upkeep/runs.tsv
+
+
+# The repeat guard of pr.sh: a second call for one branch finds the first pull request and opens none.
+exec git clone -q remotes/acme/api again
+exec sh -c 'cd again && echo body | sh ../home/.upkeep/scripts/pr.sh api 2026-W50 fp main'
+exec sh -c 'cd again && echo body | sh ../home/.upkeep/scripts/pr.sh api 2026-W50 fp main'
+grep -count=1 'gh pr create --draft --head upkeep/api-2026-W50' gh.log
+grep -count=2 'gh pr list --head upkeep/api-2026-W50' gh.log
+
+-- person.star --
+# my own file
+project(repo = "acme/web", forge = "github")
+-- fixtures/go-api.json --
+{"Path":"acme/api","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0","Update":{"Path":"example.com/lib","Version":"v1.3.0"}}
+-- fixtures/go-tools.json --
+{"Path":"acme/tools","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0"}
+-- fixtures/npm.json --
+{"left-pad":{"current":"1.0.0","wanted":"1.3.0","latest":"1.3.0"}}

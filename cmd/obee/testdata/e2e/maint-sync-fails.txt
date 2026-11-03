@@ -1,0 +1,48 @@
+# The remote of api is gone, so the sync of api fails. The tick writes an error row for api and goes on: web still gets its pull request.
+# A name that the tick refuses (.hidden) gets no row at all, and the report says "No record" for it. The report posts once for the week.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+maintinit
+maintfakes
+env HOME=$WORK/home
+env GIT_BASE=file://$WORK/remotes
+env UPKEEP_WEEK=2026-W44
+cp settings-status home/.upkeep/settings.sh
+cp repos-three.tsv home/.upkeep/repos.tsv
+rm remotes/acme/api
+
+exec sh home/.upkeep/scripts/tick.sh
+stderr 'tick: skip bad name .hidden'
+stdout 'item bump-web-2026-W44 finished'
+stdout 'item report-2026-W44 finished'
+! stdout 'item bump-api-2026-W44'
+! stdout 'bump-.hidden'
+
+grep '^2026-W44\tapi\terror\t\tsync failed: ' home/.upkeep/runs.tsv
+grep '^2026-W44\tweb\topened\thttps://github.example/acme/pull/1\tdraft pull request\t' home/.upkeep/runs.tsv
+! grep '.hidden' home/.upkeep/runs.tsv
+! exists home/.upkeep/state/api.env
+grep -count=1 '^update$' calls.log
+
+# The report counts the error and names the repository that has no row.
+grep '3 repositories listed. 1 opened a pull request, 0 skipped, 0 failed the gate, 1 had an error,' home/.upkeep/reports/2026-W44.md
+grep '^- api: error \(sync failed: ' home/.upkeep/reports/2026-W44.md
+grep '^## No record this week$' home/.upkeep/reports/2026-W44.md
+grep 'The tick wrote no row for: .hidden\.' home/.upkeep/reports/2026-W44.md
+grep -count=1 'gh issue comment 7 --repo acme/status' gh.log
+
+# A second tick of the same week posts nothing more.
+exec sh -c 'sh home/.upkeep/scripts/tick.sh || true'
+grep -count=1 'gh issue comment 7 --repo acme/status' gh.log
+grep -count=1 'gh pr create' gh.log
+
+-- settings-status --
+STATUS_REPO=acme/status
+STATUS_ISSUE=7
+-- repos-three.tsv --
+api	acme/api	main	gotestsum --junitfile reports/junit.xml -- ./...
+web	acme/web	main	JEST_JUNIT_OUTPUT_DIR=reports npm test -- --reporters=jest-junit
+.hidden	acme/hidden	main	true
+-- fixtures/npm.json --
+{"left-pad":{"current":"1.0.0","wanted":"1.3.0","latest":"1.3.0"}}

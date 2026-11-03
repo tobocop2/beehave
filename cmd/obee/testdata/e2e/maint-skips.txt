@@ -1,0 +1,68 @@
+# The three skip rules over four weeks. Week 44 opens a pull request for api and web. Week 45 finds the same updates and skips both.
+# Week 46 has a new version of the api library, but a bump pull request of the repository is still open, so api skips and no run starts.
+# Week 47 has no open pull request any more, and api gets a second pull request. Every skip costs no run, no update agent and no worktree.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+maintinit
+maintfakes
+env HOME=$WORK/home
+env GIT_BASE=file://$WORK/remotes
+env UPKEEP_WEEK=2026-W44
+
+exec sh home/.upkeep/scripts/tick.sh
+stdout 'item bump-api-2026-W44 finished'
+grep -count=2 '^update$' calls.log
+grep -count=2 'gh pr create' gh.log
+
+# Rule 2: the fingerprint of the updates is the one of week 44.
+env UPKEEP_WEEK=2026-W45
+exec sh home/.upkeep/scripts/tick.sh
+grep '^2026-W45\tapi\tskipped\t\tskip: same updates as 2026-W44, no new version since\t' home/.upkeep/runs.tsv
+grep '^2026-W45\tweb\tskipped\t\tskip: same updates as 2026-W44, no new version since\t' home/.upkeep/runs.tsv
+grep '^2026-W45\ttools\tskipped\t\tskip: nothing is outdated\t' home/.upkeep/runs.tsv
+grep -count=2 '^update$' calls.log
+! exists home/.upkeep/state/tools.env
+exec obee status
+! stdout 'bump-api-2026-W45'
+
+# Rule 3: a new version changes the fingerprint, but pull request 5 of the repository is still open.
+cp fixtures-new/go-api.json fixtures/go-api.json
+cp open-5.txt gh/open
+env UPKEEP_WEEK=2026-W46
+exec sh home/.upkeep/scripts/tick.sh
+grep '^2026-W46\tapi\tskipped\t\tskip: pull request #5 is still open\t' home/.upkeep/runs.tsv
+grep -count=2 '^update$' calls.log
+grep -count=2 'gh pr create' gh.log
+grep '3 repositories listed. 0 opened a pull request, 3 skipped,' home/.upkeep/reports/2026-W46.md
+
+# The bump pull request is merged or closed. A person's own open pull request (7) is not a bump: api bumps again, on a new branch.
+cp open-person.txt gh/open
+env UPKEEP_WEEK=2026-W47
+exec sh home/.upkeep/scripts/tick.sh
+stdout 'item bump-api-2026-W47 finished'
+grep '^2026-W47\tapi\topened\thttps://github.example/acme/pull/3\tdraft pull request\t' home/.upkeep/runs.tsv
+grep -count=3 '^update$' calls.log
+grep -count=1 'gh pr create --draft --head upkeep/api-2026-W47' gh.log
+grep '^last_week=2026-W47$' home/.upkeep/state/api.env
+grep '^last_week=2026-W44$' home/.upkeep/state/web.env
+exec git -C remotes/acme/api show --stat upkeep/api-2026-W47
+stdout 'go.mod'
+
+-- fixtures/go-api.json --
+{"Path":"acme/api","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0","Update":{"Path":"example.com/lib","Version":"v1.3.0"}}
+-- fixtures/go-tools.json --
+{"Path":"acme/tools","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0"}
+-- fixtures/npm.json --
+{"left-pad":{"current":"1.0.0","wanted":"1.3.0","latest":"1.3.0"}}
+-- fixtures-new/go-api.json --
+{"Path":"acme/api","Main":true}
+{"Path":"example.com/lib","Version":"v1.2.0","Update":{"Path":"example.com/lib","Version":"v1.4.0"}}
+-- open-5.txt --
+7	feature/login
+5	upkeep/api-2026-W44
+-- open-person.txt --
+7	feature/login
+-- gh/placeholder --

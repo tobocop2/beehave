@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copy to ~/Library/LaunchAgents, then run: launchctl load ~/Library/LaunchAgents/com.upkeep.weekly.plist
+     launchd runs a job that a sleeping laptop missed when the laptop wakes. On a server, use this crontab line instead:
+     17 6 * * 1  PATH=/usr/local/bin:/usr/bin:/bin sh $HOME/.upkeep/scripts/tick.sh >> /var/tmp/upkeep-tick.log 2>&1 -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.upkeep.weekly</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>/Users/CHANGE_ME/.upkeep/scripts/tick.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>17</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/var/tmp/upkeep-tick.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/tmp/upkeep-tick.log</string>
+</dict>
+</plist>
