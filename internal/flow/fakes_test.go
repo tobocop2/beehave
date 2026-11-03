@@ -35,8 +35,9 @@ const (
 	eventTimeout = 3 * time.Minute
 	pollEvery    = 5 * time.Millisecond
 	// storePoll is the interval at which the two queues of an engine and a result wait read the store. Each poll parses a statement, which
-	// costs most of the CPU of the package under the race detector, and the engines of the parallel tests all poll at once.
-	storePoll = 300 * time.Millisecond
+	// costs most of the CPU of the package under the race detector, and the engines of the parallel tests all poll at once. It is the
+	// library default: a shorter interval made the package slower and did not make any test wait less than the tests need.
+	storePoll = time.Second
 )
 
 var errFake = errors.New("fake failure")
