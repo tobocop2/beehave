@@ -1,0 +1,91 @@
+# The main path of the incident desk. An alert reaches the spool through the receiver script, and a second copy of it is known. The watch takes it, scrubs it, and starts a run.
+# The run pages the first role, reads the diagnostics, and asks the analyst. The analyst proposes a rollback, a safe row. The run pages the on-call person and waits.
+# The person answers inside the deadline. The desk saves the state, runs the rollback, sees the service healthy, tells the ops system, and the analyst drafts a postmortem.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=60
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+exec obeereal check workflow ops/workflow.star
+! stdout .
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+stdout '^queued$'
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+stdout '^known$'
+
+exec obeereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec obeereal run watch-1 incident --workflow ops/workflow.star &
+
+waitstatus 'paused: [primary] Approve rollback'
+exec obeereal status
+stdout 'item-incident-2-r1\trunning\tpaused: \[primary\] Approve rollback'
+
+# While the run waits, nothing is written to production. The first role has its heads-up and its approval page.
+! exists writes.log
+grep -count=2 '^incident-2 primary$' pages.log
+
+exec obeereal answer incident-2 approve: ann
+wait
+stdout 'item watch-1 finished'
+
+# The write ran once, under the key of the incident and the kind. The state was saved first. Nothing was restored.
+grep -count=1 '^rollback incident-2-rollback$' writes.log
+grep 'v413' home/.incident/incidents/incident-2/before.json
+! exists restores.log
+grep '^incident-2 mitigated$' status.log
+
+# The scrub removed the secret before the agent saw it, and before the timeline kept it.
+grep 'REDACTED' prompt-analyst.txt
+! grep 'abc123SECRETvalue9' prompt-analyst.txt
+! grep 'abc123SECRETvalue9' home/.incident/incidents/incident-2/timeline.tsv
+
+# The timeline and the postmortem draft.
+grep 'approved by ann' home/.incident/incidents/incident-2/timeline.tsv
+grep 'healthy after rollback' home/.incident/incidents/incident-2/timeline.tsv
+grep '# Impact' home/.incident/postmortems/incident-2.md
+grep -count=1 '^analyst$' calls.log
+grep -count=1 '^postmortem$' calls.log
+
+# The alert moved from the spool to the taken folder, and both items are done.
+! exists home/.incident/spool/new/alert-f1.json
+exists home/.incident/spool/taken/alert-f1.json
+exec obeereal status
+stdout 'item-incident-2-r1\tdone'
+stdout 'item-watch-1-r1\tdone'
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"f1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"ROLLBACK error rate 40 percent token=abc123SECRETvalue9 after deploy v413"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics --
+{"error_rate":0.4}
+-- resp/_services_checkout_deploys --
+[{"version":"v413","at":"2026-11-02T08:00:00Z"}]
+-- resp/_services_checkout_logs --
+line one
+line two password=hunter2hunter2
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}

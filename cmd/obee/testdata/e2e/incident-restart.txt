@@ -1,0 +1,66 @@
+# The obee process dies while the run waits for the on-call answer. The next obee run finishes the same run. The finished steps do not repeat:
+# the diagnostics are read once, the analyst runs once, and each role is paged once. The answer then arrives, and the mitigation runs once.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=60
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec obeereal item add incident watch-1 --title 'Watch' --body-file body.txt
+! exec obeereal run watch-1 incident --workflow ops/workflow.star &
+waitstatus 'paused: [primary] Approve rollback'
+kill -KILL
+wait
+
+exec obeereal status
+stdout 'item-incident-2-r1\trunning\tpaused: \[primary\] Approve rollback'
+! exists writes.log
+
+exec obeereal run watch-1 incident --workflow ops/workflow.star &
+waitstatus 'paused: [primary] Approve rollback'
+exec obeereal answer incident-2 approve: ann
+wait
+stdout 'item watch-1 finished'
+
+# One read of the metrics, one analyst call and one page for each purpose, across the two processes.
+grep -count=1 'services/checkout/metrics' curl.log
+grep -count=1 '^analyst$' calls.log
+grep -count=2 '^incident-2 primary$' pages.log
+grep -count=1 '^rollback incident-2-rollback$' writes.log
+grep 'approved by ann' home/.incident/incidents/incident-2/timeline.tsv
+exec obeereal status
+stdout 'item-incident-2-r1\tdone'
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"k1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"ROLLBACK error rate 40 percent after deploy v413"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics --
+{"error_rate":0.4}
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}

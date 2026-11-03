@@ -1,0 +1,65 @@
+# Nobody answers a sev1 page. Each role has a deadline on its wait: the primary 3 minutes, the secondary 3 and the manager 5, and a minute lasts one second here.
+# Every wait times out and the next role is paged. The proposal is a restart, a safe row, so after the last role the desk runs it by policy and pages the commander.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=1
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec obeereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec obeereal run watch-1 incident --workflow ops/workflow.star
+stdout 'item watch-1 finished'
+
+# Each role was paged once for the approval. The primary has the heads-up page as well. The commander got one page, after the chain.
+grep -count=2 '^incident-2 primary$' pages.log
+grep -count=1 '^incident-2 secondary$' pages.log
+grep -count=1 '^incident-2 manager$' pages.log
+grep -count=1 '^incident-2 commander$' pages.log
+
+# The timeline records each deadline that passed, in order.
+grep 'no answer from primary inside 3 minutes' home/.incident/incidents/incident-2/timeline.tsv
+grep 'no answer from secondary inside 3 minutes' home/.incident/incidents/incident-2/timeline.tsv
+grep 'no answer from manager inside 5 minutes' home/.incident/incidents/incident-2/timeline.tsv
+
+# The safe row ran once, under the policy.
+grep -count=1 '^restart incident-2-restart$' writes.log
+grep 'approved by policy: no answer after the whole chain, safe row' home/.incident/incidents/incident-2/timeline.tsv
+grep '^incident-2 mitigated$' status.log
+! exists restores.log
+exists home/.incident/postmortems/incident-2.md
+exec obeereal status
+stdout 'item-incident-2-r1\tdone'
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"t1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"RESTART the pods hang"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics --
+{"error_rate":0.4}
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}

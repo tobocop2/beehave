@@ -1,0 +1,60 @@
+# Nobody answers, and the proposal is a scale, a risky row. A risky row never runs without an approval, so after the last deadline the desk does not write.
+# It pages the commander with the case and holds the incident for a person.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=1
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec obeereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec obeereal run watch-1 incident --workflow ops/workflow.star
+stdout 'item watch-1 finished'
+
+# The chain ran to its end.
+grep -count=1 '^incident-2 manager$' pages.log
+grep -count=1 '^incident-2 commander$' pages.log
+
+# No write, no saved state, no status, no postmortem.
+! exists writes.log
+! exists status.log
+! exists home/.incident/incidents/incident-2/before.json
+! exists home/.incident/postmortems/incident-2.md
+
+# The timeline names the reason and the handoff.
+grep 'HANDOFF: nobody answered the whole chain, and scale is not a safe mitigation' home/.incident/incidents/incident-2/timeline.tsv
+grep -count=1 '^analyst$' calls.log
+! grep postmortem calls.log
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"r1","severity":"sev1","title":"Checkout saturated","service":"checkout","detail":"SCALE the pods run out of cpu"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics --
+{"cpu":0.99}
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}
