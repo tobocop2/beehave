@@ -130,6 +130,19 @@ func TestRun_ALocalGateRunsTheProjectGateInTheTreeAndPassesOnExitZero(t *testing
 	assert.Equal(t, "make check", shell.ran)
 }
 
+func TestRun_AGateWithItsOwnCommandShellRunsTheGateCommandThereAndNotInTheDefaultShell(t *testing.T) {
+	t.Parallel()
+
+	plain, boxed := &fakeShell{output: "plain\n"}, &fakeShell{output: "boxed\n"}
+	g := build(plain, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{}).WithCommand(boxed.run)
+
+	got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/work/tree"})
+	require.NoError(t, err)
+	assert.Equal(t, "boxed\n", got.Report)
+	assert.Equal(t, "make check", boxed.ran)
+	assert.Empty(t, plain.ran, "the default shell runs no gate command")
+}
+
 func TestRun_ALocalGateThatExitsNonZeroFailsWithItsOutput(t *testing.T) {
 	t.Parallel()
 

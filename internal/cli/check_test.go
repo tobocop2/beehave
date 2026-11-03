@@ -46,6 +46,22 @@ func TestCheckConfig_ExitsZeroForAValidFolder(t *testing.T) {
 	require.Empty(t, stderr)
 }
 
+func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	remote := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+		"sandbox = \"on\", build_host = \"gpu\", host = host(provider = \"skypilot\", disk_floor_gb = 50))\n"
+	writeConfig(t, dir, "runners.star", validRunners)
+	writeConfig(t, dir, "projects/far.star", remote)
+	writeConfig(t, dir, "projects/near.star", validProject)
+
+	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
+
+	require.Equal(t, 0, code, "a note changes no exit code")
+	require.Equal(t, "note: project far builds on the host gpu, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", stderr)
+}
+
 func runWithAdapters(t *testing.T, adapters func(context.Context, model.Project) error, dir string) (int, string) {
 	t.Helper()
 

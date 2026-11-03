@@ -18,6 +18,8 @@ project(
     # sandbox = "on",  # optional; "on" or "off". "on" runs the shell of each agent step that sets no `sandbox` in the Claude Code sandbox: no network, and no read outside the work folder. A project that leaves it out runs with no sandbox. A step sets `sandbox = sandbox(network = [...])` or `sandbox = None`
     # sandbox_read = ["~/sdk"],         # optional; extra paths that a sandboxed shell can read. Absolute, or starting with ~/
     # sandbox_deny = ["~/.config/vault"],  # optional; extra credential paths, added to the built-in list
+    # gate_network = ["proxy.golang.org"],  # optional; domains that the gate command can reach when it runs in the sandbox. The default is no network.
+    # gate_allow_write = ["~/go/pkg"],      # optional; extra paths that the gate command can write. Relative paths start at the work folder.
     build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(

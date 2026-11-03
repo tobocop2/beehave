@@ -129,6 +129,8 @@ def pipeline(item):
         prompt = "prompts/plan.md",
         model = "opus",
         edits = False,
+        # The repeat-offender check in the prompt reads pull requests with gh, so the shell reaches the forge and nothing else.
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = {"item": item},
     )
 
@@ -142,6 +144,7 @@ def pipeline(item):
         require_skills = ["blast-radius-review"],
         forbid_commands = FORBID,
         protect_paths = protected(),
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = {"item": item, "plan": plan.text},
         **scope
     )

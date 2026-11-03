@@ -64,6 +64,10 @@ type Project struct {
 	Sandbox     SandboxMode
 	SandboxRead []string
 	SandboxDeny []string
+	// GateNetwork lists the domains that the gate command may reach, and GateAllowWrite the extra paths that it may write. The gate runs under the
+	// same denied reads as an agent step. A gate on a build host runs outside the sandbox.
+	GateNetwork    []string
+	GateAllowWrite []string
 }
 
 // The programs that the adapters of a project start.

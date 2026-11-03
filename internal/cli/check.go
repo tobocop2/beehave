@@ -164,16 +164,32 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 		problems = adapterProblems(ctx, cfg, adapters)
 	}
 
+	if len(problems) == 0 {
+		printHostNotes(stderr, cfg)
+
+		return nil
+	}
+
+	printLines(stderr, problems)
+
+	return &ExitError{Code: exitProblems}
+}
+
+func printLines(stderr io.Writer, problems config.Problems) {
 	for _, problem := range problems {
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintln(stderr, problem)
 	}
+}
 
-	if len(problems) > 0 {
-		return &ExitError{Code: exitProblems}
+// printHostNotes prints a note for each project that has the sandbox on and builds on a host, because its gate runs there with no sandbox.
+func printHostNotes(stderr io.Writer, cfg config.Config) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		if project := cfg.Projects[name]; project.SandboxByDefault() && project.BuildHost != config.LocalHost {
+			// A failed write to stderr has no recovery.
+			_, _ = fmt.Fprintf(stderr, "note: project %s builds on the host %s, so its gate runs there with no sandbox. The sandbox covers only a gate that runs on this machine.\n", name, project.BuildHost)
+		}
 	}
-
-	return nil
 }
 
 // printProblems prints one line for each problem and then the count. The check reads the file by

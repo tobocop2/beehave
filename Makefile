@@ -6,7 +6,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox smoke-gate-sandbox mutation \
 	governance-generate governance-validate governance-verify clean check
 
 setup:  ## Install the Go tools and generate the agent files
@@ -74,6 +74,9 @@ smoke-hook: build  ## Run one step with the real claude CLI and check that the c
 
 smoke-sandbox: build  ## Run one step with the real claude CLI and check what the sandbox denies and allows (costs an agent run, at most 0.30 USD; not part of check)
 	sh scripts/smoke-sandbox.sh
+
+smoke-gate-sandbox:  ## Run the srt settings file that obee writes through a real srt (needs srt, Node 22.12 or later and the network; not part of check)
+	go test -tags smoke -count=1 -v -run TestSmoke ./internal/srt
 
 # Run on one package: make mutation PKG=./internal/cli/...
 mutation:

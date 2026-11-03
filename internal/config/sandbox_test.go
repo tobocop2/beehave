@@ -71,3 +71,24 @@ func TestLoadFolder_ARelativeSandboxPathOrAListOfOtherThingsIsRefused(t *testing
 	require.Len(t, problems, 1)
 	require.Contains(t, problems[0].Error(), "want a list of strings")
 }
+
+func TestLoadFolder_TheGateGetsItsOwnNetworkAndWriteLists(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject+`, gate_network = ["proxy.golang.org"], gate_allow_write = ["~/go/pkg", "out"]`))
+	require.Empty(t, problems)
+	require.Equal(t, []string{"proxy.golang.org"}, project.GateNetwork)
+	require.Equal(t, []string{"~/go/pkg", "out"}, project.GateAllowWrite)
+
+	project, problems = loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Empty(t, project.GateNetwork, "the default is no network")
+
+	_, problems = loadProjectText(t, call(goodProject+`, gate_network = ["https://x.org/a"]`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "not a domain name")
+
+	_, problems = loadProjectText(t, call(goodProject+`, gate_allow_write = [".git/hooks"]`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "allow_write lists")
+}

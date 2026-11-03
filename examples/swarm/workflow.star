@@ -33,6 +33,8 @@ def task(item):
         model = "sonnet",
         # Add more kinds from the list of the engine if your repository needs them.
         forbid_commands = ["bulk-staging"],
+        # The shell pushes the branch and opens the pull request, so it reaches the forge and nothing else. A step with no list has no network.
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = {"item": item, "base": env("BASE")},
     )
 
