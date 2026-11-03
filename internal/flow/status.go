@@ -40,28 +40,29 @@ const (
 
 // RunInfo is one line of the status list. Stranded marks an open run that another version of obee started.
 type RunInfo struct {
-	ID       string
-	State    RunState
-	Version  string
-	Stranded bool
+	ID       string   `json:"id"`
+	State    RunState `json:"state"`
+	Version  string   `json:"version,omitempty"`
+	Stranded bool     `json:"stranded"`
 	// Item and Project are what the run started with. Both are empty when the stored input does not read.
-	Item, Project string
+	Item    string `json:"item,omitempty"`
+	Project string `json:"project,omitempty"`
 	// OlderSteps marks a stranded run that has the build version of this client, but was made by an older step format.
-	OlderSteps bool
+	OlderSteps bool `json:"older_steps"`
 	// Question is what an open run asks the owner. An empty text means the run asks nothing.
-	Question string
+	Question string `json:"question,omitempty"`
 	// Asked names the people and the choices of the open wait, and who answered so far. It is nil for a wait that names neither.
-	Asked *Asked
+	Asked *Asked `json:"asked,omitempty"`
 	// Others names the other orchestrators that held items when an open run started, one line for each: the owner and its items. It is empty when none did.
-	Others []string
+	Others []string `json:"others,omitempty"`
 	// SentBack is why the watch returned the pull request of a finished run to draft. An empty text means it did not.
-	SentBack string
+	SentBack string `json:"sent_back,omitempty"`
 	// Closed is the text for the owner when the pull request of a finished run was closed with no merge. An empty text means it was not.
-	Closed string
+	Closed string `json:"closed,omitempty"`
 	// Merge is the state of the merge step: owner_merge while an open run waits for the owner, then merged, sent_back or closed. It is empty for a run with no merge step.
-	Merge string
+	Merge string `json:"merge,omitempty"`
 	// Stopped is the command step that ended a finished run on a code of its `stop_on_rc`. It is nil when no step did. A run with a Stopped has the state stopped.
-	Stopped *Stopped
+	Stopped *Stopped `json:"stopped,omitempty"`
 	// RunProgress holds the cost against the run cap, the step that runs now, the deadline of a wait, the last gate result and the rounds.
 	RunProgress
 }
@@ -235,16 +236,14 @@ func (c *Client) addProgress(row dbos.WorkflowStatus, info *RunInfo) error {
 	records, readErr := c.records(row.ID)
 	lines := stepLines(records, info.State, !run{Status: row}.terminal(), time.Now())
 
-	var deadlineErr error
-
 	info.RunProgress = progressOf(lines, c.maxRunBudget, !run{Status: row}.terminal())
-	info.Deadline, deadlineErr = c.deadlineFor(row, records)
+	info.Deadline = deadlineFor(row, records, info.Question)
 
 	if info.Question != "" {
 		info.Now = ""
 	}
 
-	return errors.Join(readErr, deadlineErr)
+	return readErr
 }
 
 // details adds what the run shows besides its state. An open run shows its question and its merge state; a finished run shows its result.
@@ -273,15 +272,9 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 func (c *Client) openDetails(id string, info *RunInfo) error {
 	var err error
 
-	if info.Question, err = c.questionOf(id); err != nil {
+	if info.Question, info.Asked, err = c.waitOf(id); err != nil {
 		return err
 	}
-
-	if info.Asked, err = c.askedOf(id); err != nil {
-		return err
-	}
-
-	info.Question = cmp.Or(info.Question, info.Asked.questionText())
 
 	if info.Others, err = c.othersOf(id); err != nil {
 		return err
@@ -290,6 +283,22 @@ func (c *Client) openDetails(id string, info *RunInfo) error {
 	info.Merge, err = c.mergeOf(id)
 
 	return err
+}
+
+// waitOf reads the question and the people of the open wait of a run. A wait that names people or choices sets the ask event and leaves the question event unset,
+// so the question is the question event, or else the ask event. This is the one place that holds the rule.
+func (c *Client) waitOf(id string) (string, *Asked, error) {
+	question, err := c.questionOf(id)
+	if err != nil {
+		return "", nil, err
+	}
+
+	asked, err := c.askedOf(id)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return cmp.Or(question, asked.questionText()), asked, nil
 }
 
 // questionOf reads the question an open run asks the owner.

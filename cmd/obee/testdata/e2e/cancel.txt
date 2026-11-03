@@ -7,7 +7,7 @@ exec obee cancel 7
 wait
 
 exec obee status
-stdout '^item-7-r1\tcancelled$'
+stdout '^item-7-r1\tcancelled\titem 7 of [a-z]+$'
 
 # A second cancel has nothing to stop.
 ! exec obee cancel 7

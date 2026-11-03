@@ -45,6 +45,31 @@ func TestStatus_ARoundsCapThatTheRunComputesIsCheckedByTheRun(t *testing.T) {
 	}
 }
 
+func TestTimeLeft_NamesTheLargestUnitsOfTheTimeToTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	for left, want := range map[time.Duration]string{
+		-time.Second:                    "deadline passed",
+		0:                               "deadline passed",
+		45 * time.Second:                "45s left",
+		12*time.Minute + 30*time.Second: "12m left",
+		90 * time.Minute:                "1h30m left",
+		50 * time.Hour:                  "2d2h left",
+	} {
+		assert.Equal(t, want, TimeLeft(left), left.String())
+	}
+}
+
+func TestRunProgress_NotesAtAddsTheTimeLeftToTheDeadlineAndNotesLeavesItOut(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	progress := RunProgress{Deadline: now.Add(time.Hour)}
+
+	assert.Equal(t, []string{"answer by 2026-11-03T11:00:00Z, 1h0m left"}, progress.NotesAt(now))
+	assert.Equal(t, []string{"answer by 2026-11-03T11:00:00Z"}, progress.Notes())
+}
+
 func TestRunProgress_NotesNameTheGateWithNoHeadAndRoundsWithNoCap(t *testing.T) {
 	t.Parallel()
 

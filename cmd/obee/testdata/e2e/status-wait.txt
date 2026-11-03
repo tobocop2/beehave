@@ -1,0 +1,57 @@
+# A waiting run shows its item, its project, who it asks, how many of the quorum answered and the time left to its deadline. The JSON list carries the same data. A finished run keeps its state and loses its wait.
+isolate
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+subst config/projects/local.star
+
+exec obeereal item add local ship-it --title 'Ship it' --body-file body.txt
+exec obeereal run ship-it local --workflow flow/ask.star &
+waitstatus 'answer by'
+
+# Nobody has answered yet; 48 hours is the deadline, so a little under two days is left.
+exec obeereal status
+stdout 'item ship-it of local'
+stdout 'asks ana, bo, 0 of 2 answered; choices yes, no'
+stdout 'answer by [0-9TZ:-]+, 1d23h left'
+
+exec obeereal answer ship-it --as ana yes
+
+# One of the two has answered, so the run still waits.
+waitstatus '1 of 2 answered (ana)'
+
+exec obeereal status --json
+stdout '"item":"ship-it"'
+stdout '"project":"local"'
+stdout '"question":"Ship it\?"'
+stdout '"quorum":2'
+stdout '"heard":\["ana"\]'
+stdout '"choices":\["yes","no"\]'
+stdout '"time_left_seconds":'
+
+exec obeereal answer ship-it --as bo yes
+wait
+
+exec obeereal status
+stdout 'done'
+! stdout 'answer by'
+exec obeereal status --json
+stdout '"state":"done"'
+! stdout 'time_left_seconds'
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Ship it.
+-- config/projects/local.star --
+project(
+    source      = "@WORK@/origin",
+    base_branch = "main",
+    gate        = "true",
+    test_report = "r.xml",
+)
+-- flow/ask.star --
+def main(item):
+    wait(name = "ask", question = "Ship it?", to = ["ana", "bo"], quorum = 2, choices = ["yes", "no"], timeout = "48h")
