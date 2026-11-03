@@ -50,6 +50,42 @@ def lane_scope():
 
     return {"allow_paths": globs}
 
+# The most fix lanes that one pull request gets. The review loop runs one more pass than it: the last pass reviews the last fix.
+# The environment variable PATCH_ROUNDS can lower the cap for a run. It cannot raise it.
+MAX_PATCH_ROUNDS = 5
+
+def patch_rounds():
+    """Returns the number of fix lanes that one pull request gets: the value of PATCH_ROUNDS from 1 to MAX_PATCH_ROUNDS, and MAX_PATCH_ROUNDS when it is not set.
+    A value that is not a whole number in that range stops the run before any agent starts."""
+    text = env("PATCH_ROUNDS", default = str(MAX_PATCH_ROUNDS))
+    if not text.isdigit() or int(text) < 1 or int(text) > MAX_PATCH_ROUNDS:
+        fail("REFUSE: PATCH_ROUNDS is %r. Use a whole number from 1 to %d: the fix lanes that one pull request gets" % (text, MAX_PATCH_ROUNDS))
+
+    return int(text)
+
+def regressions(value):
+    """Returns the regression count that the output `regressions` of a report holds, or None when the count is unknown.
+    The output is a text. Spaces around the number are allowed. A text that is not a whole number gives None: an unknown count is never a pass."""
+    number = value.strip()
+    return int(number) if number.isdigit() else None
+
+def regression_rise(start, end):
+    """Returns the reason to hold the item, and an empty text when the regression count did not rise from the output `regressions` of the plan (`start`) to the one of the last review (`end`).
+    Both counts are the regressions open at the head of the report, so they compare like with like: a defect that an earlier round found and a later round fixed is in neither.
+    A count that is unknown in either output holds the item: the prompts ask both lanes for a whole number."""
+    before = regressions(start)
+    after = regressions(end)
+    if before == None:
+        return "The report of the plan has no regression count that can be read. An unknown count blocks the item: a person reads the reports and rules."
+
+    if after == None:
+        return "The report of the last review has no regression count that can be read. An unknown count blocks the item: a person reads the reports and rules."
+
+    if after <= before:
+        return ""
+
+    return "The regression count rose from %d to %d between the plan and the last review. A rise blocks the item: a person reads the reports and rules." % (before, after)
+
 def land(item, pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `pins` is id=sha: the item and the full SHA the owner reviewed, as EXPECT_HEAD is for one item.
@@ -278,12 +314,14 @@ def pipeline(item):
         return
 
     scope = lane_scope()
+    rounds = patch_rounds() + 1
 
     plan = agent(
         name = "plan",
         prompt = "prompts/plan.md",
         model = "opus",
         edits = False,
+        outputs = ["regressions"],
         # The repeat-offender check in the prompt reads pull requests with gh, so the shell reaches the forge and nothing else.
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = {"item": item},
@@ -315,7 +353,7 @@ def pipeline(item):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head the gate ran on (the head of the worktree), the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     guard = {"base": env("BASE"), "hold": "hold", "own": {"logins": [env("OWNER_LOGIN")]}}
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []))
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []), rounds = rounds, review_outputs = ["regressions"])
 
     if loop.stopped:
         return
@@ -325,6 +363,16 @@ def pipeline(item):
         item_comment(name = "rejected", id = item.id, key = "rejected", text = loop.review.text)
         item_status(name = "hold-rejected", id = item.id, status = "hold")
         return
+
+    # A rise of the regression count, from the report of the plan to the report of the last review, holds the item with the reason. So does a count that is unknown in either report.
+    # This check runs before the design and the exhausted branches: a held item gets no owner ruling and no settle step. Nothing merges.
+    # The last gate of an exhausted loop can be red. Then there is no review and no count; the item goes on to the ruling of the owner, and nothing merges after the settle step.
+    if loop.review != None:
+        rise = regression_rise(plan.regressions, loop.review.regressions)
+        if rise != "":
+            item_comment(name = "regression-rise", id = item.id, key = "regression-rise", text = rise)
+            item_status(name = "hold-regression-rise", id = item.id, status = "hold")
+            return
 
     # After two fix rounds on one mechanism, a design step decides whether the mechanism should exist. A replace or a delete ends the loop:
     # the item gets the decision and the reason as the comment and the hold status, and a person rules on it.
@@ -338,7 +386,7 @@ def pipeline(item):
         item_status(name = "hold-design", id = item.id, status = "hold")
         return
 
-    # After the last round, a person rules on each open finding. The ruling is applied once. No review follows it.
+    # After the last round, no fix lane starts. A person rules on each open finding, and the settle step applies the ruling once: it is the only edit after the last round, no review follows it, and nothing merges.
     if loop.exhausted:
         ruling = wait(
             "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",

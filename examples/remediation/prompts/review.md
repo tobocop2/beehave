@@ -205,8 +205,13 @@ Send no separate message with the report: the end-of-turn text goes to the orche
 yourself.** It carries: the plan file; the commit; what is done and proven; what is owed, in order; the one
 thing not to redo; and these lines:
 
-    Regressions of this pull request so far: <the count in the handoff you started from, plus each defect an earlier lane of this pull request introduced that you found>
+    Regressions of this pull request so far: <the number of regressions open at your head: defects that a lane of this pull request introduced and that no later lane has fixed; 0 when there are none>
     Tokens at handoff: <your context size>
+
+## Lane layout
+
+**One reviewer judges one pull request.** You review the pull request of this item and no other. Do not review a second pull request in this lane, and do not fix, prove or merge: the fix lane writes the change and the gate is the proof.
+**A rise in the regression count blocks the lane.** Write the output `regressions` as a whole number. Count only the regressions that are open at the head you review: a defect that a later lane fixed is not open. The run compares your count with the count of the plan, and a higher count holds the item. A count that is not a whole number holds the item too.
 
 ## The item
 
@@ -222,6 +227,7 @@ This method has no follow-ups: every open finding needs a commit. A finding that
 The verdict is `approve` when you have no open finding, and `changes` when you have one.
 Write it to {{ .output_file }} as JSON with the list of your open findings, for example `{"verdict":"approve","findings":[]}`.
 Give each open finding as an object with a `class` and a `text`: `{"class":"blocking","text":"what is wrong and where"}`.
+Write the output `regressions` beside them, as a text that holds one whole number. For example: `{"verdict":"approve","regressions":"0","findings":[]}`.
 Write the output `mechanism` beside them: the one file that your open findings are about, as the file path. You may add `:function` after the path. The loop counts the fix rounds on the part before the first colon. When you have no open finding, or the findings do not share one mechanism, write an empty text. For example: `{"verdict":"changes","mechanism":"internal/store/retry.go:Do","findings":[{"class":"blocking","text":"the retry never stops"}]}`.
 The class is one of `blocking`, `deferred`, `pre-existing` or `minor`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.

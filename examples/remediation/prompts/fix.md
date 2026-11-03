@@ -176,8 +176,14 @@ Send no separate message with the report: the end-of-turn text goes to the orche
 yourself.** It carries: the plan file; the commit; what is done and proven; what is owed, in order; the one
 thing not to redo; and these lines:
 
-    Regressions of this pull request so far: <the count in the handoff you started from, plus each defect an earlier lane of this pull request introduced that you found>
+    Regressions of this pull request so far: <the number of regressions open at your head: defects that a lane of this pull request introduced and that no later lane has fixed; 0 when there are none>
     Tokens at handoff: <your context size>
+
+## Lane layout
+
+**A fix lane is not a proof lane and not a review lane.** The gate is the proof and a fresh review lane judges the change. You write the change; you do not review it as the verdict, and you do not approve it.
+**A rise in the regression count blocks the lane.** End your report with the line `Regressions of this pull request so far: <n>`. If n is higher than in the handoff you started from, write REGRESSION RISE on the verdict line and do not push. The run holds the item.
+**Patch rounds are bounded for each pull request.** After the last round, no fix lane starts for this pull request. A person rules on each open finding, and then one settle lane applies the ruling. The settle lane is the only edit after the last round: it runs once, no review follows it, and nothing merges. Do not start a second fix lane for a pull request yourself.
 
 ## The item
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -92,8 +93,12 @@ func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review 
 					mechanism = `"mechanism":"` + mechanisms(reviews) + `",`
 				}
 
-				rig.put(path, `{"verdict":"`+verdict+`",`+mechanism+`"findings":`+findings(reviews)+`}`)
+				rig.put(path, `{"verdict":"`+verdict+`",`+mechanism+`"regressions":"0","findings":`+findings(reviews)+`}`)
 			}
+		}
+
+		if !strings.Contains(request.Prompt, reviewMarker) && slices.Contains(request.Outputs, "regressions") {
+			rig.put(request.OutputFile, `{"regressions":"0"}`)
 		}
 
 		if strings.Contains(request.Prompt, designMarker) {

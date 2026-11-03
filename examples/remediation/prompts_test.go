@@ -240,6 +240,20 @@ func mergeRules() []rule {
 	}
 }
 
+func laneLayoutRules() []rule {
+	return []rule{
+		{"lane_layout", "A fix lane is not a proof lane and not a review lane", workLanes()},
+		{"lane_layout", "One reviewer judges one pull request", []string{review}},
+		{"lane_layout", "A rise in the regression count blocks the lane", workAndReview()},
+		{"lane_layout", "Patch rounds are bounded for each pull request", workLanes()},
+		{"lane_layout", "The settle lane is the only edit after the last round", workLanes()},
+		{"lane_layout", "Write the output `regressions` as a whole number", []string{plan, review}},
+		{"lane_layout", "Count only the regressions that are open at the head you review: a defect that a later lane fixed is not open", []string{review}},
+		{"lane_layout", "Count only the regressions that are open at the head you plan from", []string{plan}},
+		{"lane_layout", "the number of regressions open at your head", everyLane()},
+	}
+}
+
 // squash drops the bold marks and joins the words of a text with one space, so that a phrase matches across the line breaks and the bold spans of a prompt.
 func squash(text string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(text, "**", "")), " ")
@@ -258,7 +272,7 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 		texts[name] = squash(string(raw))
 	}
 
-	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules()}
+	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules(), laneLayoutRules()}
 
 	held, counted := 0, 0
 
@@ -278,6 +292,6 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 144, counted)
+	assert.Equal(t, 153, counted)
 	assert.Positive(t, held)
 }
