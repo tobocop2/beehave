@@ -23,9 +23,37 @@ func (f *Forge) MergePR(ctx context.Context, pr int, sha string) error {
 		return forge.Refuse("cannot merge pull request %d without the full commit id of its head", pr)
 	}
 
-	done := f.run.Run(ctx, []string{argPR, "merge", strconv.Itoa(pr), argRepo, f.repo, "--merge", "--match-head-commit", sha})
+	done := f.run.Run(ctx, []string{argPR, argMerge, strconv.Itoa(pr), argRepo, f.repo, "--merge", "--match-head-commit", sha})
 	if done.ExitCode != 0 {
 		return forge.Refuse("cannot merge pull request %d", pr)
+	}
+
+	return nil
+}
+
+// AutoMergePR asks GitHub to merge a pull request with a merge commit once its requirements pass, and only if its head is still sha.
+// GitHub holds the queued merge and drops it when the head moves. The call returns when GitHub accepts the request; the pull request may merge later.
+// The pin rule of MergePR applies.
+func (f *Forge) AutoMergePR(ctx context.Context, pr int, sha string) error {
+	if !commitID.MatchString(sha) {
+		return forge.Refuse("cannot queue the merge of pull request %d without the full commit id of its head", pr)
+	}
+
+	done := f.run.Run(ctx, []string{argPR, argMerge, strconv.Itoa(pr), argRepo, f.repo, "--merge", "--auto", "--match-head-commit", sha})
+	if done.ExitCode != 0 {
+		return forge.Refuse("cannot queue the merge of pull request %d", pr)
+	}
+
+	return nil
+}
+
+// DisableAutoMergePR turns off the queued merge of a pull request. It succeeds when none is armed.
+// GitHub checks the expected head only when it enables the queued merge, and keeps it armed after a push by a user with write access,
+// so the caller turns it off when the head is not the gated one.
+func (f *Forge) DisableAutoMergePR(ctx context.Context, pr int) error {
+	done := f.run.Run(ctx, []string{argPR, argMerge, strconv.Itoa(pr), argRepo, f.repo, "--disable-auto"})
+	if done.ExitCode != 0 {
+		return forge.Refuse("cannot turn off the queued merge of pull request %d", pr)
 	}
 
 	return nil

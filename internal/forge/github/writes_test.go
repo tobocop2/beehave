@@ -56,6 +56,62 @@ func TestMergePR_AFailedMergeIsARefusal(t *testing.T) {
 	assert.Equal(t, forge.CodeRefused, refusal.Code)
 }
 
+func TestAutoMergePR_QueuesTheMergeOfTheGatedHead(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	require.NoError(t, f.AutoMergePR(context.Background(), 4, tip))
+	assert.Equal(t, [][]string{{"pr", "merge", "4", "--repo", repo, "--merge", "--auto", "--match-head-commit", tip}}, run.Calls)
+}
+
+func TestAutoMergePR_RefusesAPinThatIsNotAFullCommitIdWithoutRunningGh(t *testing.T) {
+	t.Parallel()
+
+	for _, pin := range []string{"", "0123456", strings.ToUpper(tip), tip + "0"} {
+		f, run := fixed(t, "")
+
+		err := f.AutoMergePR(context.Background(), 4, pin)
+		require.Error(t, err, pin)
+		assert.Contains(t, err.Error(), "cannot queue the merge of pull request 4 without the full commit id of its head", pin)
+		assert.Empty(t, run.Calls, pin)
+	}
+}
+
+func TestAutoMergePR_AFailedCallIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	down, _ := failing(t, "auto merge is not allowed")
+
+	err := down.AutoMergePR(context.Background(), 4, tip)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot queue the merge of pull request 4")
+
+	var refusal *forge.Error
+
+	require.ErrorAs(t, err, &refusal)
+	assert.Equal(t, forge.CodeRefused, refusal.Code)
+}
+
+func TestDisableAutoMergePR_TurnsOffTheQueuedMerge(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	require.NoError(t, f.DisableAutoMergePR(context.Background(), 4))
+	assert.Equal(t, [][]string{{"pr", "merge", "4", "--repo", repo, "--disable-auto"}}, run.Calls)
+}
+
+func TestDisableAutoMergePR_AFailedCallIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	down, _ := failing(t, "no")
+
+	err := down.DisableAutoMergePR(context.Background(), 4)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot turn off the queued merge of pull request 4")
+}
+
 func TestTokenScopes_ReadsTheQuotedScopesOfTheTokenLine(t *testing.T) {
 	t.Parallel()
 

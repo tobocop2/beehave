@@ -273,6 +273,59 @@ func TestOpened_AncestryIsPassedThroughOrGivesAnError(t *testing.T) {
 	assert.True(t, in)
 }
 
+type queueForge struct {
+	forge.Forge
+	called string
+}
+
+func (q *queueForge) AutoMergePR(_ context.Context, pr int, sha string) error {
+	q.called = fmt.Sprintf("%d %s", pr, sha)
+
+	return nil
+}
+
+func (q *queueForge) DisableAutoMergePR(_ context.Context, pr int) error {
+	q.called = fmt.Sprintf("off %d", pr)
+
+	return nil
+}
+
+func TestPulls_PollJudgesTheQueuedMergeWithTheRequestOfTheMerge(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+
+	result, err := p.Poll(t.Context(), "p", "item", gated, settings, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, strings.Join(result.Lines, "\n"), "may still be armed", "the last read of an open pull request disarms, and this forge cannot")
+	assert.Empty(t, f.writes)
+}
+
+func TestOpened_ADisableIsPassedThroughOrGivesAnError(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, opened{noTreeForge{}}.DisableAutoMergePR(t.Context(), 5), errNoOptionalRead)
+
+	queue := &queueForge{}
+
+	require.NoError(t, opened{queue}.DisableAutoMergePR(t.Context(), 5))
+	assert.Equal(t, "off 5", queue.called)
+}
+
+func TestOpened_AQueuedMergeIsPassedThroughOrGivesAnError(t *testing.T) {
+	t.Parallel()
+
+	err := opened{noTreeForge{}}.AutoMergePR(t.Context(), 5, "x")
+	require.ErrorIs(t, err, errNoOptionalRead)
+
+	queue := &queueForge{}
+
+	require.NoError(t, opened{queue}.AutoMergePR(t.Context(), 5, "x"))
+	assert.Equal(t, "5 x", queue.called)
+}
+
 type logForge struct{ forge.Forge }
 
 func (logForge) FailedLog(context.Context, string) (string, error) { return "log text", nil }

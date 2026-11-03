@@ -13,6 +13,9 @@ import (
 // stateOpen is the state of a pull request that is open.
 const stateOpen = "OPEN"
 
+// stateMerged is the state of a pull request that is merged.
+const stateMerged = "MERGED"
+
 // shaLength is the length of a full commit id. The merge call pins to the gated head, and a shorter pin is refused.
 const shaLength = 40
 
@@ -80,6 +83,15 @@ type Ancestry interface {
 	IsAncestor(ctx context.Context, commit, base string) (bool, error)
 }
 
+// Queuer is what the merge needs to merge a pull request in a native stack. A forge that also implements Queuer lets the merge queue the merge
+// on the forge and read it with Poll. AutoMergePR returns when the forge has accepted the queued merge, not when it has merged.
+// The forge checks the pin (the expected head) when it enables the queued merge, not when it merges, and a push by a user with write access keeps it armed.
+// DisableAutoMergePR turns the queued merge off, and it succeeds when none is armed.
+type Queuer interface {
+	AutoMergePR(ctx context.Context, pr int, sha string) error
+	DisableAutoMergePR(ctx context.Context, pr int) error
+}
+
 // Writes is what the merge changes on the forge. MergePR merges only if the head is still the pin.
 type Writes interface {
 	SetDraft(ctx context.Context, pr int, draft bool) error
@@ -113,18 +125,21 @@ type Forge interface {
 // when the intent ties the merge to this run (see Intent) and the guards that still apply to a merged pull request pass. Without one, MERGED refuses.
 // The three Allow fields lift a guard on request of the owner. No field lifts the own-work rule.
 type Request struct {
-	Intent        *Intent
-	PR            int
-	Gated         string
-	GatedTree     string
-	Repo          string
-	Base          string
-	OwnLogins     []string
-	OwnEmails     []string
-	Approved      bool
-	Hold          string
-	ForbidText    []*regexp.Regexp
-	Retarget      bool
+	Intent     *Intent
+	PR         int
+	Gated      string
+	GatedTree  string
+	Repo       string
+	Base       string
+	OwnLogins  []string
+	OwnEmails  []string
+	Approved   bool
+	Hold       string
+	ForbidText []*regexp.Regexp
+	Retarget   bool
+	// Queue lets a pull request in a native stack merge through the queued merge of the forge: Run queues it and returns Queued, and Poll reads it.
+	// Without Queue, or on a forge that cannot queue, a pull request in a native stack is refused.
+	Queue         bool
 	Runners       []string
 	Dir           string
 	IntegrationPR int
@@ -160,6 +175,8 @@ const (
 	// Transient is a refusal with a cause that can pass by itself: a failed read of the forge, checks that still run, a head or a base that moved
 	// while the run prepared, or an error of the merge call. The pull request itself is not at fault, so a caller defers it and does not reject it.
 	Transient
+	// Queued is a merge that the forge holds and has not done. The caller waits, then reads it with Poll. It is not a verdict on the pull request.
+	Queued
 )
 
 // refusal is a guard that said no. The lines come after the lines the guards already said.
@@ -193,7 +210,9 @@ type attempt struct {
 	kids []int
 	// history proves the landing after the merge call. The provable guard sets it before any write.
 	history Ancestry
-	lines   []string
+	// queue is set by the native stack guard when the merge goes through the queued merge of the forge.
+	queue Queuer
+	lines []string
 }
 
 func (a *attempt) say(lines ...string) {

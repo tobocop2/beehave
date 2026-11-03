@@ -504,6 +504,26 @@ type opened struct{ forge.Forge }
 
 var errNoOptionalRead = errors.New("this forge cannot read it")
 
+// AutoMergePR queues the merge of a pull request on the forge, when the forge can. A forge that cannot is an error.
+func (o opened) AutoMergePR(ctx context.Context, pr int, sha string) error {
+	queue, ok := o.Forge.(merge.Queuer)
+	if !ok {
+		return fmt.Errorf("%w: a queued merge", errNoOptionalRead)
+	}
+
+	return queue.AutoMergePR(ctx, pr, sha)
+}
+
+// DisableAutoMergePR turns off the queued merge of a pull request, when the forge can queue one. A forge that cannot is an error.
+func (o opened) DisableAutoMergePR(ctx context.Context, pr int) error {
+	queue, ok := o.Forge.(merge.Queuer)
+	if !ok {
+		return fmt.Errorf("%w: a queued merge", errNoOptionalRead)
+	}
+
+	return queue.DisableAutoMergePR(ctx, pr)
+}
+
 // CommitTree returns the tree id of a commit, when the forge reads trees.
 func (o opened) CommitTree(ctx context.Context, commit string) (string, error) {
 	trees, ok := o.Forge.(merge.Trees)
@@ -721,6 +741,18 @@ func (p pulls) Watch(ctx context.Context, project string, pr int) (review.Outcom
 // Merge merges the pull request of the item at head, through the guards of the merge package and the settings of the merge step.
 // The runners of the config count as own identities, next to the logins and addresses of the step. A pattern that is not RE2 is an error.
 func (p pulls) Merge(ctx context.Context, project, item, head string, settings flow.MergeSettings) (merge.Result, error) {
+	return p.judged(ctx, project, item, head, settings, merge.Run)
+}
+
+// Poll reads the queued merge of the pull request of the item once, with the same request as Merge. Last is true for the final read of the wait.
+func (p pulls) Poll(ctx context.Context, project, item, head string, settings flow.MergeSettings, last bool) (merge.Result, error) {
+	return p.judged(ctx, project, item, head, settings, func(ctx context.Context, f merge.Forge, req merge.Request) merge.Result {
+		return merge.Poll(ctx, f, req, last)
+	})
+}
+
+// judged builds the merge request of the item and passes it to judge.
+func (p pulls) judged(ctx context.Context, project, item, head string, settings flow.MergeSettings, judge func(context.Context, merge.Forge, merge.Request) merge.Result) (merge.Result, error) {
 	found, rules, err := p.prepared(project, settings.ForbidText)
 	if err != nil {
 		return merge.Result{}, err
@@ -736,7 +768,7 @@ func (p pulls) Merge(ctx context.Context, project, item, head string, settings f
 		return merge.Result{}, err
 	}
 
-	return merge.Run(ctx, built, p.request(project, found, item, number, head, settings, rules)), nil
+	return judge(ctx, built, p.request(project, found, item, number, head, settings, rules)), nil
 }
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.
@@ -853,6 +885,7 @@ func (p pulls) request(name string, project config.Project, item string, number 
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
+		Queue: true,
 	}
 }
 

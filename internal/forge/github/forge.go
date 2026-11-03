@@ -16,6 +16,7 @@ import (
 const (
 	argAPI         = "api"
 	argPR          = "pr"
+	argMerge       = "merge"
 	argView        = "view"
 	argRepo        = "--repo"
 	argJSON        = "--json"

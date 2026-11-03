@@ -319,6 +319,10 @@ type landMerger struct {
 	cancel   func()
 }
 
+func (m *landMerger) Poll(context.Context, string, string, string, MergeSettings, bool) (merge.Result, error) {
+	return merge.Result{}, errFake
+}
+
 func (m *landMerger) Merge(ctx context.Context, _, item, head string, settings MergeSettings) (merge.Result, error) {
 	m.mu.Lock()
 	m.asked = append(m.asked, item)
