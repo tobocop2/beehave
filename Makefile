@@ -10,7 +10,7 @@ REMEDY := bin/remedy
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
 .PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation \
-	governance-generate governance-validate governance-verify clean check
+	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -77,6 +77,11 @@ smoke-hook: build  ## Run one step with the real claude CLI and check that the c
 
 smoke-sandbox: build  ## Run one step with the real claude CLI and check what the sandbox denies and allows (costs an agent run, at most 0.30 USD; not part of check)
 	sh scripts/smoke-sandbox.sh
+
+check-darwin:  ## On a Mac: run the Seatbelt enforcer tests and the contract suite under the real sandbox-exec (not part of check)
+	@test "$$(uname -s)" = Darwin || { echo "check-darwin needs a Mac: the Seatbelt code builds on darwin only"; exit 1; }
+	go test -count=1 -v -run 'TestEnforcer_PassesTheContractSuite' ./internal/sandbox/seatbelt | grep -v '^=== ' | grep -q -e '--- PASS: TestEnforcer_PassesTheContractSuite' || { echo "the contract suite did not pass under the real enforcer (skipped or failed)"; exit 1; }
+	go test -count=1 ./internal/sandbox/...
 
 # Run on one package: make mutation PKG=./internal/cli/...
 mutation:
