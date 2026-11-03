@@ -1,7 +1,13 @@
 # GO_TEST_P is the number of test packages that run at once. Empty keeps the Go default (one for each CPU).
 # A small machine passes GO_TEST_P=2.
 GO_TEST_P ?=
-GO_TEST_FLAGS := -race -count=1 $(if $(GO_TEST_P),-p $(GO_TEST_P))
+# The race detector turns on pointer checks (checkptr) for every package. The SQLite driver is C code that a translator turned into Go,
+# and the workflow store runs it on every query. The pointer checks inside that driver cost a quarter to a third of the CPU of the test
+# run. Upstream tests the driver with the pointer checks on; the main run skips them for speed. The race detector stays on for all packages.
+# GO_TEST_DRIVER_PKGS are the fast packages that use the driver directly. The second run in "test" runs them with the pointer checks
+# on for the driver, so a driver upgrade is still checked for pointer misuse on every gate.
+GO_TEST_DRIVER_PKGS := ./internal/store/local
+GO_TEST_FLAGS := -race -gcflags='modernc.org/...=-d=checkptr=0' -count=1 $(if $(GO_TEST_P),-p $(GO_TEST_P))
 GOLANGCI_LINT_VERSION := v2.15.0
 AI_RULEZ_VERSION := v5.9.2
 BIN := bin/obee
@@ -61,6 +67,7 @@ vuln:  ## Fail on a known vulnerability the code can reach
 
 test:  ## Run the Go tests with the race detector and write coverage.out
 	go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out ./...
+	go test -race -count=1 $(GO_TEST_DRIVER_PKGS)
 
 coverage:  ## Enforce the coverage gate on coverage.out (run make test first)
 	go-test-coverage --config=.go-test-coverage.yml
