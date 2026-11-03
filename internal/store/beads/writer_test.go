@@ -203,6 +203,69 @@ func TestCreate_RunsTheExactCommands(t *testing.T) {
 	}, fake.calls)
 }
 
+func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
+	t.Parallel()
+
+	fake := newWriteBd()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Assignee: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--assignee", "alice", "--silent"}, fake.calls[1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[3], "--assignee", "the default is no assignee")
+}
+
+func TestAssign_SetsTheAssigneeOfAnItemThatHasNoneOrTheSameOne(t *testing.T) {
+	t.Parallel()
+
+	for name, shown := range map[string]string{
+		"nobody": `[{"id":"p-1","title":"t","status":"open"}]`,
+		"same":   `[{"id":"p-1","title":"t","status":"open","assignee":"alice"}]`,
+	} {
+		run := &proctest.Scripted{}
+		run.Plan(shown, "show")
+		run.Plan("", "update")
+
+		bd, err := beads.New(run, "p")
+		require.NoError(t, err)
+		require.NoError(t, bd.Assign(t.Context(), "p-1", "alice"), name)
+		assert.Equal(t, [][]string{{"show", "p-1", "--json"}, {"update", "p-1", "--assignee", "alice"}}, run.Calls, name)
+	}
+}
+
+func TestAssign_RefusesAnItemThatAnotherLoginHoldsAndWritesNothing(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.Plan(`[{"id":"p-1","title":"t","status":"open","assignee":"bob"}]`, "show")
+
+	bd, err := beads.New(run, "p")
+	require.NoError(t, err)
+
+	err = bd.Assign(t.Context(), "p-1", "alice")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bob")
+	assert.Contains(t, err.Error(), "keeps one assignee")
+	assert.Equal(t, [][]string{{"show", "p-1", "--json"}}, run.Calls)
+}
+
+func TestAssign_RefusesWhenTheItemCannotBeReadOrUpdated(t *testing.T) {
+	t.Parallel()
+
+	down, err := beads.New(proctest.Always(model.CommandResult{ExitCode: 1}), "p")
+	require.NoError(t, err)
+	require.Error(t, down.Assign(t.Context(), "p-1", "alice"))
+
+	run := &proctest.Scripted{}
+	run.Plan(`[{"id":"p-1","title":"t","status":"open"}]`, "show")
+	run.PlanFail("bd failed", "update")
+
+	failing, err := beads.New(run, "p")
+	require.NoError(t, err)
+	require.Error(t, failing.Assign(t.Context(), "p-1", "alice"))
+}
+
 func TestCreate_AKeyThatPrefixesAnotherKeyIsNotAMatch(t *testing.T) {
 	t.Parallel()
 

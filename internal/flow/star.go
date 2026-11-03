@@ -171,7 +171,7 @@ func namesKeyword(kwargs []starlark.Tuple, keyword string) bool {
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]builtinFunc {
 	return map[string]builtinFunc{
-		"agent": s.agent, "batch_merge": s.withRepository(s.batchMerge, ""), "command": s.command, "env": s.env, "gate": s.withRepository(s.gate, "run"), "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.withRepository(s.merge, ""), "now": s.now, "preflight": s.withRepository(s.preflight, ""), "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
+		"agent": s.agent, "batch_merge": s.withRepository(s.batchMerge, ""), "command": s.command, "env": s.env, "gate": s.withRepository(s.gate, "run"), "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_assign": s.itemAssign, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.withRepository(s.merge, ""), "now": s.now, "pr_assign": s.withRepository(s.prAssign, ""), "pr_comment": s.withRepository(s.prComment, ""), "preflight": s.withRepository(s.preflight, ""), "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},

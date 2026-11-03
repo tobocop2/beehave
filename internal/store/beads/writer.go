@@ -29,12 +29,7 @@ func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (str
 		return found, false, err
 	}
 
-	args := []string{"create", "--title", item.Title, "--description", store.WithMarker(item.Body, key)}
-	if item.Parent != "" {
-		args = append(args, "--parent", item.Parent)
-	}
-
-	done := s.run.Run(ctx, append(args, "--silent"))
+	done := s.run.Run(ctx, append(createArgs(key, item), "--silent"))
 	if done.ExitCode != 0 {
 		return "", false, store.Refuse("REFUSE: cannot create an item in beads")
 	}
@@ -42,6 +37,20 @@ func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (str
 	id, err := readableID(strings.TrimSpace(done.Stdout))
 
 	return id, err == nil, err
+}
+
+// createArgs are the arguments of bd create for the item, with the marker of the key. The parent and the assignee are set only when the item has one.
+func createArgs(key string, item store.NewItem) []string {
+	args := []string{"create", "--title", item.Title, "--description", store.WithMarker(item.Body, key)}
+	if item.Parent != "" {
+		args = append(args, "--parent", item.Parent)
+	}
+
+	if item.Assignee != "" {
+		args = append(args, "--assignee", item.Assignee)
+	}
+
+	return args
 }
 
 // keyed returns the id of the item whose description holds the marker line of the key, or empty.
@@ -95,6 +104,21 @@ func (s *Store) step(ctx context.Context, run bool, command, id string, extra ..
 	}
 
 	return nil
+}
+
+// Assign sets the assignee of the item when it has none or already has this login. beads keeps one assignee, so another holder is refused and nothing is written.
+// Setting the same assignee again leaves the same state, so the call is safe to repeat.
+func (s *Store) Assign(ctx context.Context, id, assignee string) error {
+	row, err := s.shown(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if row.Assignee != "" && row.Assignee != assignee {
+		return store.Refuse("REFUSE: item %s is assigned to %s, and beads keeps one assignee. Ask %s to give it up, or use a tracker that keeps many", id, row.Assignee, row.Assignee)
+	}
+
+	return s.step(ctx, true, argUpdate, id, "--assignee", assignee)
 }
 
 // Comment adds a comment with the marker line of the key at its end, once for each key: it lists the comments of the item first and returns when one holds the marker.

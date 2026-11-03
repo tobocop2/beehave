@@ -56,6 +56,16 @@ func (t trackerWriter) SetStatus(ctx context.Context, project, id string, status
 	return closeAfter(writer.SetStatus(ctx, id, status), writer)
 }
 
+// Assign sets the assignee of an item in the tracker of the project. The same assignee again changes nothing.
+func (t trackerWriter) Assign(ctx context.Context, project, id, assignee string) error {
+	writer, err := t.open(ctx, project)
+	if err != nil {
+		return err
+	}
+
+	return closeAfter(writer.Assign(ctx, id, assignee), writer)
+}
+
 // Comment adds a comment to an item in the tracker of the project. The key makes a repeated call add one comment.
 func (t trackerWriter) Comment(ctx context.Context, project, id, key, text string) error {
 	writer, err := t.open(ctx, project)

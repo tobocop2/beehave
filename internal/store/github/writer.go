@@ -61,6 +61,10 @@ func (s *Store) file(ctx context.Context, key string, item store.NewItem) (strin
 		args = append(args, "--parent", item.Parent)
 	}
 
+	if item.Assignee != "" {
+		args = append(args, "--assignee", item.Assignee)
+	}
+
 	done := s.run.Run(ctx, args)
 	if done.ExitCode != 0 {
 		return "", store.Refuse("REFUSE: cannot create an item in %s", s.repo)
@@ -206,6 +210,11 @@ func (s *Store) step(ctx context.Context, run bool, command, id string, extra ..
 	}
 
 	return nil
+}
+
+// Assign adds the assignee to the issue. The forge keeps one entry for a login, so the same call twice changes nothing.
+func (s *Store) Assign(ctx context.Context, id, assignee string) error {
+	return s.step(ctx, true, argEdit, id, "--add-assignee", assignee)
 }
 
 // Comment adds a comment with the marker line of the key at its end, once for each key: it reads the comments of the issue first and returns when one holds the marker.

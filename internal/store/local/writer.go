@@ -39,11 +39,8 @@ CREATE TABLE IF NOT EXISTS comments (
 // Create files an open item for the key and returns its id. The ids are the project name, a hyphen and a number that no item of the project uses.
 // A key that has an item returns that item and created = false. The lookup and the insert run in one BEGIN IMMEDIATE transaction, so two writers on the file file one item.
 func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (string, bool, error) {
-	switch {
-	case key == "":
-		return "", false, store.Refuse("an item write needs a key")
-	case item.Title == "":
-		return "", false, store.Refuse("an item needs a title")
+	if err := refuseItem(key, item); err != nil {
+		return "", false, err
 	}
 
 	var (
@@ -58,6 +55,20 @@ func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (str
 	})
 
 	return id, created, err
+}
+
+// refuseItem returns the refusal of an item that Create cannot file: no key, no title, or an assignee, which the local store does not keep.
+func refuseItem(key string, item store.NewItem) error {
+	switch {
+	case key == "":
+		return store.Refuse("an item write needs a key")
+	case item.Title == "":
+		return store.Refuse("an item needs a title")
+	case item.Assignee != "":
+		return errNoAssignee
+	}
+
+	return nil
 }
 
 // findOrInsert returns the item of the key, or files the item when the key has none.
@@ -138,6 +149,12 @@ func (s *Store) SetStatus(ctx context.Context, id string, status store.Status) e
 
 	return nil
 }
+
+// errNoAssignee is the refusal of an assignee: the local store keeps none.
+var errNoAssignee = store.Refuse("the local store keeps no assignee. Leave the assignee out, or use a tracker that keeps one")
+
+// Assign refuses: the local store keeps no assignee.
+func (*Store) Assign(context.Context, string, string) error { return errNoAssignee }
 
 // Comment adds a comment to the item once for each key. The same key again changes nothing. An id that the project does not have is a refusal.
 func (s *Store) Comment(ctx context.Context, id, key, text string) error {

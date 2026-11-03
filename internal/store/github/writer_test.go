@@ -267,6 +267,35 @@ func TestCreate_RunsTheExactCommands(t *testing.T) {
 	}, fake.calls)
 }
 
+func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeGh()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Assignee: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--assignee", "alice"}, fake.calls[len(fake.calls)-1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[len(fake.calls)-1], "--assignee", "the default is no assignee")
+}
+
+func TestAssign_AddsTheAssigneeWithOneEdit(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.Plan("", "issue", "edit")
+
+	s, err := github.New(ghRepo, run)
+	require.NoError(t, err)
+	require.NoError(t, s.Assign(t.Context(), "7", "alice"))
+	assert.Equal(t, [][]string{{"issue", "edit", "7", "--repo", ghRepo, "--add-assignee", "alice"}}, run.Calls)
+
+	down, err := github.New(ghRepo, proctest.Always(model.CommandResult{ExitCode: 1}))
+	require.NoError(t, err)
+	require.Error(t, down.Assign(t.Context(), "7", "alice"))
+}
+
 func TestCreate_FindsTheKeyInTheListWhenTheSearchIndexLags(t *testing.T) {
 	t.Parallel()
 

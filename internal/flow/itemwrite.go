@@ -16,7 +16,16 @@ type writer interface {
 	Create(ctx context.Context, project, key string, item trackerstore.NewItem) (id string, created bool, err error)
 	SetStatus(ctx context.Context, project, id string, status trackerstore.Status) error
 	Comment(ctx context.Context, project, id, key, text string) error
+	// Assign sets the assignee of an item. The same assignee again changes nothing, so a step that runs twice after a crash is safe.
+	Assign(ctx context.Context, project, id, assignee string) error
 }
+
+// The keywords that the item and pull request writes share.
+const (
+	assigneeKeyword = "assignee"
+	textKeyword     = "text"
+	keyKeyword      = "key"
+)
 
 var errNoWriter = errors.New("this build cannot write to a tracker. Use a build that sets a tracker writer")
 
@@ -43,20 +52,20 @@ func (s *script) write(builtin, label string, fn func(ctx context.Context) (map[
 
 // itemCreate files an item in the tracker of the project. The key makes the call safe to repeat: the same key gives the same item and created = False.
 func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var title, key, body, parent, label string
+	var title, key, body, parent, assignee, label string
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"title": &title, "key": &key, "body": &body, "parent": &parent, nameKeyword: &label,
+		"title": &title, keyKeyword: &key, "body": &body, "parent": &parent, assigneeKeyword: &assignee, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}
 
-	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty("key", key)); err != nil {
+	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty(keyKeyword, key)); err != nil {
 		return nil, err
 	}
 
 	return s.write("item_create", label, func(ctx context.Context) (map[string]any, error) {
-		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent})
+		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent, Assignee: assignee})
 
 		return createOutputs(id, created), err
 	})
@@ -82,17 +91,36 @@ func (s *script) itemStatus(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	})
 }
 
+// itemAssign sets the assignee of an item. The same assignee again changes nothing.
+func (s *script) itemAssign(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	var id, assignee, label string
+
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+		"id": &id, assigneeKeyword: &assignee, nameKeyword: &label,
+	}); err != nil {
+		return nil, err
+	}
+
+	if err := s.check(workflow.NotEmpty("id", id), workflow.NotEmpty(assigneeKeyword, assignee)); err != nil {
+		return nil, err
+	}
+
+	return s.write("item_assign", label, func(ctx context.Context) (map[string]any, error) {
+		return commentOutputs(id), s.e.deps.Writer.Assign(ctx, s.in.Project, id, assignee)
+	})
+}
+
 // itemComment adds a comment to an item. The key makes the call safe to repeat: the same key on the same item adds one comment.
 func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var id, text, key, label string
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"id": &id, "text": &text, "key": &key, nameKeyword: &label,
+		"id": &id, textKeyword: &text, keyKeyword: &key, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}
 
-	if err := s.check(workflow.NotEmpty("id", id), workflow.NotEmpty("text", text), workflow.NotEmpty("key", key)); err != nil {
+	if err := s.check(workflow.NotEmpty("id", id), workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key)); err != nil {
 		return nil, err
 	}
 

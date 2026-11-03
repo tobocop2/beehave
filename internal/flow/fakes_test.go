@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -722,6 +723,34 @@ type fakeForge struct {
 	closingOK    int
 	noPullAfter  int
 	noPull       bool // reports no pull request after the first noPullAfter reads
+	// notes holds each Comment call as project|item|key|text. assigned holds each Assign call as project|item|assignee|linked. writeErr fails both.
+	notes    []string
+	assigned []string
+	writeErr error
+}
+
+// Comment records the call and answers with the number of the standing.
+func (f *fakeForge) Comment(_ context.Context, project, item, key, text string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.notes = append(f.notes, project+"|"+item+"|"+key+"|"+text)
+
+	return f.state.Number, f.writeErr
+}
+
+// Assign records the call. A linked call answers with two issues.
+func (f *fakeForge) Assign(_ context.Context, project, item, assignee string, linked bool) (int, []int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.assigned = append(f.assigned, project+"|"+item+"|"+assignee+"|"+strconv.FormatBool(linked))
+
+	if linked {
+		return f.state.Number, []int{11, 12}, f.writeErr
+	}
+
+	return f.state.Number, nil, f.writeErr
 }
 
 func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, error) {

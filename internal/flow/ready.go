@@ -25,6 +25,12 @@ type forge interface {
 	Ready(ctx context.Context, project, item string) error
 	// ClosingIssues reads the issues that merging the pull request of the item closes, as the forge lists them. Found is false when the item has no pull request yet.
 	ClosingIssues(ctx context.Context, project, item string) (issues []int, found bool, err error)
+	// Comment adds a comment to the pull request of the item and returns its number. The same key on the same pull request adds one comment.
+	// An item with no pull request is an error. So is a project with no forge.
+	Comment(ctx context.Context, project, item, key, text string) (number int, err error)
+	// Assign assigns the pull request of the item to a login and returns its number. With linked it also assigns each issue that the pull request closes and returns their numbers.
+	// The same call again changes nothing. An item with no pull request is an error. So is a project with no forge.
+	Assign(ctx context.Context, project, item, assignee string, linked bool) (number int, issues []int, err error)
 }
 
 // markReady reads the forge and refuses a pull request with a reason to wait, or one that moved after the review to a head with another tree.

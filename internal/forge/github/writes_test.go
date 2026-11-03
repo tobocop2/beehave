@@ -150,6 +150,20 @@ func TestSetBase_RetargetsThePullRequest(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot set the base of pull request 4 to round/next")
 }
 
+func TestAddAssignee_PostsTheLoginToTheAssigneesOfTheNumber(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	require.NoError(t, f.AddAssignee(context.Background(), 4, "alice"))
+	assert.Equal(t, [][]string{{"api", "-X", "POST", "repos/" + repo + "/issues/4/assignees", "-f", "assignees[]=alice"}}, run.Calls)
+
+	down, _ := failing(t, "HTTP 502")
+	err := down.AddAssignee(context.Background(), 4, "alice")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot assign #4 to alice")
+}
+
 func TestSetBody_SendsTheBodyAsOneArgument(t *testing.T) {
 	t.Parallel()
 

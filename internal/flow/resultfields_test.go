@@ -48,6 +48,8 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"merge":         keysOf(mergeOutputs("", "")),
 		"host_teardown": keysOf(teardownOutputs(true, "")),
 		"host_up":       keysOf(upOutputs(true)),
+		"pr_assign":     keysOf(prOutputs(0, nil)),
+		"pr_comment":    keysOf(prCommentOutputs(0)),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
 		"wait":          keysOf(answerOutputs("", nil, false)),
 		"write":         keysOf(writeOutputs("", "", 0, "", false)),

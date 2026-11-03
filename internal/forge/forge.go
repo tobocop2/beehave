@@ -61,6 +61,8 @@ type Activity interface {
 	CreateBranch(ctx context.Context, branch, sha string) error
 	SetBase(ctx context.Context, pr int, base string) error
 	SetBody(ctx context.Context, pr int, body string) error
+	// AddAssignee assigns a pull request or an issue to a login. The same login again changes nothing, so a repeated call is safe.
+	AddAssignee(ctx context.Context, number int, login string) error
 }
 
 // Lookup finds items and branches: a search, the default branch and the tip of a branch.
