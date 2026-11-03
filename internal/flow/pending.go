@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/google/renameio/v2"
 )
 
 const cancelsDir = "canceled"
@@ -43,21 +44,12 @@ func writeMarker(dir, id string, in ItemInput) error {
 		return err
 	}
 
-	file, err := os.CreateTemp(folder, tempPrefix+"*")
+	data, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
 
-	err = errors.Join(json.NewEncoder(file).Encode(in), file.Close())
-	if err == nil {
-		err = os.Rename(file.Name(), cancelPath(dir, id))
-	}
-
-	if err != nil {
-		_ = os.Remove(file.Name()) // The marker is not there, so only the temporary file is left to remove.
-	}
-
-	return err
+	return renameio.WriteFile(cancelPath(dir, id), append(data, '\n'), ownerMode, renameio.WithTempDir(folder))
 }
 
 // pendingCancels reads every cancel marker, by run id. A marker that cannot be read is logged and skipped: it must not stop the sweep of the other runs.
