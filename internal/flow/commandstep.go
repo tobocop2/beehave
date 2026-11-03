@@ -159,9 +159,7 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, err
 	}
 
-	return s.durable("gate", label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: ran.Outputs}, nil
-	})
+	return s.recordGate(label, ran.Outputs)
 }
 
 // programGateOutputs runs the program that a gate call names, with the exit code as the verdict. It has no key: no pass of it stands in for a later gate.

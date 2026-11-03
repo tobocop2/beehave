@@ -47,24 +47,25 @@ type mergeArgs struct {
 	head, label string
 	merges      bool
 	settings    MergeSettings
+	steps       starlark.Value
 }
 
 // mergeCall unpacks the arguments of the merge builtin.
 func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (m mergeArgs, err error) {
-	var own, forbid, tree, steps starlark.Value
+	var own, forbid, tree starlark.Value
 
 	children, s := "refuse", &m.settings
 
 	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		headKeyword: &m.head, "repo": &s.Repo, baseKeyword: &s.Base, holdKeyword: &s.Hold, ownKeyword: &own, "approved": &s.Approved, "tree": &tree,
-		"steps": &steps, "forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
+		"steps": &m.steps, "forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
 	})
 	if err != nil {
 		return m, err
 	}
 
 	if m.merges {
-		if s.GatedTree, err = mergeProof(tree, steps); err != nil {
+		if s.GatedTree, err = mergeProof(tree, m.steps); err != nil {
 			return m, err
 		}
 	}
@@ -145,7 +146,7 @@ func (s *script) merge(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 // A call that merges first checks the scope of the pull request against the first review. It returns the head that was marked ready, which the watch compares with each later head.
 func (s *script) readyAndMerge(m mergeArgs) (string, error) {
 	if m.merges {
-		if err := s.holdScope(m.label); err != nil {
+		if err := s.holdMerge(m); err != nil {
 			return "", err
 		}
 

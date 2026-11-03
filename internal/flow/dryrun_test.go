@@ -99,7 +99,7 @@ func TestDryRun_AStepThatTheDryRunDoesNotFakeIsNotRunAndIsNotAnError(t *testing.
 
 			var out bytes.Buffer
 
-			err := DryRun(t.Context(), dryFile(t, "def main(item):\n    "+strings.TrimSpace(tc.body)+"\n"), "12", map[string]string{}, &out)
+			err := DryRun(t.Context(), dryFile(t, "def main(item):\n    "+strings.ReplaceAll(strings.TrimSpace(tc.body), "\n", "\n    ")+"\n"), "12", map[string]string{}, &out)
 			require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 
 			assert.Contains(t, out.String(), tc.want)
