@@ -7,6 +7,19 @@ func Records(text string) []string {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 }
 
+// NonEmptyLines returns the lines of the text that hold more than blanks, each trimmed.
+func NonEmptyLines(text string) []string {
+	var lines []string
+
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	return lines
+}
+
 // FirstLine returns the first line of the text that holds more than blanks, trimmed.
 func FirstLine(text string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")

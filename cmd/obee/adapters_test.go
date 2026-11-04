@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent/claude"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/skypilot"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store/beads/beadstest"
@@ -310,11 +311,16 @@ func TestAdapters_TheHostTableHasAConstructorForEveryProviderAndNothingElse(t *t
 
 	table := newAdapters(beadstest.NewBd(t), nil)
 
+	// The slurm provider has a name in the config and no adapter yet; the commit that adds the adapter removes it from this set.
+	unbuilt := map[model.HostProvider]bool{model.HostSlurm: true}
+
 	for _, name := range model.HostProviders() {
-		assert.Contains(t, table.hosts, name)
+		if !unbuilt[name] {
+			assert.Contains(t, table.hosts, name)
+		}
 	}
 
-	assert.Len(t, table.hosts, len(model.HostProviders()))
+	assert.Len(t, table.hosts, len(model.HostProviders())-len(unbuilt))
 }
 
 func hostProject(provider model.HostProvider, buildHost string) model.Project {
@@ -333,8 +339,16 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, built)
 
-	_, err = table.host(hostProject("ssh", "lane-host"))
-	require.EqualError(t, err, `project p: no host adapter named "ssh"`)
+	built, err = table.host(hostProject(model.HostSSH, "lane-host"))
+	require.NoError(t, err)
+	assert.NotNil(t, built)
+
+	_, err = table.host(hostProject(model.HostSlurm, "lane-host"))
+	require.EqualError(t, err, `project p: no host adapter named "slurm"`)
+
+	built, err = table.host(hostProject(model.HostSSH, "-oProxyCommand=x"))
+	require.ErrorIs(t, err, link.ErrConfig)
+	assert.Nil(t, built)
 
 	_, err = table.host(model.Project{Name: "p"})
 	require.EqualError(t, err, "project p: no host block, so no build host")
@@ -420,6 +434,7 @@ func TestAdapters_CheckRefusesAHostProviderItDoesNotKnowAndAHostItCannotBuild(t 
 	table := newAdapters(beadstest.NewBd(t), nil)
 
 	require.NoError(t, table.check(t.Context(), hostProject(model.HostSkyPilot, "lane-host")))
-	require.ErrorContains(t, table.check(t.Context(), hostProject("ssh", "lane-host")), `no host adapter named "ssh"`)
+	require.NoError(t, table.check(t.Context(), hostProject(model.HostSSH, "lane-host")), "building the ssh host runs no ssh")
+	require.ErrorContains(t, table.check(t.Context(), hostProject(model.HostSlurm, "lane-host")), `no host adapter named "slurm"`)
 	require.ErrorIs(t, table.check(t.Context(), hostProject(model.HostSkyPilot, "")), skypilot.ErrConfig)
 }

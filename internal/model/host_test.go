@@ -18,9 +18,9 @@ func TestParseHostProvider(t *testing.T) {
 		assert.Equal(t, name, got)
 	}
 
-	_, err := model.ParseHostProvider("ssh")
+	_, err := model.ParseHostProvider("nomad")
 	require.ErrorIs(t, err, model.ErrUnknownHostProvider)
-	require.ErrorContains(t, err, "use one of skypilot")
+	require.ErrorContains(t, err, "use one of skypilot, ssh, slurm")
 }
 
 func TestJobState_Terminal(t *testing.T) {

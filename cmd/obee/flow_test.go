@@ -8,7 +8,9 @@ import (
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/skypilot"
+	"github.com/tobocop2/obee/internal/host/ssh"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -16,6 +18,10 @@ func TestBackendErrors_TheSentinelOfTheHostBackendSurvivesAGateOrAMerge(t *testi
 	t.Parallel()
 
 	require.Contains(t, backendErrors(), skypilot.ErrConfig)
+	require.Contains(t, backendErrors(), link.ErrConfig)
+	require.Contains(t, backendErrors(), ssh.ErrLinger)
+	require.Contains(t, backendErrors(), ssh.ErrSystemd)
+	require.Contains(t, backendErrors(), ssh.ErrDraining)
 }
 
 func TestFactsOf_TheFactsOfTheProjectInTheConfigReachTheEngineAndAnUnknownProjectHasNone(t *testing.T) {

@@ -21,7 +21,7 @@ const (
 )
 
 // DF is the answer of `df -P -k .` on a node with free space.
-const DF = "Filesystem     1024-blocks      Used Available Capacity Mounted on\n/dev/sda1        104857600  10485760  94371840      10% /home\n"
+const DF = hosttest.DF
 
 // Job is one job in the fake Slurm. Polls counts the squeue calls, so the first answer is a live state and the later ones are the empty answer of a forgotten job.
 type Job struct {
@@ -218,7 +218,7 @@ func (f *Cluster) sbatch(rest string) model.CommandResult {
 	f.Sbatches++
 
 	id := strconv.Itoa(f.Next)
-	f.Jobs[id] = &Job{Command: strings.Trim(command, "'")}
+	f.Jobs[id] = &Job{Command: strings.ReplaceAll(strings.TrimSuffix(command, "'"), `'\''`, "'")}
 
 	return ok(id + "\n")
 }
@@ -260,7 +260,7 @@ func (f *Cluster) sacct(id string) model.CommandResult {
 		return ok("")
 	case job.Canceled:
 		return ok("CANCELLED by 1000\n") //nolint:misspell // Slurm's spelling
-	case job.Command == hosttest.FailingCommand:
+	case job.Command == hosttest.FailingCommand, hosttest.Mangled(job.Command):
 		return ok("FAILED\n")
 	}
 

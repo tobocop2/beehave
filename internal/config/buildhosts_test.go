@@ -32,7 +32,7 @@ func TestLoadFolder_BuildHostRefusals(t *testing.T) {
 	}{
 		{"local_with_a_cluster", call(goodProject + `, build_host = ["local", "gpu-b"], host = ` + hostCall("")), "lists \"local\" with other hosts"},
 		{"repeats_a_name", call(goodProject + `, build_host = ["gpu-b", "gpu-b"], host = ` + hostCall("")), "`build_host` lists `gpu-b` twice"},
-		{"bad_name", call(goodProject + `, build_host = ["gpu", "a b"], host = ` + hostCall("")), "`build_host` must be \"local\" or a SkyPilot cluster name"},
+		{"bad_name", call(goodProject + `, build_host = ["gpu", "a b"], host = ` + hostCall("")), "`build_host` must be \"local\" or the name of a build host"},
 		{"empty_list", call(goodProject + `, build_host = []`), "`build_host` is an empty list"},
 		{"not_a_name", call(goodProject + `, build_host = 3`), "want a name or a list of names"},
 	}

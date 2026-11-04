@@ -35,14 +35,20 @@ func (p Project) HostFor(cluster string) (string, error) {
 type HostProvider string
 
 // The build host adapters.
-const HostSkyPilot HostProvider = "skypilot"
+const (
+	HostSkyPilot HostProvider = "skypilot"
+	// HostSSH is a machine the owner provides and obee reaches over ssh. obee never creates or deletes it.
+	HostSSH HostProvider = "ssh"
+	// HostSlurm is a Slurm cluster whose head node obee reaches over ssh.
+	HostSlurm HostProvider = "slurm"
+)
 
 // ErrUnknownHostProvider is returned when text names no build host adapter.
 var ErrUnknownHostProvider = errors.New("unknown host provider")
 
 // HostProviders lists every build host adapter.
 func HostProviders() []HostProvider {
-	return []HostProvider{HostSkyPilot}
+	return []HostProvider{HostSkyPilot, HostSSH, HostSlurm}
 }
 
 // ParseHostProvider returns the build host adapter that text names.
@@ -70,6 +76,24 @@ type HostConfig struct {
 	DiskWaitMinutes int
 	PrivateRemote   string
 	SkyPilot        SkyPilotConfig
+	SSH             SSHConfig
+}
+
+// The host key policies of the ssh link. Neither one accepts a host key that changed.
+const (
+	KnownHostsStrict    = "strict"
+	KnownHostsAcceptNew = "accept-new"
+)
+
+// SSHConfig is the [host.ssh] table, the link to a machine or to the head node of a cluster. An empty field leaves the choice to the ssh config of the user.
+// KnownHosts is never empty after the loader ran.
+type SSHConfig struct {
+	Address    string
+	User       string
+	Port       int
+	Identity   string
+	WorkRoot   string
+	KnownHosts string
 }
 
 // SkyPilotConfig is the [host.skypilot] table. An empty field leaves the choice to SkyPilot.

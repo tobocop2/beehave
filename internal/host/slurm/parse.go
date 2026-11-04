@@ -3,10 +3,8 @@ package slurm
 import (
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/host/jobwait"
@@ -22,7 +20,6 @@ var (
 	errNodeDown = errors.New("a node is down, so the host cannot take a job")
 	errNodeName = errors.New("sinfo gave a node name that obee does not accept")
 	errNoNodes  = errors.New("sinfo listed no node")
-	errDiskText = errors.New("df gave an answer that obee does not read")
 )
 
 var (
@@ -31,13 +28,7 @@ var (
 	nodePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 )
 
-const (
-	nodeSuffixes    = "*~#!%$@^-"
-	bytesPerKiB     = 1024
-	diskHeaderWords = "Filesystem 1024-blocks Used Available Capacity Mounted on"
-	diskDataWords   = 6
-	diskAvailable   = 3
-)
+const nodeSuffixes = "*~#!%$@^-"
 
 // parseSubmitted reads the answer of `sbatch --parsable`: a job id, then an optional semicolon and a cluster name.
 func parseSubmitted(out string) (string, error) {
@@ -81,7 +72,7 @@ func slurmJobState(name string) (model.JobState, bool) {
 
 // parseJobState reads one line of `squeue -h -o %T` or `sacct -X -n -P -o State`. Slurm may add text after the state, such as a user id or a plus sign.
 func parseJobState(out string) (model.JobState, error) {
-	lines := nonEmptyLines(out)
+	lines := model.NonEmptyLines(out)
 	if len(lines) != 1 {
 		return model.JobUnknown, fmt.Errorf("%w: %q", errJobText, model.FirstLine(out))
 	}
@@ -104,7 +95,7 @@ func parseJobState(out string) (model.JobState, error) {
 
 // parseNodes reads `sinfo -h -N -o %N`. A node name that could change a command line is refused.
 func parseNodes(out string) ([]string, error) {
-	lines := nonEmptyLines(out)
+	lines := model.NonEmptyLines(out)
 	if len(lines) == 0 {
 		return nil, errNoNodes
 	}
@@ -138,7 +129,7 @@ func nodeDrains(name string) (drains, known bool) {
 
 // parseDraining reads `sinfo -h -N -o %T` and reports whether any node drains or is drained. A state it does not know is refused.
 func parseDraining(out string) (bool, error) {
-	lines := nonEmptyLines(out)
+	lines := model.NonEmptyLines(out)
 	if len(lines) == 0 {
 		return false, errNoNodes
 	}
@@ -170,36 +161,4 @@ func nodeLineDrains(line string) (bool, error) {
 	}
 
 	return drains, nil
-}
-
-// parseFreeBytes reads `df -P -k` for one file system and returns the free space in bytes.
-func parseFreeBytes(out string) (uint64, error) {
-	lines := nonEmptyLines(out)
-	if len(lines) != 2 || strings.Join(strings.Fields(lines[0]), " ") != diskHeaderWords {
-		return 0, fmt.Errorf("%w: %q", errDiskText, model.FirstLine(out))
-	}
-
-	words := strings.Fields(lines[1])
-	if len(words) != diskDataWords {
-		return 0, fmt.Errorf("%w: %q", errDiskText, lines[1])
-	}
-
-	kib, err := strconv.ParseUint(words[diskAvailable], 10, 64)
-	if err != nil || kib > math.MaxUint64/bytesPerKiB {
-		return 0, fmt.Errorf("%w: %q", errDiskText, lines[1])
-	}
-
-	return kib * bytesPerKiB, nil
-}
-
-func nonEmptyLines(text string) []string {
-	var lines []string
-
-	for _, line := range strings.Split(text, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			lines = append(lines, line)
-		}
-	}
-
-	return lines
 }

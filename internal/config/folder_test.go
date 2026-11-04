@@ -181,7 +181,7 @@ func TestLoadFolder_TheBuildHostRefusalNamesTheKeyAndBothForms(t *testing.T) {
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "`build_host`")
 	require.ErrorContains(t, problems[0], `"local"`)
-	require.ErrorContains(t, problems[0], "SkyPilot cluster name")
+	require.ErrorContains(t, problems[0], "the name of a build host")
 	require.ErrorContains(t, problems[0], "`a b`")
 	require.ErrorContains(t, problems[0], "p.star")
 }
@@ -190,7 +190,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 	t.Parallel()
 
 	const (
-		hostWords = "p.star:1:8: `build_host` must be \"local\" or a SkyPilot cluster name"
+		hostWords = "p.star:1:8: `build_host` must be \"local\" or the name of a build host"
 		local     = `base_branch = "m", gate = "g"`
 		github    = `tracker = "github", forge = "github", ` + local
 	)
