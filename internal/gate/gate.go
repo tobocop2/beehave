@@ -107,9 +107,13 @@ type Request struct {
 	CloneURL   string
 	Resume     model.JobID
 	ResumeHead string
-	// Plan is the plan that the resumed job was submitted with. Run judges the job by it, not by the project of the request. A zero Plan leaves the project as it is.
+	// Plan is the plan that the resumed job was submitted with. Run judges the job by it, not by the project of the request:
+	// the gate, the list, the test report, the build host and the pin check come from the Plan. A zero Plan leaves the project as it is.
 	Plan      Plan
 	Submitted func(model.JobID)
+
+	// pins are the pinned tools that the probe in front of each gate command checks. Run and Submit read them from the pin file at the base commit.
+	pins []Pin
 }
 
 // Gate runs gates.
@@ -164,17 +168,54 @@ func (g Gate) Submit(ctx context.Context, request Request) (Job, error) {
 	}
 
 	if request.Project.BuildHost == config.LocalHost {
-		return Job{Plan: PlanOf(request.Project)}, nil
+		_, plan := g.planned(ctx, request)
+
+		return Job{Plan: plan}, nil
 	}
 
+	return g.submitHost(ctx, request, before.Head)
+}
+
+func (g Gate) submitHost(ctx context.Context, request Request, head string) (Job, error) {
 	host, err := g.hosts(request.Project)
 	if err != nil {
 		return Job{}, fmt.Errorf("project %s builds on %s: %w", request.Project.Name, request.Project.BuildHost, err)
 	}
 
-	id, head, err := job(ctx, host, request, before.Head)
+	// A pin file that cannot be used starts no job. The Plan holds the reason, and Run reports the void gate.
+	request, plan := g.planned(ctx, request)
+	if plan.Pins.Void != "" {
+		return Job{Plan: plan}, nil
+	}
 
-	return Job{ID: id, Head: head, Plan: PlanOf(request.Project)}, err
+	id, head, err := job(ctx, host, request, head)
+
+	return Job{ID: id, Head: head, Plan: plan}, err
+}
+
+// planned reads the pin file of the project, once, and returns the request with the pinned tools and the Plan that holds the project values and the pin check.
+func (g Gate) planned(ctx context.Context, request Request) (Request, Plan) {
+	check := g.pinsOf(ctx, request)
+	request.pins = check.Tools
+
+	plan := PlanOf(request.Project)
+	plan.Pins = &check
+
+	return request, plan
+}
+
+// withPins returns the request with the pinned tools of the Plan, and the reason why the pin file cannot be used, or empty.
+// A Plan that has no pin check (no Submit made it) reads the pin file now, from the project of the request.
+func (g Gate) withPins(ctx context.Context, request Request) (Request, string) {
+	check := request.Plan.Pins
+	if check == nil {
+		read := g.pinsOf(ctx, request)
+		check = &read
+	}
+
+	request.pins = check.Tools
+
+	return request, check.Void
 }
 
 func (g Gate) unchanged(ctx context.Context, dir string, before State) error {
@@ -205,12 +246,13 @@ func (g Gate) clean(ctx context.Context, dir string) (State, error) {
 }
 
 func (g Gate) execute(ctx context.Context, request Request, head string) (Result, error) {
-	if request.Project.BuildHost != config.LocalHost {
-		return g.remote(ctx, request, head)
+	request, reason := g.withPins(ctx, request)
+	if reason != "" {
+		return voided(request, head, reason), nil
 	}
 
-	if reason := g.pinProblem(ctx, request); reason != "" {
-		return voided(request, head, reason), nil
+	if request.Project.BuildHost != config.LocalHost {
+		return g.remote(ctx, request, head)
 	}
 
 	return g.local(ctx, request, head)
@@ -220,12 +262,8 @@ func (g Gate) local(ctx context.Context, request Request, head string) (Result, 
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	ran, abort := g.runSpecs(ctx, request)
 
-	if abort > signalBase {
-		return signaled(ctx, request.Project, head, ran.output, abort)
-	}
-
-	if abort == ExitTimedOut {
-		return timedOut(request, head, ran.output), nil
+	if stopped, result, err := stoppedGate(ctx, request, head, ran, abort); stopped {
+		return result, err
 	}
 
 	result := Result{Report: tail(ran.output), Head: head, Steps: ran.steps}
@@ -239,11 +277,30 @@ func (g Gate) local(ctx context.Context, request Request, head string) (Result, 
 	return result, nil
 }
 
+// stoppedGate gives the result of a local gate that did not run to the end: a pinned tool at another version, a signal, or the time limit.
+// The first result is false for a gate that ran every step.
+func stoppedGate(ctx context.Context, request Request, head string, ran specRun, abort int) (bool, Result, error) {
+	switch {
+	case ran.void != "":
+		return true, voided(request, head, ran.void), nil
+	case abort > signalBase:
+		result, err := signaled(ctx, request.Project, head, ran.output, abort)
+
+		return true, result, err
+	case abort == ExitTimedOut:
+		return true, timedOut(request, head, ran.output), nil
+	}
+
+	return false, Result{}, nil
+}
+
 // specRun is what the steps of a gate list left: the result of each step, their output, and the first exit code that was not 0.
 type specRun struct {
 	steps  []Step
 	output string
 	first  int
+	// void is the reason when the probe of a pinned tool stopped the step, else empty.
+	void string
 }
 
 // runSpecs runs the steps of the gate list in order. A failed step does not stop the later steps: the gate counts every red.
@@ -253,21 +310,35 @@ func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
 	ran := specRun{steps: make([]Step, 0, len(specs)+1)}
 
 	for _, spec := range specs {
-		out, code := g.shell(ctx, request.Dir, spec.Command)
-		ran.output += labeled(spec, len(specs), out)
+		out, code := g.shell(ctx, request.Dir, probed(request.pins, spec.Command))
 
-		if code > signalBase || code == ExitTimedOut {
+		if ran.add(spec, len(specs), out, code) {
 			return ran, code
 		}
-
-		if ran.first == 0 {
-			ran.first = code
-		}
-
-		ran.steps = append(ran.steps, Step{Name: spec.Name, Status: exitStatus(code)})
 	}
 
 	return ran, 0
+}
+
+// add keeps the result of one step. It is true when the step stopped the gate: a probe that found a tool at another version, a signal, or the time limit.
+func (r *specRun) add(spec model.GateSpec, count int, out string, code int) bool {
+	r.output += labeled(spec, count, out)
+
+	if code == voidCode {
+		r.void = voidReason(out)
+	}
+
+	if r.void != "" || code > signalBase || code == ExitTimedOut {
+		return true
+	}
+
+	if r.first == 0 {
+		r.first = code
+	}
+
+	r.steps = append(r.steps, Step{Name: spec.Name, Status: exitStatus(code)})
+
+	return false
 }
 
 // labeled is the output of one step. In a list of more than one step it starts with the name of the step, so the report says which step wrote it.
@@ -383,7 +454,8 @@ func wait(ctx context.Context, host Remote, project model.Project, id model.JobI
 
 	result, err := verdict(ctx, project, head, state)
 
-	if err == nil && state == model.JobFailed && (project.TestReport != "" || len(project.GateSteps) > 0) {
+	// The log of every failed job is evidence: it holds the void line of a pin mismatch, which no setting of the project predicts.
+	if err == nil && state == model.JobFailed {
 		result = explainFailure(ctx, host, project, id, result)
 	}
 
@@ -424,6 +496,10 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 
 // markedResult is the result that the first marker line in the log gives, and whether the log holds one.
 func markedResult(log string, project model.Project) (Result, bool) {
+	if reason := voidReason(log); reason != "" {
+		return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version on " + project.BuildHost + ", then run the gate again.\n"), Steps: unknownSteps(project)}, true
+	}
+
 	for _, line := range strings.Split(log, "\n") {
 		if file, found := strings.CutPrefix(line, trackedMarker+" "); found {
 			return Result{Report: fmt.Sprintf("the repository tracks %s, which matches test_report %q. A tracked file cannot show that the tests ran. Stop tracking the file, then run the gate again.", file, project.TestReport), Steps: hostSteps(project, StatusUnknown, StatusFail)}, true
@@ -460,13 +536,11 @@ func stopJob(ctx context.Context, host Remote, cluster string, id model.JobID) e
 
 // job returns the host job to wait for and the head that it judges: the resumed job with its own head, or a new job for head.
 func job(ctx context.Context, host Remote, request Request, head string) (model.JobID, string, error) {
-	project := request.Project
-
-	if request.CloneURL == "" {
-		return "", "", fmt.Errorf("%w: project %s has no repository URL to clone on %s", ErrNoCloneURL, project.Name, project.BuildHost)
-	}
-
 	if request.Resume == "" {
+		if request.CloneURL == "" {
+			return "", "", fmt.Errorf("%w: project %s has no repository URL to clone on %s", ErrNoCloneURL, request.Project.Name, request.Project.BuildHost)
+		}
+
 		id, err := submit(ctx, host, request, head)
 
 		return id, head, err
@@ -487,7 +561,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.CloneURL, head, clone)})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone)})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}
@@ -536,7 +610,7 @@ func plainWord(word string) bool {
 // When the host has a run limit (`host.max_run`), the gate command runs under `timeout` with that limit, so a hung step ends the job
 // with exit status 124 and the trap still writes the marker and deletes the clone.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
-func hostCommand(project model.Project, cloneURL, head, clone string) string {
+func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone string) string {
 	path := model.ShellQuote(clone)
 	words := []string{
 		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
@@ -553,7 +627,7 @@ func hostCommand(project model.Project, cloneURL, head, clone string) string {
 	before, after := reportChecks(project.TestReport)
 
 	words = append(words, before...)
-	words = append(words, gateWords(project)...)
+	words = append(words, gateWords(project, pins)...)
 
 	return strings.Join(append(words, after...), " && ")
 }
@@ -561,15 +635,15 @@ func hostCommand(project model.Project, cloneURL, head, clone string) string {
 // gateWords are the words that run the gate command. A project with a gate string has one word. A gate list has one word for each step:
 // the word runs the step, writes the marker line "obee-gate-step <name> rc=<code>" and records a failure, and it never stops the later steps.
 // The last word fails when any step failed, so the job fails with the list.
-func gateWords(project model.Project) []string {
+func gateWords(project model.Project, pins []Pin) []string {
 	if len(project.GateSteps) == 0 {
-		return []string{limited(project, "sh -c "+model.ShellQuote(project.Gate))}
+		return []string{limited(project, "sh -c "+model.ShellQuote(probed(pins, project.Gate)))}
 	}
 
 	var words []string
 
 	for _, spec := range project.GateSteps {
-		words = append(words, "{ "+limited(project, "sh -c "+model.ShellQuote(spec.Command))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
+		words = append(words, "{ "+limited(project, "sh -c "+model.ShellQuote(probed(pins, spec.Command)))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
 	}
 
 	return append(words, `[ -z "$bad" ]`)

@@ -181,7 +181,8 @@ func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest,
 
 // gateStart is what the first step of a project gate records: the pass of an earlier gate that the key reuses, or the host job that the gate submitted.
 // A replay reads it and submits nothing.
-// Required is the list of the gate, fixed here with the job text. The wait and the finish read it, and never the project.
+// The job holds the Plan of the gate: the gate, the list, the test report, the build host and the pin check, all fixed here with the job text.
+// Required is the list of the gate in that Plan. The wait and the finish read the record, and read nothing from the project.
 type gateStart struct {
 	Job      GateJob        `json:"job"`
 	Reused   map[string]any `json:"reused,omitempty"`

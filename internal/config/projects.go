@@ -161,7 +161,7 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return host, source, noRepositoryKeys(raw)
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), pinFile(raw, host))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), pinFile(raw))
 }
 
 // noRepositoryKeys checks a project with no source and no forge. Its items run in plain folders, so base_branch, gate and test_report are optional unless a gate is set.
@@ -253,14 +253,10 @@ func sandboxKeys(raw rawProject) error {
 	return nil
 }
 
-// pinFile refuses a pin_file that is set and empty, or set for a gate on a build host. An unset key is allowed.
-func pinFile(raw rawProject, host string) error {
+// pinFile refuses a pin_file that is set and empty, absolute or outside the work tree. An unset key is allowed. A gate on a build host checks the pins on the host.
+func pinFile(raw rawProject) error {
 	if !raw.PinFile.Set {
 		return nil
-	}
-
-	if host != LocalHost {
-		return refuseAt(raw.At, "`pin_file` is set with `build_host = %q`. The tool versions are read only for a local gate. Remove `pin_file` or set `build_host = %q`.", host, LocalHost)
 	}
 
 	if err := requireText(raw.At, "pin_file", raw.PinFile.Value); err != nil {

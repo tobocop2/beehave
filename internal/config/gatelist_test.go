@@ -29,6 +29,7 @@ func TestLoadFolder_AGateListIsRefusedWithGateAndForABadStep(t *testing.T) {
 		`, gate_steps = {"a b": "make a"}`:              "step name",
 		`, gate_steps = {"a": " "}`:                     "blank command",
 		`, gate_steps = ["a"]`:                          "want a dict",
+		`, gate_steps = {"a": 1}`:                       "want a step name and a command",
 		`, gate_steps = {}`:                             "`gate` must be a non-empty string",
 	}
 

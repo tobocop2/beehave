@@ -161,6 +161,27 @@ func TestVerdict_AFailedHostJobOfAGateListReadsEachStepFromItsMarkerAndAStepWith
 	assert.False(t, result.Passed)
 }
 
+func TestVerdict_AStepMarkerWithACodeThatIsNotANumberIsAFailure(t *testing.T) {
+	t.Parallel()
+
+	result := hostListResult(t, model.JobFailed, "obee-gate-step fmt rc=x\nobee-gate-step lint rc=0\n", nil)
+
+	assert.Equal(t, []gate.Step{step("fmt", gate.StatusFail), step("lint", gate.StatusPass), step("test", gate.StatusUnknown)}, result.Steps)
+}
+
+func TestSubmit_AHostGateWhosePinFileCannotBeReadStartsNoJob(t *testing.T) {
+	t.Parallel()
+
+	remote := &fakeRemote{state: model.JobSucceeded}
+	g := gate.New((&fakeShell{output: "fatal\n", code: 128}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
+
+	job, err := g.Submit(context.Background(), hostRequest(pinnedHostProject()))
+
+	require.NoError(t, err)
+	assert.Empty(t, job.ID)
+	assert.Empty(t, remote.submitted)
+}
+
 func TestVerdict_AFailedHostJobOfAGateListWhoseLogCannotBeReadGivesEveryStepUnknownAndNeverAPass(t *testing.T) {
 	t.Parallel()
 

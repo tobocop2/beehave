@@ -111,6 +111,13 @@ func hostRequest(project model.Project) gate.Request {
 	return gate.Request{Project: project, Dir: "/w", CloneURL: cloneURL}
 }
 
+// withNoPins is the plan of a project with no pin file, as Submit records it: a pin check that holds nothing.
+func withNoPins(plan gate.Plan) gate.Plan {
+	plan.Pins = &gate.PinCheck{}
+
+	return plan
+}
+
 func clean(head string) gate.State { return gate.State{Head: head, Clean: true} }
 
 func build(shell *fakeShell, tree *fakeTree, remote *fakeRemote) gate.Gate {
@@ -270,7 +277,7 @@ func TestSubmit_AHostGateStartsItsJobForTheHeadOfTheTreeAndDoesNotWait(t *testin
 	got, err := g.Submit(context.Background(), hostRequest(project("gpu-a")))
 
 	require.NoError(t, err)
-	assert.Equal(t, gate.Job{ID: "job-7", Head: headA, Plan: gate.PlanOf(project("gpu-a"))}, got)
+	assert.Equal(t, gate.Job{ID: "job-7", Head: headA, Plan: withNoPins(gate.PlanOf(project("gpu-a")))}, got)
 	assert.Len(t, remote.submitted, 1)
 	assert.Empty(t, remote.waited)
 }
@@ -296,7 +303,7 @@ func TestSubmit_ALocalGateStartsNothingAndAnUncleanTreeIsRefused(t *testing.T) {
 
 	got, err := g.Submit(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
 	require.NoError(t, err)
-	assert.Equal(t, gate.Job{Plan: gate.PlanOf(project("local"))}, got)
+	assert.Equal(t, gate.Job{Plan: withNoPins(gate.PlanOf(project("local")))}, got)
 	assert.Empty(t, shell.ran)
 
 	remote := &fakeRemote{}
