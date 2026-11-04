@@ -52,7 +52,7 @@ func TestQueueReads_OpenPullsListsTheOpenPullRequestsWithTheirBranchAndLabels(t 
 
 	require.NoError(t, err)
 	assert.Equal(t, []model.PullRequest{{Number: 7}}, pullsOpen)
-	assert.Equal(t, [][]string{{"--state", "open", "--json", "number,headRefName,labels"}}, f.asked)
+	assert.Equal(t, [][]string{{"--state", "open", "--json", "number,headRefName,labels,reviewDecision,author"}}, f.asked)
 }
 
 func TestQueueReads_AFailedListOfPullRequestsIsAnError(t *testing.T) {

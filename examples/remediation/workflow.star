@@ -16,12 +16,26 @@ def _severity(row):
 
     return len(SEVERITIES)
 
-def rank(rows):
-    """Returns the ready rows in the order of work: the rows with an open pull request (work in flight) first, then the new rows.
-    Inside each group, the rows go by severity, then by item id. A row that is not ready is not offered.
-    The rows of the queue step carry no review request, no review state and no container, so the order by those is not here."""
+def _group(row, me):
+    # The work of others is a pull request whose author is not `me`. A review request does not decide it. It stays first whatever its review state is, so a pull request of another author with requested changes is here and not in group 1.
+    if row.pr > 0 and row.author != "" and row.author != me:
+        return 0
+
+    if row.changes_requested:
+        return 1
+
+    if row.pr > 0:
+        return 2
+
+    return 3
+
+def rank(rows, me):
+    """Returns the ready rows in the order of work: first the pull requests of other authors than `me` (the work of others, whatever their review state),
+    then our pull requests with requested changes, then our other work in flight (an open pull request), then the new rows.
+    Inside each group, the rows of a container come before the loose rows, then the rows go by severity, then by item id. A row that is not ready is not offered.
+    Two rows with the same keys keep the order of their item ids, so the input order does not change the result."""
     ready = [r for r in rows if r.state == "ready"]
-    return sorted(ready, key = lambda r: (0 if r.pr > 0 else 1, _severity(r), r.item))
+    return sorted(ready, key = lambda r: (_group(r, me), 0 if r.parent != "" else 1, _severity(r), r.item))
 
 # A hook refuses a command of these kinds before the call. A command that still ran is read from the output stream and recorded in the violations of the agent. The step does not fail.
 # The review loop reads the violations of the latest run of the implementer: a hit sends the run back to a fix round.
@@ -149,7 +163,7 @@ def sweep(item):
     The runs are the pipeline of one item each. The rank rule is above."""
     # The run of the sweep claims the item id it is given, as every run does. That is wanted: the claim lets only one pass run for that id, so two passes cannot start the same items twice. Give the sweep an id that is no real item.
     q = queue(name = "sweep-queue", hold = "hold")
-    take = [r.item for r in rank(q.rows)][:q.free]
+    take = [r.item for r in rank(q.rows, env("OWNER_LOGIN"))][:q.free]
     if len(take) == 0:
         return
 
