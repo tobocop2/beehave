@@ -158,7 +158,7 @@ func TestCheck_AFieldThatFactsDoesNotReturnIsRefused(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "batch_merge", "board_sync", "command", "earlier_calls", "facts", "gate", "gather", "host_teardown", "host_up", "item_assign", "item_comment", "item_create", "item_status", "merge", "pr_assign", "pr_comment", "pr_open", "preflight", "queue", "spawn", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "batch_merge", "board_sync", "command", "earlier_calls", "facts", "gate", "gather", "host_teardown", "host_up", "item_assign", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_assign", "pr_comment", "pr_open", "preflight", "queue", "spawn", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

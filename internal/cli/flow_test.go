@@ -674,6 +674,31 @@ func TestOptions_TheReviewPollMinutesBecomeTheIntervalOfTheEngine(t *testing.T) 
 	assert.Equal(t, 45*time.Minute, rig.options.ReviewPoll)
 }
 
+func TestOptions_TheRetentionDaysBecomeTheAgeOfTheEngineAndZeroKeepsTheRuns(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, 7*24*time.Hour, rig.options.Retention, "the default is the 7 days that the engine always used")
+	assert.False(t, rig.options.KeepRuns)
+
+	rig = newRig(t)
+	writeConfig(t, rig.dir, "runners.star", "agents(retention_days = 30)\n"+validRunners)
+
+	code, _, stderr = rig.execute(t.Context(), "run", "12")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, 30*24*time.Hour, rig.options.Retention)
+
+	rig = newRig(t)
+	writeConfig(t, rig.dir, "runners.star", "agents(retention_days = 0)\n"+validRunners)
+
+	code, _, stderr = rig.execute(t.Context(), "run", "12")
+	require.Equal(t, 0, code, stderr)
+	assert.True(t, rig.options.KeepRuns)
+}
+
 func TestStatus_ReportsAReviewPollThatCannotBeRead(t *testing.T) {
 	t.Parallel()
 

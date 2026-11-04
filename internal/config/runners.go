@@ -39,6 +39,9 @@ type agents struct {
 	// MaxRunBudgetUSD is the most dollars that the agent steps of one item run spend in all, failed runs included. An agent step does not start when the sum is at or past it, so the last step can pass it by its own cost.
 	// A child workflow that the run spawns starts its own sum. 0 means no cap.
 	MaxRunBudgetUSD float64
+	// RetentionDays is the age in days at which `obee run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
+	// A failed or canceled run is never deleted, because `obee resume` can reopen it.
+	RetentionDays int
 }
 
 // runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
@@ -52,7 +55,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -79,7 +82,7 @@ func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
 	budget, runBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays); err != nil {
 		return err
 	}
 

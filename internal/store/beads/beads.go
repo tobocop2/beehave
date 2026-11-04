@@ -40,6 +40,8 @@ type bdRow struct {
 	Description *string  `json:"description"`
 	Status      string   `json:"status"`
 	Labels      []string `json:"labels"`
+	// Parent is the id of the parent that bd show prints for a child item. It is empty for an item with no parent.
+	Parent string `json:"parent"`
 
 	LeaseExpiresAt string `json:"lease_expires_at"`
 }

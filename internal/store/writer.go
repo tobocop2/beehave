@@ -56,6 +56,19 @@ func WithMarker(text, key string) string {
 	return text + "\n\n" + Marker(key)
 }
 
+// Visible returns the text of a comment without its marker lines and without the blank lines that WithMarker put before them.
+func Visible(text string) string {
+	var kept []string
+
+	for line := range strings.SplitSeq(text, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), KeyPrefix) {
+			kept = append(kept, line)
+		}
+	}
+
+	return strings.TrimRight(strings.Join(kept, "\n"), "\n")
+}
+
 // HasMarker reports whether a line of text is exactly the marker of key.
 func HasMarker(text, key string) bool {
 	for line := range strings.SplitSeq(text, "\n") {

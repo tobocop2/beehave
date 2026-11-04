@@ -49,6 +49,12 @@ type Param struct {
 // StatusValues lists the values of the status argument of an item_status call.
 func StatusValues() []string { return []string{"open", "closed", "hold"} }
 
+// ofKeyword is the keyword of item_read that names the item to read.
+const ofKeyword = "of"
+
+// ItemTargets lists the values of the of argument of an item_read call: the item of the run, or its parent.
+func ItemTargets() []string { return []string{"self", "parent"} }
+
 // ChildrenValues lists the values of the children argument of a merge call.
 func ChildrenValues() []string { return []string{"refuse", "retarget"} }
 
@@ -252,6 +258,7 @@ func signatures() map[string][]Param {
 	maps.Copy(all, valueSignatures())
 	maps.Copy(all, swarmSignatures())
 	maps.Copy(all, itemSignatures())
+	maps.Copy(all, readSignatures())
 
 	return all
 }
@@ -344,6 +351,11 @@ func swarmSignatures() map[string][]Param {
 		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), label},
 		queueName:  {label, opt("hold", KindText)},
 	}
+}
+
+// readSignatures holds the builtins that read the tracker.
+func readSignatures() map[string][]Param {
+	return map[string][]Param{itemReadName: {one(ofKeyword, ItemTargets()), opt(nameKeyword, KindText)}}
 }
 
 // itemSignatures holds the builtins that write the tracker or merge.

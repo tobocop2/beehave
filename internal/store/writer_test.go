@@ -37,3 +37,12 @@ func TestMarker_MatchesAWholeLineOnly(t *testing.T) {
 	assert.False(t, store.HasMarker(store.WithMarker("text", "run:10"), "run:1"))
 	assert.False(t, store.HasMarker("see obee-key: run:1 in the text", "run:1"))
 }
+
+func TestVisible_DropsTheMarkerLineAndTheBlankLinesBeforeIt(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "text", store.Visible(store.WithMarker("text", "run:1")))
+	assert.Equal(t, "a\n\nb", store.Visible("a\n\nb\n\nobee-key: run:1"))
+	assert.Empty(t, store.Visible(store.Marker("run:1")))
+	assert.Equal(t, "see obee-key: x in text", store.Visible("see obee-key: x in text"))
+}
