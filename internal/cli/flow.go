@@ -53,6 +53,8 @@ type Reading interface {
 	PollNotScheduled() (string, error)
 	// Schedules lists each schedule with its last tick and whether an engine fires it.
 	Schedules() ([]flow.ScheduleInfo, error)
+	// Days sums the runs that started or ended since the given time by local day, in the time zone of that time.
+	Days(since time.Time) ([]flow.DayFigures, error)
 	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
 	PinnedFile(item string) (string, error)
 }
@@ -436,6 +438,7 @@ func (f flowCommands) statusCommand() *cobra.Command {
 		flag   string
 		item   string
 		asJSON bool
+		days   int
 	)
 
 	command := &cobra.Command{
@@ -443,9 +446,10 @@ func (f flowCommands) statusCommand() *cobra.Command {
 		Short: "List the runs, or the steps of one run",
 		Long:  statusHelp,
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, item, args, asJSON) },
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, item, args, asJSON, days) },
 	}
 	addConfigFlag(command, &flag)
+	command.Flags().IntVar(&days, daysFlag, defaultDays, "show the per-day figures of this many local days, the current day included (the list only)")
 	command.Flags().StringVar(&item, itemFlag, "", "list the lanes of this item across all its runs")
 	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
 
@@ -458,14 +462,27 @@ const jsonFlag = "json"
 // itemFlag is the name of the flag that makes status list the lanes of one item.
 const itemFlag = "item"
 
+// daysFlag is the name of the flag that sets how many local days the per-day figures cover. defaultDays is its value when the flag is absent.
+const (
+	daysFlag    = "days"
+	defaultDays = 7
+)
+
+// errDaysBelowOne is returned when --days is below 1: a window needs at least the current day.
+var errDaysBelowOne = errors.New("--" + daysFlag + " takes a number of days of 1 or more")
+
 const statusHelp = "List the runs, the questions that wait for you and the runs another version must finish. Each line starts with the run id.\n\n" +
 	"A line also shows the item and the project of the run, the cost so far against the run cap, the step that runs now, the last gate result with its head, and the fix and review rounds used against their caps. " +
 	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, the next reminder, and the deadline with the time left. " +
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
-	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, poll and poll_not_scheduled. " +
+	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll and poll_not_scheduled. " +
 	"Each run has the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
-	"A field with no value is left out. The list reads recorded state only; it shows no per-day figure.\n\n" +
+	"A field with no value is left out. The list reads recorded state only.\n\n" +
+	"The list also shows the figures of each local day from the last --" + daysFlag + " days (default 7, the current day included): the runs that started, the runs that ended as done, failed or canceled, and the spend of those runs with the estimate and unknown marks of the run total. " +
+	"The day is the local day of the clock of this command. A run that spans midnight counts as started on its start day and as ended on its end day. " +
+	"The spend of a run counts once, on the day it ended, or on the day it started while it is open. A day with no run is left out, and a window with no run shows no section. " +
+	"The JSON list has the same figures in days, one object for each day.\n\n" +
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the kind of the lane " +
@@ -475,7 +492,7 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")
 
 // status prints the runs of the store, or the steps of the run that the command names.
-func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []string, asJSON bool) error {
+func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []string, asJSON bool, days int) error {
 	out := cmd.OutOrStdout()
 
 	switch {
@@ -487,7 +504,11 @@ func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []strin
 		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(out, client, args[0], asJSON) })
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client, f.clock(), asJSON) })
+	if days < 1 {
+		return errDaysBelowOne
+	}
+
+	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client, f.clock(), days, asJSON) })
 }
 
 // clock returns the clock of the status view.
@@ -499,11 +520,11 @@ func (f flowCommands) clock() func() time.Time {
 	return f.factory.Now
 }
 
-// printRuns writes the runs of the store, the schedules, then the review poll section. With asJSON it writes the same data as one JSON object.
-func printRuns(out io.Writer, client Steering, clock func() time.Time, asJSON bool) error {
+// printRuns writes the runs of the store, the schedules, the per-day figures, then the review poll section. With asJSON it writes the same data as one JSON object.
+func printRuns(out io.Writer, client Steering, clock func() time.Time, days int, asJSON bool) error {
 	now := clock()
 
-	list, err := readStatusList(client)
+	list, err := readStatusList(client, flow.DaysSince(now, days))
 	if err != nil {
 		return err
 	}
@@ -514,9 +535,24 @@ func printRuns(out io.Writer, client Steering, clock func() time.Time, asJSON bo
 
 	printStatus(out, list.Runs, now)
 	printSchedules(out, list.Schedules)
+	printDays(out, list.Days)
 	printPollSection(out, list)
 
 	return nil
+}
+
+// printDays writes the per-day figures, one line for each day. It writes nothing when the window has no run.
+func printDays(stdout io.Writer, days []flow.DayFigures) {
+	if len(days) == 0 {
+		return
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintln(stdout, "\nper day")
+
+	for _, day := range days {
+		_, _ = fmt.Fprintln(stdout, day.Text())
+	}
 }
 
 // printSchedules writes one line for each schedule: its name, its text, its last tick and whether it fires. It writes nothing when no schedule exists.
