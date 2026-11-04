@@ -126,7 +126,10 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             )
             capped(review, "review", item)
 
-        if check.passed and review.verdict == "approve" and violations == "":
+        # A read-only step that changed the folder is a violation of this round: the approve of that review is not clean.
+        review_violations = review.violations if review != None else ""
+
+        if check.passed and review.verdict == "approve" and violations == "" and review_violations == "":
             return struct(stopped = False, exhausted = False, rejected = False, design = None, gate = check, review = review)
 
         # A reject ends the loop with no fix round, whatever the gate says. The review runs only on a passing gate, so a missing review is no reject.
@@ -138,6 +141,9 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             break
 
         findings = review.text if check.passed else check.report
+        if review_violations != "":
+            findings = review_violations + "\n\n" + findings
+
         if violations != "":
             findings = violations + "\n\n" + findings
 
@@ -163,6 +169,9 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 inputs = {"item": item, "mechanism": mechanism, "fixes": fixes[mechanism], "findings": findings, "facts": facts},
             )
             capped(design, "design", item)
+
+            if design.violations != "":
+                fail("REFUSE: the design step changed the item folder, and it is read-only. %s Check the folder, then run obee resume %s." % (design.violations, item.id))
 
             if design.decision not in DECISIONS:
                 fail("REFUSE: the design step wrote the decision %r. Use one of: %s. Run obee resume %s." % (design.decision, ", ".join(DECISIONS), item.id))

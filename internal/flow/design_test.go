@@ -186,6 +186,26 @@ func TestExample_ADesignStepThatFailsFailsTheRunAndIsNotReadAsKeep(t *testing.T)
 	assert.Equal(t, []string{"opus", "sonnet", "opus", "sonnet", "opus", "sonnet", "opus", "opus"}, rig.models(), "the design step is the last agent call: no fix follows it")
 }
 
+func TestExample_ADesignStepThatChangedTheFolderStopsTheRun(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRigWithDesign(t, alwaysChanges, noFindings, sameMechanism, `{"decision":"keep","reason":"x"}`)
+	inner := rig.h.agents.result
+	rig.h.agents.result = func(request AgentRequest) agent.Result {
+		result := inner(request)
+		if strings.Contains(request.Prompt, designMarker) {
+			rig.put(filepath.Join(rig.dir, "edited.txt"), "a shell write of the design step")
+			gitIn(t, rig.dir, "add", "edited.txt")
+		}
+
+		return result
+	}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.ErrorContains(t, err, "the design step changed the item folder")
+}
+
 func TestExample_ADecisionThatIsNotListedStopsTheRun(t *testing.T) {
 	t.Parallel()
 
