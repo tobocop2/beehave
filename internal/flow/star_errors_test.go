@@ -37,6 +37,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"merge own is not a dict", `merge(head = "h", own = "x" + "", name = "s")`, "`own` must be a dict with `logins` and `emails`"},
 		{"wait has an unknown argument", `wait(nope = 1)`, "nope"},
 		{"env has no name", `env()`, "name"},
+		{"earlier_calls has no call", `earlier_calls()`, "call"},
 		{"env reads a reserved name", `env("OBEE_STATE_DIR")`, "env cannot read `OBEE_STATE_DIR`"},
 		{"env reads a name that is not set", `env("NOPE_ZZ")`, "the environment variable NOPE_ZZ is not set"},
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},

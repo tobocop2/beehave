@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // withCountSequence makes the plan write the count plan and the nth review write reviews[n-1]. A review past the list repeats its last count.
@@ -30,6 +31,44 @@ func withCountSequence(rig *agentRig, plan string, reviews ...string) {
 
 		return result
 	}
+}
+
+// A reviewer judges one pull request at one head and cannot change it. Each review is a new session with no resume, it cannot edit, and git-write is forbidden to it,
+// so no reviewer carries the judgment of one round into another round or fixes what it reviews. The fix lane resumes the implementer, never a reviewer.
+func TestLaneLayout_EveryReviewIsAFreshReadOnlySessionAndNoFixLaneResumesOne(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(review int) string {
+		if review < 3 {
+			return "changes"
+		}
+
+		return "approve"
+	})
+	rig.h.writer = newFakeWriter()
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	require.NoError(t, err)
+
+	reviews, fixes := 0, 0
+
+	for _, request := range rig.h.agents.requests {
+		switch {
+		case strings.Contains(request.Prompt, reviewMarker):
+			reviews++
+
+			assert.Empty(t, request.Resume, "a review never resumes a session")
+			assert.True(t, request.NoEdits, "a review cannot edit")
+			assert.Contains(t, request.Forbid, model.FindingGitWrite, "a review cannot commit or push")
+		case strings.Contains(request.Prompt, "This is round"):
+			fixes++
+
+			assert.NotEmpty(t, request.Resume, "a fix lane in the first rounds resumes the implementer")
+		}
+	}
+
+	assert.Equal(t, 3, reviews)
+	assert.Equal(t, 2, fixes)
 }
 
 // The review loop calls the hook after each review, so a rise in a middle round ends the loop at that round.

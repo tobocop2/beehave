@@ -81,7 +81,8 @@ func (s *script) earlierScope() (scopeRead, error) {
 	return scopeRead{}, nil
 }
 
-// earlierRuns lists the ids of the other runs of the item, the newest attempt first.
+// earlierRuns lists the ids of the other runs of the item, the newest attempt first. It filters on no state and no attempt number, so a canceled, failed, live or newer run is in the list.
+// A caller that counts work over these runs counts a concurrent run as spent: that errs on the safe side for a cap.
 func (s *script) earlierRuns() ([]string, error) {
 	prefix := runPrefix + s.in.Item + attemptMarker
 

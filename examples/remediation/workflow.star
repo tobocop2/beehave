@@ -457,7 +457,10 @@ def pipeline(item):
         return
 
     scope = lane_scope()
-    rounds = patch_rounds() + 1
+
+    # The cap is for the pull request, not for one run: the fix lanes that earlier runs of this item started count against it. The engine keeps the record of each run, so the count survives a restart.
+    spent = earlier_calls(call = "fix", name = "fix-lanes-spent").count
+    rounds = max(patch_rounds() - spent, 0) + 1
 
     # The facts of the project file (people, rules, limits, traps and the identity keys). The step records them, so a resume keeps the facts the run started with.
     # Each agent of the example gets them as the input `facts`; no agent reads a path for them. The take-over run and the integration run read them once, before their one agent.

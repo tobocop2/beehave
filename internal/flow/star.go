@@ -21,7 +21,7 @@ import (
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star19"
+const stepsVersion = "star20"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
@@ -168,7 +168,7 @@ func namesKeyword(kwargs []starlark.Tuple, keyword string) bool {
 // steps maps the name of each builtin that is a Go function to that function.
 func (s *script) steps() map[string]builtinFunc {
 	return map[string]builtinFunc{
-		"agent": s.agent, "batch_merge": s.withRepository(s.batchMerge, ""), "board_sync": s.withRepository(s.boardSync, ""), "command": s.command, "env": s.env, "facts": s.facts, "gate": s.withRepository(s.gate, "run"), "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_assign": s.itemAssign, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.withRepository(s.merge, ""), "now": s.now, "pr_assign": s.withRepository(s.prAssign, ""), "pr_comment": s.withRepository(s.prComment, ""), "pr_open": s.withRepository(s.prOpen, ""), "preflight": s.withRepository(s.preflight, ""), "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
+		"agent": s.agent, "batch_merge": s.withRepository(s.batchMerge, ""), "board_sync": s.withRepository(s.boardSync, ""), "command": s.command, "earlier_calls": s.earlierCalls, "env": s.env, "facts": s.facts, "gate": s.withRepository(s.gate, "run"), "gather": s.gather, "host_teardown": s.hostTeardown, "host_up": s.hostUp, "item_assign": s.itemAssign, "item_comment": s.itemComment, "item_create": s.itemCreate, "item_status": s.itemStatus, "merge": s.withRepository(s.merge, ""), "now": s.now, "pr_assign": s.withRepository(s.prAssign, ""), "pr_comment": s.withRepository(s.prComment, ""), "pr_open": s.withRepository(s.prOpen, ""), "preflight": s.withRepository(s.preflight, ""), "queue": s.queue, "sandbox": s.sandbox, "spawn": s.spawn, "wait": s.wait, "write": s.writeOutside,
 		"struct": func(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			return starlarkstruct.Make(nil, b, args, kwargs)
 		},
