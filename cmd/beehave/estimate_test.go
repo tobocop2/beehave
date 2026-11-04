@@ -29,6 +29,10 @@ func (usageAdapter) Calls(line string) agent.Seen {
 		return agent.Seen{Cost: float64(tokenCount(rest))}
 	}
 
+	if rest, ok := strings.CutPrefix(line, "spent="); ok {
+		return agent.Seen{Spent: float64(tokenCount(rest))}
+	}
+
 	return agent.Seen{}
 }
 
@@ -58,7 +62,7 @@ func TestSessionTap_EstimatesTheCostFromTheSumOfTheTokensWhenTheCLIReportsNoCost
 	_, err := tap.Write([]byte("tokens=1000000,0\ntokens=0,100000\n"))
 	require.NoError(t, err)
 
-	spend := tap.spent("m")
+	spend := tap.spent("m", 0)
 
 	assert.InDelta(t, 2.0, spend.Cost, 1e-9)
 	assert.Equal(t, agent.Spend{Cost: spend.Cost, Estimated: true}, spend)
@@ -72,7 +76,40 @@ func TestSessionTap_ACostThatTheCLIReportsIsNeverAnEstimate(t *testing.T) {
 	_, err := tap.Write([]byte("tokens=1000000,0\ncost=3\n"))
 	require.NoError(t, err)
 
-	assert.Equal(t, agent.Spend{Cost: 3}, tap.spent("m"))
+	assert.Equal(t, agent.Spend{Cost: 3}, tap.spent("m", 0))
+}
+
+func TestSessionTap_TakesTheDollarsOfTheLinesFromTheRunnerAndNeverEstimatesThem(t *testing.T) {
+	t.Parallel()
+
+	tap := tapWithPrices(t)
+
+	_, err := tap.Write([]byte("tokens=1000000,0\n"))
+	require.NoError(t, err)
+
+	assert.Equal(t, agent.Spend{Cost: 5}, tap.spent("m", 5))
+}
+
+func TestSessionTap_DoesNotReadTheDollarsOfALineItself(t *testing.T) {
+	t.Parallel()
+
+	tap := tapWithPrices(t)
+
+	_, err := tap.Write([]byte("spent=2\nspent=3\n"))
+	require.NoError(t, err)
+
+	assert.Equal(t, agent.Spend{}, tap.spent("m", 0), "the runner owns Seen.Spent, so the tap sums nothing")
+}
+
+func TestSessionTap_ACostOnTheResultLineWinsOverTheDollarsOfTheLines(t *testing.T) {
+	t.Parallel()
+
+	tap := tapWithPrices(t)
+
+	_, err := tap.Write([]byte("cost=7\n"))
+	require.NoError(t, err)
+
+	assert.Equal(t, agent.Spend{Cost: 7}, tap.spent("m", 2))
 }
 
 func TestSessionTap_AModelWithNoPriceHasAnUnknownCostNotAZeroCost(t *testing.T) {
@@ -84,14 +121,14 @@ func TestSessionTap_AModelWithNoPriceHasAnUnknownCostNotAZeroCost(t *testing.T) 
 	require.NoError(t, err)
 
 	for _, name := range []string{"unknown", ""} {
-		assert.Equal(t, agent.Spend{Unknown: true}, tap.spent(name), name)
+		assert.Equal(t, agent.Spend{Unknown: true}, tap.spent(name, 0), name)
 	}
 }
 
 func TestSessionTap_ARunWithNoTokensAndNoReportedCostCostsNothing(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, agent.Spend{}, tapWithPrices(t).spent("m"))
+	assert.Equal(t, agent.Spend{}, tapWithPrices(t).spent("m", 0))
 }
 
 // flaglessAdapter is an adapter whose CLI has no option to cap the dollars of a run.
@@ -121,6 +158,36 @@ func TestAgents_ACostCapOnACLIThatDoesNotCapDollarsIsRefusedWhenTheModelHasNoPri
 		assert.Contains(t, got.Note, "agents.max_run_budget_usd", name)
 		assert.Empty(t, f.spec.Dir, "%s: the run did not start", name)
 	}
+}
+
+// streamingAdapter is an adapter whose CLI has no cost flag and reports the dollars of each step as it runs.
+type streamingAdapter struct{ lineAdapter }
+
+func (streamingAdapter) Profile() agent.Profile { return agent.Profile{StreamsCost: true} }
+
+func TestAgents_ACostCapOnACLIThatStreamsItsCostStartsWhateverTheModel(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.agents.adapter = func(model.Agent) agent.Adapter { return streamingAdapter{} }
+	f.agents.maxRunBudget = 20
+
+	_, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, "/work/tree", f.spec.Dir, "the run started")
+}
+
+func TestAgents_TheCostOfARunIsTheDollarsThatTheRunnerSummed(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited, Streamed: 4})
+	f.agents.adapter = func(model.Agent) agent.Adapter { return streamingAdapter{} }
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.Spend{Cost: 4}, got.Spend)
 }
 
 func TestAgents_ACostCapOnACLIThatDoesNotCapDollarsStartsWhenTheModelHasAPrice(t *testing.T) {

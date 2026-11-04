@@ -24,6 +24,13 @@ case "$mode" in
 chatter) for i in 1 2 3 4 5 6; do echo "tick $i"; done ;;
 silent) sleep 30 ;;
 tools5) for i in 1 2 3 4 5; do echo "tool $i"; done; sleep 30 ;;
+spend5) for i in 1 2 3 4 5; do echo "spent 1"; done; sleep 30 ;;
+spend2) echo "spent 1"; echo "spent 1" ;;
+spendzero) echo "spent 0" ;;
+spendtail)echo "spent 1"; echo "spent 1"; printf 'spent 1' ;;
+spendneg) echo "spent -9"; for i in 1 2 3 4 5; do echo "spent 1"; done; sleep 30 ;;
+spendnan) echo "spent NaN"; for i in 1 2 3 4 5; do echo "spent 1"; done; sleep 30 ;;
+spendid) echo "spent a 1"; echo "spent a 1"; echo "spent b 1" ;;
 tools3) for i in 1 2 3; do echo "tool $i"; done ;;
 twice) echo "tool 1"; echo "tool 1" ;;
 grand) sleep 120 & echo $! > "$here/grandchild.tmp"; mv "$here/grandchild.tmp" "$here/grandchild"; echo started; exit 0 ;;

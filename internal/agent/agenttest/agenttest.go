@@ -5,6 +5,7 @@ package agenttest
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
 	"slices"
@@ -33,9 +34,26 @@ type Reporter interface {
 // Factory returns a new adapter.
 type Factory func() agent.Adapter
 
+// Option changes what TestAdapter checks.
+type Option func(*options)
+
+type options struct{ costLine string }
+
+// WithCostLine gives a line of the output of the CLI that reports dollars. An adapter whose profile sets StreamsCost must pass one: the suite checks that
+// Calls reads dollars from it (Seen.Spent above 0) and returns the same other fields for each reader.
+func WithCostLine(line string) Option {
+	return func(o *options) { o.costLine = line }
+}
+
 // TestAdapter runs the conformance suite against the adapter that make returns, as testing/fstest.TestFS does for a file system.
-func TestAdapter(t *testing.T, make Factory) {
+func TestAdapter(t *testing.T, make Factory, opts ...Option) {
 	t.Helper()
+
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	t.Run("the_profile_names_a_binary_and_a_login", func(t *testing.T) {
 		CheckProfile(t, make())
 	})
@@ -47,6 +65,18 @@ func TestAdapter(t *testing.T, make Factory) {
 	})
 	t.Run("a_line_with_no_call_holds_no_call", func(t *testing.T) {
 		CheckCalls(t, make())
+	})
+	testLimits(t, make, o)
+}
+
+// testLimits runs the arms for the no-edit settings and the cost cap of the profile.
+func testLimits(t *testing.T, make Factory, o options) {
+	t.Helper()
+	t.Run("a_step_with_no_edits_follows_the_no_edit_profile", func(t *testing.T) {
+		CheckNoEdits(t, make(), t.TempDir())
+	})
+	t.Run("a_cost_cap_follows_the_profile", func(t *testing.T) {
+		CheckBudget(t, make(), t.TempDir(), o.costLine)
 	})
 }
 
@@ -91,8 +121,8 @@ func CheckRun(r Reporter, adapter agent.Adapter, dir string) {
 }
 
 // runFake starts the adapter in dir with the prompt, the token and one variable of the caller that must not reach the CLI.
-func runFake(adapter agent.Adapter, dir string, out io.Writer) agent.Result {
-	return agent.Runner{}.Run(context.Background(), agent.Spec{
+func runFake(adapter agent.Adapter, dir string, out io.Writer, change ...func(*agent.Spec)) agent.Result {
+	spec := agent.Spec{
 		Adapter: adapter,
 		Runner:  model.Runner{Name: "suite", Agent: model.Agent("suite"), ConfigDir: dir},
 		Dir:     dir,
@@ -100,7 +130,114 @@ func runFake(adapter agent.Adapter, dir string, out io.Writer) agent.Result {
 		Env:     map[string]string{"PATH": dir + ":/bin:/usr/bin", leakName: "leak"},
 		Token:   token,
 		Log:     out,
-	})
+	}
+
+	for _, set := range change {
+		set(&spec)
+	}
+
+	return agent.Runner{}.Run(context.Background(), spec)
+}
+
+// CheckNoEdits starts the fake CLI with NoEdits set, and checks that it got the arguments of the profile followed by NoEditArgs, with no EditArgs, and every
+// variable of NoEditEnv. A run that may edit must get none of them.
+func CheckNoEdits(r Reporter, adapter agent.Adapter, dir string) {
+	r.Helper()
+
+	profile := adapter.Profile()
+
+	if !writeFake(r, profile, dir) {
+		return
+	}
+
+	var noEdits, edits bytes.Buffer
+
+	runFake(adapter, dir, &noEdits, func(s *agent.Spec) { s.NoEdits = true })
+	runFake(adapter, dir, &edits)
+
+	checkNoEditSeen(r, profile, strings.Split(noEdits.String(), "\n"), strings.Split(edits.String(), "\n"))
+}
+
+// checkNoEditSeen checks the lines that the fake CLI printed for a step with no edits (seen) and for a step that may edit (mayEdit).
+func checkNoEditSeen(r Reporter, profile agent.Profile, seen, mayEdit []string) {
+	r.Helper()
+
+	args := append(slices.Clone(profile.Args), profile.NoEditArgs...)
+	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI of a step with no edits did not get the arguments %q", args)
+
+	for name, value := range profile.NoEditEnv {
+		expect(r, name != profile.TokenVar && !slices.Contains(profile.ConfigVars, name), "the no-edit variable %s is a login variable of the profile", name)
+		expect(r, slices.Contains(seen, name+"="+value), "the CLI of a step with no edits did not get the variable %s", name)
+		expect(r, !hasPrefix(mayEdit, name+"="), "the CLI of a step that may edit got the no-edit variable %s", name)
+	}
+}
+
+// CheckBudget starts the fake CLI with a cost cap of one dollar and checks that the profile keeps its word. A profile with BudgetFlag must pass the flag and the
+// cap. A profile with StreamsCost and no flag must start, and the fake CLI reports no cost, so the run ends as OutcomeBudgetCap. A profile with neither must
+// refuse the run. A profile with StreamsCost also needs costLine, a line that reports dollars, which Calls must read as Seen.Spent above 0.
+func CheckBudget(r Reporter, adapter agent.Adapter, dir, costLine string) {
+	r.Helper()
+
+	profile := adapter.Profile()
+
+	if !writeFake(r, profile, dir) {
+		return
+	}
+
+	var out bytes.Buffer
+
+	result := runFake(adapter, dir, &out, func(s *agent.Spec) { s.MaxBudget = 1 })
+	checkCapped(r, profile, result, out.String())
+
+	if profile.StreamsCost {
+		checkCostLine(r, adapter, costLine)
+	}
+}
+
+// checkCapped checks the outcome of a run with a cost cap of one dollar against the way that the profile caps cost.
+func checkCapped(r Reporter, profile agent.Profile, result agent.Result, out string) {
+	r.Helper()
+
+	switch {
+	case profile.BudgetFlag != "":
+		args := strings.Join(slices.Concat(profile.Args, profile.EditArgs, []string{profile.BudgetFlag, "1"}), " ")
+		expect(r, strings.Contains(out, "args="+args), "the CLI did not get the cost cap %q %q", profile.BudgetFlag, "1")
+	case profile.StreamsCost:
+		expect(r, result.Outcome == agent.OutcomeBudgetCap, "a capped run that reported no cost ended as %q, not as a budget cap", result.Outcome)
+	default:
+		expect(r, result.Outcome == agent.OutcomeNotStarted, "the profile has no way to cap the cost, but a capped run ended as %q", result.Outcome)
+	}
+}
+
+// writeFake writes the fake CLI that the profile names into dir. It reports false, after a failure, when it cannot.
+func writeFake(r Reporter, profile agent.Profile, dir string) bool {
+	r.Helper()
+
+	if err := exectest.Write(filepath.Join(dir, profile.Binary), fakeCLI); err != nil {
+		r.Errorf("cannot write the fake CLI: %v", err)
+
+		return false
+	}
+
+	return true
+}
+
+// checkCostLine checks that Calls reads dollars from the cost line, and that its other fields are the same for a second reader of the same line.
+func checkCostLine(r Reporter, adapter agent.Adapter, line string) {
+	r.Helper()
+
+	if line == "" {
+		r.Errorf("the profile sets StreamsCost, but the suite has no line that reports dollars: pass WithCostLine")
+
+		return
+	}
+
+	first, second := adapter.Calls(line), adapter.Calls(line)
+
+	expect(r, first.Spent > 0, "the line %q reports dollars, but Calls returns Spent %v", line, first.Spent)
+
+	first.Spent, second.Spent = 0, 0
+	expect(r, fmt.Sprintf("%+v", first) == fmt.Sprintf("%+v", second), "Calls returns different fields (besides Spent) for a second reader of the line %q", line)
 }
 
 // checkSeen checks the lines the fake CLI printed against the profile.

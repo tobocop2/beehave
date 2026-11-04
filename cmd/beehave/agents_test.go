@@ -859,3 +859,35 @@ func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {
 		assert.Equal(t, noEdits, spec.NoEdits, "a step with edits = False starts without the edit mode")
 	}
 }
+
+func TestAgents_ARunThatReachedTheBudgetCapKeepsItsSessionTextAndViolations(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{0, -1} {
+		f := newAgentFixture("session=s1\ntext=halfway\n", agent.Result{Outcome: agent.OutcomeBudgetCap, ExitCode: code, Note: "no cost"})
+		f.bash = []string{"git add -A"}
+		req := request()
+		req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+		got, err := f.agents.Run(t.Context(), req)
+
+		require.NoError(t, err)
+		assert.Equal(t, agent.OutcomeBudgetCap, got.Outcome, "exit code %d", code)
+		assert.Equal(t, "no cost", got.Note)
+		assert.Equal(t, "s1", got.Session)
+		assert.Equal(t, "halfway", got.Text)
+		assert.Equal(t, []string{"bulk-staging: git add -A"}, got.Violations)
+	}
+}
+
+func TestAgents_ARunThatReachedTheBudgetCapBeforeItNamedASessionIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("", agent.Result{Outcome: agent.OutcomeBudgetCap, ExitCode: -1})
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeBudgetCap, got.Outcome)
+	assert.Empty(t, got.Session)
+}

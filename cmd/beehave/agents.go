@@ -183,16 +183,21 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 // runCosted runs the spec and gives the result its cost: the one the CLI reported, or an estimate from the tokens of the run for the model.
 func (a agents) runCosted(ctx context.Context, tap *sessionTap, spec agent.Spec, modelName string) agent.Result {
 	result := a.run(ctx, spec)
-	result.Spend = tap.spent(modelName)
+	result.Spend = tap.spent(modelName, result.Streamed)
 
 	return result
 }
 
 // unpricedCapNote returns the reason why a run cannot start, or "" when it can. A dollar cap on a CLI that does not cap dollars itself is checked against the
 // cost that beehave adds up after each run, and a model with no price gives no cost to add: the cap could not be checked, so the run does not start.
+// A CLI that reports the dollars of each step (Profile.StreamsCost) needs no price: the runner caps the sum of those dollars.
 func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest) string {
 	capped := a.maxRunBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
-	if !capped || adapter.Profile().BudgetFlag != "" || a.prices.Has(request.Model) {
+	if !capped || a.prices.Has(request.Model) {
+		return ""
+	}
+
+	if profile := adapter.Profile(); profile.BudgetFlag != "" || profile.StreamsCost {
 		return ""
 	}
 
@@ -303,13 +308,15 @@ func withSession(adapter agent.Adapter, runner model.Runner, dir string, tap *se
 	return result, nil
 }
 
-// describe adds the session, the transcript path, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0.
-// It reads them from the output lines that the tap kept. The violations are the second line of defense: the hook of the run refuses a forbidden command before the call.
-func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind, protect shell.Protection) (agent.Result, error) {
-	// The result line says whether a cap stopped the run. The CLI may exit with any code then, so the stop decides, not the exit code.
-	stop := tap.stopped()
-	if result.Outcome != agent.OutcomeExited || (result.ExitCode != 0 && stop == "") {
-		return result, nil
+// sessionOf adds the cap outcome and the session of a run to the result. A run that the runner ended at the budget cap may not have named a session: that is no error.
+func sessionOf(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, stop agent.Stop, budgetCap bool) (agent.Result, error) {
+	if budgetCap {
+		result, err := withSession(adapter, runner, dir, tap, result)
+		if errors.Is(err, errNoSession) {
+			err = nil
+		}
+
+		return result, err
 	}
 
 	result, err := capOrFail(result, stop, tap.failure())
@@ -317,7 +324,24 @@ func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessi
 		return result, err
 	}
 
-	if result, err = withSession(adapter, runner, dir, tap, result); err != nil {
+	return withSession(adapter, runner, dir, tap, result)
+}
+
+// describe adds the session, the transcript path, the last message, the skill calls and the violations of the forbidden kinds to the result of a run that exited with code 0, or that the runner ended at the budget cap.
+// It reads them from the output lines that the tap kept. The violations are the second line of defense: the hook of the run refuses a forbidden command before the call.
+func describe(adapter agent.Adapter, runner model.Runner, dir string, tap *sessionTap, result agent.Result, forbid []model.FindingKind, protect shell.Protection) (agent.Result, error) {
+	// The result line says whether a cap stopped the run. The CLI may exit with any code then, so the stop decides, not the exit code.
+	stop := tap.stopped()
+	// The runner ends a run as a budget cap when the dollars on the output pass the cap, or when a capped run reported none. The cap is an outcome: the run
+	// still produced a session, a message and commands, and the violations check must see them. The run may have been killed before it named a session.
+	budgetCap := result.Outcome == agent.OutcomeBudgetCap
+
+	if !budgetCap && (result.Outcome != agent.OutcomeExited || (result.ExitCode != 0 && stop == "")) {
+		return result, nil
+	}
+
+	result, err := sessionOf(adapter, runner, dir, tap, result, stop, budgetCap)
+	if err != nil {
 		return result, err
 	}
 
@@ -428,12 +452,18 @@ func (t *sessionTap) see(line string) {
 	}
 
 	t.ended = t.ended || seen.Result
-	t.stop, t.failed, t.cost = cmp.Or(seen.Stop, t.stop), cmp.Or(seen.Failed, t.failed), cmp.Or(seen.Cost, t.cost)
-	t.usage = t.usage.Add(seen.Usage)
+	t.stop, t.failed = cmp.Or(seen.Stop, t.stop), cmp.Or(seen.Failed, t.failed)
+	t.addCost(seen)
 
 	if seen.Invalid {
 		t.invalid++
 	}
+}
+
+// addCost records the dollars and the tokens that one line holds. The caller holds the lock.
+func (t *sessionTap) addCost(seen agent.Seen) {
+	t.cost = cmp.Or(seen.Cost, t.cost)
+	t.usage = t.usage.Add(seen.Usage)
 }
 
 // shellCalls returns the command of each shell call that ran. A call that the CLI refused before it ran is left out.
@@ -481,16 +511,19 @@ func (t *sessionTap) skillCalls() []string {
 	return slices.Clone(t.skills)
 }
 
-// spent returns the cost of the run: the dollars that the result line reported, or 0 when it reported none and no tokens.
+// spent returns the cost of the run: the dollars that the result line reported, else streamed (the sum of the dollars that single lines reported, which the
+// runner read, Result.Streamed), or 0 when it reported none and no tokens. The tap does not read the dollars of a line itself.
 // A run whose CLI reported no cost but did report tokens gets an estimate for the model from the price table, marked Estimated.
 // If the model has no price, the cost is marked Unknown, which is not the same as a cost of 0.
-func (t *sessionTap) spent(modelName string) agent.Spend {
+func (t *sessionTap) spent(modelName string, streamed float64) agent.Spend {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	switch dollars, estimated := t.prices.Estimate(modelName, t.usage); {
 	case t.cost > 0:
 		return agent.Spend{Cost: t.cost}
+	case streamed > 0:
+		return agent.Spend{Cost: streamed}
 	case estimated:
 		return agent.Spend{Cost: dollars, Estimated: true}
 	case t.usage != agent.Tokens{}:

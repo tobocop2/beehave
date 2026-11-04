@@ -30,8 +30,10 @@ const (
 	OutcomeIdle       Outcome = "idle"
 	OutcomeCancelled  Outcome = "cancelled" //nolint:misspell // the same spelling as the note proc prints
 	OutcomeNotStarted Outcome = "not-started"
-	// OutcomeTurnCap and OutcomeBudgetCap mean the CLI stopped the run at the cap of turns or of dollars. The caller sets them from the result line of the CLI.
+	// OutcomeTurnCap and OutcomeBudgetCap mean the run stopped at the cap of turns or of dollars. The caller sets them from the result line of the CLI.
 	// A profile without a turn flag gets OutcomeTurnCap from the runner, when the run starts more shell calls than the cap.
+	// A profile with StreamsCost gets OutcomeBudgetCap from the runner when the dollars on the output pass the cap, and also when a capped run reports no dollars.
+	// A cap crossed on the last line (read after the process exited) ends the run as OutcomeBudgetCap too.
 	OutcomeTurnCap   Outcome = "turn-cap"
 	OutcomeBudgetCap Outcome = "budget-cap"
 )
@@ -48,6 +50,7 @@ var (
 	errTotalTimeout = errors.New("total timeout")
 	errIdleTimeout  = errors.New("idle timeout")
 	errTurnCap      = errors.New("turn cap")
+	errBudgetCap    = errors.New("budget cap")
 )
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
@@ -65,7 +68,8 @@ type Spec struct {
 	IdleTimeout time.Duration
 	Model       string
 	Resume      string
-	// MaxTurns and MaxBudget cap one run. 0 means no cap. A profile without the cost flag refuses a set MaxBudget.
+	// MaxTurns and MaxBudget cap one run. 0 means no cap. A profile without the cost flag refuses a set MaxBudget, unless it sets StreamsCost:
+	// the runner then sums the dollars on the output and ends the run with OutcomeBudgetCap when the sum passes MaxBudget. That run can pass the cap by the cost of one step.
 	// A profile without the turn flag has no turns of its own: the runner counts the shell calls of the run, and a call past MaxTurns ends the run with OutcomeTurnCap.
 	MaxTurns  int
 	MaxBudget float64
@@ -73,7 +77,8 @@ type Spec struct {
 	OnStart   func(pid int)
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
-	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs).
+	// NoEdits, when set, leaves out the arguments of the profile that let the CLI edit files (Profile.EditArgs) and adds the ones that turn editing off
+	// (Profile.NoEditArgs and Profile.NoEditEnv).
 	NoEdits bool
 	// Sandbox, when set, confines the shell of the run by the plan. The run does not start if the adapter has no sandbox, the system is Windows or the CLI is too old.
 	// The environment of the CLI then holds no proxy variable and no agent socket, and git reads no global or system config.
@@ -85,8 +90,11 @@ type Spec struct {
 // and one line for each Bash call that broke a forbidden kind. The Runner leaves them empty. The caller that owns the Adapter fills them from the output lines.
 // Spend is the cost of the run, filled the same way: the cost that the CLI reported on its result line, or an estimate from the tokens, or the mark
 // that the cost is unknown.
+// Streamed is the sum of the dollars that single output lines reported (Seen.Spent), which the runner adds for a profile with StreamsCost, and 0 for any other.
+// The runner is the one reader of those dollars; the caller takes Streamed and does not read Seen.Spent itself.
 type Result struct {
 	Spend
+	Streamed   float64
 	Outcome    Outcome
 	ExitCode   int
 	Stderr     string
@@ -184,7 +192,7 @@ func optionProblem(spec Spec, p Profile) string {
 		return p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
 	}
 
-	if spec.MaxBudget > 0 && p.BudgetFlag == "" {
+	if spec.MaxBudget > 0 && p.BudgetFlag == "" && !p.StreamsCost {
 		return p.Binary + " has no option to cap the cost, so the run does not start. Set agents.max_budget_usd to 0."
 	}
 
@@ -242,7 +250,7 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 
 // runCommand starts the command, waits for it and returns what it left.
 func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) Result {
-	stdout, stderr, tail := newStreams(spec, idle.cancel)
+	stdout, stderr, tail, spend := newStreams(spec, idle.cancel)
 	cmd.Stdout, cmd.Stderr = idle.watch(stdout), idle.watch(stderr)
 
 	idle.start()
@@ -251,7 +259,29 @@ func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) 
 
 	killLeftovers(cmd)
 
-	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
+	return withSpend(finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail), spend)
+}
+
+// withSpend adds the dollars that the spend counter read to the result. A run that exited, with a cost cap that the counter enforces, ends as a budget cap
+// when no line reported a cost or the sum is past the cap, because nothing then says the run stayed under the cap.
+// A run that exited with a non-zero code and reported no cost keeps OutcomeExited and its exit code: the crash is the outcome, not the budget.
+// The conversion keeps the earlier note of the run. The caller still describes a run that ends as a budget cap (session, text, violations).
+func withSpend(result Result, counter *spendCounter) Result {
+	if counter == nil {
+		return result
+	}
+
+	result.Streamed = counter.spent
+
+	note := counter.capNote()
+	if note == "" || result.Outcome != OutcomeExited || (!counter.priced && result.ExitCode != 0) {
+		return result
+	}
+
+	result.Outcome = OutcomeBudgetCap
+	result.Note = strings.Join(slices.DeleteFunc([]string{result.Note, note}, func(s string) bool { return s == "" }), "; ")
+
+	return result
 }
 
 // argsOf returns the arguments of the profile, then the model, the session to resume, the caps and the arguments of the launch.
@@ -312,10 +342,10 @@ func writeFiles(runDir string, files map[string]string) string {
 	return ""
 }
 
-// editArgs returns the arguments that let the CLI edit files, or none for a spec with NoEdits.
+// editArgs returns the arguments that let the CLI edit files, or for a spec with NoEdits the arguments that turn editing off.
 func editArgs(spec Spec, p Profile) []string {
 	if spec.NoEdits {
-		return nil
+		return p.NoEditArgs
 	}
 
 	return p.EditArgs
@@ -329,7 +359,7 @@ func capArgs(spec Spec, p Profile) []string {
 		args = append(args, p.TurnsFlag, strconv.Itoa(spec.MaxTurns))
 	}
 
-	if spec.MaxBudget > 0 {
+	if spec.MaxBudget > 0 && p.BudgetFlag != "" {
 		args = append(args, p.BudgetFlag, strconv.FormatFloat(spec.MaxBudget, 'f', -1, floatBits))
 	}
 
@@ -359,7 +389,9 @@ func startAndWait(cmd *exec.Cmd, onStart func(pid int)) error {
 
 // newStreams returns the redacting writers for stdout (to the log) and stderr (to a tail buffer).
 // When the runner enforces the turn cap, the log goes through a stepCounter that calls cancel on the call past the cap.
-func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *redactWriter, *proc.Tail) {
+// A profile with StreamsCost always gets a spendCounter, which is the one reader of the dollars on the output. It also returns that counter, or nil.
+// The counter calls cancel when the dollars pass the cap, and only when the profile has no cost flag of its own.
+func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *redactWriter, *proc.Tail, *spendCounter) {
 	log := spec.Log
 	if log == nil {
 		log = io.Discard
@@ -369,11 +401,16 @@ func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *reda
 		log = &stepCounter{out: log, adapter: spec.Adapter, limit: spec.MaxTurns, cancel: cancel, seen: map[string]bool{}}
 	}
 
+	counter := newSpendCounter(spec, log, cancel)
+	if counter != nil {
+		log = counter
+	}
+
 	secrets := newRedactor(spec.Token)
 	tail := proc.NewTail(tailBytes)
 
 	return &redactWriter{out: log, redactor: secrets, limit: maxLineBytes},
-		&redactWriter{out: tail, redactor: secrets, limit: maxLineBytes}, tail
+		&redactWriter{out: tail, redactor: secrets, limit: maxLineBytes}, tail, counter
 }
 
 func finish(ctx context.Context, cmd *exec.Cmd, runErr, flushErr error, tail *proc.Tail) Result {
@@ -399,6 +436,8 @@ func outcomeOf(cause error) Outcome {
 		return OutcomeTimedOut
 	case errors.Is(cause, errTurnCap):
 		return OutcomeTurnCap
+	case errors.Is(cause, errBudgetCap):
+		return OutcomeBudgetCap
 	}
 
 	return OutcomeCancelled
