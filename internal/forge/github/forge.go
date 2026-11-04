@@ -240,7 +240,7 @@ func (f *Forge) Committers(ctx context.Context, pr int) ([]model.Committer, erro
 func (f *Forge) PRList(ctx context.Context, limit int, args ...string) ([]model.PullRequest, error) {
 	shown := strings.Join(args, " ")
 
-	done := f.run.Run(ctx, append([]string{argPR, "list", argRepo, f.repo, "--limit", strconv.Itoa(limit)}, args...))
+	done := f.run.Run(ctx, append([]string{argPR, "list", argRepo, f.repo, argLimit, strconv.Itoa(limit)}, args...))
 	if done.ExitCode != 0 {
 		return nil, forge.Refuse("cannot list pull requests (%s)", shown)
 	}

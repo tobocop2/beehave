@@ -58,6 +58,11 @@ func openOutputs(r OpenResult) map[string]any {
 	return map[string]any{numberField: r.Number, "created": r.Created, "stack": r.Stack}
 }
 
+// boardOutputs are the fields of board_sync: the number of the pull request or issue, and the status that the read-back showed.
+func boardOutputs(number int, status string) map[string]any {
+	return map[string]any{numberField: number, statusKeyword: status}
+}
+
 // prOutputs are the fields of pr_assign: the number of the pull request, and the issues that the call assigned besides it. issues is an empty list, never null.
 func prOutputs(number int, issues []int) map[string]any {
 	if issues == nil {

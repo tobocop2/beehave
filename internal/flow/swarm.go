@@ -110,7 +110,7 @@ func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
 		return nil, fmt.Errorf("entry %q is not a function of the workflow file. Add def %s(item)", call.entry, call.entry)
 	}
 
-	return runStep(s.e, s.ctx, s.name("spawn", call.label), func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids) })
+	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids) })
 }
 
 // spawnIDs reads the items argument. A run that spawn started cannot spawn: the parent would wait for a child that holds a slot of the items queue.
@@ -250,7 +250,7 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return nil, err
 	}
 
-	done, err := runStep(s.e, s.ctx, s.name("gather", call.label), func(c context.Context) (gathered, error) {
+	done, err := countedStep(s, "gather", call.label, func(c context.Context) (gathered, error) {
 		return s.e.gather(c, s.in, refs, call.fail == failRaise, call.until == untilAny)
 	})
 	if err != nil {

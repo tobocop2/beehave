@@ -41,6 +41,25 @@ func TestFacts_TheFactsOfTheProjectReachThePromptInputOfAnAgent(t *testing.T) {
 	assert.Contains(t, seen[0].Prompt, "tokens=0", "a fact the file leaves out is an empty list, not a missing key")
 }
 
+func TestFacts_TheBoardOfTheProjectIsReadAsFourFieldsAndIsEmptyWhenTheProjectHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.facts = withBoard("acme")
+	h.flowIs(t, "def main(item):\n    f = facts()\n    fail(\"B=%d/%s/%s/%s\" % (f.board_number, f.board_owner, f.board_started, f.board_merged))\n")
+
+	outcome := <-runInBackground(h.engine(t), testItem)
+
+	require.ErrorContains(t, outcome.err, "B=3/acme/In Progress/Done")
+
+	none := newHarness(t)
+	none.flowIs(t, "def main(item):\n    f = facts()\n    fail(\"B=%d/%r\" % (f.board_number, f.board_owner))\n")
+
+	outcome = <-runInBackground(none.engine(t), testItem)
+
+	require.ErrorContains(t, outcome.err, "B=0/\"\"")
+}
+
 func TestFacts_AProjectThatTheConfigDoesNotHoldHasEmptyFacts(t *testing.T) {
 	t.Parallel()
 

@@ -32,6 +32,12 @@ project(
     # traps = ["The build cache hides a stale tree"],    # measured traps and ownership rules
     # token_rules = ["Read a log by its summary lines"],  # token discipline, the dashboard, cross-repository steps and release steps
     # changelog = "CHANGELOG.md",                  # the changelog file; the example workflow refuses a merge that leaves it untouched
+    # board = board(
+    #     number = 3,                  # the number of the GitHub Project (v2) board; required
+    #     started = "In Progress",     # the Status column that the remediation example sets when the draft pull request opens; required
+    #     merged = "Done",             # the Status column that it sets after the merge; required
+    #     owner = "your-org",          # the login that owns the board; the default is the owner of `repo`
+    # ),                               # optional. With no board block the example makes no board call. The token needs the `project` scope
     build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(

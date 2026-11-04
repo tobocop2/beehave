@@ -36,6 +36,7 @@ func factsOutputs(p model.Project) map[string]any {
 		"people": orEmptyDict(p.People), "epics": orEmptyDict(p.Epics),
 		"gate_files": orEmptyList(p.GateFiles), "conventions": orEmptyList(p.Conventions), "brief_rules": orEmptyList(p.BriefRules), "stacked_rules": orEmptyList(p.StackedRules),
 		"limits": orEmptyList(p.Limits), "traps": orEmptyList(p.Traps), "token_rules": orEmptyList(p.TokenRules), "changelog": p.Changelog,
+		"board_number": p.Board.Number, "board_owner": p.Board.Owner, "board_started": p.Board.Started, "board_merged": p.Board.Merged,
 	}
 }
 

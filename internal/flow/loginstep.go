@@ -35,7 +35,7 @@ func (s *script) loginFor(a agentArgs) (string, error) {
 	}
 
 	for s.login == "" {
-		choice, err := runStep(s.e, s.ctx, s.name(loginStepName, ""), s.pickOnce)
+		choice, err := countedStep(s, loginStepName, "", s.pickOnce)
 		if err != nil {
 			return "", err
 		}

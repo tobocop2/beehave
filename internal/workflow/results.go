@@ -29,10 +29,12 @@ const (
 	itemCommentName  = "item_comment"
 	itemCreateName   = "item_create"
 	itemStatusName   = "item_status"
+	boardSyncName    = "board_sync"
 	prAssignName     = "pr_assign"
 	prCommentName    = "pr_comment"
 	prOpenName       = "pr_open"
 	numberField      = "number"
+	statusField      = "status"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -67,16 +69,18 @@ func factsResultFields() map[string][]string {
 	return map[string][]string{factsName: {
 		"repo", "source", "forge", "tracker", "base_branch", "gate", "build_host", "people", "epics", "gate_files", "conventions",
 		"brief_rules", "stacked_rules", "limits", "traps", "token_rules", "changelog",
+		"board_number", "board_owner", "board_started", "board_merged",
 	}}
 }
 
 // trackerResultFields holds the fields of the builtins that write the tracker or the pull request.
 func trackerResultFields() map[string][]string {
 	return map[string][]string{
+		boardSyncName:   {numberField, statusField},
 		itemAssignName:  {"id"},
 		itemCommentName: {"id"},
 		itemCreateName:  {"id", "created"},
-		itemStatusName:  {"id", "status"},
+		itemStatusName:  {"id", statusField},
 		prAssignName:    {numberField, "issues"},
 		prCommentName:   {numberField},
 		prOpenName:      {numberField, "created", "stack"},

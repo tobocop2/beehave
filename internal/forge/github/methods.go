@@ -93,7 +93,7 @@ func numbersOf(rows []model.PullRequest) []int {
 func searchArgs(repo string, req model.SearchRequest) []string {
 	return []string{
 		"search", string(req.Kind), argRepo, repo, "--involves", req.Involves, "--state", "open",
-		"--updated", ">=" + req.Since, "--limit", strconv.Itoa(req.Limit), argJSON, "number",
+		"--updated", ">=" + req.Since, argLimit, strconv.Itoa(req.Limit), argJSON, "number",
 	}
 }
 

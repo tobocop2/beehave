@@ -75,7 +75,7 @@ func (s *script) queue(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, errNoQueue
 	}
 
-	got, err := runStep(s.e, s.ctx, s.name("queue", label), func(c context.Context) (queued, error) {
+	got, err := countedStep(s, "queue", label, func(c context.Context) (queued, error) {
 		return s.e.readQueue(c, s.in.Project, hold)
 	})
 	if err != nil {

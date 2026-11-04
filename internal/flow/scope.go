@@ -42,7 +42,7 @@ func (s *script) fixScope(label string) error {
 		return nil
 	}
 
-	read, err := runStep(s.e, s.ctx, s.name(scopeStep, label), s.firstRead)
+	read, err := countedStep(s, scopeStep, label, s.firstRead)
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", scopeStep, s.in.Item, err)
 	}
@@ -157,7 +157,7 @@ func sortedIssues(numbers []int) []int {
 // The read is a recorded step. A read that fails, or a pull request that is gone, refuses. A run that has fixed no scope has nothing to compare.
 // A new issue makes the run ask the owner. The answer is the owner line: it must name each new issue.
 func (s *script) holdScope(label string) error {
-	fresh, err := runStep(s.e, s.ctx, s.name(scopeCheckStep, label), s.readFresh)
+	fresh, err := countedStep(s, scopeCheckStep, label, s.readFresh)
 	if err != nil {
 		return fmt.Errorf("%s of item %s: %w", scopeCheckStep, s.in.Item, err)
 	}
