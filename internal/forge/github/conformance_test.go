@@ -37,7 +37,7 @@ func TestForge_ConformsToForge(t *testing.T) {
 		run.PlanFail(realNotFound, "api", "repos/owner/name/git/ref/heads/"+forgetest.GoneBranch)
 		run.Plan("owner/name\n", "api", "repos/owner/name", "--jq", ".full_name")
 		run.Plan(forgetest.SevenTitle+"\n", "issue", "view", "7")
-		run.PlanContaining(toJSON(t, fields{"data": fields{"search": fields{"issueCount": 1, "nodes": []fields{{"number": forgetest.Seven}}}}}), "search(query")
+		run.PlanContaining(searchAnswer(t, 1, fields{"number": forgetest.Seven}), "search(query")
 		run.Plan("[]", "api", "repos/owner/name/check-runs/9/annotations")
 		run.Plan("", "pr", "comment")
 		run.Plan("", "pr", "ready")
