@@ -184,8 +184,15 @@ func (c *Client) reopenCanceledPhases(id string, opts ...dbos.RewindWorkflowOpti
 // reopenCanceledPhase puts one child back to work when it is a phase, or a gate or a merge, that was canceled.
 func (c *Client) reopenCanceledPhase(id string, opts ...dbos.RewindWorkflowOption) error {
 	phase, err := c.row(id)
-	if err != nil || (phase.Name != phaseName && phase.Name != exclusiveName) || stateOf(phase.Status) != runCancelled {
+	if err != nil || (phase.Name != phaseName && phase.Name != exclusiveName && phase.Name != hostJobName) || stateOf(phase.Status) != runCancelled {
 		return err
+	}
+
+	// A gate that runs on a build host waits for a build job. The job goes back to work first, so the gate that replays finds it queued.
+	if phase.Name == exclusiveName {
+		if err := c.reopenCanceledPhases(id, opts...); err != nil {
+			return err
+		}
 	}
 
 	return c.reopen(id, opts...)
@@ -239,18 +246,33 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 		}
 
 		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queue), dbos.WithRewindQueuePartitionKey(partition)}, nil
-	case row.Name == exclusiveName:
-		var in ExclusiveInput
-		if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
-			return nil, fmt.Errorf("read the input of %s: %w", row.ID, err)
+	case row.Name == exclusiveName || row.Name == hostJobName:
+		queue, partition, err := gateRewindTarget(row)
+		if err != nil {
+			return nil, err
 		}
 
-		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(exclusiveQueueName), dbos.WithRewindQueuePartitionKey(in.Project)}, nil
+		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(queue), dbos.WithRewindQueuePartitionKey(partition)}, nil
 	case row.QueueName == itemsQueueName:
 		return []dbos.RewindWorkflowOption{dbos.WithRewindQueue(itemsQueueName)}, nil
 	}
 
 	return nil, nil
+}
+
+// gateRewindTarget returns the queue and the partition that a rewound gate, merge or build job goes back to. A gate or a merge goes to the exclusive queue,
+// in the partition of its project. A build job goes to the host queue, in the partition that it recorded in its input.
+func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err error) {
+	var in ExclusiveInput
+	if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
+		return "", "", fmt.Errorf("read the input of %s: %w", row.ID, err)
+	}
+
+	if row.Name == hostJobName {
+		return hostQueueName, in.HostKey, nil
+	}
+
+	return exclusiveQueueName, in.Project, nil
 }
 
 // phaseRewindTarget returns the queue and the partition key that a rewound phase goes back to: the queue of its kind and the partition of its login.

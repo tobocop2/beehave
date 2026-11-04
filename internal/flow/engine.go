@@ -130,7 +130,9 @@ type Engine struct {
 	itemQueue dbos.Queue
 	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
 	exclusiveQueue dbos.Queue
-	deps           Deps
+	// hostQueue is the queue of the build jobs of the gates: one job for each build host, whatever the project.
+	hostQueue dbos.Queue
+	deps      Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
 	// maxRunBudget is Options.MaxRunBudget.
@@ -272,11 +274,12 @@ func (e *Engine) register(opts Options) error {
 	dbos.RegisterWorkflow(e.ctx, e.item, dbos.WithWorkflowName(itemName))
 	dbos.RegisterWorkflow(e.ctx, e.phase, dbos.WithWorkflowName(phaseName))
 	dbos.RegisterWorkflow(e.ctx, e.exclusive, dbos.WithWorkflowName(exclusiveName))
+	dbos.RegisterWorkflow(e.ctx, e.hostJob, dbos.WithWorkflowName(hostJobName))
 	dbos.RegisterWorkflow(e.ctx, e.poll, dbos.WithWorkflowName(pollName))
 
 	return errors.Join(
 		e.registerQueue(queueName, maxConcurrent, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
-		e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue(),
+		e.registerItemQueue(maxConcurrent), e.registerExclusiveQueue(), e.registerHostQueue(),
 	)
 }
 

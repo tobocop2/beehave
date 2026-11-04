@@ -190,8 +190,8 @@ type gateStart struct {
 	Required []string       `json:"required,omitempty"`
 }
 
-// startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
-func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
+// reuseProjectGate reads the key of the project gate and reuses the pass of an earlier gate with the same key. With no such pass, the start has the key and no Reused.
+func (e *Engine) reuseProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
 	if err := e.refuseGate(request.Project, false); err != nil {
 		return gateStart{}, err
 	}
@@ -205,9 +205,20 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 		return gateStart{Reused: gateOutputs(true, key.Head, key.Tree, line, earlier.steps, e.requiredSteps(request.Project)), Key: key}, nil
 	}
 
-	job, err := e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost)
+	return gateStart{Key: key}, nil
+}
 
-	return gateStart{Job: job, Key: key, Required: e.requiredOf(job, request.Project)}, err
+// startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
+func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (gateStart, error) {
+	start, err := e.reuseProjectGate(ctx, request)
+	if err != nil || start.Reused != nil {
+		return start, err
+	}
+
+	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost)
+	start.Required = e.requiredOf(start.Job, request.Project)
+
+	return start, err
 }
 
 // requiredOf is the names that a merge needs from the gate of job: the list of its plan. A job with no plan (a gate that is not the project gate of obee)
