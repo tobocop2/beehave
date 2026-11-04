@@ -55,8 +55,10 @@ type Project struct {
 	BeadsPrefix string
 	BaseBranch  string
 	Gate        string
-	TestReport  string
-	PinFile     string
+	// GateSteps is the ordered gate list: one named command for each step. A project sets Gate or GateSteps, never both.
+	GateSteps  []GateSpec
+	TestReport string
+	PinFile    string
 	// Changelog is the path of the changelog file of the repository, or empty when the project declares none. It is a fact for the workflow, which refuses a merge that leaves it unchanged.
 	Changelog string
 	BuildHost string

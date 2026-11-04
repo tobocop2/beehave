@@ -33,6 +33,7 @@ type rawProject struct {
 	BeadsPrefix string
 	BaseBranch  string
 	Gate        string
+	GateSteps   gateList
 	BuildHost   hostNames
 	Host        *rawHost
 	TestReport  text
@@ -75,7 +76,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec(), boardSpec()} }
@@ -109,7 +110,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 	host := nested[rawHost]{want: hostSpec().name}
 	board := nested[rawBoard]{want: boardSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
 		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board)
 	raw.Host, raw.Board = host.block, board.block
 
@@ -135,7 +136,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 
 	return withFacts(model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
+		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, raw)
 }
@@ -160,7 +161,7 @@ func checkKeys(raw rawProject, names adapters) (string, string, error) {
 		return host, source, noRepositoryKeys(raw)
 	}
 
-	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), requireText(raw.At, "gate", raw.Gate), testReport(raw), pinFile(raw, host))
+	return host, source, errors.Join(requireText(raw.At, "base_branch", raw.BaseBranch), gateKeys(raw), testReport(raw), pinFile(raw, host))
 }
 
 // noRepositoryKeys checks a project with no source and no forge. Its items run in plain folders, so base_branch, gate and test_report are optional unless a gate is set.
@@ -170,8 +171,8 @@ func noRepositoryKeys(raw rawProject) error {
 		return refuseAt(raw.At, "`pin_file` is set, and the project has no `source` and no `forge`. The pin file is read from the base commit. Set `source` or `forge`, or remove `pin_file`.")
 	}
 
-	if raw.Gate != "" {
-		return testReport(raw)
+	if raw.Gate != "" || len(raw.GateSteps) > 0 {
+		return errors.Join(gateKeys(raw), testReport(raw))
 	}
 
 	return nil

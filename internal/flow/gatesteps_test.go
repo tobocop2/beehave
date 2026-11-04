@@ -1,12 +1,16 @@
 package flow
 
 import (
+	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 var (
@@ -60,6 +64,117 @@ func TestMergeStep_AStepThatIsUnknownRefusesTheMergeBeforeAnythingIsMarkedOrMerg
 	require.ErrorContains(t, err, `the gate step "tests" is unknown`)
 	assert.Empty(t, h.merge.given)
 	assert.Empty(t, h.merge.asked)
+}
+
+func TestMergeStep_AStepsValueThatLacksARequiredStepRefusesTheMerge(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.facts = func(string) model.Project {
+		return model.Project{GateSteps: []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}}}
+	}
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: []GateStep{{Name: "fmt", Status: "pass"}}}}
+
+	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\nmerge(head = c.head, steps = c.steps, merge = True, name = \"ship\")\n"))
+
+	require.ErrorContains(t, err, `has the step "lint", and `+"`steps`"+` has no result for it`)
+	assert.Empty(t, h.merge.given)
+}
+
+func TestMergeStep_AStepsValueThatHoldsEveryRequiredStepMerges(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.facts = func(string) model.Project {
+		return model.Project{GateSteps: []model.GateSpec{{Name: "fmt", Command: "make fmt"}}}
+	}
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: []GateStep{{Name: "fmt", Status: "pass"}}}}
+
+	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\nmerge(head = c.head, steps = c.steps, merge = True, name = \"ship\")\n"))
+
+	require.NoError(t, err)
+	assert.Len(t, h.merge.given, 1)
+}
+
+// editedFacts gives the gate list of the project as it was before an edit, and the list after the edit once the program `edit` ran.
+func editedFacts(h *harness, before, after []model.GateSpec) {
+	var edited atomic.Bool
+
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if slices.Equal(request.Run, []string{"edit"}) {
+			edited.Store(true)
+		}
+
+		return CommandOutput{}, nil
+	}
+	h.facts = func(string) model.Project {
+		if edited.Load() {
+			return model.Project{GateSteps: after}
+		}
+
+		return model.Project{GateSteps: before}
+	}
+}
+
+const gateEditMerge = "c = gate(name = \"check\")\ncommand(run = [\"edit\"])\nmerge(head = c.head, steps = c.steps, merge = True, name = \"ship\")\n"
+
+func TestMergeStep_AConfigEditBetweenTheGateAndTheMergeCannotRelaxTheRecordedSet(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	editedFacts(h, []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}}, []model.GateSpec{{Name: "fmt", Command: "make fmt"}})
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: []GateStep{{Name: "fmt", Status: "pass"}}}}
+
+	_, err := walkText(t, h, bodyFlow(gateEditMerge))
+
+	require.ErrorContains(t, err, `has the step "lint"`)
+	assert.Empty(t, h.merge.given)
+}
+
+func TestMergeStep_AConfigEditBetweenTheGateAndTheMergeCannotBreakAMergeOfAGateThatRanTheWholeList(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	editedFacts(h, []model.GateSpec{{Name: "fmt", Command: "make fmt"}}, []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}})
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: []GateStep{{Name: "fmt", Status: "pass"}}}}
+
+	_, err := walkText(t, h, bodyFlow(gateEditMerge))
+
+	require.NoError(t, err)
+	assert.Len(t, h.merge.given, 1)
+}
+
+func TestGateStep_TheRecordOfAGateHoldsTheNamesOfTheListThatItWasGivenTo(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	editedFacts(h, []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}}, nil)
+	h.gate.results = []GateResult{{Passed: true, Head: gatedHead, Steps: []GateStep{{Name: "fmt", Status: "pass"}}}}
+
+	_, err := walkText(t, h, bodyFlow("c = gate(name = \"check\")\ncommand(run = [\"show\"] + c.required)\n"))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"show fmt lint"}, h.commands.ran())
+}
+
+func TestRecordedNames_AGateRecordWithoutTheFieldAsksForNoStepAndAListGivesItsNames(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, recordedNames(nil))
+	assert.Nil(t, recordedNames(starlark.String("lint")))
+	assert.Equal(t, []string{"fmt", "lint"}, recordedNames(starlark.NewList([]starlark.Value{starlark.String("fmt"), starlark.MakeInt(1), starlark.String("lint")})))
+}
+
+func TestFacts_ALineOfAGateListShowsTheNamesOfTheListAndAGateStringShowsNone(t *testing.T) {
+	t.Parallel()
+
+	list := factsOutputs(model.Project{Gate: "", GateSteps: []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}}})
+	plain := factsOutputs(model.Project{Gate: "make check"})
+
+	assert.Equal(t, []string{"fmt", "lint"}, list["gate_steps"])
+	assert.Equal(t, []string{}, plain["gate_steps"])
+	assert.Equal(t, "fmt: make fmt; lint: make lint", list["gate"], "the gate that the prompts print is the list with its commands")
+	assert.Equal(t, "make check", plain["gate"])
 }
 
 func TestMergeStep_AGateWithNoStepsIsUnknownAndRefusesTheMerge(t *testing.T) {

@@ -35,6 +35,9 @@ const (
 	// noTestsMarker is the line that the job writes when the gate command passed and the report glob matched no test case.
 	noTestsMarker = "obee-gate-no-tests"
 
+	// stepMarker starts the line that the job of a gate list writes after each step: the name of the step and its exit code.
+	stepMarker = "obee-gate-step"
+
 	// trackedMarker starts the line that the job writes when the repository tracks a file that the report glob matches. The file name follows.
 	trackedMarker = "obee-gate-tracked-report"
 )
@@ -104,7 +107,9 @@ type Request struct {
 	CloneURL   string
 	Resume     model.JobID
 	ResumeHead string
-	Submitted  func(model.JobID)
+	// Plan is the plan that the resumed job was submitted with. Run judges the job by it, not by the project of the request. A zero Plan leaves the project as it is.
+	Plan      Plan
+	Submitted func(model.JobID)
 }
 
 // Gate runs gates.
@@ -123,6 +128,8 @@ func New(shell Shell, tree Tree, hosts Hosts) Gate {
 // the gate must judge the commit that obee sends on. A gate on a build host clones the repository there and checks out that commit,
 // so the host never judges a tree that obee did not send. Dir is read for the local gate and for the head only.
 func (g Gate) Run(ctx context.Context, request Request) (Result, error) {
+	request.Project = request.Plan.apply(request.Project)
+
 	before, err := g.clean(ctx, request.Dir)
 	if err != nil {
 		return Result{}, err
@@ -140,10 +147,12 @@ func (g Gate) Run(ctx context.Context, request Request) (Result, error) {
 	return result, g.unchanged(ctx, request.Dir, before)
 }
 
-// Job is the host job that Submit started, with the head that it judges. A local gate has no host job, so its Job is empty.
+// Job is the host job that Submit started, with the head that it judges. A local gate has no host job, so its Job has a Plan and no ID.
+// Plan is the plan of the project when Submit made the job text. Run judges the job by it.
 type Job struct {
 	ID   model.JobID
 	Head string
+	Plan Plan
 }
 
 // Submit starts the host job of a gate and returns without waiting for it. A caller records the Job, then passes it to Run as Resume and ResumeHead:
@@ -155,7 +164,7 @@ func (g Gate) Submit(ctx context.Context, request Request) (Job, error) {
 	}
 
 	if request.Project.BuildHost == config.LocalHost {
-		return Job{}, nil
+		return Job{Plan: PlanOf(request.Project)}, nil
 	}
 
 	host, err := g.hosts(request.Project)
@@ -165,7 +174,7 @@ func (g Gate) Submit(ctx context.Context, request Request) (Job, error) {
 
 	id, head, err := job(ctx, host, request, before.Head)
 
-	return Job{ID: id, Head: head}, err
+	return Job{ID: id, Head: head, Plan: PlanOf(request.Project)}, err
 }
 
 func (g Gate) unchanged(ctx context.Context, dir string, before State) error {
@@ -209,24 +218,65 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 
 func (g Gate) local(ctx context.Context, request Request, head string) (Result, error) {
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
-	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
-	if code > signalBase {
-		return signaled(ctx, request.Project, head, output, code)
+	ran, abort := g.runSpecs(ctx, request)
+
+	if abort > signalBase {
+		return signaled(ctx, request.Project, head, ran.output, abort)
 	}
 
-	if code == ExitTimedOut {
-		return timedOut(request, head, output), nil
+	if abort == ExitTimedOut {
+		return timedOut(request, head, ran.output), nil
 	}
 
-	result := Result{Report: tail(output), Head: head, Steps: []Step{{Name: StepCommand, Status: exitStatus(code)}}}
+	result := Result{Report: tail(ran.output), Head: head, Steps: ran.steps}
 
 	if request.Project.TestReport != "" {
-		result = withTestsStep(result, request, code, output, before)
+		result = withTestsStep(result, request, ran.first, ran.output, before)
 	}
 
 	result.Passed = allPass(result.Steps)
 
 	return result, nil
+}
+
+// specRun is what the steps of a gate list left: the result of each step, their output, and the first exit code that was not 0.
+type specRun struct {
+	steps  []Step
+	output string
+	first  int
+}
+
+// runSpecs runs the steps of the gate list in order. A failed step does not stop the later steps: the gate counts every red.
+// A signal or the time limit stops them, and the code of that stop is the second result, else 0.
+func (g Gate) runSpecs(ctx context.Context, request Request) (specRun, int) {
+	specs := Specs(request.Project)
+	ran := specRun{steps: make([]Step, 0, len(specs)+1)}
+
+	for _, spec := range specs {
+		out, code := g.shell(ctx, request.Dir, spec.Command)
+		ran.output += labeled(spec, len(specs), out)
+
+		if code > signalBase || code == ExitTimedOut {
+			return ran, code
+		}
+
+		if ran.first == 0 {
+			ran.first = code
+		}
+
+		ran.steps = append(ran.steps, Step{Name: spec.Name, Status: exitStatus(code)})
+	}
+
+	return ran, 0
+}
+
+// labeled is the output of one step. In a list of more than one step it starts with the name of the step, so the report says which step wrote it.
+func labeled(spec model.GateSpec, count int, output string) string {
+	if count == 1 {
+		return output
+	}
+
+	return "== " + spec.Name + " ==\n" + output + "\n"
 }
 
 // voided is the result of a gate that did not run because a pinned tool is not at its pinned version. Every step is unknown: neither a pass nor a fail.
@@ -262,12 +312,7 @@ func aborted(project model.Project, head, report string) Result {
 
 // unknownSteps is one step of unknown for each step that the gate of the project gives: the command, and the tests when the project sets test_report.
 func unknownSteps(project model.Project) []Step {
-	steps := []Step{{Name: StepCommand, Status: StatusUnknown}}
-	if project.TestReport != "" {
-		steps = append(steps, Step{Name: StepTests, Status: StatusUnknown})
-	}
-
-	return steps
+	return hostSteps(project, StatusUnknown, StatusUnknown)
 }
 
 // exitStatus is the result of a command from its exit code.
@@ -338,7 +383,7 @@ func wait(ctx context.Context, host Remote, project model.Project, id model.JobI
 
 	result, err := verdict(ctx, project, head, state)
 
-	if err == nil && state == model.JobFailed && project.TestReport != "" {
+	if err == nil && state == model.JobFailed && (project.TestReport != "" || len(project.GateSteps) > 0) {
 		result = explainFailure(ctx, host, project, id, result)
 	}
 
@@ -370,6 +415,10 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 		return marked
 	}
 
+	if len(project.GateSteps) > 0 {
+		result.Steps = stepMarkerResults(log, project)
+	}
+
 	return result
 }
 
@@ -390,6 +439,10 @@ func markedResult(log string, project model.Project) (Result, bool) {
 
 // withCauses adds the two causes of a failed host job to the report, for a host whose log obee cannot read.
 func withCauses(result Result, project model.Project) Result {
+	if project.TestReport == "" {
+		return result
+	}
+
 	result.Report += fmt.Sprintf(" The gate command failed, or the job found no test case in the files that test_report %q matches.", project.TestReport)
 
 	return result
@@ -500,9 +553,67 @@ func hostCommand(project model.Project, cloneURL, head, clone string) string {
 	before, after := reportChecks(project.TestReport)
 
 	words = append(words, before...)
-	words = append(words, limited(project, "sh -c "+model.ShellQuote(project.Gate)))
+	words = append(words, gateWords(project)...)
 
 	return strings.Join(append(words, after...), " && ")
+}
+
+// gateWords are the words that run the gate command. A project with a gate string has one word. A gate list has one word for each step:
+// the word runs the step, writes the marker line "obee-gate-step <name> rc=<code>" and records a failure, and it never stops the later steps.
+// The last word fails when any step failed, so the job fails with the list.
+func gateWords(project model.Project) []string {
+	if len(project.GateSteps) == 0 {
+		return []string{limited(project, "sh -c "+model.ShellQuote(project.Gate))}
+	}
+
+	var words []string
+
+	for _, spec := range project.GateSteps {
+		words = append(words, "{ "+limited(project, "sh -c "+model.ShellQuote(spec.Command))+`; rc=$?; echo; echo "`+stepMarker+" "+spec.Name+` rc=$rc"; [ "$rc" -eq 0 ] || bad=1; }`)
+	}
+
+	return append(words, `[ -z "$bad" ]`)
+}
+
+// stepMarkerResults reads the marker lines of a gate list from the log of a job. A step with no marker is unknown, and a code other than 0 is a failure.
+// A step that the log marks twice is unknown: a later line, which any step can print, then cannot turn the real code into another one.
+// The marker is a line in the log that the step commands write to as well, so it is a reading and not proof.
+func stepMarkerResults(log string, project model.Project) []Step {
+	codes := markerCodes(log)
+	steps := hostSteps(project, StatusUnknown, StatusUnknown)
+
+	for i := range steps {
+		if got := codes[steps[i].Name]; len(got) == 1 {
+			steps[i].Status = exitStatus(atoiOr(got[0], 1))
+		}
+	}
+
+	return steps
+}
+
+// markerCodes lists the codes that the marker lines of the log give for each step name, in log order.
+func markerCodes(log string) map[string][]string {
+	codes := map[string][]string{}
+
+	for _, line := range strings.Split(log, "\n") {
+		if rest, found := strings.CutPrefix(line, stepMarker+" "); found {
+			if name, code, cut := strings.Cut(rest, " rc="); cut {
+				codes[name] = append(codes[name], strings.TrimSpace(code))
+			}
+		}
+	}
+
+	return codes
+}
+
+// atoiOr reads a whole number, and gives fallback for text that is not one. A code that cannot be read is a failure.
+func atoiOr(text string, fallback int) int {
+	n, err := strconv.Atoi(text)
+	if err != nil {
+		return fallback
+	}
+
+	return n
 }
 
 // reportChecks returns the words of the report checks: the word before the gate refuses a report file that the repository tracks, as such a file
@@ -554,13 +665,23 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 	case model.JobSucceeded:
 		return Result{Passed: true, Steps: hostSteps(project, StatusPass, StatusPass)}, nil
 	case model.JobFailed:
-		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: hostSteps(project, StatusFail, StatusUnknown)}, nil
+		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: failedSteps(project)}, nil
 	case model.JobDied, model.JobStale, model.JobTimedOut:
 		return aborted(project, head, abortNote(cluster, state)), nil
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
 
 	return Result{}, fmt.Errorf("%w: its state on %s is %s. Read the job in the scheduler of the host", ErrNoVerdict, cluster, state)
+}
+
+// failedSteps is the steps of a failed job before its log is read. A gate string failed. A gate list has no step that is known to have failed,
+// because the job fails for a clone that failed too, so each step is unknown until its marker line says otherwise.
+func failedSteps(project model.Project) []Step {
+	if len(project.GateSteps) > 0 {
+		return hostSteps(project, StatusUnknown, StatusUnknown)
+	}
+
+	return hostSteps(project, StatusFail, StatusUnknown)
 }
 
 // abortNote is the report of a host job that gave no result, with the action for a person.
@@ -576,9 +697,14 @@ func abortNote(cluster string, state model.JobState) string {
 	return "the job died on " + cluster + ": the scheduler holds no record of it. Run the gate again.\n"
 }
 
-// hostSteps is the steps of a host gate: the command, and the tests when the project sets test_report.
+// hostSteps is the steps of a gate that all have one result: each spec of the list with the status command, and the tests when the project sets test_report.
 func hostSteps(project model.Project, command, tests Status) []Step {
-	steps := []Step{{Name: StepCommand, Status: command}}
+	var steps []Step
+
+	for _, spec := range Specs(project) {
+		steps = append(steps, Step{Name: spec.Name, Status: command})
+	}
+
 	if project.TestReport != "" {
 		steps = append(steps, Step{Name: StepTests, Status: tests})
 	}

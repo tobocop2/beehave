@@ -47,7 +47,7 @@ func resultFields() map[string][]string {
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "rewrote"},
 		batchMergeName:   {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven"},
 		commandName:      {"stdout", "stderr", "rc"},
-		gateName:         {"passed", "head", treeKeyword, "report", "steps"},
+		gateName:         {"passed", "head", treeKeyword, "report", "steps", "required"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
@@ -67,7 +67,7 @@ func resultFields() map[string][]string {
 // factsResultFields holds the fields of the struct that facts returns.
 func factsResultFields() map[string][]string {
 	return map[string][]string{factsName: {
-		"repo", "source", "forge", "tracker", "base_branch", "gate", "build_host", "people", "epics", "gate_files", "conventions",
+		"repo", "source", "forge", "tracker", "base_branch", "gate", "gate_steps", "build_host", "people", "epics", "gate_files", "conventions",
 		"brief_rules", "stacked_rules", "limits", "traps", "token_rules", "changelog",
 		"board_number", "board_owner", "board_started", "board_merged",
 	}}

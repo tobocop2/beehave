@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"strings"
 
 	"go.starlark.net/starlark"
 
@@ -32,12 +33,39 @@ func (s *script) facts(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 // factsOutputs holds the fields of the facts struct. An empty fact is an empty list, an empty dict or empty text, never a missing field, so a prompt can range over it.
 func factsOutputs(p model.Project) map[string]any {
 	return map[string]any{
-		repoKeyword: p.Repo, "source": p.Source, "forge": string(p.Forge), "tracker": string(p.Tracker), "base_branch": p.BaseBranch, "gate": p.Gate, "build_host": p.BuildHost,
+		repoKeyword: p.Repo, "source": p.Source, "forge": string(p.Forge), "tracker": string(p.Tracker), "base_branch": p.BaseBranch, "gate": gateText(p), "gate_steps": gateStepNames(p), "build_host": p.BuildHost,
 		"people": orEmptyDict(p.People), "epics": orEmptyDict(p.Epics),
 		"gate_files": orEmptyList(p.GateFiles), "conventions": orEmptyList(p.Conventions), "brief_rules": orEmptyList(p.BriefRules), "stacked_rules": orEmptyList(p.StackedRules),
 		"limits": orEmptyList(p.Limits), "traps": orEmptyList(p.Traps), "token_rules": orEmptyList(p.TokenRules), "changelog": p.Changelog,
 		"board_number": p.Board.Number, "board_owner": p.Board.Owner, "board_started": p.Board.Started, "board_merged": p.Board.Merged,
 	}
+}
+
+// gateText is what a prompt shows as the gate of the project: the gate string, or the gate list as "name: command" joined by "; ", in order.
+// A project has one of the two, so the text is never empty for a project that has a gate.
+func gateText(p model.Project) string {
+	if len(p.GateSteps) == 0 {
+		return p.Gate
+	}
+
+	parts := make([]string, 0, len(p.GateSteps))
+
+	for _, spec := range p.GateSteps {
+		parts = append(parts, spec.Name+": "+spec.Command)
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+// gateStepNames is the names of the gate list of the project, in order. A project with a gate string has none.
+func gateStepNames(p model.Project) []string {
+	names := make([]string, 0, len(p.GateSteps))
+
+	for _, spec := range p.GateSteps {
+		names = append(names, spec.Name)
+	}
+
+	return names
 }
 
 func orEmptyList(items []string) []string {

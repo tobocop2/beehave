@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,7 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/review"
 )
 
@@ -26,6 +29,8 @@ type hostGate struct {
 	hosts *[]string
 	// blockAt is the number of the wait that blocks until the run is canceled.
 	blockAt int
+	// plan is the plan that every Submit gives its job.
+	plan gatepkg.Plan
 }
 
 func newHostGate() hostGate {
@@ -46,7 +51,7 @@ func (g hostGate) Submit(_ context.Context, _, _, host string) (GateJob, error) 
 	*g.hosts = append(*g.hosts, host)
 	g.mu.Unlock()
 
-	return GateJob{ID: "job-" + string(rune('0'+g.submits.Add(1))), Head: gatedHead}, nil
+	return GateJob{ID: "job-" + string(rune('0'+g.submits.Add(1))), Head: gatedHead, Plan: g.plan}, nil
 }
 
 func (g hostGate) Run(ctx context.Context, _, _, host string, job GateJob) (GateResult, error) {
@@ -113,6 +118,62 @@ func TestGateJob_ACrashAfterTheSubmitAndBeforeTheWaitIsRecordedSubmitsOnceAndThe
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, gated.submits.Load(), "the replay submitted no second job")
 	assert.Equal(t, []GateJob{{ID: "job-1", Head: gatedHead}, {ID: "job-1", Head: gatedHead}}, gated.waitedOn(), "both waits are on the one recorded job")
+}
+
+func TestGateJob_ARestartAfterAConfigEditFinishesTheGateWithTheListOfTheJobAndNotTheListOfTheFile(t *testing.T) {
+	t.Parallel()
+
+	submitted := []model.GateSpec{{Name: "fmt", Command: "make fmt"}, {Name: "lint", Command: "make lint"}}
+	edited := append(slices.Clone(submitted), model.GateSpec{Name: "test", Command: "make test"})
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	restarted := &atomic.Bool{}
+	h.facts = func(string) model.Project {
+		if restarted.Load() {
+			return model.Project{GateSteps: edited}
+		}
+
+		return model.Project{GateSteps: submitted}
+	}
+
+	gated := newHostGate()
+	gated.plan = gatepkg.PlanOf(model.Project{GateSteps: submitted})
+	deps := h.deps()
+	deps.Gate = gated
+
+	engine, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	file := writeFlow(t, bodyFlow("c = gate(name = \"check\")\ncommand(run = [\"show\"] + c.required)\n"))
+	ended := make(chan error, 1)
+
+	go func() {
+		_, runErr := engine.RunFile(testItem, testProject, file)
+		ended <- runErr
+	}()
+
+	<-gated.started
+
+	client := h.client(t, testVersion)
+	require.NoError(t, client.Cancel(testItem))
+	h.tick(t)
+
+	select {
+	case runErr := <-ended:
+		require.Error(t, runErr)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run did not end after the cancel")
+	}
+
+	restarted.Store(true)
+
+	_, err = resumeAndJoin(t, engine, client)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"show fmt lint"}, h.commands.ran(), "the required set is the one that the job was submitted with")
+	assert.Equal(t, submitted, gated.waitedOn()[1].Plan.Steps, "the wait is given the recorded plan")
 }
 
 func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *testing.T) {

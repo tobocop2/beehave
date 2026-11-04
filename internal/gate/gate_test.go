@@ -270,7 +270,7 @@ func TestSubmit_AHostGateStartsItsJobForTheHeadOfTheTreeAndDoesNotWait(t *testin
 	got, err := g.Submit(context.Background(), hostRequest(project("gpu-a")))
 
 	require.NoError(t, err)
-	assert.Equal(t, gate.Job{ID: "job-7", Head: headA}, got)
+	assert.Equal(t, gate.Job{ID: "job-7", Head: headA, Plan: gate.PlanOf(project("gpu-a"))}, got)
 	assert.Len(t, remote.submitted, 1)
 	assert.Empty(t, remote.waited)
 }
@@ -296,7 +296,7 @@ func TestSubmit_ALocalGateStartsNothingAndAnUncleanTreeIsRefused(t *testing.T) {
 
 	got, err := g.Submit(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
 	require.NoError(t, err)
-	assert.Equal(t, gate.Job{}, got)
+	assert.Equal(t, gate.Job{Plan: gate.PlanOf(project("local"))}, got)
 	assert.Empty(t, shell.ran)
 
 	remote := &fakeRemote{}

@@ -391,7 +391,7 @@ func TestStepLine_TheOutputsTheEngineRecordsDecodeIntoTheFieldsOfTheLine(t *test
 		return dbos.StepInfo{StepName: name, Output: string(data)}
 	}
 
-	gate := callLine([]dbos.StepInfo{record("gate:g#1", stepResult{Outputs: gateOutputs(false, "h1", "t1", "r", []GateStep{{Name: "lint", Status: "fail"}})})}, "gate:g#1")
+	gate := callLine([]dbos.StepInfo{record("gate:g#1", stepResult{Outputs: gateOutputs(false, "h1", "t1", "r", []GateStep{{Name: "lint", Status: "fail"}}, nil)})}, "gate:g#1")
 	require.NotNil(t, gate.Passed)
 	assert.False(t, *gate.Passed)
 	assert.Equal(t, []GateStep{{Name: "lint", Status: "fail"}}, gate.Gate)

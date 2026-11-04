@@ -8,6 +8,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/agent"
+	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -80,6 +81,8 @@ type GateKey struct {
 type GateJob struct {
 	ID   string `json:"id,omitempty"`
 	Head string `json:"head,omitempty"`
+	// Plan is what the job runs and the steps that it reports, fixed when the job text was made. Run judges the job by it.
+	Plan gatepkg.Plan `json:"plan"`
 }
 
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.

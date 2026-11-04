@@ -176,15 +176,17 @@ func (e *Engine) programGateOutputs(ctx context.Context, request CommandRequest,
 		status = failStatus
 	}
 
-	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}), nil
+	return gateOutputs(out.RC == 0, head, "", out.Stdout, []GateStep{{Name: gatepkg.StepCommand, Status: status}}, e.requiredSteps(request.Project)), nil
 }
 
 // gateStart is what the first step of a project gate records: the pass of an earlier gate that the key reuses, or the host job that the gate submitted.
 // A replay reads it and submits nothing.
+// Required is the list of the gate, fixed here with the job text. The wait and the finish read it, and never the project.
 type gateStart struct {
-	Job    GateJob        `json:"job"`
-	Reused map[string]any `json:"reused,omitempty"`
-	Key    GateKey        `json:"key"`
+	Job      GateJob        `json:"job"`
+	Reused   map[string]any `json:"reused,omitempty"`
+	Key      GateKey        `json:"key"`
+	Required []string       `json:"required,omitempty"`
 }
 
 // startProjectGate reuses the pass of an earlier gate with the same key, and submits the host job of the project gate when there is none.
@@ -199,12 +201,22 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 		line := fmt.Sprintf("reused the gate pass of run %s: the tree %s, the gate command and the pins are the same. The gate did not run.", earlier.run, key.Tree)
 		e.logger.InfoContext(ctx, line, "item", request.Item)
 
-		return gateStart{Reused: gateOutputs(true, key.Head, key.Tree, line, earlier.steps), Key: key}, nil
+		return gateStart{Reused: gateOutputs(true, key.Head, key.Tree, line, earlier.steps, e.requiredSteps(request.Project)), Key: key}, nil
 	}
 
 	job, err := e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost)
 
-	return gateStart{Job: job, Key: key}, err
+	return gateStart{Job: job, Key: key, Required: e.requiredOf(job, request.Project)}, err
+}
+
+// requiredOf is the names that a merge needs from the gate of job: the list of its plan. A job with no plan (a gate that is not the project gate of obee)
+// takes the list of the project now, once, here in the step that records it.
+func (e *Engine) requiredOf(job GateJob, project string) []string {
+	if job.Plan.Empty() {
+		return e.requiredSteps(project)
+	}
+
+	return job.Plan.Required()
 }
 
 // finishProjectGate waits for the host job of the project gate and judges it. The key it returns is empty unless the gate passed on every step
@@ -215,7 +227,7 @@ func (e *Engine) finishProjectGate(ctx context.Context, request CommandRequest, 
 		return nil, "", err
 	}
 
-	return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps), recordedKey(gated, start.Key), nil
+	return gateOutputs(gated.Passed, gated.Head, gated.Tree, gated.Report, gated.Steps, start.Required), recordedKey(gated, start.Key), nil
 }
 
 // gateKey reads the key of the project gate. A key that cannot be read is an empty key: the gate then runs and reports the same problem.

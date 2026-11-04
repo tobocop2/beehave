@@ -124,7 +124,7 @@ func TestRecordGate_AStepThatCannotBeRecordedFailsTheCall(t *testing.T) {
 
 	s := &script{e: engine, ctx: engine.ctx, counts: map[string]int{}}
 
-	_, err = s.recordGate("g", gateOutputs(true, "h", "", "", nil))
+	_, err = s.recordGate("g", gateOutputs(true, "h", "", "", nil, nil))
 
 	require.Error(t, err)
 	assert.Empty(t, s.gated)

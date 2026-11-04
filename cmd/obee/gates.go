@@ -44,7 +44,7 @@ func (g projectGate) Run(ctx context.Context, project, item, cluster string, job
 		return flow.GateResult{}, err
 	}
 
-	request.Resume, request.ResumeHead = model.JobID(job.ID), job.Head
+	request.Resume, request.ResumeHead, request.Plan = model.JobID(job.ID), job.Head, job.Plan
 
 	result, err := g.gate(project).Run(ctx, request)
 	if err != nil {
@@ -67,7 +67,7 @@ func (g projectGate) Submit(ctx context.Context, project, item, cluster string) 
 		return flow.GateJob{}, fmt.Errorf("start the gate of item %s: %w", item, err)
 	}
 
-	return flow.GateJob{ID: string(job.ID), Head: job.Head}, nil
+	return flow.GateJob{ID: string(job.ID), Head: job.Head, Plan: job.Plan}, nil
 }
 
 func (g projectGate) gate(project string) gate.Gate {
