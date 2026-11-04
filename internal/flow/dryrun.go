@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/preflight"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 	trackerstore "github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/workflow/workflowtest"
@@ -230,16 +230,14 @@ func dryRepoSteps(dir, remote string) []dryGitStep {
 // dryGit runs one git command in a folder and returns its output.
 // The command ignores the global and system git config of the user, so a hook path, a template or a signing setting cannot run or fail.
 func dryGit(ctx context.Context, dir string, args []string) (string, error) {
-	command := exec.CommandContext(ctx, "git", args...) //nolint:gosec // the arguments are the fixed lists of dryRepo
-	command.Dir = dir
-	command.Env = append(command.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	result := proc.ExecRunner{Binary: "git", Dir: dir, Env: []string{"GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1"}}.Run(ctx, args)
+	out := strings.TrimSpace(result.Stdout + result.Stderr)
 
-	out, err := command.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("prepare the dry-run worktree: %w: %s", err, strings.TrimSpace(string(out)))
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("prepare the dry-run worktree: git exited with code %d: %s", result.ExitCode, out)
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(result.Stdout), nil
 }
 
 // dryRequiredSkills lists the skills that the agent steps of the file require, so that the fake agent reports them as used.

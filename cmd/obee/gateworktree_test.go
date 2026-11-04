@@ -142,7 +142,7 @@ func TestGateSandbox_AGitThatCannotNameTheRecordOfTheWorktreeRunsNoCommand(t *te
 	bin := t.TempDir()
 	calls := filepath.Join(bin, "calls")
 	// A git that logs the worktree calls, makes the worktree and then fails on every other call.
-	script := "#!/bin/sh\ncase \"$1\" in worktree) echo \"$@\" >> " + calls + "; exit 0;; esac\necho boom\nexit 1\n"
+	script := "#!/bin/sh\ncase \"$*\" in *worktree*) echo \"$@\" >> " + calls + "; exit 0;; esac\necho boom\nexit 1\n"
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700)) //nolint:gosec // a test script
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+config.ProcessEnv()["PATH"])
 

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +11,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 // sandboxPlan makes the plan for the sandbox of one run, or returns the reason why the step cannot start with it.
@@ -96,15 +95,12 @@ func closedPaths(ctx context.Context, dir, home string) []string {
 
 // hooksPath returns the hooks folder that core.hooksPath names for the repository of dir, as an absolute path, or "" when it is not set.
 func hooksPath(ctx context.Context, dir, home string) string {
-	cmd := exec.CommandContext(ctx, "git", "config", "--get", "core.hooksPath")
-	cmd.Dir = dir
-
-	out, err := cmd.Output()
-	if err != nil {
+	result := proc.ExecRunner{Binary: "git", Dir: dir}.Run(ctx, []string{"config", "--get", "core.hooksPath"})
+	if result.ExitCode != 0 {
 		return ""
 	}
 
-	text := string(bytes.TrimSpace(out))
+	text := strings.TrimSpace(result.Stdout)
 	if text == "" {
 		return ""
 	}
