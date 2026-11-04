@@ -17,7 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/sandbox"
 	"github.com/tobocop2/obee/internal/sandbox/enforcers"
 )
@@ -274,7 +274,7 @@ func disposableTree(ctx context.Context, dir, tmp string) (string, func(), error
 	// Records of copies that an earlier gate left, because it was killed, go before this gate adds one.
 	forgetCopies(ctx, dir, filepath.Dir(tmp))
 
-	if out, err := gitIn(ctx, dir, "-c", "core.hooksPath="+os.DevNull, "worktree", "add", "--detach", "--quiet", work, "HEAD"); err != nil {
+	if out, err := gitIn(ctx, dir, "worktree", "add", "--detach", "--quiet", work, "HEAD"); err != nil {
 		return "", nil, fmt.Errorf("make the worktree for the gate: %w: %s", err, out)
 	}
 
@@ -290,7 +290,7 @@ func disposableTree(ctx context.Context, dir, tmp string) (string, func(), error
 // gitIn runs git in dir and returns what it printed. A canceled context kills the process group of git, and a child that holds the output open
 // does not keep the call past the grace period of the runner.
 func gitIn(ctx context.Context, dir string, args ...string) (string, error) {
-	result := proc.ExecRunner{Binary: "git", Dir: dir}.Run(ctx, args)
+	result := gitexec.New(dir, 0).Run(ctx, args)
 	out := result.Stdout + result.Stderr
 
 	if result.ExitCode != 0 {

@@ -11,7 +11,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 )
 
 // sandboxPlan makes the plan for the sandbox of one run, or returns the reason why the step cannot start with it.
@@ -95,7 +95,7 @@ func closedPaths(ctx context.Context, dir, home string) []string {
 
 // hooksPath returns the hooks folder that core.hooksPath names for the repository of dir, as an absolute path, or "" when it is not set.
 func hooksPath(ctx context.Context, dir, home string) string {
-	result := proc.ExecRunner{Binary: "git", Dir: dir}.Run(ctx, []string{"config", "--get", "core.hooksPath"})
+	result := gitexec.ReadConfig(ctx, dir, "core.hooksPath")
 	if result.ExitCode != 0 {
 		return ""
 	}

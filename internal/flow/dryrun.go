@@ -19,7 +19,7 @@ import (
 	"github.com/tobocop2/obee/internal/agent"
 	gatepkg "github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/preflight"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/review"
 	trackerstore "github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/workflow/workflowtest"
@@ -230,7 +230,9 @@ func dryRepoSteps(dir, remote string) []dryGitStep {
 // dryGit runs one git command in a folder and returns its output.
 // The command ignores the global and system git config of the user, so a hook path, a template or a signing setting cannot run or fail.
 func dryGit(ctx context.Context, dir string, args []string) (string, error) {
-	result := proc.ExecRunner{Binary: "git", Dir: dir, Env: []string{"GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1"}}.Run(ctx, args)
+	runner := gitexec.New(dir, 0)
+	runner.Env = []string{"GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1"}
+	result := runner.Run(ctx, args)
 	out := strings.TrimSpace(result.Stdout + result.Stderr)
 
 	if result.ExitCode != 0 {

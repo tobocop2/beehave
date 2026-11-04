@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 )
 
 // releaseTimeout bounds every git call of one release when the clock sets none.
@@ -198,7 +199,7 @@ func explain(ctx context.Context, doing string, err error) string {
 
 // git runs one git command in dir and returns its output. A canceled context kills the process group of the call.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := proc.GroupCommand(ctx, "git", args, dir)
+	cmd := proc.GroupCommand(ctx, gitexec.Binary, gitexec.Args(args), dir)
 	cmd.Env = append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0")
 
 	var stderr bytes.Buffer
