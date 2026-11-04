@@ -15,8 +15,9 @@
 // Landlock configuration of the kernel, exactly as the helper does for a gate. A kernel or a container that refuses either makes Check fail, so the
 // gate is refused and never fails at run time with exit code 125.
 //
-// ABI 9 is not verified on a real kernel: no machine that the project uses runs Linux 6.18 or later. The ABI 9 configuration is the one that go-landlock
-// ships, and Check proves on each machine that the kernel accepts it.
+// ABI 9 is not verified on a real kernel. The build host runs Linux 7.0.0-1014-gcp, and its kernel reports ABI 8 (the raw answer of the
+// landlock_create_ruleset call, logged by the contract test), so the contract suite passes there on the path below ABI 9: the seccomp filter and the
+// ABI 8 rules. The ABI 9 configuration is the one that go-landlock ships, and Check proves on each machine that the kernel accepts it.
 package landlock
 
 import (
