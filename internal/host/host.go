@@ -21,6 +21,8 @@ import (
 // Wait returns the state of the job together with an error when the bank fails. A caller stops a host with Teardown, never with Down.
 // Wait and Teardown scan the same root for repositories: WorkRoot. A provider with no setting for it uses the login folder of the host by its absolute path.
 // A provider's Up turns on the provider-side idle delete only when its Submit and Wait hold that invariant.
+// A provider that does not own its machine (ssh and slurm: the owner provides it) has no idle delete, so the invariant holds without a slot.
+// Its Down sends nothing and its Teardown banks the work and leaves the machine up.
 type Host interface {
 	Up(ctx context.Context) error
 	Status(ctx context.Context) (model.HostStatus, error)

@@ -98,14 +98,38 @@ type floored struct {
 // WithDiskFloor returns h with a Submit that first runs DiskFloor. A job does not start on a host under its floor, or on a host that cannot report its free space.
 // Every other method is the method of h.
 func WithDiskFloor(h Host, floorGB int) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return floored{Host: h, floorGB: floorGB}
+	return keepTeardown(floored{Host: h, floorGB: floorGB}, h)
 }
 
 // WithDiskWait is WithDiskFloor with a wait: a job under the floor reads the disk again every poll, for at most wait, and starts when the space is back.
 // A job still under the floor when the wait ends is refused with ErrDiskLow. A reading that cannot be read is refused at once, because waiting does not fix it.
 // A wait of zero or less is WithDiskFloor.
 func WithDiskWait(h Host, floorGB int, wait, poll time.Duration) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return floored{Host: h, floorGB: floorGB, wait: wait, poll: poll}
+	return keepTeardown(floored{Host: h, floorGB: floorGB, wait: wait, poll: poll}, h)
+}
+
+// teardowner is the Teardown that a provider adds to the contract: it banks the work of the host and releases it.
+type teardowner interface {
+	Teardown(ctx context.Context) error
+}
+
+// flooredKeeper is a floored Host whose provider has a Teardown. The embedded interface hides a method that is not in Host,
+// so the wrapper repeats it; a wrapped host with no Teardown stays without one.
+type flooredKeeper struct {
+	floored
+
+	inner teardowner
+}
+
+func (k flooredKeeper) Teardown(ctx context.Context) error { return k.inner.Teardown(ctx) }
+
+// keepTeardown returns the wrapper w, with the Teardown of h when h has one.
+func keepTeardown(w floored, h Host) Host { //nolint:ireturn // the wrapper is a Host of any provider
+	if t, ok := h.(teardowner); ok {
+		return flooredKeeper{floored: w, inner: t}
+	}
+
+	return w
 }
 
 func (f floored) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error) {

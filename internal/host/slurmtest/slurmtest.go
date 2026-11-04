@@ -100,11 +100,15 @@ func (f *Cluster) runSSH(args []string) model.CommandResult {
 	f.Mu.Lock()
 	defer f.Mu.Unlock()
 
-	if f.Broken || !f.Up {
+	if !f.Up {
 		return model.CommandResult{ExitCode: sshFailed, Stderr: "ssh: no route"}
 	}
 
-	line := strings.Join(args[sshPrefix:], " ")
+	if f.Broken {
+		return failure("remote command failed")
+	}
+
+	line := strings.Join(args[commandStart(args):], " ")
 	words := strings.Fields(line)
 
 	if f.dropped(words[0]) {
@@ -129,6 +133,18 @@ func (f *Cluster) runSSH(args []string) model.CommandResult {
 	}
 
 	return f.other(words)
+}
+
+// commandStart is the index of the first word of the remote command. A link to a machine puts its options, then "--", then the target before it;
+// a link whose ssh config entry holds the options sends only -o BatchMode=yes and the target.
+func commandStart(args []string) int {
+	for i, arg := range args {
+		if arg == "--" {
+			return i + 2
+		}
+	}
+
+	return sshPrefix
 }
 
 // dropped reports whether the ssh link drops for this call: a planned number of calls (a negative number is every call), or one call of a command.
@@ -159,8 +175,13 @@ func (f *Cluster) other(words []string) model.CommandResult {
 			return failure("scancel: denied")
 		}
 
+		job := f.Jobs[words[1]]
+		if job == nil {
+			return failure("scancel: invalid job id " + words[1])
+		}
+
 		f.Scancels++
-		f.Jobs[words[1]].Canceled = true
+		job.Canceled = true
 
 		return ok("")
 	case "touch":

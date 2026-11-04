@@ -15,6 +15,7 @@ import (
 	forgegithub "github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/skypilot"
+	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/host/ssh"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
@@ -74,6 +75,7 @@ func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,
 			model.HostSSH:      newSSHHost,
+			model.HostSlurm:    newSlurmHost,
 		},
 		bd:       bd,
 		state:    state,
@@ -126,6 +128,16 @@ func newSkyPilotHost(project model.Project) (host.Host, error) { //nolint:iretur
 // newSSHHost builds the host of a machine that the owner provides. It runs no ssh: the first call to the machine is Up.
 func newSSHHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
 	h, err := ssh.New(project.BuildHost, *project.Host, proc.NewExecRunner("ssh", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+// newSlurmHost builds the host of a Slurm cluster that the owner provides, reached at its head node over ssh. It runs no ssh: the first call is Up.
+func newSlurmHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+	h, err := slurm.NewHost(project.BuildHost, *project.Host, proc.NewExecRunner("ssh", ""))
 	if err != nil {
 		return nil, err
 	}

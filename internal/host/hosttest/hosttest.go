@@ -1,5 +1,7 @@
 // Package hosttest holds the conformance suite for host.Host. An adapter test runs the suite against the adapter with fake command lines.
-// Every new host provider must call the suite from its tests.
+// Every new host provider must call the suite from its tests. A provider that creates its machine (skypilot) runs it with no option.
+// A provider whose machine the owner provides (ssh, slurm) passes NonOwning: the factory returns a host whose fake machine is up before Up and after Down,
+// and does not answer in Unreachable mode.
 package hosttest
 
 import (

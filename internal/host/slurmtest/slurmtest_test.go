@@ -28,11 +28,22 @@ func submit(c *Cluster, command string) string {
 	return strings.TrimSpace(call(c, "sbatch", "--parsable", "--job-name=g", "--wrap="+command).Stdout)
 }
 
-func TestSSH_AClusterThatIsDownOrBrokenDropsTheLink(t *testing.T) {
+func TestSSH_AClusterThatIsDownDropsTheLinkAndABrokenOneFailsEveryCommand(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, sshFailed, call(New(hosttest.Working), "pwd").ExitCode)
-	assert.Equal(t, sshFailed, call(up(hosttest.Broken), "pwd").ExitCode)
+	assert.Equal(t, sshFailed, call(New(hosttest.Broken), "pwd").ExitCode, "a broken cluster that was never up does not answer")
+	assert.Equal(t, 1, call(up(hosttest.Broken), "pwd").ExitCode, "the link is up and the command fails, so it is not a dropped link")
+}
+
+func TestSSH_ALinkToAMachineSendsTheCommandAfterTheDoubleDash(t *testing.T) {
+	t.Parallel()
+
+	c := up(hosttest.Working)
+	got := c.SSH().Run(t.Context(), []string{"-o", "BatchMode=yes", "-o", "Port=22", "--", Target, "pwd"})
+
+	assert.Equal(t, 0, got.ExitCode)
+	assert.Equal(t, "/home/lane\n", got.Stdout)
 }
 
 func TestSSH_PlannedDropsEndAndAreScopedToACommand(t *testing.T) {
@@ -121,6 +132,15 @@ func TestSSH_ACanceledJobLingersThenEndsAsCanceled(t *testing.T) {
 
 	c.NoStop = true
 	assert.Equal(t, 1, call(c, "scancel", id).ExitCode)
+}
+
+func TestSSH_ACancelOfAJobThatWasNeverSubmittedFailsInsteadOfPanicking(t *testing.T) {
+	t.Parallel()
+
+	c := up(hosttest.Working)
+
+	assert.Equal(t, 1, call(c, "scancel", "--me").ExitCode)
+	assert.Zero(t, c.Scancels)
 }
 
 func TestSSH_AJobIdCanBeReusedAndALogGrowsByThePlan(t *testing.T) {

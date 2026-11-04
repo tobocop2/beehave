@@ -39,7 +39,7 @@ project(
     #     merged = "Done",             # the Status column that it sets after the merge; required
     #     owner = "your-org",          # the login that owns the board; the default is the owner of `repo`
     # ),                               # optional. With no board block the example makes no board call. The token needs the `project` scope
-    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine; not a Slurm partition), or a list of names such as ["gpu", "gpu-b"]
+    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster), or a list of names such as ["gpu", "gpu-b"]
     # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
@@ -56,7 +56,9 @@ project(
     #         instance_type = "n2-standard-8",
     #     ),
     # ),
-    # A machine you own: provider = "ssh" (or "slurm" for a head node) takes the ssh block and refuses idle_minutes and the skypilot block.
+    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the skypilot block. obee never deletes the machine: host_teardown banks the work and leaves it up.
+    # A Slurm cluster you own: provider = "slurm" takes the same ssh block, which names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
+    # max_run goes to sbatch as --time. The cluster is yours, so no slot job holds it and host_teardown banks the work and leaves it up.
     # host = host(
     #     provider = "ssh",
     #     disk_floor_gb = 50,
