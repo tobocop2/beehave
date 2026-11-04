@@ -20,6 +20,8 @@ type runView struct {
 type statusList struct {
 	Runs      []flow.RunInfo      `json:"-"`
 	Schedules []flow.ScheduleInfo `json:"schedules,omitempty"`
+	// Days is the per-day figures of the window. It is empty for a window with no run.
+	Days []flow.DayFigures `json:"days,omitempty"`
 	// Poll is nil when no review poll has finished.
 	Poll *flow.PollOutput `json:"poll,omitempty"`
 	// PollNotScheduled is the cause when the review poll does not run. It is empty when the poll is scheduled.
@@ -27,7 +29,7 @@ type statusList struct {
 }
 
 // readStatusList reads the recorded state that the status list shows.
-func readStatusList(client Steering) (statusList, error) {
+func readStatusList(client Steering, since time.Time) (statusList, error) {
 	var (
 		list statusList
 		err  error
@@ -38,6 +40,10 @@ func readStatusList(client Steering) (statusList, error) {
 	}
 
 	if list.Schedules, err = client.Schedules(); err != nil {
+		return statusList{}, err
+	}
+
+	if list.Days, err = client.Days(since); err != nil {
 		return statusList{}, err
 	}
 

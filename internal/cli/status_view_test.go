@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/review"
@@ -250,6 +251,74 @@ func TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T)
 		assert.Equal(t, 1, code, args)
 		assert.Contains(t, stderr, "fake failure", args)
 	}
+}
+
+func TestStatus_ThePerDayFiguresAreInTheTextAndTheJSONList(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.days = []flow.DayFigures{
+		{Day: "2026-11-02", Started: 2, Done: 1, Failed: 1, Spent: agent.Spend{Cost: 1.5, Estimated: true}},
+		{Day: "2026-11-03", Started: 1, Canceled: 1},
+	}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, "no runs\n\nper day\n"+
+		"2026-11-02\tstarted 2\tdone 1, failed 1, canceled 0\tspent $1.5 (estimate)\n"+
+		"2026-11-03\tstarted 1\tdone 0, failed 0, canceled 1\n", stdout)
+
+	code, stdout, stderr = rig.execute(t.Context(), "status", "--json")
+	require.Equal(t, 0, code, stderr)
+
+	assert.JSONEq(t, `{"runs":[],"days":[`+
+		`{"day":"2026-11-02","started":2,"done":1,"failed":1,"canceled":0,"spent":{"cost_usd":1.5,"cost_estimated":true}},`+
+		`{"day":"2026-11-03","started":1,"done":0,"failed":0,"canceled":1,"spent":{}}]}`, stdout)
+}
+
+func TestStatus_TheDaysFlagSetsTheWindowFromTheLocalDayOfTheClock(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		args  []string
+		since string
+	}{
+		{[]string{"status"}, "2026-10-28T00:00:00Z"},
+		{[]string{"status", "--days", "1"}, "2026-11-03T00:00:00Z"},
+		{[]string{"status", "--days", "30", "--json"}, "2026-10-05T00:00:00Z"},
+	} {
+		rig := newRig(t)
+
+		code, _, stderr := rig.execute(t.Context(), test.args...)
+		require.Equal(t, 0, code, stderr)
+
+		assert.Contains(t, rig.steering.calls, "days "+test.since, test.args)
+	}
+}
+
+func TestStatus_ADaysFlagBelowOneFailsBeforeAnyRead(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "status", "--days", "0")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "--days takes a number of days of 1 or more")
+	assert.Empty(t, rig.steering.calls)
+}
+
+func TestStatus_ADaysReadThatFailsFailsTheList(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.daysErr = errFake
+
+	code, _, stderr := rig.execute(t.Context(), "status")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
 }
 
 func TestStatus_TheReviewPollSectionIsInTheJSONListAsInTheText(t *testing.T) {
