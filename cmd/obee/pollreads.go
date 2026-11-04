@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/tobocop2/obee/internal/config"
@@ -27,14 +28,7 @@ type pollReads struct {
 
 // Projects lists the names of the configured projects, in order.
 func (p pollReads) Projects() []string {
-	names := make([]string, 0, len(p.projects))
-	for name := range p.projects {
-		names = append(names, name)
-	}
-
-	slices.Sort(names)
-
-	return names
+	return slices.Sorted(maps.Keys(p.projects))
 }
 
 // Source returns the forge of the project, which the poll only reads, and the login of the active account.

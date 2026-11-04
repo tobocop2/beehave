@@ -48,19 +48,7 @@ func newGateSandbox(projects map[string]config.Project) gateSandbox {
 		return table[key], nil
 	}
 
-	return gateSandbox{projects: projects, enforcer: choose, home: os.UserHomeDir, environ: environList(config.ProcessEnv())}
-}
-
-// environList turns an environment map into NAME=value pairs in name order.
-func environList(env map[string]string) []string {
-	pairs := make([]string, 0, len(env))
-	for name, value := range env {
-		pairs = append(pairs, name+"="+value)
-	}
-
-	slices.Sort(pairs)
-
-	return pairs
+	return gateSandbox{projects: projects, enforcer: choose, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv())}
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.
