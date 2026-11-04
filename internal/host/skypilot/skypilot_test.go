@@ -2,7 +2,6 @@ package skypilot
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -42,9 +41,9 @@ func newScripted(t *testing.T) (*Host, *proctest.Scripted, *proctest.Scripted) {
 	h, err := New("lane-host", config(), sky, ssh)
 	require.NoError(t, err)
 
-	h.poll = time.Millisecond
-	h.bank = func(context.Context) error { return nil }
-	h.nonce = func() string { return "n" }
+	h.Poll = time.Millisecond
+	h.Bank = func(context.Context) error { return nil }
+	h.Nonce = func() string { return "n" }
 
 	ssh.Plan("", "touch")
 
@@ -62,8 +61,8 @@ func newBanking(t *testing.T, private string) (*Host, *proctest.Scripted) {
 	h, err := New("lane-host", cfg, &proctest.Scripted{}, ssh)
 	require.NoError(t, err)
 
-	h.poll = time.Millisecond
-	h.nonce = func() string { return "n" }
+	h.Poll = time.Millisecond
+	h.Nonce = func() string { return "n" }
 
 	planHome(ssh)
 
@@ -293,6 +292,23 @@ func TestStatus_ReportsEachCommandThatFails(t *testing.T) {
 	}
 }
 
+func TestWorkRootAndLog_AreReadFromTheHeadNodeOfTheCluster(t *testing.T) {
+	t.Parallel()
+
+	h, _, ssh := newScripted(t)
+	ssh.Plan("/home/lane\n", "pwd")
+	ssh.Plan("line\n", "tail")
+
+	root, err := h.WorkRoot(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "/home/lane", root)
+
+	log, err := h.Log(context.Background(), "5-n")
+	require.NoError(t, err)
+	assert.Equal(t, "line\n", log)
+	assert.True(t, ssh.Called("-o", "BatchMode=yes", "lane-host", "tail", "-c", "16384", "slurm-5.out"))
+}
+
 func TestDown_RunsSkyDown(t *testing.T) {
 	t.Parallel()
 
@@ -301,136 +317,6 @@ func TestDown_RunsSkyDown(t *testing.T) {
 
 	require.NoError(t, h.Down(context.Background()))
 	assert.Equal(t, [][]string{{"down", "-y", "lane-host"}}, sky.Calls)
-}
-
-func TestSubmit_QuotesTheCommandAndRefusesAnAnswerItDoesNotRecognise(t *testing.T) {
-	t.Parallel()
-
-	h, sky, ssh := newScripted(t)
-	ssh.Plan("77;cluster1\n", "sbatch")
-	sky.Plan("", "exec")
-
-	id, err := h.Submit(context.Background(), model.JobSpec{Name: "gate", Command: "make check; echo 'done'"})
-	require.NoError(t, err)
-	assert.Equal(t, model.JobID("77-n"), id)
-	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "sbatch", "--parsable", "--job-name=gate", `'--wrap=make check; echo '\''done'\'''`}, ssh.Calls[0])
-
-	for _, answer := range []string{"", "Submitted batch job 77", "77;", "-1", "77\n78"} {
-		ssh.Plan(answer, "sbatch")
-
-		_, err = h.Submit(context.Background(), model.JobSpec{Name: "gate", Command: "x"})
-		require.ErrorIs(t, err, errJobID, answer)
-	}
-
-	_, err = h.Submit(context.Background(), model.JobSpec{Name: "", Command: "x"})
-	require.ErrorIs(t, err, errJobFields)
-
-	ssh.PlanFail("boom", "sbatch")
-
-	_, err = h.Submit(context.Background(), model.JobSpec{Name: "g", Command: "x"})
-	require.ErrorIs(t, err, errCommand)
-}
-
-func TestWait_ReadsTheStateFromSlurmAndMapsEachName(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]model.JobState{
-		"COMPLETED": model.JobSucceeded, "FAILED": model.JobFailed, "TIMEOUT": model.JobTimedOut, "OUT_OF_MEMORY": model.JobFailed,
-		"NODE_FAIL": model.JobFailed, "CANCELLED": model.JobCanceled, "CANCELLED by 0": model.JobCanceled, "CANCELLED+": model.JobCanceled, //nolint:misspell // Slurm's spelling
-	}
-
-	for text, want := range tests {
-		t.Run(text, func(t *testing.T) {
-			t.Parallel()
-
-			h, _, ssh := newScripted(t)
-			ssh.Plan(text+"\n", "squeue")
-
-			got, err := h.Wait(deadline(t), "5-n")
-			require.NoError(t, err)
-			assert.Equal(t, want, got)
-		})
-	}
-}
-
-func TestWait_AJobThatEndedWithExit124IsTimedOutNotFailed(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]model.JobState{
-		"FAILED|124:0\n": model.JobTimedOut, "FAILED|1:0\n": model.JobFailed, "FAILED|0:124\n": model.JobFailed,
-	}
-
-	for text, want := range tests {
-		h, _, ssh := newScripted(t)
-		ssh.PlanFail("slurm_load_jobs error: Invalid job id specified", "squeue")
-		ssh.Plan(text, "sacct")
-
-		got, err := h.Wait(deadline(t), "5-n")
-		require.NoError(t, err, text)
-		assert.Equal(t, want, got, text)
-	}
-}
-
-func TestWait_KeepsPollingWhileTheJobIsPendingOrRunning(t *testing.T) {
-	t.Parallel()
-
-	h, _, ssh := newScripted(t)
-	ssh.Plan("PENDING\n", "squeue")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-
-	_, err := h.Wait(ctx, "5-n")
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-}
-
-func TestWait_ReadsSacctWhenSqueueForgotTheJob(t *testing.T) {
-	t.Parallel()
-
-	h, _, ssh := newScripted(t)
-	ssh.PlanFail("slurm_load_jobs error: Invalid job id specified", "squeue")
-	ssh.Plan("FAILED\n", "sacct")
-
-	got, err := h.Wait(deadline(t), "5-n")
-	require.NoError(t, err)
-	assert.Equal(t, model.JobFailed, got)
-
-	ssh.Plan("", "squeue")
-
-	got, err = h.Wait(deadline(t), "5-n")
-	require.NoError(t, err)
-	assert.Equal(t, model.JobFailed, got)
-}
-
-func TestWait_RefusesWhatItDoesNotRecognise(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]func(*proctest.Scripted){
-		"squeue state unknown": func(ssh *proctest.Scripted) { ssh.Plan("MYSTERY\n", "squeue") },
-		"squeue two lines":     func(ssh *proctest.Scripted) { ssh.Plan("RUNNING\nRUNNING\n", "squeue") },
-		"squeue lower case":    func(ssh *proctest.Scripted) { ssh.Plan("completed\n", "squeue") },
-		"sacct fails": func(ssh *proctest.Scripted) {
-			ssh.PlanFail("x", "squeue")
-			ssh.PlanFail("x", "sacct")
-		},
-		"sacct unknown state": func(ssh *proctest.Scripted) {
-			ssh.PlanFail("x", "squeue")
-			ssh.Plan("MYSTERY\n", "sacct")
-		},
-	}
-
-	for name, plan := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			h, _, ssh := newScripted(t)
-			plan(ssh)
-
-			state, err := h.Wait(deadline(t), "5-n")
-			require.Error(t, err)
-			assert.Equal(t, model.JobUnknown, state)
-		})
-	}
 }
 
 func TestCancel_WritesTheMarkerOfTheSlotJobAfterScancel(t *testing.T) {
@@ -444,23 +330,6 @@ func TestCancel_WritesTheMarkerOfTheSlotJobAfterScancel(t *testing.T) {
 	require.Len(t, ssh.Calls, 3)
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "scancel", "5"}, ssh.Calls[0])
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".obee-banked-lane-host-5-n"}, ssh.Calls[2])
-}
-
-func TestLog_ReadsTheTailOfTheSlurmLogOfTheJob(t *testing.T) {
-	t.Parallel()
-
-	h, _, ssh := newScripted(t)
-	ssh.Plan("line\nobee-gate-done\n", "tail")
-
-	log, err := h.Log(deadline(t), "5-n")
-
-	require.NoError(t, err)
-	assert.Equal(t, "line\nobee-gate-done\n", log)
-	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "tail", "-c", "16384", "slurm-5.out"}, ssh.Calls[0])
-
-	_, err = h.Log(deadline(t), "5; rm -rf x")
-	require.Error(t, err)
-	assert.Len(t, ssh.Calls, 1)
 }
 
 func TestCancel_BanksTheWorkOfTheCanceledJobBeforeTheSlotEnds(t *testing.T) {
@@ -513,55 +382,4 @@ func TestCancel_ReturnsTheErrorOfTheMarkerWrite(t *testing.T) {
 	ssh.PlanFail("read-only", "touch")
 
 	require.ErrorIs(t, h.Cancel(context.Background(), "5-n"), errCommand)
-}
-
-func TestDrainAndResume_UpdateEveryNode(t *testing.T) {
-	t.Parallel()
-
-	h, _, ssh := newScripted(t)
-	ssh.Plan("n1\nn2\nn1\n", "sinfo")
-	ssh.Plan("", "scontrol")
-
-	require.NoError(t, h.Drain(context.Background()))
-	require.NoError(t, h.Resume(context.Background()))
-
-	var updates []string
-
-	for _, call := range ssh.Calls {
-		if call[3] != "sinfo" {
-			updates = append(updates, strings.Join(call[3:], " "))
-		}
-	}
-
-	assert.Equal(t, []string{
-		"scontrol update NodeName=n1 State=DRAIN Reason=obee", "scontrol update NodeName=n2 State=DRAIN Reason=obee",
-		"scontrol update NodeName=n1 State=RESUME", "scontrol update NodeName=n2 State=RESUME",
-	}, updates)
-}
-
-func TestDrain_RefusesWhatItDoesNotRecognise(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]func(*proctest.Scripted){
-		"no node":          func(ssh *proctest.Scripted) { ssh.Plan("\n", "sinfo") },
-		"node with a flag": func(ssh *proctest.Scripted) { ssh.Plan("-x\n", "sinfo") },
-		"node with space":  func(ssh *proctest.Scripted) { ssh.Plan("a b\n", "sinfo") },
-		"sinfo fails":      func(ssh *proctest.Scripted) { ssh.PlanFail("x", "sinfo") },
-		"scontrol fails": func(ssh *proctest.Scripted) {
-			ssh.Plan("n1\n", "sinfo")
-			ssh.PlanFail("x", "scontrol")
-		},
-	}
-
-	for name, plan := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			h, _, ssh := newScripted(t)
-			plan(ssh)
-
-			require.Error(t, h.Drain(context.Background()))
-			require.Error(t, h.Resume(context.Background()))
-		})
-	}
 }

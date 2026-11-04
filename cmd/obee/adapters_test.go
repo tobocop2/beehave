@@ -131,6 +131,23 @@ func stateAt(dir string) func() (string, error) {
 	return func() (string, error) { return dir, nil }
 }
 
+func TestAdapters_AProjectWithNoHostBlockBuildsNoHostSoItNeedsNeitherSkyNorSlurm(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, nil)
+	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
+		model.HostSkyPilot: func(model.Project) (host.Host, error) {
+			t.Error("a local project built a host adapter")
+
+			return nil, nil //nolint:nilnil // the test fails above
+		},
+	}
+
+	_, err := table.host(localProjectNamed("p"))
+
+	require.ErrorContains(t, err, "no host block")
+}
+
 func localProjectNamed(name string) model.Project {
 	return model.Project{Name: name, Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal}
 }

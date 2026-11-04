@@ -129,7 +129,7 @@ linters:
             - pkg: mvdan.cc/sh/v3/interp
               desc: obee parses shell text and never runs it
         test-packages-in-tests-only:
-          files: ["!$test"]
+          files: ["!$test", "!**/internal/host/slurmtest/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/agent/agenttest
               desc: a conformance suite or fake is for tests only
@@ -142,6 +142,8 @@ linters:
             - pkg: github.com/tobocop2/obee/internal/proc/proctest
               desc: a conformance suite or fake is for tests only
             - pkg: github.com/tobocop2/obee/internal/host/hosttest
+              desc: a conformance suite or fake is for tests only
+            - pkg: github.com/tobocop2/obee/internal/host/slurmtest
               desc: a conformance suite or fake is for tests only
             - pkg: github.com/tobocop2/obee/internal/sandbox/contract
               desc: a conformance suite or fake is for tests only
@@ -164,8 +166,12 @@ linters:
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
+              desc: the remedy binary imports the forge backend and the claim rows, and no other backend
+        # The skypilot adapter queues its jobs through the slurm adapter, so it is the one backend that imports another. no-backend-to-backend-host-skypilot
+        # keeps it from importing any other backend.
         backends-only-in-main:
-          files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**"]
+          files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**", "!**/internal/host/skypilot/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: only cmd/obee and the remedy binary import a backend
@@ -179,12 +185,16 @@ linters:
               desc: only cmd/obee and the remedy binary import a backend
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
               desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
+              desc: only cmd/obee, the skypilot adapter and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
         # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
         no-backend-to-backend-store-beads:
           files: ["**/internal/store/beads/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
               desc: a backend never imports another backend
@@ -197,6 +207,8 @@ linters:
           deny:
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
               desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/forge/github
@@ -208,6 +220,8 @@ linters:
           deny:
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
               desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
@@ -217,6 +231,23 @@ linters:
         no-backend-to-backend-host-skypilot:
           files: ["**/internal/host/skypilot/**"]
           deny:
+            - pkg: github.com/tobocop2/obee/internal/store/local
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/store/beads
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/store/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/forge/github
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/agent/claude
+              desc: a backend never imports another backend
+        no-backend-to-backend-host-slurm:
+          files: ["**/internal/host/slurm/**"]
+          deny:
+            - pkg: github.com/tobocop2/obee/internal/store/local
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/github
@@ -229,6 +260,8 @@ linters:
           files: ["**/internal/agent/claude/**"]
           deny:
             - pkg: github.com/tobocop2/obee/internal/host/skypilot
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/obee/internal/host/slurm
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/obee/internal/store/beads
               desc: a backend never imports another backend
@@ -383,7 +416,7 @@ linters:
         linters:
           - forbidigo
         text: os\.Exit|os\.Std
-      - path: _test\.go
+      - path: (_test\.go|internal/host/slurmtest/)
         linters:
           - funlen
           - mnd

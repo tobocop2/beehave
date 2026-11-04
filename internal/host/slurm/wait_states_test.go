@@ -1,8 +1,9 @@
-package skypilot
+package slurm
 
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -37,33 +39,38 @@ func (c *fakeClock) sleep(ctx context.Context, d time.Duration) error {
 }
 
 // newClockedHost returns a host over the fake Slurm whose waits run on a fake clock. The host is up.
-func newClockedHost(t *testing.T) (*Host, *fakeHost, *fakeClock) {
+func newClockedHost(t *testing.T) (*Queue, *slurmtest.Cluster, *fakeClock) {
 	t.Helper()
 
-	f := newFakeHost(hosttest.Working)
-	f.up = true
+	return newClockedHostWith(t, 0)
+}
+
+// newClockedHostWith is newClockedHost for a project that sets host.stale_minutes.
+func newClockedHostWith(t *testing.T, staleMinutes int) (*Queue, *slurmtest.Cluster, *fakeClock) {
+	t.Helper()
+
+	f := slurmtest.New(hosttest.Working)
+	f.Up = true
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 24 * time.Hour}, f.sky(), f.ssh())
-	require.NoError(t, err)
+	h := newTestQueue(f, model.HostConfig{IdleMinutes: 60, MaxRun: 24 * time.Hour, StaleMinutes: staleMinutes})
 
-	h.poll = 10 * time.Second
-	h.now, h.sleep = clock.read, clock.sleep
-	h.bank = func(context.Context) error { return nil }
+	h.Poll = 10 * time.Second
+	h.Now, h.Sleep = clock.read, clock.sleep
+	h.Bank = func(context.Context) error { return nil }
 
 	return h, f, clock
 }
 
-func submitted(t *testing.T, h *Host, f *fakeHost) (model.JobID, *fakeJob) {
+func submitted(t *testing.T, h *Queue, f *slurmtest.Cluster) (model.JobID, *slurmtest.Job) {
 	t.Helper()
 
 	id, err := h.Submit(context.Background(), model.JobSpec{Name: "gate", Command: hosttest.PassingCommand})
 	require.NoError(t, err)
 
-	handle, err := parseJobID(id)
-	require.NoError(t, err)
+	slurmID, _, _ := strings.Cut(string(id), "-")
 
-	return id, f.jobs[handle.slurm]
+	return id, f.Jobs[slurmID]
 }
 
 func TestWait_DoneReadsTheFinalStateAndEndsTheSlot(t *testing.T) {
@@ -76,7 +83,7 @@ func TestWait_DoneReadsTheFinalStateAndEndsTheSlot(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.Zero(t, f.waitingSlots())
+	assert.Zero(t, f.WaitingSlots())
 }
 
 func TestWait_DiedEndsOnlyAfterTheEmptyReadRepeatsForTheGrace(t *testing.T) {
@@ -84,7 +91,7 @@ func TestWait_DiedEndsOnlyAfterTheEmptyReadRepeatsForTheGrace(t *testing.T) {
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.vanished = true
+	job.Vanished = true
 	start := clock.now
 
 	state, err := h.Wait(context.Background(), id)
@@ -92,8 +99,8 @@ func TestWait_DiedEndsOnlyAfterTheEmptyReadRepeatsForTheGrace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, model.JobDied, state)
 	assert.GreaterOrEqual(t, clock.now.Sub(start), time.Minute, "an empty read repeats for the grace before it reads as died")
-	assert.Less(t, clock.now.Sub(start), time.Minute+h.poll+time.Second)
-	assert.Zero(t, f.waitingSlots(), "the slot of a dead job ends")
+	assert.Less(t, clock.now.Sub(start), time.Minute+h.Poll+time.Second)
+	assert.Zero(t, f.WaitingSlots(), "the slot of a dead job ends")
 }
 
 func TestWait_ARecordThatAppearsInTheGraceGivesItsRealState(t *testing.T) {
@@ -101,7 +108,7 @@ func TestWait_ARecordThatAppearsInTheGraceGivesItsRealState(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.blank = 3
+	job.Blank = 3
 
 	state, err := h.Wait(context.Background(), id)
 
@@ -114,12 +121,12 @@ func TestWait_AStaleStopWaitsForTheJobToEndBeforeItBanks(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes, job.lingers = 100000, []int{1}, 3
+	job.Live, job.LogSizes, job.Lingers = 100000, []int{1}, 3
 
 	var lingeringAtBank int
 
-	h.bank = func(context.Context) error {
-		lingeringAtBank = job.lingers
+	h.Bank = func(context.Context) error {
+		lingeringAtBank = job.Lingers
 
 		return nil
 	}
@@ -128,9 +135,9 @@ func TestWait_AStaleStopWaitsForTheJobToEndBeforeItBanks(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobStale, state)
-	assert.True(t, job.canceled)
+	assert.True(t, job.Canceled)
 	assert.Zero(t, lingeringAtBank, "the bank runs after the job left the queue")
-	assert.Zero(t, f.waitingSlots())
+	assert.Zero(t, f.WaitingSlots())
 }
 
 func TestWait_StaleEndsAfterTheLogDoesNotGrowForTheLimitAndStopsTheJob(t *testing.T) {
@@ -138,26 +145,25 @@ func TestWait_StaleEndsAfterTheLogDoesNotGrowForTheLimitAndStopsTheJob(t *testin
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes = 100000, []int{10, 20, 30}
+	job.Live, job.LogSizes = 100000, []int{10, 20, 30}
 	start := clock.now
 
 	state, err := h.Wait(context.Background(), id)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobStale, state)
-	assert.True(t, job.canceled, "the wait stops a stale job")
+	assert.True(t, job.Canceled, "the wait stops a stale job")
 	assert.GreaterOrEqual(t, clock.now.Sub(start), 20*time.Minute)
 	assert.Less(t, clock.now.Sub(start), 21*time.Minute)
-	assert.Zero(t, f.waitingSlots())
+	assert.Zero(t, f.WaitingSlots())
 }
 
 func TestWait_StaleLimitComesFromTheProjectValue(t *testing.T) {
 	t.Parallel()
 
-	h, f, clock := newClockedHost(t)
-	h.config.StaleMinutes = 3
+	h, f, clock := newClockedHostWith(t, 3)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes = 100000, []int{7}
+	job.Live, job.LogSizes = 100000, []int{7}
 	start := clock.now
 
 	state, err := h.Wait(context.Background(), id)
@@ -172,17 +178,17 @@ func TestWait_AGrowingLogIsNeverStale(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live = 500
+	job.Live = 500
 
 	for size := 1; size <= 500; size++ {
-		job.logSizes = append(job.logSizes, size)
+		job.LogSizes = append(job.LogSizes, size)
 	}
 
 	state, err := h.Wait(context.Background(), id)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.False(t, job.canceled)
+	assert.False(t, job.Canceled)
 }
 
 func TestWait_ALinkThatDropsAndReturnsKeepsWaitingOnTheSameJob(t *testing.T) {
@@ -190,14 +196,14 @@ func TestWait_ALinkThatDropsAndReturnsKeepsWaitingOnTheSameJob(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	f.drops = 20
+	f.Drops = 20
 
 	state, err := h.Wait(context.Background(), id)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.Equal(t, 1, f.sbatches, "a drop never starts the job a second time")
-	assert.False(t, job.canceled)
+	assert.Equal(t, 1, f.Sbatches, "a drop never starts the job a second time")
+	assert.False(t, job.Canceled)
 }
 
 func TestWait_ADropAfterLongerThanTheLostLimitOfAnsweredReadsKeepsWaiting(t *testing.T) {
@@ -205,11 +211,11 @@ func TestWait_ADropAfterLongerThanTheLostLimitOfAnsweredReadsKeepsWaiting(t *tes
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes = 60, []int{1}
+	job.Live, job.LogSizes = 60, []int{1}
 	start, dropped := clock.now, false
-	h.sleep = func(ctx context.Context, d time.Duration) error {
+	h.Sleep = func(ctx context.Context, d time.Duration) error {
 		if !dropped && clock.now.Sub(start) > 6*time.Minute {
-			dropped, f.drops = true, 1
+			dropped, f.Drops = true, 1
 		}
 
 		return clock.sleep(ctx, d)
@@ -220,7 +226,7 @@ func TestWait_ADropAfterLongerThanTheLostLimitOfAnsweredReadsKeepsWaiting(t *tes
 	require.NoError(t, err)
 	assert.True(t, dropped, "the link dropped once after six minutes of answered reads")
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.False(t, job.canceled)
+	assert.False(t, job.Canceled)
 }
 
 func TestWait_LostEndsAfterFiveMinutesWithoutAnAnsweredReadAndLeavesTheJobRunning(t *testing.T) {
@@ -228,7 +234,7 @@ func TestWait_LostEndsAfterFiveMinutesWithoutAnAnsweredReadAndLeavesTheJobRunnin
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	f.drops = -1
+	f.Drops = -1
 	start := clock.now
 
 	state, err := h.Wait(context.Background(), id)
@@ -240,9 +246,9 @@ func TestWait_LostEndsAfterFiveMinutesWithoutAnAnsweredReadAndLeavesTheJobRunnin
 	assert.Equal(t, model.JobLost, state)
 	assert.False(t, state.Terminal())
 	assert.GreaterOrEqual(t, clock.now.Sub(start), 5*time.Minute)
-	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.poll+time.Second)
-	assert.Equal(t, 1, f.sbatches)
-	assert.False(t, job.canceled, "the job keeps running on the host")
+	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.Poll+time.Second)
+	assert.Equal(t, 1, f.Sbatches)
+	assert.False(t, job.Canceled, "the job keeps running on the host")
 }
 
 func TestWait_ADropOnTheLogReadOrTheRecordReadIsOneFailedReadNotTheEndOfTheWait(t *testing.T) {
@@ -251,13 +257,13 @@ func TestWait_ADropOnTheLogReadOrTheRecordReadIsOneFailedReadNotTheEndOfTheWait(
 	for _, command := range []string{"stat", "sacct"} {
 		h, f, _ := newClockedHost(t)
 		id, job := submitted(t, h, f)
-		job.live, job.logSizes, f.dropOn = 3, []int{1, 2, 3, 4}, command
+		job.Live, job.LogSizes, f.DropOn = 3, []int{1, 2, 3, 4}, command
 
 		state, err := h.Wait(context.Background(), id)
 
 		require.NoError(t, err, command)
 		assert.Equal(t, model.JobSucceeded, state, command)
-		assert.Equal(t, 1, f.sbatches, command)
+		assert.Equal(t, 1, f.Sbatches, command)
 	}
 }
 
@@ -266,14 +272,14 @@ func TestWait_AStaleJobThatCannotBeStoppedSaysItMayStillRun(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes, f.noStop = 100000, []int{1}, true
+	job.Live, job.LogSizes, f.NoStop = 100000, []int{1}, true
 
 	state, err := h.Wait(context.Background(), id)
 
-	require.ErrorIs(t, err, errCommand)
+	require.ErrorIs(t, err, ErrCommand)
 	require.ErrorContains(t, err, "may still run")
 	assert.Equal(t, model.JobStale, state)
-	assert.False(t, job.canceled)
+	assert.False(t, job.Canceled)
 }
 
 func TestWait_AStaleJobThatIgnoresTheCancelEndsTheStopWaitWithAnErrorThatNamesTheJob(t *testing.T) {
@@ -281,7 +287,7 @@ func TestWait_AStaleJobThatIgnoresTheCancelEndsTheStopWaitWithAnErrorThatNamesTh
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes, job.lingers = 100000, []int{1}, 1<<30
+	job.Live, job.LogSizes, job.Lingers = 100000, []int{1}, 1<<30
 	clock.limit = 1000
 
 	state, err := h.Wait(context.Background(), id)
@@ -292,8 +298,8 @@ func TestWait_AStaleJobThatIgnoresTheCancelEndsTheStopWaitWithAnErrorThatNamesTh
 	require.ErrorContains(t, err, "squeue")
 	require.ErrorContains(t, err, "scancel")
 	assert.Equal(t, model.JobStale, state)
-	assert.True(t, job.canceled)
-	assert.Equal(t, 1, f.scancels, "one job is canceled once")
+	assert.True(t, job.Canceled)
+	assert.Equal(t, 1, f.Scancels, "one job is canceled once")
 }
 
 func TestWait_ALogReadThatAlwaysDropsDoesNotCountAsAnAnsweredRead(t *testing.T) {
@@ -301,7 +307,7 @@ func TestWait_ALogReadThatAlwaysDropsDoesNotCountAsAnAnsweredRead(t *testing.T) 
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.live, job.logSizes, f.dropAll = 100000, []int{1}, "stat"
+	job.Live, job.LogSizes, f.DropAll = 100000, []int{1}, "stat"
 	clock.limit = 1000
 	start := clock.now
 
@@ -310,8 +316,8 @@ func TestWait_ALogReadThatAlwaysDropsDoesNotCountAsAnAnsweredRead(t *testing.T) 
 	require.ErrorIs(t, err, host.ErrLost)
 	assert.Equal(t, model.JobLost, state)
 	assert.GreaterOrEqual(t, clock.now.Sub(start), 5*time.Minute)
-	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.poll+time.Second)
-	assert.False(t, job.canceled, "a job whose log was never read is not stopped as stale")
+	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.Poll+time.Second)
+	assert.False(t, job.Canceled, "a job whose log was never read is not stopped as stale")
 }
 
 func TestWait_ALinkThatReturnsAfterTheLimitStartsNoSecondJob(t *testing.T) {
@@ -319,18 +325,18 @@ func TestWait_ALinkThatReturnsAfterTheLimitStartsNoSecondJob(t *testing.T) {
 
 	h, f, _ := newClockedHost(t)
 	id, _ := submitted(t, h, f)
-	f.drops = 40
+	f.Drops = 40
 
 	state, err := h.Wait(context.Background(), id)
 	require.ErrorIs(t, err, host.ErrLost)
 	assert.Equal(t, model.JobLost, state)
 
-	f.drops = 0
+	f.Drops = 0
 	state, err = h.Wait(context.Background(), id)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.Equal(t, 1, f.sbatches)
+	assert.Equal(t, 1, f.Sbatches)
 }
 
 func TestWait_ANewHandleWaitsOnTheRecordedJobAndSubmitsNoSecondCopy(t *testing.T) {
@@ -339,14 +345,13 @@ func TestWait_ANewHandleWaitsOnTheRecordedJobAndSubmitsNoSecondCopy(t *testing.T
 	first, f, clock := newClockedHost(t)
 	id, _ := submitted(t, first, f)
 
-	second, err := New(fakeCluster, first.config, f.sky(), f.ssh())
-	require.NoError(t, err)
+	second := newTestQueue(f, first.config)
 
-	second.now, second.sleep, second.bank = clock.read, clock.sleep, func(context.Context) error { return nil }
+	second.Now, second.Sleep, second.Bank = clock.read, clock.sleep, func(context.Context) error { return nil }
 
 	state, err := second.Wait(context.Background(), id)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobSucceeded, state)
-	assert.Equal(t, 1, f.sbatches)
+	assert.Equal(t, 1, f.Sbatches)
 }
