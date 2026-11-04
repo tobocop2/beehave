@@ -61,5 +61,13 @@ append_raw() {
 }
 append() { acquire || die "the ledger is busy"; append_raw "$@"; rc=$?; release; return $rc; }
 
-# The hash of the current version of a document, and whether the ledger knows it as a version.
+# The rows that are a change a person made. The run's own notice rows are not: they are no reason to end a wait. This is the only place
+# for the rule. await.sh reads it with seen_seq; tally.sh puts the same expression in its one query.
+CHANGE_ROWS="type NOT IN ('notified','notify-failed')"
+seen_seq() { sql "SELECT coalesce(max(seq),0) FROM events WHERE $CHANGE_ROWS;"; }
+
+# The hash of the file of a document. submit.sh writes the file first, so the file can be ahead of the ledger for a moment.
 doc_hash() { git hash-object "$AP_HOME/docs/$1.md" 2> /dev/null; }
+# The current version of a document is the last version row of the ledger. submit.sh appends that row after the commit, so every reader
+# that asks for the current version sees a hash that the docs repository holds.
+current_version() { sql "SELECT hash FROM events WHERE type='version' AND doc='$(qt "$1")' ORDER BY seq DESC LIMIT 1;"; }

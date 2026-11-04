@@ -84,7 +84,7 @@ def keep_waiting(item, request, state, memory, number):
     if memory.done:
         return memory
     seconds = round_seconds(request, state, memory)
-    run_script("await", "await-%d" % number, [item.id, str(seconds)], timeout = "%ds" % (seconds + AWAIT_SLACK_SECONDS))
+    run_script("await", "await-%d" % number, [item.id, str(seconds), str(state.seq), state.hash], timeout = "%ds" % (seconds + AWAIT_SLACK_SECONDS))
     return memory
 
 # A round ends at a change, at the next reminder, at the deadline or after ROUND_SECONDS, whichever comes first.

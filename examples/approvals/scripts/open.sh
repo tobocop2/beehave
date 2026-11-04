@@ -12,7 +12,7 @@ case "$window" in '' | *[!0-9]*) die "the policy has no window" ;; esac
 acquire || die "the ledger is busy"
 done_already=$(sql "SELECT count(*) FROM events WHERE type='opened' AND req='$(qt "$1")';")
 if [ "$done_already" -eq 0 ]; then
-    h=$(doc_hash "$2")
+    h=$(current_version "$2")
     [ -n "$h" ] || { release; die "the document $2 has no version; run submit.sh first"; }
     deadline=$(( $(now) + window ))
     detail=$(jq -cn --argjson p "$policy" --argjson d "$deadline" --arg a "$4" --arg k "$3" '{policy: $p, deadline: $d, author: $a, kind: $k}')

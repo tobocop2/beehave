@@ -41,6 +41,11 @@ H=$(sh "$S/submit.sh" msa "$T/v1.md" ann)
 check "submit prints a 40 digit blob hash" test "$(printf '%s' "$H" | grep -Ec '^[0-9a-f]{40}$')" -eq 1
 check "a second submit of the same text prints the same hash" test "$(sh "$S/submit.sh" msa "$T/v1.md" ann)" = "$H"
 check "the same text adds one version row" test "$(sqlite3 "$T/home/ledger.db" "SELECT count(*) FROM events WHERE type='version';")" -eq 1
+sh "$S/submit.sh" rev "$T/v1.md" ann > /dev/null
+sh "$S/submit.sh" rev "$T/v2.md" ann > /dev/null
+REVH=$(sh "$S/submit.sh" rev "$T/v1.md" ann)
+check "v1, v2, v1 records three versions" test "$(sqlite3 "$T/home/ledger.db" "SELECT count(*) FROM events WHERE type='version' AND doc='rev';")" -eq 3
+check "after v1, v2, v1 the head blob is v1" test "$(git -C "$T/home/docs" rev-parse HEAD:rev.md)" = "$REVH"
 check "submit refuses an unsafe name" test "$(rc sh "$S/submit.sh" ../x "$T/v1.md" ann)" -ne 0
 printf '%s' "$POLICY" | sh "$S/open.sh" r1 msa release ann > "$T/open1"
 check "open prints the deadline" has '"deadline":4600' "$T/open1"
@@ -84,11 +89,41 @@ check "the last decision of a person wins, and a required reject is a veto" test
 check "the rejection names the person" test "$(jq -r '.rejections[0].who' "$T/t3")" = sam
 
 echo "--- tally: change resets"
+tally > "$T/t4"
+cp "$T/v2.md" "$T/home/docs/msa.md"
+tally > "$T/t4b"
+check "a document file ahead of the ledger is not the current version" test "$(jq -r .hash "$T/t4b")" = "$H"
+cp "$T/v1.md" "$T/home/docs/msa.md"
 H2=$(sh "$S/submit.sh" msa "$T/v2.md" ann)
 tally > "$T/t5"
+echo "--- await: a change after the tally is not missed"
+export APPROVAL_POLL=1
+seen() { jq -r '"\(.seq) \(.hash)"' "$1"; }
+check "a change between the tally and the await ends the wait at once" test "$(rc sh "$S/await.sh" r1 30 $(seen "$T/t4"))" -eq 0
+has changed "$T/out" && ok "the early wait prints changed" || bad "the early wait prints changed"
+sh "$S/notify.sh" r1 await-note security < /dev/null > /dev/null 2>&1
+check "a notice row leaves the seq of the tally alone" test "$(NO_INTAKE=1 sh "$S/tally.sh" r1 | jq -r .seq)" = "$(jq -r .seq "$T/t5")"
+check "the tally and the wait count the same rows as changes" test "$(rc sh "$S/await.sh" r1 1 $(NO_INTAKE=1 sh "$S/tally.sh" r1 | jq -r '"\(.seq) \(.hash)"'))" -eq 3
+check "a notice row of the run does not end the wait" test "$(rc sh "$S/await.sh" r1 1 $(seen "$T/t5"))" -eq 3
+check "no change since the tally keeps the wait until the time passes" test "$(rc sh "$S/await.sh" r1 1 $(seen "$T/t5"))" -eq 3
+unset APPROVAL_POLL
 check "a changed document makes the sign-offs stale" test "$(jq -r '.stale | length' "$T/t5")" -ge 1
 check "no role is satisfied on the new version" test "$(jq -r .satisfied "$T/t5")" -eq 0
 check "the ledger keeps the old sign-offs" test "$(sqlite3 "$T/home/ledger.db" "SELECT count(*) FROM events WHERE type='signoff';")" -ge 3
+
+echo "--- tally: one snapshot"
+# The stand-in sqlite3 submits a version of another document right after the first read of the events. A tally that takes its seq, hash and
+# rows from one read answers as of that read. A tally that reads the seq apart from the rows shows a seq that the rows do not hold.
+REAL=$(command -v sqlite3)
+printf '#!/bin/sh\nif [ -e "%s/arm" ] && [ ! -e "%s/fired" ]; then\ncase "$*" in *"FROM events"*)\n: > "%s/fired"\n"%s" "$@"; r=$?\nsh "%s/submit.sh" snap "%s/v2.md" ann > /dev/null\nexit $r ;;\nesac\nfi\nexec "%s" "$@"\n' "$T" "$T" "$T" "$REAL" "$S" "$T" "$REAL" > "$T/bin/sqlite3"
+chmod +x "$T/bin/sqlite3"
+NO_INTAKE=1 sh "$S/tally.sh" r1 > "$T/s0"
+: > "$T/arm"
+NO_INTAKE=1 sh "$S/tally.sh" r1 > "$T/s1"
+check "the stand-in submitted during the tally" test -e "$T/fired"
+check "a tally prints a numeric seq" test "$(jq -r '.seq | type' "$T/s1")" = number
+check "the seq of a tally is the seq of the rows it read" test "$(jq -r .seq "$T/s1")" = "$(jq -r .seq "$T/s0")"
+check "the next tally sees the version that landed" test "$(NO_INTAKE=1 sh "$S/tally.sh" r1 | jq -r .seq)" -gt "$(jq -r .seq "$T/s0")"
 
 echo "--- tally: deadline"
 check "the deadline is the opening time plus the window" test "$(jq -r .deadline "$T/t5")" -eq 4600
@@ -131,8 +166,13 @@ echo "--- finalize and audit"
 check "finalize refuses an outcome that is not the state" test "$(rc sh "$S/finalize.sh" r1 approved)" -eq 4
 signoff sam s4 security approve "$H2"
 signoff pat s5 product approve "$H2"
+# 500 rows for everybody with 250 characters each, in the chain. The rows that finalize reads are then over 128 KB, the limit of one
+# argument of a program.
+printf '. "%s/lib.sh"\nd=$(cat)\nacquire\ni=0\nwhile [ $i -lt 500 ]; do append_raw refused - - - - - - "$d"; i=$((i + 1)); done\nrelease\n' "$S" > "$T/bigrow.sh"
+awk 'BEGIN { for (i = 0; i < 25; i++) printf "xxxxxxxxxx" }' | sh "$T/bigrow.sh"
 sh "$S/finalize.sh" r1 approved > "$T/f1" 2>&1; frc=$?
 check "finalize closes when the state is approved" test "$frc" -eq 0
+check "finalize writes a certificate over 128 KB" test "$(wc -c < "$T/home/certs/r1.json")" -gt 131072
 HEAD=$(sed -n 's/^head //p' "$T/f1")
 check "finalize prints the head" test -n "$HEAD"
 sh "$S/audit.sh" r1 "$H2" "$HEAD" > "$T/a1" 2>&1; arc=$?
@@ -162,6 +202,12 @@ check "concurrent appends write every row once" test "$total" -eq "$distinct"
 LAST=$(sqlite3 "$T/home/ledger.db" "SELECT seq || ':' || row_hash FROM events ORDER BY seq DESC LIMIT 1;")
 sh "$S/audit.sh" r1 - "$LAST" > "$T/out" 2>&1
 check "the chain holds after concurrent appends" test "$(grep -c 'does not follow' "$T/out")" -eq 0
+
+echo "--- large ledger"
+# A row for everybody with 200000 characters. The snapshot is far over 128 KB, the limit of one argument of a program.
+sqlite3 "$T/home/ledger.db" "INSERT INTO events(at,type,req,doc,hash,who,role,decision,detail,prev,row_hash) VALUES (1,'refused','-','-','-','-','-','-',replace(hex(zeroblob(100000)),'0','x'),'p','h');"
+check "a tally of a ledger over 128 KB succeeds" test "$(rc sh "$S/tally.sh" r1)" -eq 0
+check "the tally of a large ledger still prints the seq" test "$(jq -r '.seq | type' "$T/out")" = number
 
 rm -rf "$T"
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
