@@ -399,7 +399,7 @@ func TestDryRun_TheTemplateDirOfTheEnvironmentCopiesNothingIntoTheDryRepository(
 func TestDryDeps_NowIsTheFixedClockOfADryRun(t *testing.T) {
 	t.Parallel()
 
-	deps := dryDeps("/t", "h", "12", nil, false)
+	deps := dryDeps("/t", "h", "12", nil, dryChoice{})
 
 	assert.Equal(t, dryNow(), deps.Clock.reading())
 	assert.Equal(t, "2030-01-02T03:04:05Z", dryNow().Format(time.RFC3339))
@@ -421,7 +421,7 @@ func TestDryRun_NowPrintsTheSameTextInTwoRuns(t *testing.T) {
 func TestDryDeps_EveryCollaboratorIsADryOne(t *testing.T) {
 	t.Parallel()
 
-	deps := dryDeps("/t", "h", "12", nil, false)
+	deps := dryDeps("/t", "h", "12", nil, dryChoice{})
 
 	for name, held := range map[string]any{
 		"Agents": deps.Agents, "Gate": deps.Gate, "Logins": deps.Logins, "Lifecycle": deps.Lifecycle, "Forge": deps.Forge, "Watch": deps.Watch,
@@ -598,4 +598,35 @@ func TestDryFakes_AnswerWithoutTouchingAnything(t *testing.T) {
 	out, err := dryCommands{}.Run(ctx, CommandRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, CommandOutput{}, out)
+}
+
+func countStep(names []string, prefix string) int {
+	n := 0
+
+	for _, name := range names {
+		if strings.HasPrefix(name, prefix+"#") && strings.HasSuffix(name, "/render") {
+			n++
+		}
+	}
+
+	return n
+}
+
+func TestDryRun_WithSendBackTheFirstReviewSendsTheItemToAFixRoundAndTheSecondReviewApproves(t *testing.T) {
+	t.Parallel()
+
+	names := remediationStepNames(t, WithSendBack())
+
+	assert.Equal(t, 2, countStep(names, "agent:review"), names)
+	assert.Equal(t, 1, countStep(names, "agent:fix"), names)
+	assert.Contains(t, names, "merge:ship#1")
+}
+
+func TestDryRun_WithoutSendBackTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testing.T) {
+	t.Parallel()
+
+	names := remediationStepNames(t)
+
+	assert.Equal(t, 1, countStep(names, "agent:review"), names)
+	assert.Zero(t, countStep(names, "agent:fix"), names)
 }
