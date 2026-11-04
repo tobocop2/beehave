@@ -821,18 +821,35 @@ func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
 // literalValue is the Starlark value of an expression made of literals only: text, numbers, True, False, None, and lists, tuples and dicts of them.
 // It reads the syntax and runs no code. ok is false for any other expression.
 func literalValue(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch e := expr.(type) {
-	case *syntax.ParenExpr:
-		return literalValue(e.X)
-	case *syntax.Literal:
-		return literalOf(e)
-	case *syntax.UnaryExpr:
-		return negated(e)
-	case *syntax.Ident:
-		return constant(e.Name)
+	if !onlyLiterals(expr) {
+		return nil, false
 	}
 
-	return literalCollection(expr)
+	value, err := starlark.EvalExprOptions(model.StarlarkFileOptions(), &starlark.Thread{}, expr, nil)
+
+	return value, err == nil
+}
+
+// onlyLiterals is true when every node of the expression is a literal, a minus sign, True, False, None, a paren, or a list, tuple or dict.
+// The expression then names no variable and calls no function, so evaluating it runs no code.
+func onlyLiterals(expr syntax.Expr) bool {
+	only := true
+
+	syntax.Walk(expr, func(node syntax.Node) bool {
+		switch n := node.(type) {
+		case nil, *syntax.Literal, *syntax.ParenExpr, *syntax.ListExpr, *syntax.TupleExpr, *syntax.DictExpr, *syntax.DictEntry:
+		case *syntax.UnaryExpr:
+			only = only && n.Op == syntax.MINUS
+		case *syntax.Ident:
+			only = only && (n.Name == trueName || n.Name == falseName || n.Name == noneName)
+		default:
+			only = false
+		}
+
+		return only
+	})
+
+	return only
 }
 
 // literalPart is the value of an expression made of literals, or for a list, tuple or dict with computed members, the same collection with only
@@ -898,98 +915,6 @@ func literalEntries(e *syntax.DictExpr) *starlark.Dict {
 	}
 
 	return dict
-}
-
-// literalCollection is the value of a list, a tuple or a dict of literals.
-func literalCollection(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch e := expr.(type) {
-	case *syntax.ListExpr:
-		items, ok := literalItems(e.List)
-
-		return starlark.NewList(items), ok
-	case *syntax.TupleExpr:
-		items, ok := literalItems(e.List)
-
-		return starlark.Tuple(items), ok
-	case *syntax.DictExpr:
-		return literalDict(e)
-	}
-
-	return nil, false
-}
-
-func literalOf(lit *syntax.Literal) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch v := lit.Value.(type) {
-	case string:
-		return starlark.String(v), true
-	case int64:
-		return starlark.MakeInt64(v), true
-	case *big.Int:
-		return starlark.MakeBigInt(v), true
-	}
-
-	f, _ := lit.Value.(float64) //nolint:errcheck // the only other literal is a float
-	return starlark.Float(f), true
-}
-
-func negated(e *syntax.UnaryExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	if e.Op != syntax.MINUS {
-		return nil, false
-	}
-
-	switch inner, ok := literalValue(e.X); v := inner.(type) {
-	case starlark.Int:
-		return starlark.MakeInt(0).Sub(v), ok
-	case starlark.Float:
-		return -v, ok
-	}
-
-	return nil, false
-}
-
-func constant(name string) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch name {
-	case trueName:
-		return starlark.True, true
-	case falseName:
-		return starlark.False, true
-	case noneName:
-		return starlark.None, true
-	}
-
-	return nil, false
-}
-
-func literalItems(exprs []syntax.Expr) ([]starlark.Value, bool) {
-	items := make([]starlark.Value, 0, len(exprs))
-
-	for _, expr := range exprs {
-		item, ok := literalValue(expr)
-		if !ok {
-			return nil, false
-		}
-
-		items = append(items, item)
-	}
-
-	return items, true
-}
-
-func literalDict(e *syntax.DictExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	dict := starlark.NewDict(len(e.List))
-
-	for _, entry := range e.List {
-		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
-
-		key, keyOK := literalValue(pair.Key)
-		val, valOK := literalValue(pair.Value)
-
-		if !keyOK || !valOK || dict.SetKey(key, val) != nil {
-			return nil, false
-		}
-	}
-
-	return dict, true
 }
 
 // each checks the literal elements of a list literal against the closed set of its keyword. An element that is not a literal is left to the run.

@@ -84,12 +84,20 @@ func TestCheck_ReadsEveryKindOfLiteralBeforeApplyingTheRulesOfTheRun(t *testing.
 	}
 }
 
+func TestCheck_ABytesLiteralIsBytesAndNotTheTextItSpells(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    agent(\"p\", \"m\", outputs = [b\"x\"])\n")
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "outputs must hold strings only, and b\"x\" is a bytes")
+}
+
 func TestCheck_LeavesAValueThatIsNotAWholeLiteralToTheRun(t *testing.T) {
 	t.Parallel()
 
 	got := checkText(t, "N = 0\n\ndef main(item):\n"+
 		"    agent(\"p\", \"m\", output_tries = N, outputs = [\"a\", N], allow_paths = [\"a\"] + [\"[\"], inputs = {N: 1}, timeout = N)\n"+
-		"    agent(\"p\", \"m\", outputs = [b\"x\"])\n"+
 		"    agent(\"p\", \"m\", outputs = [-N],inputs = {\"a\": N}, require_skills = [not True])\n"+
 		"    agent(\"p\", \"m\", output_tries = 5, protect_paths = [\"a\"], forbid_commands = [\"protected-path\"])\n"+
 		"    command(run = [\"x\"], host = N, max_new_processes = 5)\n"+
