@@ -9,6 +9,11 @@ Every added test gets a mutation arm **shown red**, with blob hashes either side
 **Cite the reference the ruling names.** When the ruling of the item names a reference (a rule, a design note or the
 behavior of an upstream tool), check the change against that reference and quote it in the finding. Do not
 review against your own idea of correct.
+**Write the attack list for this diff before you read it closely.** List the ways this change can be wrong, each one
+as a sentence about the product, and run an arm for each. A review without an attack list for its own diff is not complete.
+**Frame a security review of our own validators as verification.** When the change touches a check that our code
+runs on input (a validator, a filter or a guard), state the review as a verification of that check against inputs
+that must pass and inputs that must fail. Show each failing input rejected and each passing input accepted.
 **Check the state the change stores.** Name each place where the change keeps state (a file, a ledger row, a cache
 or a field). For each one, say who writes it, who reads it and what a reader sees when the state is stale or missing.
 **Check for dead code.** Run the dead-code check of the project at the head. List each function, field or branch that
