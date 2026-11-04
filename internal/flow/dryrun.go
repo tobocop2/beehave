@@ -195,7 +195,7 @@ func dryDeps(tree, head, item string, skills []string, chosen dryChoice) Deps {
 	return Deps{
 		Agents: agents, Gate: newDryGate(head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Watch: dryWatch{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
-		Writer: dryWriter{}, Preflight: dryPreflight{},
+		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{},
 		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryReading()},
 	}
 }
@@ -484,6 +484,13 @@ type dryItems struct{ item string }
 func (i dryItems) Fields(context.Context, string, string) (map[string]string, error) {
 	return map[string]string{"id": i.item, titleKeyword: "a dry-run item", bodyKeyword: "P0\tno tracker was read\tno body", severityField: string(model.SeverityUnknown)}, nil
 }
+
+// dryReader reads nothing from the tracker: an item has no comments and no parent.
+type dryReader struct{}
+
+func (dryReader) Comments(context.Context, string, string) ([]string, error) { return nil, nil }
+
+func (dryReader) Parent(context.Context, string, string) (string, error) { return "", nil }
 
 // dryWriter accepts every write to the tracker and keeps none.
 type dryWriter struct{}

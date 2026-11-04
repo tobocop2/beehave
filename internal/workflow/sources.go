@@ -38,7 +38,7 @@ type PinnedFile struct {
 
 // Builtins returns the names that the engine predeclares in every workflow file. All are steps or helpers except json, the module of the Starlark library.
 func Builtins() []string {
-	return []string{agentName, batchMergeName, boardSyncName, commandName, earlierCallsName, "env", factsName, gateName, gatherName, hostTeardownName, hostUpName, itemAssignName, itemCommentName, itemCreateName, itemStatusName, "json", mergeName, "now", prAssignName, prCommentName, prOpenName, preflightName, queueName, sandboxName, spawnName, "struct", waitName, writeName}
+	return []string{agentName, batchMergeName, boardSyncName, commandName, earlierCallsName, "env", factsName, gateName, gatherName, hostTeardownName, hostUpName, itemAssignName, itemCommentName, itemCreateName, itemReadName, itemStatusName, "json", mergeName, "now", prAssignName, prCommentName, prOpenName, preflightName, queueName, sandboxName, spawnName, "struct", waitName, writeName}
 }
 
 // resolveModule turns the argument of a load into a file name: a path in the folder of the workflow, or a library in the binary.

@@ -89,6 +89,8 @@ var rules = map[string]rule{
 
 	"internal/flow.queueReader.OpenItems": {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "itemsErr"},
 	"internal/flow.queueReader.OpenPulls": {Proof: "TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess", Needle: "pullsErr"},
+	"internal/flow.reader.Comments":       {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
+	"internal/flow.reader.Parent":         {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
 	"internal/flow.orchestrators.Others":  {Proof: "TestRun_FailsWhenTheOtherOrchestratorsCannotBeListed", Needle: "fakeOthers"},
 
 	// Methods that start, create or record something. The error is the result of the action, not a read that a guard depends on.
@@ -187,6 +189,8 @@ var rules = map[string]rule{
 	"internal/host/jobwait.Scheduler.Observe":     {NotHeld: inAdapter},
 	"internal/store.Tracker.Item":                 {NotHeld: inAdapter},
 	"internal/store.Tracker.OpenItems":            {NotHeld: inAdapter},
+	"internal/store.Reader.Comments":              {NotHeld: inAdapter},
+	"internal/store.Reader.Parent":                {NotHeld: inAdapter},
 	"internal/store.ClaimRows.HeldRows":           {NotHeld: inAdapter},
 	"internal/store.ClaimRows.Reclaim":            {NotHeld: inAdapter},
 	"cmd/obee.treeFinder.Path":                    {NotHeld: inAdapter},

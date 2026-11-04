@@ -506,6 +506,7 @@ type harness struct {
 	commands  *fakeCommands
 	items     *fakeItems
 	writer    writer      // nil unless a test sets it
+	reader    reader      // nil unless a test sets it
 	hosts     hostKeeper  // nil unless a test sets it
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
@@ -584,7 +585,7 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) deps() Deps {
 	deps := Deps{
-		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer,
+		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Watch: h.watch, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer, Reader: h.reader,
 		Kept:  []error{errFake},
 		Clock: clock{Tick: h.ticks, Poll: storePoll, Watch: cmp.Or(h.sleep, time.Millisecond), Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Wall: h.wall, CapWait: cmp.Or(h.capWait, time.Millisecond)},
 	}

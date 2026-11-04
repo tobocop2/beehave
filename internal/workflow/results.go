@@ -30,6 +30,7 @@ const (
 	itemAssignName   = "item_assign"
 	itemCommentName  = "item_comment"
 	itemCreateName   = "item_create"
+	itemReadName     = "item_read"
 	itemStatusName   = "item_status"
 	boardSyncName    = "board_sync"
 	prAssignName     = "pr_assign"
@@ -83,6 +84,7 @@ func trackerResultFields() map[string][]string {
 		itemAssignName:  {"id"},
 		itemCommentName: {"id"},
 		itemCreateName:  {"id", "created"},
+		itemReadName:    {"found", "id", "fields", "comments", "parent"},
 		itemStatusName:  {"id", statusField},
 		prAssignName:    {numberField, "issues"},
 		prCommentName:   {numberField},

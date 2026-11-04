@@ -49,6 +49,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"facts":         keysOf(factsOutputs(model.Project{})),
 		"item_comment":  keysOf(commentOutputs("")),
 		"item_create":   keysOf(createOutputs("", true)),
+		"item_read":     keysOf(readOutputs(false, "", nil, nil, "")),
 		"item_status":   keysOf(statusOutputs("", "")),
 		"merge":         keysOf(mergeOutputs("", "")),
 		"host_teardown": keysOf(teardownOutputs(true, "")),

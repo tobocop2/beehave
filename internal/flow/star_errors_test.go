@@ -38,6 +38,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"wait has an unknown argument", `wait(nope = 1)`, "nope"},
 		{"env has no name", `env()`, "name"},
 		{"earlier_calls has no call", `earlier_calls()`, "call"},
+		{"item_read has an unknown argument", `item_read(nope = 1)`, "nope"},
 		{"env reads a reserved name", `env("OBEE_STATE_DIR")`, "env cannot read `OBEE_STATE_DIR`"},
 		{"env reads a name that is not set", `env("NOPE_ZZ")`, "the environment variable NOPE_ZZ is not set"},
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},

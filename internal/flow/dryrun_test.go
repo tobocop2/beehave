@@ -426,7 +426,7 @@ func TestDryDeps_EveryCollaboratorIsADryOne(t *testing.T) {
 
 	for name, held := range map[string]any{
 		"Agents": deps.Agents, "Gate": deps.Gate, "Logins": deps.Logins, "Lifecycle": deps.Lifecycle, "Forge": deps.Forge, "Watch": deps.Watch,
-		"Trees": deps.Trees, "Beats": deps.Beats, "Commands": deps.Commands, "Items": deps.Items, "Writer": deps.Writer, "Preflight": deps.Preflight,
+		"Trees": deps.Trees, "Beats": deps.Beats, "Commands": deps.Commands, "Items": deps.Items, "Writer": deps.Writer, "Reader": deps.Reader, "Preflight": deps.Preflight,
 	} {
 		assert.Contains(t, fmt.Sprintf("%T", held), "flow.dry", name)
 	}
@@ -586,6 +586,14 @@ func TestDryFakes_AnswerWithoutTouchingAnything(t *testing.T) {
 	require.NoError(t, dryWatch{}.SetDraft(ctx, "p", 1, true))
 	require.NoError(t, dryWriter{}.SetStatus(ctx, "p", "1", ""))
 	require.NoError(t, dryWriter{}.Comment(ctx, "p", "1", "k", "t"))
+
+	comments, err := dryReader{}.Comments(ctx, "p", "1")
+	require.NoError(t, err)
+	assert.Empty(t, comments)
+
+	parent, err := dryReader{}.Parent(ctx, "p", "1")
+	require.NoError(t, err)
+	assert.Empty(t, parent)
 
 	id, created, err := dryWriter{}.Create(ctx, "p", "k", trackerstore.NewItem{})
 	require.NoError(t, err)

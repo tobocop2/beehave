@@ -253,6 +253,12 @@ type items interface {
 	Fields(ctx context.Context, project, item string) (map[string]string, error)
 }
 
+// reader reads the comments and the parent of an item of the tracker of a project. Each method is the method of store.Reader with the project in front.
+type reader interface {
+	Comments(ctx context.Context, project, id string) ([]string, error)
+	Parent(ctx context.Context, project, id string) (string, error)
+}
+
 // absentError is the error of a step that needs a collaborator the build does not set. step says what the step does.
 // A dry run leaves such a collaborator out on purpose, so it reports the step as not run instead of as a failure.
 type absentError struct{ message, step string }
@@ -276,6 +282,8 @@ type Deps struct {
 	Commands  commands
 	Items     items
 	Writer    writer
+	// Reader serves item_read. A nil Reader means the tracker of the build cannot read comments or parents: an item_read call fails and says so.
+	Reader reader
 	// Batch serves batch_merge. A nil Batch means the build cannot run it.
 	Batch batchHost
 	// Queue serves queue and the hold check at the start of a run that spawn started. A nil Queue means the build cannot read the open work: a queue call fails.

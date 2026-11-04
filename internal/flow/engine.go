@@ -67,6 +67,10 @@ type Options struct {
 	MaxRunBudget float64
 	// ReviewPoll is the time between two review polls. 0 means no poll.
 	ReviewPoll time.Duration
+	// Retention is the age at which Launch deletes a finished run: agents.retention_days. 0 means the default of 7 days.
+	Retention time.Duration
+	// KeepRuns turns the deletion off, so every finished run stays: agents.retention_days set to 0.
+	KeepRuns bool
 	// OverCap lets the first agent step of a run take a runner that is over its usage cap when no runner has room. The step records that it did.
 	OverCap bool
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends. A nil Progress prints nothing.
@@ -139,6 +143,9 @@ type Engine struct {
 	maxRunBudget float64
 	// reviewPoll is the time between two review polls. 0 means no poll.
 	reviewPoll time.Duration
+	// retention and keepRuns are Options.Retention and Options.KeepRuns.
+	retention time.Duration
+	keepRuns  bool
 	// overCap is Options.OverCap.
 	overCap bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
@@ -190,7 +197,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 // newEngine makes the engine value for an opened store and a held folder lock.
 func newEngine(opts Options, deps Deps, state store, held *flock.Flock) *Engine {
 	engine := &Engine{
-		deps: deps, maxConcurrent: opts.MaxConcurrent, maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
+		deps: deps, maxConcurrent: opts.MaxConcurrent, maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, logger: newLogger(state.log), redact: agent.Redactor(),
 		procs: &groups{path: groupsFile(opts.StateDir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress},
 	}
 	engine.progress.redact = engine.redact
@@ -377,6 +384,10 @@ func (e *Engine) retain() {
 // deleteOldRuns deletes the runs that finished more than the retention ago, with the phases they started.
 // A failed or canceled run stays: obee resume can reopen it.
 func (e *Engine) deleteOldRuns() error {
+	if e.keepRuns {
+		return nil
+	}
+
 	ids, err := e.oldRuns()
 	if err != nil || len(ids) == 0 {
 		return err
@@ -399,7 +410,7 @@ func (e *Engine) forgetDeleted(ids []string, deleteErr error) error {
 
 // oldRuns lists the ids of the runs that finished with success more than the retention ago.
 func (e *Engine) oldRuns() ([]string, error) {
-	cutoff := time.Now().Add(-cmp.Or(e.deps.Clock.Retain, retention))
+	cutoff := time.Now().Add(-cmp.Or(e.deps.Clock.Retain, e.retention, retention))
 
 	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusSuccess), dbos.WithFilterWorkflowIDPrefix(runPrefix),
 		dbos.WithFilterName(itemName), dbos.WithFilterCompletedBefore(cutoff))

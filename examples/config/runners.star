@@ -32,6 +32,8 @@ pool(
 # review_poll_minutes is the time between two polls of the open pull requests that wait for your
 # review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
 # `obee status` shows the newest poll.
+# retention_days is the age in days at which `obee run` deletes a finished run with its recorded steps. The default is 7.
+# 0 keeps every finished run. The most is 36500. A failed or canceled run is never deleted.
 # Call agents() once.
 agents(
     max_concurrent = 2,
@@ -40,6 +42,7 @@ agents(
     # max_budget_usd = 5,
     # max_run_budget_usd = 20,
     # review_poll_minutes = 60,
+    # retention_days = 7,
 )
 
 runner(

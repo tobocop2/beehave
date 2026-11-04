@@ -16,6 +16,16 @@ type Tracker interface {
 	OpenItems(ctx context.Context) ([]model.Item, error)
 }
 
+// Reader is a tracker that a workflow can read beyond the fields of Item. It is a separate contract from Tracker, so a tracker with no read of comments
+// or parents stays valid; a caller asks for it with a type assertion and refuses the call when the tracker lacks it.
+//
+// Comments returns the text of every comment of the item, oldest first, with no marker line that a write added. An item with no comment gives an empty list.
+// Parent returns the id of the parent item, or an empty text when the item has none. An item that the tracker does not have, and a read that fails, are errors.
+type Reader interface {
+	Comments(ctx context.Context, id string) ([]string, error)
+	Parent(ctx context.Context, id string) (string, error)
+}
+
 // ClaimRows stores the claim rows of the project. The claim store keeps one row for each item and grants the lease, which bd renews on Beat.
 // beads and the local store fill it, whatever tracker the project uses, because both have atomic operations and leases.
 //

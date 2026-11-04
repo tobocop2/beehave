@@ -21,6 +21,7 @@ const (
 	envMaxTurns            = "OBEE_AGENTS_MAX_TURNS"
 	envMaxBudget           = "OBEE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "OBEE_AGENTS_MAX_RUN_BUDGET_USD"
+	envRetentionDays       = "OBEE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "OBEE_REVIEW_POLL_MINUTES"
 	envFiveHourMax         = "OBEE_POOL_FIVE_HOUR_MAX"
 	envSevenDayMax         = "OBEE_POOL_SEVEN_DAY_MAX"
@@ -28,6 +29,12 @@ const (
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
 const maxReviewPollMinutes = 10080
+
+// defaultRetentionDays is the age at which a finished run is deleted when no file or variable sets it. maxRetentionDays is 100 years: a larger value overflows the duration.
+const (
+	defaultRetentionDays = 7
+	maxRetentionDays     = 36500
+)
 
 // floatBits is the bit size of a percent that the OBEE_* variables give.
 const floatBits = 64
@@ -56,7 +63,7 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent},
+		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, RetentionDays: defaultRetentionDays},
 		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
 		Projects: map[string]Project{},
 	}
@@ -171,6 +178,7 @@ func (c *Config) applyEnv(env map[string]string) error {
 		overlayWhole(env, envMaxReviewConcurrent, "for example 2.", &c.Agents.MaxReviewConcurrent),
 		overlayWhole(env, envMaxTurns, "for example 40, or 0 for no cap.", &c.Agents.MaxTurns),
 		overlayWhole(env, envReviewPoll, "for example 60, or 0 for no poll.", &c.Agents.ReviewPollMinutes),
+		overlayWhole(env, envRetentionDays, "for example 30, or 0 to keep every finished run.", &c.Agents.RetentionDays),
 		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
 		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
 	)
@@ -246,6 +254,7 @@ func (c Config) Validate() Problems {
 
 	problems = append(problems, c.budgetProblems(runnersPath)...)
 	problems = append(problems, c.pollProblems(runnersPath)...)
+	problems = append(problems, c.retentionProblems(runnersPath)...)
 
 	return append(problems, c.poolProblems(runnersPath)...)
 }
@@ -275,6 +284,17 @@ func (c Config) pollProblems(runnersPath string) Problems {
 		return Problems{refuse("agents.review_poll_minutes must be 0 (no poll) or more. Set it in %s or in %s.", runnersPath, envReviewPoll)}
 	case minutes > maxReviewPollMinutes:
 		return Problems{refuse("agents.review_poll_minutes is %d: set it to %d (one week) or less. Set it in %s or in %s.", minutes, maxReviewPollMinutes, runnersPath, envReviewPoll)}
+	}
+
+	return nil
+}
+
+func (c Config) retentionProblems(runnersPath string) Problems {
+	switch days := c.Agents.RetentionDays; {
+	case days < 0:
+		return Problems{refuse("agents.retention_days must be 0 (keep for ever) or more. Set it in %s or in %s.", runnersPath, envRetentionDays)}
+	case days > maxRetentionDays:
+		return Problems{refuse("agents.retention_days is %d: set it to %d (100 years) or less. Set it in %s or in %s.", days, maxRetentionDays, runnersPath, envRetentionDays)}
 	}
 
 	return nil

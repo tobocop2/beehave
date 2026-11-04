@@ -841,6 +841,62 @@ func TestLoadFolder_AgentsReviewPollMinutesDefaultsToNoPollAndRefusesANegative(t
 	require.ErrorContains(t, problems[0], "OBEE_REVIEW_POLL_MINUTES")
 }
 
+func TestLoadFolder_AgentsRetentionDaysDefaultsToSevenKeepsForeverAtZeroAndRefusesANegative(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.Equal(t, 7, cfg.Agents.RetentionDays, "the default keeps the 7 days that the engine always used")
+
+	cfg, problems = loadRunnersText(t, "agents(retention_days = 30)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 30, cfg.Agents.RetentionDays)
+
+	cfg, problems = loadRunnersText(t, "agents(retention_days = 0)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 0, cfg.Agents.RetentionDays, "0 keeps the finished runs for ever")
+
+	_, problems = loadRunnersText(t, "agents(retention_days = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.retention_days must be 0 (keep for ever) or more")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_RETENTION_DAYS")
+}
+
+func TestLoadFolder_AgentsRetentionDaysHasAnUpperBoundThatKeepsTheDurationInRange(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents(retention_days = 36500)\n")
+	require.Empty(t, problems)
+	require.Equal(t, 36500, cfg.Agents.RetentionDays)
+
+	_, problems = loadRunnersText(t, "agents(retention_days = 36501)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.retention_days is 36501: set it to 36500 (100 years) or less")
+	require.ErrorContains(t, problems[0], "OBEE_AGENTS_RETENTION_DAYS")
+}
+
+func TestLoadFolder_TheRetentionVariableOverlaysTheFileAndIsValidated(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(retention_days = 30)\n")
+
+	cfg, problems := config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_RETENTION_DAYS": "14"})
+	require.Empty(t, problems)
+	require.Equal(t, 14, cfg.Agents.RetentionDays)
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_RETENTION_DAYS": "0"})
+	require.Empty(t, problems)
+	require.Equal(t, 0, cfg.Agents.RetentionDays, "0 in the variable keeps the runs for ever")
+
+	cfg, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_RETENTION_DAYS": ""})
+	require.Empty(t, problems)
+	require.Equal(t, 30, cfg.Agents.RetentionDays, "an empty variable leaves the file value")
+
+	_, problems = config.LoadFolder(dir, map[string]string{"OBEE_AGENTS_RETENTION_DAYS": "a week"})
+	require.ErrorContains(t, problems, "OBEE_AGENTS_RETENTION_DAYS=a week is not a whole number")
+}
+
 func TestLoadFolder_TheReviewPollVariableOverlaysTheFileAndIsValidated(t *testing.T) {
 	t.Parallel()
 

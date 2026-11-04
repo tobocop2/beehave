@@ -130,6 +130,8 @@ func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Option
 		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, Env: f.env,
 		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD,
 		ReviewPoll:   time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
+		Retention:    time.Duration(cfg.Agents.RetentionDays) * 24 * time.Hour,
+		KeepRuns:     cfg.Agents.RetentionDays == 0,
 	}
 }
 
