@@ -84,7 +84,7 @@ def regressions(value):
     return int(number) if number.isdigit() else None
 
 def regression_rise(start, end):
-    """Returns the reason to hold the item, and an empty text when the regression count did not rise from the output `regressions` of the plan (`start`) to the one of the last review (`end`).
+    """Returns the reason to hold the item, and an empty text when the regression count did not rise from the output `regressions` of the plan (`start`) to the one of the review that is checked (`end`). The loop checks after each review.
     Both counts are the regressions open at the head of the report, so they compare like with like: a defect that an earlier round found and a later round fixed is in neither.
     A count that is unknown in either output holds the item: the prompts ask both lanes for a whole number."""
     before = regressions(start)
@@ -93,12 +93,12 @@ def regression_rise(start, end):
         return "The report of the plan has no regression count that can be read. An unknown count blocks the item: a person reads the reports and rules."
 
     if after == None:
-        return "The report of the last review has no regression count that can be read. An unknown count blocks the item: a person reads the reports and rules."
+        return "The report of the review has no regression count that can be read. An unknown count blocks the item: a person reads the reports and rules."
 
     if after <= before:
         return ""
 
-    return "The regression count rose from %d to %d between the plan and the last review. A rise blocks the item: a person reads the reports and rules." % (before, after)
+    return "The regression count rose from %d to %d between the plan and a review. A rise blocks the item: a person reads the reports and rules." % (before, after)
 
 def id_patterns(ids):
     """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
@@ -516,7 +516,11 @@ def pipeline(item):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head the gate ran on (the head of the worktree), the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     guard = {"base": env("BASE"), "hold": "hold", "own": {"logins": [env("OWNER_LOGIN")]}}
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []), rounds = rounds, review_outputs = ["regressions"], facts = project)
+    # The loop calls rise_after_review after each review, so a rise ends the loop before the next fix lane starts.
+    def rise_after_review(review):
+        return regression_rise(plan.regressions, review.regressions)
+
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []), rounds = rounds, review_outputs = ["regressions"], facts = project, review_check = rise_after_review)
 
     if loop.stopped:
         return
@@ -527,15 +531,13 @@ def pipeline(item):
         item_status(name = "hold-rejected", id = item.id, status = "hold")
         return
 
-    # A rise of the regression count, from the report of the plan to the report of the last review, holds the item with the reason. So does a count that is unknown in either report.
-    # This check runs before the design and the exhausted branches: a held item gets no owner ruling and no settle step. Nothing merges.
+    # A rise of the regression count, from the report of the plan to the report of any review, holds the item with the reason. So does a count that is unknown in either report.
+    # The loop stops at the review that shows the rise: a held item gets no more fix lane, no owner ruling and no settle step. Nothing merges.
     # The last gate of an exhausted loop can be red. Then there is no review and no count; the item goes on to the ruling of the owner, and nothing merges after the settle step.
-    if loop.review != None:
-        rise = regression_rise(plan.regressions, loop.review.regressions)
-        if rise != "":
-            item_comment(name = "regression-rise", id = item.id, key = "regression-rise", text = rise)
-            item_status(name = "hold-regression-rise", id = item.id, status = "hold")
-            return
+    if loop.held != "":
+        item_comment(name = "regression-rise", id = item.id, key = "regression-rise", text = loop.held)
+        item_status(name = "hold-regression-rise", id = item.id, status = "hold")
+        return
 
     # After two fix rounds on one mechanism, a design step decides whether the mechanism should exist. A replace or a delete ends the loop:
     # the item gets the decision and the reason as the comment and the hold status, and a person rules on it.
