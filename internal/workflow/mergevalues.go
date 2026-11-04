@@ -45,6 +45,44 @@ func GateSteps(v starlark.Value) error {
 	return nil
 }
 
+// RequiredSteps checks that the steps argument of a merge call holds a step for every name in required. A name that is missing is refused,
+// so a gate that ran only some steps of the gate list of the project cannot merge. An empty required list asks for nothing.
+func RequiredSteps(v starlark.Value, required []string) error {
+	if len(required) == 0 || v == nil {
+		return nil
+	}
+
+	steps, err := ToGo[[]any](v)
+	if err != nil {
+		return errStepsShape
+	}
+
+	have := stepNames(steps)
+
+	for _, name := range required {
+		if !have[name] {
+			return fmt.Errorf("the gate list of the project has the step %q, and `steps` has no result for it. A merge needs every step of the gate list. Run the project gate, which runs every step", name)
+		}
+	}
+
+	return nil
+}
+
+// stepNames is the set of names in the steps of a merge call. An item that is not a step has none.
+func stepNames(steps []any) map[string]bool {
+	have := map[string]bool{}
+
+	for _, each := range steps {
+		if step, ok := each.(map[string]any); ok {
+			if name, named := step["name"].(string); named {
+				have[name] = true
+			}
+		}
+	}
+
+	return have
+}
+
 // stepPassed checks one step of the steps argument of a merge call.
 func stepPassed(each any) error {
 	step, ok := each.(map[string]any)

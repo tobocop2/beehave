@@ -39,7 +39,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, project.TestReport, project.BuildHost, project.PinFile, pinned)
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, pinned)
 
 	return key, nil
 }
@@ -70,24 +70,24 @@ func (g Gate) tools(ctx context.Context, request Request) (string, bool) {
 		return "", true
 	}
 
-	pins, err := g.readPins(ctx, request.Dir, project.BaseBranch, project.PinFile)
-	if err != nil {
+	check := g.pinsOf(ctx, request)
+	if check.Void != "" {
 		return "", false
 	}
 
-	return g.versions(ctx, request.Dir, pins)
+	return g.versions(ctx, request.Dir, check.Tools)
 }
 
-func (g Gate) versions(ctx context.Context, dir string, pins []pin) (string, bool) {
+func (g Gate) versions(ctx context.Context, dir string, pins []Pin) (string, bool) {
 	var versions []string
 
 	for _, p := range pins {
 		output, code := g.installed(ctx, dir, p)
-		if versionProblem(p, output, code) != "" {
+		if !atPin(p, output, code) {
 			return "", false
 		}
 
-		versions = append(versions, p.tool, output)
+		versions = append(versions, p.Tool, output)
 	}
 
 	return digest(versions...), true

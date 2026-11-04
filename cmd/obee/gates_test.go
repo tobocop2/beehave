@@ -312,7 +312,7 @@ func TestProjectGate_ASubmittedHostJobIsWaitedOnByItsIDAndNotSubmittedAgain(t *t
 	job, err := gate.Submit(t.Context(), "p", "1", "")
 
 	require.NoError(t, err)
-	assert.Equal(t, flow.GateJob{ID: "job-1", Head: "abc123"}, job)
+	assert.Equal(t, flow.GateJob{ID: "job-1", Head: "abc123", Plan: igate.Plan{Gate: "make check", BuildHost: "cluster", Pins: &igate.PinCheck{}}}, job)
 	assert.Contains(t, hosted.spec.Command, "git checkout --detach abc123")
 
 	hosted.spec = model.JobSpec{}

@@ -104,6 +104,34 @@ func TestPrompts_TheFactsOfTheProjectReachTheText(t *testing.T) {
 	}
 }
 
+// TestPrompts_EveryPromptShowsTheGateThatRunsForAStringAndForAList renders each prompt with the gate text of a gate string and of a gate list
+// (the text that the facts of the project hold, see gateText in internal/flow) and requires the gate line to hold it. An empty gate line fails.
+func TestPrompts_EveryPromptShowsTheGateThatRunsForAStringAndForAList(t *testing.T) {
+	t.Parallel()
+
+	for gate, line := range map[string]string{
+		"make check":                     "The gate is `make check`.",
+		"fmt: make fmt; lint: make lint": "The gate is `fmt: make fmt; lint: make lint`.",
+	} {
+		for _, name := range factsLanes() {
+			raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
+			require.NoError(t, err)
+
+			tmpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+			require.NoError(t, err)
+
+			data := facts()
+			data["gate"] = gate
+
+			var out bytes.Buffer
+
+			require.NoError(t, tmpl.Execute(&out, promptData(data)), name)
+			require.Contains(t, out.String(), line, "prompts/%s.md does not show the gate %q", name, gate)
+			require.NotContains(t, out.String(), "The gate is ``", "prompts/%s.md shows an empty gate", name)
+		}
+	}
+}
+
 func TestPrompts_AnEmptyFactRendersAsEmptyNotMissing(t *testing.T) {
 	t.Parallel()
 

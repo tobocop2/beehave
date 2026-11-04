@@ -56,6 +56,19 @@ func TestGateSteps_RefusesWhatTheRunRefuses(t *testing.T) {
 	require.NoError(t, workflow.GateSteps(starlark.NewList([]starlark.Value{step(t, "a", "pass")})))
 }
 
+func TestRequiredSteps_ARequiredNameWithNoResultRefusesAndAnEmptyRequirementAsksForNothing(t *testing.T) {
+	t.Parallel()
+
+	both := starlark.NewList([]starlark.Value{step(t, "a", "pass"), step(t, "b", "pass")})
+
+	require.NoError(t, workflow.RequiredSteps(nil, []string{"a"}))
+	require.NoError(t, workflow.RequiredSteps(both, nil))
+	require.NoError(t, workflow.RequiredSteps(both, []string{"a", "b"}))
+	require.ErrorContains(t, workflow.RequiredSteps(both, []string{"a", "c"}), `has the step "c"`)
+	require.ErrorContains(t, workflow.RequiredSteps(starlark.NewList([]starlark.Value{starlark.MakeInt(1)}), []string{"a"}), `has the step "a"`)
+	require.ErrorContains(t, workflow.RequiredSteps(starlark.NewBuiltin("f", nil), []string{"a"}), "must be the steps of a gate")
+}
+
 func TestGatedTree_ReadsTheTreeTheRunReads(t *testing.T) {
 	t.Parallel()
 

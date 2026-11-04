@@ -302,6 +302,9 @@ type fakeHost struct {
 
 func (*fakeHost) WorkRoot(context.Context) (string, error) { return "/home/ob", nil }
 
+// Log gives no log: the gate reads the log of every failed job, and this host keeps none.
+func (*fakeHost) Log(context.Context, model.JobID) (string, error) { return "", errFake }
+
 func (f *fakeHost) Submit(_ context.Context, spec model.JobSpec) (model.JobID, error) {
 	f.spec = spec
 

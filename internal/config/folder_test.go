@@ -320,10 +320,9 @@ func TestLoadFolder_ThePinFileKeyIsReadAnEmptyOneIsRefusedAndABuildHostIsRefused
 	require.Len(t, problems, 1)
 	require.Contains(t, problems[0].Error(), "`pin_file` must be a non-empty string")
 
-	_, problems = loadProjectText(t, call(goodProject+`, build_host = "gpu-a", host = `+hostCall("")+`, pin_file = ".tool-versions"`))
-	require.Len(t, problems, 1)
-	require.Contains(t, problems[0].Error(), "`pin_file`")
-	require.Contains(t, problems[0].Error(), "read only for a local gate")
+	project, problems = loadProjectText(t, call(goodProject+`, build_host = "gpu-a", host = `+hostCall("")+`, pin_file = ".tool-versions"`))
+	require.Empty(t, problems, "a gate on a build host checks the pins on the host")
+	require.Equal(t, ".tool-versions", project.PinFile)
 }
 
 func TestLoadFolder_APinFileThatLeavesTheWorkTreeIsRefused(t *testing.T) {

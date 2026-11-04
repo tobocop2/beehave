@@ -16,7 +16,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, rewrote."},
 		{"batch_merge", `batch_merge(item.id, "b", "r", name = "n")`, "3:11 haed is not a field of the result of batch_merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven."},
 		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc."},
-		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps."},
+		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
 		{"item_comment", `item_comment("1", "t", "k")`, "3:11 haed is not a field of the result of item_comment. It has: id."},
 		{"item_create", `item_create("t", "k")`, "3:11 haed is not a field of the result of item_create. It has: id, created."},
