@@ -73,7 +73,7 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	var operator bool
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, parentKeyword: &parent, assigneeKeyword: &assignee, "severity": &severity, "operator": &operator, nameKeyword: &label,
+		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, parentKeyword: &parent, assigneeKeyword: &assignee, severityField: &severity, "operator": &operator, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}

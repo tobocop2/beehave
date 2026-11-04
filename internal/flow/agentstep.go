@@ -455,6 +455,8 @@ func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (step
 		return stepResult{}, err
 	}
 
+	in.Severity = string(s.severity)
+
 	ended, err := s.e.queuePhase(s.ctx, in)
 	if err != nil {
 		s.countFailedRun(name, try, ended.Spend)

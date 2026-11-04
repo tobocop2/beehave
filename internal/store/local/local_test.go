@@ -126,7 +126,7 @@ func TestOpen_KeepsTheDataAcrossOpens(t *testing.T) {
 	second := open(t, dir, project, clk)
 	got, err := second.Item(t.Context(), "1")
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"id": "1", "title": "A title", "body": "A body"}, got)
+	require.Equal(t, map[string]string{"id": "1", "title": "A title", "body": "A body", "severity": "P?"}, got)
 }
 
 func TestOpen_Refuses(t *testing.T) {

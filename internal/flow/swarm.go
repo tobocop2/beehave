@@ -36,6 +36,7 @@ const (
 	baseKeyword    = "base"
 	bodyKeyword    = "body"
 	titleKeyword   = "title"
+	severityField  = "severity"
 	numberField    = "number"
 	holdKeyword    = "hold"
 	ownKeyword     = "own"
@@ -52,6 +53,8 @@ type spawnedRun struct {
 	Run   string `json:"run"`
 	Login string `json:"login,omitempty"`
 	Start bool   `json:"start,omitempty"`
+	// Priority is the place of the run in the items queue. The plan records it, so a replay queues the run with the same place. A plan with none gives 0.
+	Priority uint `json:"priority,omitempty"`
 }
 
 // childOutcome is how one spawned run ended, as the gather step records it. Error is empty for a run that succeeded.
@@ -194,12 +197,32 @@ func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []s
 		return spawnedRun{Item: id, Run: last.Status.ID}, nil
 	}
 
+	return e.startOf(ctx, in, id, runID(id, last.Attempt+1), taken)
+}
+
+// startOf plans the start of the run run of an item: its login and its place in the items queue.
+func (e *Engine) startOf(ctx context.Context, in ItemInput, id, run string, taken []string) (spawnedRun, error) {
 	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project}, false, taken...)
 	if err != nil {
 		return spawnedRun{}, err
 	}
 
-	return spawnedRun{Item: id, Run: runID(id, last.Attempt+1), Login: login, Start: true}, nil
+	place, err := e.itemsPlace(ctx, in.Project, id)
+	if err != nil {
+		return spawnedRun{}, err
+	}
+
+	return spawnedRun{Item: id, Run: run, Login: login, Start: true, Priority: place}, nil
+}
+
+// itemsPlace is the place of the run of an item in the items queue. It comes from the severity that the tracker gives the item: no standing is at hand.
+func (e *Engine) itemsPlace(ctx context.Context, project, id string) (uint, error) {
+	fields, err := e.deps.Items.Fields(ctx, project, id)
+	if err != nil {
+		return 0, fmt.Errorf("read the fields of item %s: %w", id, err)
+	}
+
+	return placeOf(severityOfItem(fields), false), nil
 }
 
 // openRunError tells why spawn does not start an item that has an open run, and how to end that run.
@@ -226,7 +249,7 @@ func (s *script) startRuns(plan []spawnedRun, entry string) error {
 
 		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry}
 
-		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueue), dbos.WithWorkflowID(one.Run)); err != nil {
+		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueue), dbos.WithWorkflowID(one.Run), dbos.WithPriority(one.Priority)); err != nil {
 			return fmt.Errorf("start the run of item %s: %w", one.Item, err)
 		}
 	}

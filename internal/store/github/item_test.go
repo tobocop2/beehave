@@ -43,19 +43,19 @@ func TestGithubItemFields_DeclareIDTitleAndBody(t *testing.T) {
 
 	gh, _ := newGithub(t)
 
-	assert.Equal(t, []string{"id", "title", "body"}, gh.ItemFields())
+	assert.Equal(t, []string{"id", "title", "body", "severity"}, gh.ItemFields())
 }
 
 func TestGithubItem_ReadsTheDeclaredFields(t *testing.T) {
 	t.Parallel()
 
 	gh, run := newGithub(t)
-	run.Plan(`{"number":5,"title":"Parser","body":"It drops rows."}`, "issue", "view")
+	run.Plan(`{"number":5,"title":"Parser","body":"It drops rows.","labels":[{"name":"bug"},{"name":"P1"}]}`, "issue", "view")
 
 	got, err := gh.Item(context.Background(), "5")
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"id": "5", "title": "Parser", "body": "It drops rows."}, got)
-	assert.Equal(t, []string{"issue", "view", "5", "--repo", ghRepo, "--json", "number,title,body"}, run.Calls[0])
+	assert.Equal(t, map[string]string{"id": "5", "title": "Parser", "body": "It drops rows.", "severity": "P1"}, got)
+	assert.Equal(t, []string{"issue", "view", "5", "--repo", ghRepo, "--json", "number,title,body,labels"}, run.Calls[0])
 }
 
 func TestGithubItem_ANullBodyIsEmpty(t *testing.T) {

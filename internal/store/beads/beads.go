@@ -220,7 +220,7 @@ func (s *Store) shown(ctx context.Context, item string) (bdRow, error) {
 // ItemFields declares the fields that Item returns.
 func (*Store) ItemFields() []string { return model.ItemFields() }
 
-// Item returns the id, title and description of an item.
+// Item returns the id, title, description and severity of an item.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
 	row, err := s.shown(ctx, item)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 		return nil, err
 	}
 
-	return map[string]string{"id": id, "title": title, "body": model.Deref(row.Description)}, nil
+	return map[string]string{"id": id, "title": title, "body": model.Deref(row.Description), "severity": string(beadsSeverity(row.Priority))}, nil
 }
 
 // decodeShown reads the row of bd show, which prints one object or a list of one.

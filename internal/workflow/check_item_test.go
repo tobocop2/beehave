@@ -25,7 +25,7 @@ func TestCheck_ReportsAnUnknownFieldOfTheItemParameter(t *testing.T) {
 			got := checkText(t, tc.text)
 
 			require.Len(t, got, 1)
-			assert.Contains(t, got[0], "parent is not a field of the item. It has: id, title, body.")
+			assert.Contains(t, got[0], "parent is not a field of the item. It has: id, title, body, severity.")
 		})
 	}
 }

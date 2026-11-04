@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -13,6 +14,7 @@ import (
 	"github.com/tobocop2/obee/internal/config"
 	forgepkg "github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/review"
 )
 
@@ -41,6 +43,8 @@ type ExclusiveInput struct {
 	// BuildHost is the build host that the run recorded in host_up, for a batch gate. A gate carries it in Request.
 	BuildHost string `json:"build_host,omitempty"`
 	Head      string `json:"head,omitempty"`
+	// Severity is the severity of the item of a gate, which sets its place in the queue. It is empty for a merge and a batch gate.
+	Severity string `json:"severity,omitempty"`
 	// Tip is the head of the pull request that a gate judges, set when the gate is queued. A gate of a newer head stops a gate whose Tip is another head.
 	Tip string `json:"tip,omitempty"`
 	// Priority is the place of the gate in the queue, set when the gate is queued. The build job of the gate takes the same place on the host queue.
@@ -392,7 +396,7 @@ type queuePlan struct {
 	Priority uint   `json:"priority"`
 }
 
-// planOf reads the pull request of a gate in a recorded step. A merge or a batch gate reads nothing and has the normal place.
+// planOf reads the pull request of a gate in a recorded step. A merge or a batch gate reads nothing and has the last place (6).
 func (e *Engine) planOf(run dbos.Context, in ExclusiveInput) (queuePlan, error) {
 	if in.Kind != kindGate {
 		return queuePlan{Priority: priorityNormal}, nil
@@ -486,25 +490,55 @@ func (e *Engine) supersededError(ctx context.Context, in ExclusiveInput, cancele
 	return fmt.Errorf("%w by %s", errSuperseded, standing.Head)
 }
 
-// The queue starts the lowest number first. Both numbers are above zero so that the queue never mixes them with a run that sets no priority.
+// The queue starts the lowest number first. Every number is above zero so that the queue never mixes them with a run that sets no priority.
+// One rule gives the place of a gate, an agent step and a run of the items queue (see placeOf): P0 first, then a person who waits, then P1, P2, P3 and no severity.
 const (
-	priorityPersonWaits uint = 1
-	priorityNormal      uint = 2
+	priorityP0          uint = 1
+	priorityPersonWaits uint = 2
+	priorityNormal      uint = 6 // no severity: the place after P3, which has 5
 )
 
-// priorityOf gives a gate the first place in the queue when a person waits on the pull request of its item:
-// the pull request is open and has an open change request or an unresolved review thread. The merges and the batch gates keep the normal place.
-// The read is the standing read that the lifecycle makes already. A pull request that cannot be read gets the normal place, and a line says so.
-func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {
-	if in.Kind == kindGate && read && personWaits(standing) {
+// placeOf is the one rule of the place in a queue. An item of severity P0 comes first. A person who waits on the pull request of the item comes next
+// (an open pull request with an open change request or an unresolved review thread). The rest follow in the order of their severity, P1 to P3, and an item with none comes last.
+func placeOf(severity model.Severity, personWaits bool) uint {
+	switch {
+	case severity == model.SeverityP0:
+		return priorityP0
+	case personWaits:
 		return priorityPersonWaits
 	}
 
-	return priorityNormal
+	index := slices.Index(model.Severities(), severity)
+	if index < 0 {
+		return priorityNormal
+	}
+
+	return priorityPersonWaits + uint(index)
+}
+
+// severityOfItem reads the severity that the tracker gave the item in its fields. A field that is absent or not a severity is P?.
+func severityOfItem(fields map[string]string) model.Severity {
+	severity, err := model.ParseSeverity(fields[severityField])
+	if err != nil {
+		return model.SeverityUnknown
+	}
+
+	return severity
+}
+
+// priorityOf gives a gate its place from the severity of its item and the standing of its pull request. The merges and the batch gates keep the normal place.
+// The standing is the read that the lifecycle makes already. A pull request that cannot be read counts as one that nobody waits on, and a line says so.
+// A P0 with nobody waiting comes before a person who waits.
+func priorityOf(in ExclusiveInput, standing review.Standing, read bool) uint {
+	if in.Kind != kindGate {
+		return priorityNormal
+	}
+
+	return placeOf(model.Severity(in.Severity), read && personWaits(standing))
 }
 
 // gateStanding reads the pull request of a gate once. The second value is false for a call that is not a gate, a project with no forge and a pull request that cannot be read:
-// the gate then keeps the normal place. A project with no forge and an item with no pull request yet say nothing, and a failed read of a forge logs a line.
+// nobody then waits, and the gate takes the place of its severity alone. A project with no forge and an item with no pull request yet say nothing, and a failed read of a forge logs a line.
 func (e *Engine) gateStanding(ctx context.Context, in ExclusiveInput) (review.Standing, bool) {
 	if in.Kind != kindGate || e.deps.Forge == nil {
 		return review.Standing{}, false
@@ -516,7 +550,7 @@ func (e *Engine) gateStanding(ctx context.Context, in ExclusiveInput) (review.St
 	}
 
 	if err != nil {
-		e.logger.WarnContext(ctx, "cannot read the pull request, so its gate keeps the normal place in the queue", "item", in.Item, "error", err)
+		e.logger.WarnContext(ctx, "cannot read the pull request, so nobody counts as waiting and its gate takes the place of its severity", "item", in.Item, "error", err)
 
 		return review.Standing{}, false
 	}

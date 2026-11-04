@@ -200,7 +200,7 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 		return nil, fmt.Errorf("local store: cannot read item %s: %w", id, err)
 	}
 
-	return map[string]string{"id": id, "title": title, "body": body}, nil
+	return map[string]string{"id": id, "title": title, "body": body, "severity": string(model.SeverityUnknown)}, nil
 }
 
 // OpenItems lists the open items and the held items of the project in the order they were added. A local item has no severity.

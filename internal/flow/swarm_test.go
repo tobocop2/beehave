@@ -819,6 +819,18 @@ func TestSpawnGather_SpawnReportsAnItemWhoseLoginCannotBePicked(t *testing.T) {
 	assert.Empty(t, h.commands.ranBy("21"), "no child started")
 }
 
+func TestSpawnGather_SpawnReportsAnItemWhoseFieldsCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.items.failFor = "22"
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+
+	require.ErrorContains(t, err, "read the fields of item 22")
+	assert.Empty(t, h.commands.ranBy("21"), "no child started")
+}
+
 func TestSpawnGather_SpawnReportsAChildTheQueueCannotStart(t *testing.T) {
 	t.Parallel()
 

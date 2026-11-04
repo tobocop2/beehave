@@ -25,6 +25,8 @@ type PhaseInput struct {
 	Kind string `json:"kind,omitempty"`
 	// Lane is the lane argument of the step: fix, rework, relay or design. It is empty, and so left out of a recorded phase, for a call that sets none.
 	Lane string `json:"lane,omitempty"`
+	// Severity is the severity of the item, which sets the place of the phase in its queue. It is left out for an item with none.
+	Severity string `json:"severity,omitempty"`
 
 	Prompt      string        `json:"prompt,omitempty"`
 	Resume      string        `json:"resume,omitempty"`
@@ -186,7 +188,7 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 		return PhaseOutput{}, err
 	}
 
-	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.agentQueue(in.Kind)), dbos.WithQueuePartitionKey(in.Login))
+	handle, err := dbos.RunWorkflow(ctx, e.phase, in, dbos.WithQueue(e.agentQueue(in.Kind)), dbos.WithQueuePartitionKey(in.Login), dbos.WithPriority(placeOf(model.Severity(in.Severity), false)))
 	if err != nil {
 		return PhaseOutput{}, fmt.Errorf("queue the agent step of item %s: %w", in.Item, err)
 	}

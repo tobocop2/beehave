@@ -79,7 +79,7 @@ func TestCreate_FilesAnOpenItemTheTrackerReads(t *testing.T) {
 
 	fields, err := s.Item(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"id": id, "title": "plan", "body": "the body"}, fields)
+	assert.Equal(t, map[string]string{"id": id, "title": "plan", "body": "the body", "severity": "P?"}, fields)
 
 	items, err := s.OpenItems(t.Context())
 	require.NoError(t, err)
