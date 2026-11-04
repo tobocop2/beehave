@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -25,6 +27,9 @@ type fakeMerge struct {
 	polls  []merge.Result
 	onPoll func()
 	lasts  []bool
+	// disarms records the items whose queued merge was turned off; disarmErr is the answer of each call.
+	disarms   []string
+	disarmErr error
 	// over replaces result and err when set. A test sets it to run the real merge over a forge fake.
 	over func(ctx context.Context, head string, settings MergeSettings) (merge.Result, error)
 }
@@ -47,6 +52,36 @@ func (f *fakeMerge) Poll(_ context.Context, _, _, _ string, _ MergeSettings, las
 	answer := f.polls[min(len(f.lasts), len(f.polls))-1]
 
 	return answer, nil
+}
+
+// askedCount is the number of merge calls so far.
+func (f *fakeMerge) askedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return len(f.asked)
+}
+
+// snapshot is the items whose queued merge was turned off so far.
+func (f *fakeMerge) snapshot() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.disarms)
+}
+
+func (f *fakeMerge) Disarm(ctx context.Context, _, item, _ string, _ MergeSettings) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// A real forge call on a done context fails at once, so the fake does too.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	f.disarms = append(f.disarms, item)
+
+	return f.disarmErr
 }
 
 func (f *fakeMerge) Merge(ctx context.Context, project, item, head string, settings MergeSettings) (merge.Result, error) {
@@ -173,6 +208,137 @@ func TestRun_ACancelDuringTheWaitForAQueuedMergeEndsTheRun(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Less(t, len(harness.merge.lasts), queuedReads)
+}
+
+func TestAwaitQueued_ACancelDuringTheWaitTurnsOffTheQueuedMerge(t *testing.T) {
+	t.Parallel()
+
+	harness, _ := queuedHarness(t, merge.Result{Stop: merge.Refused, Reason: merge.Queued})
+	harness.sleep = 2 * time.Second
+
+	done := make(chan struct{})
+
+	harness.merge.onPoll = func() {
+		client := harness.client(t, testVersion)
+
+		go func() {
+			defer close(done)
+
+			time.Sleep(300 * time.Millisecond)
+
+			if err := client.Cancel(testItem); err != nil {
+				t.Error(err)
+			}
+
+			harness.tick(t)
+		}()
+	}
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+	<-done
+
+	require.Error(t, err)
+	assert.Equal(t, []string{testItem}, harness.merge.disarms, "the queued merge is turned off once, after the cancel")
+}
+
+func TestAwaitQueued_AStepErrorTurnsOffTheQueuedMerge(t *testing.T) {
+	t.Parallel()
+
+	harness, _ := queuedHarness(t)
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errFake)
+	assert.Equal(t, []string{testItem}, harness.merge.disarms)
+}
+
+func TestAwaitQueued_ADisarmThatFailsSaysTheMergeMayStillBeArmed(t *testing.T) {
+	t.Parallel()
+
+	harness, _ := queuedHarness(t)
+	harness.merge.disarmErr = errors.New("cannot turn off #5")
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errFake, "the error of the wait stays the cause")
+	require.ErrorContains(t, err, "item "+testItem+" may still be armed")
+	require.ErrorContains(t, err, "cannot turn off #5")
+}
+
+func TestAwaitQueued_AMergedResultCallsNoDisarm(t *testing.T) {
+	t.Parallel()
+
+	harness, _ := queuedHarness(t, merge.Result{Stop: merge.Done})
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.NoError(t, err)
+	assert.Empty(t, harness.merge.disarms)
+}
+
+func TestAwaitQueued_AReadThatRefusesCallsNoSecondDisarm(t *testing.T) {
+	t.Parallel()
+
+	harness, _ := queuedHarness(t, merge.Result{Stop: merge.Refused, Lines: []string{"REFUSE: head moved"}})
+	engine := harness.engine(t)
+
+	_, err := engine.Run(testItem, testProject)
+
+	require.ErrorIs(t, err, errMergeRefused)
+	assert.Empty(t, harness.merge.disarms, "the read that refused has already turned the merge off")
+}
+
+func TestEndsTheMerge_OnlyAnEngineStopKeepsTheQueuedMerge(t *testing.T) {
+	t.Parallel()
+
+	stop := errors.New("the engine is shutting down")
+	owner, cancel := context.WithCancelCause(t.Context())
+	cancel(context.Canceled)
+	stopped, halt := context.WithCancelCause(t.Context())
+	halt(stop)
+	expired, expire := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+
+	t.Cleanup(expire)
+
+	assert.True(t, endsTheMerge(t.Context()), "a live context means the error is a failure of the run")
+	assert.True(t, endsTheMerge(owner), "an owner cancel ends the run")
+	assert.True(t, endsTheMerge(expired), "a timeout of the run ends it")
+	assert.False(t, endsTheMerge(stopped), "an engine stop resumes the run at the same round")
+}
+
+func TestAbandoned_AnEngineStopLeavesTheQueuedMergeArmed(t *testing.T) {
+	t.Parallel()
+
+	stopped, halt := context.WithCancelCause(t.Context())
+	halt(errors.New("the engine is shutting down"))
+
+	fake := &fakeMerge{}
+	engine := &Engine{deps: Deps{Merge: fake}}
+
+	err := engine.abandoned(stopped, queuedRead{item: testItem}, errFake)
+
+	require.ErrorIs(t, err, errFake)
+	assert.Empty(t, fake.disarms, "the run resumes at the same round and the merge stays armed")
+}
+
+func TestAbandoned_TheDisarmOfAnOwnerCancelRunsOnAContextThatTheCancelDoesNotReach(t *testing.T) {
+	t.Parallel()
+
+	canceled, cancel := context.WithCancelCause(t.Context())
+	cancel(context.Canceled)
+
+	fake := &fakeMerge{} // Its Disarm fails on a done context, as the forge call does.
+	engine := &Engine{deps: Deps{Merge: fake}}
+
+	err := engine.abandoned(canceled, queuedRead{item: testItem}, errFake)
+
+	require.ErrorIs(t, err, errFake)
+	assert.NotContains(t, err.Error(), "may still be armed", "the disarm got a live context")
+	assert.Equal(t, []string{testItem}, fake.disarms)
 }
 
 func TestRun_AnIntentThatCannotBeReadEndsTheItemBeforeTheMerge(t *testing.T) {

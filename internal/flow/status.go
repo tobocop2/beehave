@@ -542,7 +542,13 @@ func (c *Client) giveBackUnowned(project, item string, last run) error {
 		return err
 	}
 
-	return errors.Join(c.giveBack(project, item, last.Status.ID), held.Unlock())
+	// No engine runs the run, so no live wait can turn off its queued merge.
+	list := func(opts ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
+		return dbos.ListWorkflows(c.flow, opts...)
+	}
+	off := disarmCanceled(context.Background(), list, c.give.Merge, last.Status.ID)
+
+	return errors.Join(off, c.giveBack(project, item, last.Status.ID), held.Unlock())
 }
 
 // giveBack releases the worktree and the claim of a run with the token the run holds, then removes the files of the run.

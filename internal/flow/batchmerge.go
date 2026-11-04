@@ -447,7 +447,7 @@ func (b *batchBase) mergeRead(ctx context.Context, m batch.Member, settings Merg
 		return ran.Merge, err
 	}
 
-	return b.s.e.awaitQueued(b.s.ctx, b.stepName("poll", m.Item, 1), queuedRead{project: b.s.in.Project, item: m.Item, head: m.Head, settings: settings}, ran.Merge)
+	return b.s.e.awaitQueued(b.s.ctx, b.stepName("poll", m.Item, 1), queuedRead{project: b.s.in.Project, item: m.Item, head: m.Head, settings: settings}, ran.Merge) //nolint:contextcheck // the batch session holds the context of the run in a field, and every step of the file uses it
 }
 
 // intentRead is the record of the intent step: the intent, or the reason the member cannot be merged because its pull request is not OPEN.
