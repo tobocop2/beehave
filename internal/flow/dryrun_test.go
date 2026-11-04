@@ -245,12 +245,12 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:ROUND_STEP#3", "env:HOST_UP#4", "env:LAND#5", "env:EXPECT_HEAD#6", "env:BASE#7", "env:OWNER_LOGIN#8", "preflight:intake#1", "env:LANE_KIND#9", "env:PATCH_ROUNDS#10", "facts#1", "login#1",
-		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:PARENT#13", "pr_open:draft#1", "env:BASE#14", "env:OWNER_LOGIN#15", "env:SOURCE_CHECKOUT#16",
+		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11", "env:BASE#12", "env:ACCEPTANCE#13", "env:BASE_RESULT#14",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#15", "env:PARENT#16", "pr_open:draft#1", "env:BASE#17", "env:OWNER_LOGIN#18", "env:SOURCE_CHECKOUT#19",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-review-1#2",
 		"agent:review#3/render", "agent:review#3/clear1", "phase", "DBOS.getResult", "agent:review#3/read1",
-		"env:MERGE#17", "env:REPO#18", "env:BASE#19", "env:OWNER_LOGIN#20", "env:OWNER_EMAIL#21", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
-		"env:HOST_TEARDOWN#22", "worktree", "release",
+		"env:MERGE#20", "env:REPO#21", "env:BASE#22", "env:OWNER_LOGIN#23", "env:OWNER_EMAIL#24", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#25", "worktree", "release",
 	}, remediationStepNames(t))
 }
 
@@ -259,14 +259,14 @@ func TestDryRun_TheStepListOfTheRemediationExampleWithARedGateHoldsTheFixRound(t
 
 	assert.Equal(t, []string{
 		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:ROUND_STEP#3", "env:HOST_UP#4", "env:LAND#5", "env:EXPECT_HEAD#6", "env:BASE#7", "env:OWNER_LOGIN#8", "preflight:intake#1", "env:LANE_KIND#9", "env:PATCH_ROUNDS#10", "facts#1", "login#1",
-		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:PARENT#13", "pr_open:draft#1", "env:BASE#14", "env:OWNER_LOGIN#15", "env:SOURCE_CHECKOUT#16",
+		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11", "env:BASE#12", "env:ACCEPTANCE#13", "env:BASE_RESULT#14",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#15", "env:PARENT#16", "pr_open:draft#1", "env:BASE#17", "env:OWNER_LOGIN#18", "env:SOURCE_CHECKOUT#19",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-fix-1#2",
 		"agent:fix#3/render", "agent:fix#3/clear1", "phase", "DBOS.getResult", "agent:fix#3/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:check#2", "preflight:before-review-2#3",
 		"agent:review#4/render", "agent:review#4/clear1", "phase", "DBOS.getResult", "agent:review#4/read1",
-		"env:MERGE#17", "env:REPO#18", "env:BASE#19", "env:OWNER_LOGIN#20", "env:OWNER_EMAIL#21", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
-		"env:HOST_TEARDOWN#22", "worktree", "release",
+		"env:MERGE#20", "env:REPO#21", "env:BASE#22", "env:OWNER_LOGIN#23", "env:OWNER_EMAIL#24", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#25", "worktree", "release",
 	}, remediationStepNames(t, WithRedGate()))
 }
 
