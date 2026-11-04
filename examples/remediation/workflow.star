@@ -485,7 +485,7 @@ def pipeline(item):
         forbid_commands = FORBID,
         protect_paths = protected(),
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
-        inputs = {"item": item, "plan": plan.text, "facts": project},
+        inputs = {"item": item, "plan": plan.text, "facts": project, "base": env("BASE"), "acceptance": env("ACCEPTANCE", default = ""), "base_result": env("BASE_RESULT", default = "")},
         **scope
     )
 

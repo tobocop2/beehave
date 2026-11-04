@@ -46,6 +46,7 @@ func promptData(facts map[string]any) map[string]any {
 	return map[string]any{
 		"item": map[string]any{"id": "1", "title": "t", "body": "b"}, "plan": "p", "round": 1, "findings": "f", "violations": "", "facts": facts,
 		"output_file": "/out.json", "mechanism": "m", "fixes": 1, "pr": "9", "ruling": "r", "integration": "8", "closes": "none",
+		"base": "integration", "acceptance": "", "base_result": "",
 	}
 }
 

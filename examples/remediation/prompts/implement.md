@@ -7,6 +7,11 @@ and is red at your head is a regression of this pull request: fix it in this lan
 handoff. Do not change the script to make a row pass; a wrong row is a finding for the orchestrator.
 When the item names no script and no expected-behavior file, the change has no output: say in the report how you know.
 
+Base of this pull request: `{{ .base }}`.
+{{ if .acceptance }}The run gives the acceptance and the result at the base: `ACCEPTANCE={{ .acceptance }} BASE_RESULT={{ .base_result }}`.
+{{ else }}The run names no acceptance script.
+{{ end }}
+
 **When the expected-behavior line names a file, its `## Expected behavior` table is the acceptance
 check.** A cell that the table does not list as changed equals the base at your head. Run every cell at
 your head and report the cells that differ from the table. **Of two fixes that both
@@ -39,6 +44,10 @@ write the handoff and stop. Do not start the next step, and do not stop in the m
 
 ## The gate
 
+The facts at the end of this brief name the gate and the commands never run.
+{{ if .facts.build_host }}Run every build, test and lint on the build host. Never run one on this machine.
+{{ else }}This project has no build host: run builds and tests on this machine.
+{{ end }}
 **The gate steps come from the gate list of the round. You do not choose them.** The list holds every step as
 a name and a command, derived from CI at round start. Your job script runs each step and prints
 `STEP_RESULT name=<name> rc=<n>`.
@@ -143,7 +152,9 @@ silently discards other uncommitted edits.
 
 ## Merge rules
 
-**Push at the first checkpoint.** Push the branch when the first commit is green. Push every later commit to it at once; a commit that stays local is lost with the lane. Do not open the pull request, set its body or link a stack: the engine does these after this step.
+{{ if .facts.forge }}**Push at the first checkpoint.** Push the branch when the first commit is green. Push every later commit to it at once; a commit that stays local is lost with the lane. Do not open the pull request, set its body or link a stack: the engine does these after this step.
+{{ else }}This project has no forge: commit on the branch and push nothing.
+{{ end }}
 **Never use the merge queue of GitHub.** The orchestrator merges a pinned head with `gh pr merge`. Never run `gh pr merge --auto` and never add a pull request to a queue.
 **Known base reds are in one file.** The run names the file. Read it, and re-derive each red at the tip you branch from. Never copy the list into a report or a brief.
 
