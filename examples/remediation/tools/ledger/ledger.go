@@ -19,8 +19,10 @@ import (
 
 	// The driver registers itself under the name sqlite, as it does for the workflow store.
 	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
+	"github.com/tobocop2/obee/internal/store"
 )
 
 // access is how a connection opens the file.
@@ -31,9 +33,6 @@ const (
 	recovering               // read-write without the right to make the file: rolls a hot journal back
 	writing                  // makes the file if it is missing and starts transactions with BEGIN IMMEDIATE
 )
-
-// readOnlyRollback is the extended result code SQLITE_READONLY_ROLLBACK (8 | 2<<8): the file has a hot journal and the connection may not roll it back.
-const readOnlyRollback = 776
 
 const (
 	// FileName is the ledger file in the state folder.
@@ -61,18 +60,22 @@ CREATE TABLE IF NOT EXISTS closes (key TEXT NOT NULL, issue TEXT NOT NULL);
 // codePattern matches the numeric codes that the driver puts after its messages, such as " (5) (SQLITE_BUSY)".
 var codePattern = regexp.MustCompile(`\s\(\d+\)(\s\(SQLITE_[A-Z_0-9]+\))?`)
 
-// driverWords says in plain words what a driver message that a caller can meet means. Another message stays as the driver wrote it.
-func driverWords(text string) string {
-	switch text {
-	case "database is locked":
-		return "the ledger is locked by another process"
-	case "unable to open database file":
-		return "the file cannot be opened"
-	case "file is not a database":
-		return "the file is not a database"
+// driverWords says in plain words what a driver error that a caller can meet means. Another error stays as the driver wrote it, without its codes.
+func driverWords(err error) string {
+	var driverErr *sqlite.Error
+
+	if errors.As(err, &driverErr) {
+		switch driverErr.Code() {
+		case sqlite3.SQLITE_BUSY:
+			return "the ledger is locked by another process"
+		case sqlite3.SQLITE_CANTOPEN:
+			return "the file cannot be opened"
+		case sqlite3.SQLITE_NOTADB:
+			return "the file is not a database"
+		}
 	}
 
-	return text
+	return codePattern.ReplaceAllString(err.Error(), "")
 }
 
 var (
@@ -170,10 +173,9 @@ type laneRow struct {
 // connect opens the file. A writer makes the file, and the tables in its first transaction; a reader opens the file read-only and writes nothing, so it works in a folder that cannot be written.
 // The journal is SQLite's default rollback journal: the ledger is small and written rarely, and the rollback journal needs no shared memory file.
 // Each connection waits for a lock; a writer starts a transaction with BEGIN IMMEDIATE.
-// A reader that meets a hot journal (see readOnlyRollback) opens again with mode rw, which rolls the journal back and makes no file and no table.
+// A reader that meets a hot journal (see hotJournal) opens again with mode rw, which rolls the journal back and makes no file and no table.
 func (l *Ledger) connect(access access) (*sql.DB, error) {
 	query := url.Values{}
-	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", l.busyMs))
 
 	switch access {
 	case writing:
@@ -188,7 +190,7 @@ func (l *Ledger) connect(access access) (*sql.DB, error) {
 		query.Set("mode", "ro")
 	}
 
-	return sql.Open("sqlite", (&url.URL{Scheme: "file", Path: l.path, RawQuery: query.Encode()}).String())
+	return sql.Open("sqlite", store.SQLiteDSN(l.path, l.busyMs, query))
 }
 
 // touch makes the file at mode 0600 if it is missing, so SQLite does not make it with a wider mode.
@@ -213,7 +215,7 @@ func (l *Ledger) fail(verb string, err error) error {
 		err = pathErr.Err
 	}
 
-	return refuse("cannot %s %s: %s", verb, l.path, driverWords(codePattern.ReplaceAllString(err.Error(), "")))
+	return refuse("cannot %s %s: %s", verb, l.path, driverWords(err))
 }
 
 // read runs a query on the file. A file that does not exist has no rows.
@@ -264,11 +266,11 @@ func (l *Ledger) scanWith(ctx context.Context, access access, query string, args
 	return err
 }
 
-// hotJournal says whether the error is the refusal of SQLite to read a file that needs a rollback it may not do.
+// hotJournal says whether the error is the refusal of SQLite to read a file that needs a rollback it may not do (the file has a hot journal).
 func hotJournal(err error) bool {
 	var driverErr *sqlite.Error
 
-	return errors.As(err, &driverErr) && driverErr.Code() == readOnlyRollback
+	return errors.As(err, &driverErr) && driverErr.Code() == sqlite3.SQLITE_READONLY_ROLLBACK
 }
 
 // each calls scan for every row the query finds and stops at the first error.

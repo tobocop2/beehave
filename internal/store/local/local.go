@@ -117,12 +117,7 @@ func connect(ctx context.Context, path string) (*sql.DB, error) {
 
 // dsn returns the address of the file. Each connection waits for a lock, uses a write-ahead log, and starts a transaction with BEGIN IMMEDIATE.
 func dsn(path string) string {
-	query := url.Values{}
-	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMs))
-	query.Add("_pragma", "journal_mode(WAL)")
-	query.Set("_txlock", "immediate")
-
-	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
+	return store.SQLiteDSN(path, busyTimeoutMs, url.Values{"_pragma": {"journal_mode(WAL)"}, "_txlock": {"immediate"}})
 }
 
 // prepare creates the tables on a new file and refuses a file of a schema version it does not know.
