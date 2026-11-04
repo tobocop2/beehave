@@ -74,9 +74,11 @@ type HostConfig struct {
 	DiskFloorGB  int
 	// DiskWaitMinutes is how long a job waits for free space when the disk is under the floor. Zero means the job is refused at once.
 	DiskWaitMinutes int
-	PrivateRemote   string
-	SkyPilot        SkyPilotConfig
-	SSH             SSHConfig
+	// BankBudget is the time that the bank scan gives to each repository on the host. Zero means the default of the host package.
+	BankBudget    time.Duration
+	PrivateRemote string
+	SkyPilot      SkyPilotConfig
+	SSH           SSHConfig
 }
 
 // The host key policies of the ssh link. Neither one accepts a host key that changed.

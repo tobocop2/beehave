@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	defaultIdleMins  = 60
-	defaultStaleMins = 20
-	maxCount         = model.MaxDiskFloorGB
-	defaultMaxRun    = "24h"
-	hostTableMessage = "the `host` block %s. %s"
+	defaultIdleMins   = 60
+	defaultStaleMins  = 20
+	maxCount          = model.MaxDiskFloorGB
+	defaultMaxRun     = "24h"
+	defaultBankBudget = "20s"
+	hostTableMessage  = "the `host` block %s. %s"
 )
 
 // rawHost is a host block as written. At is the position of its call.
@@ -27,6 +28,7 @@ type rawHost struct {
 	IdleMinutes   int
 	StaleMinutes  int
 	MaxRun        string
+	BankBudget    string
 	DiskFloorGB   int
 	DiskWaitMins  int
 	PrivateRemote string
@@ -52,7 +54,7 @@ type rawSSH struct {
 
 // The schemas of the host, skypilot and ssh constructors.
 func hostSpec() spec {
-	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "private_remote?", "skypilot?", "ssh?"}}
+	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "private_remote?", "skypilot?", "ssh?"}}
 }
 
 func skypilotSpec() spec { return spec{"skypilot", []string{"cloud?", "region?", "instance_type?"}} }
@@ -78,12 +80,12 @@ const (
 
 // newHost is the constructor of the host block. A key that the call leaves out keeps its default.
 func newHost(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
-	raw := &rawHost{At: at, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun}
+	raw := &rawHost{At: at, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget}
 
 	skypilot := nested[rawSkyPilot]{want: skypilotSpec().name}
 	ssh := nested[rawSSH]{want: sshSpec().name}
 
-	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.PrivateRemote, &skypilot, &ssh)
+	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.PrivateRemote, &skypilot, &ssh)
 	raw.SkyPilot, raw.SSH = skypilot.block, ssh.block
 
 	return raw, err
@@ -271,7 +273,11 @@ func fillKeys(raw rawHost, host *model.HostConfig) error {
 		return err
 	}
 
-	host.MaxRun, err = maxRun(raw.At, raw.MaxRun)
+	if host.MaxRun, err = duration(raw.At, "host.max_run", raw.MaxRun, defaultMaxRun); err != nil {
+		return err
+	}
+
+	host.BankBudget, err = duration(raw.At, "host.bank_budget", raw.BankBudget, defaultBankBudget)
 
 	return err
 }
@@ -309,10 +315,11 @@ func positive(at syntax.Position, key string, value int) (int, error) {
 	return value, nil
 }
 
-func maxRun(at syntax.Position, text string) (time.Duration, error) {
+// duration parses the text of a duration key. The example in the refusal is the default of the key.
+func duration(at syntax.Position, key, text, example string) (time.Duration, error) {
 	parsed, err := time.ParseDuration(text)
 	if err != nil || parsed <= 0 {
-		return 0, refuseAt(at, "`host.max_run` must be a duration above zero, such as \"24h\"; got `%s`. Fix the value.", text)
+		return 0, refuseAt(at, "`%s` must be a duration above zero, such as \"%s\"; got `%s`. Fix the value.", key, example, text)
 	}
 
 	return parsed, nil
