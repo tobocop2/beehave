@@ -37,7 +37,7 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runn
 	}
 
 	return agent.SandboxPlan{
-		Work: dir, GitDirs: sharedGitDirs(dir), Read: read, Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed),
+		Work: dir, GitDirs: sharedGitDirs(dir), Read: read, Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed), DenyWritePatterns: hookPatterns(dir),
 		Network: request.Sandbox.Network, AllowWrite: write,
 	}, ""
 }
@@ -53,13 +53,14 @@ func checkedPaths(allowWrite, read []string, home, dir string, deny, closed []st
 
 // writeDenies returns the closed paths that the adapter denies for write: the list that allow_write is checked against, less the settings folder of
 // the agent CLI, which the CLI writes itself, and less a .git that is a file (a linked work tree), which holds only a pointer.
+// A .git that does not exist yet stays in the list, so a step that runs git init finds it closed.
 func writeDenies(dir string, closed []string) []string {
 	out := make([]string, 0, len(closed))
 
 	for _, path := range closed {
 		switch {
 		case path == filepath.Join(dir, ".claude"):
-		case path == filepath.Join(dir, ".git") && !isFolder(path):
+		case path == filepath.Join(dir, ".git") && isFile(path):
 		default:
 			out = append(out, path)
 		}
@@ -68,10 +69,33 @@ func writeDenies(dir string, closed []string) []string {
 	return out
 }
 
-func isFolder(path string) bool {
+func isFile(path string) bool {
 	info, err := os.Stat(path)
 
-	return err == nil && info.IsDir()
+	return err == nil && !info.IsDir()
+}
+
+// patternsPerName is the pattern of a name and the pattern of its contents.
+const patternsPerName = 2
+
+// patternDepths is the top level and every depth: the docs of the CLI give no rule for a ** that matches no folder, so the top level is a pattern of its own.
+const patternDepths = 2
+
+// hookPatterns returns the patterns that deny write to the places where a hook or an agent setting would run later, outside the sandbox, as the owner:
+// the hooks of a git repository, the .husky and .githooks folders, and the settings files and hooks of the agent CLI, at the top of the work folder
+// and at every depth. The CLI matches a pattern when a path is used, so a repository that a step makes later is covered. The rest of .claude stays
+// writable, because the CLI keeps its own state there.
+func hookPatterns(dir string) []string {
+	names := []string{".git/hooks", ".husky", ".githooks", ".claude/hooks", ".claude/settings*.json"}
+	out := make([]string, 0, len(names)*patternsPerName*patternDepths)
+
+	for _, name := range names {
+		for _, full := range []string{filepath.Join(dir, name), filepath.Join(dir, "**", name)} {
+			out = append(out, full, full+"/**")
+		}
+	}
+
+	return out
 }
 
 // envPatterns returns the patterns of the .env files of the work folder: the top level and every depth.

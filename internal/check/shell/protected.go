@@ -99,25 +99,53 @@ func swapCase(r rune) rune {
 	return r
 }
 
+// maxLinkHops bounds the dangling links that RealPath follows, so a loop of links ends.
+const maxLinkHops = 40
+
 // RealPath resolves the symbolic links of the longest part of the path that exists, and keeps the rest as written.
+// A link whose target does not exist yet is followed to that target, so a path through it names the place where a write lands.
+// The path should be clean: the resolver folds a .. in the name and not in the folder that a link points to.
 func RealPath(name string) string {
 	if resolved, err := filepath.EvalSymlinks(name); err == nil {
 		return resolved
 	}
 
+	return realPath(filepath.Clean(name), 0)
+}
+
+func realPath(name string, hops int) string {
 	rest := ""
-	cur := filepath.Clean(name)
+	cur := name
 
 	for cur != "/" && cur != "." {
 		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
 			return filepath.Join(resolved, rest)
 		}
 
+		if target, ok := danglingTarget(cur, hops); ok && hops < maxLinkHops {
+			return realPath(filepath.Join(target, rest), hops+1)
+		}
+
 		rest = filepath.Join(filepath.Base(cur), rest)
 		cur = filepath.Dir(cur)
 	}
 
-	return filepath.Clean(name)
+	return name
+}
+
+// danglingTarget returns the absolute place that the link at name points to, and false when name is not a link.
+// A relative target starts at the real folder of the link, because a .. in it folds in that folder and not in the folder of the name.
+func danglingTarget(name string, hops int) (string, bool) {
+	target, err := os.Readlink(name)
+	if err != nil {
+		return "", false
+	}
+
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(realPath(filepath.Dir(name), hops+1), target)
+	}
+
+	return target, true
 }
 
 // inside reports whether name is dir or below it.

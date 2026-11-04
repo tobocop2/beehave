@@ -18,16 +18,19 @@ import (
 // Deny lists the credential paths: the adapter denies them for read and write, and for the file tools. Network lists the domains the shell may reach.
 // DenyPatterns lists absolute glob patterns that the adapter denies in the same way, so that the CLI matches them when a file is used and
 // a file that does not exist yet is covered too. DenyWrite lists absolute paths that stay readable but that the adapter denies for write, in the
-// sandbox and in the file tools. AllowWrite lists the extra paths the shell may write.
+// sandbox and in the file tools. DenyWritePatterns lists absolute glob patterns that stay readable and that the adapter denies for write in the same
+// way as DenyWrite, so that the CLI matches them when a file is used and a path that does not exist yet is covered too.
+// AllowWrite lists the extra paths the shell may write.
 type SandboxPlan struct {
-	Work         string
-	GitDirs      []string
-	Read         []string
-	Deny         []string
-	DenyPatterns []string
-	DenyWrite    []string
-	Network      []string
-	AllowWrite   []string
+	Work              string
+	GitDirs           []string
+	Read              []string
+	Deny              []string
+	DenyPatterns      []string
+	DenyWrite         []string
+	DenyWritePatterns []string
+	Network           []string
+	AllowWrite        []string
 }
 
 // versionOf reads the version that the CLI prints for --version.
