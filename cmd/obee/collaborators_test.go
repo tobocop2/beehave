@@ -17,6 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/store"
 )
 
@@ -473,7 +474,7 @@ func TestNewWorktrees_EveryGitCallRefusesToPromptForCredentials(t *testing.T) {
 
 	trees := newWorktrees(nil, flow.Options{StateDir: t.TempDir()}, nil)
 
-	runner, ok := trees.git(t.TempDir()).(proc.ExecRunner)
+	runner, ok := trees.git(t.TempDir()).(gitexec.Runner)
 
 	require.True(t, ok)
 	assert.Contains(t, runner.Env, "GIT_TERMINAL_PROMPT=0")

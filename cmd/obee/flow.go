@@ -17,6 +17,7 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/pool"
 	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/sandbox/enforcers"
 )
 
@@ -183,7 +184,7 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 	return worktrees{
 		root: filepath.Join(opts.StateDir, "trees"), repos: filepath.Join(opts.StateDir, "repos"), projects: projects, forge: forges,
 		git: func(dir string) proc.Runner {
-			runner := proc.NewExecRunner("git", dir)
+			runner := gitexec.New(dir, proc.DefaultTimeout)
 			runner.Env = []string{"GIT_TERMINAL_PROMPT=0"}
 
 			return runner
@@ -191,14 +192,21 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 	}
 }
 
+// localRunner runs a program with the environment of the process. A git call runs with the hooks of the repository off.
+func localRunner(binary, dir string, timeout time.Duration) proc.Runner { //nolint:ireturn // programs.local is a func field that returns the interface
+	if binary == gitexec.Binary {
+		return gitexec.New(dir, timeout)
+	}
+
+	return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
+}
+
 // newPrograms runs command steps in the worktree of the item, or on the host of the project.
 func newPrograms(cfg config.Config, trees treeFinder, table adapters) programs {
 	return programs{
-		trees:   trees,
-		sandbox: newGateSandbox(cfg.Projects),
-		local: func(binary, dir string, timeout time.Duration) proc.Runner {
-			return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
-		},
+		trees:    trees,
+		sandbox:  newGateSandbox(cfg.Projects),
+		local:    localRunner,
 		exec:     func(spec proc.ExecRunner) proc.Runner { return spec },
 		hosts:    func(project, cluster string) (host.Host, error) { return buildHostOf(cfg, table, project, cluster) },
 		declared: func(project, cluster string) (string, error) { return declaredHostOf(cfg, project, cluster) },

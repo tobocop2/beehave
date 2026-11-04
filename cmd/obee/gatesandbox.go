@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/gate"
+	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/sandbox"
 	"github.com/tobocop2/obee/internal/sandbox/enforcers"
 )
@@ -286,14 +287,31 @@ func disposableTree(ctx context.Context, dir, tmp string) (string, func(), error
 	return work, func() { _ = os.RemoveAll(strings.TrimSpace(record)) }, nil
 }
 
-// gitIn runs git in dir and returns what it printed.
+// gitIn runs git in dir and returns what it printed. A canceled context kills the process group of git, and a child that holds the output open
+// does not keep the call past the grace period of the runner.
 func gitIn(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // git with arguments that obee writes
-	cmd.Dir = dir
+	result := gitexec.New(dir, 0).Run(ctx, args)
+	out := result.Stdout + result.Stderr
 
-	out, err := cmd.CombinedOutput()
+	if result.ExitCode != 0 {
+		return out, fmt.Errorf("git %s: %s", gitFailure(ctx, result), strings.TrimSpace(result.Stderr))
+	}
 
-	return string(out), err
+	return out, nil
+}
+
+// gitFailure names why a git call failed: it did not start, the time ran out, the context was canceled, or it exited with a code.
+func gitFailure(ctx context.Context, result model.CommandResult) string {
+	switch {
+	case result.SetupErr != nil:
+		return fmt.Sprintf("could not start (%v)", result.SetupErr)
+	case result.TimedOut || errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return "timed out"
+	case errors.Is(ctx.Err(), context.Canceled):
+		return "was canceled"
+	default:
+		return fmt.Sprintf("exited with code %d", result.ExitCode)
+	}
 }
 
 // runIn makes the disposable work folder of dir under the temporary folder tmp, makes the plan for it and runs the command there.

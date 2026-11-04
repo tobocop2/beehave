@@ -199,7 +199,7 @@ flowchart TD
     classDef planned stroke-dasharray: 5 5,color:#888
 ```
 
-Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in.
+Every package imports `model`, and `model` imports no obee package. Only `proc` starts a process: `forge` and `agent` call it, and `store` reaches it through the runner that the composition root passes in. `proc/gitexec` is the one place that names the git program: every git call in a tree that obee manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner.
 
 File locks come from `github.com/gofrs/flock`. `flow` and `merge` open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked. `flow` and `merge` write the cancel marker and the saved check logs through `atomicfile.Write`, a layer 0 package. It writes a temporary file in the same folder, syncs it and renames it over the target, and it sets the mode every time.
 

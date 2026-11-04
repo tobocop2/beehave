@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tobocop2/obee/internal/atomicfile"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
@@ -92,7 +93,7 @@ func (g *groups) write() error {
 		text.WriteString(strconv.Itoa(row.pgid) + rowSeparator + row.started + "\n")
 	}
 
-	if err := os.WriteFile(g.path, []byte(text.String()), pgidFileMode); err != nil {
+	if err := atomicfile.Write(g.path, []byte(text.String()), pgidFileMode); err != nil {
 		return fmt.Errorf("write the agent process file: %w", err)
 	}
 

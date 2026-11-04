@@ -5,15 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/tobocop2/obee/internal/lockfile"
 )
+
+// lockRetry is the pause between two tries to take the lock; a canceled context ends the wait.
+const lockRetry = 25 * time.Millisecond
 
 // EditBody reads the body of a pull request, applies edit and writes the result, all under an exclusive lock on integration-<pr>.lock in dir.
 // Two writers of one body never lose a row, because each one reads the body after the other wrote it. The lock is released on every exit.
 func EditBody(ctx context.Context, dir string, forge Body, pr int, edit func(body string) string) (err error) {
 	lock := lockfile.Open(filepath.Join(dir, fmt.Sprintf("integration-%d.lock", pr)))
-	if err := lock.Lock(); err != nil {
+	if _, err := lock.TryLockContext(ctx, lockRetry); err != nil {
 		return fmt.Errorf("lock the body of #%d: %w", pr, err)
 	}
 

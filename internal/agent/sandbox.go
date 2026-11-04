@@ -4,12 +4,13 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
 
 	"golang.org/x/mod/semver"
+
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 // SandboxPlan is what an adapter needs to confine the shell of one run. Every path is absolute, except that an adapter may write the home folder as "~/".
@@ -96,12 +97,12 @@ func semverOf(found []string) string {
 
 // runVersion starts the CLI with --version in the environment of the run and returns what it prints.
 func runVersion(ctx context.Context, binary string, env []string) (string, error) {
-	cmd := exec.CommandContext(ctx, binary, "--version")
-	cmd.Env = env
+	result := proc.ExecRunner{Binary: binary, Only: env}.Run(ctx, []string{"--version"})
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("%s --version exited with code %d: %s", binary, result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
 
-	out, err := cmd.Output()
-
-	return string(out), err
+	return result.Stdout, nil
 }
 
 // hostOS is the operating system of this process.

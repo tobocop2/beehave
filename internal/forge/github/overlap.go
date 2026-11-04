@@ -214,6 +214,6 @@ func (f *Forge) baseCommits(ctx context.Context, base string, names []string, si
 func (f *Forge) historyArgs(base, name, since string) []string {
 	return []string{
 		argAPI, "-X", "GET", "repos/" + f.repo + "/commits",
-		flagRaw, "sha=" + base, flagRaw, "path=" + name, flagRaw, "since=" + since, argJQ, historyFilter,
+		flagRaw, "sha=" + base, flagRaw, "path=" + name, flagRaw, "since=" + since, argPaginate, argJQ, historyFilter,
 	}
 }
