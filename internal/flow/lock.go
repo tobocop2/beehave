@@ -20,6 +20,20 @@ func lockFile(dir, name string) *flock.Flock {
 	return lockfile.Open(filepath.Join(dir, name))
 }
 
+// engineRuns reports whether an engine holds the state folder. It takes the engine lock for the moment of the check, as giveBackUnowned does.
+func engineRuns(dir string) (bool, error) {
+	held, err := holdEngine(dir)
+	if errors.Is(err, errStateBusy) {
+		return true, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return false, held.Unlock()
+}
+
 // holdEngine takes the engine lock, which one engine holds from NewEngine until Shutdown.
 func holdEngine(dir string) (*flock.Flock, error) {
 	held := lockFile(dir, engineLockName)

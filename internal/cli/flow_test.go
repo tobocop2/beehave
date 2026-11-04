@@ -82,14 +82,17 @@ type fakeSteering struct {
 	pollErr   error
 	notSched  string
 	notSchedE error
-	infos     []flow.RunInfo
-	view      flow.RunSteps
-	lanes     flow.ItemLanes
-	err       error
-	pinned    string
-	pinnedErr error
-	calls     []string
-	closeOK   bool
+	// schedules and schedulesErr are what Schedules returns.
+	schedules    []flow.ScheduleInfo
+	schedulesErr error
+	infos        []flow.RunInfo
+	view         flow.RunSteps
+	lanes        flow.ItemLanes
+	err          error
+	pinned       string
+	pinnedErr    error
+	calls        []string
+	closeOK      bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 }
@@ -119,6 +122,10 @@ func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
 }
 
 func (s *fakeSteering) PollNotScheduled() (string, error) { return s.notSched, s.notSchedE }
+
+func (s *fakeSteering) Schedules() ([]flow.ScheduleInfo, error) {
+	return s.schedules, s.schedulesErr
+}
 
 func (s *fakeSteering) Answer(item, text string) error {
 	s.calls = append(s.calls, "answer "+item+" "+text)

@@ -120,6 +120,7 @@ var rules = map[string]rule{
 	"internal/cli.Reading.Status":                 {NotHeld: noEngine},
 	"internal/cli.Reading.Steps":                  {NotHeld: noEngine},
 	"internal/cli.Reading.Lanes":                  {NotHeld: noEngine},
+	"internal/cli.Reading.Schedules":              {Proof: "TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON", Needle: "schedulesErr"},
 	"internal/cli.Reading.Poll":                   {NotHeld: noEngine},
 	"internal/cli.Reading.PollNotScheduled":       {NotHeld: noEngine},
 	"internal/cli.Reading.PinnedFile":             {NotHeld: noEngine},

@@ -51,6 +51,8 @@ type Reading interface {
 	Poll() (flow.PollOutput, bool, error)
 	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
 	PollNotScheduled() (string, error)
+	// Schedules lists each schedule with its last tick and whether an engine fires it.
+	Schedules() ([]flow.ScheduleInfo, error)
 	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
 	PinnedFile(item string) (string, error)
 }
@@ -460,8 +462,10 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"A line also shows the item and the project of the run, the cost so far against the run cap, the step that runs now, the last gate result with its head, and the fix and review rounds used against their caps. " +
 	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, the next reminder, and the deadline with the time left. " +
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
-	"Add --" + jsonFlag + " to the list for one JSON array with the same data: one object for each run, with the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
-	"A field with no value is left out. The list reads recorded state only; it shows no schedule or per-day figure.\n\n" +
+	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
+	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, poll and poll_not_scheduled. " +
+	"Each run has the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
+	"A field with no value is left out. The list reads recorded state only; it shows no per-day figure.\n\n" +
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the kind of the lane " +
@@ -495,44 +499,69 @@ func (f flowCommands) clock() func() time.Time {
 	return f.factory.Now
 }
 
-// printRuns writes the runs of the store, then the review poll section. With asJSON it writes the runs as one JSON array and no poll section.
+// printRuns writes the runs of the store, the schedules, then the review poll section. With asJSON it writes the same data as one JSON object.
 func printRuns(out io.Writer, client Steering, clock func() time.Time, asJSON bool) error {
-	infos, err := client.Status()
+	now := clock()
+
+	list, err := readStatusList(client)
 	if err != nil {
 		return err
 	}
 
 	if asJSON {
-		return printRunsJSON(out, infos, clock())
+		return printListJSON(out, list, now)
 	}
 
-	printStatus(out, infos, clock())
+	printStatus(out, list.Runs, now)
+	printSchedules(out, list.Schedules)
+	printPollSection(out, list)
 
-	return printPollSection(out, client)
+	return nil
+}
+
+// printSchedules writes one line for each schedule: its name, its text, its last tick and whether it fires. It writes nothing when no schedule exists.
+func printSchedules(stdout io.Writer, schedules []flow.ScheduleInfo) {
+	if len(schedules) == 0 {
+		return
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintln(stdout, "\nschedules")
+
+	for _, schedule := range schedules {
+		_, _ = fmt.Fprintln(stdout, scheduleLine(schedule))
+	}
+}
+
+// scheduleLine describes one schedule: its name, its text, its last tick, then paused, firing or not firing.
+func scheduleLine(schedule flow.ScheduleInfo) string {
+	last := "no tick yet"
+	if schedule.LastTick != nil {
+		last = "last tick " + schedule.LastTick.Format(time.RFC3339)
+	}
+
+	state := "not firing, no engine runs"
+
+	switch {
+	case schedule.Paused:
+		state = "paused"
+	case schedule.Firing:
+		state = "firing"
+	}
+
+	return schedule.Name + "\t" + schedule.Schedule + "\t" + last + "\t" + state
 }
 
 // printPollSection writes the newest review poll, then the cause when the last launch could not schedule the poll.
-func printPollSection(stdout io.Writer, client Steering) error {
-	poll, found, err := client.Poll()
-	if err != nil {
-		return err
+func printPollSection(stdout io.Writer, list statusList) {
+	if list.Poll != nil {
+		printPoll(stdout, *list.Poll)
 	}
 
-	if found {
-		printPoll(stdout, poll)
-	}
-
-	cause, err := client.PollNotScheduled()
-	if err != nil {
-		return err
-	}
-
-	if cause != "" {
+	if list.PollNotScheduled != "" {
 		// A failed write to stdout has no recovery.
-		_, _ = fmt.Fprintf(stdout, "\nthe review poll is not scheduled: %s\n", model.OneLine(cause))
+		_, _ = fmt.Fprintf(stdout, "\nthe review poll is not scheduled: %s\n", model.OneLine(list.PollNotScheduled))
 	}
-
-	return nil
 }
 
 // printPoll writes the section of the newest review poll: its time, then the rows of each project.
