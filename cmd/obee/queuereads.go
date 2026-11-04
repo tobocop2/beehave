@@ -35,7 +35,7 @@ func (q queueReads) OpenItems(ctx context.Context, project string) ([]model.Item
 	return items, closeAfter(err, tracker)
 }
 
-// OpenPulls lists the open pull requests of the forge of the project, with their head branch and labels. A project with no forge has none.
+// OpenPulls lists the open pull requests of the forge of the project, with their head branch, labels, review decision and author. A project with no forge has none.
 func (q queueReads) OpenPulls(ctx context.Context, project string) ([]model.PullRequest, error) {
 	built, err := q.pulls.forgeOf(project)
 	if errors.Is(err, forge.ErrNoForge) {
@@ -46,7 +46,7 @@ func (q queueReads) OpenPulls(ctx context.Context, project string) ([]model.Pull
 		return nil, err
 	}
 
-	rows, err := built.PRList(ctx, openPullLimit, "--state", "open", "--json", "number,headRefName,labels")
+	rows, err := built.PRList(ctx, openPullLimit, "--state", "open", "--json", "number,headRefName,labels,reviewDecision,author")
 	if err != nil {
 		return nil, fmt.Errorf("list the open pull requests of project %s: %w", project, err)
 	}

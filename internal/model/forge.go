@@ -90,6 +90,7 @@ type PullRequest struct {
 	BaseRefName    *string         `json:"baseRefName"`
 	HeadRefName    *string         `json:"headRefName"`
 	HeadRefOid     *string         `json:"headRefOid"`
+	ReviewDecision *string         `json:"reviewDecision"`
 	MergedAt       *string         `json:"mergedAt"`
 	UpdatedAt      string          `json:"updatedAt"`
 	HeadRepository *repository     `json:"headRepository"`

@@ -37,11 +37,15 @@ type queueReader interface {
 }
 
 // queueRow is one open item of the queue, as the queue step records it. PR is 0 when the item has no open pull request.
+// Parent is the container of the item, empty for loose work. Author and ChangesRequested come from the open pull request of the item's branch with the lowest number; Author is empty when there is none.
 type queueRow struct {
-	Item     string `json:"item"`
-	State    string `json:"state"`
-	Severity string `json:"severity"`
-	PR       int    `json:"pr"`
+	Item             string `json:"item"`
+	State            string `json:"state"`
+	Severity         string `json:"severity"`
+	PR               int    `json:"pr"`
+	Parent           string `json:"parent"`
+	Author           string `json:"author"`
+	ChangesRequested bool   `json:"changes_requested"`
 }
 
 // queued is the output of the queue step: the rows in the order of the queue, and the number of free slots of the items queue.
@@ -52,8 +56,10 @@ type queued struct {
 
 // joinedPull is what the open pull requests of one branch say about the item of that branch.
 type joinedPull struct {
-	number int
-	held   bool
+	number           int
+	held             bool
+	author           string
+	changesRequested bool
 }
 
 // queue reads the open items and the open pull requests and returns one row for each item, with its state, and the number of free slots.
@@ -134,21 +140,17 @@ func joinPulls(pulls []model.PullRequest, holdLabel string) map[string]joinedPul
 		}
 
 		one := joined[*pull.HeadRefName]
-		one.number = lowest(one.number, pull.Number)
+		if one.number == 0 || pull.Number < one.number {
+			one.number = pull.Number
+			one.author = pull.Author.Login
+			one.changesRequested = pull.ReviewDecision != nil && *pull.ReviewDecision == string(model.ReviewChangesRequested)
+		}
+
 		one.held = one.held || (holdLabel != "" && hasLabel(pull, holdLabel))
 		joined[*pull.HeadRefName] = one
 	}
 
 	return joined
-}
-
-// lowest returns the smaller number, where 0 means none yet.
-func lowest(have, number int) int {
-	if have == 0 || number < have {
-		return number
-	}
-
-	return have
 }
 
 // hasLabel reports whether the pull request carries the label.
@@ -183,7 +185,15 @@ func (e *Engine) rowOf(item model.Item, pull joinedPull) (queueRow, error) {
 		state = queueHold
 	}
 
-	return queueRow{Item: item.ID, State: state, Severity: string(item.Severity), PR: pull.number}, nil
+	return rowWith(item, pull, state), nil
+}
+
+// rowWith joins the item, its pull request and its state into a row.
+func rowWith(item model.Item, pull joinedPull, state string) queueRow {
+	return queueRow{
+		Item: item.ID, State: state, Severity: string(item.Severity), PR: pull.number,
+		Parent: item.Parent, Author: pull.author, ChangesRequested: pull.changesRequested,
+	}
 }
 
 // freeSlots is the cap of the items queue less the runs that the library holds on it as open. The library keeps the count: the engine keeps none.
@@ -196,13 +206,14 @@ func (e *Engine) freeSlots() (int, error) {
 	return max(0, e.maxConcurrent-len(open)), nil
 }
 
-// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity and pr, and free.
+// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity, pr, parent, author and changes_requested, and free.
 func queuedValue(got queued) *starlarkstruct.Struct {
 	rows := make([]starlark.Value, len(got.Rows))
 
 	for i, row := range got.Rows {
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(row.Item), "state": starlark.String(row.State), "severity": starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
+			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
 		})
 	}
 

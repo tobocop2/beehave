@@ -40,7 +40,7 @@ func (s *script) prOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	)
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, "issue": &req.Issue, "parent": &req.Parent, nameKeyword: &label,
+		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, "issue": &req.Issue, parentKeyword: &req.Parent, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}
