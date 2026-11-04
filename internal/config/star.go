@@ -250,23 +250,10 @@ func explain(err error) error {
 	case errors.As(err, &refused):
 		return refused
 	case errors.As(err, &eval):
-		return refuse("%s: %s. Fix the file.", positionOf(eval.CallStack), strings.TrimRight(eval.Msg, "."))
+		return refuse("%s: %s. Fix the file.", model.InnermostPosition(eval.CallStack), strings.TrimRight(eval.Msg, "."))
 	default:
 		return refuse("%s. Fix the syntax of the file.", strings.TrimRight(err.Error(), "."))
 	}
-}
-
-// positionOf returns the position of the innermost frame that is in the file. A builtin such as fail has no position of its own.
-func positionOf(stack starlark.CallStack) syntax.Position {
-	var pos syntax.Position
-
-	for i := range stack {
-		if pos = stack.At(i).Pos; pos.Filename() != "<builtin>" {
-			break
-		}
-	}
-
-	return pos
 }
 
 // paths is an argument that takes a list of strings.

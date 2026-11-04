@@ -17,9 +17,6 @@ import (
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
-// builtinFile is the file name that starlark-go gives to the frame of a Go builtin.
-const builtinFile = "<builtin>"
-
 // jsonModule is the one name of workflow.Builtins that is a module of the Starlark library, not a step.
 const jsonModule = "json"
 
@@ -206,11 +203,5 @@ func where(err error) error {
 		return err
 	}
 
-	// The first frame is the innermost. Only it can be a Go builtin: the frame after it is the call in the file.
-	at := 0
-	if len(eval.CallStack) > 1 && eval.CallStack.At(0).Pos.Filename() == builtinFile {
-		at = 1
-	}
-
-	return fmt.Errorf("%s: %w", eval.CallStack.At(at).Pos, err)
+	return fmt.Errorf("%s: %w", model.InnermostPosition(eval.CallStack), err)
 }
