@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"sync"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/merge"
 )
 
 // upHosts answers host_up. started is true for a host that this call launched, and false for a host that was already up.
@@ -17,25 +20,103 @@ type upHosts struct {
 	started   bool
 	err       error
 	ups       []string
+	asked     []string // the cluster each Up call named
+	stopped   []string // the cluster each Teardown call named
 	teardowns int
 }
 
-func (u *upHosts) Up(_ context.Context, project string) (bool, error) {
+// defaultCluster is the build host that upHosts resolves an empty choice to.
+const defaultCluster = "default-host"
+
+func (u *upHosts) Up(_ context.Context, project, cluster string) (bool, string, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	u.ups = append(u.ups, project)
+	u.asked = append(u.asked, cluster)
 
-	return u.started, u.err
+	return u.started, cmp.Or(cluster, defaultCluster), u.err
 }
 
-func (u *upHosts) Teardown(context.Context, string) error {
+func (u *upHosts) Teardown(_ context.Context, _, cluster string) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	u.teardowns++
+	u.stopped = append(u.stopped, cluster)
 
 	return nil
+}
+
+const chosenHostFlow = "def main(item):\n    up = host_up(name = \"start\", host = \"gpu-b\")\n    if up.host != \"gpu-b\":\n        fail(\"HOST \" + up.host)\n    fail(\"main failed\")\n\ndef finish(item):\n    host_teardown(name = \"stop\")\n"
+
+func TestHostUp_ARunStartsAndStopsTheHostThatItNamed(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	own := &upHosts{started: true}
+	h.hosts = own
+	h.flowIs(t, chosenHostFlow)
+
+	_, err := h.engine(t).Run(testItem, testProject)
+
+	require.ErrorContains(t, err, "main failed", "host_up returns the host that the run named")
+	assert.Equal(t, []string{"gpu-b"}, own.asked)
+	assert.Equal(t, []string{"gpu-b"}, own.stopped, "the stop follows the choice that host_up recorded, with no host argument of its own")
+}
+
+func TestHostUp_ARunThatNamesNoHostGetsTheDefaultAndRecordsIt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	own := &upHosts{started: true}
+	h.hosts = own
+	h.flowIs(t, "def main(item):\n    up = host_up(name = \"start\")\n    fail(\"HOST \" + up.host)\n")
+
+	_, err := h.engine(t).Run(testItem, testProject)
+
+	require.ErrorContains(t, err, "HOST "+defaultCluster, "the result holds the resolved host, not the empty choice")
+	assert.Equal(t, []string{""}, own.asked)
+}
+
+const chosenHostWorkFlow = "def main(item):\n    host_up(name = \"start\", host = \"gpu-b\")\n    gate(name = \"check\")\n    command(name = \"build\", run = [\"make\", \"x\"], host = \"build\")\n"
+
+func TestHostUp_TheGateAndTheCommandsOfARunUseTheHostThatItNamed(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.hosts = &upHosts{started: true}
+	h.flowIs(t, chosenHostWorkFlow)
+
+	_, err := h.engine(t).Run(testItem, testProject)
+	require.NoError(t, err)
+
+	hosts := h.gate.gatedOn()
+	require.NotEmpty(t, hosts, "the gate ran")
+
+	for _, host := range hosts {
+		assert.Equal(t, "gpu-b", host, "every call of the gate names the host that host_up recorded")
+	}
+
+	require.Len(t, h.commands.requests, 1)
+	assert.Equal(t, "gpu-b", h.commands.requests[0].BuildHost, "the command on the host goes to the host that host_up recorded")
+}
+
+func TestHostUp_ARunThatNamedNoHostGatesAndRunsOnTheDefault(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.hosts = &upHosts{started: true}
+	h.flowIs(t, "def main(item):\n    host_up(name = \"start\")\n    gate(name = \"check\")\n    command(name = \"build\", run = [\"make\", \"x\"], host = \"build\")\n")
+
+	_, err := h.engine(t).Run(testItem, testProject)
+	require.NoError(t, err)
+
+	for _, host := range h.gate.gatedOn() {
+		assert.Equal(t, defaultCluster, host, "the recorded host is the default that host_up resolved")
+	}
+
+	assert.Equal(t, defaultCluster, h.commands.requests[0].BuildHost)
 }
 
 const hostUpFlow = "def main(item):\n    up = host_up(name = \"start\")\n    if up.started:\n        fail(\"STARTED\")\n"

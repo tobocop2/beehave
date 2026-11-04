@@ -323,8 +323,8 @@ func stepSignatures() map[string][]Param {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), label,
 		},
 		waitName:         waitParams(),
-		hostTeardownName: {label},
-		hostUpName:       {label},
+		hostTeardownName: {opt("host", KindText), label},
+		hostUpName:       {opt("host", KindText), label},
 	}
 }
 

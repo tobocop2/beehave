@@ -38,8 +38,8 @@ type projectGate struct {
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
 // has a host gate check out the head that it reports, and refuses a tree that changes during the run.
 // A non-empty job is a host job that Submit started: the gate waits for it and submits none.
-func (g projectGate) Run(ctx context.Context, project, item string, job flow.GateJob) (flow.GateResult, error) {
-	request, err := g.request(ctx, project, item)
+func (g projectGate) Run(ctx context.Context, project, item, cluster string, job flow.GateJob) (flow.GateResult, error) {
+	request, err := g.request(ctx, project, item, cluster)
 	if err != nil {
 		return flow.GateResult{}, err
 	}
@@ -56,8 +56,8 @@ func (g projectGate) Run(ctx context.Context, project, item string, job flow.Gat
 
 // Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
 // A project that builds here has no host job, and its job is empty.
-func (g projectGate) Submit(ctx context.Context, project, item string) (flow.GateJob, error) {
-	request, err := g.request(ctx, project, item)
+func (g projectGate) Submit(ctx context.Context, project, item, cluster string) (flow.GateJob, error) {
+	request, err := g.request(ctx, project, item, cluster)
 	if err != nil {
 		return flow.GateJob{}, err
 	}
@@ -71,7 +71,7 @@ func (g projectGate) Submit(ctx context.Context, project, item string) (flow.Gat
 }
 
 func (g projectGate) gate(project string) gate.Gate {
-	return gate.New(g.shellFor(project), g.tree, func(model.Project) (gate.Remote, error) { return g.programs.hosts(project) })
+	return gate.New(g.shellFor(project), g.tree, func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) })
 }
 
 // shellFor returns the function that runs the gate command of the project: under the sandbox when the project has it on and builds here, else as before.
@@ -105,8 +105,8 @@ func gateRefusal(projects map[string]config.Project, refusal cli.GateRefusal) fu
 }
 
 // Key reads the key of the gate that Run would start on the worktree of the item.
-func (g projectGate) Key(ctx context.Context, project, item string) (flow.GateKey, error) {
-	request, err := g.request(ctx, project, item)
+func (g projectGate) Key(ctx context.Context, project, item, cluster string) (flow.GateKey, error) {
+	request, err := g.request(ctx, project, item, cluster)
 	if err != nil {
 		return flow.GateKey{}, err
 	}
@@ -130,10 +130,12 @@ func gateSteps(steps []gate.Step) []flow.GateStep {
 }
 
 // request names the project, the worktree of the item and, for a project with a build host, the URL that the host clones the repository from.
-func (g projectGate) request(ctx context.Context, project, item string) (gate.Request, error) {
-	found, ok := g.projects[project]
-	if !ok {
-		return gate.Request{}, fmt.Errorf("%w: %q", errUnknownProject, project)
+// The project in the request has the cluster that the run recorded as its build host, so the gate, its key and its host all use that cluster.
+// An empty cluster is the default build host. A cluster that the project does not declare is refused.
+func (g projectGate) request(ctx context.Context, project, item, cluster string) (gate.Request, error) {
+	found, err := g.onCluster(project, cluster)
+	if err != nil {
+		return gate.Request{}, err
 	}
 
 	dir, err := g.programs.trees.Path(ctx, project, item)
@@ -151,6 +153,23 @@ func (g projectGate) request(ctx context.Context, project, item string) (gate.Re
 	}
 
 	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
+}
+
+// onCluster returns the project with the cluster of the run as its build host.
+func (g projectGate) onCluster(project, cluster string) (config.Project, error) {
+	found, ok := g.projects[project]
+	if !ok {
+		return config.Project{}, fmt.Errorf("%w: %q", errUnknownProject, project)
+	}
+
+	chosen, err := found.HostFor(cluster)
+	if err != nil {
+		return config.Project{}, err
+	}
+
+	found.BuildHost = chosen
+
+	return found, nil
 }
 
 // cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none.

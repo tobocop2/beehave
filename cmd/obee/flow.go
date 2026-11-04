@@ -199,18 +199,39 @@ func newPrograms(cfg config.Config, trees treeFinder, table adapters) programs {
 		local: func(binary, dir string, timeout time.Duration) proc.Runner {
 			return proc.ExecRunner{Binary: binary, Dir: dir, Timeout: timeout}
 		},
-		exec: func(spec proc.ExecRunner) proc.Runner { return spec },
-		hosts: func(project string) (host.Host, error) {
-			found, ok := cfg.Projects[project]
-			if !ok {
-				return nil, fmt.Errorf("%w: %q", errUnknownProject, project)
-			}
-
-			if found.Host == nil {
-				return nil, errNoHost
-			}
-
-			return table.host(found.Project)
-		},
+		exec:     func(spec proc.ExecRunner) proc.Runner { return spec },
+		hosts:    func(project, cluster string) (host.Host, error) { return buildHostOf(cfg, table, project, cluster) },
+		declared: func(project, cluster string) (string, error) { return declaredHostOf(cfg, project, cluster) },
 	}
+}
+
+// buildHostOf builds the host of the cluster that a run chose for the project. The adapter gets the project with that cluster as its build host.
+func buildHostOf(cfg config.Config, table adapters, project, cluster string) (host.Host, error) { //nolint:ireturn // the host contract
+	found, ok := cfg.Projects[project]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", errUnknownProject, project)
+	}
+
+	if found.Host == nil {
+		return nil, errNoHost
+	}
+
+	chosen, err := found.HostFor(cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	found.BuildHost = chosen
+
+	return table.host(found.Project)
+}
+
+// declaredHostOf gives the cluster a run chose for the project, or refuses a cluster that the project file does not declare.
+func declaredHostOf(cfg config.Config, project, cluster string) (string, error) {
+	found, ok := cfg.Projects[project]
+	if !ok {
+		return "", fmt.Errorf("%w: %q", errUnknownProject, project)
+	}
+
+	return found.HostFor(cluster)
 }

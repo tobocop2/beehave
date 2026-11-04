@@ -335,7 +335,7 @@ func TestPrograms_AHostProgramRunsAsOneQuotedJob(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			runs := programs{hosts: func(string) (host.Host, error) { return test.hosted, nil }}
+			runs := programs{hosts: func(string, string) (host.Host, error) { return test.hosted, nil }}
 
 			got, err := runs.Run(t.Context(), flow.CommandRequest{Project: "p", Item: "1", Host: "h", Run: []string{"echo", "it's"}})
 			if test.wantErr != nil {
@@ -378,7 +378,7 @@ func TestHostOutput_ADiedOrStaleJobSaysWhatAPersonCanDo(t *testing.T) {
 func TestPrograms_AHostThatCannotBeBuiltIsAnError(t *testing.T) {
 	t.Parallel()
 
-	runs := programs{hosts: func(string) (host.Host, error) { return nil, errFake }}
+	runs := programs{hosts: func(string, string) (host.Host, error) { return nil, errFake }}
 
 	_, err := runs.Run(t.Context(), flow.CommandRequest{Host: "h", Run: []string{"x"}})
 	require.ErrorIs(t, err, errFake)
@@ -390,10 +390,10 @@ func TestNewPrograms_BuildTheHostOfTheProjectOnlyWhenItHasOne(t *testing.T) {
 	cfg := config.Config{Projects: map[string]config.Project{"bare": {}}}
 	runs := newPrograms(cfg, treeAt("/tree"), newAdapters(nil, nil))
 
-	_, err := runs.hosts("zzz")
+	_, err := runs.hosts("zzz", "")
 	require.ErrorIs(t, err, errUnknownProject)
 
-	_, err = runs.hosts("bare")
+	_, err = runs.hosts("bare", "")
 	require.ErrorIs(t, err, errNoHost)
 
 	runner := runs.local("sh", t.TempDir(), time.Second)
@@ -412,13 +412,49 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
 	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
 
-	got, err := runs.hosts("h")
+	got, err := runs.hosts("h", "")
 
 	require.NoError(t, err)
 
 	_, err = got.Submit(t.Context(), model.JobSpec{Name: "j"})
 	require.NoError(t, err)
 	assert.Equal(t, "j", hosted.spec.Name)
+}
+
+func TestNewPrograms_BuildTheHostOfTheClusterThatTheRunChose(t *testing.T) {
+	t.Parallel()
+
+	var built []string
+
+	table := newAdapters(nil, nil)
+	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
+		model.HostSkyPilot: func(project model.Project) (host.Host, error) {
+			built = append(built, project.BuildHost)
+
+			return &fakeHost{}, nil
+		},
+	}
+
+	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
+	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
+
+	_, err := runs.hosts("h", "gpu-b")
+	require.NoError(t, err)
+
+	_, err = runs.hosts("h", "")
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"gpu-b", "gpu"}, built, "the adapter builds the cluster that was chosen; no choice builds the build host")
+
+	_, err = runs.hosts("h", "rogue")
+	require.ErrorIs(t, err, model.ErrUndeclaredHost, "the host table refuses a cluster that the project does not declare")
+
+	_, err = runs.declared("zzz", "")
+	require.ErrorIs(t, err, errUnknownProject)
+
+	chosen, err := runs.declared("h", "gpu-b")
+	require.NoError(t, err)
+	assert.Equal(t, "gpu-b", chosen)
 }
 
 func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *testing.T) {

@@ -58,8 +58,11 @@ type Project struct {
 	TestReport  string
 	PinFile     string
 	// Changelog is the path of the changelog file of the repository, or empty when the project declares none. It is a fact for the workflow, which refuses a merge that leaves it unchanged.
-	Changelog  string
-	BuildHost  string
+	Changelog string
+	BuildHost string
+	// BuildHosts is every build host that a project with more than one declares, and BuildHost is the first: the default of a run.
+	// It is empty when BuildHost is the only one. Every cluster shares the Host block.
+	BuildHosts []string
 	Host       *HostConfig
 	Visibility Visibility
 	// Sandbox is the default for a step that sets no sandbox. SandboxRead and SandboxDeny extend the read base and the credential list of the engine.

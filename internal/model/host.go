@@ -4,9 +4,32 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
+
+// ErrUndeclaredHost is returned when a run names a build host that the project file does not declare.
+var ErrUndeclaredHost = errors.New("undeclared build host")
+
+// HostFor returns the cluster that a run uses. An empty choice gives BuildHost, the default. A named cluster must be a declared host of the project.
+// A project that builds here declares only "local", so a workflow that names its host "local" works, and a cluster name is refused.
+func (p Project) HostFor(cluster string) (string, error) {
+	if cluster == "" {
+		return p.BuildHost, nil
+	}
+
+	declared := p.BuildHosts
+	if len(declared) == 0 {
+		declared = []string{p.BuildHost}
+	}
+
+	if slices.Contains(declared, cluster) {
+		return cluster, nil
+	}
+
+	return "", fmt.Errorf("%w %q for project %s: use one of %s", ErrUndeclaredHost, cluster, p.Name, strings.Join(declared, ", "))
+}
 
 // HostProvider names a build host adapter that a project selects.
 type HostProvider string

@@ -241,6 +241,8 @@ type treeGate struct {
 	repo  repoGit
 	mu    sync.Mutex
 	trees []string
+	// hosts are the build hosts that the runs of the gate were given, in order.
+	hosts []string
 	// lie, when set, is the tree that the gate reports in place of the tree it ran on.
 	lie string
 	// unknownStep, when set, makes the gate report Passed with a step whose result is unknown.
@@ -251,9 +253,15 @@ type treeGate struct {
 	void bool
 }
 
-func (*treeGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (*treeGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g *treeGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
+func (g *treeGate) Run(ctx context.Context, _, _, host string, _ GateJob) (GateResult, error) {
+	g.mu.Lock()
+	g.hosts = append(g.hosts, host)
+	g.mu.Unlock()
+
 	tree := strings.TrimSpace(g.repo.Run(ctx, []string{"rev-parse", "HEAD^{tree}"}).Stdout)
 	head := strings.TrimSpace(g.repo.Run(ctx, []string{"rev-parse", "HEAD"}).Stdout)
 	passed := g.repo.Run(ctx, []string{"cat-file", "-e", "HEAD:bad.txt"}).ExitCode != 0

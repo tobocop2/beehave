@@ -60,7 +60,7 @@ func TestProjectGate_ASandboxOffGateStillRuns(t *testing.T) {
 		programs: programs{trees: treeAt(t.TempDir()), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
 	}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.NoError(t, err)
 	assert.Contains(t, calls.binaries, "sh")

@@ -56,16 +56,16 @@ type fakeHosts struct {
 	live     bool // the host was up before the run, so Up starts nothing
 }
 
-func (f *fakeHosts) Up(_ context.Context, project string) (bool, error) {
+func (f *fakeHosts) Up(_ context.Context, project, _ string) (bool, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.ups = append(f.ups, project)
 
-	return !f.live, nil
+	return !f.live, "", nil
 }
 
-func (f *fakeHosts) Teardown(ctx context.Context, project string) error {
+func (f *fakeHosts) Teardown(ctx context.Context, project, _ string) error {
 	f.mu.Lock()
 	f.asked = append(f.asked, project)
 	f.mu.Unlock()
@@ -200,9 +200,9 @@ func TestExample_ARunThatFoundTheHostLiveDoesNotStopIt(t *testing.T) {
 
 type failingHosts struct{ err error }
 
-func (failingHosts) Up(context.Context, string) (bool, error) { return false, nil }
+func (failingHosts) Up(context.Context, string, string) (bool, string, error) { return false, "", nil }
 
-func (f failingHosts) Teardown(context.Context, string) error { return f.err }
+func (f failingHosts) Teardown(context.Context, string, string) error { return f.err }
 
 func TestStopHost_ACanceledRunRecordsNoResultSoAResumeStopsTheHostAgain(t *testing.T) {
 	t.Parallel()

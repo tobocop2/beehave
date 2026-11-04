@@ -282,7 +282,7 @@ type batchGate struct {
 
 // Run queues the checkout and the gate on the exclusive queue, so no merge of the repository starts while the batch gate runs.
 func (g batchGate) Run(ctx context.Context, in batch.GateInput) (batch.GateOutcome, error) {
-	ran, err := g.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindBatchGate, Project: g.s.in.Project, Item: g.s.in.Item, Commit: in.Commit, GateRun: g.run})
+	ran, err := g.s.e.queueExclusive(ctx, ExclusiveInput{Kind: kindBatchGate, Project: g.s.in.Project, Item: g.s.in.Item, BuildHost: g.s.hostChosen, Commit: in.Commit, GateRun: g.run})
 
 	return ran.Batch, err
 }
@@ -295,7 +295,7 @@ func (e *Engine) batchGateOutcome(ctx context.Context, in ExclusiveInput) (batch
 	}
 
 	if len(in.GateRun) == 0 {
-		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item, GateJob{})
+		gated, err := e.deps.Gate.Run(ctx, in.Project, in.Item, in.BuildHost, GateJob{})
 
 		void := voidReason(gated)
 		if void != "" && gated.Tree == "" {

@@ -309,9 +309,11 @@ func TestExample_AGateThatCannotRunEndsTheRunBeforeAnyReviewOrFix(t *testing.T) 
 // packageGate runs the real gate package on a local project whose gate command is killed by a signal.
 type packageGate struct{ head, tree string }
 
-func (packageGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (packageGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g packageGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
+func (g packageGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
 	shell := func(context.Context, string, string) (string, int) { return "partial output", 128 + 15 }
 	tree := func(context.Context, string) (gatepkg.State, error) {
 		return gatepkg.State{Head: g.head, Tree: g.tree, Clean: true}, nil
@@ -332,9 +334,11 @@ type zeroTestGate struct {
 	runs            *int
 }
 
-func (zeroTestGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (zeroTestGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g zeroTestGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
+func (g zeroTestGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
 	*g.runs++
 	runs := *g.runs
 

@@ -100,6 +100,22 @@ func TestBatchMerge_ThreeMembersOneRedTwoLandOnAGreenGate(t *testing.T) {
 	assert.Equal(t, []string{"1", "3"}, rig.host.intents)
 }
 
+func TestBatchMerge_TheGateOfTheUnionRunsOnTheHostThatTheRunChose(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.hosts = &upHosts{started: true}
+
+	_, err := rig.walk(t, "host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", ""))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, rig.gate.hosts, "the gate of the union ran")
+
+	for _, host := range rig.gate.hosts {
+		assert.Equal(t, "gpu-b", host, "the batch gate runs on the host that host_up recorded")
+	}
+}
+
 func TestBatchMerge_TheProjectGateReportsTheTreeOfTheUnionItRanOn(t *testing.T) {
 	t.Parallel()
 
