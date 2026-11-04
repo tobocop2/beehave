@@ -280,8 +280,12 @@ type programs struct {
 	// local runs a program with the environment of the process. The gate uses it.
 	local func(binary, dir string, timeout time.Duration) proc.Runner
 	// exec runs the program of a command step. Its spec holds the whole environment of the program (Only) and its stdin.
-	exec  func(spec proc.ExecRunner) proc.Runner
-	hosts func(project string) (host.Host, error)
+	exec func(spec proc.ExecRunner) proc.Runner
+	// hosts builds the host of a cluster of the project. An empty cluster is the build host of the project.
+	hosts func(project, cluster string) (host.Host, error)
+	// declared resolves the cluster a run chose to a cluster the project declares: an empty choice gives the build host, an undeclared one is refused.
+	// A nil declared passes the choice through.
+	declared func(project, cluster string) (string, error)
 	// sandbox runs a gate under the sandbox of its project.
 	sandbox gateSandbox
 }
@@ -385,7 +389,7 @@ func commandFolder(dir, item string) (string, func(), error) {
 }
 
 func (p programs) onHost(ctx context.Context, request flow.CommandRequest) (flow.CommandOutput, error) {
-	h, err := p.hosts(request.Project)
+	h, err := p.hosts(request.Project, request.BuildHost)
 	if err != nil {
 		return flow.CommandOutput{}, err
 	}

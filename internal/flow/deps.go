@@ -84,10 +84,11 @@ type GateJob struct {
 
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.
 // Submit starts the host job and returns at once. Run then waits for that job and judges the result; given an empty GateJob it starts the job itself.
+// host is the build host that the run recorded in host_up. An empty host is the default build host of the project.
 type gate interface {
-	Submit(ctx context.Context, project, item string) (GateJob, error)
-	Run(ctx context.Context, project, item string, job GateJob) (GateResult, error)
-	Key(ctx context.Context, project, item string) (GateKey, error)
+	Submit(ctx context.Context, project, item, host string) (GateJob, error)
+	Run(ctx context.Context, project, item, host string, job GateJob) (GateResult, error)
+	Key(ctx context.Context, project, item, host string) (GateKey, error)
 }
 
 // logins picks the agent login for an item of a project and returns its runner name.
@@ -218,7 +219,9 @@ type CommandRequest struct {
 	Item    string
 	Run     []string
 	Host    string
-	Timeout time.Duration
+	// BuildHost is the build host that the run recorded in host_up. The gate and a call with Host run there. Empty means the default of the project.
+	BuildHost string
+	Timeout   time.Duration
 	// Gate is true for the program of a gate (a gate call with run, or the gate_run of batch_merge). A gate on this machine runs under the sandbox of its project.
 	Gate bool
 	// MaxNewProcesses is the number of processes above the count of the user at the start. It is zero for a call that sets no cap.

@@ -366,11 +366,13 @@ func newDryGate(head string, red bool) dryGate {
 	return dryGate{head: head, red: red, runs: new(atomic.Int32)}
 }
 
-func (dryGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+func (dryGate) Key(context.Context, string, string, string) (GateKey, error) { return GateKey{}, nil }
 
-func (dryGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (dryGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g dryGate) Run(context.Context, string, string, GateJob) (GateResult, error) {
+func (g dryGate) Run(context.Context, string, string, string, GateJob) (GateResult, error) {
 	if g.runs.Add(1) == 1 && g.red {
 		return GateResult{Passed: false, Head: g.head, Tree: dryTree, Steps: []GateStep{{Name: gatepkg.StepCommand, Status: failStatus}}}, nil
 	}

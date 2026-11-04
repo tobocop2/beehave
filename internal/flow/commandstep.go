@@ -62,7 +62,7 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 
 // request makes the request of a call from its program, host and timeout. The caller adds stdin and the environment.
 func (s *script) request(run starlark.Value, host, timeout string) (CommandRequest, error) {
-	request := CommandRequest{Project: s.in.Project, Item: s.in.Item, Host: host}
+	request := CommandRequest{Project: s.in.Project, Item: s.in.Item, Host: host, BuildHost: s.hostChosen}
 
 	var err error
 	if request.Run, err = workflow.Words("run", run); err != nil {
@@ -202,7 +202,7 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 		return gateStart{Reused: gateOutputs(true, key.Head, key.Tree, line, earlier.steps), Key: key}, nil
 	}
 
-	job, err := e.deps.Gate.Submit(ctx, request.Project, request.Item)
+	job, err := e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost)
 
 	return gateStart{Job: job, Key: key}, err
 }
@@ -210,7 +210,7 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 // finishProjectGate waits for the host job of the project gate and judges it. The key it returns is empty unless the gate passed on every step
 // and read the tree it judged: only such a pass may stand in for a later gate. The key to compare with is the one that the first step read and recorded.
 func (e *Engine) finishProjectGate(ctx context.Context, request CommandRequest, start gateStart) (map[string]any, string, error) {
-	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, start.Job)
+	gated, err := e.deps.Gate.Run(ctx, request.Project, request.Item, request.BuildHost, start.Job)
 	if err != nil {
 		return nil, "", err
 	}
@@ -220,7 +220,7 @@ func (e *Engine) finishProjectGate(ctx context.Context, request CommandRequest, 
 
 // gateKey reads the key of the project gate. A key that cannot be read is an empty key: the gate then runs and reports the same problem.
 func (e *Engine) gateKey(ctx context.Context, request CommandRequest) GateKey {
-	key, err := e.deps.Gate.Key(ctx, request.Project, request.Item)
+	key, err := e.deps.Gate.Key(ctx, request.Project, request.Item, request.BuildHost)
 	if err != nil {
 		return GateKey{}
 	}

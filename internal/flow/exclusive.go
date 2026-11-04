@@ -33,7 +33,9 @@ type ExclusiveInput struct {
 	Kind    string `json:"kind"`
 	Project string `json:"project"`
 	Item    string `json:"item"`
-	Head    string `json:"head,omitempty"`
+	// BuildHost is the build host that the run recorded in host_up, for a batch gate. A gate carries it in Request.
+	BuildHost string `json:"build_host,omitempty"`
+	Head      string `json:"head,omitempty"`
 	// Tip is the head of the pull request that a gate judges, set when the gate is queued. A gate of a newer head stops a gate whose Tip is another head.
 	Tip      string         `json:"tip,omitempty"`
 	Commit   string         `json:"commit,omitempty"`

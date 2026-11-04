@@ -50,7 +50,7 @@ func resultFields() map[string][]string {
 		gateName:         {"passed", "head", treeKeyword, "report", "steps"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
-		hostUpName:       {"started"},
+		hostUpName:       {"started", "host"},
 		mergeName:        {"state", reasonField},
 		preflightName:    {"ok", "stop", "code", reasonField},
 		queueName:        {"rows", "free"},

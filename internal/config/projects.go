@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -32,7 +33,7 @@ type rawProject struct {
 	BeadsPrefix string
 	BaseBranch  string
 	Gate        string
-	BuildHost   string
+	BuildHost   hostNames
 	Host        *rawHost
 	TestReport  text
 	PinFile     text
@@ -103,7 +104,7 @@ func evalProject(path string) (*rawProject, error) {
 
 // newProject is the constructor of the project block. The tracker and the claim store default to local, and the build host to this machine.
 func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error) {
-	raw := &rawProject{At: at, Tracker: string(model.TrackerLocal), Claims: string(model.ClaimsLocal), BuildHost: LocalHost}
+	raw := &rawProject{At: at, Tracker: string(model.TrackerLocal), Claims: string(model.ClaimsLocal), BuildHost: hostNames{LocalHost}}
 
 	host := nested[rawHost]{want: hostSpec().name}
 	board := nested[rawBoard]{want: boardSpec().name}
@@ -134,7 +135,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 
 	return withFacts(model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
+		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, raw)
 }
@@ -300,17 +301,71 @@ func testReport(raw rawProject) error {
 	return requireText(raw.At, "test_report", raw.TestReport.Value)
 }
 
+// hostNames is the build_host argument: one name, or a list of names that a run may choose. The first name is the default of a run.
+type hostNames []string
+
+// Unpack stores a text as one name, or a list or a tuple of texts as the names. It refuses any other value.
+func (h *hostNames) Unpack(v starlark.Value) error {
+	if text, isText := starlark.AsString(v); isText {
+		*h = hostNames{text}
+
+		return nil
+	}
+
+	var names paths
+	if err := names.Unpack(v); err != nil {
+		return fmt.Errorf("got %s, want a name or a list of names", v.Type())
+	}
+
+	*h = hostNames(names)
+
+	return nil
+}
+
+// declaredHosts returns the hosts of a project that names more than one. A project with one host has none to choose from: its BuildHost is the only one.
+func declaredHosts(names hostNames) []string {
+	if len(names) <= 1 {
+		return nil
+	}
+
+	return slices.Clone(names)
+}
+
+// hostName checks one name of build_host against the names before it.
+func hostName(raw rawProject, name string, earlier []string) error {
+	if err := requireText(raw.At, "build_host", name); err != nil {
+		return err
+	}
+
+	if !clusterName.MatchString(name) {
+		return refuseAt(raw.At, "`build_host` must be %q or a SkyPilot cluster name (a letter, then letters, digits and hyphens); got `%s`. Fix the value.", LocalHost, name)
+	}
+
+	if slices.Contains(earlier, name) {
+		return refuseAt(raw.At, "`build_host` lists `%s` twice. Remove one.", name)
+	}
+
+	return nil
+}
+
+// buildHost checks build_host and returns the default build host: its first name. A project that builds on this machine declares only that name.
+// Every other name is a cluster that shares the host block, and is no repeat.
 func buildHost(raw rawProject) (string, error) {
-	if err := requireText(raw.At, "build_host", raw.BuildHost); err != nil {
-		return "", err
+	if len(raw.BuildHost) == 0 {
+		return "", refuseAt(raw.At, "`build_host` is an empty list. Name at least one build host.")
 	}
 
-	if !clusterName.MatchString(raw.BuildHost) {
-		return "", refuseAt(raw.At, "`build_host` must be %q or a SkyPilot cluster name (a letter, then letters, digits and hyphens); got `%s`. Fix the value.",
-			LocalHost, raw.BuildHost)
+	for i, name := range raw.BuildHost {
+		if err := hostName(raw, name, raw.BuildHost[:i]); err != nil {
+			return "", err
+		}
 	}
 
-	return raw.BuildHost, nil
+	if len(raw.BuildHost) > 1 && slices.Contains(raw.BuildHost, LocalHost) {
+		return "", refuseAt(raw.At, "`build_host` lists %q with other hosts. A project that builds on this machine names only %q.", LocalHost, LocalHost)
+	}
+
+	return raw.BuildHost[0], nil
 }
 
 // adapters holds the adapters that a project names.

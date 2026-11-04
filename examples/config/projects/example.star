@@ -38,7 +38,8 @@ project(
     #     merged = "Done",             # the Status column that it sets after the merge; required
     #     owner = "your-org",          # the login that owns the board; the default is the owner of `repo`
     # ),                               # optional. With no board block the example makes no board call. The token needs the `project` scope
-    build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
+    build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition), or a list of cluster names such as ["gpu", "gpu-b"]
+    # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
     #     provider = "skypilot",   # the host adapter

@@ -404,8 +404,10 @@ def main(item):
 
     # HOST_UP="true" launches the build host when it is absent. Without it the run starts no host, so a run that needs none costs nothing.
     # A project with no host, or a host that is already up, starts nothing. The host deletes itself when idle (host.idle_minutes).
+    # BUILD_HOST names the cluster of this run: one of the clusters that build_host of the project declares. Without it the run uses the first one, the default.
+    # host_up records the cluster. The gate, the command steps with a host and host_teardown all use that one. A second run on its own host sets another BUILD_HOST.
     if env("HOST_UP", default = "") == "true":
-        host_up(name = "host")
+        host_up(name = "host", host = env("BUILD_HOST", default = ""))
 
     pipeline(item)
 

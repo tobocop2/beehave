@@ -65,7 +65,7 @@ func TestProjectGate_TheHeadAndItsTreeAreReadByOneGitCall(t *testing.T) {
 		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
 	}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.NoError(t, err)
 
@@ -94,7 +94,7 @@ func TestProjectGate_AnAnswerWithoutTheHeadAndTheTreeFailsTheGateBeforeItRuns(t 
 	}
 	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: local}}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.ErrorContains(t, err, "git rev-parse in /tree printed 1 lines, and the head and the tree make 2")
 	assert.NotContains(t, calls.binaries, "sh")
@@ -137,7 +137,7 @@ func TestProjectGate_ALocalGateReportsAPassOnTheHeadOfTheWorktree(t *testing.T) 
 		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
 	}
 
-	got, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	got, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.NoError(t, err)
 	assert.Equal(t, flow.GateResult{Passed: true, Report: "ok", Head: "abc123", Tree: "tree-of-abc123", Steps: []flow.GateStep{{Name: "command", Status: "pass"}}}, got)
@@ -155,7 +155,7 @@ func TestProjectGate_KeyNamesTheHeadAndTheTreeAndStartsNoGate(t *testing.T) {
 		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
 	}
 
-	got, err := gate.Key(t.Context(), "p", "1")
+	got, err := gate.Key(t.Context(), "p", "1", "")
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, got.ID)
@@ -184,7 +184,7 @@ func TestProjectGate_KeyRefusesWhatItCannotReadWithoutRunningTheGate(t *testing.
 			calls := &gateCalls{}
 			gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, test.head, model.CommandResult{})}}
 
-			_, err := gate.Key(t.Context(), test.project, "1")
+			_, err := gate.Key(t.Context(), test.project, "1", "")
 
 			require.ErrorContains(t, err, test.wantErr)
 			assert.NotContains(t, calls.binaries, "sh")
@@ -201,7 +201,7 @@ func TestProjectGate_ATreeWithUncommittedChangesIsRefusedAndTheGateNeverRuns(t *
 		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123\n"}, model.CommandResult{Stdout: "ok"})},
 	}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.ErrorIs(t, err, igate.ErrTreeChanged)
 	assert.NotContains(t, calls.binaries, "sh", "a dirty tree is never judged")
@@ -217,7 +217,7 @@ func TestProjectGate_ALocalGateThatFailsKeepsTheTailOfItsOutput(t *testing.T) {
 		programs: programs{trees: treeAt("/tree"), local: gateRunner(calls, model.CommandResult{Stdout: "abc123"}, model.CommandResult{Stdout: long, Stderr: " and more", ExitCode: 2})},
 	}
 
-	got, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	got, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.NoError(t, err)
 	assert.False(t, got.Passed)
@@ -243,7 +243,7 @@ func TestProjectGate_ATreeThatCannotBeReadFailsTheGateBeforeItRuns(t *testing.T)
 	}
 	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: local}}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.ErrorContains(t, err, "git rev-parse in /tree: fatal: no tree")
 	assert.NotContains(t, calls.binaries, "sh")
@@ -273,12 +273,12 @@ func TestProjectGate_AHostGateChecksOutTheHeadItReportsAndRunsNothingHere(t *tes
 				programs: programs{
 					trees: treeAt("/tree"),
 					local: gateRunner(calls, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
-					hosts: func(string) (host.Host, error) { return hosted, nil },
+					hosts: func(string, string) (host.Host, error) { return hosted, nil },
 				},
 				forge: forgeAt("https://example.test/repo.git"),
 			}
 
-			got, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+			got, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 			require.NoError(t, err)
 			status := "fail"
@@ -304,19 +304,19 @@ func TestProjectGate_ASubmittedHostJobIsWaitedOnByItsIDAndNotSubmittedAgain(t *t
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
-			hosts: func(string) (host.Host, error) { return hosted, nil },
+			hosts: func(string, string) (host.Host, error) { return hosted, nil },
 		},
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1")
+	job, err := gate.Submit(t.Context(), "p", "1", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, flow.GateJob{ID: "job-1", Head: "abc123"}, job)
 	assert.Contains(t, hosted.spec.Command, "git checkout --detach abc123")
 
 	hosted.spec = model.JobSpec{}
-	got, err := gate.Run(t.Context(), "p", "1", job)
+	got, err := gate.Run(t.Context(), "p", "1", "", job)
 
 	require.NoError(t, err)
 	assert.True(t, got.Passed)
@@ -333,15 +333,15 @@ func TestProjectGate_SubmitRefusesAProjectItCannotFindAndAHostThatRefusesTheJob(
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
-			hosts: func(string) (host.Host, error) { return refusing, nil },
+			hosts: func(string, string) (host.Host, error) { return refusing, nil },
 		},
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "unknown", "1")
+	_, err := gate.Submit(t.Context(), "unknown", "1", "")
 	require.ErrorIs(t, err, errUnknownProject)
 
-	_, err = gate.Submit(t.Context(), "p", "1")
+	_, err = gate.Submit(t.Context(), "p", "1", "")
 	require.ErrorIs(t, err, errFake)
 }
 
@@ -359,12 +359,12 @@ func TestProjectGate_TheCloneURLIsTheSourceOfTheProjectAndTheForgeIsNotAsked(t *
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
-			hosts: func(string) (host.Host, error) { return hosted, nil },
+			hosts: func(string, string) (host.Host, error) { return hosted, nil },
 		},
 		forge: func(model.Project) (forge.Forge, error) { return nil, errFake },
 	}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.NoError(t, err)
 	assert.Contains(t, hosted.spec.Command, "git clone -- https://example.test/shop.git tree")
@@ -379,12 +379,12 @@ func TestProjectGate_AHostThatCannotRunTheJobEndsTheGateWithAnError(t *testing.T
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
-			hosts: func(string) (host.Host, error) { return &fakeHost{state: model.JobCanceled}, nil },
+			hosts: func(string, string) (host.Host, error) { return &fakeHost{state: model.JobCanceled}, nil },
 		},
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.ErrorIs(t, err, igate.ErrNoVerdict)
 }
@@ -415,7 +415,7 @@ func TestProjectGate_RefusesWhatItCannotRunWithoutRunningTheGate(t *testing.T) {
 			calls := &gateCalls{}
 			gate := projectGate{projects: test.projects, programs: programs{trees: test.trees, local: gateRunner(calls, test.head, model.CommandResult{})}, forge: test.forge}
 
-			_, err := gate.Run(t.Context(), test.project, "1", flow.GateJob{})
+			_, err := gate.Run(t.Context(), test.project, "1", "", flow.GateJob{})
 
 			require.ErrorContains(t, err, test.wantErr)
 			assert.NotContains(t, calls.binaries, "sh", "a gate that cannot start never runs")
@@ -455,7 +455,7 @@ func TestProjectGate_AStatusThatGitCannotReadEndsTheGate(t *testing.T) {
 	}
 	gate := projectGate{projects: localProject(), programs: programs{trees: treeAt("/tree"), local: runner}}
 
-	_, err := gate.Run(t.Context(), "p", "1", flow.GateJob{})
+	_, err := gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
 	require.ErrorContains(t, err, "git status in /tree: fatal: not a repository")
 }

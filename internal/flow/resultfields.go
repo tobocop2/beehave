@@ -24,7 +24,9 @@ func teardownOutputs(down bool, reason string) map[string]any {
 	return map[string]any{"down": down, reasonKey: reason}
 }
 
-func upOutputs(started bool) map[string]any { return map[string]any{"started": started} }
+func upOutputs(started bool, host string) map[string]any {
+	return map[string]any{"started": started, hostKeyword: host}
+}
 
 // answerOutputs records the answer of a wait. timed_out is true when the deadline of the wait passed first, and the answer is then empty.
 // answers holds the text of each person who answered, by name. It is an empty dict for a wait that names no people, never a null.

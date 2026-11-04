@@ -194,7 +194,7 @@ func TestDryGate_EveryRunPassesWithAPassedStepUnlessTheRedGateIsChosen(t *testin
 	gate := newDryGate("h", false)
 
 	for range 2 {
-		green, err := gate.Run(t.Context(), "p", "i", GateJob{})
+		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
 		require.NoError(t, err)
 		assert.True(t, green.Passed)
 		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)
@@ -206,13 +206,13 @@ func TestDryGate_WithTheRedGateTheFirstRunIsRedWithAFailedStepAndEveryLaterRunPa
 
 	gate := newDryGate("h", true)
 
-	red, err := gate.Run(t.Context(), "p", "i", GateJob{})
+	red, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
 	require.NoError(t, err)
 	assert.False(t, red.Passed)
 	assert.Equal(t, []GateStep{{Name: "command", Status: "fail"}}, red.Steps)
 
 	for range 2 {
-		green, err := gate.Run(t.Context(), "p", "i", GateJob{})
+		green, err := gate.Run(t.Context(), "p", "i", "", GateJob{})
 		require.NoError(t, err)
 		assert.True(t, green.Passed)
 		assert.Equal(t, []GateStep{{Name: "command", Status: "pass"}}, green.Steps)

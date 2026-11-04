@@ -22,22 +22,38 @@ type hostGate struct {
 	started chan struct{}
 	mu      *sync.Mutex
 	jobs    *[]GateJob
+	// hosts are the build hosts that Submit and Run were given, in order.
+	hosts *[]string
+	// blockAt is the number of the wait that blocks until the run is canceled.
+	blockAt int
 }
 
 func newHostGate() hostGate {
-	return hostGate{submits: &atomic.Int32{}, started: make(chan struct{}, 1), mu: &sync.Mutex{}, jobs: &[]GateJob{}}
+	return hostGate{submits: &atomic.Int32{}, started: make(chan struct{}, 1), mu: &sync.Mutex{}, jobs: &[]GateJob{}, hosts: &[]string{}, blockAt: 1}
 }
 
-func (hostGate) Key(context.Context, string, string) (GateKey, error) { return GateKey{}, nil }
+func (g hostGate) gatedOn() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
-func (g hostGate) Submit(context.Context, string, string) (GateJob, error) {
+	return append([]string(nil), *g.hosts...)
+}
+
+func (hostGate) Key(context.Context, string, string, string) (GateKey, error) { return GateKey{}, nil }
+
+func (g hostGate) Submit(_ context.Context, _, _, host string) (GateJob, error) {
+	g.mu.Lock()
+	*g.hosts = append(*g.hosts, host)
+	g.mu.Unlock()
+
 	return GateJob{ID: "job-" + string(rune('0'+g.submits.Add(1))), Head: gatedHead}, nil
 }
 
-func (g hostGate) Run(ctx context.Context, _, _ string, job GateJob) (GateResult, error) {
+func (g hostGate) Run(ctx context.Context, _, _, host string, job GateJob) (GateResult, error) {
 	g.mu.Lock()
+	*g.hosts = append(*g.hosts, host)
 	*g.jobs = append(*g.jobs, job)
-	first := len(*g.jobs) == 1
+	first := len(*g.jobs) == g.blockAt
 	g.mu.Unlock()
 
 	if first {
@@ -97,6 +113,111 @@ func TestGateJob_ACrashAfterTheSubmitAndBeforeTheWaitIsRecordedSubmitsOnceAndThe
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, gated.submits.Load(), "the replay submitted no second job")
 	assert.Equal(t, []GateJob{{ID: "job-1", Head: gatedHead}, {ID: "job-1", Head: gatedHead}}, gated.waitedOn(), "both waits are on the one recorded job")
+}
+
+func TestGateJob_AResumedRunGatesOnTheHostThatItRecordedAndStartsNoHostAgain(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	own := &upHosts{started: true}
+	h.hosts = own
+	gated := newHostGate()
+	deps := h.deps()
+	deps.Gate = gated
+
+	engine, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"check\")\n"))
+	ended := make(chan error, 1)
+
+	go func() {
+		_, runErr := engine.RunFile(testItem, testProject, file)
+		ended <- runErr
+	}()
+
+	<-gated.started
+
+	client := h.client(t, testVersion)
+	require.NoError(t, client.Cancel(testItem))
+	h.tick(t)
+
+	select {
+	case runErr := <-ended:
+		require.Error(t, runErr)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run did not end after the cancel")
+	}
+
+	_, err = resumeAndJoin(t, engine, client)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume read the recorded host and started none")
+
+	hosts := gated.gatedOn()
+	require.GreaterOrEqual(t, len(hosts), 2, "the gate ran before and after the resume")
+
+	for _, host := range hosts {
+		assert.Equal(t, "gpu-b", host, "the resumed run gates on the host that the first run recorded")
+	}
+}
+
+// The cancel falls after the first gate has finished, so the resumed main replays host_up and the first gate from their records and runs
+// every later use of the host itself: a second gate, a command and host_teardown. Each one takes the host from the replayed record of host_up.
+func TestGateJob_AResumedMainUsesTheHostThatTheReplayedRecordNamesForEveryLaterStep(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	own := &upHosts{started: true}
+	h.hosts = own
+	gated := newHostGate()
+	gated.blockAt = 2
+	deps := h.deps()
+	deps.Gate = gated
+
+	engine, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
+
+	file := writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"one\")\ngate(name = \"two\")\ncommand(name = \"build\", run = [\"make\", \"x\"], host = \"build\")\nhost_teardown(name = \"stop\")\n"))
+	ended := make(chan error, 1)
+
+	go func() {
+		_, runErr := engine.RunFile(testItem, testProject, file)
+		ended <- runErr
+	}()
+
+	<-gated.started
+
+	client := h.client(t, testVersion)
+	require.NoError(t, client.Cancel(testItem))
+	h.tick(t)
+
+	select {
+	case runErr := <-ended:
+		require.Error(t, runErr)
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run did not end after the cancel")
+	}
+
+	before := len(gated.gatedOn())
+
+	_, err = resumeAndJoin(t, engine, client)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"gpu-b"}, own.asked, "the resume started no host")
+	assert.Greater(t, len(gated.gatedOn()), before, "the second gate ran again after the resume")
+
+	for _, host := range gated.gatedOn() {
+		assert.Equal(t, "gpu-b", host, "the second gate takes the host from the replayed record")
+	}
+
+	require.Len(t, h.commands.requests, 1)
+	assert.Equal(t, "gpu-b", h.commands.requests[0].BuildHost, "the command after the resume runs on the recorded host")
+	assert.Equal(t, []string{"gpu-b"}, own.stopped, "the stop after the resume stops the recorded host")
 }
 
 // gateChildSteps returns the id of the exclusive run that holds the gate, and the names of its steps in order.

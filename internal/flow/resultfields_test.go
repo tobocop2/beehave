@@ -50,7 +50,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"item_status":   keysOf(statusOutputs("", "")),
 		"merge":         keysOf(mergeOutputs("", "")),
 		"host_teardown": keysOf(teardownOutputs(true, "")),
-		"host_up":       keysOf(upOutputs(true)),
+		"host_up":       keysOf(upOutputs(true, "")),
 		"pr_assign":     keysOf(prOutputs(0, nil)),
 		"pr_comment":    keysOf(prCommentOutputs(0)),
 		"pr_open":       keysOf(openOutputs(OpenResult{})),

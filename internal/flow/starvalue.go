@@ -58,6 +58,9 @@ type script struct {
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 
+	// hostChosen is the cluster that host_up recorded. host_teardown stops that cluster when the call names none.
+	hostChosen string
+
 	// fixed is true once the first gate has recorded scope, the closing issues of the pull request at the first review.
 	// owned holds the issues that the owner kept by an answer.
 	fixed bool

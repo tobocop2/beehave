@@ -19,9 +19,11 @@ type slowGate struct {
 	release chan struct{}
 }
 
-func (slowGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (slowGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g slowGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
+func (g slowGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
 	g.started <- struct{}{}
 
 	select {
@@ -132,9 +134,11 @@ type cancelGate struct {
 	runs    *atomic.Int32
 }
 
-func (cancelGate) Submit(context.Context, string, string) (GateJob, error) { return GateJob{}, nil }
+func (cancelGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
 
-func (g cancelGate) Run(ctx context.Context, _, _ string, _ GateJob) (GateResult, error) {
+func (g cancelGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
 	if g.runs.Add(1) == 1 {
 		g.started <- struct{}{}
 		<-ctx.Done()
