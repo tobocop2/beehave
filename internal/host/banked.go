@@ -3,7 +3,9 @@ package host
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
@@ -21,29 +23,83 @@ const (
 	refFormat = "--format=%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)%09%(refname)"
 )
 
+// DefaultRepoBudget is the time that the scan gives to one repository when no option sets another.
+const DefaultRepoBudget = 20 * time.Second
+
+// unreadableRef names the entry of a repository that the scan could not read.
+const unreadableRef = "(unreadable)"
+
 // Unbanked is one commit on the host that no remote with a host part holds.
+// An entry with a Reason and no Commit stands for a repository that the scan could not read: it may hold work, so it counts as unbanked.
 type Unbanked struct {
 	Repo   string
 	Ref    string
 	Commit string
+	Reason string
+}
+
+// ScanOption sets how the bank scan runs.
+type ScanOption func(*scanSettings)
+
+type scanSettings struct {
+	budget time.Duration
+}
+
+// WithRepoBudget sets the time that the scan gives to each repository, shared by all its git calls. A value of zero or less keeps DefaultRepoBudget.
+func WithRepoBudget(budget time.Duration) ScanOption {
+	return func(s *scanSettings) {
+		if budget > 0 {
+			s.budget = budget
+		}
+	}
+}
+
+func newScan(opts []ScanOption) scanSettings {
+	s := scanSettings{budget: DefaultRepoBudget}
+	for _, opt := range opts {
+		opt(&s)
+	}
+
+	return s
 }
 
 // Banked lists the work in repos that is not on a remote. Every branch tip, tag, stash entry and worktree HEAD must be an
 // ancestor of a head or a tag that `git ls-remote` reports on a remote with a host part, or on one of the extra URLs.
-// A remote that cannot be read holds nothing. A git command that cannot read the repository is an error.
+// A remote that cannot be read holds nothing. A repository whose git call fails, or whose time budget ends, is listed as one unbanked entry, and the scan goes on.
+// The error is the error of ctx: a canceled scan has no answer.
 func Banked(ctx context.Context, git proc.Runner, repos []string, extra ...string) ([]Unbanked, error) {
+	return banked(ctx, git, DefaultRepoBudget, repos, extra)
+}
+
+func banked(ctx context.Context, git proc.Runner, budget time.Duration, repos, extra []string) ([]Unbanked, error) {
 	var missing []Unbanked
 
 	for _, repo := range repos {
-		items, err := unbankedIn(ctx, git, repo, extra)
-		if err != nil {
+		missing = append(missing, scanRepo(ctx, git, repo, extra, budget)...)
+
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-
-		missing = append(missing, items...)
 	}
 
 	return missing, nil
+}
+
+// scanRepo reads one repository inside its own budget. A failed call or an ended budget leaves one unreadable entry in place of the repository.
+func scanRepo(ctx context.Context, git proc.Runner, repo string, extra []string, budget time.Duration) []Unbanked {
+	repoCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
+	items, err := unbankedIn(repoCtx, git, repo, extra)
+
+	switch {
+	case repoCtx.Err() != nil:
+		err = fmt.Errorf("the time budget of %s ended", budget)
+	case err == nil:
+		return items
+	}
+
+	return []Unbanked{{Repo: repo, Ref: unreadableRef, Reason: err.Error()}}
 }
 
 func unbankedIn(ctx context.Context, git proc.Runner, repo string, extra []string) ([]Unbanked, error) {
@@ -76,8 +132,15 @@ func unbankedIn(ctx context.Context, git proc.Runner, repo string, extra []strin
 // All repositories of the host share that one namespace. The branches stay until someone deletes them, and a CI system on the remote can see them.
 // A call that fails after some pushes leaves those branches in place. A new call pushes the same commit to the same name, so a retry is safe.
 // Only commits are banked: uncommitted and untracked files, and the index, are lost when the host goes.
-func Bank(ctx context.Context, git proc.Runner, repos []string, private string) error {
-	missing, err := Banked(ctx, git, repos)
+//
+// A repository that cannot be read, or whose time budget ends, is never pushed: it stays unbanked, so Bank refuses. The repositories after it are still banked.
+// The check after the pushes reads only the repositories that were pushed from, so a hung repository costs its budget once.
+// Each repository also gets one budget for all its pushes: a hung push ends the call as a refusal.
+// The budget ends the local wait only. A git process that runs on a remote host through ssh may go on after the wait ends.
+func Bank(ctx context.Context, git proc.Runner, repos []string, private string, opts ...ScanOption) error {
+	scan := newScan(opts)
+
+	missing, err := banked(ctx, git, scan.budget, repos, nil)
 	if err != nil || len(missing) == 0 {
 		return err
 	}
@@ -86,35 +149,97 @@ func Bank(ctx context.Context, git proc.Runner, repos []string, private string) 
 		return fmt.Errorf("%w: %s. Set `host.private_remote` to a remote with a host part, or push the work", ErrUnbanked, describe(missing))
 	}
 
-	if err = push(ctx, git, missing, private); err != nil {
-		return err
-	}
-
-	missing, err = Banked(ctx, git, repos, private)
-	if err != nil || len(missing) == 0 {
+	if missing, err = pushAndCheck(ctx, git, scan.budget, missing, private); err != nil || len(missing) == 0 {
 		return err
 	}
 
 	return fmt.Errorf("%w: %s", ErrUnbanked, describe(missing))
 }
 
-// push sends each commit to a branch of the private remote that no work uses.
-func push(ctx context.Context, git proc.Runner, missing []Unbanked, private string) error {
-	for _, item := range missing {
-		spec := item.Commit + ":" + bankedRefSpace + item.Commit[:min(shortCommit, len(item.Commit))]
+// pushAndCheck pushes the commits of the readable repositories, reads those repositories again, and returns what is still missing, with the unreadable entries.
+func pushAndCheck(ctx context.Context, git proc.Runner, budget time.Duration, missing []Unbanked, private string) ([]Unbanked, error) {
+	readable, unreadable := splitUnreadable(missing)
 
-		if result := git.Run(ctx, []string{"-C", item.Repo, "push", "--", private, spec}); result.ExitCode != 0 {
-			return fmt.Errorf("%w: push of %s from %s failed: %s", ErrUnbanked, item.Ref, item.Repo, strings.TrimSpace(result.Stderr))
+	if err := push(ctx, git, budget, readable, private); err != nil {
+		return nil, err
+	}
+
+	again, err := banked(ctx, git, budget, repoNames(readable), []string{private})
+
+	return slices.Concat(unreadable, again), err
+}
+
+// splitUnreadable separates the commits of the readable repositories from the entries of the repositories that could not be read.
+func splitUnreadable(missing []Unbanked) (readable, unreadable []Unbanked) {
+	for _, item := range missing {
+		if item.Reason != "" {
+			unreadable = append(unreadable, item)
+		} else {
+			readable = append(readable, item)
+		}
+	}
+
+	return readable, unreadable
+}
+
+// repoNames lists the repositories of the items once each, in order.
+func repoNames(items []Unbanked) []string {
+	var names []string
+
+	for _, item := range items {
+		if !slices.Contains(names, item.Repo) {
+			names = append(names, item.Repo)
+		}
+	}
+
+	return names
+}
+
+// push sends each commit to a branch of the private remote that no work uses. Each repository gets one time budget for all its pushes.
+func push(ctx context.Context, git proc.Runner, budget time.Duration, missing []Unbanked, private string) error {
+	for _, repo := range repoNames(missing) {
+		mine := slices.DeleteFunc(slices.Clone(missing), func(item Unbanked) bool { return item.Repo != repo })
+
+		if err := pushRepo(ctx, git, budget, repo, mine, private); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
+func pushRepo(ctx context.Context, git proc.Runner, budget time.Duration, repo string, missing []Unbanked, private string) error {
+	repoCtx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+
+	for _, item := range missing {
+		spec := item.Commit + ":" + bankedRefSpace + item.Commit[:min(shortCommit, len(item.Commit))]
+
+		if result := git.Run(repoCtx, []string{"-C", repo, "push", "--", private, spec}); result.ExitCode != 0 {
+			return fmt.Errorf("%w: push of %s from %s failed: %s", ErrUnbanked, item.Ref, repo, pushFailure(ctx, repoCtx, budget, result))
+		}
+	}
+
+	return nil
+}
+
+// pushFailure says why a push failed: the budget of the repository ended, or git reported the error.
+func pushFailure(ctx, repoCtx context.Context, budget time.Duration, result model.CommandResult) string {
+	if ctx.Err() == nil && repoCtx.Err() != nil {
+		return fmt.Sprintf("the time budget of %s ended", budget)
+	}
+
+	return strings.TrimSpace(result.Stderr)
+}
+
 func describe(missing []Unbanked) string {
 	parts := make([]string, len(missing))
 	for i, item := range missing {
 		parts[i] = item.Repo + " " + item.Ref
+
+		if item.Reason != "" {
+			parts[i] += ": " + item.Reason
+		}
 	}
 
 	return strings.Join(parts, ", ")

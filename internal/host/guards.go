@@ -24,26 +24,26 @@ const (
 
 // BankAll scans root on the host for repositories and banks the work in each one to private. See Bank.
 // git and find are the command lines of git and find on the host. A scan that fails or finds nothing is a refusal.
-func BankAll(ctx context.Context, git, find proc.Runner, root, private string) error {
+func BankAll(ctx context.Context, git, find proc.Runner, root, private string, opts ...ScanOption) error {
 	repos, err := FindRepos(ctx, find, root)
 	if err != nil {
 		return err
 	}
 
-	return Bank(ctx, git, repos, private)
+	return Bank(ctx, git, repos, private, opts...)
 }
 
 // Teardown scans the host, banks its work and stops it. It is the only way to stop a host with the guards:
 // a host with unbanked work, or one whose work cannot be read, stays up. A host with no repository stays up too: Teardown refuses zero repositories.
 // It scans the root that Host.WorkRoot names, the root that Wait scans.
 // After Down it audits the delete: it reads the status of the host again and returns ErrNotDeleted unless the host is absent.
-func Teardown(ctx context.Context, h Host, git, find proc.Runner, private string) error {
+func Teardown(ctx context.Context, h Host, git, find proc.Runner, private string, opts ...ScanOption) error {
 	root, err := h.WorkRoot(ctx)
 	if err != nil {
 		return fmt.Errorf("host stays up: %w", err)
 	}
 
-	if err = BankAll(ctx, git, find, root, private); err != nil {
+	if err = BankAll(ctx, git, find, root, private, opts...); err != nil {
 		return fmt.Errorf("host stays up: %w", err)
 	}
 

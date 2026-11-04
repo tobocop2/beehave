@@ -1,6 +1,7 @@
 package host_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -195,12 +197,14 @@ func TestBanked_Cases(t *testing.T) { //nolint:tparallel // t.Setenv forbids a p
 		assert.Len(t, missing(t, repo), 1)
 	})
 
-	t.Run("a_directory_git_cannot_read_is_an_error", func(t *testing.T) {
+	t.Run("a_directory_git_cannot_read_is_unbanked", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := host.Banked(t.Context(), proc.NewExecRunner("git", ""), []string{t.TempDir()})
+		dir := t.TempDir()
+		items, err := host.Banked(t.Context(), proc.NewExecRunner("git", ""), []string{dir})
 
-		require.Error(t, err)
+		require.NoError(t, err)
+		requireUnreadable(t, items, dir, "git")
 	})
 }
 
@@ -410,7 +414,7 @@ func TestBank_RefusesWhenThePushDoesNotBankTheWork(t *testing.T) {
 	require.ErrorContains(t, err, "/r refs/heads/main")
 }
 
-func TestBanked_EveryGitReadThatFailsIsAnError(t *testing.T) {
+func TestBanked_EveryGitReadThatFailsLeavesTheRepositoryUnbanked(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -436,9 +440,10 @@ func TestBanked_EveryGitReadThatFailsIsAnError(t *testing.T) {
 
 			git.PlanResult(model.CommandResult{ExitCode: 128, Stderr: "fatal"}, tc.words...)
 
-			_, err := host.Banked(t.Context(), git, []string{"/r"})
+			items, err := host.Banked(t.Context(), git, []string{"/r"})
 
-			require.ErrorContains(t, err, "exit 128")
+			require.NoError(t, err)
+			requireUnreadable(t, items, "/r", "exit 128")
 		})
 	}
 }
@@ -496,15 +501,16 @@ func TestBanked_ATagOfATreeOrABlobHoldsNoCommitToBank(t *testing.T) {
 	assert.Equal(t, []host.Unbanked{{Repo: "/r", Ref: "refs/heads/main", Commit: localTip}}, items)
 }
 
-func TestBanked_AListingLineThatCannotBeReadIsAnError(t *testing.T) {
+func TestBanked_AListingLineThatCannotBeReadLeavesTheRepositoryUnbanked(t *testing.T) {
 	t.Parallel()
 
 	git := scriptedRepo()
 	git.Plan("short line\n", "for-each-ref", refFormat)
 
-	_, err := host.Banked(t.Context(), git, []string{"/r"})
+	items, err := host.Banked(t.Context(), git, []string{"/r"})
 
-	require.ErrorContains(t, err, "short line")
+	require.NoError(t, err)
+	requireUnreadable(t, items, "/r", "short line")
 }
 
 func TestBanked_ManyAnnotatedTagsNeedNoPeelCall(t *testing.T) {
@@ -530,16 +536,17 @@ func TestBanked_ManyAnnotatedTagsNeedNoPeelCall(t *testing.T) {
 
 const refFormat = "--format=%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)%09%(refname)"
 
-func TestBanked_APeelThatFailsForAnyOtherReasonIsAnError(t *testing.T) {
+func TestBanked_APeelThatFailsForAnyOtherReasonLeavesTheRepositoryUnbanked(t *testing.T) {
 	t.Parallel()
 
 	git := scriptedRepo()
 	git.Plan("tag\t4444444444444444444444444444444444444444\ttag\t7777777777777777777777777777777777777777\trefs/tags/outer\n", "for-each-ref", refFormat)
 	git.PlanResult(model.CommandResult{ExitCode: 128, Stderr: "fatal"}, "refs/tags/outer^{commit}")
 
-	_, err := host.Banked(t.Context(), git, []string{"/r"})
+	items, err := host.Banked(t.Context(), git, []string{"/r"})
 
-	require.ErrorContains(t, err, "exit 128")
+	require.NoError(t, err)
+	requireUnreadable(t, items, "/r", "exit 128")
 }
 
 func TestBanked_ARealTagOfATreeHoldsNoCommit(t *testing.T) { //nolint:paralleltest // sets the git environment
@@ -685,4 +692,137 @@ func TestBank_PutsAFenceBeforeTheRemoteOfEveryRemoteCommand(t *testing.T) {
 	assert.True(t, git.Called("push", "--", privateURL))
 	assert.True(t, git.Called("--tags", "--", originURL))
 	assert.True(t, git.Called("--tags", "--", privateURL))
+}
+
+// hangsOn is a git runner that never answers for one repository until its context ends, and answers the others from the script.
+type hangsOn struct {
+	repo  string
+	inner *proctest.Scripted
+}
+
+func (h hangsOn) Run(ctx context.Context, args []string) model.CommandResult {
+	if len(args) > 1 && args[1] == h.repo {
+		<-ctx.Done()
+
+		return model.CommandResult{ExitCode: -1, Stderr: ctx.Err().Error()}
+	}
+
+	return h.inner.Run(ctx, args)
+}
+
+func TestBank_ARepositoryThatHangsIsUnbankedAndTheScanGoesOn(t *testing.T) {
+	t.Parallel()
+
+	git := hangsOn{repo: "/hung", inner: scriptedRepo()}
+
+	err := host.Bank(t.Context(), git, []string{"/hung", "/r"}, "", host.WithRepoBudget(50*time.Millisecond))
+
+	require.ErrorIs(t, err, host.ErrUnbanked)
+	require.ErrorContains(t, err, "/hung (unreadable): the time budget of 50ms ended")
+	require.ErrorContains(t, err, "/r refs/heads/main", "the repository after the hung one is still read, and has no remote")
+}
+
+// requireUnreadable checks that items is one entry for repo that stands for a repository the scan could not read.
+func requireUnreadable(t *testing.T, items []host.Unbanked, repo, reason string) {
+	t.Helper()
+
+	require.Len(t, items, 1)
+	assert.Equal(t, repo, items[0].Repo)
+	assert.Empty(t, items[0].Commit)
+	assert.Contains(t, items[0].Reason, reason)
+}
+
+// slowRunner answers each call after a delay, or when its context ends.
+type slowRunner struct {
+	inner *proctest.Scripted
+	delay time.Duration
+}
+
+func (s *slowRunner) Run(ctx context.Context, args []string) model.CommandResult {
+	select {
+	case <-time.After(s.delay):
+		return s.inner.Run(ctx, args)
+	case <-ctx.Done():
+		return model.CommandResult{ExitCode: -1, Stderr: ctx.Err().Error()}
+	}
+}
+
+func TestBank_ABudgetThatEndsBetweenTheCallsOfOneRepositoryStopsItsScan(t *testing.T) {
+	t.Parallel()
+
+	git := &slowRunner{inner: scriptedRepo(), delay: 30 * time.Millisecond}
+
+	err := host.Bank(t.Context(), git, []string{"/r"}, privateURL, host.WithRepoBudget(80*time.Millisecond))
+
+	require.ErrorIs(t, err, host.ErrUnbanked)
+	require.ErrorContains(t, err, "/r (unreadable)")
+	assert.False(t, git.inner.Called("push"), "an unreadable repository is never pushed from")
+}
+
+func TestBank_ARepositoryThatCannotBeReadDoesNotStopThePushOfTheOthers(t *testing.T) {
+	t.Parallel()
+
+	git := hangsOn{repo: "/hung", inner: scriptedRepo()}
+	git.inner.PlanResult(model.CommandResult{}, "push")
+	git.inner.Plan("", "ls-remote")
+
+	err := host.Bank(t.Context(), git, []string{"/hung", "/r"}, privateURL, host.WithRepoBudget(50*time.Millisecond))
+
+	require.ErrorIs(t, err, host.ErrUnbanked)
+	require.ErrorContains(t, err, "/hung (unreadable)")
+	assert.True(t, git.inner.Called("push", "--", privateURL), "the readable repository is pushed")
+}
+
+// hangsOnPush is a git runner whose push never answers until its context ends.
+type hangsOnPush struct{ inner *proctest.Scripted }
+
+func (h hangsOnPush) Run(ctx context.Context, args []string) model.CommandResult {
+	if slices.Contains(args, "push") {
+		<-ctx.Done()
+
+		return model.CommandResult{ExitCode: -1, Stderr: ctx.Err().Error()}
+	}
+
+	return h.inner.Run(ctx, args)
+}
+
+func TestBank_APushThatHangsEndsWithTheRepositoryBudget(t *testing.T) {
+	t.Parallel()
+
+	git := hangsOnPush{inner: scriptedRepo()}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+
+	defer cancel()
+
+	start := time.Now()
+	err := host.Bank(ctx, git, []string{"/r"}, privateURL, host.WithRepoBudget(50*time.Millisecond))
+
+	require.ErrorIs(t, err, host.ErrUnbanked)
+	require.ErrorContains(t, err, "the time budget of 50ms ended")
+	assert.Less(t, time.Since(start), time.Second, "the budget ends the push, not the caller context")
+}
+
+func TestBank_ACancelledContextIsTheErrorNotAnUnbankedRepository(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := host.Bank(ctx, scriptedRepo(), []string{"/r"}, "")
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, host.ErrUnbanked)
+}
+
+func TestWithRepoBudget_ZeroKeepsTheDefault(t *testing.T) {
+	t.Parallel()
+
+	git := hangsOn{repo: "/hung", inner: scriptedRepo()}
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+
+	defer cancel()
+
+	err := host.Bank(ctx, git, []string{"/hung"}, "", host.WithRepoBudget(0))
+
+	require.ErrorIs(t, err, context.DeadlineExceeded, "a zero budget is no budget of zero: the caller context ends the wait first")
 }

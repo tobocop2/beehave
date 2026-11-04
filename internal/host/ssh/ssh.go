@@ -299,7 +299,7 @@ func (h *Host) bankWork(ctx context.Context) error {
 		return err
 	}
 
-	return host.BankAll(ctx, h.link.Runner("git"), h.link.Runner("find"), root, h.config.PrivateRemote)
+	return host.BankAll(ctx, h.link.Runner("git"), h.link.Runner("find"), root, h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
 // WorkRoot is the absolute path where the repositories live: `host.ssh.work_root`, or the login folder of the machine.

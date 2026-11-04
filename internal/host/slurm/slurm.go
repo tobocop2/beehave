@@ -313,7 +313,7 @@ func (q *Queue) bankWork(ctx context.Context) error {
 		return err
 	}
 
-	return host.BankAll(ctx, q.link.Runner("git"), q.link.Runner("find"), root, q.config.PrivateRemote)
+	return host.BankAll(ctx, q.link.Runner("git"), q.link.Runner("find"), root, q.config.PrivateRemote, host.WithRepoBudget(q.config.BankBudget))
 }
 
 // logTailBytes is the most bytes that Log reads from the end of the log of a job.

@@ -141,7 +141,7 @@ func (h *Host) Down(ctx context.Context) error {
 // Teardown banks the work of the head node to `host.private_remote` and then deletes the cluster. It is host.Teardown with git and find on the head node.
 // A head node with unbanked work, or one whose work cannot be read, stays up, and the error says why.
 func (h *Host) Teardown(ctx context.Context) error {
-	return host.Teardown(ctx, h, h.link.Runner("git"), h.link.Runner("find"), h.config.PrivateRemote)
+	return host.Teardown(ctx, h, h.link.Runner("git"), h.link.Runner("find"), h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
 // slot is the part of SkyPilot that the Slurm queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
