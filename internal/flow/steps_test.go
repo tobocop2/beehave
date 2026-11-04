@@ -302,7 +302,7 @@ func TestEngine_ProgressNamesAStepThatFailed(t *testing.T) {
 
 	harness := newHarness(t)
 	harness.commands.reply = func(CommandRequest) (CommandOutput, error) {
-		return CommandOutput{}, errors.New("the lint program is missing")
+		return CommandOutput{}, errors.New("the lint program\n  is missing")
 	}
 	harness.flowIs(t, bodyFlow("command(run = [\"lint\"], name = \"c\")\n"))
 

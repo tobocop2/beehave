@@ -172,13 +172,10 @@ func (p projectCheck) find(stderr io.Writer, env map[string]string) (config.Proj
 	}
 
 	if len(problems) == 0 {
-		problems = config.Problems{fmt.Errorf("no project %q in the config: use one of %s", p.project, strings.Join(slices.Sorted(maps.Keys(cfg.Projects)), ", "))}
+		problems = config.Problems{unknownProject(p.project, cfg)}
 	}
 
-	for _, problem := range problems {
-		// A failed write to stderr has no recovery.
-		_, _ = fmt.Fprintln(stderr, problem)
-	}
+	printLines(stderr, problems)
 
 	return config.Project{}, &ExitError{Code: exitProblems}
 }
@@ -270,7 +267,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, refusal, flag)
 		},
 	}
-	command.Flags().StringVar(&flag, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+	addConfigFlag(command, &flag)
 
 	return command
 }
@@ -295,6 +292,11 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 	printLines(stderr, problems)
 
 	return &ExitError{Code: exitProblems}
+}
+
+// unknownProject is the refusal for a project name that the config does not hold.
+func unknownProject(name string, cfg config.Config) error {
+	return fmt.Errorf("no project %q in the config: use one of %s", name, strings.Join(slices.Sorted(maps.Keys(cfg.Projects)), ", "))
 }
 
 func printLines(stderr io.Writer, problems config.Problems) {

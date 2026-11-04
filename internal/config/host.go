@@ -81,13 +81,9 @@ func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error)
 }
 
 func buildHostConfig(raw rawHost) (*model.HostConfig, error) {
-	if err := requireText(raw.At, "host.provider", raw.Provider); err != nil {
-		return nil, err
-	}
-
-	provider, err := model.ParseHostProvider(raw.Provider)
+	provider, err := parseKey(raw.At, "host.provider", raw.Provider, model.ParseHostProvider)
 	if err != nil {
-		return nil, refuseAt(raw.At, "`host.provider`: %w. Fix the value.", err)
+		return nil, err
 	}
 
 	host := model.HostConfig{Provider: provider, PrivateRemote: raw.PrivateRemote}

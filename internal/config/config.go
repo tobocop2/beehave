@@ -44,14 +44,13 @@ type Config struct {
 // Problems lists what is wrong with a config, one entry for each problem.
 type Problems []error
 
-// Error joins the problems, one on each line.
+// Error joins the problems, one on each line. An empty list gives an empty text.
 func (p Problems) Error() string {
-	lines := make([]string, len(p))
-	for i, problem := range p {
-		lines[i] = problem.Error()
+	if joined := errors.Join(p...); joined != nil {
+		return joined.Error()
 	}
 
-	return strings.Join(lines, "\n")
+	return ""
 }
 
 // DefaultConfig returns the config of an empty folder.
@@ -149,27 +148,31 @@ func (c *Config) addProject(problems Problems, path string) Problems {
 	return problems
 }
 
-// overlayLimit reads a limit on agent processes from the environment. An empty variable leaves the value.
-func overlayLimit(env map[string]string, name string, into *int) error {
+// overlayWhole reads a whole number from the environment. An empty variable leaves the value. The hint is the end of the error.
+func overlayWhole(env map[string]string, name, hint string, into *int) error {
 	value := env[name]
 	if value == "" {
 		return nil
 	}
 
-	limit, err := strconv.Atoi(value)
+	number, err := strconv.Atoi(value)
 	if err != nil {
-		return refuse("%s=%s is not a whole number. Write digits only, for example 2.", name, value)
+		return refuse("%s=%s is not a whole number. Write digits only, %s", name, value, hint)
 	}
 
-	*into = limit
+	*into = number
 
 	return nil
 }
 
 func (c *Config) applyEnv(env map[string]string) error {
 	err := errors.Join(
-		overlayLimit(env, envMaxConcurrent, &c.Agents.MaxConcurrent), overlayLimit(env, envMaxReviewConcurrent, &c.Agents.MaxReviewConcurrent),
-		c.applyCapEnv(env), c.applyPollEnv(env),
+		overlayWhole(env, envMaxConcurrent, "for example 2.", &c.Agents.MaxConcurrent),
+		overlayWhole(env, envMaxReviewConcurrent, "for example 2.", &c.Agents.MaxReviewConcurrent),
+		overlayWhole(env, envMaxTurns, "for example 40, or 0 for no cap.", &c.Agents.MaxTurns),
+		overlayWhole(env, envReviewPoll, "for example 60, or 0 for no poll.", &c.Agents.ReviewPollMinutes),
+		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
+		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
 	)
 	if err != nil {
 		return err
@@ -179,20 +182,6 @@ func (c *Config) applyEnv(env map[string]string) error {
 		overlayPercent(env, envFiveHourMax, &c.Pool.FiveHourMax),
 		overlayPercent(env, envSevenDayMax, &c.Pool.SevenDayMax),
 	)
-}
-
-// applyCapEnv reads the turn cap and the cost cap of an agent run from the environment.
-func (c *Config) applyCapEnv(env map[string]string) error {
-	if value := env[envMaxTurns]; value != "" {
-		turns, err := strconv.Atoi(value)
-		if err != nil {
-			return refuse("%s=%s is not a whole number. Write digits only, for example 40, or 0 for no cap.", envMaxTurns, value)
-		}
-
-		c.Agents.MaxTurns = turns
-	}
-
-	return errors.Join(overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD), overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD))
 }
 
 // overlayDollars reads a cap in dollars from the environment into into. The example is the number that the error shows.
@@ -208,23 +197,6 @@ func overlayDollars(env map[string]string, name, example string, into *float64) 
 	}
 
 	*into = dollars
-
-	return nil
-}
-
-// applyPollEnv reads the minutes between two review polls from the environment.
-func (c *Config) applyPollEnv(env map[string]string) error {
-	value := env[envReviewPoll]
-	if value == "" {
-		return nil
-	}
-
-	minutes, err := strconv.Atoi(value)
-	if err != nil {
-		return refuse("%s=%s is not a whole number. Write digits only, for example 60, or 0 for no poll.", envReviewPoll, value)
-	}
-
-	c.Agents.ReviewPollMinutes = minutes
 
 	return nil
 }

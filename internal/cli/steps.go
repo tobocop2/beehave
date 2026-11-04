@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // printSteps writes the steps of one run: one line each by default, or one JSON object.
@@ -58,7 +59,7 @@ func runLine(view flow.RunSteps) string {
 	columns := []string{"run", string(view.State)}
 
 	if view.Error != "" {
-		columns = append(columns, "error="+strconv.Quote(oneLine(view.Error)))
+		columns = append(columns, "error="+strconv.Quote(model.OneLine(view.Error)))
 	}
 
 	return strings.Join(columns, "\t")
@@ -113,7 +114,7 @@ func appendProblems(fields []string, step flow.StepLine) []string {
 	}
 
 	if step.Error != "" {
-		fields = append(fields, "error="+strconv.Quote(oneLine(step.Error)))
+		fields = append(fields, "error="+strconv.Quote(model.OneLine(step.Error)))
 	}
 
 	return fields

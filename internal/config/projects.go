@@ -200,16 +200,7 @@ func visibilityOf(raw rawProject) (model.Visibility, error) {
 		return "", nil
 	}
 
-	if err := requireText(raw.At, "visibility", raw.Visibility.Value); err != nil {
-		return "", err
-	}
-
-	visibility, err := model.ParseVisibility(raw.Visibility.Value)
-	if err != nil {
-		return "", refuseAt(raw.At, "`visibility`: %w. Fix the value.", err)
-	}
-
-	return visibility, nil
+	return parseKey(raw.At, "visibility", raw.Visibility.Value, model.ParseVisibility)
 }
 
 // absolutePaths refuses the first path of sandbox_read or sandbox_deny that is neither absolute nor under ~/.
@@ -221,7 +212,7 @@ func absolutePaths(raw rawProject) error {
 		}
 
 		for _, path := range list {
-			if !filepath.IsAbs(path) && path != "~" && !strings.HasPrefix(path, "~/") {
+			if !filepath.IsAbs(path) && !model.IsHomePath(path) {
 				return refuseAt(raw.At, "`%s` lists %q. Write an absolute path, or one that starts with ~/.", key, path)
 			}
 		}
@@ -245,16 +236,7 @@ func sandboxOf(raw rawProject) (model.SandboxMode, error) {
 		return "", nil
 	}
 
-	if err := requireText(raw.At, "sandbox", raw.Sandbox.Value); err != nil {
-		return "", err
-	}
-
-	mode, err := model.ParseSandboxMode(raw.Sandbox.Value)
-	if err != nil {
-		return "", refuseAt(raw.At, "`sandbox`: %w. Fix the value.", err)
-	}
-
-	return mode, nil
+	return parseKey(raw.At, "sandbox", raw.Sandbox.Value, model.ParseSandboxMode)
 }
 
 // sandboxKeys refuses a relative sandbox path and a sandbox_enforcer that is set and empty.
@@ -394,29 +376,11 @@ func adapterNames(raw rawProject) (adapters, error) {
 }
 
 func trackerName(raw rawProject) (model.TrackerName, error) {
-	if err := requireText(raw.At, "tracker", raw.Tracker); err != nil {
-		return "", err
-	}
-
-	tracker, err := model.ParseTracker(raw.Tracker)
-	if err != nil {
-		return "", refuseAt(raw.At, "`tracker`: %w. Fix the value.", err)
-	}
-
-	return tracker, nil
+	return parseKey(raw.At, "tracker", raw.Tracker, model.ParseTracker)
 }
 
 func claimsName(raw rawProject) (model.ClaimsName, error) {
-	if err := requireText(raw.At, "claims", raw.Claims); err != nil {
-		return "", err
-	}
-
-	claims, err := model.ParseClaims(raw.Claims)
-	if err != nil {
-		return "", refuseAt(raw.At, "`claims`: %w. Fix the value.", err)
-	}
-
-	return claims, nil
+	return parseKey(raw.At, "claims", raw.Claims, model.ParseClaims)
 }
 
 func forgeName(raw rawProject) (model.ForgeName, error) {
@@ -424,16 +388,7 @@ func forgeName(raw rawProject) (model.ForgeName, error) {
 		return "", nil
 	}
 
-	if err := requireText(raw.At, "forge", raw.Forge.Value); err != nil {
-		return "", err
-	}
-
-	forge, err := model.ParseForge(raw.Forge.Value)
-	if err != nil {
-		return "", refuseAt(raw.At, "`forge`: %w. Fix the value.", err)
-	}
-
-	return forge, nil
+	return parseKey(raw.At, "forge", raw.Forge.Value, model.ParseForge)
 }
 
 // requireAdapterKeys checks the keys that the named adapters need: repo for GitHub, and the beads prefix for beads.

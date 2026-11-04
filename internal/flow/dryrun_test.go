@@ -438,21 +438,14 @@ func TestDryDeps_EveryCollaboratorIsADryOne(t *testing.T) {
 	assert.Nil(t, deps.Hosts)
 }
 
-func TestShorten_CutsAtACharacterNotAByte(t *testing.T) {
-	t.Parallel()
-
-	cut := shorten(strings.Repeat("é", dryOutLimit+5))
-
-	assert.Equal(t, strings.Repeat("é", dryOutLimit)+"...", cut)
-}
-
 func TestDryLine_ShowsTheErrorOrTheResultOnOneLine(t *testing.T) {
 	t.Parallel()
 
 	assert.Contains(t, dryLine(1, dbos.StepInfo{StepName: "a", Error: assert.AnError}), "FAILED")
 	assert.Equal(t, `step 2 b: map[k:1]`, dryLine(2, dbos.StepInfo{StepName: "b", Output: map[string]int{"k": 1}}))
 	assert.Equal(t, "step 3 c: a b", dryLine(3, dbos.StepInfo{StepName: "c", Output: "a\n b"}))
-	assert.True(t, strings.HasSuffix(dryLine(4, dbos.StepInfo{StepName: "d", Output: strings.Repeat("x", 500)}), "..."))
+	assert.Equal(t, "step 4 d: "+strings.Repeat("x", dryOutLimit)+"...", dryLine(4, dbos.StepInfo{StepName: "d", Output: strings.Repeat("x", 500)}))
+	assert.Equal(t, "step 5 e: FAILED "+strings.Repeat("e", dryOutLimit)+"...", dryLine(5, dbos.StepInfo{StepName: "e", Error: errors.New(strings.Repeat("e", 500))}))
 }
 
 func TestDryRepo_FailsWhenTheFolderCannotBeMade(t *testing.T) {

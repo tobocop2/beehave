@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,7 +72,7 @@ func TestAnswerAll_ARefusedRunDoesNotStopTheOthersAndTheExitCodeSaysSo(t *testin
 	t.Parallel()
 
 	rig := manyRig(t)
-	rig.steering.answerErrs = map[string]error{"13": errFake}
+	rig.steering.answerErrs = map[string]error{"13": errors.New("fake\n  failure")}
 
 	code, stdout, stderr := rig.execute(t.Context(), "answer", "--all", "yes")
 

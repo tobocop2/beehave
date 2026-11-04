@@ -107,10 +107,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 
 	cfg, problems := config.LoadFolder(dir, f.env)
 	if len(problems) > 0 {
-		for _, problem := range problems {
-			// A failed write to stderr has no recovery.
-			_, _ = fmt.Fprintln(stderr, problem)
-		}
+		printLines(stderr, problems)
 
 		return cfg, flow.Options{}, &ExitError{Code: exitProblems}
 	}
@@ -292,7 +289,7 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 
 	if len(named) == 1 {
 		if _, ok := cfg.Projects[named[0]]; !ok {
-			return "", fmt.Errorf("no project %q in the config: use one of %s", named[0], strings.Join(names, ", "))
+			return "", unknownProject(named[0], cfg)
 		}
 
 		return named[0], nil
@@ -380,9 +377,9 @@ func (f flowCommands) openRunFile(stdout io.Writer, cfg config.Config, opts flow
 func endNote(result flow.ItemResult) string {
 	switch {
 	case result.SentBack != "":
-		return "went back to draft: " + oneLine(result.SentBack)
+		return "went back to draft: " + model.OneLine(result.SentBack)
 	case result.Closed != "":
-		return "ended: " + oneLine(result.Closed)
+		return "ended: " + model.OneLine(result.Closed)
 	}
 
 	return ""
@@ -532,7 +529,7 @@ func printPollSection(stdout io.Writer, client Steering) error {
 
 	if cause != "" {
 		// A failed write to stdout has no recovery.
-		_, _ = fmt.Fprintf(stdout, "\nthe review poll is not scheduled: %s\n", oneLine(cause))
+		_, _ = fmt.Fprintf(stdout, "\nthe review poll is not scheduled: %s\n", model.OneLine(cause))
 	}
 
 	return nil
@@ -543,7 +540,7 @@ func printPollSection(stdout io.Writer, client Steering) error {
 func printPoll(stdout io.Writer, poll flow.PollOutput) {
 	if poll.Failure != "" {
 		// A failed write to stdout has no recovery.
-		_, _ = fmt.Fprintf(stdout, "\nthe review poll failed at %s: %s\n", poll.At.Format(time.RFC3339), oneLine(poll.Failure))
+		_, _ = fmt.Fprintf(stdout, "\nthe review poll failed at %s: %s\n", poll.At.Format(time.RFC3339), model.OneLine(poll.Failure))
 
 		return
 	}
@@ -563,7 +560,7 @@ func printPollProject(stdout io.Writer, project flow.PollProject) {
 	case project.NoForge:
 		_, _ = fmt.Fprintf(stdout, "%s: no forge, not polled\n", project.Project)
 	case project.Unread != "":
-		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Project, oneLine(project.Unread))
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Project, model.OneLine(project.Unread))
 	case len(project.Rows) == 0:
 		_, _ = fmt.Fprintf(stdout, "%s\tnothing to review\n", project.Project)
 	}
@@ -597,7 +594,7 @@ func statusLine(info flow.RunInfo, now time.Time) string {
 	case info.Stranded:
 		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
 	case info.Question != "":
-		line += "\tpaused: " + oneLine(info.Question) + askedTail(info.Asked)
+		line += "\tpaused: " + model.OneLine(info.Question) + askedTail(info.Asked)
 	default:
 		line += finishedNote(info)
 	}
@@ -605,7 +602,7 @@ func statusLine(info flow.RunInfo, now time.Time) string {
 	line += notesTail(info, now)
 
 	if len(info.Others) > 0 {
-		line += "\tother orchestrators: " + oneLine(strings.Join(info.Others, "; "))
+		line += "\tother orchestrators: " + model.OneLine(strings.Join(info.Others, "; "))
 	}
 
 	return line + itemTail(info)
@@ -654,7 +651,7 @@ func askedTail(asked *flow.Asked) string {
 		parts = append(parts, fmt.Sprintf("next reminder %s (%d of %d sent)", asked.NextRemind.UTC().Format(time.RFC3339), asked.Reminded, asked.Reminders))
 	}
 
-	return "\t" + oneLine(strings.Join(parts, "; "))
+	return "\t" + model.OneLine(strings.Join(parts, "; "))
 }
 
 // notesTail is the tab-separated progress notes of a run: its cost, step, wait deadline, gate and rounds. It is empty for a run with none.
@@ -671,9 +668,9 @@ func notesTail(info flow.RunInfo, now time.Time) string {
 func finishedNote(info flow.RunInfo) string {
 	switch {
 	case info.SentBack != "":
-		return "\tsent back to draft: " + oneLine(info.SentBack)
+		return "\tsent back to draft: " + model.OneLine(info.SentBack)
 	case info.Closed != "":
-		return "\tended: " + oneLine(info.Closed)
+		return "\tended: " + model.OneLine(info.Closed)
 	case info.Stopped != nil:
 		return stoppedNote(info.Stopped)
 	case info.Merge != "":
@@ -691,20 +688,12 @@ const stoppedOutputLimit = 120
 func stoppedNote(stopped *flow.Stopped) string {
 	note := fmt.Sprintf("\tstopped at %s rc %d", stopped.Step, stopped.RC)
 
-	text := []rune(oneLine(stopped.Output))
-	if len(text) == 0 {
+	text := model.Clip(stopped.Output, stoppedOutputLimit, "…")
+	if text == "" {
 		return note
 	}
 
-	if len(text) > stoppedOutputLimit {
-		text = append(text[:stoppedOutputLimit], '…')
-	}
-
-	return note + ": " + string(text)
-}
-
-func oneLine(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+	return note + ": " + text
 }
 
 // withClient opens the client over the validated config, runs fn and closes the client.
@@ -846,7 +835,7 @@ func replyAll(out io.Writer, client Steering, items []string, as, text string) i
 func replyTo(out io.Writer, client Steering, item, as, text string) bool {
 	err := sendAnswer(client, item, as, text)
 	if err != nil {
-		_, _ = fmt.Fprintf(out, "%s\trefused: %s\n", item, oneLine(err.Error()))
+		_, _ = fmt.Fprintf(out, "%s\trefused: %s\n", item, model.OneLine(err.Error()))
 
 		return false
 	}
