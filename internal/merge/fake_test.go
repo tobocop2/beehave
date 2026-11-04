@@ -320,7 +320,16 @@ func (w *world) PRBody(context.Context, int) (string, error) {
 	return w.body, w.fail("PRBody")
 }
 
+// SetBody is the write of the forge: like the GitHub forge, it refuses a pull request that the owner did not write and an author that cannot be read.
 func (w *world) SetBody(_ context.Context, number int, body string) error {
+	if w.fail("PRView other") != nil {
+		return &model.NotAuthorError{Reason: fmt.Sprintf("cannot read its author: %v", errDown)}
+	}
+
+	if author := w.authorOf[number]; !strings.EqualFold(author, me) {
+		return &model.NotAuthorError{Reason: fmt.Sprintf("its author is %q, not the owner", author)}
+	}
+
 	if err := w.fail("SetBody"); err != nil {
 		return err
 	}

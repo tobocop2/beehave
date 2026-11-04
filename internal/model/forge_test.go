@@ -9,6 +9,12 @@ import (
 	"github.com/tobocop2/obee/internal/model"
 )
 
+func TestNotAuthorError_TheTextIsTheReason(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "its author is \"dev\", not the owner", (&model.NotAuthorError{Reason: "its author is \"dev\", not the owner"}).Error())
+}
+
 func TestReviewThread_Summary(t *testing.T) {
 	t.Parallel()
 

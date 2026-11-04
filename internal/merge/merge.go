@@ -100,7 +100,7 @@ type Writes interface {
 	MergePR(ctx context.Context, pr int, sha string) error
 }
 
-// Body is the body of a pull request. The merge records its row there, through EditBody.
+// Body is the body of a pull request. The merge records its row there, through EditBody. SetBody refuses a pull request that the owner did not write, so EditBody holds no author check of its own.
 type Body interface {
 	PRBody(ctx context.Context, pr int) (string, error)
 	SetBody(ctx context.Context, pr int, body string) error

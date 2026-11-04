@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+// NotAuthorError is the refusal of a body write because the pull request is not the work of the owner: its author is another login, or cannot be read.
+// Reason is the whole text of the refusal.
+type NotAuthorError struct {
+	Reason string
+}
+
+func (e *NotAuthorError) Error() string { return e.Reason }
+
 // Account is a GitHub user as gh prints it. Login is empty when gh sends none.
 type Account struct {
 	Login string `json:"login"`
