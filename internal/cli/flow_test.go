@@ -243,7 +243,7 @@ func TestRun_AClosedItemSaysThePullRequestWasClosed(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	rig.runner.closed = "the pull request was closed"
+	rig.runner.closed = "the pull request\n  was closed"
 
 	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
 
@@ -509,7 +509,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		{ID: "item-6-r1", State: "stopped", Stopped: &flow.Stopped{Step: "check", RC: 2, Output: "refused"}},
 		{ID: "item-7-r1", State: "running", Version: "v1", Stranded: true, OlderSteps: true},
 		{ID: "item-8-r1", State: "done", Closed: "the pull request was closed"},
-		{ID: "item-9-r1", State: "running", Others: []string{"ann: 3, 4", "bob: 7"}},
+		{ID: "item-9-r1", State: "running", Others: []string{"ann: 3,\n4", "bob: 7"}},
 	}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
@@ -699,13 +699,13 @@ func TestStatus_ShowsThePeopleTheChoicesAndWhoAnswered(t *testing.T) {
 	rig := newRig(t)
 	rig.steering.infos = []flow.RunInfo{{
 		ID: "run-1", State: "running", Question: "Ship it?",
-		Asked: &flow.Asked{From: []string{"ana", "bo", "cy"}, Quorum: 2, Choices: []string{"yes", "no"}, Heard: []string{"ana"}},
+		Asked: &flow.Asked{From: []string{"ana", "bo", "cy"}, Quorum: 2, Choices: []string{"yes", "no\nway"}, Heard: []string{"ana"}},
 	}}
 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 	require.Equal(t, 0, code, stderr)
 
-	assert.Contains(t, stdout, "paused: Ship it?\tasks ana, bo, cy, 1 of 2 answered (ana); choices yes, no")
+	assert.Contains(t, stdout, "paused: Ship it?\tasks ana, bo, cy, 1 of 2 answered (ana); choices yes, no way")
 }
 
 func TestResumeCommand_TheOnThisBuildFlagMovesTheRunToThisBuild(t *testing.T) {

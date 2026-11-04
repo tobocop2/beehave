@@ -18,6 +18,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	gatepkg "github.com/tobocop2/obee/internal/gate"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/proc/gitexec"
 	"github.com/tobocop2/obee/internal/review"
@@ -303,7 +304,7 @@ func dryLines(client *Client) (lines []string, last string, err error) {
 // dryLine is one line for a step: its number, its name, then its fake result or its error.
 func dryLine(n int, step dbos.StepInfo) string {
 	if step.Error != nil {
-		return fmt.Sprintf("step %d %s: FAILED %s", n, step.StepName, shorten(step.Error.Error()))
+		return fmt.Sprintf("step %d %s: FAILED %s", n, step.StepName, model.Clip(step.Error.Error(), dryOutLimit, "..."))
 	}
 
 	text, ok := step.Output.(string)
@@ -311,17 +312,7 @@ func dryLine(n int, step dbos.StepInfo) string {
 		text = fmt.Sprint(step.Output)
 	}
 
-	return fmt.Sprintf("step %d %s: %s", n, step.StepName, shorten(text))
-}
-
-// shorten puts a text on one line and cuts it at dryOutLimit characters.
-func shorten(text string) string {
-	text = strings.Join(strings.Fields(text), " ")
-	if runes := []rune(text); len(runes) > dryOutLimit {
-		return string(runes[:dryOutLimit]) + "..."
-	}
-
-	return text
+	return fmt.Sprintf("step %d %s: %s", n, step.StepName, model.Clip(text, dryOutLimit, "..."))
 }
 
 // dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve, any other output 0), and reports the required skills as used.

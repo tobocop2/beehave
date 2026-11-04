@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
 	"go.starlark.net/starlark"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // stepClock is the finest duration that a progress line shows.
@@ -65,7 +66,7 @@ func (p *progress) ended(run, step string, took time.Duration, err error) {
 	case errors.Is(err, errStopped):
 		p.say("%s step %s stopped the item after %s", run, step, took)
 	case err != nil:
-		p.say("%s step %s failed after %s: %s", run, step, took, strings.Join(strings.Fields(p.text(err)), " "))
+		p.say("%s step %s failed after %s: %s", run, step, took, model.OneLine(p.text(err)))
 	default:
 		p.say("%s step %s done in %s", run, step, took)
 	}
