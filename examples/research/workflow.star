@@ -1,5 +1,5 @@
 # A research workflow with no tracker and no forge: the item is a question, and the result is a report file.
-# Add an item with `obee item add`, then run it with `obee run <item> --workflow workflow.star`.
+# Add an item with `beehave item add`, then run it with `beehave run <item> --workflow workflow.star`.
 #
 # Two variables of the environment name the places that the workflow needs:
 #   RESEARCH_TOOLS is the absolute path of the folder examples/research/tools. It holds check.sh and report.sh.
@@ -13,8 +13,8 @@
 # Outcomes:
 #   Approved: the report is RESEARCH_OUT/<item id>.md. It starts with the summary.
 #   Three reviews found open findings: the report is RESEARCH_OUT/<item id>-unreviewed.md and starts with the open findings. The report step
-#     exits with code 3, which is in its stop_on_rc, so `obee status` shows "stopped at command:report#<n> rc 3" and not a plain success.
-#   Three checks found a claim with no source or a URL that does not answer: the item stops at the check, and `obee status` shows its output.
+#     exits with code 3, which is in its stop_on_rc, so `beehave status` shows "stopped at command:report#<n> rc 3" and not a plain success.
+#   Three checks found a claim with no source or a URL that does not answer: the item stops at the check, and `beehave status` shows its output.
 #   The check cannot run (no network, no curl, a notes file that has no sub-question, the total time passed before a source failed): the item
 #     stops at the check with code 2.
 #
@@ -30,7 +30,7 @@ NO_TEXT = "The reviewer left a finding open and wrote no text for it."
 def capped(step, name, item):
     """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the notes of a capped run may be half done."""
     if step.stop != "":
-        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (name, step.stop, item.id))
 
 def notes_file(number):
     return "notes/%d.md" % number

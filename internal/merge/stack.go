@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // listLimit is the most pull requests one list asks for. The forge refuses a list that fills it, as it may be cut off.

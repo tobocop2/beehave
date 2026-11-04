@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"mvdan.cc/sh/v3/expand"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestSSHOptionWidth(t *testing.T) {

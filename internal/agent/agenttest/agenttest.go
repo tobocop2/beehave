@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
 	prompt   = "do the step"
 	token    = "tok-suite-value"
-	leakName = "OBEE_SUITE_LEAK"
+	leakName = "BEEHAVE_SUITE_LEAK"
 	// fakeCLI prints the arguments, the standard input and the environment of the run, one item for each line.
 	fakeCLI = "#!/bin/sh\necho \"args=$*\"\necho \"stdin=$(cat)\"\nenv\n"
 )
@@ -126,10 +126,10 @@ func CheckLaunch(r Reporter, adapter agent.Adapter) {
 
 	const runDir = "/run/folder"
 
-	checkFiles(r, "guard", adapter.Guard("obee check command", runDir).Files)
+	checkFiles(r, "guard", adapter.Guard("beehave check command", runDir).Files)
 
 	if adapter.Profile().Sandbox {
-		checkFiles(r, "sandbox", adapter.Sandbox(agent.SandboxPlan{Work: "/work"}, "obee check command", runDir).Files)
+		checkFiles(r, "sandbox", adapter.Sandbox(agent.SandboxPlan{Work: "/work"}, "beehave check command", runDir).Files)
 	}
 }
 

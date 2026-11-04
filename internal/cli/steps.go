@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/flow"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // printSteps writes the steps of one run: one line each by default, or one JSON object.

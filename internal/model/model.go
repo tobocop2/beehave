@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// Agent names an agent CLI that obee can start.
+// Agent names an agent CLI that beehave can start.
 type Agent string
 
-// The agents obee can start.
+// The agents beehave can start.
 const (
 	AgentClaude   Agent = "claude"
 	AgentOpenCode Agent = "opencode"

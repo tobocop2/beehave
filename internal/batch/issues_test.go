@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/batch"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 type issueWorld struct {

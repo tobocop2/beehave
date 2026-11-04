@@ -1,4 +1,4 @@
-// Package ssh is the host provider for a machine that the owner provides and obee reaches over ssh. It creates and deletes nothing.
+// Package ssh is the host provider for a machine that the owner provides and beehave reaches over ssh. It creates and deletes nothing.
 // A job runs as a transient systemd user unit, so the cgroup of the unit gives the kill of every process of the job, the run limit and the record of the result.
 // The ssh command line is the link package; the wait for a job is the jobwait engine over the systemd reads.
 package ssh
@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 var (
@@ -39,16 +39,16 @@ const (
 	stopTimeout    = 30 // seconds that systemd waits for a unit after SIGTERM before SIGKILL
 	stopNotLoaded  = 5  // the exit status of systemctl stop for a unit that is not loaded
 	logTailBytes   = 16384
-	stateFolder    = ".obee"
+	stateFolder    = ".beehave"
 	drainMarker    = "drain"
 	canceledSuffix = ".canceled"
 	logSuffix      = ".log"
 )
 
-// Host is a machine with systemd that obee reaches over ssh.
+// Host is a machine with systemd that beehave reaches over ssh.
 //
 // Up is the first call; it checks the machine and makes the state folder in the work root, and changes nothing else on the machine.
-// Down sends nothing: obee did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
+// Down sends nothing: beehave did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
 type Host struct {
 	config model.HostConfig
 	link   *link.Link
@@ -135,7 +135,7 @@ func (h *Host) run(ctx context.Context, name string, words ...string) (string, e
 }
 
 // Up checks that the machine answers, that linger is on for the login user, that the user manager runs, that systemd is new enough,
-// and that the work root exists with the state folder in it. obee never turns linger on: it is a setting of the owner of the machine.
+// and that the work root exists with the state folder in it. beehave never turns linger on: it is a setting of the owner of the machine.
 func (h *Host) Up(ctx context.Context) error {
 	user, err := h.run(ctx, "id", "id", "-un")
 	if err != nil {
@@ -170,7 +170,7 @@ func (h *Host) checkLinger(ctx context.Context, user string) error {
 	}
 
 	if !on {
-		return fmt.Errorf("%w. Ask the owner of the machine to run `loginctl enable-linger %s` there, then run this again. obee does not change the setting", ErrLinger, user)
+		return fmt.Errorf("%w. Ask the owner of the machine to run `loginctl enable-linger %s` there, then run this again. beehave does not change the setting", ErrLinger, user)
 	}
 
 	return nil
@@ -208,7 +208,7 @@ func (h *Host) checkVersion(ctx context.Context) error {
 	return nil
 }
 
-// stateDir returns the folder under the work root where the logs and markers of obee live, and makes it.
+// stateDir returns the folder under the work root where the logs and markers of beehave live, and makes it.
 func (h *Host) stateDir(ctx context.Context) (string, error) {
 	root, err := h.WorkRoot(ctx)
 	if err != nil {
@@ -279,10 +279,10 @@ func (h *Host) draining(ctx context.Context, root string) (bool, error) {
 	return false, link.Failure("test", result)
 }
 
-// Down sends nothing and stops no job. obee did not create the machine, so it never deletes it.
+// Down sends nothing and stops no job. beehave did not create the machine, so it never deletes it.
 func (*Host) Down(context.Context) error { return nil }
 
-// Teardown banks the work of the machine to `host.private_remote` and leaves the machine up. It is the release of a host that obee does not own:
+// Teardown banks the work of the machine to `host.private_remote` and leaves the machine up. It is the release of a host that beehave does not own:
 // host.Teardown cannot be used, as it ends with an audit that the host is gone.
 func (h *Host) Teardown(ctx context.Context) error {
 	if err := h.bank(ctx); err != nil {
@@ -407,7 +407,7 @@ func (h *Host) refuseDraining(ctx context.Context, root string) error {
 
 // start runs the unit. dir is the state folder under root.
 func (h *Host) start(ctx context.Context, root, dir, command string) (model.JobID, error) {
-	unit := "obee-" + h.nonce()
+	unit := "beehave-" + h.nonce()
 	encoded := base64.StdEncoding.EncodeToString([]byte(command))
 
 	_, err := h.run(ctx, "systemd-run", "systemd-run", "--user", "--quiet", "--unit="+unit, "--remain-after-exit",
@@ -471,7 +471,7 @@ func (h *Host) base(ctx context.Context, job jobwait.Job) (string, error) {
 }
 
 // Drain makes the host refuse new jobs by a marker file in the state folder. Running jobs finish.
-// It is a file, not a system setting, because obee changes nothing on the machine beyond its own folder.
+// It is a file, not a system setting, because beehave changes nothing on the machine beyond its own folder.
 func (h *Host) Drain(ctx context.Context) error {
 	dir, err := h.stateDir(ctx)
 	if err != nil {

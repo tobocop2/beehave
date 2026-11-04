@@ -1,0 +1,38 @@
+# Five fix rounds do not satisfy the review. The item pauses and asks the owner to rule on the open findings.
+# After the answer, the settle step applies the ruling once and the run ends. The pull request is not marked ready.
+env OWNER_LOGIN=owner SOURCE_CHECKOUT=/own/checkout
+exec beehave run 7 --workflow flow/workflow.star &
+
+# The run has opened the store once the first agent call is in the record.
+waitfile calls.log
+waitstatus 'paused: The review loop used all of its rounds'
+
+exec beehave status
+stdout '^item-7-r1\trunning\tpaused: The review loop used all of its rounds'
+! grep '^settle ' calls.log
+
+exec beehave answer 7 keep the current API
+wait
+stdout 'item 7 finished'
+
+exec beehave status
+stdout '^item-7-r1\tdone'
+
+grep -count=1 '^fix 1 ' calls.log
+grep -count=1 '^fix 5 ' calls.log
+! grep '^fix 6 ' calls.log
+grep -count=6 '^review ' calls.log
+grep -count=1 '^settle +[ab] keep the current API$' calls.log
+
+cmp events.log expected-events.log
+
+-- verdicts --
+changes
+changes
+changes
+changes
+changes
+changes
+-- expected-events.log --
+claim 7
+release 7

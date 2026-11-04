@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/examples/remediation/tools/papers"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/examples/remediation/tools/papers"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const globs = "crates/*/src/** packages/*/src/**"

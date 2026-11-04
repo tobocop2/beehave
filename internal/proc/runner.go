@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const executableBits os.FileMode = 0o111

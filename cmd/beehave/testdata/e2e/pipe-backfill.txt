@@ -1,0 +1,69 @@
+# A backfill of 12 days in chunks of 5. Day 4 has no tickets, day 6 has two pages, day 9 is not closed yet and day 11 fails at the source.
+# The loaded days are in the warehouse once each. A second backfill of the same range does only the two days that are left, and a third does nothing.
+[!exec:jq] skip
+[!exec:sqlite3] skip
+isolate
+! exec bd version
+! exec gh version
+
+pipeinit
+pipefakes
+env HOME=$WORK/home
+env PIPE_DIR=$WORK/pl
+env PIPE_HOME=$WORK/pipe
+replace pl/version.star 'CHUNK = 100' 'CHUNK = 5'
+
+exec beehavereal item add pipeline bf-1 --title 'January' --body-file body.txt
+exec beehavereal run bf-1 pipeline --workflow pl/backfill.star
+stdout 'item bf-1 finished'
+
+# The run of the backfill records steps for the 3 chunks and none for a day: its history does not grow with the days of a chunk, and a child run holds the days.
+cp stderr bf1.err
+grep -count=3 'item-bf-1-r1 step item_create:chunk-r[0-9]-[0-9] done' bf1.err
+! grep 'item-bf-1-r1 step [^ ]*2026-' bf1.err
+
+# Nine days were labeled, each once, and the empty day was loaded without a call of the agent.
+grep -count=9 '^classify ' calls.log
+grep -count=1 '^classify 2026-01-06$' calls.log
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest'
+stdout '^10$'
+exec sqlite3 pipe/warehouse.db 'SELECT rows FROM manifest WHERE day = "2026-01-04"'
+stdout '^0$'
+exec sqlite3 pipe/warehouse.db 'SELECT rows FROM manifest WHERE day = "2026-01-06"'
+stdout '^5$'
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM labeled'
+stdout '^29$'
+# The extract of day 6 read two pages.
+grep -count=2 'day=2026-01-06' curl.log
+
+# The source closes day 9 and day 11 answers again. A second backfill of the range does only those two days.
+rm src/open-2026-01-09
+rm src/fail-2026-01-11
+exec beehavereal item add pipeline bf-2 --title 'January again' --body-file body.txt
+exec beehavereal run bf-2 pipeline --workflow pl/backfill.star
+stdout 'item bf-2 finished'
+grep -count=11 '^classify ' calls.log
+grep -count=1 '^classify 2026-01-01$' calls.log
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest'
+stdout '^12$'
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM labeled'
+stdout '^35$'
+
+# A third backfill finds nothing to do.
+exec beehavereal item add pipeline bf-3 --title 'January a third time' --body-file body.txt
+exec beehavereal run bf-3 pipeline --workflow pl/backfill.star
+stdout 'item bf-3 finished'
+grep -count=11 '^classify ' calls.log
+
+-- body.txt --
+2026-01-01 2026-01-12
+-- src/n-2026-01-04 --
+0
+-- src/n-2026-01-06 --
+5
+-- src/open-2026-01-09 --
+-- src/fail-2026-01-11 --
+-- pipe/config --
+SOURCE_API=http://source.test
+-- pipe/credential.header --
+X-Token: TESTONLY

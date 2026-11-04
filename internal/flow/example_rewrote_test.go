@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // amendRig makes every agent call that matches amend rewrite the commit it started on.

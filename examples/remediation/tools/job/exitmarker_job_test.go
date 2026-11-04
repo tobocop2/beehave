@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/job"
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/examples/remediation/tools/job"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 const (

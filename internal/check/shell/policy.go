@@ -8,7 +8,7 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var (

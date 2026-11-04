@@ -1,5 +1,5 @@
 # A queue loop: one parent item reads the open work of the project, starts a run for each ready item up to the free slots, and starts the next item when any run ends.
-# Run it with `obee run <item> --workflow workflow.star`, where the item is a parent that has no work of its own.
+# Run it with `beehave run <item> --workflow workflow.star`, where the item is a parent that has no work of its own.
 # Set OWNER_LOGIN before the run. It names your own login on the forge; an open pull request by another login claims the item.
 # Set BASE before the run. It names the integration branch that receives the pull requests.
 #
@@ -42,7 +42,7 @@ def work(item):
 
     # A cap ended the run (the output `stop` is "turns" or "budget"), so the pull request may be half done. The item fails with the reason.
     if implement.stop != "":
-        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (implement.stop, item.id))
 
 def main(item):
     # The runs that this parent started and has not seen end.

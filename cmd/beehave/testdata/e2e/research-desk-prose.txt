@@ -1,0 +1,38 @@
+# The writer states a number that no cited quote holds. The citation check, a program gate, stops the section with the status cites-failed.
+# The desk does not reach the review and writes nothing to the wiki.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+# Without the citation check the run would reach the review. A short deadline makes that a fast failure of this script, not a long wait.
+env REVIEW_TIMEOUT=2s
+
+exec beehavereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec beehavereal run cold-cost research-desk --workflow rd/workflow.star
+stderr 'fails the citation check'
+stderr 'states the number 50, which is not in a cited quote'
+
+grep 'cites-failed' store/cold-cost/s1.1/status
+! exists wiki.log
+! exists store/cold-cost/report.md
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- bad-prose --
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

@@ -10,9 +10,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // ItemInput starts the workflow of one item.
@@ -23,7 +23,7 @@ type ItemInput struct {
 	// Files are the workflow file and every file it loads, with their hashes. A run executes only these bytes.
 	Files []workflow.PinnedFile `json:"files,omitempty"`
 	// Login is the agent login that a spawn or the queue picked before the run started. DBOS stores the input, so a resume keeps it.
-	// A run that `obee run` started has none: it picks at its first agent step.
+	// A run that `beehave run` started has none: it picks at its first agent step.
 	Login string `json:"login,omitempty"`
 	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
 	// A run that spawn started has it set to the entry of the spawn call, and such a run cannot spawn.
@@ -63,7 +63,7 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 
 		result, workErr := e.workHolding(ctx, in, login, claimTake{owner: owner, took: took})
 
-		// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next obee run.
+		// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
 		// A run that lost its claim has nothing to release.
 		if ctx.Err() != nil {
 			return result, workErr
@@ -198,7 +198,7 @@ func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, too
 }
 
 // claim takes the claim of an item and returns its owner token and the time the take began. A resumed run replays this step with the token of the old claim,
-// so the token that obee resume saved for the run wins. A replayed step makes no take, so its time is zero.
+// so the token that beehave resume saved for the run wins. A replayed step makes no take, so its time is zero.
 func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error) {
 	var took time.Time
 
@@ -254,7 +254,7 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 	return nil
 }
 
-// waitOwner blocks until the owner answers through obee answer. The wait holds no queue slot.
+// waitOwner blocks until the owner answers through beehave answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
 func (e *Engine) waitOwner(ctx dbos.Context, item, question string) (string, error) {
 	answer, _, err := e.waitOwnerUntil(ctx, item, question, 0)
@@ -273,7 +273,7 @@ func (e *Engine) waitOwnerUntil(ctx dbos.Context, item, question string, deadlin
 	}
 
 	if err != nil {
-		return "", false, fmt.Errorf("item %s waits for the owner: %w. Answer with obee answer %s <text>", item, err, item)
+		return "", false, fmt.Errorf("item %s waits for the owner: %w. Answer with beehave answer %s <text>", item, err, item)
 	}
 
 	return answer, timedOut, nil

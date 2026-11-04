@@ -8,7 +8,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 // watchEvery is the time between two reads of a ready pull request. A day of waiting costs 48 reads and 48 sleeps in the durable history.

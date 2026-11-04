@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
 )
 
 func TestFail_AnErrorWithNoMappedCodeKeepsItsTextWithoutTheDriverCodes(t *testing.T) {

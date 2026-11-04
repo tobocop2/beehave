@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 func TestExecRunner_AScopeIsGoneAfterTheStep(t *testing.T) {

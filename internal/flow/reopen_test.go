@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *testing.T) {
@@ -27,7 +27,7 @@ func TestResume_AFailedRunContinuesFromItsFailedStepAndRunRefusesUntilThen(t *te
 	_, err = engine.Run(testItem, testProject)
 	require.ErrorIs(t, err, errRunFailed)
 	require.ErrorContains(t, err, "fake failure")
-	require.ErrorContains(t, err, "Run obee resume 12")
+	require.ErrorContains(t, err, "Run beehave resume 12")
 
 	infos, err := client.Status()
 	require.NoError(t, err)

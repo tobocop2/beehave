@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (

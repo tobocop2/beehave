@@ -1,0 +1,32 @@
+# Each call costs 1.00 and the cap is 1 dollar. The first two agents start, and one finished call is enough: the check then finds the spend at the cap, and no third agent starts. A second run with a STOP file starts none.
+isolate
+swarmfakes
+
+exec beehaveswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+env CAP_USD=1
+exec beehaveswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# Two tasks ran and landed, two did not start.
+grep -count=2 '^task ' calls.log
+grep -count=2 '^MergePR ' forge/calls.log
+exec grep -rhao '2 landed, 0 need a person, 2 not started' state
+
+# The ledger holds both calls.
+grep -count=2 'task	1$' home/.swarm/swarm-1/ledger.tsv
+
+# With a high cap and the file STOP, a new swarm starts no agent.
+env CAP_USD=100
+cp backlog.txt backlog2.txt
+exec beehaveswarm item add swarm swarm-9 --title 'Again' --body-file backlog2.txt
+cp stop home/.swarm/swarm-1/STOP
+exec beehaveswarm run swarm-9 swarm --workflow swarm/workflow.star
+grep -count=2 '^task ' calls.log
+
+-- stop --
+-- cost --
+1.00
+-- backlog.txt --
+P0	one	a.txt
+P1	two	b.txt
+P2	three	c.txt
+P3	four	d.txt

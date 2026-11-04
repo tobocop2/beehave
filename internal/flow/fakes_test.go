@@ -18,11 +18,11 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 const (
@@ -533,7 +533,7 @@ const defaultFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prom
 // defaultFlowName is the name of the default workflow file, which sits beside the state folder of the harness.
 const defaultFlowName = "workflow.star"
 
-// waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for obee answer after its agent ends.
+// waitFlow is a workflow file with one agent step, then a question for the owner. A run of it waits for beehave answer after its agent ends.
 const waitFlow = "def main(item):\n    agent(name = \"work\", prompt = \"prompts/work.md\", model = \"m\")\n    wait(name = \"ask\", question = \"What now?\")\n"
 
 // flowIs replaces the default workflow file of the harness. Call it before the first run.

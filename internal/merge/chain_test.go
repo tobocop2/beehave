@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // The tests hold one link of a stack at a time, because the world fake answers for one pull request. They do not hold the three links of a stack

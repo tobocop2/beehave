@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // logGit puts a fake git first on PATH. The fake appends its arguments, one call per line, to the file that the function returns.

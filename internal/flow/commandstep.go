@@ -9,9 +9,9 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/agent"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // commandCall unpacks the arguments of the command builtin: the request, the stop codes and the label.
@@ -221,7 +221,7 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 	return start, err
 }
 
-// requiredOf is the names that a merge needs from the gate of job: the list of its plan. A job with no plan (a gate that is not the project gate of obee)
+// requiredOf is the names that a merge needs from the gate of job: the list of its plan. A job with no plan (a gate that is not the project gate of beehave)
 // takes the list of the project now, once, here in the step that records it.
 func (e *Engine) requiredOf(job GateJob, project string) []string {
 	if job.Plan.Empty() {

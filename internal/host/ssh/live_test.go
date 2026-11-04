@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host/ssh"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host/ssh"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // localSSH runs the remote words on this machine, through sh as the login shell of a host would. The scheduler does not know the link, so the
@@ -56,13 +56,13 @@ func asExit(err error, target **exec.ExitError) bool {
 }
 
 // TestLive_AJobRunsAsASystemdUserUnit runs the adapter against the systemd of this machine. It needs linger for the login user (Up refuses otherwise)
-// and the variable OBEE_LIVE_SYSTEMD. Every unit is named obee-livetest* and every file lives in a folder named obee-live-*.
+// and the variable BEEHAVE_LIVE_SYSTEMD. Every unit is named beehave-livetest* and every file lives in a folder named beehave-live-*.
 func TestLive_AJobRunsAsASystemdUserUnit(t *testing.T) {
-	if os.Getenv("OBEE_LIVE_SYSTEMD") == "" {
-		t.Skip("set OBEE_LIVE_SYSTEMD=1 to run against the systemd of this machine")
+	if os.Getenv("BEEHAVE_LIVE_SYSTEMD") == "" {
+		t.Skip("set BEEHAVE_LIVE_SYSTEMD=1 to run against the systemd of this machine")
 	}
 
-	root, err := os.MkdirTemp("", "obee-live-")
+	root, err := os.MkdirTemp("", "beehave-live-")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(root)) })
 

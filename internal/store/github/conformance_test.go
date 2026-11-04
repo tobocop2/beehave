@@ -5,11 +5,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/github"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 func TestStore_ConformsToTracker(t *testing.T) {

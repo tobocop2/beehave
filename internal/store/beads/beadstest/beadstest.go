@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // Progress is the status of a held claim row. Now is the unix time of the fake. LeaseSeconds is the lease bd 1.3.2 grants on a claim

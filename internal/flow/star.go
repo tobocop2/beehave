@@ -13,15 +13,15 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // jsonModule is the one name of workflow.Builtins that is a module of the Starlark library, not a step.
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star25"
+const stepsVersion = "star26"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.

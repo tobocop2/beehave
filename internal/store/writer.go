@@ -42,7 +42,7 @@ type NewItem struct {
 const OperatorLabel = "operator"
 
 // KeyPrefix starts the marker line that makes a write safe to repeat.
-const KeyPrefix = "obee-key: "
+const KeyPrefix = "beehave-key: "
 
 // Marker returns the line that an adapter writes into a body or a comment to record a key. A lookup matches the whole line, so the key r:1 does not match r:10.
 func Marker(key string) string { return KeyPrefix + key }

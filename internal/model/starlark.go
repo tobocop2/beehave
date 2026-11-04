@@ -9,7 +9,7 @@ import (
 // The count is the same on a replay, so a run that hits it hits it every time.
 const StarlarkMaxSteps = 1_000_000
 
-// StarlarkFileOptions returns the file options of every Starlark file that obee reads: the zero value, so no while, no recursion and no top-level control flow.
+// StarlarkFileOptions returns the file options of every Starlark file that beehave reads: the zero value, so no while, no recursion and no top-level control flow.
 func StarlarkFileOptions() *syntax.FileOptions { return &syntax.FileOptions{} }
 
 // builtinFile is the file name that starlark-go gives to the frame of a Go builtin.

@@ -1,7 +1,7 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
-load("@obee//review_fix.star", "review_fix")
+load("@beehave//review_fix.star", "review_fix")
 
 # A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the tool as flags.
 IDLE_HOURS = "1"
@@ -483,7 +483,7 @@ def pipeline(item):
     )
 
     if plan.stop != "":
-        fail("REFUSE: the plan step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (plan.stop, item.id))
+        fail("REFUSE: the plan step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (plan.stop, item.id))
 
     implement = agent(
         name = "implement",
@@ -499,7 +499,7 @@ def pipeline(item):
 
     # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the gate and the review.
     if implement.stop != "":
-        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
+        fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (implement.stop, item.id))
 
     # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the agent pushed.
     # The engine opens the draft pull request of the item once (a resume finds the open one) and,
@@ -582,7 +582,7 @@ def pipeline(item):
         )
 
         if settle.stop != "":
-            fail("REFUSE: the settle step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (settle.stop, item.id))
+            fail("REFUSE: the settle step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (settle.stop, item.id))
 
         # Each finding that the owner parked stays open after the last round: it gets its own issue, so it is not lost with the pull request.
         file_parked(settle.parked)
@@ -597,7 +597,7 @@ def pipeline(item):
     # `approved` is the verdict of the review, which is not the agent that wrote the code. Our own pull requests merge only when it is true.
     # The call passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. A gate that records no tree stops the run at the call. The proof runs after the merge:
     # a stop does not undo it, and the item ends failed with the pull request merged.
-    # The call also passes `steps = loop.gate.steps`: it merges only when every step of the gate at the head is a pass. A step that is unknown is not a pass. A call that can merge and leaves out `steps` is refused by `obee check workflow` and again at the call.
+    # The call also passes `steps = loop.gate.steps`: it merges only when every step of the gate at the head is a pass. A step that is unknown is not a pass. A call that can merge and leaves out `steps` is refused by `beehave check workflow` and again at the call.
     # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive, and the pattern of the tracker id of the item (id_patterns).
     missing = changelog_missing(project.changelog, loop.gate.head, item.id)
     if missing != "":

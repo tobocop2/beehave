@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func rows(buckets ...model.CheckBucket) []model.Check {

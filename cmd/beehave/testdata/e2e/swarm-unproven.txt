@@ -1,0 +1,17 @@
+# A member that the batch merged but that the forge cannot prove on the base is held for a person, and its item is not closed.
+# The forge reports the branch of the task as pushed again after the fold (forge/force-pushed), so the fold head is not the head of the branch.
+isolate
+swarmfakes
+
+exec beehaveswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec beehaveswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# The pull request merged, and the swarm counts no landing and one item that needs a person.
+grep -count=1 '^MergePR ' forge/calls.log
+exec grep -rhao '0 landed, 1 need a person, 0 not started' state
+exec grep -rhao 'is not proven' state
+
+-- forge/force-pushed --
+on
+-- backlog.txt --
+P0	only	a.txt

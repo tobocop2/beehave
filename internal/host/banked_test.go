@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 const (
@@ -243,7 +243,7 @@ func refsOf(t *testing.T, remote string) []string {
 	return strings.Split(out, "\n")
 }
 
-func bankedRef(commit string) string { return "refs/heads/obee-banked/" + commit[:12] }
+func bankedRef(commit string) string { return "refs/heads/beehave-banked/" + commit[:12] }
 
 func TestBank_PushesToThePrivateRemote(t *testing.T) { //nolint:paralleltest // sets the git environment
 	isolate(t)

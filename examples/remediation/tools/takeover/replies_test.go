@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
 )
 
 func TestReplies_AnOrdinaryReplyRefusesAndPrintsEveryReplyBlock(t *testing.T) {

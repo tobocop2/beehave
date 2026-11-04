@@ -4,11 +4,11 @@ package main
 import (
 	"os"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/examples/remediation/tools/scope"
-	"github.com/tobocop2/obee/internal/config"
-	forgegithub "github.com/tobocop2/obee/internal/forge/github"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
+	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // The GitHub forge gives the closing references; without this line a drift would fall back to the body parse.

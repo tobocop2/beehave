@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/flow"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
@@ -75,8 +75,8 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"The default file is " + defaultWorkflowFile + " in the current folder. " +
 	"Exit 0 when the file is valid, 1 when it has problems, 2 when it cannot be read or parsed. " +
 	"A line that starts with note: is a fact for the author, such as an agent step with sandbox = None. It is no problem and changes no exit code.\n\n" +
-	"With --" + dryRunFlag + ", obee then runs the file for one item over fakes and prints each step with its fake result. " +
-	"The run uses a temporary state folder that obee deletes at the end. It calls no forge, agent, tracker or host. " +
+	"With --" + dryRunFlag + ", beehave then runs the file for one item over fakes and prints each step with its fake result. " +
+	"The run uses a temporary state folder that beehave deletes at the end. It calls no forge, agent, tracker or host. " +
 	"Every gate in the run passes. With --" + redGateFlag + ", the first gate is red with one failed step, and each later gate passes, so the run walks the fix round of the workflow. " +
 	"A workflow that stops at a red gate exits 1 with --" + redGateFlag + ". " +
 	"Every review in the run approves. With --" + sendBackFlag + ", the first review sends the item back, and each later review approves, so the run walks a send-back and a fix round. " +
@@ -156,7 +156,7 @@ func newCheckWorkflowCommand(ctx context.Context, env map[string]string, refusal
 // flags adds --project and --config to the command.
 func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
 	command.Flags().StringVar(&p.project, projectFlag, "", "a project of the config: refuse each call of gate, merge, batch_merge or preflight when the project has no repository")
-	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+	command.Flags().StringVar(&p.folder, configFlag, "", "the config folder for --"+projectFlag+" (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
 
 	return command
 }

@@ -1,4 +1,4 @@
-# The remedy tool runs in the test binary. It follows the exit codes of obee.
+# The remedy tool runs in the test binary. It follows the exit codes of beehave.
 exec remedy --help
 stdout '^  cut --old'
 stdout '^  audit authored'

@@ -30,7 +30,7 @@ func gatherOutput(engine *Engine) (string, bool) {
 	return "", false
 }
 
-// handCancel is `obee cancel` for an item, as a user types it.
+// handCancel is `beehave cancel` for an item, as a user types it.
 func handCancel(client *Client, item string) error {
 	return client.Cancel(item)
 }
@@ -321,5 +321,5 @@ func TestSpawnGather_ARaiseOnAChildCanceledByHandSaysThatResumeKeepsItCanceled(t
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)))
 	require.NoError(t, <-canceled)
 	require.ErrorContains(t, err, "item 23 did not finish")
-	require.ErrorContains(t, err, "It was canceled by hand, and obee resume 12 does not reopen a child canceled by hand")
+	require.ErrorContains(t, err, "It was canceled by hand, and beehave resume 12 does not reopen a child canceled by hand")
 }

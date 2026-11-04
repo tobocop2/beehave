@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/batch"
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // batchRig is an engine over a real repository with three members: item 2 holds bad.txt, which the gate rejects.

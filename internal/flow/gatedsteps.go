@@ -7,8 +7,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/workflow"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // errStepsNotFromGate refuses a merge call whose `steps` no gate call of the run gave at the head of the merge.

@@ -16,8 +16,8 @@ import (
 	// The driver registers itself under the name sqlite, as it does for the workflow store.
 	_ "modernc.org/sqlite"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 const (
@@ -193,7 +193,7 @@ func (s *Store) Item(ctx context.Context, id string) (map[string]string, error) 
 
 	err := s.db.QueryRowContext(ctx, `SELECT title, body FROM items WHERE project = ? AND id = ?`, s.project, id).Scan(&title, &body)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, store.Refuse("no item %s in project %s. Add it: obee item add", id, s.project)
+		return nil, store.Refuse("no item %s in project %s. Add it: beehave item add", id, s.project)
 	}
 
 	if err != nil {

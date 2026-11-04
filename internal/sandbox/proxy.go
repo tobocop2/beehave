@@ -67,7 +67,7 @@ func (p *Proxy) Close() error {
 func newHandler(domains []string) *goproxy.ProxyHttpServer {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Logger = log.New(io.Discard, "", 0)
-	// The proxy variables of the environment of obee must not stand between the sandbox and the host: the list decides.
+	// The proxy variables of the environment of beehave must not stand between the sandbox and the host: the list decides.
 	proxy.Tr.Proxy = nil
 	proxy.ConnectDial = (&net.Dialer{Timeout: proxyTimeout}).Dial
 
@@ -92,7 +92,7 @@ func refuseUnlisted(domains []string, req *http.Request) *http.Response {
 		return nil
 	}
 
-	return goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusForbidden, "obee sandbox: the host "+req.URL.Hostname()+" is not in the list of allowed domains\n")
+	return goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusForbidden, "beehave sandbox: the host "+req.URL.Hostname()+" is not in the list of allowed domains\n")
 }
 
 // allowed reports whether the host of a request (with or without a port) matches a listed domain.

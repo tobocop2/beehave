@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/transcript"
+	"github.com/tobocop2/beehave/examples/remediation/tools/transcript"
 )
 
 const spendSyntax = "spend <transcript> [--hours <n>] [--cap <tokens>]"

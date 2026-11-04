@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/audit"
+	"github.com/tobocop2/beehave/examples/remediation/tools/audit"
 )
 
 // reading is one report of the audit.

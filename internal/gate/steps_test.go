@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var (
@@ -165,7 +165,7 @@ func TestHostCommand_FailsTheJobWhenTheReportGlobMatchesNoTestCase(t *testing.T)
 
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
-	assert.True(t, strings.HasSuffix(remote.submitted[0].Command, ` && sh -c 'make check' && { [ "$(cat reports/*.xml 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo obee-gate-no-tests; false; }; }`), remote.submitted[0].Command)
+	assert.True(t, strings.HasSuffix(remote.submitted[0].Command, ` && sh -c 'make check' && { [ "$(cat reports/*.xml 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo beehave-gate-no-tests; false; }; }`), remote.submitted[0].Command)
 }
 
 func TestHostCommand_QuotesTheLiteralPartsOfTheReportGlobAndKeepsTheWildcards(t *testing.T) {

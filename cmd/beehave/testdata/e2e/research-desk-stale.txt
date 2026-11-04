@@ -1,0 +1,40 @@
+# The page of the first section changes after the claims were read: the abstract step of the fake agent edits it. The person approves the draft,
+# but the staleness check reads the cited pages again, finds that the quote left its page, and stops the item before the publish.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+
+exec beehavereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec beehavereal run cold-cost research-desk --workflow rd/workflow.star &
+
+waitstatus 'paused: Review the draft report of cold-cost, round 1'
+exec beehavereal answer cold-cost approve
+wait
+stderr 'a quote left its page, so nothing is published'
+stderr 'STALE: the quote of c1 left http://pages.test/page/a'
+
+# The quote of the second section is still on its page, so only one quote is stale. Nothing was written to the wiki.
+! stderr 'STALE: the quote of c4'
+! exists wiki.log
+
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- drift --
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

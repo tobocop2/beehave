@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // refsOf builds the answer of the closing-reference query. The pull request holds the base, its repository and the issue list; the repository holds the default branch.

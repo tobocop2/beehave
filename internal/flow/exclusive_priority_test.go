@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	forgepkg "github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/review"
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 func TestExclusivePriority_AGateOfAPullRequestThatAPersonWaitsOnComesFirst(t *testing.T) {

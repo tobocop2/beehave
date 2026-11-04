@@ -3,7 +3,7 @@ package model_test
 import (
 	"testing"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestReading_KnownHoldsUsageAndNoReason(t *testing.T) {

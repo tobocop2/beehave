@@ -59,7 +59,7 @@ func (c *Client) attemptsOf(item string) ([]string, error) {
 	}
 
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("%w: item %q has no run. Run obee status to see the run ids", errNoSuchRun, item)
+		return nil, fmt.Errorf("%w: item %q has no run. Run beehave status to see the run ids", errNoSuchRun, item)
 	}
 
 	return attemptOrder(rows, prefix), nil

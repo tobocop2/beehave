@@ -1,6 +1,6 @@
 package flow
 
-import "github.com/tobocop2/obee/internal/agent"
+import "github.com/tobocop2/beehave/internal/agent"
 
 // The outputs of each builtin that records a step, one function each. The fields of a function are the fields in workflow.ResultFields,
 // and a test compares them, so the check of a workflow file and the run read the same names.
@@ -82,7 +82,7 @@ func prOutputs(number int, issues []int) map[string]any {
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
-// cost_estimated is true when cost_usd is an estimate that obee made from the tokens of the run, and false when the agent CLI reported the cost.
+// cost_estimated is true when cost_usd is an estimate that beehave made from the tokens of the run, and false when the agent CLI reported the cost.
 // cost_unknown is true when the run used tokens of a model that has no price, so cost_usd holds no dollars for it.
 // rewrote is true when the commit the run started on is not in the history of the commit it ended on.
 func agentOutputs(text, session, transcript, head, violations, stop string, spend agent.Spend, rewrote bool) map[string]any {

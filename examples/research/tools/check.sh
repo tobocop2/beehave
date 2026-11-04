@@ -16,7 +16,7 @@
 #   CHECK_QUESTIONS    the number of sub-questions. The notes files are 1.md to this number. A file with another name has no sub-question.
 #                      When it is not set, any file named with a whole number and .md is accepted.
 # CHECK_MAX_URLS and CHECK_TOTAL_TIME must be whole numbers. Another value ends the run with exit code 2.
-# obee gives a command only the variables of its env argument, not those of your shell. To change a limit, add it to the env of the check call in workflow.star.
+# beehave gives a command only the variables of its env argument, not those of your shell. To change a limit, add it to the env of the check call in workflow.star.
 #
 # Exit code 0: every claim cites a source and every URL answers.
 # Exit code 1: one or more problems. The workflow sends the notes back to the research step. When the total time passes after

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // stateOpen is the state of a pull request that is open.

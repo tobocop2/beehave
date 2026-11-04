@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
-	clone       = defaultRoot + "/obee-gate-demo-a1b2c3"
-	hostCommand = `trap 'echo obee-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone + ` && cd ` + clone +
+	clone       = defaultRoot + "/beehave-gate-demo-a1b2c3"
+	hostCommand = `trap 'echo beehave-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone + ` && cd ` + clone +
 		` && git clone -- https://github.com/owner/name.git tree && cd tree && ` +
 		`git checkout --detach a1b2c3 && [ "$(git rev-parse HEAD)" = a1b2c3 ] && sh -c 'make check'`
 )
@@ -90,8 +90,8 @@ func TestRun_AWorkRootWithASpaceAndADollarIsQuotedEverywhereThePathIsUsed(t *tes
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
 
-	path := `'/home/o b$x/obee-gate-demo-a1b2c3'`
-	assert.Contains(t, remote.submitted[0].Command, `trap 'echo obee-gate-done; rm -rf '\''/home/o b$x/obee-gate-demo-a1b2c3'\''' EXIT`)
+	path := `'/home/o b$x/beehave-gate-demo-a1b2c3'`
+	assert.Contains(t, remote.submitted[0].Command, `trap 'echo beehave-gate-done; rm -rf '\''/home/o b$x/beehave-gate-demo-a1b2c3'\''' EXIT`)
 	assert.Contains(t, remote.submitted[0].Command, ` && rm -rf `+path+` && mkdir `+path+` && cd `+path+` && git clone`)
 }
 
@@ -204,7 +204,7 @@ func TestHostCommand_TheCloneFolderIsRemovedWhenTheShellExitsAndAFailingGateKeep
 		code, home, _ := runGateCommand(t, gateCommand, "SHIM_HEAD="+headA)
 		assert.Equal(t, want, code, gateCommand)
 
-		left, err := filepath.Glob(filepath.Join(home, "obee-gate-*"))
+		left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
 		require.NoError(t, err)
 		assert.Empty(t, left, gateCommand)
 	}
@@ -215,9 +215,9 @@ func TestHostCommand_TheMarkerLineIsWrittenBeforeTheCloneIsDeletedWhateverTheGat
 
 	for _, gateCommand := range []string{"exit 0", "exit 3", `kill -TERM $PPID; sleep 1`} {
 		code, home, _, out := runGateCommandWithOutput(t, gateCommand, "SHIM_HEAD="+headA)
-		assert.Contains(t, out, "obee-gate-done\n", gateCommand)
+		assert.Contains(t, out, "beehave-gate-done\n", gateCommand)
 
-		left, err := filepath.Glob(filepath.Join(home, "obee-gate-*"))
+		left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
 		require.NoError(t, err)
 		assert.Empty(t, left, gateCommand)
 
@@ -238,9 +238,9 @@ func TestHostCommand_TheMarkerIsInTheCommandBeforeTheDelete(t *testing.T) {
 	require.Len(t, remote.submitted, 1)
 
 	command := remote.submitted[0].Command
-	require.Contains(t, command, "echo obee-gate-done")
+	require.Contains(t, command, "echo beehave-gate-done")
 	require.Contains(t, command, "rm -rf")
-	assert.Less(t, strings.Index(command, "echo obee-gate-done"), strings.Index(command, "rm -rf"))
+	assert.Less(t, strings.Index(command, "echo beehave-gate-done"), strings.Index(command, "rm -rf"))
 }
 
 func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
@@ -249,7 +249,7 @@ func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
 	code, home, _ := runGateCommand(t, "exit 0", "SHIM_HEAD="+headA, "SHIM_CLONE_FAILS=1")
 	assert.NotZero(t, code)
 
-	left, err := filepath.Glob(filepath.Join(home, "obee-gate-*"))
+	left, err := filepath.Glob(filepath.Join(home, "beehave-gate-*"))
 	require.NoError(t, err)
 	assert.Empty(t, left)
 }
@@ -272,7 +272,7 @@ func TestHostCommand_ARealShellFailsAGateThatPassedWithNoTestCaseInItsReportAndP
 		code, _, _, out := runProjectCommand(t, project, "SHIM_HEAD="+headA)
 
 		assert.Equal(t, test.wantCode, code == 0, name)
-		assert.Equal(t, test.wantMark, strings.Contains(out, "obee-gate-no-tests"), name)
+		assert.Equal(t, test.wantMark, strings.Contains(out, "beehave-gate-no-tests"), name)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // SandboxPlan is what an adapter needs to confine the shell of one run. Every path is absolute, except that an adapter may write the home folder as "~/".

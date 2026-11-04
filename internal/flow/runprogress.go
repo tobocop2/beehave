@@ -8,8 +8,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // Rounds counts the rounds of a loop that a run used, against the cap that its agent calls named with the rounds keyword. Cap is 0 when no call named one.

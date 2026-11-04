@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/forge/forgetest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/forge/forgetest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var errDown = errors.New("down")

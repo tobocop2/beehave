@@ -7,7 +7,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // The functions of this file own the rules for the text and list arguments of the command, sandbox and item builtins.

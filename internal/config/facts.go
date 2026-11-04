@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // withFacts checks the facts of a project file and copies them into the profile. A fact that the file leaves out stays empty.

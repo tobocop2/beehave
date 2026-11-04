@@ -6,13 +6,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/ssh"
-	"github.com/tobocop2/obee/internal/host/sshtest"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/ssh"
+	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestUp_ChecksTheMachineAndMakesOnlyItsOwnFolder(t *testing.T) {
@@ -24,9 +24,9 @@ func TestUp_ChecksTheMachineAndMakesOnlyItsOwnFolder(t *testing.T) {
 	require.NoError(t, h.Up(t.Context()))
 	require.NoError(t, h.Up(t.Context()), "Up is idempotent")
 
-	assert.True(t, m.Files[sshtest.Root+"/work/.obee/"])
+	assert.True(t, m.Files[sshtest.Root+"/work/.beehave/"])
 	assert.Zero(t, calledWith(m, "systemd-run --user"), "Up starts no unit")
-	assert.Zero(t, calledWith(m, "loginctl enable-linger"), "obee never turns linger on")
+	assert.Zero(t, calledWith(m, "loginctl enable-linger"), "beehave never turns linger on")
 }
 
 func TestUp_RefusesAMachineWhoseLingerIsOffAndNamesTheFix(t *testing.T) {
@@ -40,8 +40,8 @@ func TestUp_RefusesAMachineWhoseLingerIsOffAndNamesTheFix(t *testing.T) {
 
 	require.ErrorIs(t, err, ssh.ErrLinger)
 	assert.Contains(t, err.Error(), "loginctl enable-linger lane")
-	assert.Zero(t, calledWith(m, "loginctl enable-linger"), "obee never turns linger on")
-	assert.False(t, m.Files[sshtest.Root+"/work/.obee/"], "a refused Up changes nothing")
+	assert.Zero(t, calledWith(m, "loginctl enable-linger"), "beehave never turns linger on")
+	assert.False(t, m.Files[sshtest.Root+"/work/.beehave/"], "a refused Up changes nothing")
 }
 
 func TestUp_RefusesAMachineWithoutAUserManagerOrWithAnOldSystemd(t *testing.T) {
@@ -226,7 +226,7 @@ func TestNew_BuildsNoConnection(t *testing.T) {
 	_, err := ssh.New("gates", config(), runner)
 
 	require.NoError(t, err)
-	assert.Empty(t, runner.Calls, "New runs no ssh, so `obee check config` needs no network")
+	assert.Empty(t, runner.Calls, "New runs no ssh, so `beehave check config` needs no network")
 }
 
 func TestEveryCallPutsTheTargetAfterTheGuardAndAllowsNoWeakHostKeyPolicy(t *testing.T) {

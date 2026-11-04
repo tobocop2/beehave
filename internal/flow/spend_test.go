@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
-// estimated is a finished run whose cost obee estimated from the tokens.
+// estimated is a finished run whose cost beehave estimated from the tokens.
 func estimated(dollars float64) agent.Result {
 	done := costing(dollars)
 	done.Estimated = true
@@ -56,7 +56,7 @@ func TestStatus_AnEstimatedCostIsMarkedOnTheStepAndInTheSumOfTheRun(t *testing.T
 		}
 	}
 
-	assert.Equal(t, []bool{false, true}, marked, "only the step whose cost obee estimated carries the mark")
+	assert.Equal(t, []bool{false, true}, marked, "only the step whose cost beehave estimated carries the mark")
 	assert.InDelta(t, 1.75, view.Spent.Cost, 0)
 	assert.True(t, view.Spent.Estimated, "a sum that holds an estimate says so")
 	assert.Contains(t, view.Notes(), "spent $1.75 (estimate) of $20")

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -27,19 +27,19 @@ const (
 	plainRune = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
 
 	// clonePrefix starts the name of every clone folder of a host gate.
-	clonePrefix = "obee-gate-"
+	clonePrefix = "beehave-gate-"
 
 	// cloneMarker is the line that the job writes when the gate has ended, before it deletes the clone.
-	cloneMarker = "obee-gate-done"
+	cloneMarker = "beehave-gate-done"
 
 	// noTestsMarker is the line that the job writes when the gate command passed and the report glob matched no test case.
-	noTestsMarker = "obee-gate-no-tests"
+	noTestsMarker = "beehave-gate-no-tests"
 
 	// stepMarker starts the line that the job of a gate list writes after each step: the name of the step and its exit code.
-	stepMarker = "obee-gate-step"
+	stepMarker = "beehave-gate-step"
 
 	// trackedMarker starts the line that the job writes when the repository tracks a file that the report glob matches. The file name follows.
-	trackedMarker = "obee-gate-tracked-report"
+	trackedMarker = "beehave-gate-tracked-report"
 )
 
 // ExitTimedOut is the code that a Shell returns for a command that the time limit of the shell itself killed. It is not an exit code of the command,
@@ -129,8 +129,8 @@ func New(shell Shell, tree Tree, hosts Hosts) Gate {
 }
 
 // Run runs the gate command of the project in dir. A tree with uncommitted changes, or a head or tree that changes during the run, is an error:
-// the gate must judge the commit that obee sends on. A gate on a build host clones the repository there and checks out that commit,
-// so the host never judges a tree that obee did not send. Dir is read for the local gate and for the head only.
+// the gate must judge the commit that beehave sends on. A gate on a build host clones the repository there and checks out that commit,
+// so the host never judges a tree that beehave did not send. Dir is read for the local gate and for the head only.
 func (g Gate) Run(ctx context.Context, request Request) (Result, error) {
 	request.Project = request.Plan.apply(request.Project)
 
@@ -513,7 +513,7 @@ func markedResult(log string, project model.Project) (Result, bool) {
 	return Result{}, false
 }
 
-// withCauses adds the two causes of a failed host job to the report, for a host whose log obee cannot read.
+// withCauses adds the two causes of a failed host job to the report, for a host whose log beehave cannot read.
 func withCauses(result Result, project model.Project) Result {
 	if project.TestReport == "" {
 		return result
@@ -603,7 +603,7 @@ func plainWord(word string) bool {
 	return word != "" && !strings.HasPrefix(word, ".") && strings.Trim(word, plainRune) == ""
 }
 
-// hostCommand is the command line that makes the host gate the commit that obee sends: a clone folder at the literal path clone,
+// hostCommand is the command line that makes the host gate the commit that beehave sends: a clone folder at the literal path clone,
 // a clone of the repository at cloneURL, a detached checkout of head, a check that the checkout is head, and then the gate command.
 // A trap on exit, hang-up, interrupt and terminate writes the marker line and then deletes the folder by its literal path, so the result
 // is written first and the folder goes whether the gate passes, fails or is stopped. The exit status of the gate is kept.
@@ -633,7 +633,7 @@ func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone string
 }
 
 // gateWords are the words that run the gate command. A project with a gate string has one word. A gate list has one word for each step:
-// the word runs the step, writes the marker line "obee-gate-step <name> rc=<code>" and records a failure, and it never stops the later steps.
+// the word runs the step, writes the marker line "beehave-gate-step <name> rc=<code>" and records a failure, and it never stops the later steps.
 // The last word fails when any step failed, so the job fails with the list.
 func gateWords(project model.Project, pins []Pin) []string {
 	if len(project.GateSteps) == 0 {

@@ -7,9 +7,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/agent"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // errEmptyLogin is returned when no agent login is set for an agent step.

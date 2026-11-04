@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 func TestExecRunner_StdinIsTheTextTheProgramReads(t *testing.T) {
@@ -29,7 +29,7 @@ func TestExecRunner_NoStdinGivesTheProgramAnEmptyInput(t *testing.T) {
 }
 
 func TestExecRunner_OnlyReplacesTheEnvironmentOfTheProcessAndEnvAddsToIt(t *testing.T) {
-	t.Setenv("OBEE_TEST_SECRET", "secret")
+	t.Setenv("BEEHAVE_TEST_SECRET", "secret")
 
 	got := proc.ExecRunner{Binary: "env", Only: []string{"A=1"}, Env: []string{"B=2"}}.Run(t.Context(), nil)
 
@@ -38,7 +38,7 @@ func TestExecRunner_OnlyReplacesTheEnvironmentOfTheProcessAndEnvAddsToIt(t *test
 }
 
 func TestExecRunner_AnEmptyOnlyGivesAnEmptyEnvironment(t *testing.T) {
-	t.Setenv("OBEE_TEST_SECRET", "secret")
+	t.Setenv("BEEHAVE_TEST_SECRET", "secret")
 
 	got := proc.ExecRunner{Binary: "env", Only: []string{}}.Run(t.Context(), nil)
 
@@ -47,9 +47,9 @@ func TestExecRunner_AnEmptyOnlyGivesAnEmptyEnvironment(t *testing.T) {
 }
 
 func TestExecRunner_WithoutOnlyTheProgramKeepsTheEnvironmentOfTheProcess(t *testing.T) {
-	t.Setenv("OBEE_TEST_KEPT", "yes")
+	t.Setenv("BEEHAVE_TEST_KEPT", "yes")
 
 	got := proc.ExecRunner{Binary: "env"}.Run(t.Context(), nil)
 
-	assert.Contains(t, got.Stdout, "OBEE_TEST_KEPT=yes")
+	assert.Contains(t, got.Stdout, "BEEHAVE_TEST_KEPT=yes")
 }

@@ -1,4 +1,4 @@
-// Package lockfile opens the file locks of obee. It is layer 0: it imports no obee package.
+// Package lockfile opens the file locks of beehave. It is layer 0: it imports no beehave package.
 package lockfile
 
 import (

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/lockfile"
+	"github.com/tobocop2/beehave/internal/lockfile"
 )
 
 func TestOpen_CreatesTheFileAndLocksIt(t *testing.T) {

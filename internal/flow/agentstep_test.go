@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // gitTree makes a folder with one commit and returns the folder and the commit.

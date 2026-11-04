@@ -5,9 +5,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
 
 const (

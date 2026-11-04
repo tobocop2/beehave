@@ -24,7 +24,7 @@ var errNoProject = errors.New("no project for the item")
 var errProjectConflict = errors.New("the item has an open run under another project")
 
 // errStranded is returned when a run belongs to another build version.
-var errStranded = errors.New("the run belongs to another version of obee")
+var errStranded = errors.New("the run belongs to another version of beehave")
 
 // errRunFailed is returned when run finds that the last attempt of the item failed.
 var errRunFailed = errors.New("the last run of the item failed")
@@ -46,7 +46,7 @@ func (r run) terminal() bool {
 	return false
 }
 
-// failed reports whether the attempt ended with an error. Only obee resume continues it.
+// failed reports whether the attempt ended with an error. Only beehave resume continues it.
 func (r run) failed() bool {
 	return stateOf(r.Status.Status) == runFailed
 }
@@ -54,7 +54,7 @@ func (r run) failed() bool {
 // failedError tells the owner why a new attempt does not start after a failed one.
 // The error text of the run names the step that failed.
 func failedError(failed run, item string) error {
-	return fmt.Errorf("%w: %s failed: %s. Run obee resume %s to continue it from the last finished step",
+	return fmt.Errorf("%w: %s failed: %s. Run beehave resume %s to continue it from the last finished step",
 		errRunFailed, failed.Status.ID, fmt.Sprint(failed.Status.Error), item)
 }
 
@@ -105,7 +105,7 @@ func (r run) input() (ItemInput, error) {
 
 // conflictError names both projects when run asks for a project the open run of the item does not use.
 func conflictError(item, held, asked string) error {
-	return fmt.Errorf("%w: item %s has an open run under project %s and you asked for %s. Run obee cancel %s to end it, then run obee run %s %s",
+	return fmt.Errorf("%w: item %s has an open run under project %s and you asked for %s. Run beehave cancel %s to end it, then run beehave run %s %s",
 		errProjectConflict, item, held, asked, item, item, asked)
 }
 
@@ -120,7 +120,7 @@ func strandedError(stranded run, version string) error {
 
 	moveWith := ""
 	if in, err := stranded.input(); err == nil {
-		moveWith = fmt.Sprintf(", or run obee resume %s --on-this-build to move the run to this build from its last finished step", in.Item)
+		moveWith = fmt.Sprintf(", or run beehave resume %s --on-this-build to move the run to this build from its last finished step", in.Item)
 	}
 
 	return fmt.Errorf("%w: %s started under version %s and this is %s. Start version %s to finish it%s",

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func ctx() context.Context {
@@ -134,7 +134,7 @@ func TestTake_AClaimThatNeverLandsStopsAfterFourAttempts(t *testing.T) {
 	h.rows.deaf = 99
 
 	err := h.claims.Take(ctx(), "A", "5")
-	require.ErrorContains(t, err, "could not take #5 after 4 attempts; check `obee claim who 5`")
+	require.ErrorContains(t, err, "could not take #5 after 4 attempts; check `beehave claim who 5`")
 	assert.Equal(t, claim.CodeRefused, h.code(err))
 	assert.Equal(t, 4, h.rows.calls["TryHold"])
 }

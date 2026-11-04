@@ -12,7 +12,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Diagnostic is one problem in a file. It renders as file:line:col: text. A problem with the whole file has line 0 and renders as file: text.
@@ -38,7 +38,7 @@ const (
 )
 
 // reservedEnvPrefixes lists the prefixes of the variable names that a workflow never sets or reads. The engine and DBOS own these names.
-func reservedEnvPrefixes() []string { return []string{"DBOS__", "OBEE_"} }
+func reservedEnvPrefixes() []string { return []string{"DBOS__", "BEEHAVE_"} }
 
 // secretWords lists the words that mark the name of a secret. The env builtin refuses such a name.
 func secretWords() []string { return []string{"TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"} }

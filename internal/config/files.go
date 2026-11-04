@@ -8,7 +8,7 @@ import (
 
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -39,9 +39,9 @@ func isFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// refuseOld refuses a file in the old format. obee does not read it.
+// refuseOld refuses a file in the old format. beehave does not read it.
 func refuseOld(path, name string) error {
-	return refuse("%s: obee no longer reads HCL config files. Rewrite the file as %s.", path, name)
+	return refuse("%s: beehave no longer reads HCL config files. Rewrite the file as %s.", path, name)
 }
 
 // refuseAt returns a refusal that starts with the file, line and column of at.

@@ -8,9 +8,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // PhaseInput describes one agent phase of an item. Run is the id of the run that queued the phase.
@@ -69,7 +69,7 @@ type PhaseOutput struct {
 	Text       string   `json:"text,omitempty"`
 	Skills     []string `json:"skills,omitempty"`
 	Violations []string `json:"violations,omitempty"`
-	// Spend is the cost of the run: the dollars that the agent CLI reported, or an estimate that obee made from the tokens, or the mark that the cost is unknown.
+	// Spend is the cost of the run: the dollars that the agent CLI reported, or an estimate that beehave made from the tokens, or the mark that the cost is unknown.
 	agent.Spend
 	// Rounds is the loop cap that the step named. The status view shows the rounds used against it.
 	Rounds int `json:"rounds,omitempty"`
@@ -133,7 +133,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 		return out, err
 	}
 
-	// The end of the phase is judged inside the step, so a phase that did not exit with code 0 is a failed step that obee resume reruns.
+	// The end of the phase is judged inside the step, so a phase that did not exit with code 0 is a failed step that beehave resume reruns.
 	return out, phaseEnd(in, out)
 }
 
@@ -146,7 +146,7 @@ func phaseOutput(result agent.Result) PhaseOutput {
 }
 
 // recordGroup returns the function that writes the process group of an agent to the process file, under the id of the run. A failed write is logged.
-// The file serves the next start of obee run: the next worker kills the groups that a crash left.
+// The file serves the next start of beehave run: the next worker kills the groups that a crash left.
 func (e *Engine) recordGroup(ctx context.Context, in PhaseInput) func(pid int) {
 	return func(pid int) {
 		if err := e.procs.add(ctx, in.Run, pid); err != nil {
@@ -268,7 +268,7 @@ func phaseEnd(in PhaseInput, out PhaseOutput) error {
 	}
 
 	if out.Outcome != agent.OutcomeExited || out.ExitCode != 0 {
-		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run obee resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
+		return fmt.Errorf("the agent step of item %s ended as %s (exit %d): %s. Fix the cause, then run beehave resume %s", in.Item, out.Outcome, out.ExitCode, out.Note, in.Item)
 	}
 
 	return nil

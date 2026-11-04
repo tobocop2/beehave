@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
 )
 
 // fakeBook is a fake ledger. It answers each question with a fixed number and records the folder that was opened.

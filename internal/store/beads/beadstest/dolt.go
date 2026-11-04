@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // The helpers in this file start a private dolt server for the contract tests that run against a real bd.

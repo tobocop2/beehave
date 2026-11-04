@@ -134,11 +134,11 @@ check "eligible exits 2 when the check fails" test "$rc" -eq 2
 echo "--- write"
 reset
 PAYLOAD=$(jq -n -c --arg to "$token" '{args: {booking_id: "BK-123456", amount: 80, reason: $to}, reply: "Refund done.", channel: "email", to: $to}')
-printf '%s' "$PAYLOAD" | OBEE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" credit > /dev/null 2>&1
+printf '%s' "$PAYLOAD" | BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" credit > /dev/null 2>&1
 check "credit posts to the credit route" has 'writes/credit' "$FAKE_LOG"
 check "credit sends the Idempotency-Key header" has 'Idempotency-Key: credit-key1' "$FAKE_LOG"
 check "credit unmasks the arguments" has 'ann@example.com' "$FAKE_BODY"
-printf '%s' "$PAYLOAD" | OBEE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" bogus > /dev/null 2>&1
+printf '%s' "$PAYLOAD" | BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" bogus > /dev/null 2>&1
 rc=$?
 check "write refuses an unknown step" test "$rc" -eq 2
 printf '%s' "$PAYLOAD" | sh "$GATEWAY/write.sh" credit > /dev/null 2>&1
@@ -147,26 +147,26 @@ check "write refuses a call with no engine key" test "$rc" -eq 2
 
 echo "--- reply and read-back"
 reset
-printf '%s' "$PAYLOAD" | OBEE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
+printf '%s' "$PAYLOAD" | BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
 check "reply sends one mail" test "$(grep -c '^To: ' "$FAKE_MAIL")" -eq 1
 check "reply unmasks the recipient" has 'To: ann@example.com' "$FAKE_MAIL"
 check "reply logs its key" has 'key1' "$H/sent.tsv"
-printf '%s' "$PAYLOAD" | OBEE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
+printf '%s' "$PAYLOAD" | BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
 check "reply does not send a second time" test "$(grep -c '^To: ' "$FAKE_MAIL")" -eq 1
 chat_payload=$(jq -n -c '{args: {}, reply: "Done.", channel: "chat", to: "bob"}')
-printf '%s' "$chat_payload" | OBEE_WRITE_KEY=key2 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
+printf '%s' "$chat_payload" | BEEHAVE_WRITE_KEY=key2 sh "$GATEWAY/write.sh" reply > /dev/null 2>&1
 check "chat reply posts to the chat API" has 'chat.test/send' "$FAKE_LOG"
 check "chat reply sends the text" has '"text":"Done."' "$FAKE_BODY"
-OBEE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" reply > /dev/null 2>&1
+BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" reply > /dev/null 2>&1
 check "read-back finds a sent reply" test "$?" -eq 0
-OBEE_WRITE_KEY=missing sh "$GATEWAY/read-back.sh" reply > /dev/null 2>&1
+BEEHAVE_WRITE_KEY=missing sh "$GATEWAY/read-back.sh" reply > /dev/null 2>&1
 rc=$?
 check "read-back fails for an unsent reply" test "$rc" -ne 0
 printf '{"status":"applied"}' > "$T/resp/_writes_credit-key1"
-OBEE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" credit > /dev/null 2>&1
+BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" credit > /dev/null 2>&1
 check "read-back accepts an applied write" test "$?" -eq 0
 printf '{"status":"pending"}' > "$T/resp/_writes_credit-key1"
-OBEE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" credit > /dev/null 2>&1
+BEEHAVE_WRITE_KEY=key1 sh "$GATEWAY/read-back.sh" credit > /dev/null 2>&1
 rc=$?
 check "read-back fails for a pending write" test "$rc" -ne 0
 

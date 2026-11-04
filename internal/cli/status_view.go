@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/beehave/internal/flow"
 )
 
 // runView is one run of the JSON list: the fields of the status line, and the seconds left to the deadline of an open wait.

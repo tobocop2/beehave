@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // Outcome says how an agent run ended.
@@ -208,7 +208,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
-	runDir, err := os.MkdirTemp("", "obee-run-") // mode 0700
+	runDir, err := os.MkdirTemp("", "beehave-run-") // mode 0700
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
 	}

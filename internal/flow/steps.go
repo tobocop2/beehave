@@ -12,8 +12,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // errNoSuchRun is returned when the store holds no run of the given id.
@@ -124,7 +124,7 @@ func (c *Client) runRow(id string) (dbos.WorkflowStatus, error) {
 	}
 
 	if len(rows) == 0 {
-		return dbos.WorkflowStatus{}, fmt.Errorf("%w: %q. Run obee status to see the run ids", errNoSuchRun, id)
+		return dbos.WorkflowStatus{}, fmt.Errorf("%w: %q. Run beehave status to see the run ids", errNoSuchRun, id)
 	}
 
 	return rows[0], nil

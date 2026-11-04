@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // pinned runs a local gate in a folder that holds the pin file text. Each tool is a fake program with the given body, found first on the path of a real sh.

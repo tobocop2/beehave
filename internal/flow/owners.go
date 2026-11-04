@@ -10,8 +10,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/atomicfile"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/atomicfile"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 // errNoOwner is returned when a run recorded no claim.
 var errNoOwner = errors.New("the run recorded no claim")
 
-// ownerPath is the file that holds the token of the claim that obee resume took for a run.
+// ownerPath is the file that holds the token of the claim that beehave resume took for a run.
 func ownerPath(dir, id string) string {
 	return filepath.Join(dir, ownersDir, id)
 }
@@ -41,7 +41,7 @@ func saveOwner(dir, id, owner string) error {
 	return nil
 }
 
-// savedOwner returns the token that obee resume saved for a run, or an empty text when it saved none.
+// savedOwner returns the token that beehave resume saved for a run, or an empty text when it saved none.
 func savedOwner(dir, id string) (string, error) {
 	data, err := os.ReadFile(ownerPath(dir, id))
 	if errors.Is(err, os.ErrNotExist) {
@@ -55,7 +55,7 @@ func savedOwner(dir, id string) (string, error) {
 	return string(data), nil
 }
 
-// savedOwnerAge returns when obee resume saved the token of a run, and false when it saved none.
+// savedOwnerAge returns when beehave resume saved the token of a run, and false when it saved none.
 func savedOwnerAge(dir, id string) (time.Time, bool, error) {
 	info, err := os.Stat(ownerPath(dir, id))
 	if errors.Is(err, os.ErrNotExist) {
@@ -69,7 +69,7 @@ func savedOwnerAge(dir, id string) (time.Time, bool, error) {
 	return info.ModTime(), true, nil
 }
 
-// currentOwner returns the token of the claim a run holds: the one that obee resume saved, else the one of the recorded claim step.
+// currentOwner returns the token of the claim a run holds: the one that beehave resume saved, else the one of the recorded claim step.
 func currentOwner(client dbos.Client, dir, id string) (string, error) {
 	saved, err := savedOwner(dir, id)
 	if err != nil || saved != "" {

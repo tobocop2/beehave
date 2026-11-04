@@ -277,7 +277,7 @@ const choicesOnlyFlow = `def main(item):
         fail("WRONG ANSWER " + r.answer)
 `
 
-// The ask event alone tells obee answer that a wait is open and what it asks.
+// The ask event alone tells beehave answer that a wait is open and what it asks.
 func TestWait_TheAskEventHoldsTheQuestionToo(t *testing.T) {
 	t.Parallel()
 

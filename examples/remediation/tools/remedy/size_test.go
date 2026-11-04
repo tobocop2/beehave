@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
 )
 
 // readingBrief writes a brief that lists one file of the given size under its read-first heading, and returns the path of the brief.

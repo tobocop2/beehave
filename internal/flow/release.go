@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // releaseTimeout bounds every git call of one release when the clock sets none.
@@ -57,7 +57,7 @@ type ReleaseDeps struct {
 	Trees trees
 	Clock clock
 	// Repository says whether a project has a git repository, as Deps.Repository does. A nil value means every project has one.
-	// obee keeps the plain item folder of a project with no repository: it has no remote branch to show that its work is safe.
+	// beehave keeps the plain item folder of a project with no repository: it has no remote branch to show that its work is safe.
 	Repository func(project string) bool
 	// Merge turns off the queued merges of a run that is canceled while no engine runs it. A nil value turns none off.
 	Merge merger

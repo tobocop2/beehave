@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tobocop2/obee/internal/atomicfile"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/atomicfile"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 const (

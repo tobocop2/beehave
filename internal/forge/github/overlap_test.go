@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 var now = time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
@@ -176,7 +176,7 @@ func TestOverlap_Refusals(t *testing.T) {
 		{"history_unreadable", func(r *proctest.Scripted) { r.PlanFail("", "repos/o/n/commits") }, model.OverlapRequest{PR: "5"}, "cannot read the history of docs/a b.md on main"},
 		{"no_files", func(r *proctest.Scripted) { r.Plan("", "repos/o/n/pulls/5/files") }, model.OverlapRequest{PR: "5"}, "no files to compare. #5 has no files, and an empty list proves nothing."},
 		{"open_list_unreadable", func(r *proctest.Scripted) { r.PlanFail("", "pr", "list") }, model.OverlapRequest{PR: "5"}, "cannot list the open pull requests: cannot list pull requests ("},
-		{"no_argument", func(*proctest.Scripted) {}, model.OverlapRequest{}, "usage: obee check overlap <pr> | --files <list> [--since <ISO date>]"},
+		{"no_argument", func(*proctest.Scripted) {}, model.OverlapRequest{}, "usage: beehave check overlap <pr> | --files <list> [--since <ISO date>]"},
 		{"two_branch_names", func(*proctest.Scripted) {}, model.OverlapRequest{PR: "5", Integration: "other"}, "The base branch is main and the integration branch is other"},
 	}
 	for _, tt := range tests {

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 const privateMode = os.FileMode(0o600)
@@ -174,7 +174,7 @@ func TestRun_FailuresNameTheStepAndKeepTheRelease(t *testing.T) {
 			h.agents.result = func(AgentRequest) agent.Result {
 				return agent.Result{Outcome: agent.OutcomeExited, ExitCode: 3, Note: "bad exit"}
 			}
-		}, "the agent step of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run obee resume 12", []string{"claim:12", "release:12"}},
+		}, "the agent step of item 12 ended as exited (exit 3): bad exit. Fix the cause, then run beehave resume 12", []string{"claim:12", "release:12"}},
 		{"the_agent_times_out", func(h *harness) {
 			h.agents.result = func(AgentRequest) agent.Result { return agent.Result{Outcome: agent.OutcomeTimedOut, ExitCode: -1} }
 		}, "ended as timed-out", []string{"claim:12", "release:12"}},

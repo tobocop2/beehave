@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 // The caps are the size of a variable value (4096 bytes) and the number of values one lookup works out (1000).

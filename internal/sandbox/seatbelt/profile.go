@@ -1,4 +1,4 @@
-// Package seatbelt is the sandbox enforcer for macOS. It runs the command under sandbox-exec with a Seatbelt profile that obee generates from the plan.
+// Package seatbelt is the sandbox enforcer for macOS. It runs the command under sandbox-exec with a Seatbelt profile that beehave generates from the plan.
 //
 // The profile denies everything by default and then allows what the plan lists: reads by path, writes by path (a write path is readable too), and TCP
 // connect to the port of the allow-list proxy on localhost. It grants no unix socket, so a command reaches no socket outside the plan, a pathname socket
@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // Name is the name of this enforcer in sandbox_enforcer.

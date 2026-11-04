@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // lostRun starts the agent step of the default workflow on an engine, stops the engine while the agent runs, and makes the claim store

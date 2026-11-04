@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // slowGate holds each gate until the test lets it end, and tells the test when it started.

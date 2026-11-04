@@ -20,14 +20,14 @@ import (
 	_ "github.com/dbos-inc/dbos-transact-golang/dbos/driver/sqlite"
 	"github.com/gofrs/flock"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
-	appName      = "obee"
+	appName      = "beehave"
 	executorName = "local"
 	queueName    = "agents"
 	// reviewsQueueName is the queue of the agent steps of the kind review. The agents queue holds the steps of the kind implement.
@@ -382,7 +382,7 @@ func (e *Engine) retain() {
 }
 
 // deleteOldRuns deletes the runs that finished more than the retention ago, with the phases they started.
-// A failed or canceled run stays: obee resume can reopen it.
+// A failed or canceled run stays: beehave resume can reopen it.
 func (e *Engine) deleteOldRuns() error {
 	if e.keepRuns {
 		return nil
@@ -499,7 +499,7 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 }
 
 // handleFor joins the open run of the item, or starts the next attempt.
-// A new attempt starts only after a finished or a canceled one: a failed attempt continues with obee resume.
+// A new attempt starts only after a finished or a canceled one: a failed attempt continues with beehave resume.
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
@@ -557,9 +557,9 @@ func (e *Engine) pickLogin(ctx context.Context, in ItemInput, overCap bool, take
 	return login, nil
 }
 
-// busyLogins returns the logins that have an agent step running or queued, and the logins in taken. The library keeps the list: obee counts nothing.
+// busyLogins returns the logins that have an agent step running or queued, and the logins in taken. The library keeps the list: beehave counts nothing.
 // An agent step is an open phase, which has the login as its partition key on the agents queue. A run that a spawn or the queue started holds its login from its start,
-// because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `obee run` started holds none, so the loop parent needs no login of its own.
+// because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `beehave run` started holds none, so the loop parent needs no login of its own.
 // The engine registers only the run and the phase, so one listing of the open workflows, filtered to those two names, reads both.
 func (e *Engine) busyLogins(taken []string) ([]string, error) {
 	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))

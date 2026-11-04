@@ -13,7 +13,7 @@ type CommandResult struct {
 	TimedOut bool
 }
 
-// ReportLimit is the most bytes of command output that obee keeps. The tail of an output holds the findings.
+// ReportLimit is the most bytes of command output that beehave keeps. The tail of an output holds the findings.
 const ReportLimit = 16 * 1024
 
 // IsDigits reports whether text is a non-empty run of ASCII digits.

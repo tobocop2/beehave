@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 // orderGate holds the gate of the item "first" until the test lets it go, ends every other gate at once, and records the items in the order the gates start.

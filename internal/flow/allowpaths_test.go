@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // writesIn makes the fake agent write the files in the item folder, relative to it, then end with exited.

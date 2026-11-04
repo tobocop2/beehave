@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 type chainShape struct{ name, term, head, join, tail string }

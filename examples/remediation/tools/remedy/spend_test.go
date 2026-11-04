@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
 )
 
 func callLine(clock string, cacheRead int) string {

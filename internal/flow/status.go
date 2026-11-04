@@ -15,7 +15,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // errNoRun is returned when an item has no run.
@@ -39,7 +39,7 @@ const (
 	runCancelled RunState = "cancelled" //nolint:misspell // the same spelling as agent.OutcomeCancelled: one word for one state
 )
 
-// RunInfo is one line of the status list. Stranded marks an open run that another version of obee started.
+// RunInfo is one line of the status list. Stranded marks an open run that another version of beehave started.
 type RunInfo struct {
 	ID       string   `json:"id"`
 	State    RunState `json:"state"`
@@ -376,18 +376,18 @@ func (c *Client) Answer(item, text string) error { return c.AnswerAs(item, "", t
 // It returns the info of the run, which holds the question and who it asks.
 func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {
 	if last.terminal() {
-		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run obee run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
+		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run beehave run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
 	}
 
 	info, err := c.info(last.Status)
 	if err == nil && info.Question == "" {
-		err = fmt.Errorf("%w: %s asks no question. Run obee status to see which run waits for an answer", errWrongState, last.Status.ID)
+		err = fmt.Errorf("%w: %s asks no question. Run beehave status to see which run waits for an answer", errWrongState, last.Status.ID)
 	}
 
 	return info, err
 }
 
-// Resume reopens the canceled or failed run of an item, from its last finished step. Run obee run for the item to continue it.
+// Resume reopens the canceled or failed run of an item, from its last finished step. Run beehave run for the item to continue it.
 func (c *Client) Resume(item string) error {
 	last, err := c.latest(item)
 	if err != nil {
@@ -424,10 +424,10 @@ func (c *Client) dropClaim(project, item, id, owner string) error {
 	return errors.Join(c.give.Lifecycle.Release(ctx, project, item, owner), removeFile(ownerPath(c.dir, id)))
 }
 
-// requireResumable refuses a run that is not canceled or failed, and a run that another version of obee started.
+// requireResumable refuses a run that is not canceled or failed, and a run that another version of beehave started.
 func (c *Client) requireResumable(item string, last run) error {
 	if state := stateOf(last.Status.Status); state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run obee run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run beehave run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if last.Status.ApplicationVersion != c.version {
@@ -478,7 +478,7 @@ func (c *Client) claimFresh(project, item, id string) (string, error) {
 
 	owner, err := c.give.Lifecycle.Claim(ctx, project, item)
 	if err != nil {
-		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next obee run frees it. Then run obee resume %s again", model.StepClaim, item, err, item)
+		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next beehave run frees it. Then run beehave resume %s again", model.StepClaim, item, err, item)
 	}
 
 	if err := saveOwner(c.dir, id, owner); err != nil {
@@ -579,7 +579,7 @@ func (c *Client) PinnedFile(item string) (string, error) {
 	return in.File, err
 }
 
-// latest returns the newest run of an item, and refuses a run that another version of obee started.
+// latest returns the newest run of an item, and refuses a run that another version of beehave started.
 func (c *Client) latest(item string) (run, error) {
 	last, err := c.newest(item)
 	if err != nil {
@@ -605,7 +605,7 @@ func (c *Client) newest(item string) (run, error) {
 	}
 
 	if !found {
-		return run{}, fmt.Errorf("%w: start item %s with obee run %s", errNoRun, item, item)
+		return run{}, fmt.Errorf("%w: start item %s with beehave run %s", errNoRun, item, item)
 	}
 
 	return last, nil

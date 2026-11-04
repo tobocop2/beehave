@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
-	"github.com/tobocop2/obee/examples/remediation/tools/gate"
-	"github.com/tobocop2/obee/examples/remediation/tools/job"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehave/examples/remediation/tools/job"
 )
 
 const (

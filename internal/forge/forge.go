@@ -4,7 +4,7 @@ package forge
 import (
 	"context"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Forge is a code host: pull requests, reviews, threads and checks. GitHub implements it.

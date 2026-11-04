@@ -1,0 +1,26 @@
+# The beehave process dies right after the forge merged the second of three batch members, before the engine records that merge.
+# The next beehave run finishes the same run. It merges the third member once, and it does not call the forge merge again for the first two.
+env REPO=o/r BASE=main OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com
+batchsetup
+
+! exec beehave run 7 --workflow flow/batch.star
+exists forge/crashed
+grep -count=1 '^MergePR 1 ' forge/calls.log
+grep -count=1 '^MergePR 2 ' forge/calls.log
+! grep '^MergePR 3 ' forge/calls.log
+
+exec beehave run 7 --workflow flow/batch.star
+stdout 'item 7 finished'
+
+grep -count=1 '^MergePR 1 ' forge/calls.log
+grep -count=1 '^MergePR 2 ' forge/calls.log
+grep -count=1 '^MergePR 3 ' forge/calls.log
+
+grep -count=3 '^MergePR [123] ' forge/calls.log
+grep -count=1 '^gate$' forge/gate.log
+
+exec beehave status
+stdout '^item-7-r1\tdone'
+
+-- forge/crash-after --
+2

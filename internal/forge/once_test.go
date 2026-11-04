@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var errRead = errors.New("read failed")
@@ -39,7 +39,7 @@ func TestPostOnce_TheSameKeyPostsOneComment(t *testing.T) {
 
 	require.NoError(t, forge.PostOnce(t.Context(), n, 7, "run:note", "one line"))
 	require.NoError(t, forge.PostOnce(t.Context(), n, 7, "run:note", "one line"))
-	assert.Equal(t, []string{"one line\n\nobee-key: run:note"}, n.posted)
+	assert.Equal(t, []string{"one line\n\nbeehave-key: run:note"}, n.posted)
 
 	require.NoError(t, forge.PostOnce(t.Context(), n, 7, "run:note2", "other"))
 	assert.Len(t, n.posted, 2)
@@ -48,7 +48,7 @@ func TestPostOnce_TheSameKeyPostsOneComment(t *testing.T) {
 func TestPostOnce_AKeyThatIsAPrefixIsAnotherKey(t *testing.T) {
 	t.Parallel()
 
-	n := &notes{rows: []model.Comment{{Body: "text\r\n\r\nobee-key: run:10"}}}
+	n := &notes{rows: []model.Comment{{Body: "text\r\n\r\nbeehave-key: run:10"}}}
 
 	require.NoError(t, forge.PostOnce(t.Context(), n, 7, "run:1", "text"))
 	assert.Len(t, n.posted, 1)

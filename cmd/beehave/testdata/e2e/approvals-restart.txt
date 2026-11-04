@@ -1,0 +1,66 @@
+# The beehave process dies while the run waits, and the deadline passes while no process runs (a window of 60 seconds). The next run finds
+# the request expired and asks whether to extend. The process dies again while that question waits. The third run keeps the question,
+# a person answers extend, and the roles sign inside the extension. The deadline is a ledger fact, so no process has to run at the time.
+# No notice and no extension repeats across the three processes.
+[!exec:jq] skip
+[!exec:ssh-keygen] skip
+[!exec:sqlite3] skip
+[!exec:flock] skip
+[!exec:git] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+approvalsinit
+approvalsfakes
+approvalskeys ann sam pat
+subst home/.approval/config
+env HOME=$WORK/home
+env APPROVALS_DIR=$WORK/ops
+env APPROVALS_WINDOW_SECONDS=60
+env APPROVAL_POLL=1
+
+exec sh ops/scripts/submit.sh msa msa.md ann
+exec beehavereal item add approvals req-1 --title 'Release' --body-file body.txt
+! exec beehavereal run req-1 approvals --workflow ops/workflow.star &
+waitfile notices.log
+kill -KILL
+wait
+
+# The deadline passes with no process.
+exec sleep 65
+! exec beehavereal run req-1 approvals --workflow ops/workflow.star &
+waitstatus 'The deadline passed'
+kill -KILL
+wait
+
+exec beehavereal run req-1 approvals --workflow ops/workflow.star &
+waitstatus 'The deadline passed'
+exec beehavereal answer req-1 --as rita extend
+exec signoff sam security approve req-1 msa
+exec signoff pat product approve req-1 msa
+wait
+stdout 'item req-1 finished'
+
+grep -count=1 '^version-req-1-' notices.log
+grep -count=1 '^escalate-req-1 rita' notices.log
+# The first process died before any reminder was due. The next one woke past both levels and the deadline, so it owes both reminders
+# before the escalation, in order, and the later processes repeat none.
+grep -count=1 '^remind-req-1-1 ' notices.log
+grep -count=1 '^remind-req-1-2 ' notices.log
+exec sh -c 'grep -n -e "^remind-req-1-1 " -e "^remind-req-1-2 " -e "^escalate-req-1 " notices.log | cut -d: -f2 | cut -d" " -f1 | tr "\n" " "'
+stdout '^remind-req-1-1 remind-req-1-2 escalate-req-1 $'
+exec sh -c 'sh ops/scripts/audit.sh req-1 - $(jq -r .head home/.approval/certs/req-1.json)'
+stdout -count=1 '\textended\t'
+stdout -count=1 '\topened\t'
+stdout '\tclosed\t.*\tapproved\t'
+
+-- body.txt --
+{"doc":"msa","kind":"release","author":"ann"}
+-- msa.md --
+The release candidate.
+-- home/.approval/config --
+NOTIFY_API=http://notify.test
+-- home/.approval/credential.header --
+Authorization: Bearer TESTONLY

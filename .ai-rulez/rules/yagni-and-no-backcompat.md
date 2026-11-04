@@ -24,7 +24,7 @@ Before you design or write scaffolding, check whether a mature tool owns it. Sca
 
 ## No back-compat scaffolding
 
-obee has no released version and no pinned consumers. A refactor updates the consumers.
+beehave has no released version and no pinned consumers. A refactor updates the consumers.
 
 - No shim package or file at an old path. No alias type (`type Old = New`). No `Deprecated:` comment on code with no outside callers.
 - No re-export of an unexported helper to keep a test patch working. Test where the symbol lives.

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func problems(found []workflow.Diagnostic) []string {
@@ -24,7 +24,7 @@ func TestCheck_AcceptsAFileWithMainAndLoads(t *testing.T) {
 	t.Parallel()
 
 	file := folder(t, map[string]string{
-		"workflow.star": "load(\"@obee//review_fix.star\", \"review_fix\")\ndef main(item):\n    return gate(name = \"check\")\n",
+		"workflow.star": "load(\"@beehave//review_fix.star\", \"review_fix\")\ndef main(item):\n    return gate(name = \"check\")\n",
 	}, "workflow.star")
 
 	found, unparsed := workflow.Check(file)
@@ -47,7 +47,7 @@ func TestCheck_ReportsEachProblemWithItsPlace(t *testing.T) {
 		"a finish with no item": {map[string]string{"workflow.star": "def main(item):\n    pass\ndef finish():\n    pass\n"}, "0:0 finish takes the item. Write def finish(item):", false},
 		"a load of a bad path":  {map[string]string{"workflow.star": "load(\"lib.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 cannot load \"lib.star\"", false},
 		"a load of no file":     {map[string]string{"workflow.star": "load(\"//lib.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 cannot read lib.star", true},
-		"an unknown library":    {map[string]string{"workflow.star": "load(\"@obee//nothing.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 the binary has no library", false},
+		"an unknown library":    {map[string]string{"workflow.star": "load(\"@beehave//nothing.star\", \"x\")\ndef main(item):\n    return x\n"}, "1:1 the binary has no library", false},
 		"two names not defined": {map[string]string{"workflow.star": "def main(item):\n    return nothing(1) + other(2)\n"}, "2:12 undefined: nothing.", true},
 		"a problem in a load": {map[string]string{
 			"workflow.star": "load(\"//lib.star\", \"x\")\ndef main(item):\n    return x\n",

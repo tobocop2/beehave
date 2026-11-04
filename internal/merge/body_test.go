@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/lockfile"
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/lockfile"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // slowBody is a body held on the forge. The pause between the read and the write is what the lock must cover.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // stepKinds is the table of every kind of counted step that a run records: the start of the name `<kind>:<label>#<n>` of each step.

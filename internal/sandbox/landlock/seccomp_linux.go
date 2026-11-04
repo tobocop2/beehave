@@ -12,7 +12,7 @@ import (
 )
 
 // The offsets of the fields of struct seccomp_data that the filter reads. The arguments are 64-bit; the low word of the first one is at offset 16 on the
-// little-endian processors that obee builds for.
+// little-endian processors that beehave builds for.
 const (
 	offsetNumber   = 0
 	offsetArch     = 4

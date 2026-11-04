@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 // callsOf returns each simple command of the script with the unit that holds it.

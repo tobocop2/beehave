@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // minSandboxVersion is the oldest Claude Code that knows every key of the sandbox settings below. The newest key is allowUnsandboxedCommands

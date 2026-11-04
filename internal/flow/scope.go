@@ -216,7 +216,7 @@ func (s *script) askScope(fresh []int) error {
 	named, _ := keptIssues(answer)
 	missing := slices.DeleteFunc(slices.Clone(fresh), func(number int) bool { return slices.Contains(named, number) })
 	if len(missing) > 0 {
-		return fmt.Errorf("%w: item %s: %s has no owner line. The accepted answer is \"keep #N[, #N ...]\", for example obee answer %s \"keep %s\". Or remove the closing keyword",
+		return fmt.Errorf("%w: item %s: %s has no owner line. The accepted answer is \"keep #N[, #N ...]\", for example beehave answer %s \"keep %s\". Or remove the closing keyword",
 			errScopeRefused, s.in.Item, issueList(missing), s.in.Item, strings.Join(strings.Fields(issueList(missing)), ", "))
 	}
 

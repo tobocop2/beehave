@@ -102,7 +102,7 @@ func TestClient_ResumeOnThisBuildReportsAClaimThatCannotBeTaken(t *testing.T) {
 	err := other.ResumeOnThisBuild(testItem)
 	require.ErrorContains(t, err, "claim of item "+testItem)
 	require.ErrorContains(t, err, "is now canceled", "the cancel went through, so the error says what state the run is in")
-	require.ErrorContains(t, err, "obee resume "+testItem+" --on-this-build again", "the error says how to retry")
+	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build again", "the error says how to retry")
 
 	row, err := other.row(testRun)
 	require.NoError(t, err)

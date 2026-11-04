@@ -39,7 +39,7 @@ check_signatures() {
         while read -r m; do
             [ -n "$m" ] || continue
             by=$(sed -n 's/^by=//p' "$AP_HOME/taken/$m.msg" 2> /dev/null | head -n 1)
-            ssh-keygen -Y verify -f "$AP_HOME/allowed_signers" -I "$by" -n obee-signoff -s "$AP_HOME/taken/$m.msg.sig" < "$AP_HOME/taken/$m.msg" > /dev/null 2>&1 ||
+            ssh-keygen -Y verify -f "$AP_HOME/allowed_signers" -I "$by" -n beehave-signoff -s "$AP_HOME/taken/$m.msg.sig" < "$AP_HOME/taken/$m.msg" > /dev/null 2>&1 ||
                 echo "BROKEN the signed message $m does not verify"
         done
 }

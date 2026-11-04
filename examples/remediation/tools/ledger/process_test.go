@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
 )
 
 // The tests below run the ledger in separate operating system processes. The test binary starts itself as the helper:

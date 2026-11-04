@@ -1,7 +1,7 @@
-# Agent logins that obee can use. One login for one run: obee never
+# Agent logins that beehave can use. One login for one run: beehave never
 # switches login inside one lane.
 # No token or real account name belongs in this file.
-# obee sets CLAUDE_CONFIG_DIR to the config_dir of the chosen runner in the run environment.
+# beehave sets CLAUDE_CONFIG_DIR to the config_dir of the chosen runner in the run environment.
 # The Claude CLI then uses the login stored for that folder. Log in once with:
 #   CLAUDE_CONFIG_DIR=<config_dir> claude
 # This file calls three constructors: pool(), agents() and runner(). Each takes keyword arguments only.
@@ -11,9 +11,9 @@
 # and store it with:
 #   security add-generic-password -s <keychain> -a $USER -w
 
-# pool() sets the usage caps, in percent. `obee run` picks the Claude runner that is under
+# pool() sets the usage caps, in percent. `beehave run` picks the Claude runner that is under
 # both caps, with the lowest seven-day use, then the lowest five-hour use. A runner whose usage
-# cannot be read, or that is not logged in, is never picked; `obee doctor` names it. When no runner is under both caps, the run stops
+# cannot be read, or that is not logged in, is never picked; `beehave doctor` names it. When no runner is under both caps, the run stops
 # with exit 3 and names the earliest reset time. Both arguments are optional. Call pool() once.
 pool(
     five_hour_max = 90,
@@ -31,8 +31,8 @@ pool(
 # A step can set a lower cap for itself with max_budget_usd in its agent() call.
 # review_poll_minutes is the time between two polls of the open pull requests that wait for your
 # review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
-# `obee status` shows the newest poll.
-# retention_days is the age in days at which `obee run` deletes a finished run with its recorded steps. The default is 7.
+# `beehave status` shows the newest poll.
+# retention_days is the age in days at which `beehave run` deletes a finished run with its recorded steps. The default is 7.
 # 0 keeps every finished run. The most is 36500. A failed or canceled run is never deleted.
 # Call agents() once.
 agents(
@@ -49,7 +49,7 @@ runner(
     name = "claude-a",                  # your own label
     agent = "claude",
     config_dir = "~/.claude-profiles/a",  # one Claude config folder for each login
-    # keychain = "obee-claude-a",       # optional
+    # keychain = "beehave-claude-a",       # optional
 )
 
 runner(

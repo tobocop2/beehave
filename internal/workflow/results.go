@@ -8,7 +8,7 @@ import (
 
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.

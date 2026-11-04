@@ -37,9 +37,9 @@ type HostProvider string
 // The build host adapters.
 const (
 	HostSkyPilot HostProvider = "skypilot"
-	// HostSSH is a machine the owner provides and obee reaches over ssh. obee never creates or deletes it.
+	// HostSSH is a machine the owner provides and beehave reaches over ssh. beehave never creates or deletes it.
 	HostSSH HostProvider = "ssh"
-	// HostSlurm is a Slurm cluster whose head node obee reaches over ssh.
+	// HostSlurm is a Slurm cluster whose head node beehave reaches over ssh.
 	HostSlurm HostProvider = "slurm"
 )
 
@@ -140,7 +140,7 @@ type JobSpec struct {
 // JobState is where a job stands. The adapter reads it from the scheduler of the host.
 type JobState string
 
-// The states of a job. JobUnknown means the scheduler gave no answer that obee can read.
+// The states of a job. JobUnknown means the scheduler gave no answer that beehave can read.
 const (
 	JobPending   JobState = "pending"
 	JobRunning   JobState = "running"

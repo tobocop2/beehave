@@ -19,9 +19,9 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
@@ -537,14 +537,14 @@ func overCap(name string, limit float64, spent agent.Spend) error {
 	case spent.Unknown:
 		return fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s, but the cost is unknown for an earlier agent step "+
 			"(its model has no price), so the cap cannot be checked. "+
-			"Add a price for the model, or set agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD) to 0 for no cap", name, dollars(limit))
+			"Add a price for the model, or set agents.max_run_budget_usd (or BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD) to 0 for no cap", name, dollars(limit))
 	case spent.Cost < limit:
 		return nil
 	}
 
 	return fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s and the agent steps of the item run spent $%s. "+
 		"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
-		"Raise agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD), or set it to 0 for no cap", name, dollars(limit), dollars(spent.Cost))
+		"Raise agents.max_run_budget_usd (or BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD), or set it to 0 for no cap", name, dollars(limit), dollars(spent.Cost))
 }
 
 // dollars writes an amount of dollars with at most four decimals and no trailing zero.

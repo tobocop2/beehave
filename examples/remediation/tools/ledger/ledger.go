@@ -21,8 +21,8 @@ import (
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 // access is how a connection opens the file.

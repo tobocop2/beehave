@@ -33,7 +33,7 @@ func TestClient_ResumeOnThisBuildMovesAnOpenRunOfAnotherBuild(t *testing.T) {
 
 	err := other.Resume(testItem)
 	require.ErrorIs(t, err, errStranded)
-	require.ErrorContains(t, err, "obee resume 12 --on-this-build", "the refusal says that the flag exists")
+	require.ErrorContains(t, err, "beehave resume 12 --on-this-build", "the refusal says that the flag exists")
 
 	expireLease(harness) // the holder of the run is gone: its lease in the store has ended
 

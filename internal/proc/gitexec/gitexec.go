@@ -1,4 +1,4 @@
-// Package gitexec builds the git commands that obee runs in the trees it manages. Every such command runs with the hooks of the repository off, so a hook
+// Package gitexec builds the git commands that beehave runs in the trees it manages. Every such command runs with the hooks of the repository off, so a hook
 // that the owner or the project put in a tree never runs as the owner. This package is the one place that names the git binary.
 package gitexec
 
@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // Binary is the name of the git program.

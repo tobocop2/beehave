@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/shell"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // wrapperForms reads the command shapes of testdata/wrapper_forms.txt. `@` stands for the command and `Q` for the command in single quotes.

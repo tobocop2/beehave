@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/forge/github"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestPRList_ReturnsAListUnderItsLimit(t *testing.T) {
@@ -648,7 +648,7 @@ func TestPRView_AGateFieldThatIsAbsentOrNullIsNilNotFalse(t *testing.T) {
 func TestPRView_DecodesTheFieldsCallersRead(t *testing.T) {
 	t.Parallel()
 
-	f, _ := fixed(t, `{"mergedAt":"2026-10-02T00:00:00Z","headRepository":{"id":"R_1","name":"obee"},
+	f, _ := fixed(t, `{"mergedAt":"2026-10-02T00:00:00Z","headRepository":{"id":"R_1","name":"beehave"},
 		"state":"MERGED","mergeable":"UNKNOWN","baseRefName":"main","headRefName":"feat",
 		"comments":[{"author":{"login":"gz"},"body":"hi","createdAt":"2026-10-01T00:00:00Z"},{"author":null,"body":"x","createdAt":null}],
 		"reviews":[{"author":{"login":"ann"},"body":"ok","state":"APPROVED","submittedAt":"2026-10-01T01:00:00Z"},{"author":{"login":"bob"},"body":"","state":"PENDING","submittedAt":null}]}`)
@@ -659,7 +659,7 @@ func TestPRView_DecodesTheFieldsCallersRead(t *testing.T) {
 	assert.Equal(t, "2026-10-02T00:00:00Z", *view.MergedAt)
 	require.NotNil(t, view.HeadRepository)
 	assert.Equal(t, "R_1", view.HeadRepository.ID)
-	assert.Equal(t, "obee", view.HeadRepository.Name)
+	assert.Equal(t, "beehave", view.HeadRepository.Name)
 	assert.Equal(t, "MERGED", *view.State)
 	assert.Equal(t, "UNKNOWN", *view.Mergeable)
 	assert.Equal(t, "main", *view.BaseRefName)

@@ -9,15 +9,15 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // envKeyword is the keyword env of a call.
 const envKeyword = "env"
 
 // writeKeyEnv is the variable that holds the key of a write in the environment of its program, its read-back and its undo.
-// The prefix OBEE_ belongs to the engine, so a file cannot set the variable.
-const writeKeyEnv = "OBEE_WRITE_KEY"
+// The prefix BEEHAVE_ belongs to the engine, so a file cannot set the variable.
+const writeKeyEnv = "BEEHAVE_WRITE_KEY"
 
 // writeKey makes the key of a write from the run id and the name of its recorded step. Both are the same on a replay, so the key is the same.
 func writeKey(run, step string) string {
@@ -98,7 +98,7 @@ func sibling(write CommandRequest, keyword string, run starlark.Value) (CommandR
 	return write, nil
 }
 
-// writeOutside runs a program that changes a system outside the run. The engine gives the program a key in the variable OBEE_WRITE_KEY. The key is the
+// writeOutside runs a program that changes a system outside the run. The engine gives the program a key in the variable BEEHAVE_WRITE_KEY. The key is the
 // same on every replay of the step, so the outside system can drop a repeat. A read-back program runs first: if it exits with zero, the write is
 // already done and does not run. A write that exits with zero and names an undo is undone, in reverse order, if a later step of the run fails.
 func (s *script) writeOutside(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go

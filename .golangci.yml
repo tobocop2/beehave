@@ -101,11 +101,11 @@ linters:
         - pattern: ^slog\.(Default|SetDefault)$
           msg: pass a *slog.Logger in
         - pattern: ^os\.Exit$
-          msg: return an error; os.Exit is for cmd/obee and internal/cli only
+          msg: return an error; os.Exit is for cmd/beehave and internal/cli only
         - pattern: ^panic$
-          msg: return an error; panic is for cmd/obee and internal/cli only
+          msg: return an error; panic is for cmd/beehave and internal/cli only
         - pattern: ^os\.(Stdout|Stderr)$
-          msg: write to an io.Writer you receive; os.Stdout and os.Stderr are for cmd/obee and internal/cli only
+          msg: write to an io.Writer you receive; os.Stdout and os.Stderr are for cmd/beehave and internal/cli only
     depguard:
       rules:
         no-testify-in-production:
@@ -122,32 +122,32 @@ linters:
           files: ["!$test", "!**/internal/sandbox/proxy.go"]
           deny:
             - pkg: net/http
-              desc: obee's own code makes no HTTP calls; gh, bd and the agent CLIs do the network calls
+              desc: beehave's own code makes no HTTP calls; gh, bd and the agent CLIs do the network calls
         no-shell-interpreter:
           files: ["$all"]
           deny:
             - pkg: mvdan.cc/sh/v3/interp
-              desc: obee parses shell text and never runs it
+              desc: beehave parses shell text and never runs it
         test-packages-in-tests-only:
           files: ["!$test", "!**/internal/host/slurmtest/**", "!**/internal/host/sshtest/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/agent/agenttest
+            - pkg: github.com/tobocop2/beehave/internal/agent/agenttest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/forge/forgetest
+            - pkg: github.com/tobocop2/beehave/internal/forge/forgetest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/store/storetest
+            - pkg: github.com/tobocop2/beehave/internal/store/storetest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/store/beads/beadstest
+            - pkg: github.com/tobocop2/beehave/internal/store/beads/beadstest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/proc/proctest
+            - pkg: github.com/tobocop2/beehave/internal/proc/proctest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/host/hosttest
+            - pkg: github.com/tobocop2/beehave/internal/host/hosttest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/host/slurmtest
+            - pkg: github.com/tobocop2/beehave/internal/host/slurmtest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/host/sshtest
+            - pkg: github.com/tobocop2/beehave/internal/host/sshtest
               desc: a conformance suite or fake is for tests only
-            - pkg: github.com/tobocop2/obee/internal/sandbox/contract
+            - pkg: github.com/tobocop2/beehave/internal/sandbox/contract
               desc: a conformance suite or fake is for tests only
         dbos-only-in-flow:
           files: ["!**/internal/flow/**"]
@@ -155,155 +155,155 @@ linters:
             - pkg: github.com/dbos-inc/dbos-transact-golang
               desc: only internal/flow imports DBOS
         engine-never-imports-examples:
-          files: ["**/internal/**", "**/cmd/obee/**"]
+          files: ["**/internal/**", "**/cmd/beehave/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/examples
+            - pkg: github.com/tobocop2/beehave/examples
               desc: the engine never imports the examples, and the rule has no exception
         remedy-binary-takes-the-forge-and-the-claim-rows-only:
           files: ["**/examples/remediation/tools/cmd/remedy/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
         # The skypilot adapter queues its jobs through the slurm adapter, so it is the one backend that imports another. no-backend-to-backend-host-skypilot
         # keeps it from importing any other backend. The three host adapters (ssh, slurm, skypilot) never import each other otherwise: a blank-import probe in
         # each of ssh, slurm, skypilot and flow shows a denial. The slurm to skypilot import is a Go import cycle, so the compiler also refuses it.
         backends-only-in-main:
-          files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**", "!**/internal/host/skypilot/**"]
+          files: ["!$test", "!**/cmd/beehave/**", "!**/examples/remediation/tools/cmd/remedy/**", "!**/internal/host/skypilot/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/store/beads
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/store/local
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
-              desc: only cmd/obee and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
-              desc: only cmd/obee, the skypilot adapter and the remedy binary import a backend
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
-              desc: only cmd/obee and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/store/local
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/store/github
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
+              desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
+              desc: only cmd/beehave, the skypilot adapter and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
+              desc: only cmd/beehave and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
         # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
         no-backend-to-backend-store-beads:
           files: ["**/internal/store/beads/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-store-github:
           files: ["**/internal/store/github/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-forge-github:
           files: ["**/internal/forge/github/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-host-skypilot:
           files: ["**/internal/host/skypilot/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/local
+            - pkg: github.com/tobocop2/beehave/internal/store/local
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-host-slurm:
           files: ["**/internal/host/slurm/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/local
+            - pkg: github.com/tobocop2/beehave/internal/store/local
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-host-ssh:
           files: ["**/internal/host/ssh/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/store/local
+            - pkg: github.com/tobocop2/beehave/internal/store/local
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/agent/claude
+            - pkg: github.com/tobocop2/beehave/internal/agent/claude
               desc: a backend never imports another backend
         no-backend-to-backend-agent-claude:
           files: ["**/internal/agent/claude/**"]
           deny:
-            - pkg: github.com/tobocop2/obee/internal/host/ssh
+            - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/skypilot
+            - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/host/slurm
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/beads
+            - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/store/github
+            - pkg: github.com/tobocop2/beehave/internal/store/github
               desc: a backend never imports another backend
-            - pkg: github.com/tobocop2/obee/internal/forge/github
+            - pkg: github.com/tobocop2/beehave/internal/forge/github
               desc: a backend never imports another backend
         layer-0:
           list-mode: lax
@@ -314,14 +314,14 @@ linters:
             - "**/internal/atomicfile/**"
             - "**/internal/exectest/**"
           deny:
-            - pkg: github.com/tobocop2/obee/internal
+            - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
-            - github.com/tobocop2/obee/internal/model
-            - github.com/tobocop2/obee/internal/config
-            - github.com/tobocop2/obee/internal/lockfile
-            - github.com/tobocop2/obee/internal/atomicfile
-            - github.com/tobocop2/obee/internal/exectest
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/config
+            - github.com/tobocop2/beehave/internal/lockfile
+            - github.com/tobocop2/beehave/internal/atomicfile
+            - github.com/tobocop2/beehave/internal/exectest
         layer-1:
           list-mode: lax
           files:
@@ -332,18 +332,18 @@ linters:
             - "**/internal/host/**"
             - "**/internal/sandbox/**"
           deny:
-            - pkg: github.com/tobocop2/obee/internal
+            - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
-            - github.com/tobocop2/obee/internal/model
-            - github.com/tobocop2/obee/internal/config
-            - github.com/tobocop2/obee/internal/exectest
-            - github.com/tobocop2/obee/internal/store
-            - github.com/tobocop2/obee/internal/forge
-            - github.com/tobocop2/obee/internal/proc
-            - github.com/tobocop2/obee/internal/agent
-            - github.com/tobocop2/obee/internal/host
-            - github.com/tobocop2/obee/internal/sandbox
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/config
+            - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/store
+            - github.com/tobocop2/beehave/internal/forge
+            - github.com/tobocop2/beehave/internal/proc
+            - github.com/tobocop2/beehave/internal/agent
+            - github.com/tobocop2/beehave/internal/host
+            - github.com/tobocop2/beehave/internal/sandbox
         layer-2:
           list-mode: lax
           files:
@@ -358,55 +358,55 @@ linters:
             - "**/internal/preflight/**"
             - "**/internal/workflow/**"
           deny:
-            - pkg: github.com/tobocop2/obee/internal
+            - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
-            - github.com/tobocop2/obee/internal/model
-            - github.com/tobocop2/obee/internal/config
-            - github.com/tobocop2/obee/internal/lockfile
-            - github.com/tobocop2/obee/internal/atomicfile
-            - github.com/tobocop2/obee/internal/exectest
-            - github.com/tobocop2/obee/internal/check/shell
-            - github.com/tobocop2/obee/internal/batch
-            - github.com/tobocop2/obee/internal/claim
-            - github.com/tobocop2/obee/internal/gate
-            - github.com/tobocop2/obee/internal/lease
-            - github.com/tobocop2/obee/internal/merge
-            - github.com/tobocop2/obee/internal/review
-            - github.com/tobocop2/obee/internal/pool
-            - github.com/tobocop2/obee/internal/preflight
-            - github.com/tobocop2/obee/internal/workflow
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/config
+            - github.com/tobocop2/beehave/internal/lockfile
+            - github.com/tobocop2/beehave/internal/atomicfile
+            - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/check/shell
+            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/claim
+            - github.com/tobocop2/beehave/internal/gate
+            - github.com/tobocop2/beehave/internal/lease
+            - github.com/tobocop2/beehave/internal/merge
+            - github.com/tobocop2/beehave/internal/review
+            - github.com/tobocop2/beehave/internal/pool
+            - github.com/tobocop2/beehave/internal/preflight
+            - github.com/tobocop2/beehave/internal/workflow
         layer-3:
           list-mode: lax
           files:
             - "**/internal/flow/**"
           deny:
-            - pkg: github.com/tobocop2/obee/internal
+            - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
-            - github.com/tobocop2/obee/internal/model
-            - github.com/tobocop2/obee/internal/config
-            - github.com/tobocop2/obee/internal/lockfile
-            - github.com/tobocop2/obee/internal/atomicfile
-            - github.com/tobocop2/obee/internal/exectest
-            - github.com/tobocop2/obee/internal/store
-            - github.com/tobocop2/obee/internal/forge
-            - github.com/tobocop2/obee/internal/proc
-            - github.com/tobocop2/obee/internal/agent
-            - github.com/tobocop2/obee/internal/host
-            - github.com/tobocop2/obee/internal/claim
-            - github.com/tobocop2/obee/internal/gate
-            - github.com/tobocop2/obee/internal/batch
-            - github.com/tobocop2/obee/internal/merge
-            - github.com/tobocop2/obee/internal/review
-            - github.com/tobocop2/obee/internal/pool
-            - github.com/tobocop2/obee/internal/preflight
-            - github.com/tobocop2/obee/internal/workflow
-            - github.com/tobocop2/obee/internal/flow
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/config
+            - github.com/tobocop2/beehave/internal/lockfile
+            - github.com/tobocop2/beehave/internal/atomicfile
+            - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/store
+            - github.com/tobocop2/beehave/internal/forge
+            - github.com/tobocop2/beehave/internal/proc
+            - github.com/tobocop2/beehave/internal/agent
+            - github.com/tobocop2/beehave/internal/host
+            - github.com/tobocop2/beehave/internal/claim
+            - github.com/tobocop2/beehave/internal/gate
+            - github.com/tobocop2/beehave/internal/batch
+            - github.com/tobocop2/beehave/internal/merge
+            - github.com/tobocop2/beehave/internal/review
+            - github.com/tobocop2/beehave/internal/pool
+            - github.com/tobocop2/beehave/internal/preflight
+            - github.com/tobocop2/beehave/internal/workflow
+            - github.com/tobocop2/beehave/internal/flow
         unlisted-package:
           list-mode: lax
           files:
-            - "!**/cmd/obee/**"
+            - "!**/cmd/beehave/**"
             - "!**/examples/**"
             - "!**/internal/model/**"
             - "!**/internal/config/**"
@@ -433,7 +433,7 @@ linters:
             - "!**/internal/cli/**"
             - "!**/internal/tui/**"
           deny:
-            - pkg: github.com/tobocop2/obee/internal
+            - pkg: github.com/tobocop2/beehave/internal
               desc: add this package to a layer in .golangci.yml before it imports internal code
   exclusions:
     presets:
@@ -444,7 +444,7 @@ linters:
         linters:
           - forbidigo
         text: os\.(Getenv|LookupEnv|Environ)
-      - path: (internal/cli/|cmd/obee/|examples/remediation/tools/cmd/remedy/)
+      - path: (internal/cli/|cmd/beehave/|examples/remediation/tools/cmd/remedy/)
         linters:
           - forbidigo
         text: fmt\.|os\.Exit|os\.Std|panic
@@ -467,4 +467,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/tobocop2/obee
+        - github.com/tobocop2/beehave

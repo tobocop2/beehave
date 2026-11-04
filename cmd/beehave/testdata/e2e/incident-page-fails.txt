@@ -1,0 +1,59 @@
+# The ops API refuses every page. Nobody is reached, so nobody answered nothing: a safe row (rollback) must not run by policy.
+# The desk holds the incident for a person and writes no mitigation.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=1
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec beehavereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec beehavereal run watch-1 incident --workflow ops/workflow.star
+stdout 'item watch-1 finished'
+
+# No page went out, and nothing ran.
+! exists pages.log
+! exists writes.log
+! exists status.log
+! exists restores.log
+! exists home/.incident/incidents/incident-2/before.json
+! exists home/.incident/postmortems/incident-2.md
+
+# The timeline names the failed pages and the handoff.
+grep 'the page to primary failed' home/.incident/incidents/incident-2/timeline.tsv
+grep 'HANDOFF: nobody could be paged, so the desk did not run rollback' home/.incident/incidents/incident-2/timeline.tsv
+! grep 'nobody answered; rollback is safe' home/.incident/incidents/incident-2/timeline.tsv
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"p1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"ROLLBACK error rate 40 percent"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_incidents_incident-2_page.fail --
+-- resp/_services_checkout_metrics --
+{"error_rate":0.4}
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}

@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var (
@@ -115,7 +115,7 @@ func TestJob_StringJoinsTheIDAndTheNonce(t *testing.T) {
 func TestJob_StringOfAJobWithNoNonceIsItsID(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "obee-x", jobwait.Job{ID: "obee-x"}.String())
+	assert.Equal(t, "beehave-x", jobwait.Job{ID: "beehave-x"}.String())
 }
 
 func TestWait_FinalStateBanksAndReleases(t *testing.T) {

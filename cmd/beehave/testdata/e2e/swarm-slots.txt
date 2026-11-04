@@ -1,0 +1,22 @@
+# The swarm never runs more agents than the slots of the config, and it uses both slots when there is work for both.
+# The config has two logins and the backlog holds four tasks. The fake agents meet at a rendezvous (the file rendezvous), so the two overlap by construction and a third slot would show as the count 3.
+isolate
+swarmfakes
+
+exec beehaveswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec beehaveswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# All four tasks ran and landed.
+grep -count=4 '^task ' calls.log
+grep -count=4 '^MergePR ' forge/calls.log
+
+# Two agents ran at once, and never three.
+grep '^2$' concurrency.log
+! grep '^[3-9]$' concurrency.log
+
+-- rendezvous --
+-- backlog.txt --
+P1	one	a.txt
+P1	two	b.txt
+P1	three	c.txt
+P1	four	d.txt

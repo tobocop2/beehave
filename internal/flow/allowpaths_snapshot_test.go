@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // leavesFilesBeforeTheRun commits a .gitignore, then leaves an ignored file, an ignored folder and an untracked file outside the globs.

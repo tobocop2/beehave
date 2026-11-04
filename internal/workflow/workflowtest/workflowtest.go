@@ -6,8 +6,8 @@ import (
 
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // Call is one call of a builtin in a workflow file, with the argument expressions by keyword.

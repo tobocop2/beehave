@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func listProject(buildHost string) model.Project {
@@ -101,8 +101,8 @@ func TestHostCommand_AGateListWritesOneMarkerForEachStepAndAFailedStepFailsTheJo
 
 	assert.NotZero(t, code)
 	assert.True(t, ran, "the step after a failed step still runs")
-	assert.Contains(t, out, "obee-gate-step one rc=3")
-	assert.Contains(t, out, "obee-gate-step two rc=0")
+	assert.Contains(t, out, "beehave-gate-step one rc=3")
+	assert.Contains(t, out, "beehave-gate-step two rc=0")
 }
 
 func TestHostCommand_AStepThatEndsItsOutputWithNoNewlineStillGetsAMarkerOnALineOfItsOwn(t *testing.T) {
@@ -113,13 +113,13 @@ func TestHostCommand_AStepThatEndsItsOutputWithNoNewlineStillGetsAMarkerOnALineO
 
 	_, _, _, out := runProjectCommand(t, p, "SHIM_HEAD=a1b2c3")
 
-	assert.Contains(t, strings.Split(out, "\n"), "obee-gate-step one rc=2")
+	assert.Contains(t, strings.Split(out, "\n"), "beehave-gate-step one rc=2")
 }
 
 func TestVerdict_AStepMarkerThatTheLogHoldsTwiceIsUnknownSoALaterLineCannotTurnAFailIntoAPass(t *testing.T) {
 	t.Parallel()
 
-	log := strings.Join([]string{"obee-gate-step fmt rc=0", "obee-gate-step lint rc=2", "obee-gate-step lint rc=0", "obee-gate-step test rc=0"}, "\n")
+	log := strings.Join([]string{"beehave-gate-step fmt rc=0", "beehave-gate-step lint rc=2", "beehave-gate-step lint rc=0", "beehave-gate-step test rc=0"}, "\n")
 
 	result := hostListResult(t, model.JobFailed, log, nil)
 
@@ -153,7 +153,7 @@ func hostListResult(t *testing.T, state model.JobState, log string, logErr error
 func TestVerdict_AFailedHostJobOfAGateListReadsEachStepFromItsMarkerAndAStepWithNoMarkerIsUnknown(t *testing.T) {
 	t.Parallel()
 
-	log := strings.Join([]string{"obee-gate-step fmt rc=0", "obee-gate-step lint rc=2", "obee-gate-done"}, "\n")
+	log := strings.Join([]string{"beehave-gate-step fmt rc=0", "beehave-gate-step lint rc=2", "beehave-gate-done"}, "\n")
 
 	result := hostListResult(t, model.JobFailed, log, nil)
 
@@ -164,7 +164,7 @@ func TestVerdict_AFailedHostJobOfAGateListReadsEachStepFromItsMarkerAndAStepWith
 func TestVerdict_AStepMarkerWithACodeThatIsNotANumberIsAFailure(t *testing.T) {
 	t.Parallel()
 
-	result := hostListResult(t, model.JobFailed, "obee-gate-step fmt rc=x\nobee-gate-step lint rc=0\n", nil)
+	result := hostListResult(t, model.JobFailed, "beehave-gate-step fmt rc=x\nbeehave-gate-step lint rc=0\n", nil)
 
 	assert.Equal(t, []gate.Step{step("fmt", gate.StatusFail), step("lint", gate.StatusPass), step("test", gate.StatusUnknown)}, result.Steps)
 }

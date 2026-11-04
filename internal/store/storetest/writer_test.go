@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 // memWriter is a correct in-memory writer and its probe. Flaws switch on one wrong behavior each.

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
+	"github.com/tobocop2/beehave/internal/exectest"
 )
 
 func TestWrite_WritesAProgramThatOnlyItsOwnerCanRunAndThatStarts(t *testing.T) {

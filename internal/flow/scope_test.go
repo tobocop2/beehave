@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // gateThenMerge gates the item once, then merges.
@@ -33,7 +33,7 @@ func TestScope_ANewClosedIssueWithoutAnOwnerLineRefusesTheMergeAndNamesTheIssueA
 
 	require.ErrorIs(t, err, errScopeRefused)
 	require.ErrorContains(t, err, "#13 has no owner line")
-	require.ErrorContains(t, err, "obee answer 12 \"keep #13\"")
+	require.ErrorContains(t, err, "beehave answer 12 \"keep #13\"")
 	assert.Empty(t, h.merge.asked, "nothing merges")
 }
 

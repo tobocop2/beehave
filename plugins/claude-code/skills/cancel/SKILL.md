@@ -1,11 +1,11 @@
 ---
-description: Stop the open obee run of an item
+description: Stop the open beehave run of an item
 argument-hint: <item>
-allowed-tools: Bash(obee cancel:*), Bash(obee resume:*), Bash(obee run:*)
+allowed-tools: Bash(beehave cancel:*), Bash(beehave resume:*), Bash(beehave run:*)
 disable-model-invocation: true
 ---
 
-Stop the open run of an item with obee.
+Stop the open run of an item with beehave.
 
 The arguments are: $ARGUMENTS
 
@@ -14,14 +14,14 @@ The arguments are: $ARGUMENTS
 3. Show the command, then run it:
 
 ```sh
-obee cancel $ARGUMENTS
+beehave cancel $ARGUMENTS
 ```
 
-4. Report the output of obee. Then ask the user to choose: resume the cancelled run, or start a new run. A new run repeats the finished steps. To resume, run these two commands in order:
+4. Report the output of beehave. Then ask the user to choose: resume the cancelled run, or start a new run. A new run repeats the finished steps. To resume, run these two commands in order:
 
 ```sh
-obee resume <item>
-obee run <item>
+beehave resume <item>
+beehave run <item>
 ```
 
-The second command needs a workflow file and, when the config holds more than one project, a project. See `/obee:run`.
+The second command needs a workflow file and, when the config holds more than one project, a project. See `/beehave:run`.

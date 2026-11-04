@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	trackerstore "github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/model"
+	trackerstore "github.com/tobocop2/beehave/internal/store"
 )
 
 var dryExampleEnv = map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "SOURCE_CHECKOUT": "/own/checkout", "MERGE": "false", "EXPECT_HEAD": ""}

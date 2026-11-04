@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // audited is a request that names the given issues and turns the audit of the closing references on.

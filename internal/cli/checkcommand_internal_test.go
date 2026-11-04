@@ -16,7 +16,7 @@ const (
 	readEvent  = `{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"git add -A"}}`
 )
 
-// hook runs `obee check command` with the event on stdin and returns the exit code and stderr.
+// hook runs `beehave check command` with the event on stdin and returns the exit code and stderr.
 func hook(t *testing.T, event string, args ...string) (int, string) {
 	t.Helper()
 
@@ -45,7 +45,7 @@ func TestCheckCommand_RefusesACommandThatBreaksARuleWithExit2AndTheReasonOnStder
 	code, stderr := hook(t, bashEvent)
 
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "obee refused the command")
+	assert.Contains(t, stderr, "beehave refused the command")
 	assert.Contains(t, stderr, "bulk-staging: git add -A")
 }
 
@@ -167,7 +167,7 @@ func TestCheckCommand_AnyOtherFailureOfTheCommandExits2(t *testing.T) {
 		code, stderr := hook(t, bashEvent, args...)
 
 		assert.Equal(t, 2, code, args)
-		assert.Contains(t, stderr, "obee refused the command", args)
+		assert.Contains(t, stderr, "beehave refused the command", args)
 	}
 }
 
@@ -178,7 +178,7 @@ func TestCheckCommand_AnEventThatCannotBeReadIsRefused(t *testing.T) {
 		code, stderr := hook(t, event)
 
 		assert.Equal(t, 2, code, event)
-		assert.Contains(t, stderr, "obee refused the command", event)
+		assert.Contains(t, stderr, "beehave refused the command", event)
 	}
 }
 

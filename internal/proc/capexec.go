@@ -13,9 +13,9 @@ import (
 )
 
 // capArg0 is the name that the cap helper gets as its argument 0. A process that starts with this name sets the process limit, then replaces itself with the command.
-// The name alone triggers the helper: any process that can start obee with this argv[0] can run a program, but it runs with its own rights, so the name gives no privilege.
+// The name alone triggers the helper: any process that can start beehave with this argv[0] can run a program, but it runs with its own rights, so the name gives no privilege.
 // The limit comes from the system call, not from a shell: the builtin ulimit differs between shells, and dash has no option -u.
-const capArg0 = "obee-proc-cap"
+const capArg0 = "beehave-proc-cap"
 
 // capFailFD is the file descriptor of the pipe that carries the error of the helper. Only the helper writes it. It closes on exec, so the command never holds it.
 const capFailFD = 3
@@ -31,7 +31,7 @@ type capSystem struct {
 	exit      func(code int)
 }
 
-// init runs the cap helper when this process was started as one. The check comes before any other code of the program, so a test binary and the obee binary both work as the helper.
+// init runs the cap helper when this process was started as one. The check comes before any other code of the program, so a test binary and the beehave binary both work as the helper.
 func init() { //nolint:gochecknoinits // a re-executed process must act before main, the way a shell wrapper acts before the command
 	runIfCapHelper(os.Args, capFailFD, capSystem{
 		setrlimit: unix.Setrlimit,

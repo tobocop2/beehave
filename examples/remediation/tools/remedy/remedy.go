@@ -1,6 +1,6 @@
 // Package remedy is the command line of the remediation tools. One binary holds one subcommand for each tool, and the command table below is the list of them.
 //
-// A subcommand follows the exit codes of obee: 0 for a pass, 1 for a defect found and 2 for a refusal or a failed read. A subcommand prints its findings to the standard output, one line each.
+// A subcommand follows the exit codes of beehave: 0 for a pass, 1 for a defect found and 2 for a refusal or a failed read. A subcommand prints its findings to the standard output, one line each.
 package remedy
 
 import (
@@ -10,11 +10,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
-	"github.com/tobocop2/obee/examples/remediation/tools/roundcut"
-	"github.com/tobocop2/obee/examples/remediation/tools/scope"
-	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/roundcut"
+	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
+	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // The exit codes of every subcommand.
@@ -38,7 +38,7 @@ type Book interface {
 	scope.Records
 }
 
-// Claims is the claim store of obee: the one call of the claim that the takeover needs.
+// Claims is the claim store of beehave: the one call of the claim that the takeover needs.
 // EnsureFree refuses when another owner holds the item, and writes nothing. The tools write no claim: the run of an item in the engine holds it.
 type Claims interface {
 	EnsureFree(ctx context.Context, owner, item string) error

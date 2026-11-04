@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // repository writes the files into a new folder that holds a .git folder, so the folder is the repository, and returns the path of the main file.

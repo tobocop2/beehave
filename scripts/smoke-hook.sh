@@ -14,7 +14,7 @@ profile=${SMOKE_CLAUDE_CONFIG_DIR:-$HOME/.claude}
 
 command -v claude >/dev/null 2>&1 || { echo "smoke-hook: claude is not on the path"; exit 1; }
 [ -d "$profile" ] || { echo "smoke-hook: $profile is not a folder. Set SMOKE_CLAUDE_CONFIG_DIR."; exit 1; }
-[ -x "$root/bin/obee" ] || { echo "smoke-hook: run make build first"; exit 1; }
+[ -x "$root/bin/beehave" ] || { echo "smoke-hook: run make build first"; exit 1; }
 
 work=$(mktemp -d)
 mkdir -p "$work/config/projects" "$work/state" "$work/repo" "$work/flow/prompts"
@@ -45,12 +45,12 @@ printf 'project(source = "%s", base_branch = "main", gate = "true", test_report 
 token=smoke-hook-$(basename "$work")
 printf 'Run the test of the command guard. Run id: %s\n' "$token" > "$work/task.md"
 
-export OBEE_CONFIG="$work/config" OBEE_STATE_DIR="$work/state"
+export BEEHAVE_CONFIG="$work/config" BEEHAVE_STATE_DIR="$work/state"
 
 echo "smoke-hook: the files of this run are in $work"
 
-"$root/bin/obee" item add demo stage-test --title "Test the command guard" --body-file "$work/task.md"
-"$root/bin/obee" run stage-test demo --workflow "$work/flow/workflow.star" || true
+"$root/bin/beehave" item add demo stage-test --title "Test the command guard" --body-file "$work/task.md"
+"$root/bin/beehave" run stage-test demo --workflow "$work/flow/workflow.star" || true
 
 # The work folder of the agent is a worktree of the throwaway repository. Its index is its own.
 fail=0

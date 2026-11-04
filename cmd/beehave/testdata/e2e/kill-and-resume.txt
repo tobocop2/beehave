@@ -1,0 +1,34 @@
+# The beehave process dies during the implement step. The next beehave run finishes the same run
+# and does not repeat the plan step.
+env REPO=o/r BASE=integration OWNER_LOGIN=owner OWNER_EMAIL=owner@example.com SOURCE_CHECKOUT=/own/checkout
+! exec beehave run 7 --workflow flow/workflow.star &
+waitfile started
+kill -KILL
+wait
+
+exec beehave status
+stdout '^item-7-r1\trunning\tnow '
+
+exec beehave run 7 --workflow flow/workflow.star
+stdout 'item 7 finished'
+
+exec beehave status
+stdout '^item-7-r1\tdone\tmerge: merged'
+! stdout 'item-7-r2'
+
+grep -count=1 '^plan ' calls.log
+grep -count=2 '^implement ' calls.log
+grep -count=2 '^review ' calls.log
+grep -count=1 '^fix ' calls.log
+
+cmp events.log expected-events.log
+
+-- hang --
+implement
+-- verdicts --
+approve
+approve
+-- expected-events.log --
+claim 7
+ready 7
+release 7

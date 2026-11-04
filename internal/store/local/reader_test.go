@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/local"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 var _ store.Reader = (*local.Store)(nil)

@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/beads"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 var _ store.Writer = (*beads.Store)(nil)
@@ -198,8 +198,8 @@ func TestCreate_RunsTheExactCommands(t *testing.T) {
 	assert.Equal(t, "p-1", id)
 
 	assert.Equal(t, [][]string{
-		{"list", "--all", "--desc-contains", "obee-key: run-1:plan", "--limit", "5000", "--json"},
-		{"create", "--title", "the title", "--description", "the body\n\nobee-key: run-1:plan", "--parent", "p-9", "--silent"},
+		{"list", "--all", "--desc-contains", "beehave-key: run-1:plan", "--limit", "5000", "--json"},
+		{"create", "--title", "the title", "--description", "the body\n\nbeehave-key: run-1:plan", "--parent", "p-9", "--silent"},
 	}, fake.calls)
 }
 
@@ -209,7 +209,7 @@ func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
 	fake := newWriteBd()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Assignee: "alice"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--assignee", "alice", "--silent"}, fake.calls[1])
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "beehave-key: run-1:a", "--assignee", "alice", "--silent"}, fake.calls[1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
 	require.NoError(t, err)
@@ -222,7 +222,7 @@ func TestCreate_FilesTheSeverityAsThePriorityOfTheItem(t *testing.T) {
 	fake := newWriteBd()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P2"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--priority", "2", "--silent"}, fake.calls[1])
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "beehave-key: run-1:a", "--priority", "2", "--silent"}, fake.calls[1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestCreate_FilesTheOperatorFlagAsTheOperatorLabel(t *testing.T) {
 	fake := newWriteBd()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P2", Operator: true})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--priority", "2", "--labels", "operator", "--silent"}, fake.calls[1])
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "beehave-key: run-1:a", "--priority", "2", "--labels", "operator", "--silent"}, fake.calls[1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
 	require.NoError(t, err)
@@ -409,7 +409,7 @@ func TestComment_RunsTheExactCommands(t *testing.T) {
 	require.NoError(t, writerOver(t, fake).Comment(t.Context(), "p-1", "note", "the text"))
 	assert.Equal(t, [][]string{
 		{"comments", "p-1", "--json"},
-		{"comments", "add", "p-1", "--", "the text\n\nobee-key: note"},
+		{"comments", "add", "p-1", "--", "the text\n\nbeehave-key: note"},
 	}, fake.calls)
 }
 
@@ -423,7 +423,7 @@ func TestComment_AnArgumentThatStartsWithADashIsTextNotAFlag(t *testing.T) {
 	require.NoError(t, writerOver(t, fake).Comment(t.Context(), "p-1", "note", "- a bullet"))
 	assert.Equal(t, [][]string{
 		{"comments", "p-1", "--json"},
-		{"comments", "add", "p-1", "--", "- a bullet\n\nobee-key: note"},
+		{"comments", "add", "p-1", "--", "- a bullet\n\nbeehave-key: note"},
 	}, fake.calls)
 }
 

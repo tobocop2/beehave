@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // remoteSleepSeconds is how long the fake remote of the timeout test stays silent. A call that waits for the remote ends no sooner than this.

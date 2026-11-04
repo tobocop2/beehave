@@ -1,15 +1,15 @@
 version: 2
 
-project_name: obee
+project_name: beehave
 
 before:
   hooks:
     - go mod verify
 
 builds:
-  - id: obee
-    main: ./cmd/obee
-    binary: obee
+  - id: beehave
+    main: ./cmd/beehave
+    binary: beehave
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
@@ -21,7 +21,7 @@ builds:
       - -X main.version={{.Version}}
 
 archives:
-  - id: obee
+  - id: beehave
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 

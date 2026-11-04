@@ -25,7 +25,7 @@ printf 'Authorization: Bearer TESTONLY\n' > "$T/home/credential.header"
 : > "$T/home/allowed_signers"
 for p in ann lee lou sam pat mallory; do
     ssh-keygen -q -t ed25519 -N '' -C "$p" -f "$T/keys/$p"
-    [ "$p" = mallory ] || printf '%s namespaces="obee-signoff" %s\n' "$p" "$(cat "$T/keys/$p.pub")" >> "$T/home/allowed_signers"
+    [ "$p" = mallory ] || printf '%s namespaces="beehave-signoff" %s\n' "$p" "$(cat "$T/keys/$p.pub")" >> "$T/home/allowed_signers"
 done
 export PATH="$T/bin:$PATH" AP_HOME="$T/home" APPROVAL_NOW=1000
 POLICY='{"window":3600,"extend":600,"remind_at":[50],"min_roles":2,"escalate_to":["rita"],"roles":{"security":{"members":["sam"],"need":1,"required":true},"product":{"members":["pat"],"need":1,"required":true},"legal":{"members":["lee","lou"],"need":2,"required":false}}}'

@@ -1,6 +1,6 @@
 # One day of tickets, from the source to the warehouse. This file is also a workflow of its own: it runs one day alone, to retry a day that a backfill left out.
 # The item body is JSON: {"day": "2026-01-31"}, and optionally "backfill" (the id that the budget counts under, default the item) and "budget_cents".
-# A day that waits for a person (odd labels) asks with `wait`. Answer load or skip with `obee answer <item> load`.
+# A day that waits for a person (odd labels) asks with `wait`. Answer load or skip with `beehave answer <item> load`.
 load("//version.star", "VERSION")
 
 PIPE_DIR = env("PIPE_DIR")
@@ -49,7 +49,7 @@ def ask_person(day, why, ask):
         return DAY.ODD
     ruling = wait("Day %s: %s\nAnswer load to load the day as it is, or skip to leave it out." % (day, why), name = "odd-" + day, choices = ["load", "skip"], timeout = ODD_TIMEOUT)
     if ruling.timed_out:
-        fail("REFUSE: no answer about day %s within %s. The extract stays in the stage. Run obee resume, then run it again." % (day, ODD_TIMEOUT))
+        fail("REFUSE: no answer about day %s within %s. The extract stays in the stage. Run beehave resume, then run it again." % (day, ODD_TIMEOUT))
     return ruling.answer
 
 def load_day(day, backfill, budget, ask = False):
@@ -99,6 +99,6 @@ def main(item):
     budget = int(job.get("budget_cents", DEFAULT_BUDGET_CENTS))
     day = load_day(job["day"], job.get("backfill", item.id), budget, ask = True)
     if day.state in (DAY.FAILED, DAY.OPEN, DAY.BUDGET):
-        fail("REFUSE: %s. Fix the cause, run obee resume %s, then run the item again." % (day.note, item.id))
+        fail("REFUSE: %s. Fix the cause, run beehave resume %s, then run the item again." % (day.note, item.id))
     item_comment(name = "report", id = item.id, key = "report", text = "%s %s at version %s. %s" % (job["day"], day.state, VERSION, day.note))
     item_status(name = "close", id = item.id, status = STATUS.CLOSED)

@@ -11,7 +11,7 @@
 # Set RESEARCH_DESK_DIR to the absolute path of this folder, RESEARCH_HOME to the folder of the store, SEARCH_API to a SearXNG server and WIKI_API to the
 # page store. MAX_AGENT_CALLS (default 40) caps the agent calls of one item across all its runs. The cap counts calls, not dollars.
 # The sections run one after the other: the call counter and the order of the claim ids are then the same on every run.
-# Run with `obee run <item> research-desk --workflow workflow.star`. Answer a wait with `obee answer <item> approve`.
+# Run with `beehave run <item> research-desk --workflow workflow.star`. Answer a wait with `beehave answer <item> approve`.
 load("//answer.star", "ANSWER", "parse_answer")
 
 DESK = env("RESEARCH_DESK_DIR")

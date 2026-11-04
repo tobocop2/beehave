@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/agent/claude"
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const token = "tok-secret-value"
@@ -96,12 +96,12 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 
 func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "")
-	f.spec.Guard = "obee check command"
+	f.spec.Guard = "beehave check command"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Contains(t, record(t, f.records, "args"), `--settings {"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"obee check command","onFailure":"block"}]}]}}`)
+	assert.Contains(t, record(t, f.records, "args"), `--settings {"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`)
 
 	f.spec.Guard = ""
 	agent.Runner{}.Run(context.Background(), f.spec)

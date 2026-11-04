@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/shell"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var laptopCopyOnly = []model.FindingKind{model.FindingLaptopCopy}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // queued asks the forge to merge a pull request in a native stack. The forge owns the merge: it holds the queued merge and merges when its requirements pass.

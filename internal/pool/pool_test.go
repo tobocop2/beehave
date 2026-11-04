@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/pool"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/pool"
 )
 
 var (

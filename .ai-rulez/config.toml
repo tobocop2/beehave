@@ -1,9 +1,9 @@
 version = '5.0'
-name = 'obee'
+name = 'beehave'
 description = 'Go tool that takes a backlog of issues to reviewed, gated pull requests with any coding agent'
 gitignore = true
 presets = ["claude", "codex", "opencode"]
-# obee ships no generic or personal skills: every builtin domain is off, so the
+# beehave ships no generic or personal skills: every builtin domain is off, so the
 # generated agent files carry only the rules in this folder.
 builtins = [
   '!ai-governance',
@@ -23,7 +23,7 @@ style = 'minimal'
 [defaults]
 effort = 'medium'
 
-# Claude Code names a plugin skill with the plugin first (/obee:run,
-# /obee:status), so these skills do not replace the built-in commands.
+# Claude Code names a plugin skill with the plugin first (/beehave:run,
+# /beehave:status), so these skills do not replace the built-in commands.
 [lint]
 allow_overrides = ['claude:run', 'claude:status']

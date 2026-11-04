@@ -210,7 +210,7 @@ func TestRun_OpensNoNetworkSocket(t *testing.T) { //nolint:paralleltest // the t
 		require.NoError(t, err)
 	})
 
-	assert.Empty(t, sockets, "obee opens no network connection")
+	assert.Empty(t, sockets, "beehave opens no network connection")
 }
 
 func TestInetSockets_SeesALoopbackDialAndItsListener(t *testing.T) { //nolint:paralleltest // the test opens sockets that TestRun_OpensNoNetworkSocket would see

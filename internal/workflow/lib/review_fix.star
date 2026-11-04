@@ -10,12 +10,12 @@ REVIEW_FORBID = FORBID + ["git-write"]
 def capped(step, name, item):
     """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the work of a capped run may be half done."""
     if step.stop != "":
-        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (name, step.stop, item.id))
 
 def kept_history(step, name, item):
     """Stops the item when an agent step rewrote history (amend, squash, reset). The reviewed commits must stay, and a rewrite can reach the remote only through a force-push."""
     if step.rewrote:
-        fail("REFUSE: the %s step rewrote the history of the item folder. A step adds commits and never amends, squashes or resets. Check the folder, then run obee resume %s." % (name, item.id))
+        fail("REFUSE: the %s step rewrote the history of the item folder. A step adds commits and never amends, squashes or resets. Check the folder, then run beehave resume %s." % (name, item.id))
 
 DECISIONS = ["keep", "replace", "delete"]
 
@@ -186,10 +186,10 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             capped(design, "design", item)
 
             if design.violations != "":
-                fail("REFUSE: the design step changed the item folder, and it is read-only. %s Check the folder, then run obee resume %s." % (design.violations, item.id))
+                fail("REFUSE: the design step changed the item folder, and it is read-only. %s Check the folder, then run beehave resume %s." % (design.violations, item.id))
 
             if design.decision not in DECISIONS:
-                fail("REFUSE: the design step wrote the decision %r. Use one of: %s. Run obee resume %s." % (design.decision, ", ".join(DECISIONS), item.id))
+                fail("REFUSE: the design step wrote the decision %r. Use one of: %s. Run beehave resume %s." % (design.decision, ", ".join(DECISIONS), item.id))
 
             if design.decision != "keep":
                 return struct(

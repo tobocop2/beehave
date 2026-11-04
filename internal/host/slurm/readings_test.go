@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/slurmtest"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/slurmtest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestReadings_ReportsUpOrDrainingWithTheFreeDisk(t *testing.T) {

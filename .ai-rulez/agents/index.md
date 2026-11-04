@@ -1,3 +1,3 @@
 # Concepts
 
-* [Obee Developer](obee-developer.md) - Route obee Go work to the repository rules and the architecture document
+* [Beehave Developer](beehave-developer.md) - Route beehave Go work to the repository rules and the architecture document

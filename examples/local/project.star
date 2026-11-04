@@ -1,5 +1,5 @@
 # The project file for examples/local/workflow.star. Copy it to <config folder>/projects/<name>.star.
-# The project has no tracker and no forge argument, so its items are in local.db and obee needs no beads, no gh and no network.
+# The project has no tracker and no forge argument, so its items are in local.db and beehave needs no beads, no gh and no network.
 
 project(
     source = "~/work/your-repo",  # the repository that gets the branch; a git URL or an absolute path

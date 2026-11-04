@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/claim"
+	"github.com/tobocop2/beehave/internal/claim"
 )
 
 func TestOthers_ListsEveryOtherOwnerWithItsItemsInOrder(t *testing.T) {

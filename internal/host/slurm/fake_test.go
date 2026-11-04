@@ -3,10 +3,10 @@ package slurm
 import (
 	"context"
 
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/slurmtest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/slurmtest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // sshFailed is the exit status of ssh for a link that dropped.
@@ -15,7 +15,9 @@ const sshFailed = 255
 // fakeSlot is the slot of a test: Hold records the marker of a job and Release writes it into the login folder, as the SkyPilot slot does.
 type fakeSlot struct{ f *slurmtest.Cluster }
 
-func markerOf(job jobwait.Job) string { return ".obee-banked-" + slurmtest.Target + "-" + job.String() }
+func markerOf(job jobwait.Job) string {
+	return ".beehave-banked-" + slurmtest.Target + "-" + job.String()
+}
 
 func (s fakeSlot) Hold(_ context.Context, job jobwait.Job) error {
 	s.f.Mu.Lock()

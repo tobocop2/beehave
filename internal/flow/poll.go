@@ -9,8 +9,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/atomicfile"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/atomicfile"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 const (
@@ -136,7 +136,7 @@ func pollScheduleFile(stateDir string) string {
 	return filepath.Join(stateDir, pollScheduleFileName)
 }
 
-// recordSchedule keeps the outcome of the schedule at launch for obee status, which runs in another process.
+// recordSchedule keeps the outcome of the schedule at launch for beehave status, which runs in another process.
 // A failure is logged and the engine goes on: the poll is optional. A nil err records that the poll is scheduled.
 func (e *Engine) recordSchedule(err error) {
 	var text string

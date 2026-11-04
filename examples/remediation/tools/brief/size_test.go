@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 )
 
 func put(t *testing.T, dir, name string, size int) string {

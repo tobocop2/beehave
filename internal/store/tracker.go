@@ -4,7 +4,7 @@ package store
 import (
 	"context"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Tracker is an issue tracker: work items and their parents. beads, GitHub Issues and the local store implement it. The claim rows are not part of it.

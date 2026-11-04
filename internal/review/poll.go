@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Poll returns the rows of the poll: pull requests to review, our own pull requests that need a fix, replies to answer and failed checks.

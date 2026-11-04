@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/scope"
+	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
 )
 
 const scopeSyntax = "scope <pr> --state <folder> [--key <key>]"

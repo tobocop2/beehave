@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Reporter is the part of testing.T the suite uses. A test of the suite passes a recorder to see a failure.
@@ -50,7 +50,7 @@ func NonOwning() Option { return func(o *options) { o.nonOwning = true } }
 
 // Factory returns a new host over fakes. The host starts absent.
 // The fake runs a job whose command is PassingCommand to a succeeded state and a job whose command is FailingCommand to a failed one.
-// A job whose command is UnknownCommand gets a state from the scheduler that obee does not know.
+// A job whose command is UnknownCommand gets a state from the scheduler that beehave does not know.
 type Factory func(t *testing.T, mode Mode) host.Host
 
 // The job commands that the fake behind a Factory knows.
@@ -91,7 +91,7 @@ func TestHost(t *testing.T, newHost Factory, opts ...Option) {
 	t.Run("a_disk_that_cannot_be_read_is_not_a_reading", func(t *testing.T) {
 		CheckUnreadableDisk(t, newHost(t, UnreadableDisk))
 	})
-	t.Run("a_state_obee_does_not_know_is_not_final", func(t *testing.T) {
+	t.Run("a_state_beehave_does_not_know_is_not_final", func(t *testing.T) {
 		CheckUnknownState(t, newHost(t, Working))
 	})
 }
@@ -204,7 +204,7 @@ func CheckUnreadableDisk(r Reporter, h host.Host) {
 	}
 }
 
-// CheckUnknownState checks that Wait never returns a final state for a job whose scheduler state obee does not know. Wait may fail or return a state that is not final.
+// CheckUnknownState checks that Wait never returns a final state for a job whose scheduler state beehave does not know. Wait may fail or return a state that is not final.
 func CheckUnknownState(r Reporter, h host.Host) {
 	r.Helper()
 

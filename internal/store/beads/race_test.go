@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/beads"
 )
 
 const rowA = "p-lock-gh-5"
@@ -36,9 +36,9 @@ func TestRequireBd(t *testing.T) {
 		"current":               {model.CommandResult{Stdout: "bd version 1.3.2 (dev)\n"}, ""},
 		"newer_minor":           {model.CommandResult{Stdout: "bd version 1.10.0 (abc: main@123)\n"}, ""},
 		"newer_major":           {model.CommandResult{Stdout: "bd version 2.0.0 (dev)\n"}, ""},
-		"older_patch":           {model.CommandResult{Stdout: "bd version 1.3.1 (dev)\n"}, "obee needs bd 1.3.2 or newer for claims; found 1.3.1"},
-		"older_major":           {model.CommandResult{Stdout: "bd version 0.56.1 (dev)\n"}, "obee needs bd 1.3.2 or newer for claims; found 0.56.1"},
-		"release_cand":          {model.CommandResult{Stdout: "bd version 1.3.2-rc.3 (dev)\n"}, "obee needs bd 1.3.2 or newer for claims; found 1.3.2-rc.3"},
+		"older_patch":           {model.CommandResult{Stdout: "bd version 1.3.1 (dev)\n"}, "beehave needs bd 1.3.2 or newer for claims; found 1.3.1"},
+		"older_major":           {model.CommandResult{Stdout: "bd version 0.56.1 (dev)\n"}, "beehave needs bd 1.3.2 or newer for claims; found 0.56.1"},
+		"release_cand":          {model.CommandResult{Stdout: "bd version 1.3.2-rc.3 (dev)\n"}, "beehave needs bd 1.3.2 or newer for claims; found 1.3.2-rc.3"},
 		"huge_major":            {model.CommandResult{Stdout: "bd version 99999999999999999999.0.0 (dev)\n"}, ""},
 		"leading_zero":          {model.CommandResult{Stdout: "bd version 1.03.2 (dev)\n"}, `cannot read a version from "bd version 1.03.2 (dev)"`},
 		"leading_zero_major":    {model.CommandResult{Stdout: "bd version 01.3.2 (dev)\n"}, `cannot read a version from "bd version 01.3.2 (dev)"`},
@@ -81,7 +81,7 @@ func TestBeadsClaimWrites_RefuseAnOldBdBeforeTheyWrite(t *testing.T) {
 	_, reclaimErr := beads.Reclaim(bg(), "5")
 
 	for name, err := range map[string]error{"take": beads.TryHold(bg(), row), "beat": beads.Beat(bg(), "session-a"), "reclaim": reclaimErr, "release": beads.Free(bg(), row)} {
-		require.ErrorContains(t, err, "obee needs bd 1.3.2 or newer for claims; found 0.56.1", name)
+		require.ErrorContains(t, err, "beehave needs bd 1.3.2 or newer for claims; found 0.56.1", name)
 	}
 
 	assert.Equal(t, 0, bd.Count("update")+bd.Count("unclaim")+bd.Count("create")+bd.Count("heartbeat")+bd.Count("reclaim"), "an old bd is never written to")

@@ -1,0 +1,51 @@
+# Nobody signs before the deadline (a window of 60 seconds). The run reminds the missing roles at 50 and 90 percent, tells the escalation list at
+# the deadline and asks whether to extend. A person answers extend. The extension adds 60 seconds, and the roles sign inside it.
+[!exec:jq] skip
+[!exec:ssh-keygen] skip
+[!exec:sqlite3] skip
+[!exec:flock] skip
+[!exec:git] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+approvalsinit
+approvalsfakes
+approvalskeys ann sam pat
+subst home/.approval/config
+env HOME=$WORK/home
+env APPROVALS_DIR=$WORK/ops
+env APPROVALS_WINDOW_SECONDS=60
+env APPROVAL_POLL=1
+
+exec sh ops/scripts/submit.sh msa msa.md ann
+exec beehavereal item add approvals req-1 --title 'Release' --body-file body.txt
+exec beehavereal run req-1 approvals --workflow ops/workflow.star &
+waitfile notices.log
+waitstatus 'The deadline passed'
+! exec beehavereal answer req-1 --as mallory extend
+! exec beehavereal answer req-1 --as rita 'extendfoo'
+exec beehavereal answer req-1 --as rita extend
+exec signoff sam security approve req-1 msa
+exec signoff pat product approve req-1 msa
+wait
+stdout 'item req-1 finished'
+
+grep -count=1 '^remind-req-1-1 ' notices.log
+grep -count=1 '^remind-req-1-2 ' notices.log
+grep -count=1 '^escalate-req-1 rita' notices.log
+exec sh -c 'sh ops/scripts/audit.sh req-1 - $(jq -r .head home/.approval/certs/req-1.json)'
+stdout -count=1 '\textended\trita\t'
+stdout '\tclosed\t.*\tapproved\t'
+exec sqlite3 state/local.db 'SELECT state FROM items WHERE id = "req-1"'
+stdout '^closed$'
+
+-- body.txt --
+{"doc":"msa","kind":"release","author":"ann"}
+-- msa.md --
+The release candidate.
+-- home/.approval/config --
+NOTIFY_API=http://notify.test
+-- home/.approval/credential.header --
+Authorization: Bearer TESTONLY

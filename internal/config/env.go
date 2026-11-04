@@ -9,17 +9,17 @@ import (
 
 const (
 	// ConfigDirVariable names the config folder when no flag does.
-	ConfigDirVariable = "OBEE_CONFIG"
+	ConfigDirVariable = "BEEHAVE_CONFIG"
 
 	dbosPrefix      = "DBOS__"
-	stateDirVar     = "OBEE_STATE_DIR"
+	stateDirVar     = "BEEHAVE_STATE_DIR"
 	xdgStateVar     = "XDG_STATE_HOME"
-	stateAppDir     = "obee"
+	stateAppDir     = "beehave"
 	defaultStateRel = ".local/state"
-	defaultConfRel  = ".config/obee"
+	defaultConfRel  = ".config/beehave"
 )
 
-// DBOS reads these variables on its own and would send data to a cloud service, so obee refuses
+// DBOS reads these variables on its own and would send data to a cloud service, so beehave refuses
 // to start when any is set.
 var dbosVariables = [...]string{"DBOS_DOMAIN", "DBOS_SYSTEM_DATABASE_URL"} //nolint:gochecknoglobals // read-only list of names
 
@@ -53,7 +53,7 @@ func RefuseDBOSVariables(env map[string]string) error {
 
 	slices.Sort(found)
 
-	return refuse("%s is set. DBOS reads it and would connect to a service outside this machine. Unset it and start obee again.",
+	return refuse("%s is set. DBOS reads it and would connect to a service outside this machine. Unset it and start beehave again.",
 		strings.Join(found, ", "))
 }
 
@@ -61,7 +61,7 @@ func isDBOSVariable(name string) bool {
 	return slices.Contains(dbosVariables[:], name)
 }
 
-// FolderPath returns the config folder: the flag value, else OBEE_CONFIG, else ~/.config/obee.
+// FolderPath returns the config folder: the flag value, else BEEHAVE_CONFIG, else ~/.config/beehave.
 func FolderPath(env map[string]string, flag string) (string, error) {
 	if flag != "" {
 		return expandHome(flag)

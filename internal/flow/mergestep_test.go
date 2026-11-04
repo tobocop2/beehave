@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 // shipFlow is a workflow file with one merge call at the gated head. extra holds more arguments, each followed by a comma.

@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Host is a machine that runs the gate jobs of a project. SkyPilot is the first provider.
@@ -14,7 +14,7 @@ import (
 // Down is the last call. Wait may run while Cancel or Drain runs. A Wait and a Cancel of one job may both bank at once;
 // one of the two pushes can then fail on a ref lock, and that call returns the bank error with the state. A caller retries it: the bank is idempotent.
 //
-// Invariant: a job holds its slot until its work is banked, for at most max_run. The provider deletes an idle host with no obee code alive,
+// Invariant: a job holds its slot until its work is banked, for at most max_run. The provider deletes an idle host with no beehave code alive,
 // so a provider's Submit keeps the host busy for the provider, and a provider's Wait banks the work of the host (BankAll) before it returns a final state.
 // Cancel stops the job and returns once the job is final, its work banked and its slot ended, as Wait does; a canceled job keeps the host busy only that long.
 // When the stop itself fails, the job may still run, so its slot holds (at most max_run) and Cancel returns the error.

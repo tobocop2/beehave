@@ -26,7 +26,7 @@ state_put() {
     mv "$t" "$STATE/$1.env"
 }
 
-# runlog <week> <repo> <outcome> <pr> <detail> appends one row. The report reads these rows, because obee deletes finished runs after seven days.
+# runlog <week> <repo> <outcome> <pr> <detail> appends one row. The report reads these rows, because beehave deletes finished runs after seven days.
 runlog() {
     mkdir -p "$UPKEEP_HOME"
     [ -f "$RUNLOG" ] || printf 'week\trepo\toutcome\tpr\tdetail\twhen\n' > "$RUNLOG"

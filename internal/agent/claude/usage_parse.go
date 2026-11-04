@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // rawWindow is one window of the reply before it is checked.

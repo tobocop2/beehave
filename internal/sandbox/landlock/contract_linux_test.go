@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/sandbox/contract"
-	"github.com/tobocop2/obee/internal/sandbox/landlock"
+	"github.com/tobocop2/beehave/internal/sandbox/contract"
+	"github.com/tobocop2/beehave/internal/sandbox/landlock"
 )
 
-// TestMain lets the test binary act as the Landlock helper, as obee does in main.
+// TestMain lets the test binary act as the Landlock helper, as beehave does in main.
 func TestMain(m *testing.M) {
 	if code, helper := landlock.RunHelper(os.Args, os.Stderr); helper {
 		os.Exit(code)
@@ -41,7 +41,7 @@ func helperExit(t *testing.T, plan string) (int, string) {
 	self, err := os.Executable()
 	require.NoError(t, err)
 
-	out, err := exec.CommandContext(t.Context(), self, "--obee-landlock-helper", plan).CombinedOutput() //nolint:gosec // the program is the test binary
+	out, err := exec.CommandContext(t.Context(), self, "--beehave-landlock-helper", plan).CombinedOutput() //nolint:gosec // the program is the test binary
 
 	var exited *exec.ExitError
 	require.ErrorAs(t, err, &exited)
@@ -64,15 +64,15 @@ func TestRunHelper_APlanThatDoesNotApplyExitsWith125AndNamesTheReason(t *testing
 func TestRunHelper_AProgramThatIsNotFoundExitsWith127AndRunsNoCode(t *testing.T) {
 	t.Parallel()
 
-	code, out := helperExit(t, `{"argv":["obee-no-such-program"],"env":["PATH=/usr/bin:/bin"]}`)
+	code, out := helperExit(t, `{"argv":["beehave-no-such-program"],"env":["PATH=/usr/bin:/bin"]}`)
 	assert.Equal(t, 127, code)
-	assert.Contains(t, out, "obee-no-such-program")
+	assert.Contains(t, out, "beehave-no-such-program")
 }
 
 func TestRunHelper_AProgramThatIsNotStartedAsTheHelperIsLeftAlone(t *testing.T) {
 	t.Parallel()
 
-	code, helper := landlock.RunHelper([]string{"obee", "version"}, os.Stderr)
+	code, helper := landlock.RunHelper([]string{"beehave", "version"}, os.Stderr)
 	assert.False(t, helper)
 	assert.Zero(t, code)
 }

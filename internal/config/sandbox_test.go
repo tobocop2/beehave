@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestLoadFolder_TheSandboxKeyIsReadAndAnUnknownOrEmptyOneIsRefused(t *testing.T) {

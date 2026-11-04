@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // recorder is a reporter that keeps what the checks report, so a test can read it. It never stops the check that reports.

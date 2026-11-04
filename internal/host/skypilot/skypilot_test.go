@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/slurm"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestHost_ConformsToHost(t *testing.T) {
@@ -85,7 +85,7 @@ func TestWait_BanksTheWorkOfTheHeadNodeBeforeItReturnsAFinalState(t *testing.T) 
 	assert.Equal(t, model.JobSucceeded, got)
 	assert.True(t, ssh.Called("-o", "BatchMode=yes", "lane-host", "find", "-H", "/home/lane"), "find runs on the head node, from the login folder")
 	assert.True(t, ssh.Called("lane-host", "git", "-C", "/home/lane/repo", "worktree", "list", "--porcelain"), "git runs on the head node")
-	assert.True(t, ssh.Called("touch", ".obee-banked-lane-host-5-n"))
+	assert.True(t, ssh.Called("touch", ".beehave-banked-lane-host-5-n"))
 }
 
 func TestWait_RefusesAFinalStateWhileTheHostHoldsUnbankedWork(t *testing.T) {
@@ -329,7 +329,7 @@ func TestCancel_WritesTheMarkerOfTheSlotJobAfterScancel(t *testing.T) {
 	require.NoError(t, h.Cancel(deadline(t), "5-n"))
 	require.Len(t, ssh.Calls, 3)
 	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "scancel", "5"}, ssh.Calls[0])
-	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".obee-banked-lane-host-5-n"}, ssh.Calls[2])
+	assert.Equal(t, []string{"-o", "BatchMode=yes", "lane-host", "touch", ".beehave-banked-lane-host-5-n"}, ssh.Calls[2])
 }
 
 func TestCancel_BanksTheWorkOfTheCanceledJobBeforeTheSlotEnds(t *testing.T) {

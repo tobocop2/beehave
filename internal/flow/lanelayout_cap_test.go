@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // waitForTheQuestionOfALiveRun waits until the latest run asks a question and has not been canceled.
@@ -50,7 +50,7 @@ func TestLaneLayout_ACancelledFirstRunStillCountsAgainstTheCapOfThePullRequest(t
 	assert.Equal(t, 2, countFix(rig), "the second run starts no fix lane after a canceled first run spent the cap")
 }
 
-// A run that failed after it spent lanes still counts. An engine starts no new attempt after a failed one (the run continues with obee resume),
+// A run that failed after it spent lanes still counts. An engine starts no new attempt after a failed one (the run continues with beehave resume),
 // so the count is read from a script that is not part of that run.
 func TestLaneLayout_AFailedRunStillCountsItsFixLanes(t *testing.T) {
 	t.Parallel()

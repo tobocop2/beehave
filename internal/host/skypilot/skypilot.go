@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/slurm"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // ErrConfig is returned by New for a cluster name or a setting that the sky command line cannot take.
@@ -112,7 +112,7 @@ func (h *Host) infra() string {
 }
 
 // Status reports whether the cluster exists, whether Slurm drains its nodes, and its free disk space.
-// A cluster that is in the list but not up, and any answer that obee does not recognize, is an error.
+// A cluster that is in the list but not up, and any answer that beehave does not recognize, is an error.
 func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	out, err := link.Run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
 	if err != nil {
@@ -166,7 +166,7 @@ func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
 // so a job id that Slurm uses again never matches the marker of an earlier job.
 func (s slot) markerName(job jobwait.Job) string {
-	return ".obee-banked-" + s.h.cluster + "-" + job.String()
+	return ".beehave-banked-" + s.h.cluster + "-" + job.String()
 }
 
 // slotCommand is the command of the SkyPilot job that keeps the cluster busy until the marker exists.
