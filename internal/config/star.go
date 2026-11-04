@@ -56,6 +56,8 @@ type made struct {
 	at    syntax.Position
 	name  string
 	owner string
+	// usage is the argument that holds the block, as the refusal of a block that nothing holds writes it.
+	usage string
 	held  bool
 }
 
@@ -92,11 +94,20 @@ func (l *loader) constructor(s spec, once bool, fn func(at syntax.Position, kwar
 	})
 }
 
+// record makes the entry of a block. A block is held by the argument of its own name, or by the list argument of its name with an "s", such as schedules.
+func (l *loader) record(at syntax.Position, name string) *made {
+	if owner := l.ownerOf(name); owner != "" {
+		return &made{at: at, name: name, owner: owner, usage: name + " = " + name + "(...)"}
+	}
+
+	return &made{at: at, name: name, owner: l.ownerOf(name + "s"), usage: name + "s = [" + name + "(...)]"}
+}
+
 // blocks makes the builtin of a block that another block holds as an argument. The call gives the block.
 func blocks[T any](l *loader, s spec, once bool, fn func(at syntax.Position, kwargs []starlark.Tuple) (*T, error)) *starlark.Builtin {
 	return l.builtin(s.name, once, func(at syntax.Position, kwargs []starlark.Tuple) (starlark.Value, error) {
 		block, err := fn(at, kwargs)
-		record := &made{at: at, name: s.name, owner: l.ownerOf(s.name)}
+		record := l.record(at, s.name)
 		l.made = append(l.made, record)
 
 		return &value[T]{block: block, made: record}, err
@@ -178,7 +189,7 @@ func refusePrint(thread *starlark.Thread, _ string) {
 func (l *loader) checkHeld() error {
 	for _, block := range l.made {
 		if !block.held {
-			return refuseAt(block.at, "`%s(...)` builds a block that no `%s` argument holds. Write %s(%s = %s(...)).", block.name, block.owner, block.owner, block.name, block.name)
+			return refuseAt(block.at, "`%s(...)` builds a block that no `%s` argument holds. Write %s(%s).", block.name, block.owner, block.owner, block.usage)
 		}
 	}
 

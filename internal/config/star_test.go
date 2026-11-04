@@ -114,7 +114,7 @@ func TestLoadFolder_EveryArgumentNamesItsConstructor(t *testing.T) {
 
 	// The table comes from the constructor definitions, so no second copy exists.
 	owners := config.ArgumentOwners()
-	require.Len(t, owners, 67)
+	require.Len(t, owners, 73)
 
 	for key, owner := range owners {
 		t.Run(key, func(t *testing.T) {

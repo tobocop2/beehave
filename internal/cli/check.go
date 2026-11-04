@@ -288,11 +288,7 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 		return err
 	}
 
-	cfg, problems := config.LoadFolder(dir, env)
-	if len(problems) == 0 {
-		problems = adapterProblems(ctx, cfg, adapters)
-	}
-
+	cfg, problems := configProblems(ctx, dir, env, adapters)
 	if len(problems) == 0 {
 		printHostNotes(stderr, cfg, refusal)
 
@@ -302,6 +298,16 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 	printLines(stderr, problems)
 
 	return &ExitError{Code: exitProblems}
+}
+
+// configProblems loads the config folder. If the load reports a problem, it stops there. Otherwise it reports the problems of the adapters and the problems of the schedule workflow files together, because the two checks do not depend on each other.
+func configProblems(ctx context.Context, dir string, env map[string]string, adapters func(context.Context, model.Project) error) (config.Config, config.Problems) {
+	cfg, problems := config.LoadFolder(dir, env)
+	if len(problems) != 0 {
+		return cfg, problems
+	}
+
+	return cfg, append(adapterProblems(ctx, cfg, adapters), scheduleProblems(cfg)...)
 }
 
 // unknownProject is the refusal for a project name that the config does not hold.
@@ -353,6 +359,24 @@ func printProblems(stderr io.Writer, file string, found []workflow.Diagnostic) {
 
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "%d %s in %s\n", len(found), noun, file)
+}
+
+// scheduleProblems runs the workflow check on the workflow of each schedule, in project name order. It reports each diagnostic with the schedule that names the file.
+// The config package checks that the file exists. It cannot parse it, because the workflow package depends on the config package.
+func scheduleProblems(cfg config.Config) config.Problems {
+	var problems config.Problems
+
+	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		for _, schedule := range cfg.Projects[name].Schedules {
+			// A file that cannot be read or parsed always yields a diagnostic (TestCheck_ReportsEachProblemWithItsPlace pins this), so the unparsed flag adds nothing here.
+			found, _ := workflow.Check(schedule.Workflow)
+			for _, diagnostic := range found {
+				problems = append(problems, fmt.Errorf("project %s, schedule %s: %w", name, schedule.Name, diagnostic))
+			}
+		}
+	}
+
+	return problems
 }
 
 // adapterProblems builds the adapters each project names, in name order, and reports each project that cannot build them.

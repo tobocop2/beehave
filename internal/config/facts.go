@@ -11,12 +11,15 @@ import (
 )
 
 // withFacts checks the facts of a project file and copies them into the profile. A fact that the file leaves out stays empty.
-func withFacts(profile model.Project, raw rawProject) (model.Project, error) {
+func withFacts(path string, profile model.Project, raw rawProject) (model.Project, error) {
 	board, boardErr := boardOf(raw)
-	if err := errors.Join(checkLists(raw), checkDicts(raw), checkChangelog(raw), boardErr); err != nil {
+	schedules, schedulesErr := schedulesOf(path, raw)
+
+	if err := errors.Join(checkLists(raw), checkDicts(raw), checkChangelog(raw), boardErr, schedulesErr); err != nil {
 		return model.Project{}, err
 	}
 
+	profile.Schedules = schedules
 	profile.Changelog = raw.Changelog.Value
 	profile.Board = board
 
