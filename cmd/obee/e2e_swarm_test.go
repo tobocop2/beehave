@@ -239,20 +239,25 @@ func (f swarmForgeAt) ClosingRefs(context.Context, int) (model.ClosingRefs, erro
 func (f swarmForgeAt) BranchRef(ctx context.Context, branch string) (string, bool, error) {
 	tip, err := f.git(ctx, "rev-parse", "refs/heads/"+branch)
 
+	// If the file force-pushed exists in the forge folder, each branch except main reads as pushed again after the fold.
+	if _, statErr := os.Stat(f.path("force-pushed")); statErr == nil && branch != "main" {
+		return strings.Repeat("f", len(tip)), true, nil
+	}
+
 	return tip, err == nil, nil
 }
 
-// IsAncestor answers as git does: exit 0 means the commit is in the history of the base, exit 1 means it is not.
-func (f swarmForgeAt) IsAncestor(ctx context.Context, commit, base string) (bool, error) {
+// Compare answers as git does: exit 0 means the commit is in the history of the base, exit 1 means it is not.
+func (f swarmForgeAt) Compare(ctx context.Context, commit, base string) (model.Comparison, error) {
 	out := proc.NewExecRunner("git", "").Run(ctx, []string{"--git-dir", f.remote, "merge-base", "--is-ancestor", commit, "refs/heads/" + base})
 	switch out.ExitCode {
 	case 0:
-		return true, nil
+		return model.Comparison{Status: "ahead", AheadBy: 1}, nil
 	case 1:
-		return false, nil
+		return model.Comparison{Status: "diverged", AheadBy: 1, BehindBy: 1}, nil
 	}
 
-	return false, fmt.Errorf("git merge-base: %s", strings.TrimSpace(out.Stderr))
+	return model.Comparison{}, fmt.Errorf("git merge-base: %s", strings.TrimSpace(out.Stderr))
 }
 
 func (f swarmForgeAt) CommitTree(ctx context.Context, commit string) (string, error) {

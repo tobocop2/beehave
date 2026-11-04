@@ -130,6 +130,17 @@ func (h batchHost) fetched(ctx context.Context, project, item string) (string, e
 	return dir, nil
 }
 
+// Prove checks on the forge that each landed member is on the base, merged or on the vehicle commit, and returns the item and the reason for each one it cannot prove.
+// A forge that cannot compare commits or list trees leaves every member unproven, and the reasons say why.
+func (h batchHost) Prove(ctx context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error) {
+	built, err := h.pulls.forgeOf(project)
+	if err != nil {
+		return nil, err
+	}
+
+	return batch.Prove(ctx, built, base, start, end, landed), nil
+}
+
 // Issues reads the state of the issues after a batch. Only the GitHub tracker has issue numbers for ids. A read that fails is a finding of the report.
 // The issues of members of an integration branch stay open until the integration pull request lands, so a base that is not the default branch
 // is read only when the call names the integration pull request, and only once that pull request is merged. In each other case the report holds a note.

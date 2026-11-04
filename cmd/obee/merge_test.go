@@ -90,7 +90,9 @@ func (*shipForge) StackID(context.Context, int) (string, error) { return "", nil
 
 func (*shipForge) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
 
-func (*shipForge) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+func (*shipForge) Compare(context.Context, string, string) (model.Comparison, error) {
+	return model.Comparison{Status: "ahead", AheadBy: 1}, nil
+}
 
 func (*shipForge) TokenScopes(context.Context) ([]string, error) { return []string{"repo"}, nil }
 
@@ -260,17 +262,19 @@ func TestOpened_AForgeWithoutTreesOrLogsGivesAnErrorNotAPanic(t *testing.T) {
 
 type historyForge struct{ forge.Forge }
 
-func (historyForge) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+func (historyForge) Compare(context.Context, string, string) (model.Comparison, error) {
+	return model.Comparison{Status: "ahead", AheadBy: 1}, nil
+}
 
 func TestOpened_AncestryIsPassedThroughOrGivesAnError(t *testing.T) {
 	t.Parallel()
 
-	_, err := opened{noTreeForge{}}.IsAncestor(t.Context(), "x", "main")
+	_, err := opened{noTreeForge{}}.Compare(t.Context(), "x", "main")
 	require.ErrorIs(t, err, errNoOptionalRead)
 
-	in, err := opened{historyForge{}}.IsAncestor(t.Context(), "x", "main")
+	got, err := opened{historyForge{}}.Compare(t.Context(), "x", "main")
 	require.NoError(t, err)
-	assert.True(t, in)
+	assert.True(t, got.Contains())
 }
 
 type queueForge struct {

@@ -78,9 +78,10 @@ type Approvals interface {
 }
 
 // Ancestry is what the merge reads to prove a landing. A forge that also implements Ancestry lets the merge check, after the merge call,
-// that the merged head is an ancestor of the base. IsAncestor is true when commit is the base tip or lies in its history.
+// that the merged head is an ancestor of the base. Compare reads the status and both counts of the comparison of commit with the base,
+// and Comparison.Contains is true when commit is the base tip or lies in its history.
 type Ancestry interface {
-	IsAncestor(ctx context.Context, commit, base string) (bool, error)
+	Compare(ctx context.Context, commit, base string) (model.Comparison, error)
 }
 
 // Queuer is what the merge needs to merge a pull request in a native stack. A forge that also implements Queuer lets the merge queue the merge

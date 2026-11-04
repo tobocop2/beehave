@@ -132,10 +132,12 @@ type Outcome struct {
 }
 
 // Result is what a batch did. Gates counts the gate runs, and a union skipped by the tree memo is not one.
+// Start is the base tip that the batch read first, and Tip is the base tip after the last member merge.
 type Result struct {
 	Merged   []string
 	Rejected []Outcome
 	Deferred []Outcome
+	Start    Tip
 	Tip      Tip
 	Gates    int
 }

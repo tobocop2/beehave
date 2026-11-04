@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ var (
 // It reads only, and it reports a read that fails as a finding in the report, not as an error.
 type batchHost interface {
 	Issues(ctx context.Context, project, base string, integration int, landed []string) (batch.Report, error)
+	// Prove reads the forge to check that each landed member is on the base, merged or on the vehicle commit. It returns the item and the reason for each member it cannot prove.
+	Prove(ctx context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error)
 	Git(ctx context.Context, project, item string) (batch.Git, error)
 	Checkout(ctx context.Context, project, item, commit string) (tree string, err error)
 	Tip(ctx context.Context, project, item, base string) (batch.Tip, error)
@@ -90,15 +93,45 @@ func (s *script) batchRefusal(call batchCall) error {
 	return nil
 }
 
-// batchOutcome reads the issues of the landed items and builds the result. The batch has landed and the merge cannot be undone,
-// so a finding of the read goes into the result and never fails the call.
+// batchOutcome proves the landing of the merged members, reads the issues of the landed items and builds the result. The batch has landed and
+// the merge cannot be undone, so an unproven member and a finding of the read go into the result and never fail the call.
 func (s *script) batchOutcome(call batchCall, done batch.Result) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	unproven, err := s.batchProof(call, done)
+	if err != nil {
+		return nil, fmt.Errorf("batch_merge %q: %w", call.name, err)
+	}
+
 	report, err := s.batchIssues(call, done)
 	if err != nil {
 		return nil, fmt.Errorf("batch_merge %q: %w", call.name, err)
 	}
 
-	return batchResult(done, report), nil
+	return batchResult(done, report, unproven), nil
+}
+
+// batchProof checks as one recorded step that each merged member is on the base, so a replay returns the first proof and does not read the forge again.
+// A batch that landed nothing proves nothing.
+func (s *script) batchProof(call batchCall, done batch.Result) ([]batch.Outcome, error) {
+	landed := make([]batch.Member, 0, len(done.Merged))
+
+	for _, m := range call.members {
+		if slices.Contains(done.Merged, m.Item) {
+			landed = append(landed, m)
+		}
+	}
+
+	if len(landed) == 0 {
+		return []batch.Outcome{}, nil
+	}
+
+	return runStep(s.e, s.ctx, "batch:"+call.name+".prove", func(ctx context.Context) ([]batch.Outcome, error) {
+		unproven, err := s.e.deps.Batch.Prove(ctx, s.in.Project, call.settings.Base, done.Start, done.Tip, landed)
+		if unproven == nil {
+			unproven = []batch.Outcome{}
+		}
+
+		return unproven, err
+	}, dbos.WithStepMaxRetries(stepRetries))
 }
 
 // batchIssues reads the issues of the landed items as one recorded step, so a replay returns the first report and does not read the forge again.
@@ -219,16 +252,12 @@ func members(v starlark.Value) ([]batch.Member, error) {
 }
 
 // batchResult turns the result of a batch and the report of the read after it into the struct of the builtin.
-// `findings` holds one line for each problem of the issues, and `note` says why no read ran.
-func batchResult(done batch.Result, report batch.Report) starlark.Value { //nolint:ireturn // the builtin contract of starlark-go
+// `findings` holds one line for each problem of the issues, `note` says why no read ran, and `unproven` holds an item and a reason for each merged member
+// that is neither in the history of the base nor on the vehicle commit. An item of `merged` that is also named in `unproven` has not landed.
+func batchResult(done batch.Result, report batch.Report, unproven []batch.Outcome) starlark.Value { //nolint:ireturn // the builtin contract of starlark-go
 	merged := make([]starlark.Value, len(done.Merged))
 	for i, item := range done.Merged {
 		merged[i] = starlark.String(item)
-	}
-
-	findings := make([]starlark.Value, len(report.Findings))
-	for i, line := range report.Findings {
-		findings[i] = starlark.String(line)
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
@@ -238,9 +267,20 @@ func batchResult(done batch.Result, report batch.Report) starlark.Value { //noli
 		"tip":      starlark.String(done.Tip.Commit),
 		treeName:   starlark.String(done.Tip.Tree),
 		"gates":    starlark.MakeInt(done.Gates),
-		"findings": starlark.NewList(findings),
+		"findings": textList(report.Findings),
 		"note":     starlark.String(report.Note),
+		"unproven": outcomes(unproven),
 	})
+}
+
+// textList turns lines of text into a Starlark list of strings.
+func textList(lines []string) *starlark.List {
+	out := make([]starlark.Value, len(lines))
+	for i, line := range lines {
+		out[i] = starlark.String(line)
+	}
+
+	return starlark.NewList(out)
 }
 
 func outcomes(list []batch.Outcome) *starlark.List {

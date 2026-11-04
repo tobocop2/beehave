@@ -24,10 +24,11 @@ func TestRun_AMergedHeadThatIsNotOnTheBaseFailsTheItem(t *testing.T) {
 	assert.Equal(t, merge.Refused, result.Stop)
 	assert.Equal(t, merge.TreeProof, result.Reason)
 	assert.Contains(t, last(result), "is not on main")
-	assert.True(t, w.called("IsAncestor "+sha+" main"))
+	assert.Contains(t, last(result), "ahead by 4, behind by 2", "the refusal prints both counts and not the bare word")
+	assert.True(t, w.called("Compare "+sha+" main"))
 }
 
-// noHistory is a forge that cannot compare commits: the embedded interface hides IsAncestor.
+// noHistory is a forge that cannot compare commits: the embedded interface hides Compare.
 type noHistory struct{ merge.Forge }
 
 func TestRun_AForgeThatCannotCompareCommitsFailsTheItem(t *testing.T) {
@@ -48,7 +49,7 @@ func TestRun_AMergedHeadThatIsOnTheBasePasses(t *testing.T) {
 	result := w.run(request())
 
 	assert.Equal(t, merge.Done, result.Stop)
-	assert.True(t, w.called("IsAncestor "+sha+" main"))
+	assert.True(t, w.called("Compare "+sha+" main"))
 }
 
 func TestRun_AnAncestryThatCannotBeReadFailsTheItem(t *testing.T) {

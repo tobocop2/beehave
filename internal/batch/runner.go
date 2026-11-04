@@ -65,9 +65,12 @@ func (r *runner) runAll(ctx context.Context, sorted []Member) error {
 		return err
 	}
 
-	if _, err := r.readTip(ctx); err != nil {
+	start, err := r.readTip(ctx)
+	if err != nil {
 		return err
 	}
+
+	r.result.Start = start
 
 	if err := r.land(ctx, present); err != nil {
 		return err

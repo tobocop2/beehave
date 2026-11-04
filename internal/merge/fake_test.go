@@ -83,14 +83,18 @@ func (w *world) Reviews(context.Context, int) ([]model.Review, error) {
 	return w.reviews, w.fail("Reviews")
 }
 
-func (w *world) IsAncestor(_ context.Context, commit, base string) (bool, error) {
-	w.calls = append(w.calls, "IsAncestor "+commit+" "+base)
+func (w *world) Compare(_ context.Context, commit, base string) (model.Comparison, error) {
+	w.calls = append(w.calls, "Compare "+commit+" "+base)
 
 	if w.ancestryErr {
-		return false, fmt.Errorf("IsAncestor: %w", errDown)
+		return model.Comparison{}, fmt.Errorf("Compare: %w", errDown)
 	}
 
-	return !w.behind, nil
+	if w.behind {
+		return model.Comparison{Status: "diverged", AheadBy: 4, BehindBy: 2}, nil
+	}
+
+	return model.Comparison{Status: "ahead", AheadBy: 1}, nil
 }
 
 // tipRead is one answer of a read of a branch tip.

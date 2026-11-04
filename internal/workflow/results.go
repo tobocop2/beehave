@@ -45,7 +45,7 @@ const (
 func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "rewrote"},
-		batchMergeName:   {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note"},
+		batchMergeName:   {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven"},
 		commandName:      {"stdout", "stderr", "rc"},
 		gateName:         {"passed", "head", treeKeyword, "report", "steps"},
 		gatherName:       {"results"},
