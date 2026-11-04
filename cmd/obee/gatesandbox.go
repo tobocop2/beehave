@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tobocop2/obee/internal/check/shell"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
@@ -231,12 +232,10 @@ func forgetCopies(ctx context.Context, dir, root string) {
 	}
 
 	// Git prints the real path of a worktree, and root may reach it through a link.
-	resolved, _ := filepath.EvalSymlinks(root) //nolint:errcheck // a root that cannot be resolved matches by its own name only
-	roots := []string{root, resolved}
+	roots := []string{root, shell.RealPath(root)}
 
-	for line := range strings.Lines(out) {
-		path, found := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "worktree ")
-		if !found || !underAny(roots, path) {
+	for _, path := range worktreePaths(out) {
+		if !underAny(roots, path) {
 			continue
 		}
 
