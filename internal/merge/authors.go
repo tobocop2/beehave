@@ -3,7 +3,6 @@ package merge
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/model"
@@ -39,7 +38,7 @@ func forbiddenLines(view model.PullRequest, forbidden []*regexp.Regexp) []string
 	var hits []string
 
 	for number, line := range strings.Split(whole, "\n")[:strings.Count(whole, "\n")] {
-		if slices.ContainsFunc(forbidden, func(rule *regexp.Regexp) bool { return rule.MatchString(line) }) {
+		if _, found := matchingRule(forbidden, line); found {
 			hits = append(hits, fmt.Sprintf("  %d:%s", number+1, line))
 		}
 	}

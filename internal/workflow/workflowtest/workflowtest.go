@@ -36,6 +36,26 @@ func Calls(name string, text []byte) ([]Call, error) {
 	return calls, nil
 }
 
+// Constant returns the string literals of the top-level assignment `name = ...` of a workflow file. A name that the file does not assign has none.
+func Constant(file string, text []byte, name string) ([]string, error) {
+	parsed, err := model.StarlarkFileOptions().Parse(file, text, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+
+	for _, stmt := range parsed.Stmts {
+		if assign, ok := stmt.(*syntax.AssignStmt); ok && assign.Op == syntax.EQ {
+			if target, isName := assign.LHS.(*syntax.Ident); isName && target.Name == name {
+				out = append(out, Literals(assign.RHS)...)
+			}
+		}
+	}
+
+	return out, nil
+}
+
 // appendBuiltin adds the call when it calls a builtin by its name.
 func appendBuiltin(calls []Call, call *syntax.CallExpr) []Call {
 	fn, ok := call.Fn.(*syntax.Ident)

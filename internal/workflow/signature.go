@@ -12,6 +12,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
+	"github.com/tobocop2/obee/internal/merge"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -96,6 +97,21 @@ func opt(name string, kind Kind) Param { return Param{Name: name, Kind: kind} }
 
 // words is an optional list keyword whose elements must be text.
 func words(name string) Param { return Param{Name: name, Kind: KindList, Rule: wordsRule(name)} }
+
+// forbidText is the forbid_text keyword of a step: a list of RE2 patterns that the text of the step may not match.
+func forbidText() Param { return Param{Name: "forbid_text", Kind: KindList, Rule: forbidRule} }
+
+// forbidRule is the rule of forbid_text. The patterns must be text and RE2, the same test that the merge applies when it runs.
+func forbidRule(v starlark.Value) error {
+	patterns, err := Words("forbid_text", v)
+	if err != nil {
+		return err
+	}
+
+	_, err = merge.Compile(patterns)
+
+	return err
+}
 
 // ruled is an optional keyword of a kind with the rule of the run.
 func ruled(name string, kind Kind, rule func(starlark.Value) error) Param {
@@ -344,7 +360,7 @@ func swarmSignatures() map[string][]Param {
 		batchMergeName: {
 			{Name: "prs", Kind: KindList, Required: true, Rule: prsRule},
 			filled("base"), filled("repo"), opt("hold", KindText), ruled("own", KindDict, ownRule),
-			words("forbid_text"), words("gate_run"), opt("integration", KindInt),
+			forbidText(), words("gate_run"), opt("integration", KindInt),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
 		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
@@ -364,20 +380,20 @@ func itemSignatures() map[string][]Param {
 
 	return map[string][]Param{
 		itemAssignName:  {filled("id"), filled("assignee"), label},
-		itemCommentName: {filled("id"), filled("text"), filled("key"), label},
+		itemCommentName: {filled("id"), filled("text"), filled("key"), forbidText(), label},
 		itemCreateName: {
-			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), opt("severity", KindText), opt("operator", KindBool), label,
+			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), opt("severity", KindText), opt("operator", KindBool), forbidText(), label,
 		},
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
 		boardSyncName:  {req("board", KindInt), filled(statusField), opt("owner", KindText), opt("issue", KindInt), label},
 		prAssignName:   {filled("assignee"), opt("linked", KindBool), label},
-		prCommentName:  {filled("text"), filled("key"), label},
-		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), label},
+		prCommentName:  {filled("text"), filled("key"), forbidText(), label},
+		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), forbidText(), label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("approved", KindBool),
 			{Name: treeKeyword, Kind: KindText, AsValue: true},
-			opt("steps", KindList), words("forbid_text"), one("children", ChildrenValues()), opt("merge", KindBool), label,
+			opt("steps", KindList), forbidText(), one("children", ChildrenValues()), opt("merge", KindBool), label,
 		},
 	}
 }

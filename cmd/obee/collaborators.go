@@ -925,7 +925,7 @@ func (p pulls) request(name string, project config.Project, item string, number 
 
 // prepared returns the known project and the compiled forbid_text patterns of a merge step.
 func (p pulls) prepared(project string, patterns []string) (config.Project, []*regexp.Regexp, error) {
-	rules, err := compileForbidden(patterns)
+	rules, err := merge.Compile(patterns)
 	if err != nil {
 		return config.Project{}, nil, err
 	}
@@ -979,22 +979,6 @@ func (p pulls) target(ctx context.Context, project, item, repo string) (opened, 
 	}
 
 	return p.numberOf(ctx, built, item)
-}
-
-// compileForbidden compiles the forbid_text patterns of a merge step.
-func compileForbidden(patterns []string) ([]*regexp.Regexp, error) {
-	rules := make([]*regexp.Regexp, len(patterns))
-
-	for i, pattern := range patterns {
-		rule, err := regexp.Compile(pattern)
-		if err != nil {
-			return nil, fmt.Errorf("the forbid_text pattern %q is not valid: %w", pattern, err)
-		}
-
-		rules[i] = rule
-	}
-
-	return rules, nil
 }
 
 // SetDraft sets or clears the draft state of the pull request.

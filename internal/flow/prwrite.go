@@ -15,13 +15,14 @@ import (
 func (s *script) prComment(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var text, key, label string
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+	rules, err := unpackPosting(b, args, kwargs, map[string]any{
 		textKeyword: &text, keyKeyword: &key, nameKeyword: &label,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	if err := errors.Join(workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key)); err != nil {
+	if err = errors.Join(workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key), rules.refuse(postedText{"text", text})); err != nil {
 		return nil, err
 	}
 
@@ -35,18 +36,14 @@ func (s *script) prComment(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 // prOpen opens the draft pull request of the item once, sets its body and links it into the native stack of its parent. The forge finds an open pull request
 // on the branch of the item first, so a resume after a lost record opens no second one. The body is the text plus a closing line that the forge picks from the base.
 func (s *script) prOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var (
-		req   OpenRequest
-		label string
-	)
+	var req OpenRequest
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, "issue": &req.Issue, parentKeyword: &req.Parent, nameKeyword: &label,
-	}); err != nil {
+	label, rules, err := unpackOpen(b, args, kwargs, &req)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := req.check(); err != nil {
+	if err = errors.Join(req.check(), rules.refuse(postedText{"title", req.Title}, postedText{"body", req.Body})); err != nil {
 		return nil, err
 	}
 
@@ -55,6 +52,15 @@ func (s *script) prOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 
 		return stepResult{Outputs: openOutputs(opened)}, err
 	})
+}
+
+// unpackOpen unpacks the arguments of a pr_open call into req. It returns the label of the call and the forbid_text patterns.
+func unpackOpen(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple, req *OpenRequest) (label string, rules textRules, err error) {
+	rules, err = unpackPosting(b, args, kwargs, map[string]any{
+		titleKeyword: &req.Title, baseKeyword: &req.Base, bodyKeyword: &req.Body, "issue": &req.Issue, parentKeyword: &req.Parent, nameKeyword: &label,
+	})
+
+	return label, rules, err
 }
 
 // boardSync puts the card of the item on a project board, sets its status column, and reads the card back. A read-back that shows another status fails the step,
