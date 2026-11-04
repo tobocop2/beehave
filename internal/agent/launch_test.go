@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,6 +105,86 @@ func TestRunner_AResumeSubcommandComesAfterEveryOtherArgument(t *testing.T) { //
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.True(t, strings.HasSuffix(record(t, records, "args"), " resume sess-1 -"), record(t, records, "args"))
 	assert.Contains(t, record(t, records, "args"), "--model opus --conf")
+}
+
+func TestRunner_ALaunchFileThatCannotBeWrittenDoesNotStartTheCLI(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	cases := map[string]map[string]string{
+		"a_folder_that_is_a_file": {"a": "x", "a/b": "y"},
+		"a_file_that_is_a_folder": {"z/f": "x", "z/f/..": "y"},
+	}
+
+	for name, files := range cases {
+		adapter := launchAdapter{Adapter: claude.New(), launch: func(string) agent.Launch { return agent.Launch{Files: files} }}
+		f, records := launchFixture(t, adapter)
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome, name)
+		assert.Contains(t, got.Note, "launch file", name)
+		assert.NoFileExists(t, filepath.Join(records, "args"), name)
+	}
+}
+
+func TestRunner_ARunFolderThatCannotBeMadeDoesNotStartTheCLI(t *testing.T) {
+	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: stubLaunch})
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, "cannot make the run folder")
+	assert.NoFileExists(t, filepath.Join(records, "args"))
+}
+
+// foldersOf returns a launch function that gives files to the run, and the function that lists the run folders it was given.
+func foldersOf(files map[string]string) (func(string) agent.Launch, func() []string) {
+	var seen []string
+
+	launch := func(runDir string) agent.Launch {
+		seen = append(seen, runDir)
+
+		return agent.Launch{Files: files}
+	}
+
+	return launch, func() []string { return seen }
+}
+
+func TestRunner_TheRunFolderIsGoneAfterARefusalThatCameAfterItWasMade(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	for name, files := range map[string]map[string]string{
+		"a_path_outside_the_folder": {"../escape": "x"},
+		"a_file_that_cannot_exist":  {"a": "x", "a/b": "y"},
+	} {
+		launch, folders := foldersOf(files)
+		f, _ := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: launch})
+
+		got := agent.Runner{}.Run(context.Background(), f.spec)
+
+		require.Equal(t, agent.OutcomeNotStarted, got.Outcome, name)
+		require.Len(t, folders(), 1, name)
+		assert.NoDirExists(t, folders()[0], name)
+	}
+}
+
+func TestRunner_TheRunFolderIsGoneAfterACancelledRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	launch, folders := foldersOf(map[string]string{"conf/hooks.json": "x"})
+	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(), launch: launch}, "obee check command", &bytes.Buffer{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		for !fileExists(filepath.Join(f.records, "grandchild")) {
+			time.Sleep(20 * time.Millisecond)
+		}
+
+		cancel()
+	}()
+
+	got := agent.Runner{}.Run(ctx, f.spec)
+
+	require.Equal(t, agent.OutcomeCancelled, got.Outcome)
+	require.Len(t, folders(), 1)
+	assert.NoDirExists(t, folders()[0])
 }
 
 func TestRunner_ALaunchFileOutsideTheRunFolderDoesNotStartTheCLI(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process

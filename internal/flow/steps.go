@@ -12,6 +12,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -56,11 +57,11 @@ type StepLine struct {
 	Kind string `json:"kind,omitempty"`
 	// Rounds is the cap of the loop that an agent step named with its rounds keyword. It is 0 for a step that named none.
 	Rounds int `json:"rounds,omitempty"`
-	// Cost is the dollars that the agent runs of the call spent, failed runs included. It is 0 for a step that is not an agent.
-	Cost    float64 `json:"cost_usd,omitempty"`
-	Stop    string  `json:"stop,omitempty"`
-	Verdict string  `json:"verdict,omitempty"`
-	Head    string  `json:"head,omitempty"`
+	// Spend is the cost of the agent runs of the call, failed runs included, with the marks of an estimate and of an unknown cost. It is empty for a step that is not an agent.
+	agent.Spend
+	Stop    string `json:"stop,omitempty"`
+	Verdict string `json:"verdict,omitempty"`
+	Head    string `json:"head,omitempty"`
 	// Rewrote is set when the commit the agent started on is not in the history of its head: the agent amended, squashed or reset.
 	Rewrote bool       `json:"rewrote,omitempty"`
 	Passed  *bool      `json:"passed,omitempty"`
@@ -280,7 +281,7 @@ func (l *StepLine) decodeAgentSub(sub string, output any) bool {
 	case strings.HasPrefix(sub, "read"):
 		return decodeThen(output, func(read recorded[agentRead]) { l.fromAgentRead(read.Outputs) })
 	case strings.HasPrefix(sub, "spent"):
-		return decodeThen(output, func(spent recorded[agentFields]) { l.Cost += spent.Outputs.Cost })
+		return decodeThen(output, func(spent recorded[agentFields]) { l.Spend = l.Plus(spent.Outputs.Spend) })
 	}
 
 	return true
@@ -337,7 +338,7 @@ func (l *StepLine) fromPhase(phase PhaseOutput) {
 // fromAgentRead takes the head, the cap that stopped the agent and the verdict from the read of its outputs.
 func (l *StepLine) fromAgentRead(read agentRead) {
 	l.Head, l.Stop, l.Verdict, l.Rewrote = read.Head, read.Stop, read.Verdict, read.Rewrote
-	l.Cost += read.Cost
+	l.Spend = l.Plus(read.Spend)
 }
 
 // fromGate takes the result of a gate: pass or fail, the head and the status of each gate step.

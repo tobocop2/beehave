@@ -156,14 +156,9 @@ func TestRunner_RefusesACapThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paral
 	f := newFixture(t, "claude", model.AgentClaude, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}
 
-	f.spec.MaxTurns = 5
-	turns := agent.Runner{}.Run(context.Background(), f.spec)
-
-	f.spec.MaxTurns, f.spec.MaxBudget = 0, 1
+	f.spec.MaxBudget = 1
 	budget := agent.Runner{}.Run(context.Background(), f.spec)
 
-	assert.Equal(t, agent.OutcomeNotStarted, turns.Outcome)
-	assert.Contains(t, turns.Note, "no option to cap the turns, so the run does not start. Set agents.max_turns to 0.")
 	assert.Equal(t, agent.OutcomeNotStarted, budget.Outcome)
 	assert.Contains(t, budget.Note, "no option to cap the cost, so the run does not start. Set agents.max_budget_usd to 0.")
 }

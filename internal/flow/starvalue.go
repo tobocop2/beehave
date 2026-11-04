@@ -11,6 +11,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -37,8 +38,8 @@ type script struct {
 	// kinds is the table of step kinds that name accepts. It is nil, and so the table of the engine, unless a test sets it.
 	kinds []string
 
-	// spent is the sum in dollars of the costs that the agent steps of this run recorded so far. A replay adds the same recorded costs again in the same order.
-	spent float64
+	// spent is the sum of the costs that the agent steps of this run recorded so far, marks included. A replay adds the same recorded costs again in the same order.
+	spent agent.Spend
 
 	// merge and sentBack are what a merge builtin reported. They go into the result of the item.
 	mergeState, sentBack, closed string

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
@@ -540,7 +541,7 @@ func TestStatus_ShowsTheCostTheStepTheGateAndTheRoundsOfEachRun(t *testing.T) {
 	rig.steering.infos = []flow.RunInfo{{
 		ID: "a-r1", State: "running",
 		RunProgress: flow.RunProgress{
-			Spent: 3.5, Cap: 20, Now: "agent:fix#2", Gate: &flow.GateSeen{Passed: false, Head: "abc123"},
+			Spent: agent.Spend{Cost: 3.5}, Cap: 20, Now: "agent:fix#2", Gate: &flow.GateSeen{Passed: false, Head: "abc123"},
 			Fix: flow.Rounds{Used: 2, Cap: 5}, Review: flow.Rounds{Used: 3, Cap: 6},
 		},
 	}, {

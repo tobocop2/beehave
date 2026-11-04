@@ -361,7 +361,7 @@ func TestStatus_TheListWithJSONKeepsFalseAndZeroApartFromAbsent(t *testing.T) {
 
 	got := list.Runs
 
-	for key, want := range map[string]any{"stranded": false, "older_steps": false, "spent_usd": 0.0, "cap_usd": 0.0} {
+	for key, want := range map[string]any{"stranded": false, "older_steps": false, "spent": map[string]any{}, "cap_usd": 0.0} {
 		assert.Equal(t, want, got[0][key], key)
 	}
 

@@ -24,6 +24,9 @@ func (lineAdapter) Guard(command, _ string) agent.Launch {
 	return agent.Launch{Args: []string{"--hook", command}}
 }
 
+// Profile is the profile of a CLI that caps the dollars of a run itself.
+func (lineAdapter) Profile() agent.Profile { return agent.Profile{BudgetFlag: "--max-budget-usd"} }
+
 // noHookAdapter is an adapter whose CLI has no hook.
 type noHookAdapter struct{ lineAdapter }
 

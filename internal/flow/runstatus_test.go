@@ -10,6 +10,8 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/agent"
 )
 
 func TestWaitDeadline_ReadsTheDeadlineOfTheLastReceiveRecordOnlyForAWaitWithATimeout(t *testing.T) {
@@ -76,7 +78,7 @@ func TestRunProgress_NotesNameTheGateWithNoHeadAndRoundsWithNoCap(t *testing.T) 
 	progress := RunProgress{Gate: &GateSeen{Passed: true}, Fix: Rounds{Used: 2}, Review: Rounds{Used: 1, Cap: 3}}
 
 	assert.Equal(t, []string{"gate pass", "fix 2", "review 1 of 3"}, progress.Notes())
-	assert.Equal(t, []string{"spent $1.5"}, RunProgress{Spent: 1.5}.Notes())
+	assert.Equal(t, []string{"spent $1.5"}, RunProgress{Spent: agent.Spend{Cost: 1.5}}.Notes())
 	assert.Equal(t, []string{"gate fail at abc"}, RunProgress{Gate: &GateSeen{Head: "abc"}}.Notes())
 }
 
@@ -106,7 +108,7 @@ func TestStatus_ARunShowsTheCostSpentSoFarAgainstTheRunCap(t *testing.T) {
 
 	info := onlyRun(t, rig.h.client(t, testVersion))
 
-	assert.InDelta(t, 2.5, info.Spent, 0)
+	assert.InDelta(t, 2.5, info.Spent.Cost, 0)
 	assert.InDelta(t, 20.0, info.Cap, 0)
 	assert.Contains(t, info.Notes(), "spent $2.5 of $20")
 }
@@ -124,7 +126,7 @@ func TestStatus_TheCostOfARunThatFailedCountsAsSpent(t *testing.T) {
 
 	info := onlyRun(t, rig.h.client(t, testVersion))
 
-	assert.InDelta(t, 0.75, info.Spent, 0)
+	assert.InDelta(t, 0.75, info.Spent.Cost, 0)
 	assert.Contains(t, info.Notes(), "spent $0.75")
 }
 
@@ -331,16 +333,18 @@ func TestStatus_TheJSONViewOfARunCarriesTheSameFigures(t *testing.T) {
 	require.NoError(t, err)
 
 	var fields struct {
-		Spent float64 `json:"spent_usd"`
-		Cap   float64 `json:"cap_usd"`
-		Gate  struct {
+		Spent struct {
+			Cost float64 `json:"cost_usd"`
+		} `json:"spent"`
+		Cap  float64 `json:"cap_usd"`
+		Gate struct {
 			Passed bool `json:"passed"`
 		} `json:"gate"`
 	}
 
 	require.NoError(t, json.Unmarshal(text, &fields))
 
-	assert.InDelta(t, 1.25, fields.Spent, 0)
+	assert.InDelta(t, 1.25, fields.Spent.Cost, 0)
 	assert.InDelta(t, 20.0, fields.Cap, 0)
 	assert.True(t, fields.Gate.Passed)
 }

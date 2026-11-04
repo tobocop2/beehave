@@ -457,7 +457,7 @@ func (s *script) attempt(name string, a agentArgs, in PhaseInput, try int) (step
 
 	ended, err := s.e.queuePhase(s.ctx, in)
 	if err != nil {
-		s.countFailedRun(name, try, ended.Cost)
+		s.countFailedRun(name, try, ended.Spend)
 
 		return stepResult{}, err
 	}
@@ -474,27 +474,27 @@ func (s *script) read(name string, a agentArgs, ended PhaseOutput, try int) (ste
 		return done, err
 	}
 
-	s.spent += costOf(done.Outputs)
+	s.spent = s.spent.Plus(spendOf(done.Outputs))
 
 	return done, nil
 }
 
 // countFailedRun records the cost of a run that failed and adds it to the sum of the run cap. A failed run spent money too, and the recorded step
 // gives a replay the same sum. The error of the failed run stays the error of the step, so a failure to record the cost is not reported over it.
-func (s *script) countFailedRun(name string, try int, cost float64) {
+func (s *script) countFailedRun(name string, try int, spend agent.Spend) {
 	// A stopped wait leaves its reading goroutine running, and it shares the step counter of the run: a stopped run records no step.
 	if s.ctx.Err() != nil {
 		return
 	}
 
 	done, err := runStep(s.e, s.ctx, name+"/spent"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
-		return stepResult{Outputs: map[string]any{costField: cost}}, nil
+		return stepResult{Outputs: spendOutputs(spend)}, nil
 	})
 	if err != nil {
 		return
 	}
 
-	s.spent += costOf(done.Outputs)
+	s.spent = s.spent.Plus(spendOf(done.Outputs))
 }
 
 // clearOutput removes the old output file of an agent call in a recorded step.
@@ -522,28 +522,32 @@ func (s *script) checkRunBudget(name string, try int) error {
 	}
 
 	_, err := runStep(s.e, s.ctx, name+"/budget"+strconv.Itoa(try), func(context.Context) (stepResult, error) {
-		if s.spent < limit {
-			return stepResult{}, nil
-		}
-
-		return stepResult{}, fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s and the agent steps of the item run spent $%s. "+
-			"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
-			"Raise agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD), or set it to 0 for no cap", name, dollars(limit), dollars(s.spent))
+		return stepResult{}, overCap(name, limit, s.spent)
 	})
 
 	return err
 }
 
+// overCap is the error of an agent step that may not start under the cap of the run, or nil when it may. A sum that holds an unknown cost fails too:
+// the cap cannot be checked against a cost that is not known.
+func overCap(name string, limit float64, spent agent.Spend) error {
+	switch {
+	case spent.Unknown:
+		return fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s, but the cost is unknown for an earlier agent step "+
+			"(its model has no price), so the cap cannot be checked. "+
+			"Add a price for the model, or set agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD) to 0 for no cap", name, dollars(limit))
+	case spent.Cost < limit:
+		return nil
+	}
+
+	return fmt.Errorf("the agent step %s does not start: the cap for one item run is $%s and the agent steps of the item run spent $%s. "+
+		"The cap is checked when a step starts, so the last step can pass it by its own cost. "+
+		"Raise agents.max_run_budget_usd (or OBEE_AGENTS_MAX_RUN_BUDGET_USD), or set it to 0 for no cap", name, dollars(limit), dollars(spent.Cost))
+}
+
 // dollars writes an amount of dollars with at most four decimals and no trailing zero.
 func dollars(amount float64) string {
 	return strings.TrimSuffix(strings.TrimRight(strconv.FormatFloat(amount, 'f', 4, floatBits), "0"), ".")
-}
-
-// costOf returns the cost_usd that a read step recorded, or 0 when the outputs hold none.
-func costOf(outputs map[string]any) float64 {
-	cost, _ := outputs[costField].(float64) //nolint:errcheck // a missing or ill-typed cost reads as 0
-
-	return cost
 }
 
 // readAgent checks the skills of a finished run, records its violations and reads its declared outputs.
@@ -559,11 +563,11 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(violations, "\n"), capOf(ended.Outcome), ended.Cost, rewrote)
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(violations, "\n"), capOf(ended.Outcome), ended.Spend, rewrote)
 
 	// A run that left a bad output file still cost money, so its outputs stay in the result and the run cap counts them.
 	if problem := a.readOutputs(outputs); problem != "" {
-		return stepResult{Note: problem, Outputs: map[string]any{costField: ended.Cost}}, nil
+		return stepResult{Note: problem, Outputs: spendOutputs(ended.Spend)}, nil
 	}
 
 	return stepResult{Outputs: outputs}, nil
