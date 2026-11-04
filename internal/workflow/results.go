@@ -16,7 +16,9 @@ const (
 	commandName = "command"
 	factsName   = "facts"
 	gateName    = "gate"
-	writeName   = "write"
+
+	earlierCallsName = "earlier_calls"
+	writeName        = "write"
 
 	hostTeardownName = "host_teardown"
 	hostUpName       = "host_up"
@@ -47,6 +49,7 @@ func resultFields() map[string][]string {
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "rewrote"},
 		batchMergeName:   {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven"},
 		commandName:      {"stdout", "stderr", "rc"},
+		earlierCallsName: {"count"},
 		gateName:         {"passed", "head", treeKeyword, "report", "steps", "required"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},

@@ -226,7 +226,7 @@ func TestLaneLayout_ARiseAtTheCapHoldsTheItemBeforeTheOwnerIsAskedAndNoSettleLan
 
 	for _, review := range []string{"1", "unknown"} {
 		rig, file := exampleRig(t, func(int) string { return "changes" })
-		withCounts(rig, "0", review)
+		withCountSequence(rig, "0", "0", review)
 		rig.h.opts.Env["PATCH_ROUNDS"] = "1"
 		writer := newFakeWriter()
 		rig.h.writer = writer

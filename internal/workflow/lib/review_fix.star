@@ -62,8 +62,11 @@ def settled_gate(item):
 
     return check
 
-def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = [], review_outputs = [], facts = {}):
-    """Runs the loop and returns a struct with stopped, exhausted, rejected, design, gate and review.
+def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = [], review_outputs = [], facts = {}, review_check = None):
+    """Runs the loop and returns a struct with stopped, exhausted, rejected, design, held, gate and review.
+
+    review_check is a function of one argument, the review, that runs after each review whose verdict is not reject. It returns an empty text to go on,
+    or a reason. A reason ends the loop at once: held holds it, no fix lane starts, and the caller holds the item. Without the function held is an empty text.
 
     guard holds the settings of the preflight call that runs before every review, design and fix agent: base, hold and own.
     The call compares the forge head with the head the gate ran on, which is the head of the worktree. The loop therefore needs each fix
@@ -114,7 +117,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
         if check.passed:
             if stopped_before(item, "before-review-%d" % round, check.head, guard) != None:
-                return struct(stopped = True, exhausted = False, rejected = False, design = None, gate = check, review = None)
+                return struct(stopped = True, exhausted = False, rejected = False, design = None, held = "", gate = check, review = None)
 
             review = agent(
                 name = "review",
@@ -133,16 +136,21 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             )
             capped(review, "review", item)
 
+            # The hook sees every review at once, so a bad round ends the loop before the next fix lane starts. A reject keeps its own result.
+            held = review_check(review) if review_check != None and review.verdict != "reject" else ""
+            if held != "":
+                return struct(stopped = False, exhausted = False, rejected = False, design = None, held = held, gate = check, review = review)
+
         # A read-only step that changed the folder is a violation of this round: the approve of that review is not clean.
         review_violations = review.violations if review != None else ""
 
         if check.passed and review.verdict == "approve" and violations == "" and review_violations == "":
-            return struct(stopped = False, exhausted = False, rejected = False, design = None, gate = check, review = review)
+            return struct(stopped = False, exhausted = False, rejected = False, design = None, held = "", gate = check, review = review)
 
         # A reject ends the loop with no fix round, whatever the gate says. The review runs only on a passing gate, so a missing review is no reject.
         # The caller holds the item with the text of the review as the reason.
         if review != None and review.verdict == "reject":
-            return struct(stopped = False, exhausted = False, rejected = True, design = None, gate = check, review = review)
+            return struct(stopped = False, exhausted = False, rejected = True, design = None, held = "", gate = check, review = review)
 
         if round == rounds:
             break
@@ -161,7 +169,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
 
         if mechanism != "" and fixes.get(mechanism, 0) >= DESIGN_AFTER and mechanism not in decided:
             if stopped_before(item, "before-design-%d" % round, check.head, guard) != None:
-                return struct(stopped = True, exhausted = False, rejected = False, design = None, gate = check, review = review)
+                return struct(stopped = True, exhausted = False, rejected = False, design = None, held = "", gate = check, review = review)
 
             design = agent(
                 name = "design",
@@ -188,6 +196,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                     stopped = False,
                     exhausted = False,
                     rejected = False,
+                    held = "",
                     design = struct(mechanism = mechanism, decision = design.decision, reason = design.reason),
                     gate = check,
                     review = review,
@@ -197,7 +206,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             findings = "Design decision for %s: keep and patch. %s\n\n%s" % (mechanism, design.reason, findings)
 
         if stopped_before(item, "before-fix-%d" % round, check.head, guard) != None:
-            return struct(stopped = True, exhausted = False, rejected = False, design = None, gate = check, review = review)
+            return struct(stopped = True, exhausted = False, rejected = False, design = None, held = "", gate = check, review = review)
 
         fix = agent(
             name = "fix",
@@ -218,4 +227,4 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
         if mechanism != "":
             fixes[mechanism] = fixes.get(mechanism, 0) + 1
 
-    return struct(stopped = False, exhausted = True, rejected = False, design = None, gate = check, review = review)
+    return struct(stopped = False, exhausted = True, rejected = False, design = None, held = "", gate = check, review = review)
