@@ -77,7 +77,9 @@ func (w *shipWorld) UnresolvedThreads(context.Context, int) ([]model.ReviewThrea
 
 func (*shipWorld) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
 
-func (*shipWorld) IsAncestor(context.Context, string, string) (bool, error) { return true, nil }
+func (*shipWorld) Compare(context.Context, string, string) (model.Comparison, error) {
+	return model.Comparison{Status: "ahead", AheadBy: 1}, nil
+}
 
 func (*shipWorld) StackID(context.Context, int) (string, error) { return "", nil }
 

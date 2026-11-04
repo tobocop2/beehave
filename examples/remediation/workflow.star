@@ -257,6 +257,10 @@ def land(item, pins):
         print("the issue check did not run: " + out.note)
         item_comment(name = "issue-check", id = item.id, key = "issue-check", text = "the issue check did not run: " + out.note)
 
+    # A merged item named in unproven is not on the base, and not on the vehicle commit. The owner reads the lines before any issue closes.
+    if len(out.unproven) > 0:
+        fail("REFUSE: the batch merged, but a member is not proven on the base. Check each one by hand:\n" + "\n".join(["item %s: %s" % (u.item, u.reason) for u in out.unproven]))
+
     if len(out.findings) > 0:
         fail("REFUSE: the batch landed, but the issues are not as they must be. Fix the state of each issue by hand:\n" + "\n".join(out.findings))
 

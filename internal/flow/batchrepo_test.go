@@ -122,6 +122,10 @@ type repoHost struct {
 	report     batch.Report
 	reportErr  error
 	issueCalls []string
+	// unproven and proofErr are the answer of Prove, and proofCalls holds what it was asked.
+	unproven   []batch.Outcome
+	proofErr   error
+	proofCalls []string
 }
 
 func (h *repoHost) Git(context.Context, string, string) (batch.Git, error) {
@@ -220,6 +224,29 @@ func (h *repoHost) Issues(_ context.Context, project, base string, integration i
 	h.issueCalls = append(h.issueCalls, fmt.Sprintf("%s %s %d %s", project, base, integration, strings.Join(landed, ",")))
 
 	return h.report, h.reportErr
+}
+
+// Prove answers the proof of the landing: it records what it was asked and returns the unproven lines of the test.
+// The tips are the trees of the repository of the test, so a test sees that the start and the end tip are the two ends of the batch.
+func (h *repoHost) Prove(_ context.Context, project, base string, start, end batch.Tip, landed []batch.Member) ([]batch.Outcome, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	items := make([]string, len(landed))
+	for i, m := range landed {
+		items[i] = m.Item + "=" + m.Head
+	}
+
+	h.proofCalls = append(h.proofCalls, fmt.Sprintf("%s %s %s>%s %s", project, base, start.Commit, end.Commit, strings.Join(items, ",")))
+
+	return h.unproven, h.proofErr
+}
+
+func (h *repoHost) proofReads() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return slices.Clone(h.proofCalls)
 }
 
 func (h *repoHost) issueReads() []string {

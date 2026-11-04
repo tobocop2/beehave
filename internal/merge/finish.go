@@ -77,13 +77,13 @@ func (a *attempt) provable() *refusal {
 
 // ancestor stops when the merged head is not in the history of the base, or when that cannot be told.
 func (a *attempt) ancestor() *refusal {
-	in, err := a.history.IsAncestor(a.ctx, a.req.Gated, a.req.Base)
+	got, err := a.history.Compare(a.ctx, a.req.Gated, a.req.Base)
 	if err != nil {
 		return stopped(fmt.Sprintf("cannot tell whether %s is in the history of %s: %s", a.req.Gated, a.req.Base, err))
 	}
 
-	if !in {
-		return stopped(fmt.Sprintf("the merged head %s is not on %s, so #%d did not land.", a.req.Gated, a.req.Base, a.req.PR))
+	if !got.Contains() {
+		return stopped(fmt.Sprintf("the merged head %s is not on %s (the forge compares it: %s), so #%d did not land.", a.req.Gated, a.req.Base, got, a.req.PR))
 	}
 
 	return nil

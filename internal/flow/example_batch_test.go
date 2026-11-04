@@ -353,6 +353,19 @@ func TestExampleBatch_AFindingStopsTheRunWithARefuseForTheOwner(t *testing.T) {
 	assert.Contains(t, err.Error(), "by hand")
 }
 
+func TestExampleBatch_AnUnprovenMemberStopsTheRunWithARefuseThatNamesTheItemAndTheReason(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.host.unproven = []batch.Outcome{{Item: "3", Reason: "its branch holds another commit now"}}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REFUSE")
+	assert.Contains(t, err.Error(), "item 3: its branch holds another commit now")
+}
+
 func TestExampleBatch_ANoteIsCommentedAsAnIssueCheckThatDidNotRun(t *testing.T) {
 	t.Parallel()
 

@@ -243,6 +243,62 @@ func TestBatchMerge_ABatchThatLandedNothingReadsNoIssueAndSaysSo(t *testing.T) {
 	assert.Empty(t, rig.host.issueReads())
 }
 
+// unprovenCall is a batch_merge call whose unproven lines go to a command, so a test reads them.
+func (r *batchRig) unprovenCall(items string) string {
+	return strings.Replace(r.call(items, ""), `command(name = "report"`, `command(name = "proof", run = ["proof", "|".join([u.item + ":" + u.reason for u in out.unproven])])
+command(name = "report"`, 1)
+}
+
+func TestBatchMerge_AMergedMemberThatTheProofCannotFindOnTheBaseIsUnprovenInTheResult(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.host.unproven = []batch.Outcome{{Item: "3", Reason: "its head is not on main (the forge compares it: diverged, ahead by 4, behind by 2) and the base does not hold its change of three.txt"}}
+
+	_, err := rig.walk(t, rig.unprovenCall("1 2 3"))
+
+	require.NoError(t, err, "an unproven member never fails the step: the merge cannot be undone")
+	assert.Equal(t, "proof 3:"+rig.host.unproven[0].Reason, rig.h.commands.ran()[0])
+	require.Len(t, rig.host.proofReads(), 1)
+	assert.Contains(t, rig.host.proofReads()[0], "p main ")
+	assert.Contains(t, rig.host.proofReads()[0], "1="+rig.heads["1"]+",3="+rig.heads["3"], "the proof gets the landed members with their heads and no other")
+}
+
+func TestBatchMerge_ABatchWhoseMembersAreAllProvenHasNoUnprovenLine(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+
+	_, err := rig.walk(t, rig.unprovenCall("1 3"))
+
+	require.NoError(t, err)
+	assert.Equal(t, "proof ", rig.h.commands.ran()[0])
+}
+
+func TestBatchMerge_ABatchThatLandedNothingProvesNothing(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+
+	_, err := rig.walk(t, rig.unprovenCall("2"))
+
+	require.NoError(t, err)
+	assert.Equal(t, "proof ", rig.h.commands.ran()[0])
+	assert.Empty(t, rig.host.proofReads())
+}
+
+func TestBatchMerge_AProofThatErrorsEndsTheCallWithTheError(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.host.proofErr = errors.New("project gone")
+
+	_, err := rig.walk(t, rig.call("1", ""))
+
+	require.ErrorContains(t, err, `batch_merge "b"`)
+	require.ErrorContains(t, err, "project gone")
+}
+
 func TestBatchMerge_AReadAfterTheBatchThatErrorsEndsTheCallWithTheError(t *testing.T) {
 	t.Parallel()
 

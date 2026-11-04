@@ -12,6 +12,8 @@ import (
 const (
 	cmdTree = "gh api git/trees"
 	idWidth = 40
+	// comparisonWords is the number of words of a compared answer: the status, the ahead count and the behind count.
+	comparisonWords = 3
 )
 
 // treeAnswer is the answer of the tree read. Truncated is true when the list holds less than the whole tree.
@@ -47,27 +49,52 @@ func (f *Forge) CommitTree(ctx context.Context, commit string) (string, error) {
 	return tree, nil
 }
 
-// IsAncestor is true when commit is the tip of base or lies in its history. The forge compares commit to base: a base that is ahead of the commit, or equal to it, holds it.
-// Any other status, such as behind or diverged, is false. An answer with no status is an error.
-func (f *Forge) IsAncestor(ctx context.Context, commit, base string) (bool, error) {
+// compareFields is the jq program that turns a comparison into its status and both counts, in one line.
+const compareFields = `[.status, .ahead_by, .behind_by] | map(tostring) | join(" ")`
+
+// Compare reads how the forge compares commit with base: the status and both counts, from one call.
+// The base is ahead of the commit by AheadBy commits, and the commit is ahead of the base by BehindBy commits.
+// An answer with an unknown status, or a count that is not a number, is an error.
+func (f *Forge) Compare(ctx context.Context, commit, base string) (model.Comparison, error) {
 	if !isID(commit) {
-		return false, forge.Refuse("%q is not a full commit id", commit)
+		return model.Comparison{}, forge.Refuse("%q is not a full commit id", commit)
 	}
 
-	status, err := f.text(ctx, []string{argAPI, "repos/" + f.repo + "/compare/" + commit + "..." + escapeSegments(base), argJQ, ".status"},
+	answer, err := f.text(ctx, []string{argAPI, "repos/" + f.repo + "/compare/" + commit + "..." + escapeSegments(base), argJQ, compareFields},
 		"cannot compare commit "+commit+" with "+base)
 	if err != nil {
-		return false, err
+		return model.Comparison{}, err
 	}
 
-	switch status {
-	case "ahead", "identical":
-		return true, nil
-	case "behind", "diverged":
-		return false, nil
+	got, ok := parseComparison(answer)
+	if !ok {
+		return model.Comparison{}, forge.Refuse("cannot compare commit %s with %s: the answer holds no status and two counts", commit, base)
 	}
 
-	return false, forge.Refuse("cannot compare commit %s with %s: the answer holds no status", commit, base)
+	return got, nil
+}
+
+// parseComparison reads "<status> <ahead_by> <behind_by>". It refuses a status other than the four of the forge and a count that is not a whole number.
+func parseComparison(answer string) (model.Comparison, bool) {
+	words := strings.Fields(answer)
+	if len(words) != comparisonWords {
+		return model.Comparison{}, false
+	}
+
+	switch words[0] {
+	case "ahead", "identical", "behind", "diverged":
+	default:
+		return model.Comparison{}, false
+	}
+
+	ahead, errAhead := strconv.Atoi(words[1])
+	behind, errBehind := strconv.Atoi(words[2])
+
+	if errAhead != nil || errBehind != nil || ahead < 0 || behind < 0 {
+		return model.Comparison{}, false
+	}
+
+	return model.Comparison{Status: words[0], AheadBy: ahead, BehindBy: behind}, true
 }
 
 // TreeBlobs returns every file of a tree: its path and the id of its content. A folder is not listed. A tree too large for one answer is refused.

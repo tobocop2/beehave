@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
@@ -121,6 +122,22 @@ func TestBatchHost_TipReadsTheTipOnTheForgeAndTheTreeOfThatCommit(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, tip, got.Commit)
 	assert.Equal(t, hostGit(t, dir, "rev-parse", "HEAD^{tree}"), got.Tree)
+}
+
+func TestBatchHost_ProveLeavesAMemberUnprovenWhenTheForgeCannotCompareCommits(t *testing.T) {
+	t.Parallel()
+
+	landed := []batch.Member{{Item: "7", Head: "abc"}}
+
+	got, err := hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "p", "main", batch.Tip{}, batch.Tip{}, landed)
+
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "7", got[0].Item)
+	assert.Contains(t, got[0].Reason, "unproven")
+
+	_, err = hostOver(t.TempDir(), hostForge{}, nil).Prove(t.Context(), "nope", "main", batch.Tip{}, batch.Tip{}, landed)
+	require.Error(t, err)
 }
 
 func TestBatchHost_TipRefusesABaseThatTheForgeCannotFind(t *testing.T) {

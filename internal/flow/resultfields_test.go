@@ -77,7 +77,7 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	t.Parallel()
 
 	got := map[string][]string{
-		"batch_merge": batchStruct(t, batchResult(batch.Result{}, batch.Report{})).AttrNames(),
+		"batch_merge": batchStruct(t, batchResult(batch.Result{}, batch.Report{}, nil)).AttrNames(),
 		"gather":      outcomesValue([]childOutcome{{}}).AttrNames(),
 		"queue":       queuedValue(queued{}).AttrNames(),
 		"spawn":       runsValue([]spawnedRun{{}}).AttrNames(),

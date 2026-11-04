@@ -167,7 +167,7 @@ def wait_for_one(swarm, p):
 
 def land(tag, swarm):
     """One batch_merge for each priority, P0 first. batch_merge folds its members in the order of the item id, so one call for each priority makes P0 win."""
-    total = struct(merged = [], rejected = [], deferred = [])
+    total = struct(merged = [], rejected = [], deferred = [], unproven = [])
     for tier in TIERS:
         group = [struct(item = i, head = swarm.waiting[i]) for i in sorted(swarm.waiting.keys()) if swarm.prio[i] == tier]
         if len(group) == 0:
@@ -183,6 +183,7 @@ def land(tag, swarm):
         total.merged.extend(out.merged)
         total.rejected.extend(out.rejected)
         total.deferred.extend(out.deferred)
+        total.unproven.extend(out.unproven)
     return total
 
 def is_conflict(reason):
@@ -214,7 +215,12 @@ def land_pass(item, swarm):
     swarm.batches.append(out)
     swarm.deferred.clear()
     swarm.deferred.extend([d.item for d in out.deferred])
+    unproven = {u.item: u.reason for u in out.unproven}
     for merged_id in out.merged:
+        if merged_id in unproven:
+            swarm.waiting.pop(merged_id)
+            park(swarm, number, merged_id, "unproven", "The batch merged this item, but its landing on %s is not proven, so the item stays open. Check it by hand: %s" % (env("BASE"), unproven[merged_id]))
+            continue
         item_comment(name = "merged-%d-%s" % (number, merged_id), id = merged_id, key = "merged", text = "Landed on %s in batch %d." % (env("BASE"), number))
         item_status(name = "close-%d-%s" % (number, merged_id), id = merged_id, status = "closed")
         swarm.landed.append(merged_id)

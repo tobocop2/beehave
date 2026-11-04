@@ -194,17 +194,17 @@ func (f fileForge) BranchRef(ctx context.Context, branch string) (string, bool, 
 
 func (fileForge) Reviews(context.Context, int) ([]model.Review, error) { return nil, nil }
 
-// IsAncestor answers as git does for the repository of the forge: exit 0 means the commit is in the history of the base, exit 1 means it is not.
-func (f fileForge) IsAncestor(ctx context.Context, commit, base string) (bool, error) {
+// Compare answers as git does for the repository of the forge: exit 0 means the commit is in the history of the base, exit 1 means it is not.
+func (f fileForge) Compare(ctx context.Context, commit, base string) (model.Comparison, error) {
 	out := proc.NewExecRunner("git", f.tree()).Run(ctx, []string{"merge-base", "--is-ancestor", commit, "refs/heads/" + base})
 	switch out.ExitCode {
 	case 0:
-		return true, nil
+		return model.Comparison{Status: "ahead", AheadBy: 1}, nil
 	case 1:
-		return false, nil
+		return model.Comparison{Status: "diverged", AheadBy: 1, BehindBy: 1}, nil
 	}
 
-	return false, fmt.Errorf("git merge-base: %s", strings.TrimSpace(out.Stderr))
+	return model.Comparison{}, fmt.Errorf("git merge-base: %s", strings.TrimSpace(out.Stderr))
 }
 
 func (f fileForge) CommitTree(ctx context.Context, commit string) (string, error) {

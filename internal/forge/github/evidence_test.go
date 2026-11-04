@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -41,32 +43,46 @@ func TestCommitTree_RefusesAFailedReadAnEmptyAnswerAndANameThatIsNotAnId(t *test
 	assert.Empty(t, run.Calls, "a name that is not a commit id reaches no URL")
 }
 
-func TestIsAncestor_ReadsTheStatusOfTheComparison(t *testing.T) {
+func TestCompare_ReadsTheStatusAndBothCountsOfTheComparison(t *testing.T) {
 	t.Parallel()
 
-	for status, want := range map[string]bool{"ahead\n": true, "identical\n": true, "behind\n": false, "diverged\n": false} {
-		f, run := fixed(t, status)
+	cases := map[string]struct {
+		want     model.Comparison
+		contains bool
+	}{
+		"ahead 4 0\n":     {model.Comparison{Status: "ahead", AheadBy: 4}, true},
+		"identical 0 0\n": {model.Comparison{Status: "identical"}, true},
+		"behind 0 2\n":    {model.Comparison{Status: "behind", BehindBy: 2}, false},
+		"diverged 3 1\n":  {model.Comparison{Status: "diverged", AheadBy: 3, BehindBy: 1}, false},
+		"ahead 3 1\n":     {model.Comparison{Status: "ahead", AheadBy: 3, BehindBy: 1}, false},
+	}
 
-		got, err := f.IsAncestor(context.Background(), commit, "release/1")
-		require.NoError(t, err, status)
-		assert.Equal(t, want, got, status)
-		assert.Equal(t, [][]string{{"api", "repos/owner/name/compare/" + commit + "...release/1", "--jq", ".status"}}, run.Calls)
+	for answer, c := range cases {
+		f, run := fixed(t, answer)
+
+		got, err := f.Compare(context.Background(), commit, "release/1")
+		require.NoError(t, err, answer)
+		assert.Equal(t, c.want, got, answer)
+		assert.Equal(t, c.contains, got.Contains(), answer)
+		assert.Equal(t, [][]string{{"api", "repos/owner/name/compare/" + commit + "...release/1", "--jq", `[.status, .ahead_by, .behind_by] | map(tostring) | join(" ")`}}, run.Calls)
 	}
 }
 
-func TestIsAncestor_RefusesAFailedReadAnUnknownStatusAndANameThatIsNotAnId(t *testing.T) {
+func TestCompare_RefusesAFailedReadAnUnknownStatusACountThatIsNotANumberAndANameThatIsNotAnId(t *testing.T) {
 	t.Parallel()
 
 	down, _ := failing(t, "HTTP 502")
-	_, err := down.IsAncestor(context.Background(), commit, "main")
+	_, err := down.Compare(context.Background(), commit, "main")
 	require.Error(t, err)
 
-	odd, _ := fixed(t, "\n")
-	_, err = odd.IsAncestor(context.Background(), commit, "main")
-	require.ErrorContains(t, err, "no status")
+	for _, answer := range []string{"\n", "ahead\n", "null 1 2\n", "sideways 1 2\n", "ahead null 0\n", "ahead 1 null\n", "ahead -1 0\n"} {
+		odd, _ := fixed(t, answer)
+		_, err = odd.Compare(context.Background(), commit, "main")
+		require.ErrorContains(t, err, "no status and two counts", answer)
+	}
 
-	bad, run := fixed(t, "ahead")
-	_, err = bad.IsAncestor(context.Background(), "../x", "main")
+	bad, run := fixed(t, "ahead 1 0")
+	_, err = bad.Compare(context.Background(), "../x", "main")
 	require.Error(t, err)
 	assert.Empty(t, run.Calls)
 }
