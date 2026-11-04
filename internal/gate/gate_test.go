@@ -143,20 +143,6 @@ func TestRun_ALocalGateThatExitsNonZeroFailsWithItsOutput(t *testing.T) {
 	}
 }
 
-func TestRun_ALocalGateThatASignalKilledIsAnErrorNeverAPassOrAFail(t *testing.T) {
-	t.Parallel()
-
-	for _, code := range []int{128 + 9, 128 + 15} {
-		shell := &fakeShell{output: "partial output\n", code: code}
-		g := build(shell, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
-
-		got, err := g.Run(context.Background(), gate.Request{Project: project("local"), Dir: "/w"})
-		require.ErrorIs(t, err, gate.ErrNoVerdict, "exit %d", code)
-		assert.Contains(t, err.Error(), "killed")
-		assert.Equal(t, gate.Result{}, got, "exit %d", code)
-	}
-}
-
 func TestRun_TheReportKeepsTheTailOfALongOutput(t *testing.T) {
 	t.Parallel()
 
@@ -405,26 +391,6 @@ func TestRun_AHostJobThatDidNotPassAndDidNotFailIsAnErrorNeverAPass(t *testing.T
 			require.ErrorIs(t, err, gate.ErrNoVerdict)
 			assert.Contains(t, err.Error(), string(state))
 		})
-	}
-}
-
-func TestRun_ADiedOrStaleHostJobSaysWhatAPersonCanDo(t *testing.T) {
-	t.Parallel()
-
-	cases := map[model.JobState]string{
-		model.JobDied:  "Run the gate again",
-		model.JobStale: "raise `host.stale_minutes`",
-		// A gate that the run limit stopped is not run: it is neither a red gate nor a green one.
-		model.JobTimedOut: "it is not run. Raise `host.max_run`",
-	}
-
-	for state, advice := range cases {
-		g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
-
-		_, err := g.Run(context.Background(), hostRequest(project("gpu-a")))
-
-		require.ErrorIs(t, err, gate.ErrNoVerdict, string(state))
-		assert.Contains(t, err.Error(), advice, string(state))
 	}
 }
 

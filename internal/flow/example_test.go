@@ -306,15 +306,25 @@ func TestExample_AGateThatCannotRunEndsTheRunBeforeAnyReviewOrFix(t *testing.T) 
 	assert.Equal(t, 1, rig.h.gate.calls, "no second round")
 }
 
-// packageGate runs the real gate package on a local project whose gate command is killed by a signal.
-type packageGate struct{ head, tree string }
+// packageGate runs the real gate package on a local project whose gate command is killed by a signal on the first run and exits 0 on the next.
+type packageGate struct {
+	head, tree string
+	runs       *int
+}
 
 func (packageGate) Submit(context.Context, string, string, string) (GateJob, error) {
 	return GateJob{}, nil
 }
 
 func (g packageGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
-	shell := func(context.Context, string, string) (string, int) { return "partial output", 128 + 15 }
+	*g.runs++
+
+	code := 0
+	if *g.runs == 1 {
+		code = 128 + 15
+	}
+
+	shell := func(context.Context, string, string) (string, int) { return "partial output", code }
 	tree := func(context.Context, string) (gatepkg.State, error) {
 		return gatepkg.State{Head: g.head, Tree: g.tree, Clean: true}, nil
 	}
@@ -324,7 +334,63 @@ func (g packageGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateRe
 		return GateResult{}, err
 	}
 
-	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: commandStep(result.Passed)}, nil
+	steps := make([]GateStep, 0, len(result.Steps))
+	for _, s := range result.Steps {
+		steps = append(steps, GateStep{Name: s.Name, Status: string(s.Status)})
+	}
+
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: steps}, nil
+}
+
+// diedThenDoneHost is a build host whose first job died and whose later jobs succeed.
+type diedThenDoneHost struct{ waits *int }
+
+func (diedThenDoneHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {
+	return "job-1", nil
+}
+
+func (h diedThenDoneHost) Wait(context.Context, model.JobID) (model.JobState, error) {
+	*h.waits++
+
+	if *h.waits == 1 {
+		return model.JobDied, nil
+	}
+
+	return model.JobSucceeded, nil
+}
+
+func (diedThenDoneHost) Cancel(context.Context, model.JobID) error { return nil }
+
+func (diedThenDoneHost) WorkRoot(context.Context) (string, error) { return "/home/ob", nil }
+
+// hostDiedGate runs the real gate package on a project with a build host. The job of the first run died; the job of the next run succeeds.
+type hostDiedGate struct {
+	head, tree string
+	waits      *int
+}
+
+func (hostDiedGate) Submit(context.Context, string, string, string) (GateJob, error) {
+	return GateJob{}, nil
+}
+
+func (g hostDiedGate) Run(ctx context.Context, _, _, _ string, _ GateJob) (GateResult, error) {
+	tree := func(context.Context, string) (gatepkg.State, error) {
+		return gatepkg.State{Head: g.head, Tree: g.tree, Clean: true}, nil
+	}
+	hosts := func(model.Project) (gatepkg.Remote, error) { return diedThenDoneHost{waits: g.waits}, nil }
+	project := model.Project{Name: "demo", Gate: "make check", BuildHost: "box"}
+
+	result, err := gatepkg.New(nil, tree, hosts).Run(ctx, gatepkg.Request{Project: project, Dir: "/w", CloneURL: "https://example.test/demo.git"})
+	if err != nil {
+		return GateResult{}, err
+	}
+
+	steps := make([]GateStep, 0, len(result.Steps))
+	for _, s := range result.Steps {
+		steps = append(steps, GateStep{Name: s.Name, Status: string(s.Status)})
+	}
+
+	return GateResult{Passed: result.Passed, Report: result.Report, Head: result.Head, Tree: result.Tree, Steps: steps}, nil
 }
 
 // zeroTestGate runs the real gate package on a local project that sets test_report. The gate command exits 0 and writes a report with no test.
@@ -382,18 +448,32 @@ func TestExample_AGateThatExitsZeroWithZeroTestsDoesNotPassAndTheFixGetsTheReaso
 	assert.Equal(t, 2, runs)
 }
 
-func TestExample_AGateKilledByASignalIsUnresolvedAndEveryLaterStepDoesNotRun(t *testing.T) {
+func TestExample_AGateKilledByASignalIsVoidAndRerunWithNoFixAgent(t *testing.T) {
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
-	rig.h.gate.via = packageGate{head: rig.head, tree: exampleTree}
-	rig.h.opts.Env["MERGE"] = "true"
+	runs := 0
+	rig.h.gate.via = packageGate{head: rig.head, tree: exampleTree, runs: &runs}
 
 	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
-	require.ErrorIs(t, err, gatepkg.ErrNoVerdict)
-	assert.Equal(t, []string{"opus", "sonnet"}, rig.models(), "no fix round, no review, no settle: they stay unknown")
-	assert.Equal(t, 1, rig.h.gate.calls, "no second round")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"opus", "sonnet", "opus"}, rig.models(), "a killed gate is void, not red: no fix agent, and the review waits for the rerun")
+	assert.Equal(t, 2, runs, "the rerun is a new gate step")
+}
+
+func TestExample_AHostGateThatDiedIsVoidAndRerunWithNoFixAgent(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	waits := 0
+	rig.h.gate.via = hostDiedGate{head: rig.head, tree: exampleTree, waits: &waits}
+
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"opus", "sonnet", "opus"}, rig.models(), "a died job is void, not red: no fix agent, and the review waits for the rerun")
+	assert.Equal(t, 2, waits, "the rerun is a new gate step")
 }
 
 func voidResult(rig *agentRig, report string) GateResult {

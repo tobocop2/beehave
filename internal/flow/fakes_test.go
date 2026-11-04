@@ -180,6 +180,10 @@ func (packageGate) Key(context.Context, string, string, string) (GateKey, error)
 	return GateKey{}, nil
 }
 
+func (hostDiedGate) Key(context.Context, string, string, string) (GateKey, error) {
+	return GateKey{}, nil
+}
+
 func (zeroTestGate) Key(context.Context, string, string, string) (GateKey, error) {
 	return GateKey{}, nil
 }
