@@ -30,7 +30,14 @@ type Job struct {
 }
 
 // String is the job id that Submit returns. The adapter parses it back.
-func (j Job) String() string { return j.ID + "-" + j.Nonce }
+// A job with no slot has no nonce, and its id is the whole text.
+func (j Job) String() string {
+	if j.Nonce == "" {
+		return j.ID
+	}
+
+	return j.ID + "-" + j.Nonce
+}
 
 // Scheduler is what an adapter gives the engine. A read that the ssh link drops returns an error that wraps link.ErrDropped.
 type Scheduler interface {

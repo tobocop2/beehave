@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,10 +79,10 @@ func (m *memHost) Submit(_ context.Context, spec model.JobSpec) (model.JobID, er
 	id := model.JobID(strconv.Itoa(len(m.jobs) + 1))
 	m.jobs[id] = model.JobSucceeded
 
-	switch spec.Command {
-	case hosttest.FailingCommand:
+	switch {
+	case spec.Command == hosttest.FailingCommand, hosttest.Mangled(spec.Command):
 		m.jobs[id] = model.JobFailed
-	case hosttest.UnknownCommand:
+	case spec.Command == hosttest.UnknownCommand:
 		m.jobs[id] = model.JobUnknown
 	}
 
@@ -219,6 +220,28 @@ type finalHost struct{ *memHost }
 
 func (finalHost) Wait(context.Context, model.JobID) (model.JobState, error) {
 	return model.JobSucceeded, nil
+}
+
+// A transport that changes the command text is caught by the suite, whatever the adapter.
+func TestCheckHostWorks_ReportsATransportThatChangesTheCommandText(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	hosttest.CheckHostWorks(rec, &quotingHost{newMemHost()})
+
+	assert.Contains(t, fmt.Sprint(rec.failures), "a transport could change")
+	assert.True(t, hosttest.Mangled(hosttest.HostileCommand+" "))
+	assert.False(t, hosttest.Mangled(hosttest.HostileCommand))
+	assert.False(t, hosttest.Mangled(hosttest.PassingCommand))
+}
+
+// quotingHost drops the quotes of every command, as a transport that shell-splits the text would.
+type quotingHost struct{ *memHost }
+
+func (q *quotingHost) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error) {
+	spec.Command = strings.ReplaceAll(spec.Command, "'", "")
+
+	return q.memHost.Submit(ctx, spec)
 }
 
 func TestCheckHostWorks_AcceptsAGoodHost(t *testing.T) {

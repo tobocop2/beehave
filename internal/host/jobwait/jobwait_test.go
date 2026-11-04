@@ -112,6 +112,12 @@ func TestJob_StringJoinsTheIDAndTheNonce(t *testing.T) {
 	assert.Equal(t, "7-n", job.String())
 }
 
+func TestJob_StringOfAJobWithNoNonceIsItsID(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "obee-x", jobwait.Job{ID: "obee-x"}.String())
+}
+
 func TestWait_FinalStateBanksAndReleases(t *testing.T) {
 	t.Parallel()
 

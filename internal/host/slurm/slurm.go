@@ -111,7 +111,7 @@ func (q *Queue) freeBytes(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	return parseFreeBytes(out)
+	return host.ParseFreeBytes(out)
 }
 
 // Submit queues the command in Slurm and returns the job id. Then it asks the slot to hold the cluster for the job.
@@ -275,7 +275,7 @@ func (q *Queue) WorkRoot(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	lines := nonEmptyLines(out)
+	lines := model.NonEmptyLines(out)
 	if len(lines) != 1 || !strings.HasPrefix(lines[0], "/") {
 		return "", fmt.Errorf("%w: %q", errWorkRoot, model.FirstLine(out))
 	}

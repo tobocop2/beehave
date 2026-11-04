@@ -15,6 +15,7 @@ import (
 	forgegithub "github.com/tobocop2/obee/internal/forge/github"
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/skypilot"
+	"github.com/tobocop2/obee/internal/host/ssh"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/store"
@@ -72,6 +73,7 @@ func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
 		},
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,
+			model.HostSSH:      newSSHHost,
 		},
 		bd:       bd,
 		state:    state,
@@ -114,6 +116,16 @@ func newSkyPilotHost(project model.Project) (host.Host, error) { //nolint:iretur
 	sky := proc.ExecRunner{Binary: "sky", Timeout: skyTimeout}
 
 	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""))
+	if err != nil {
+		return nil, err
+	}
+
+	return h, nil
+}
+
+// newSSHHost builds the host of a machine that the owner provides. It runs no ssh: the first call to the machine is Up.
+func newSSHHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
+	h, err := ssh.New(project.BuildHost, *project.Host, proc.NewExecRunner("ssh", ""))
 	if err != nil {
 		return nil, err
 	}

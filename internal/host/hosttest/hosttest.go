@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,7 +29,22 @@ const (
 	Working Mode = iota
 	Broken
 	UnreadableDisk
+	// Unreachable is for a provider that does not own its machine (see NonOwning): the machine does not answer.
+	Unreachable
 )
+
+// DF is the answer of `df -P -k` on a machine with free space, for the fakes of every adapter.
+const DF = "Filesystem     1024-blocks      Used Available Capacity Mounted on\n/dev/sda1        104857600  10485760  94371840      10% /home\n"
+
+// Option changes what TestHost checks.
+type Option func(*options)
+
+type options struct{ nonOwning bool }
+
+// NonOwning says the provider does not create or delete its machine. The machine exists before Up and after Down, so its Status is up
+// whenever the machine answers. The factory returns a host whose machine does not answer in Unreachable mode.
+// The suite then checks that Down keeps the machine up, and that a machine that does not answer is absent and takes no job.
+func NonOwning() Option { return func(o *options) { o.nonOwning = true } }
 
 // Factory returns a new host over fakes. The host starts absent.
 // The fake runs a job whose command is PassingCommand to a succeeded state and a job whose command is FailingCommand to a failed one.
@@ -40,10 +56,45 @@ const (
 	PassingCommand = "pass"
 	FailingCommand = "fail"
 	UnknownCommand = "mystery"
+	// HostileCommand is a command whose text a careless transport changes: quotes, a backtick, a dollar sign, a percent sign,
+	// a backslash, a leading dash and a line break. A fake runs a job whose command is this text, byte for byte, to a succeeded state.
+	// The text is a harmless command, so a real shell can also run it.
+	HostileCommand = ": hostile-transport-check -n; echo 'a \"b\"' \"$HOME\" `id` $$ ${HOME} %h %% \\ \\n\n: end"
 )
 
+// hostileMark is the text in HostileCommand that tells a fake the command is the transport check.
+const hostileMark = "hostile-transport-check"
+
+// Mangled says whether a fake received the transport check in a changed form: the text holds the mark but is not HostileCommand.
+// A fake runs such a job to a failed state, so the conformance suite catches a transport that changes the command text.
+func Mangled(received string) bool {
+	return strings.Contains(received, hostileMark) && received != HostileCommand
+}
+
 // TestHost runs the conformance suite against the host that newHost returns, as testing/fstest.TestFS does for a file system.
-func TestHost(t *testing.T, newHost Factory) {
+func TestHost(t *testing.T, newHost Factory, opts ...Option) {
+	t.Helper()
+
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	if o.nonOwning {
+		testNonOwning(t, newHost)
+	} else {
+		testOwning(t, newHost)
+	}
+
+	t.Run("a_disk_that_cannot_be_read_is_not_a_reading", func(t *testing.T) {
+		CheckUnreadableDisk(t, newHost(t, UnreadableDisk))
+	})
+	t.Run("a_state_obee_does_not_know_is_not_final", func(t *testing.T) {
+		CheckUnknownState(t, newHost(t, Working))
+	})
+}
+
+func testOwning(t *testing.T, newHost Factory) {
 	t.Helper()
 	t.Run("runs_a_job_through_the_lifecycle", func(t *testing.T) {
 		CheckHostWorks(t, newHost(t, Working))
@@ -57,12 +108,53 @@ func TestHost(t *testing.T, newHost Factory) {
 	t.Run("a_second_down_leaves_the_host_absent", func(t *testing.T) {
 		CheckDownTwice(t, newHost(t, Working))
 	})
-	t.Run("a_disk_that_cannot_be_read_is_not_a_reading", func(t *testing.T) {
-		CheckUnreadableDisk(t, newHost(t, UnreadableDisk))
+}
+
+func testNonOwning(t *testing.T, newHost Factory) {
+	t.Helper()
+	t.Run("runs_a_job_through_the_lifecycle_and_keeps_the_machine", func(t *testing.T) {
+		CheckKeptHostWorks(t, newHost(t, Working))
 	})
-	t.Run("a_state_obee_does_not_know_is_not_final", func(t *testing.T) {
-		CheckUnknownState(t, newHost(t, Working))
+	t.Run("a_failed_command_is_an_error_everywhere_but_down", func(t *testing.T) {
+		checkHostFails(t, newHost(t, Broken), false)
 	})
+	t.Run("a_machine_that_does_not_answer_is_absent_and_takes_no_job", func(t *testing.T) {
+		CheckUnreachable(t, newHost(t, Unreachable))
+	})
+}
+
+// CheckUnreachable checks a host whose machine does not answer: Status reports it absent, and Up and Submit are errors.
+func CheckUnreachable(r Reporter, h host.Host) {
+	r.Helper()
+
+	c := check{r: r}
+	ctx, cancel := deadline()
+	defer cancel()
+
+	c.equal(status(ctx, c, h).State, model.HostAbsent, "state of a machine that does not answer")
+	c.isError(h.Up(ctx), "Up")
+
+	_, err := h.Submit(ctx, model.JobSpec{Name: "x", Command: PassingCommand})
+	c.isError(err, "Submit")
+}
+
+// CheckKeptHostWorks is CheckHostWorks for a provider that does not own its machine: the machine is up before Up, and Down, called twice, keeps it up.
+func CheckKeptHostWorks(r Reporter, h host.Host) {
+	r.Helper()
+
+	c := check{r: r}
+	ctx, cancel := deadline()
+	defer cancel()
+
+	c.equal(status(ctx, c, h).State, model.HostUp, "state before Up")
+	c.noError(h.Up(ctx), "Up")
+	c.noError(h.Up(ctx), "second Up")
+
+	checkLifecycle(ctx, c, h)
+
+	c.noError(h.Down(ctx), "Down")
+	c.noError(h.Down(ctx), "second Down")
+	c.equal(status(ctx, c, h).State, model.HostUp, "state after Down")
 }
 
 // CheckBeforeUp checks a host that Up has not made: Status reports it absent and Submit is an error.
@@ -175,16 +267,24 @@ func CheckHostWorks(r Reporter, h host.Host) {
 	c.equal(status(ctx, c, h).State, model.HostAbsent, "state before Up")
 	c.noError(h.Up(ctx), "Up")
 
+	checkLifecycle(ctx, c, h)
+
+	c.noError(h.Down(ctx), "Down")
+	c.equal(status(ctx, c, h).State, model.HostAbsent, "state after Down")
+}
+
+// checkLifecycle checks a host that is up: its readings, a passing and a failing job, drain, resume and cancel.
+func checkLifecycle(ctx context.Context, c check, h host.Host) {
+	c.r.Helper()
+
 	checkUp(ctx, c, h)
 
 	c.equal(finish(ctx, c, h, PassingCommand), model.JobSucceeded, "state of a passing job")
 	c.equal(finish(ctx, c, h, FailingCommand), model.JobFailed, "state of a failing job")
+	c.equal(finish(ctx, c, h, HostileCommand), model.JobSucceeded, "state of a job whose command text a transport could change")
 
 	checkDrain(ctx, c, h)
 	checkCancel(ctx, c, h)
-
-	c.noError(h.Down(ctx), "Down")
-	c.equal(status(ctx, c, h).State, model.HostAbsent, "state after Down")
 }
 
 // checkUp checks a host that Up made: it is up, its disk is readable and its work root is one path.
@@ -244,35 +344,31 @@ func status(ctx context.Context, c check, h host.Host) model.HostStatus {
 	return got
 }
 
+// jobName is the name of a check job: the command, or a plain word for the transport check, whose text is no name.
+func jobName(command string) string {
+	if command == HostileCommand {
+		return "hostile"
+	}
+
+	return command
+}
+
 func finish(ctx context.Context, c check, h host.Host, command string) model.JobState {
 	c.r.Helper()
 
-	id, err := h.Submit(ctx, model.JobSpec{Name: command, Command: command})
-	c.noError(err, "Submit "+command)
+	name := jobName(command)
+
+	id, err := h.Submit(ctx, model.JobSpec{Name: name, Command: command})
+	c.noError(err, "Submit "+name)
 
 	state, err := h.Wait(ctx, id)
-	c.noError(err, "Wait for "+command)
+	c.noError(err, "Wait for "+name)
 
 	return state
 }
 
 func checkJobCallsFail(ctx context.Context, c check, h host.Host) {
 	c.r.Helper()
-
-	_, err := h.Wait(ctx, "1")
-	c.isError(err, "Wait")
-
-	_, err = h.WorkRoot(ctx)
-	c.isError(err, "WorkRoot")
-}
-
-// CheckHostFails checks that every method returns an error when its command fails.
-func CheckHostFails(r Reporter, h host.Host) {
-	r.Helper()
-
-	c := check{r: r}
-	ctx, cancel := deadline()
-	defer cancel()
 
 	c.isError(h.Up(ctx), "Up")
 
@@ -282,10 +378,34 @@ func CheckHostFails(r Reporter, h host.Host) {
 	_, err = h.Submit(ctx, model.JobSpec{Name: "x", Command: PassingCommand})
 	c.isError(err, "Submit")
 
+	_, err = h.Wait(ctx, "1")
+	c.isError(err, "Wait")
+
+	_, err = h.WorkRoot(ctx)
+	c.isError(err, "WorkRoot")
+}
+
+// CheckHostFails checks that every method returns an error when its command fails.
+func CheckHostFails(r Reporter, h host.Host) {
+	r.Helper()
+	checkHostFails(r, h, true)
+}
+
+// checkHostFails is CheckHostFails. A provider that does not own its machine has a Down that sends no command, so Down is checked only when owning is true.
+func checkHostFails(r Reporter, h host.Host, owning bool) {
+	r.Helper()
+
+	c := check{r: r}
+	ctx, cancel := deadline()
+	defer cancel()
+
 	checkJobCallsFail(ctx, c, h)
 
 	c.isError(h.Cancel(ctx, "1"), "Cancel")
 	c.isError(h.Drain(ctx), "Drain")
 	c.isError(h.Resume(ctx), "Resume")
-	c.isError(h.Down(ctx), "Down")
+
+	if owning {
+		c.isError(h.Down(ctx), "Down")
+	}
 }

@@ -13,7 +13,9 @@ import (
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/skypilot"
+	"github.com/tobocop2/obee/internal/host/ssh"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/pool"
 	"github.com/tobocop2/obee/internal/proc"
@@ -154,7 +156,7 @@ func repositoryOf(projects map[string]config.Project) func(string) bool {
 
 // backendErrors lists the sentinel errors of the backends. A gate or a merge on a host returns them, and the engine cannot import a backend.
 func backendErrors() []error {
-	return []error{skypilot.ErrConfig}
+	return []error{skypilot.ErrConfig, link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining}
 }
 
 // releaseDeps builds what the client needs: the claim to take and give back, the lease reader of a move to this build, and the worktrees.
