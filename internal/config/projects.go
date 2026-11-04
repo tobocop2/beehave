@@ -79,7 +79,9 @@ func projectSpec() spec {
 	return spec{"project", []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?"}}
 }
 
-func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec(), boardSpec()} }
+func projectSpecs() []spec {
+	return []spec{projectSpec(), hostSpec(), skypilotSpec(), sshSpec(), boardSpec()}
+}
 
 // evalProject evaluates a project file and returns the one project block that it calls.
 func evalProject(path string) (*rawProject, error) {
@@ -97,6 +99,7 @@ func evalProject(path string) (*rawProject, error) {
 		}),
 		blocks(file, hostSpec(), true, newHost),
 		blocks(file, skypilotSpec(), true, newSkyPilot),
+		blocks(file, sshSpec(), true, newSSH),
 		blocks(file, boardSpec(), true, newBoard),
 	)
 
@@ -317,7 +320,7 @@ func hostName(raw rawProject, name string, earlier []string) error {
 	}
 
 	if !clusterName.MatchString(name) {
-		return refuseAt(raw.At, "`build_host` must be %q or a SkyPilot cluster name (a letter, then letters, digits and hyphens); got `%s`. Fix the value.", LocalHost, name)
+		return refuseAt(raw.At, "`build_host` must be %q or the name of a build host (a letter, then letters, digits and hyphens); got `%s`. Fix the value.", LocalHost, name)
 	}
 
 	if slices.Contains(earlier, name) {
