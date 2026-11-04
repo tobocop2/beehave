@@ -101,6 +101,8 @@ func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review 
 			rig.put(request.OutputFile, `{"regressions":"0"}`)
 		}
 
+		putNoParked(rig, request)
+
 		if strings.Contains(request.Prompt, designMarker) {
 			_, rest, _ := strings.Cut(request.Prompt, "Write it to ")
 			path, _, _ := strings.Cut(rest, " as JSON")
@@ -111,6 +113,13 @@ func exampleRigLimited(t *testing.T, verdicts, findings, mechanisms func(review 
 	}
 
 	return rig, filepath.Join(folder, "workflow.star")
+}
+
+// putNoParked makes the settle agent of the example rig leave no finding open: a request that declares the output `parked` gets an empty list.
+func putNoParked(rig *agentRig, request AgentRequest) {
+	if slices.Contains(request.Outputs, "parked") {
+		rig.put(request.OutputFile, `{"parked":"[]"}`)
+	}
 }
 
 // exampleSkill returns the one skill that an agent of the example requires.

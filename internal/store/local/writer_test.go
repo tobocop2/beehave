@@ -88,6 +88,28 @@ func TestCreate_FilesAnOpenItemTheTrackerReads(t *testing.T) {
 	assert.False(t, items[0].Hold)
 }
 
+func TestSeverity_TheLocalStoreRefusesItPlainly(t *testing.T) {
+	t.Parallel()
+
+	s, p := newWriter(t)
+
+	_, _, err := s.Create(t.Context(), "run:a", store.NewItem{Title: "plan", Severity: "P1"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keeps no severity")
+	assert.Zero(t, p.count(`SELECT count(*) FROM items`), "a refused item is not filed")
+}
+
+func TestOperator_TheLocalStoreRefusesItPlainly(t *testing.T) {
+	t.Parallel()
+
+	s, p := newWriter(t)
+
+	_, _, err := s.Create(t.Context(), "run:a", store.NewItem{Title: "plan", Operator: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "keeps no labels")
+	assert.Zero(t, p.count(`SELECT count(*) FROM items`), "a refused item is not filed")
+}
+
 func TestAssignee_TheLocalStoreRefusesItPlainly(t *testing.T) {
 	t.Parallel()
 

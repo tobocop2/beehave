@@ -139,6 +139,8 @@ silently discards other uncommitted edits.
 
 **Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
 **A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
+**The text of a pull request and of a commit states the problem, the fix and the result.** Write it in plain sentences. Write no ID of a tracker item except the closing line above, no `Phase N`, no lane name and no attribution to an assistant. The merge step refuses a line that matches the ID of the item or an attribution.
+**A change that callers can see gets a changelog entry.** Add the entry in the changelog file of the repository, in the style of the entries above it. A change that no caller sees gets none. When the facts name a changelog, the merge step refuses a change that leaves that file untouched.
 
 ## Merge rules
 

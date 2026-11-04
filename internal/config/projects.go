@@ -36,6 +36,7 @@ type rawProject struct {
 	Host        *rawHost
 	TestReport  text
 	PinFile     text
+	Changelog   text
 	Visibility  text
 	Sandbox     text
 	SandboxRead paths
@@ -71,7 +72,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -104,7 +105,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 	host := nested[rawHost]{want: hostSpec().name}
 
 	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
-		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules)
+		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog)
 	raw.Host = host.block
 
 	return raw, err

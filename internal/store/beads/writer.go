@@ -3,6 +3,7 @@ package beads
 import (
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/model"
@@ -48,6 +49,14 @@ func createArgs(key string, item store.NewItem) []string {
 
 	if item.Assignee != "" {
 		args = append(args, "--assignee", item.Assignee)
+	}
+
+	if item.Severity != "" {
+		args = append(args, "--priority", strconv.Itoa(slices.Index(model.Severities(), model.Severity(item.Severity))))
+	}
+
+	if item.Operator {
+		args = append(args, "--labels", store.OperatorLabel)
 	}
 
 	return args

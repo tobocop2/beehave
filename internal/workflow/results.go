@@ -66,7 +66,7 @@ func resultFields() map[string][]string {
 func factsResultFields() map[string][]string {
 	return map[string][]string{factsName: {
 		"repo", "source", "forge", "tracker", "base_branch", "gate", "build_host", "people", "epics", "gate_files", "conventions",
-		"brief_rules", "stacked_rules", "limits", "traps", "token_rules",
+		"brief_rules", "stacked_rules", "limits", "traps", "token_rules", "changelog",
 	}}
 }
 

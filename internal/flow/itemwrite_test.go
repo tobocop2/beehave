@@ -23,6 +23,10 @@ type fakeWriter struct {
 	// assigned holds each Assign call. assignees holds the assignee that each Create call carried, as key|assignee.
 	assigned  []string
 	assignees []string
+	// severities holds the severity that each Create call carried, as key|severity.
+	severities []string
+	// operators holds the operator flag that each Create call carried, as key|flag.
+	operators []string
 	err       error
 }
 
@@ -44,6 +48,8 @@ func (w *fakeWriter) Create(_ context.Context, project, key string, item tracker
 	w.keys[key] = id
 	w.created = append(w.created, project+"|"+key+"|"+item.Title+"|"+item.Body+"|"+item.Parent)
 	w.assignees = append(w.assignees, key+"|"+item.Assignee)
+	w.severities = append(w.severities, key+"|"+item.Severity)
+	w.operators = append(w.operators, key+"|"+strconv.FormatBool(item.Operator))
 
 	return id, true, nil
 }

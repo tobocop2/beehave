@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -11,9 +12,11 @@ import (
 
 // withFacts checks the facts of a project file and copies them into the profile. A fact that the file leaves out stays empty.
 func withFacts(profile model.Project, raw rawProject) (model.Project, error) {
-	if err := errors.Join(checkLists(raw), checkDicts(raw)); err != nil {
+	if err := errors.Join(checkLists(raw), checkDicts(raw), checkChangelog(raw)); err != nil {
 		return model.Project{}, err
 	}
+
+	profile.Changelog = raw.Changelog.Value
 
 	profile.People, profile.Epics = maps.Clone(raw.People), maps.Clone(raw.Epics)
 	profile.GateFiles, profile.Conventions = slices.Clone(raw.GateFiles), slices.Clone(raw.Conventions)
@@ -39,6 +42,25 @@ func checkLists(raw rawProject) error {
 	}
 
 	return errors.Join(problems...)
+}
+
+// checkChangelog refuses a changelog that is set and empty, absolute, or outside the work tree. An unset key is allowed.
+func checkChangelog(raw rawProject) error {
+	if !raw.Changelog.Set {
+		return nil
+	}
+
+	if err := requireText(raw.At, "changelog", raw.Changelog.Value); err != nil {
+		return err
+	}
+
+	path := filepath.ToSlash(raw.Changelog.Value)
+
+	if filepath.IsAbs(raw.Changelog.Value) || slices.Contains(strings.Split(path, "/"), "..") || strings.HasPrefix(path, "./") || strings.HasSuffix(path, "/") {
+		return refuseAt(raw.At, "`changelog` is %q. The changelog is a file of the repository, and the check compares it with the paths that git prints. Use a relative path to a file, with no `..`, no leading `./` and no trailing `/`.", raw.Changelog.Value)
+	}
+
+	return nil
 }
 
 // checkDicts refuses a blank key or a blank value in a dict of facts.

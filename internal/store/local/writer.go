@@ -57,7 +57,7 @@ func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (str
 	return id, created, err
 }
 
-// refuseItem returns the refusal of an item that Create cannot file: no key, no title, or an assignee, which the local store does not keep.
+// refuseItem returns the refusal of an item that Create cannot file: no key, no title, or an assignee or a severity, which the local store does not keep.
 func refuseItem(key string, item store.NewItem) error {
 	switch {
 	case key == "":
@@ -66,6 +66,10 @@ func refuseItem(key string, item store.NewItem) error {
 		return store.Refuse("an item needs a title")
 	case item.Assignee != "":
 		return errNoAssignee
+	case item.Severity != "":
+		return errNoSeverity
+	case item.Operator:
+		return errNoLabels
 	}
 
 	return nil
@@ -152,6 +156,12 @@ func (s *Store) SetStatus(ctx context.Context, id string, status store.Status) e
 
 // errNoAssignee is the refusal of an assignee: the local store keeps none.
 var errNoAssignee = store.Refuse("the local store keeps no assignee. Leave the assignee out, or use a tracker that keeps one")
+
+// errNoLabels is the refusal of the operator flag: the local store keeps no labels.
+var errNoLabels = store.Refuse("the local store keeps no labels, so it cannot mark an item for the operator. Leave the operator flag out, or use a tracker that keeps labels")
+
+// errNoSeverity is the refusal of a severity: the local store keeps none.
+var errNoSeverity = store.Refuse("the local store keeps no severity. Leave the severity out, or use a tracker that keeps one")
 
 // Assign refuses: the local store keeps no assignee.
 func (*Store) Assign(context.Context, string, string) error { return errNoAssignee }

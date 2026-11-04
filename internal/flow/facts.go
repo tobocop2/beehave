@@ -35,7 +35,7 @@ func factsOutputs(p model.Project) map[string]any {
 		repoKeyword: p.Repo, "source": p.Source, "forge": string(p.Forge), "tracker": string(p.Tracker), "base_branch": p.BaseBranch, "gate": p.Gate, "build_host": p.BuildHost,
 		"people": orEmptyDict(p.People), "epics": orEmptyDict(p.Epics),
 		"gate_files": orEmptyList(p.GateFiles), "conventions": orEmptyList(p.Conventions), "brief_rules": orEmptyList(p.BriefRules), "stacked_rules": orEmptyList(p.StackedRules),
-		"limits": orEmptyList(p.Limits), "traps": orEmptyList(p.Traps), "token_rules": orEmptyList(p.TokenRules),
+		"limits": orEmptyList(p.Limits), "traps": orEmptyList(p.Traps), "token_rules": orEmptyList(p.TokenRules), "changelog": p.Changelog,
 	}
 }
 

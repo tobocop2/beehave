@@ -280,6 +280,9 @@ fi
 if [ "$step" = plan ]; then
   printf '{"regressions":"0"}\n' > "$(field write)"
 fi
+if [ "$step" = settle ]; then
+  printf '{"parked":"[]"}\n' > "$(field write)"
+fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}'
@@ -317,7 +320,7 @@ var e2ePrompts = map[string]string{
 	"implement": "step=implement\n",
 	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
 	"fix":       "step=fix\nround={{ .round }}\nfound={{ .findings }}\n",
-	"settle":    "step=settle\nruling={{ .ruling }}\n",
+	"settle":    "step=settle\nwrite={{ .output_file }}\nruling={{ .ruling }}\n",
 	"audit":     "step=audit\nseen={{ .seen }}\n",
 }
 

@@ -31,6 +31,7 @@ project(
     # limits = ["Never run rm on a glob"],         # hard limits, commands never run and real user data
     # traps = ["The build cache hides a stale tree"],    # measured traps and ownership rules
     # token_rules = ["Read a log by its summary lines"],  # token discipline, the dashboard, cross-repository steps and release steps
+    # changelog = "CHANGELOG.md",                  # the changelog file; the example workflow refuses a merge that leaves it untouched
     build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(

@@ -100,6 +100,97 @@ def regression_rise(start, end):
 
     return "The regression count rose from %d to %d between the plan and the last review. A rise blocks the item: a person reads the reports and rules." % (before, after)
 
+def id_patterns(ids):
+    """Returns the forbid_text patterns of a merge for the ids of its items, to add to the attribution patterns. No line of a pull request body or of a commit message may match them.
+    A text names a change by its problem, fix and result, and never by a tracker id. An id that is only digits is the number of a GitHub issue, which a body may cite as #N, so it adds no pattern."""
+    patterns = []
+    for id in ids:
+        if not id.isdigit():
+            patterns.append("(?i)\\b" + id.replace(".", "\\.") + "\\b")
+
+    return patterns
+
+def severity_problem(severity, operator):
+    """Returns why a filed issue may not have this severity, or an empty text. An issue carries one of P0 to P3. Severity is operator-first:
+    an issue that an operator hits in normal use is never below P2, and any other issue is never above P2."""
+    if severity not in SEVERITIES[:4]:
+        return "severity %r is not one label of P0, P1, P2 or P3" % severity
+
+    rank = SEVERITIES.index(severity)
+    if operator and rank > 2:
+        return "an issue that an operator hits in normal use is never below P2, and this one is %s" % severity
+
+    if not operator and rank < 2:
+        return "an issue that an operator does not hit in normal use is never above P2, and this one is %s" % severity
+
+    return ""
+
+FINDING_FIELDS = ["id", "title", "body", "found", "severity", "operator"]
+
+def changelog_missing(changelog, head, id, fetch = False):
+    """Returns the reason to refuse a change, or "" when it may merge: the project declares a changelog and the change from the base to `head` does not touch that file.
+    A project that declares none passes. The paths come from git in the folder of the item. Both merge paths call this, so the rule has one place.
+    `fetch` is true for a head that may not be in the folder yet (the members of a batch): the head is fetched before it is read."""
+    if changelog == "":
+        return ""
+
+    if fetch:
+        got = command(name = "changelog-fetch-" + id, run = ["git", "fetch", "origin", head], stop_on_rc = [2])
+        if got.rc != 0:
+            return "REFUSE: the head %s of item %s could not be fetched, so the changelog %s could not be checked: %s" % (head, id, changelog, got.stderr.strip())
+
+    paths = command(name = "changed-paths-" + id, run = ["git", "diff", "--name-only", "origin/" + env("BASE") + "..." + head], stop_on_rc = [2])
+    if paths.rc != 0:
+        return "REFUSE: the changed paths of item %s could not be read, so the changelog %s could not be checked: %s" % (id, changelog, paths.stderr.strip())
+
+    if changelog not in paths.stdout.split("\n"):
+        return "REFUSE: the project declares the changelog %s and this change does not touch it. Add the entry for the change to the file." % changelog
+
+    return ""
+
+def file_parked(parked):
+    """Files one issue for each finding that the review loop leaves open. `parked` is the output of the settle step: a JSON list.
+    Each finding has an id (words in lower case joined by hyphens, the same for the same finding), a title, a body in the template of the repository,
+    `found` (how the finding was found, with the commit and the exact command), a severity of P0 to P3, and `operator` (true when an operator hits it in normal use).
+    The issue has no assignee, so the queue can give it out. The key is the id of the finding: a resume that files again returns the issue that exists.
+    Every finding is checked before the first issue is filed, so a bad entry files nothing."""
+    findings = json.decode(parked)
+    if type(findings) != "list":
+        fail("REFUSE: the output parked is not a JSON list. Write [] when no finding stays open")
+
+    seen = []
+    for entry in findings:
+        if type(entry) != "dict":
+            fail("REFUSE: an entry of parked is not a JSON object: %r" % entry)
+
+        for field in FINDING_FIELDS:
+            if field not in entry:
+                fail("REFUSE: an entry of parked has no %r: %r" % (field, entry))
+
+        id = entry["id"]
+        if id == "" or id != id.lower() or not id.replace("-", "").isalnum() or id in seen:
+            fail("REFUSE: the id %r of a parked finding is empty, repeated or not words in lower case joined by hyphens" % id)
+
+        seen.append(id)
+
+        for field in ["title", "body", "found"]:
+            if type(entry[field]) != "string" or entry[field].strip() == "":
+                fail("REFUSE: the finding %s has an empty %s" % (id, field))
+
+        problem = severity_problem(entry["severity"], entry["operator"] == True)
+        if problem != "":
+            fail("REFUSE: the finding %s: %s" % (id, problem))
+
+    for entry in findings:
+        item_create(
+            name = "file-" + entry["id"],
+            key = "finding-" + entry["id"],
+            title = entry["title"],
+            body = entry["body"].rstrip() + "\n\n## How it was found\n\n" + entry["found"].strip(),
+            severity = entry["severity"],
+            operator = entry["operator"] == True,
+        )
+
 def land(item, pins):
     """Lands the ready items as one batch: one gate run on the union of their heads, and a split of the union when the gate is red.
     Each entry of `pins` is id=sha: the item and the full SHA the owner reviewed, as EXPECT_HEAD is for one item.
@@ -107,6 +198,7 @@ def land(item, pins):
     if env("MERGE") != "true":
         return
 
+    project = facts()
     prs = []
     stopped = []
 
@@ -120,10 +212,17 @@ def land(item, pins):
         # The stops of the pipeline of one item, for each item: merged, closed, branch gone, hold, draft, base, and a head that is not the reviewed one.
         # An item that stops is reported with its reason, and the other items still land.
         check = preflight(name = "intake-" + id, id = id, head = head, base = env("BASE"), hold = "hold", own = {"logins": [env("OWNER_LOGIN")]})
-        if check.ok:
-            prs.append(struct(item = id, head = head))
-        else:
+        if not check.ok:
             stopped.append(struct(item = id, reason = check.reason))
+            continue
+
+        # A project that declares a changelog lands no item without an entry, as the merge of one item does.
+        missing = changelog_missing(project.changelog, head, id, fetch = True)
+        if missing != "":
+            stopped.append(struct(item = id, reason = missing))
+            continue
+
+        prs.append(struct(item = id, head = head))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason)
@@ -139,7 +238,7 @@ def land(item, pins):
         repo = env("REPO"),
         hold = "hold",
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
-        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"],
+        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"] + id_patterns([pr.item for pr in prs]),
         integration = int(env("INTEGRATION_PR", default = "0")),
     )
 
@@ -437,12 +536,16 @@ def pipeline(item):
             name = "settle",
             prompt = "prompts/settle.md",
             model = "sonnet",
+            outputs = ["parked"],
             inputs = {"ruling": ruling.answer, "facts": project},
             **scope
         )
 
         if settle.stop != "":
             fail("REFUSE: the settle step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (settle.stop, item.id))
+
+        # Each finding that the owner parked stays open after the last round: it gets its own issue, so it is not lost with the pull request.
+        file_parked(settle.parked)
 
         return
 
@@ -455,7 +558,11 @@ def pipeline(item):
     # The call passes `tree = loop.gate.tree`, so the merge step proves the merged tree after the merge. A gate that records no tree stops the run at the call. The proof runs after the merge:
     # a stop does not undo it, and the item ends failed with the pull request merged.
     # The call also passes `steps = loop.gate.steps`: it merges only when every step of the gate at the head is a pass. A step that is unknown is not a pass. A call that can merge and leaves out `steps` is refused by `obee check workflow` and again at the call.
-    # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive.
+    # `forbid_text` holds the patterns of the attribution rule of the merge gate, each case-insensitive, and the pattern of the tracker id of the item (id_patterns).
+    missing = changelog_missing(project.changelog, loop.gate.head, item.id)
+    if missing != "":
+        fail(missing)
+
     merge(
         name = "ship",
         head = loop.gate.head,
@@ -467,6 +574,6 @@ def pipeline(item):
         hold = "hold",
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
         approved = loop.review.verdict == "approve",
-        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"],
+        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"] + id_patterns([item.id]),
         children = "retarget",
     )

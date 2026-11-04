@@ -342,6 +342,24 @@ func TestLoadFolder_APinFileThatLeavesTheWorkTreeIsRefused(t *testing.T) {
 	require.Equal(t, "tools/.tool-versions", project.PinFile)
 }
 
+func TestLoadFolder_AChangelogIsAFactAndMustBeAPathInsideTheWorkTree(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject+`, changelog = "docs/CHANGELOG.md"`))
+	require.Empty(t, problems)
+	require.Equal(t, "docs/CHANGELOG.md", project.Changelog)
+
+	project, problems = loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Empty(t, project.Changelog)
+
+	for _, path := range []string{"", "/etc/CHANGELOG", "../CHANGELOG.md", "./CHANGELOG.md", "docs/"} {
+		_, problems = loadProjectText(t, call(goodProject+`, changelog = "`+path+`"`))
+		require.Len(t, problems, 1, path)
+		require.Contains(t, problems[0].Error(), "`changelog`", path)
+	}
+}
+
 func TestLoadFolder_AProjectPathThatIsNotAFileIsReported(t *testing.T) {
 	t.Parallel()
 

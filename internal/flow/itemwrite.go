@@ -3,9 +3,11 @@ package flow
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.starlark.net/starlark"
 
+	"github.com/tobocop2/obee/internal/model"
 	trackerstore "github.com/tobocop2/obee/internal/store"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -42,6 +44,19 @@ func (s *script) check(problems ...error) error {
 	return errors.Join(problems...)
 }
 
+// checkSeverity refuses a severity that is not one label of P0 to P3. An empty severity files the item with none.
+func checkSeverity(severity string) error {
+	if severity == "" {
+		return nil
+	}
+
+	if _, err := model.ParseSeverity(severity); err != nil {
+		return fmt.Errorf("severity: %w", err)
+	}
+
+	return nil
+}
+
 // write records one call of a write builtin as a step. fn returns the outputs of the call.
 func (s *script) write(builtin, label string, fn func(ctx context.Context) (map[string]any, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	return s.durable(builtin, label, func(ctx context.Context, _ string) (stepResult, error) {
@@ -53,20 +68,22 @@ func (s *script) write(builtin, label string, fn func(ctx context.Context) (map[
 
 // itemCreate files an item in the tracker of the project. The key makes the call safe to repeat: the same key gives the same item and created = False.
 func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var title, key, body, parent, assignee, label string
+	var title, key, body, parent, assignee, severity, label string
+
+	var operator bool
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, parentKeyword: &parent, assigneeKeyword: &assignee, nameKeyword: &label,
+		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, parentKeyword: &parent, assigneeKeyword: &assignee, "severity": &severity, "operator": &operator, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}
 
-	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty(keyKeyword, key)); err != nil {
+	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty(keyKeyword, key), checkSeverity(severity)); err != nil {
 		return nil, err
 	}
 
 	return s.write("item_create", label, func(ctx context.Context) (map[string]any, error) {
-		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent, Assignee: assignee})
+		id, created, err := s.e.deps.Writer.Create(ctx, s.in.Project, s.scoped(key), trackerstore.NewItem{Title: title, Body: body, Parent: parent, Assignee: assignee, Severity: severity, Operator: operator})
 
 		return createOutputs(id, created), err
 	})

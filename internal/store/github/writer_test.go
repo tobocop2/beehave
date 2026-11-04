@@ -280,6 +280,32 @@ func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
 	assert.NotContains(t, fake.calls[len(fake.calls)-1], "--assignee", "the default is no assignee")
 }
 
+func TestCreate_FilesTheSeverityAsExactlyOneLabelAndNoLabelWhenThereIsNone(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeGh()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P1"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--label", "P1"}, fake.calls[len(fake.calls)-1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[len(fake.calls)-1], "--label")
+}
+
+func TestCreate_FilesTheOperatorFlagAsTheOperatorLabelBesideTheSeverity(t *testing.T) {
+	t.Parallel()
+
+	fake := newFakeGh()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P1", Operator: true})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--label", "P1", "--label", "operator"}, fake.calls[len(fake.calls)-1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t", Severity: "P1"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[len(fake.calls)-1], "operator")
+}
+
 func TestAssign_AddsTheAssigneeWithOneEdit(t *testing.T) {
 	t.Parallel()
 
