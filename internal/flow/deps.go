@@ -224,7 +224,7 @@ type CommandRequest struct {
 	Timeout   time.Duration
 	// Gate is true for the program of a gate (a gate call with run, or the gate_run of batch_merge). A gate on this machine runs under the sandbox of its project.
 	Gate bool
-	// MaxNewProcesses is the number of processes above the count of the user at the start. It is zero for a call that sets no cap.
+	// MaxNewProcesses is the number of tasks that the tree of the command may hold besides the command (on Linux), or the process count of the user at the start plus this number (elsewhere). It is zero for a call that sets no cap.
 	MaxNewProcesses int
 	// Stdin is the text that the program reads. It is empty when the call sets none.
 	Stdin string

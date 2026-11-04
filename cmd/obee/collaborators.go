@@ -391,7 +391,7 @@ func capNote(limit int, result model.CommandResult) string {
 		return ""
 	}
 
-	return fmt.Sprintf("\nobee: a process start failed. The command ran with max_new_processes = %d: the process count of the user at the start plus %d, shared with the other programs of the user.\n", limit, limit)
+	return fmt.Sprintf("\nobee: a process start failed. The command ran with max_new_processes = %d: %s.\n", limit, fmt.Sprintf(proc.CapMeaning, limit))
 }
 
 // commandFolder returns dir, or a new empty folder when dir is empty because the item has no worktree. The program then never touches the folder where obee started.
