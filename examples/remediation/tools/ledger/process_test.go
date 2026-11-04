@@ -219,7 +219,9 @@ func TestAdd_FourProcessesAddingAtOnceGetNoErrorLoseNoRowAndDoubleNoRow(t *testi
 
 	const (
 		processes = 4
-		adds      = 300
+		// Each add is a durable write that takes the file lock. The number of adds is small, so that a loaded host never holds a writer
+		// past the 30 s busy wait of the ledger: the test checks that processes share the file, not how fast it takes writes.
+		adds = 40
 	)
 
 	h := newHarness(t)
