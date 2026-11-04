@@ -346,7 +346,7 @@ func TestPrograms_AHostProgramRunsAsOneQuotedJob(t *testing.T) {
 			}
 
 			assert.Equal(t, test.want, got)
-			assert.Equal(t, `'echo' 'it'\''s'`, test.hosted.spec.Command)
+			assert.Equal(t, `echo 'it'\''s'`, test.hosted.spec.Command)
 			assert.Equal(t, "obee-1", test.hosted.spec.Name)
 		})
 	}

@@ -439,15 +439,10 @@ func hostAdvice(state model.JobState) string {
 func shellLine(words []string) string {
 	quoted := make([]string, len(words))
 	for i, word := range words {
-		quoted[i] = shellQuote(word)
+		quoted[i] = model.ShellQuote(word)
 	}
 
 	return strings.Join(quoted, " ")
-}
-
-// shellQuote quotes one word for a POSIX shell.
-func shellQuote(word string) string {
-	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
 }
 
 // trackerItems reads the fields of an item from the tracker of its project.

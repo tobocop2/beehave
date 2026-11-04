@@ -187,7 +187,7 @@ func notMerged(ctx context.Context, built forge.Forge, integration int) (batch.R
 		return batch.Report{Findings: []string{fmt.Sprintf("cannot read pull request #%d: %v", integration, err)}}, true
 	}
 
-	switch state := strings.ToUpper(strings.TrimSpace(deref(view.State))); state {
+	switch state := strings.ToUpper(strings.TrimSpace(model.Deref(view.State))); state {
 	case "MERGED":
 		return batch.Report{}, false
 	case "OPEN", "CLOSED":
@@ -209,19 +209,11 @@ func (h batchHost) Intent(ctx context.Context, project, item, repo, _, tipTree s
 		return merge.Intent{}, fmt.Errorf("read the pull request of item %s: %w", item, err)
 	}
 
-	if state := strings.ToUpper(strings.TrimSpace(deref(view.State))); state != "OPEN" {
+	if state := strings.ToUpper(strings.TrimSpace(model.Deref(view.State))); state != "OPEN" {
 		return merge.Intent{}, fmt.Errorf("the pull request of item %s is %s, %w, so a merge cannot be tied to this run", item, state, flow.ErrMemberNotOpen)
 	}
 
 	view.Number = number
 
 	return merge.NewIntent(view, tipTree, now)
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-
-	return *s
 }

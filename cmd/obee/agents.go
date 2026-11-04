@@ -76,7 +76,7 @@ func guardCommand(executable func() (string, error)) string {
 		return ""
 	}
 
-	return shellQuote(path) + " check command"
+	return model.ShellQuote(path) + " check command"
 }
 
 // protectionOf returns the protection of a request: its directories, absolute, a relative one taken from the folder of the step.
@@ -107,7 +107,7 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 
 	words := []string{a.guard, "--forbid", strings.Join(names, ",")}
 	for _, dir := range protect.Dirs {
-		words = append(words, "--protect", shellQuote(dir))
+		words = append(words, "--protect", model.ShellQuote(dir))
 	}
 
 	if protect.Private {
