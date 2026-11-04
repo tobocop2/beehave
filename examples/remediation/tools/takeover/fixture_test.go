@@ -51,6 +51,7 @@ type setup struct {
 	calls   []string
 	posted  []string
 	asked   []string
+	fields  [][]string
 	idle    time.Duration
 	grace   time.Duration
 
@@ -94,8 +95,9 @@ func newSetup(s spec) *setup {
 	}
 }
 
-func (s *setup) PRView(_ context.Context, _ int, _ ...string) (model.PullRequest, error) {
+func (s *setup) PRView(_ context.Context, _ int, fields ...string) (model.PullRequest, error) {
 	s.asked = append(s.asked, "view")
+	s.fields = append(s.fields, fields)
 
 	s.views++
 
