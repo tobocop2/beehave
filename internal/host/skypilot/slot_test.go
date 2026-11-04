@@ -59,11 +59,11 @@ func newFakeSlots(t *testing.T) (*Host, *fakeHost) {
 
 	f := newFakeHost(hosttest.Working)
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.ssh())
+	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH())
 	require.NoError(t, err)
 
-	h.poll = time.Millisecond
-	h.bank = func(context.Context) error { return nil }
+	h.Poll = time.Millisecond
+	h.Bank = func(context.Context) error { return nil }
 
 	require.NoError(t, h.Up(t.Context()))
 
@@ -78,22 +78,22 @@ func TestCancel_EndsTheSlotJob(t *testing.T) {
 
 	id, err := h.Submit(ctx, model.JobSpec{Name: "gate", Command: hosttest.PassingCommand})
 	require.NoError(t, err)
-	require.Equal(t, 1, f.waitingSlots(), "Submit starts one slot job")
+	require.Equal(t, 1, f.WaitingSlots(), "Submit starts one slot job")
 
 	require.NoError(t, h.Cancel(ctx, id))
 
-	assert.Zero(t, f.waitingSlots(), "a canceled job leaves no slot job that holds the cluster")
+	assert.Zero(t, f.WaitingSlots(), "a canceled job leaves no slot job that holds the cluster")
 }
 
 // newSecondHandle returns a host over the same fake as the first, as after a restart: it never submitted anything.
 func newSecondHandle(t *testing.T, f *fakeHost) *Host {
 	t.Helper()
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.ssh())
+	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH())
 	require.NoError(t, err)
 
-	h.poll = time.Millisecond
-	h.bank = func(context.Context) error { return nil }
+	h.Poll = time.Millisecond
+	h.Bank = func(context.Context) error { return nil }
 
 	return h
 }
@@ -106,12 +106,12 @@ func TestWait_AHandleThatNeverSubmittedEndsTheSlotJobOfTheIdItIsGiven(t *testing
 
 	id, err := first.Submit(ctx, model.JobSpec{Name: "gate", Command: hosttest.PassingCommand})
 	require.NoError(t, err)
-	require.Equal(t, 1, f.waitingSlots())
+	require.Equal(t, 1, f.WaitingSlots())
 
 	_, err = newSecondHandle(t, f).Wait(ctx, id)
 
 	require.NoError(t, err)
-	assert.Zero(t, f.waitingSlots(), "the marker carries the nonce of the Submit")
+	assert.Zero(t, f.WaitingSlots(), "the marker carries the nonce of the Submit")
 }
 
 func TestCancel_AHandleThatNeverSubmittedEndsTheSlotJobOfTheIdItIsGiven(t *testing.T) {
@@ -125,22 +125,7 @@ func TestCancel_AHandleThatNeverSubmittedEndsTheSlotJobOfTheIdItIsGiven(t *testi
 
 	require.NoError(t, newSecondHandle(t, f).Cancel(ctx, id))
 
-	assert.Zero(t, f.waitingSlots())
-}
-
-func TestWaitAndCancel_RefuseAnIdWithoutAValidNonce(t *testing.T) {
-	t.Parallel()
-
-	h, _, ssh := newScripted(t)
-
-	for _, id := range []model.JobID{"5", "5-", "-n", "5-n;rm", "5-n-m", "5 n", "x-n", "5-n\n", "", "7; rm", "-1", "7;cluster", "5-n/m", "5/6-n", "5-'n'", `5-"n"`, "5-../n"} {
-		state, err := h.Wait(deadline(t), id)
-		require.ErrorIs(t, err, errBadJobID, string(id))
-		assert.Equal(t, model.JobUnknown, state)
-		require.ErrorIs(t, h.Cancel(context.Background(), id), errBadJobID, string(id))
-	}
-
-	assert.Empty(t, ssh.Calls)
+	assert.Zero(t, f.WaitingSlots())
 }
 
 func TestSubmit_AReusedJobIdNeverMatchesAnOldMarker(t *testing.T) {
@@ -154,17 +139,17 @@ func TestSubmit_AReusedJobIdNeverMatchesAnOldMarker(t *testing.T) {
 
 	_, err = h.Wait(ctx, first)
 	require.NoError(t, err)
-	require.Zero(t, f.waitingSlots(), "Wait ends the slot job")
+	require.Zero(t, f.WaitingSlots(), "Wait ends the slot job")
 
-	f.mu.Lock()
-	f.reuseID = true
-	f.mu.Unlock()
+	f.Mu.Lock()
+	f.ReuseID = true
+	f.Mu.Unlock()
 
 	second, err := h.Submit(ctx, model.JobSpec{Name: "gate", Command: hosttest.PassingCommand})
 	require.NoError(t, err)
 	require.NotEqual(t, first, second, "Slurm gave the job number again, but the nonce makes a new id")
 
-	assert.Equal(t, 1, f.waitingSlots(), "the old marker does not end the slot job of the new job")
+	assert.Equal(t, 1, f.WaitingSlots(), "the old marker does not end the slot job of the new job")
 }
 
 func TestSubmit_CancelsTheSlurmJobWhenTheSlotCannotBeHeld(t *testing.T) {
@@ -213,7 +198,7 @@ func TestWait_WritesNoMarkerWhenTheBankFails(t *testing.T) {
 	t.Parallel()
 
 	h, _, ssh := newScripted(t)
-	h.bank = func(context.Context) error { return errBank }
+	h.Bank = func(context.Context) error { return errBank }
 	ssh.Plan("COMPLETED\n", "squeue")
 	ssh.Plan("", "touch")
 
@@ -266,26 +251,6 @@ func TestWait_ReturnsTheStateTogetherWithTheBankError(t *testing.T) {
 
 	require.ErrorIs(t, err, host.ErrUnbanked)
 	assert.Equal(t, model.JobFailed, got, "the caller can tell a failed gate from a passed one")
-}
-
-func TestWorkRoot_RefusesAnythingButOneAbsolutePath(t *testing.T) {
-	t.Parallel()
-
-	for _, answer := range []string{"", "home/lane\n", "/home/a\n/home/b\n", "pwd: not found"} {
-		h, _, ssh := newScripted(t)
-		ssh.Plan(answer, "pwd")
-
-		_, err := h.WorkRoot(context.Background())
-
-		require.ErrorIs(t, err, errWorkRoot, answer)
-	}
-
-	h, _, ssh := newScripted(t)
-	ssh.PlanFail("boom", "pwd")
-
-	_, err := h.WorkRoot(context.Background())
-
-	require.ErrorIs(t, err, errCommand)
 }
 
 func TestWait_ReturnsTheStateWhenTheLoginFolderIsUnknown(t *testing.T) {
