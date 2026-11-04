@@ -143,6 +143,8 @@ flowchart TD
         skypilot["host/skypilot<br/>SkyPilot adapter"]
         slurm["host/slurm<br/>Slurm adapter"]
         sshhost["host/ssh<br/>systemd user unit adapter"]
+        link["host/link<br/>ssh command line"]
+        jobwait["host/jobwait<br/>wait states"]
         sandbox["sandbox<br/>enforcer contract, allow-list proxy, Landlock enforcer"]
     end
 
@@ -167,8 +169,16 @@ flowchart TD
     skypilot --> host
     skypilot --> slurm
     slurm --> host
+    main --> slurm
     main --> sshhost
     sshhost --> host
+    skypilot --> link
+    slurm --> link
+    slurm --> jobwait
+    sshhost --> link
+    sshhost --> jobwait
+    link --> proc
+    jobwait --> host
     agent --> proc
     claude --> agent
     main --> claude
@@ -308,7 +318,9 @@ Seven methods read the conversation and move the pull request. `Comments` and `R
 
 ## Build host
 
-`host` holds the `Host` contract: `Up`, `Status`, `Down`, `Submit`, `Wait`, `Cancel`, `Drain` and `Resume`. An adapter is a child package. `host/slurm` is the Slurm adapter: it holds the job half of the contract (`Submit`, `Wait`, `Cancel`, `Log`, `Drain`, `Resume`, the job states and the parsers) over a `proc.Runner` that reaches the head node, which is ssh. It works for any Slurm cluster that obee can reach, and it creates and deletes no machine. `Submit`, `Wait`, `Cancel`, `Drain` and `Resume` run `sbatch`, `squeue` (then `sacct` after the controller forgets the job), `scancel` and `scontrol` over ssh. The config names the providers `skypilot`, `ssh` and `slurm`. The Slurm host (`Up`, `Down`, `Status`) is not built yet, so a project cannot run on it. The `ssh` provider is built.
+`host` holds the `Host` contract: `Up`, `Status`, `Down`, `Submit`, `Wait`, `Cancel`, `Drain` and `Resume`. An adapter is a child package. `host/slurm` is the Slurm adapter: it holds the job half of the contract (`Submit`, `Wait`, `Cancel`, `Log`, `Drain`, `Resume`, the job states and the parsers) over a `proc.Runner` that reaches the head node, which is ssh. It works for any Slurm cluster that obee can reach, and it creates and deletes no machine. `Submit`, `Wait`, `Cancel`, `Drain` and `Resume` run `sbatch`, `squeue` (then `sacct` after the controller forgets the job), `scancel` and `scontrol` over ssh. The config names three providers, and each one runs: `skypilot` (creates and deletes a cluster), `ssh` (a machine of the owner) and `slurm` (a Slurm cluster of the owner). The ssh command line and the text of a failed command are in `host/link`, and the wait states are in `host/jobwait`; no adapter copies them. The adapters never import each other: only `skypilot` imports `slurm`, for its queue, and `depguard` denies every other pair.
+
+`slurm.Host` is the Slurm provider for a cluster that the owner provides. The `ssh` block names the head node, and `build_host` is its ssh alias. `Up` checks that the head node answers and that `sinfo` lists its nodes; it changes nothing. `Status` is absent when ssh cannot connect, draining when Slurm drains a node, and otherwise up with the free disk. `Down` sends nothing: obee did not create the cluster. `Drain` and `Resume` belong to the `Host` contract and run `scontrol update` on every node, which changes node state on a cluster that obee does not own; only the conformance suite calls them, and the run never does. `Teardown` banks the work and leaves the cluster up. No slot job holds the cluster, because nothing deletes an idle cluster. `host.max_run` goes to `sbatch` as `--time`, and Slurm ends a job at the limit as `timed_out`. Jobs run in the login folder of the head node, so the key `host.ssh.work_root` is refused for this provider. The `skypilot` provider keeps its own slot and its own run limit (the `timeout` in the slot command). `host_teardown` of the three providers banks first; for `ssh` and `slurm` its output `down` means banked and released, and the machine stays up.
 
 `host/ssh` is the adapter for a machine that the owner provides and that runs systemd. It uses `host/link` for the ssh command line, and it creates and deletes no machine: `Down` sends nothing, and `Teardown` banks the work and leaves the machine up. `Up` refuses a machine without a user manager, with a systemd older than 240, or with linger off for the login user; the error tells the owner to run `loginctl enable-linger`. `Submit` runs the command as a transient user unit (`systemd-run --user --remain-after-exit`, with `RuntimeMaxSec` from `host.max_run`). The command text travels as base64, so the shell on the host cannot change it. `Wait` and `Cancel` use the same engine as Slurm (`host/jobwait`): the poll reads the cancel marker, the unit properties and the size of the log in one ssh call. A unit that systemd is stopping or reloading (`deactivating`, `reloading`) still runs. Every documented `Result` of a fault (`exit-code`, `signal`, `core-dump`, `oom-kill`, `watchdog`, `resources`, `start-limit-hit`, `protocol`, `exec-condition`) is a failed job, and `timeout` is the run limit. A value that obee does not know is an error, never a guess. The unit is stopped and reset after the bank, so the poll that first reads a final state writes it as an empty file beside the log. A second `Wait` for the same job reads that file, as a second read of a Slurm job reads `sacct`. `host/sshtest` is the fake machine, and the adapter runs `host/hosttest` against it.
 
@@ -316,7 +328,7 @@ Seven methods read the conversation and move the pull request. `Comments` and `R
 
 The guards live in `host`, so every provider gets them. `Banked`, `Bank`, `FindRepos` and `EnsureUnused` take a command runner and run git or find through it, so the same code scans the machine of obee or a remote host. `DiskFloor` and `WaitJob` take a `Host`.
 
-The invariant is: a job holds its slot until its work is banked, for at most `host.max_run`. The provider deletes an idle host with no obee code alive. SkyPilot counts only its own job queue, so `Submit` also starts a `sky exec -d` job that waits for a bank marker, and `Wait` banks the work of the host, writes the marker, and returns a final state. `Wait` returns the state of the job together with the error when the bank fails. `Wait` and `Teardown` scan the same root: the login folder of the head node by its absolute path (`WorkRoot`). `Teardown` is the only way to stop a host with the guards. `Teardown` scans, banks and stops the host; it takes no function, so a caller cannot pass a stub for the check.
+The invariant is: a job holds its slot until its work is banked, for at most `host.max_run`. The provider deletes an idle host with no obee code alive; a provider that does not own its machine (`ssh`, `slurm`) has no idle delete, so `Down` is a no-op, `Teardown` is a bank, and the slot is a no-op. SkyPilot counts only its own job queue, so `Submit` also starts a `sky exec -d` job that waits for a bank marker, and `Wait` banks the work of the host, writes the marker, and returns a final state. `Wait` returns the state of the job together with the error when the bank fails. `Wait` and `Teardown` scan the same root: the login folder of the head node by its absolute path (`WorkRoot`). `Teardown` is the only way to stop a host with the guards. `Teardown` scans, banks and stops the host; it takes no function, so a caller cannot pass a stub for the check.
 
 1. **Banked.** `Banked` lists every branch tip, tag, stash entry and worktree HEAD that is not an ancestor of a head or tag that `git ls-remote` reports on a remote with a host part. A path or `file://` remote does not count. A remote that cannot be read holds nothing. A git command that cannot read a repository is an error. An annotated tag counts by the commit it names. `Bank` pushes the missing commits to `host.private_remote`, checks again, and refuses when anything is still missing. Each commit goes to its own branch, `obee-banked/<12 characters of the commit>`, on the private remote, with a plain push that never overwrites a branch. All repositories of a host share that namespace. The branches stay until someone deletes them, and CI on the remote can see them. A retry after a partial failure pushes the same names. Uncommitted and untracked files are not banked: they are lost when the host goes.
 2. **Repository scan.** `FindRepos` has no depth cap. It lists a directory that holds `.git` and a bare repository. A symlink as the root is followed; a symlink inside the root is not, so a repository reached only through one is not listed. A scan that fails, including one that cannot read a directory, or finds no repository, refuses.
