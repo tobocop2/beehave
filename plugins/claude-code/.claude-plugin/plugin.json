@@ -6,6 +6,6 @@
     "name": "tobocop2"
   },
   "icon": "./logo.svg",
-  "repository": "https://github.com/tobocop2/obee",
+  "repository": "https://github.com/tobocop2/beehave",
   "keywords": ["beehave", "backlog", "runs"]
 }
