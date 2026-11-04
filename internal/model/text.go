@@ -49,3 +49,23 @@ func HoldsToken(text, token string, lead bool, word func(byte) bool) bool {
 
 	return false
 }
+
+// OneLine puts a text on one line: every run of white space becomes one space.
+func OneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
+// Clip puts a text on one line and cuts it at limit characters. A cut text ends with mark.
+func Clip(text string, limit int, mark string) string {
+	text = OneLine(text)
+	if cut := FirstRunes(text, limit); cut != text {
+		return cut + mark
+	}
+
+	return text
+}
+
+// IsHomePath reports whether a path is written ~ or ~/...
+func IsHomePath(path string) bool {
+	return path == "~" || strings.HasPrefix(path, "~/")
+}

@@ -118,7 +118,7 @@ func EnvPart(path string) string {
 // HomeCredential returns the credential path (written ~/...) that a path under the home folder is, is inside, or holds, or "" when there is none.
 // A path that is not written ~ or ~/... returns "". The home folder itself holds every credential path.
 func HomeCredential(path string) string {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
+	if !IsHomePath(path) {
 		return ""
 	}
 

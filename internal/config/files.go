@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.starlark.net/syntax"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -56,9 +58,27 @@ func requireText(at syntax.Position, key, value string) error {
 	return nil
 }
 
+// parseKey refuses an empty value of a key, then reads it with parse. A value that parse refuses is refused with the key and the reason.
+//
+//nolint:ireturn // T is a string type at every call: the linter reads an unconstrained T as an interface.
+func parseKey[T any](at syntax.Position, key, value string, parse func(string) (T, error)) (T, error) {
+	var zero T
+
+	if err := requireText(at, key, value); err != nil {
+		return zero, err
+	}
+
+	parsed, err := parse(value)
+	if err != nil {
+		return zero, refuseAt(at, "`%s`: %w. Fix the value.", key, err)
+	}
+
+	return parsed, nil
+}
+
 // expandHome replaces a leading "~" with the home folder.
 func expandHome(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
+	if !model.IsHomePath(path) {
 		return path, nil
 	}
 

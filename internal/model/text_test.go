@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,4 +67,33 @@ func TestHoldsToken_NeedsNoWordByteAfterAndBeforeWhenLeadIsSet(t *testing.T) {
 	assert.True(t, model.HoldsToken("name=fmtx name=fmt", "name=fmt", false, model.IsAlnum))
 	assert.False(t, model.HoldsToken("other", "name=fmt", false, model.IsAlnum))
 	assert.False(t, model.HoldsToken("ab", "b", true, model.IsAlnum), "a token that ends the text with a word byte before it")
+}
+
+func TestOneLine_JoinsEveryRunOfWhiteSpaceWithOneSpace(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "a b c", model.OneLine("  a\n\tb   c \n"))
+}
+
+func TestClip_CutsAtACharacterNotAByte(t *testing.T) {
+	t.Parallel()
+
+	cut := model.Clip(strings.Repeat("é", 15), 10, "...")
+
+	assert.Equal(t, strings.Repeat("é", 10)+"...", cut)
+}
+
+func TestClip_LeavesAShortTextWithNoMark(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "a b", model.Clip("a\n b", 3, "..."))
+}
+
+func TestIsHomePath_AcceptsTildeAndTildeSlash(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, model.IsHomePath("~"))
+	assert.True(t, model.IsHomePath("~/x"))
+	assert.False(t, model.IsHomePath("~x"))
+	assert.False(t, model.IsHomePath("/x"))
 }
