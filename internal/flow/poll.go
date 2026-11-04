@@ -21,6 +21,8 @@ const (
 	pollProjectsStep = pollStepPrefix + "projects"
 	// pollScheduleFileName holds the cause when the last launch could not set the poll schedule. It is empty when the launch set it.
 	pollScheduleFileName = "poll-schedule-error"
+	// pollOff is the status text when the interval is 0.
+	pollOff = "agents.review_poll_minutes is 0, so no review poll runs. Set it to a number of minutes to turn the poll on."
 )
 
 // ErrNoPollSource is returned by the poll reader for a project that has no forge. The poll skips that project.

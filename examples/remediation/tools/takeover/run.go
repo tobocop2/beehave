@@ -460,11 +460,21 @@ func (s *session) mayPost(p plan) error {
 	return nil
 }
 
+// reread reads the comments with the state, the author and the head, and runs the guard on them.
+func (s *session) reread(ctx context.Context) (model.PullRequest, error) {
+	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author", "headRefOid")
+	if err != nil {
+		return model.PullRequest{}, unread(err, "cannot read the comments of #%d.", s.request.PR)
+	}
+
+	return pr, s.guard(pr)
+}
+
 // posted asks the forge for the notice of ours on the pull request. A read that fails is an error, never "no notice".
 func (s *session) posted(ctx context.Context) (*stamp, error) {
-	pr, err := s.reader.PRView(ctx, s.request.PR, "comments")
+	pr, err := s.reread(ctx)
 	if err != nil {
-		return nil, unread(err, "cannot read the comments of #%d.", s.request.PR)
+		return nil, err
 	}
 
 	var found activity
