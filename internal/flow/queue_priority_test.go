@@ -115,7 +115,9 @@ func itemsStartOrder(t *testing.T, severities map[string]string) []string {
 		done <- err
 	}()
 
-	assert.True(t, waitUntil(func() bool { return countEnqueued(engine, items) == 2 }), "two runs wait while two run")
+	// Two started and two enqueued mean that all four runs exist and that both slots are full. A count of two enqueued runs alone also holds while 24 is not yet queued.
+	// The queue picks the first two runs it sees, so a P0 run that is already queued can be one of them. In every case the run 24 starts before the run 23.
+	assert.True(t, waitUntil(func() bool { return started(2) && countEnqueued(engine, items) == 2 }), "two runs wait while two run")
 
 	// One slot frees at a time, so the third and the fourth start are in the order that the queue picked them.
 	tokens <- struct{}{}
