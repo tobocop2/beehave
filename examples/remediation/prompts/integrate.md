@@ -11,3 +11,36 @@ The pull request {{ .pr }} for the item {{ .item.id }} merged into the base of t
 **Never use the merge queue of GitHub.** Do not add a pull request to a queue and do not run `gh pr merge --auto`.
 
 The step after you reads the integration pull request again. It fails when the heading or the title says another number than the rows, or when the row count did not change. Write the changes to the pull request itself, read it back, and say in your report what you wrote.
+
+## Facts of the project
+
+The run read these facts from the project file at its start. A fact that is empty holds no fact: ask the owner, and do not guess it.
+
+- Repository identity and fork topology: repo `{{ .facts.repo }}`, source `{{ .facts.source }}`, forge `{{ .facts.forge }}`.
+- Build host: `{{ .facts.build_host }}`.
+- Base branch: `{{ .facts.base_branch }}`.
+- The gate is `{{ .facts.gate }}`. The gate list comes from these workflow files:{{ range .facts.gate_files }} `{{ . }}`{{ end }}
+- Tracker: `{{ .facts.tracker }}`. Queue to epic:{{ range $queue, $epic := .facts.epics }} `{{ $queue }}` is `{{ $epic }}`;{{ end }}
+- People and the idle threshold for a third-party pull request:{{ range $role, $who := .facts.people }} `{{ $role }}` is `{{ $who }}`;{{ end }}
+- Review against these convention files:{{ range .facts.conventions }} `{{ . }}`{{ end }}
+
+Brief rules of the project:
+{{ range .facts.brief_rules }}
+- {{ . }}
+{{ end }}
+Rules for a pull request that stacks on another:
+{{ range .facts.stacked_rules }}
+- {{ . }}
+{{ end }}
+Token rules, cross-repository steps and release steps:
+{{ range .facts.token_rules }}
+- {{ . }}
+{{ end }}
+Hard limits, commands never run and real user data:
+{{ range .facts.limits }}
+- {{ . }}
+{{ end }}
+Measured traps and ownership rules:
+{{ range .facts.traps }}
+- {{ . }}
+{{ end }}

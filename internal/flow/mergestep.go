@@ -57,7 +57,7 @@ func mergeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 	children, s := "refuse", &m.settings
 
 	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		headKeyword: &m.head, "repo": &s.Repo, baseKeyword: &s.Base, holdKeyword: &s.Hold, ownKeyword: &own, "approved": &s.Approved, "tree": &tree,
+		headKeyword: &m.head, repoKeyword: &s.Repo, baseKeyword: &s.Base, holdKeyword: &s.Hold, ownKeyword: &own, "approved": &s.Approved, "tree": &tree,
 		"steps": &m.steps, "forbid_text": &forbid, "children": &children, mergeKey: &m.merges, nameKeyword: &m.label,
 	})
 	if err != nil {

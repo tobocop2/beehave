@@ -18,6 +18,15 @@ func TestBackendErrors_TheSentinelOfTheHostBackendSurvivesAGateOrAMerge(t *testi
 	require.Contains(t, backendErrors(), skypilot.ErrConfig)
 }
 
+func TestFactsOf_TheFactsOfTheProjectInTheConfigReachTheEngineAndAnUnknownProjectHasNone(t *testing.T) {
+	t.Parallel()
+
+	facts := factsOf(map[string]config.Project{"p": {Project: model.Project{Name: "p", Limits: []string{"never run rm on a glob"}}}})
+
+	require.Equal(t, []string{"never run rm on a glob"}, facts("p").Limits)
+	require.Equal(t, model.Project{}, facts("other"))
+}
+
 func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
 	t.Parallel()
 

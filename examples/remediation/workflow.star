@@ -166,6 +166,9 @@ def take_over(item, pr):
     author = env("TAKE_AUTHOR")
     base = ["remedy", "take", pr, "--me", me, "--idle", IDLE_HOURS, "--grace", GRACE_HOURS, "--item", item.id]
 
+    # This run is the take-over run, so this is its one read of the facts, before its one agent.
+    project = facts()
+
     agent(
         name = "take-review",
         prompt = "prompts/take_review.md",
@@ -173,7 +176,7 @@ def take_over(item, pr):
         edits = False,
         kind = "review",
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
-        inputs = {"item": item, "pr": pr},
+        inputs = {"item": item, "pr": pr, "facts": project},
     )
 
     command(name = "take-notice", run = base + ["--apply"], stop_on_rc = [2])
@@ -216,13 +219,16 @@ def record_merge(item, merged):
     if closes != "":
         was += ["--was-issues", str(_count(before.stdout, "issues"))]
 
+    # This run is the integration run, so this is its one read of the facts, before its one agent.
+    project = facts()
+
     agent(
         name = "integrate",
         prompt = "prompts/integrate.md",
         model = "sonnet",
         edits = False,
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
-        inputs = {"item": item, "pr": merged, "integration": integration, "closes": closes if closes != "" else "none"},
+        inputs = {"item": item, "pr": merged, "integration": integration, "closes": closes if closes != "" else "none", "facts": project},
     )
 
     command(name = "recount-after", run = ["remedy", "recount", "--pr", integration] + was, stop_on_rc = [1, 2])
@@ -316,6 +322,10 @@ def pipeline(item):
     scope = lane_scope()
     rounds = patch_rounds() + 1
 
+    # The facts of the project file (people, rules, limits, traps and the identity keys). The step records them, so a resume keeps the facts the run started with.
+    # Each agent of the example gets them as the input `facts`; no agent reads a path for them. The take-over run and the integration run read them once, before their one agent.
+    project = facts()
+
     plan = agent(
         name = "plan",
         prompt = "prompts/plan.md",
@@ -324,7 +334,7 @@ def pipeline(item):
         outputs = ["regressions"],
         # The repeat-offender check in the prompt reads pull requests with gh, so the shell reaches the forge and nothing else.
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
-        inputs = {"item": item},
+        inputs = {"item": item, "facts": project},
     )
 
     if plan.stop != "":
@@ -338,7 +348,7 @@ def pipeline(item):
         forbid_commands = FORBID,
         protect_paths = protected(),
         sandbox = sandbox(network = ["github.com", "api.github.com"]),
-        inputs = {"item": item, "plan": plan.text},
+        inputs = {"item": item, "plan": plan.text, "facts": project},
         **scope
     )
 
@@ -353,7 +363,7 @@ def pipeline(item):
     # Before each review, design and fix agent, the loop reads the pull request again, with the head the gate ran on (the head of the worktree), the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
     guard = {"base": env("BASE"), "hold": "hold", "own": {"logins": [env("OWNER_LOGIN")]}}
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []), rounds = rounds, review_outputs = ["regressions"])
+    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", follow_ups = "forbid", protect = protected(), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths", []), rounds = rounds, review_outputs = ["regressions"], facts = project)
 
     if loop.stopped:
         return
@@ -401,7 +411,7 @@ def pipeline(item):
             name = "settle",
             prompt = "prompts/settle.md",
             model = "sonnet",
-            inputs = {"ruling": ruling.answer},
+            inputs = {"ruling": ruling.answer, "facts": project},
             **scope
         )
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/review"
 )
@@ -483,6 +484,8 @@ type harness struct {
 	sandboxDefault func(project string) bool
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
 	repository func(project string) bool
+	// facts is the project of a run as the config holds it. It is nil, and so every project has no facts, unless a test sets it.
+	facts func(project string) model.Project
 	// refuseGate is the refusal of a gate on this machine. It is nil, and so no gate is refused, unless a test sets it.
 	refuseGate func(project string, program bool) error
 	ticks      chan time.Time
@@ -573,6 +576,7 @@ func (h *harness) deps() Deps {
 
 	deps.SandboxDefault = h.sandboxDefault
 	deps.Repository = h.repository
+	deps.Facts = h.facts
 	deps.RefuseGate = h.refuseGate
 
 	if h.picker != nil {

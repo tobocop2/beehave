@@ -45,6 +45,10 @@ type rawProject struct {
 	GateAllowWrite paths
 
 	SandboxEnforcer text
+
+	People                                                                      table
+	Epics                                                                       table
+	GateFiles, Conventions, BriefRules, StackedRules, Limits, Traps, TokenRules paths
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -67,7 +71,7 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?"}}
 }
 
 func projectSpecs() []spec { return []spec{projectSpec(), hostSpec(), skypilotSpec()} }
@@ -99,7 +103,8 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 
 	host := nested[rawHost]{want: hostSpec().name}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer)
+	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
+		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules)
 	raw.Host = host.block
 
 	return raw, err
@@ -122,11 +127,11 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	return model.Project{
+	return withFacts(model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, BuildHost: host, Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
-	}, nil
+	}, raw)
 }
 
 // checkKeys checks the keys that the named adapters need and returns the build host and the source.

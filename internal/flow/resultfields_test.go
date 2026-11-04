@@ -10,6 +10,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/obee/internal/batch"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/preflight"
 	"github.com/tobocop2/obee/internal/workflow"
 )
@@ -42,6 +43,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"agent":         keysOf(agentOutputs("", "", "", "", "", "", 0, false)),
 		"command":       keysOf(commandOutputs("", "", 0)),
 		"gate":          keysOf(gateOutputs(true, "", "", "", nil)),
+		"facts":         keysOf(factsOutputs(model.Project{})),
 		"item_comment":  keysOf(commentOutputs("")),
 		"item_create":   keysOf(createOutputs("", true)),
 		"item_status":   keysOf(statusOutputs("", "")),

@@ -146,7 +146,7 @@ func (s *script) batchCall(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 	)
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"prs": &prs, baseKeyword: &set.Base, "repo": &set.Repo, holdKeyword: &set.Hold, ownKeyword: &own, "forbid_text": &forbid, "gate_run": &gateRun,
+		"prs": &prs, baseKeyword: &set.Base, repoKeyword: &set.Repo, holdKeyword: &set.Hold, ownKeyword: &own, "forbid_text": &forbid, "gate_run": &gateRun,
 		"integration": &call.integration, nameKeyword: &call.name,
 	})
 	if err != nil {

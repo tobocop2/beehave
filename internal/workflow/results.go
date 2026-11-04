@@ -14,6 +14,7 @@ import (
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.
 const (
 	commandName = "command"
+	factsName   = "facts"
 	gateName    = "gate"
 	writeName   = "write"
 
@@ -54,8 +55,17 @@ func resultFields() map[string][]string {
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
 	}
 	maps.Copy(fields, trackerResultFields())
+	maps.Copy(fields, factsResultFields())
 
 	return fields
+}
+
+// factsResultFields holds the fields of the struct that facts returns.
+func factsResultFields() map[string][]string {
+	return map[string][]string{factsName: {
+		"repo", "source", "forge", "tracker", "base_branch", "gate", "build_host", "people", "epics", "gate_files", "conventions",
+		"brief_rules", "stacked_rules", "limits", "traps", "token_rules",
+	}}
 }
 
 // trackerResultFields holds the fields of the builtins that write the tracker or the pull request.

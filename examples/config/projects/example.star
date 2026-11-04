@@ -21,6 +21,16 @@ project(
     # gate_network = ["proxy.golang.org"],  # optional; domains that the gate command can reach when the project has `sandbox = "on"` and the gate runs on this machine. The default is no network.
     # gate_allow_write = ["~/go/pkg"],      # optional; extra paths that the gate command can write. Relative paths start at the work folder.
     # sandbox_enforcer = "auto",            # optional; "auto" (the default) picks the best enforcer that can run here. "landlock" names one (Linux 6.7 or later).
+    # The facts below are optional. The `facts()` value of a workflow file holds them with the keys above (repo, source, forge, tracker, base_branch, gate, build_host), and the remediation example puts them into the prompt of each agent. An argument that the file leaves out is empty.
+    # people = {"owner": "your-login", "third_party_idle_hours": "24"},  # a role to a login. The entry third_party_idle_hours is text, not a number: the idle hours after which a pull request of a third party counts as stale
+    # epics = {"bugs": "proj-1"},                  # a queue name to its epic
+    # gate_files = [".github/workflows/ci.yml"],   # the workflow files that the list of gate commands comes from
+    # conventions = ["AGENTS.md"],                 # the files to review against
+    # brief_rules = ["Name the tempting wrong fix"],     # rules for the brief of an agent
+    # stacked_rules = ["Merge the base pull request first"],  # rules for a pull request that stacks on another
+    # limits = ["Never run rm on a glob"],         # hard limits, commands never run and real user data
+    # traps = ["The build cache hides a stale tree"],    # measured traps and ownership rules
+    # token_rules = ["Read a log by its summary lines"],  # token discipline, the dashboard, cross-repository steps and release steps
     build_host = "local",   # "local", or the name of a SkyPilot cluster (not a Slurm partition)
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
