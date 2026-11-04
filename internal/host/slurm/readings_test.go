@@ -4,13 +4,17 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/jobwait"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
@@ -74,31 +78,28 @@ func TestReadings_ReportsEachCommandThatFails(t *testing.T) {
 
 		_, err := h.Readings(t.Context())
 
-		require.ErrorIs(t, err, ErrCommand, failing)
+		require.ErrorIs(t, err, link.ErrCommand, failing)
 	}
 }
 
 // stubSlot is a slot whose Hold or Release returns the error it is given. The zero value holds and releases nothing.
 type stubSlot struct{ hold, release error }
 
-func (s stubSlot) Hold(context.Context, Job) error    { return s.hold }
-func (s stubSlot) Release(context.Context, Job) error { return s.release }
+func (s stubSlot) Hold(context.Context, jobwait.Job) error    { return s.hold }
+func (s stubSlot) Release(context.Context, jobwait.Job) error { return s.release }
 
 var (
 	errHold    = errors.New("hold failed")
 	errRelease = errors.New("release failed")
 )
 
-func newSlotted(t *testing.T, slot Slot) (*Queue, *proctest.Scripted) {
+func newSlotted(t *testing.T, slot Slot, opts ...Option) (*Queue, *proctest.Scripted) {
 	t.Helper()
 
 	ssh := &proctest.Scripted{}
-	h := New("lane-host", config(), ssh, slot)
+	opts = append([]Option{WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}), WithNonce(fixedNonce)}, opts...)
 
-	h.Poll = 1
-	h.Nonce = func() string { return "n" }
-
-	return h, ssh
+	return New(link.New("lane-host", ssh), config(), slot, opts...), ssh
 }
 
 func TestSubmit_CancelsTheSlurmJobWhenTheSlotCannotBeHeld(t *testing.T) {
@@ -124,14 +125,13 @@ func TestSubmit_ReportsBothFailuresWhenTheSlotAndTheCancelFail(t *testing.T) {
 	_, err := h.Submit(t.Context(), model.JobSpec{Name: "gate", Command: "x"})
 
 	require.ErrorIs(t, err, errHold)
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 }
 
 func TestWait_ReturnsTheStateWhenTheSlotCannotBeReleased(t *testing.T) {
 	t.Parallel()
 
-	h, ssh := newSlotted(t, stubSlot{release: errRelease})
-	h.Bank = func(context.Context) error { return nil }
+	h, ssh := newSlotted(t, stubSlot{release: errRelease}, WithBank(noBank))
 	ssh.Plan("COMPLETED\n", "squeue")
 
 	state, err := h.Wait(deadline(t), "5-n")
@@ -143,8 +143,7 @@ func TestWait_ReturnsTheStateWhenTheSlotCannotBeReleased(t *testing.T) {
 func TestWait_ReturnsTheStateTogetherWithTheBankError(t *testing.T) {
 	t.Parallel()
 
-	h, ssh := newSlotted(t, stubSlot{release: errRelease})
-	h.Bank = func(context.Context) error { return host.ErrUnbanked }
+	h, ssh := newSlotted(t, stubSlot{release: errRelease}, WithBank(func(context.Context) error { return host.ErrUnbanked }))
 	ssh.Plan("COMPLETED\n", "squeue")
 
 	state, err := h.Wait(deadline(t), "5-n")
@@ -157,8 +156,7 @@ func TestWait_ReturnsTheStateTogetherWithTheBankError(t *testing.T) {
 func TestWait_ABankedHostWithNoRepositoryHasNothingToBank(t *testing.T) {
 	t.Parallel()
 
-	h, ssh := newSlotted(t, stubSlot{})
-	h.Bank = func(context.Context) error { return host.ErrNoRepos }
+	h, ssh := newSlotted(t, stubSlot{}, WithBank(func(context.Context) error { return host.ErrNoRepos }))
 	ssh.Plan("COMPLETED\n", "squeue")
 
 	state, err := h.Wait(deadline(t), "5-n")
@@ -170,16 +168,13 @@ func TestWait_ABankedHostWithNoRepositoryHasNothingToBank(t *testing.T) {
 func TestWait_ReturnsTheStateWhenTheLoginFolderIsUnknownToTheDefaultBank(t *testing.T) {
 	t.Parallel()
 
-	ssh := &proctest.Scripted{}
-	h := New("lane-host", config(), ssh, stubSlot{})
-	h.Poll = 1
-
+	h, ssh := newSlotted(t, stubSlot{})
 	ssh.Plan("COMPLETED\n", "squeue")
 	ssh.PlanFail("boom", "pwd")
 
 	state, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 	assert.Equal(t, model.JobSucceeded, state)
 }
 
@@ -189,8 +184,7 @@ func TestWait_BanksTheWorkOfTheHeadNodeThroughSSHFromTheLoginFolder(t *testing.T
 	ssh := &proctest.Scripted{}
 	cfg := config()
 	cfg.PrivateRemote = "git@private.test:org/bank.git"
-	h := New("lane-host", cfg, ssh, stubSlot{})
-	h.Poll = 1
+	h := New(link.New("lane-host", ssh), cfg, stubSlot{}, WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}))
 
 	ssh.Plan("/home/lane\n", "pwd")
 	ssh.Plan("COMPLETED\n", "squeue")

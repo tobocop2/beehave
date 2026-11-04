@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/jobwait"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
@@ -20,9 +21,6 @@ import (
 
 // ErrConfig is returned by New for a cluster name or a setting that the sky command line cannot take.
 var ErrConfig = errors.New("invalid SkyPilot host setting")
-
-// errCommand is the failure of a command line, the same for sky and for the commands on the head node.
-var errCommand = slurm.ErrCommand
 
 const runLimitKey = "gcp.managed_instance_group.run_duration="
 
@@ -33,18 +31,20 @@ type Host struct {
 	cluster string
 	config  model.HostConfig
 	sky     proc.Runner
+	link    *link.Link
 	*slurm.Queue
 }
 
 // New returns a host for the cluster. sky is the sky command line. ssh is the ssh command line: the first argument of a call is a cluster name, as SkyPilot writes one ssh config entry for each cluster.
 // Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
-func New(cluster string, config model.HostConfig, sky, ssh proc.Runner) (*Host, error) {
+// A test passes options to replace the clock, the bank and the nonce of the queue.
+func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, opts ...slurm.Option) (*Host, error) {
 	if err := checkConfig(cluster, config); err != nil {
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, sky: sky}
-	h.Queue = slurm.New(cluster, config, ssh, slot{h})
+	h := &Host{cluster: cluster, config: config, sky: sky, link: link.New(cluster, ssh)}
+	h.Queue = slurm.New(h.link, config, slot{h}, opts...)
 
 	return h, nil
 }
@@ -97,7 +97,7 @@ func (h *Host) Up(ctx context.Context) error {
 		args = append(args, "-t", h.config.SkyPilot.InstanceType)
 	}
 
-	_, err := run(ctx, h.sky, "sky launch", args)
+	_, err := link.Run(ctx, h.sky, "sky launch", args)
 
 	return err
 }
@@ -114,7 +114,7 @@ func (h *Host) infra() string {
 // Status reports whether the cluster exists, whether Slurm drains its nodes, and its free disk space.
 // A cluster that is in the list but not up, and any answer that obee does not recognize, is an error.
 func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
-	out, err := run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
+	out, err := link.Run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
 	if err != nil {
 		return model.HostStatus{}, err
 	}
@@ -133,7 +133,7 @@ func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 
 // Down deletes the cluster. A caller stops a host with host.Teardown, which banks the work first.
 func (h *Host) Down(ctx context.Context) error {
-	_, err := run(ctx, h.sky, "sky down", []string{"down", "-y", h.cluster})
+	_, err := link.Run(ctx, h.sky, "sky down", []string{"down", "-y", h.cluster})
 
 	return err
 }
@@ -141,7 +141,7 @@ func (h *Host) Down(ctx context.Context) error {
 // Teardown banks the work of the head node to `host.private_remote` and then deletes the cluster. It is host.Teardown with git and find on the head node.
 // A head node with unbanked work, or one whose work cannot be read, stays up, and the error says why.
 func (h *Host) Teardown(ctx context.Context) error {
-	return host.Teardown(ctx, h, h.Runner("git"), h.Runner("find"), h.config.PrivateRemote)
+	return host.Teardown(ctx, h, h.link.Runner("git"), h.link.Runner("find"), h.config.PrivateRemote)
 }
 
 // slot is the part of SkyPilot that the Slurm queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
@@ -149,36 +149,27 @@ func (h *Host) Teardown(ctx context.Context) error {
 type slot struct{ h *Host }
 
 // Hold starts the SkyPilot job that keeps the cluster busy.
-func (s slot) Hold(ctx context.Context, job slurm.Job) error {
-	_, err := run(ctx, s.h.sky, "sky exec", []string{"exec", s.h.cluster, "-d", slotCommand(s.h.config.MaxRun, s.markerName(job))})
+func (s slot) Hold(ctx context.Context, job jobwait.Job) error {
+	_, err := link.Run(ctx, s.h.sky, "sky exec", []string{"exec", s.h.cluster, "-d", slotCommand(s.h.config.MaxRun, s.markerName(job))})
 
 	return err
 }
 
 // Release writes the marker that ends the slot job.
-func (s slot) Release(ctx context.Context, job slurm.Job) error {
+func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 	marker := s.markerName(job)
-	_, err := s.h.Remote(ctx, "touch", "touch", marker)
+	_, err := s.h.link.Remote(ctx, "touch", "touch", marker)
 
 	return err
 }
 
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
 // so a job id that Slurm uses again never matches the marker of an earlier job.
-func (s slot) markerName(job slurm.Job) string {
+func (s slot) markerName(job jobwait.Job) string {
 	return ".obee-banked-" + s.h.cluster + "-" + job.String()
 }
 
 // slotCommand is the command of the SkyPilot job that keeps the cluster busy until the marker exists.
 func slotCommand(maxRun time.Duration, marker string) string {
 	return fmt.Sprintf("cd ~ && timeout %d sh -c 'until test -e %s; do sleep 5; done'", int64(maxRun/time.Second), marker)
-}
-
-func run(ctx context.Context, runner proc.Runner, name string, args []string) (string, error) {
-	result := runner.Run(ctx, args)
-	if result.ExitCode != 0 {
-		return "", fmt.Errorf("%w: %s: exit %d: %s", errCommand, name, result.ExitCode, strings.TrimSpace(result.Stderr))
-	}
-
-	return result.Stdout, nil
 }

@@ -9,8 +9,11 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/jobwait"
+	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 const (
@@ -84,13 +87,15 @@ func newTestHost(t *testing.T, mode hosttest.Mode) host.Host {
 	f := newFakeHost(mode)
 	config := model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 24 * time.Hour}
 
-	h, err := New(fakeCluster, config, f.sky(), f.SSH())
+	h, err := New(fakeCluster, config, f.sky(), f.SSH(), fastWaits()...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
-
 	return h
+}
+
+// fastWaits are the options of a test host whose polls are one millisecond apart and whose bank has nothing to do.
+func fastWaits() []slurm.Option {
+	return []slurm.Option{slurm.WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), slurm.WithBank(func(context.Context) error { return nil })}
 }

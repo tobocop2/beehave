@@ -10,7 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/jobwait"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
@@ -31,18 +34,20 @@ func config() model.HostConfig {
 	return model.HostConfig{IdleMinutes: 45, MaxRun: 12 * time.Hour}
 }
 
-func newScripted(t *testing.T) (*Queue, *proctest.Scripted) {
+// newScripted returns a queue over a scripted ssh runner, with a real clock of 1 ms polls and a bank that has nothing to do.
+// A later option replaces an earlier one.
+func newScripted(t *testing.T, opts ...Option) (*Queue, *proctest.Scripted) {
 	t.Helper()
 
 	ssh := &proctest.Scripted{}
-	h := New("lane-host", config(), ssh, stubSlot{})
+	opts = append([]Option{WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), WithBank(noBank), WithNonce(fixedNonce)}, opts...)
 
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
-	h.Nonce = func() string { return "n" }
-
-	return h, ssh
+	return New(link.New("lane-host", ssh), config(), stubSlot{}, opts...), ssh
 }
+
+func noBank(context.Context) error { return nil }
+
+func fixedNonce() string { return "n" }
 
 func TestWait_RefusesTwoStatesFromSqueueWithoutAskingSacct(t *testing.T) {
 	t.Parallel()
@@ -76,18 +81,16 @@ func TestWait_RefusesAnUnknownStateInsteadOfPollingOnIt(t *testing.T) {
 func TestWait_AnSSHFailureIsNotAnOrdinaryFailure(t *testing.T) {
 	t.Parallel()
 
-	h, ssh := newScripted(t)
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
-	h.Now, h.Sleep = clock.read, clock.sleep
 	// The fake clock moves one poll per pause, and the wait ends after lostAfter on that clock.
 	// A 1 ms poll makes 300 000 reads, which is more than the 5 s deadline on a busy host. A 10 s poll makes 30.
-	h.Poll = 10 * time.Second
+	h, ssh := newScripted(t, WithClock(jobwait.Clock{Poll: clockPoll, Now: clock.read, Sleep: clock.sleep}))
 	ssh.PlanResult(model.CommandResult{ExitCode: sshFailed, Stderr: "no route"}, "squeue")
 	ssh.Plan("COMPLETED\n", "sacct")
 
 	state, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, errLink)
+	require.ErrorIs(t, err, link.ErrDropped)
 	require.ErrorIs(t, err, host.ErrLost)
 	require.ErrorContains(t, err, "ssh to lane-host: no route")
 	assert.Equal(t, model.JobLost, state)
@@ -143,7 +146,7 @@ func TestSubmit_QuotesTheCommandAndRefusesAnAnswerItDoesNotRecognise(t *testing.
 	ssh.PlanFail("boom", "sbatch")
 
 	_, err = h.Submit(context.Background(), model.JobSpec{Name: "g", Command: "x"})
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 }
 
 func TestWait_ReadsTheStateFromSlurmAndMapsEachName(t *testing.T) {
@@ -348,5 +351,61 @@ func TestWorkRoot_RefusesAnythingButOneAbsolutePath(t *testing.T) {
 
 	_, err := h.WorkRoot(context.Background())
 
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
+}
+
+func TestCancel_SignalsTheJobAndWaitsForItsFinalState(t *testing.T) {
+	t.Parallel()
+
+	h, ssh := newScripted(t)
+	ssh.Plan("", "scancel")
+	ssh.Plan("COMPLETED\n", "squeue")
+
+	require.NoError(t, h.Cancel(deadline(t), "5-n"))
+	assert.True(t, ssh.Called("lane-host", "scancel", "5"))
+}
+
+func TestCancel_RefusesAnIDThatSubmitDidNotReturn(t *testing.T) {
+	t.Parallel()
+
+	h, ssh := newScripted(t)
+
+	require.ErrorIs(t, h.Cancel(context.Background(), "5;rm"), errBadJobID)
+	assert.Empty(t, ssh.Calls)
+}
+
+func TestScheduler_ALogWithNoSizeReadsAsMinusOne(t *testing.T) {
+	t.Parallel()
+
+	answers := map[string]model.CommandResult{
+		"a failed stat":    {ExitCode: 1, Stderr: "stat: cannot stat"},
+		"an empty answer":  {Stdout: "\n"},
+		"a garbled answer": {Stdout: "many bytes\n"},
+	}
+
+	for name, answer := range answers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ssh := &proctest.Scripted{}
+			ssh.Plan("RUNNING\n", "squeue")
+			ssh.PlanResult(answer, "stat")
+
+			state, size, err := scheduler{link.New("lane-host", ssh)}.Observe(t.Context(), jobwait.Job{ID: "7", Nonce: "n"})
+
+			require.NoError(t, err)
+			assert.Equal(t, model.JobRunning, state)
+			assert.Equal(t, int64(-1), size)
+		})
+	}
+}
+
+func TestScheduler_AdviceNamesTheJobAndTheCancel(t *testing.T) {
+	t.Parallel()
+
+	job := jobwait.Job{ID: "7", Nonce: "n"}
+
+	assert.Contains(t, scheduler{}.LostAdvice(job), "job 7-n may still run")
+	assert.Contains(t, scheduler{}.LostAdvice(job), "Run it again only after the cancel")
+	assert.Contains(t, scheduler{}.StuckAdvice(job), "`scancel 7`")
 }

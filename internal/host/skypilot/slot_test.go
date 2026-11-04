@@ -11,6 +11,8 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/link"
+	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
@@ -59,11 +61,8 @@ func newFakeSlots(t *testing.T) (*Host, *fakeHost) {
 
 	f := newFakeHost(hosttest.Working)
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH())
+	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
-
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
 
 	require.NoError(t, h.Up(t.Context()))
 
@@ -89,11 +88,8 @@ func TestCancel_EndsTheSlotJob(t *testing.T) {
 func newSecondHandle(t *testing.T, f *fakeHost) *Host {
 	t.Helper()
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH())
+	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
-
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
 
 	return h
 }
@@ -162,7 +158,7 @@ func TestSubmit_CancelsTheSlurmJobWhenTheSlotCannotBeHeld(t *testing.T) {
 
 	_, err := h.Submit(context.Background(), model.JobSpec{Name: "gate", Command: "x"})
 
-	require.ErrorIs(t, err, errCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 	assert.True(t, ssh.Called("scancel", "77"), "a job with no slot is not left to run")
 }
 
@@ -197,8 +193,7 @@ func TestWait_MarksTheJobBankedAfterTheBank(t *testing.T) {
 func TestWait_WritesNoMarkerWhenTheBankFails(t *testing.T) {
 	t.Parallel()
 
-	h, _, ssh := newScripted(t)
-	h.Bank = func(context.Context) error { return errBank }
+	h, _, ssh := newScripted(t, slurm.WithBank(func(context.Context) error { return errBank }))
 	ssh.Plan("COMPLETED\n", "squeue")
 	ssh.Plan("", "touch")
 
@@ -217,7 +212,7 @@ func TestWait_ReturnsTheStateWhenTheMarkerCannotBeWritten(t *testing.T) {
 
 	got, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, errCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 	assert.Equal(t, model.JobFailed, got)
 }
 
@@ -262,7 +257,7 @@ func TestWait_ReturnsTheStateWhenTheLoginFolderIsUnknown(t *testing.T) {
 
 	got, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, errCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 	assert.Equal(t, model.JobSucceeded, got)
 	assert.False(t, ssh.Called("find"), "nothing is scanned from a root that is unknown")
 	assert.False(t, ssh.Called("touch"))

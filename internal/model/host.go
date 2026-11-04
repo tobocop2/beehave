@@ -105,12 +105,6 @@ type HostStatus struct {
 // handle of the same host, also after a restart, so an adapter keeps in the id all it needs to find the job again.
 type JobID string
 
-// LostAdvice is what a person does about a job whose wait ended as lost. The job may still run, so a second run needs a cancel of the first one.
-// The gate, the command step and the host wait all use this one text.
-func (id JobID) LostAdvice() string {
-	return fmt.Sprintf("job %s may still run on the host. Check it with `squeue` on the host and cancel it there with `scancel` and the job number (the digits before the dash in the job id). Run it again only after the cancel", id)
-}
-
 // JobSpec is one job to run on a build host.
 type JobSpec struct {
 	Name    string
