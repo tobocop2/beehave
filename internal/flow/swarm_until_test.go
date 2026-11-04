@@ -100,8 +100,6 @@ func TestGatherUntil_TheDefaultAndAllWaitForEveryRun(t *testing.T) {
 func interruptedAtTheQuestion(t *testing.T, h *harness, file string, release chan struct{}) {
 	t.Helper()
 
-	h.migrated(t)
-
 	stopCtx, stop := context.WithCancel(t.Context())
 	engine, err := NewEngine(stopCtx, h.opts, h.deps())
 	require.NoError(t, err)

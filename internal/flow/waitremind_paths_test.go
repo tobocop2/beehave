@@ -54,8 +54,6 @@ func TestWaitRemind_ADeadlineSoFarAheadThatItsReminderCannotBeShownFailsTheWait(
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
-
 	deps := harness.deps()
 	deps.Clock.Reading = func() time.Time { return time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC) }
 

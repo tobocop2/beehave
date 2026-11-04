@@ -62,8 +62,6 @@ func TestNow_AReplayKeepsTheFirstReading(t *testing.T) {
 	h := newHarness(t)
 	file := writeFlow(t, nowFlow)
 
-	h.migrated(t)
-
 	stopCtx, stop := context.WithCancel(t.Context())
 	first, err := NewEngine(stopCtx, h.opts, h.deps())
 	require.NoError(t, err)

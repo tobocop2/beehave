@@ -174,8 +174,6 @@ func (r *agentRig) crashItemAfterThePhaseEndedArmedBy(t *testing.T, item, file s
 
 	armBy(func() { gitIn(t, r.dir, "config", "--local", "include.path", gate) })
 
-	r.h.migrated(t)
-
 	crashed, err := NewEngine(t.Context(), r.h.opts, r.h.deps())
 	require.NoError(t, err)
 

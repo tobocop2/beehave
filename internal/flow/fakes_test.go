@@ -494,8 +494,6 @@ type harness struct {
 	wall    func() time.Time
 	capWait time.Duration
 	opts    Options
-	// freshStore makes the engine and the client create the database themselves, for a test of the files that the first open makes.
-	freshStore bool
 }
 
 // defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
@@ -530,7 +528,7 @@ func newHarness(t *testing.T) *harness {
 
 	life := &fakeLifecycle{failing: map[string]bool{}}
 
-	return &harness{
+	h := &harness{
 		agents:   &fakeAgents{perLogin: map[string]int{}},
 		gate:     &fakeGate{results: []GateResult{{Passed: true}}},
 		logins:   fakeLogins{login: testLogin},
@@ -549,6 +547,9 @@ func newHarness(t *testing.T) *harness {
 			Env: map[string]string{},
 		},
 	}
+	h.migrate(t)
+
+	return h
 }
 
 func (h *harness) deps() Deps {
@@ -619,27 +620,27 @@ var migratedDatabase = sync.OnceValues(func() ([]byte, error) {
 	return os.ReadFile(filepath.Join(opts.StateDir, databaseFile))
 })
 
-// migrated gives the state folder of the harness a database that has its migrations, when the folder has none. The first open of a folder
-// without a database is tested by the tests that call NewEngine or OpenClient on their own.
-func (h *harness) migrated(t *testing.T) {
+// migrate gives the state folder of the harness a copy of the migrated database, so the engine or the client of any test over the harness opens a store that has its migrations.
+// The migrations cost more CPU than the rest of a test under the race detector. A test of the first open, which makes the folder and the database itself, calls fresh.
+func (h *harness) migrate(t *testing.T) {
 	t.Helper()
-
-	path := filepath.Join(h.opts.StateDir, databaseFile)
-	if _, err := os.Stat(path); err == nil || h.freshStore {
-		return
-	}
 
 	text, err := migratedDatabase()
 	require.NoError(t, err)
 	require.NoError(t, config.EnsureStateDir(h.opts.StateDir))
-	require.NoError(t, os.WriteFile(path, text, privateMode))
+	require.NoError(t, os.WriteFile(filepath.Join(h.opts.StateDir, databaseFile), text, privateMode))
+}
+
+// fresh removes the state folder, so the next open creates the folder and the database itself, for a test of the files that the first open makes.
+func (h *harness) fresh(t *testing.T) {
+	t.Helper()
+
+	require.NoError(t, os.RemoveAll(h.opts.StateDir))
 }
 
 // engine builds and launches an engine over the harness. The cleanup shuts it down.
 func (h *harness) engine(t *testing.T) *Engine {
 	t.Helper()
-
-	h.migrated(t)
 
 	engine, err := NewEngine(t.Context(), h.opts, h.deps())
 	require.NoError(t, err)
@@ -652,8 +653,6 @@ func (h *harness) engine(t *testing.T) *Engine {
 // client opens a client over the harness state folder with the given build version.
 func (h *harness) client(t *testing.T, version string) *Client {
 	t.Helper()
-
-	h.migrated(t)
 
 	opts := h.opts
 	opts.Version = version

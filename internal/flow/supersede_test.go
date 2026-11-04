@@ -139,8 +139,6 @@ func supersedeEngineWith(t *testing.T, gated supersedeGate, head string, wrap fu
 		deps.Forge = wrap(h.forge)
 	}
 
-	h.migrated(t)
-
 	engine, err := NewEngine(t.Context(), h.opts, deps)
 	require.NoError(t, err)
 	dbos.RegisterWorkflow(engine.ctx, gateQueuer{engine}.queue, dbos.WithWorkflowName("test-queue-gate"))

@@ -321,7 +321,6 @@ func TestClient_StepsOfAStoreThatIsShutDownRefusesTheRead(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 
 	client, err := OpenClient(t.Context(), harness.opts, ReleaseDeps{Lifecycle: harness.life, Trees: harness.trees, Clock: clock{Release: time.Second}})
 	require.NoError(t, err)

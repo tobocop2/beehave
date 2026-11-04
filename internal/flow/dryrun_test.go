@@ -274,7 +274,6 @@ func TestPrintDrySteps_FailsWhenTheStoreCannotOpenAndWhenTheClientIsClosed(t *te
 	require.Error(t, err)
 
 	h := newHarness(t)
-	h.migrated(t)
 
 	client, err := OpenClient(t.Context(), h.opts, ReleaseDeps{})
 	require.NoError(t, err)
