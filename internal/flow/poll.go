@@ -55,7 +55,7 @@ type PollProject struct {
 type PollOutput struct {
 	At       time.Time     `json:"at"`
 	Projects []PollProject `json:"projects"`
-	Failure  string        `json:"-"`
+	Failure  string        `json:"failure,omitempty"`
 }
 
 // poll is the scheduled workflow of the review poll. It records the project list in its first step, then reads each project in one recorded step. It writes nothing to a forge.

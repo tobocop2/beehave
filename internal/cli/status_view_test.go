@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/cli"
 	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/obee/internal/review"
 )
 
 // statusNow is the clock that the rig gives the status view.
@@ -111,31 +112,14 @@ func TestStatus_TheListWithJSONPrintsEveryRunWithItsWaitAndItsResult(t *testing.
 	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
 	require.Equal(t, 0, code, stderr)
 
-	var got []struct {
-		ID       string `json:"id"`
-		State    string `json:"state"`
-		Item     string `json:"item"`
-		Project  string `json:"project"`
-		Question string `json:"question"`
-		Asked    struct {
-			From    []string `json:"from"`
-			Quorum  int      `json:"quorum"`
-			Choices []string `json:"choices"`
-			Heard   []string `json:"heard"`
-		} `json:"asked"`
-		Deadline string   `json:"deadline"`
-		Left     *float64 `json:"time_left_seconds"`
-		Merge    string   `json:"merge"`
-		SentBack string   `json:"sent_back"`
-		Stopped  *struct {
-			Step   string `json:"step"`
-			RC     int    `json:"rc"`
-			Output string `json:"output"`
-		} `json:"stopped"`
+	var list struct {
+		Runs []runFields `json:"runs"`
 	}
 
-	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	require.Len(t, got, 3)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &list), stdout)
+	require.Len(t, list.Runs, 3)
+
+	got := list.Runs
 
 	assert.Equal(t, "item-12-r1", got[0].ID)
 	assert.Equal(t, "running", got[0].State)
@@ -158,6 +142,30 @@ func TestStatus_TheListWithJSONPrintsEveryRunWithItsWaitAndItsResult(t *testing.
 
 	assert.Equal(t, "merged", got[2].Merge)
 	assert.Equal(t, "redo", got[2].SentBack)
+}
+
+// runFields is the part of one run of the JSON list that the test reads.
+type runFields struct {
+	ID       string `json:"id"`
+	State    string `json:"state"`
+	Item     string `json:"item"`
+	Project  string `json:"project"`
+	Question string `json:"question"`
+	Asked    struct {
+		From    []string `json:"from"`
+		Quorum  int      `json:"quorum"`
+		Choices []string `json:"choices"`
+		Heard   []string `json:"heard"`
+	} `json:"asked"`
+	Deadline string   `json:"deadline"`
+	Left     *float64 `json:"time_left_seconds"`
+	Merge    string   `json:"merge"`
+	SentBack string   `json:"sent_back"`
+	Stopped  *struct {
+		Step   string `json:"step"`
+		RC     int    `json:"rc"`
+		Output string `json:"output"`
+	} `json:"stopped"`
 }
 
 func TestStatus_ARunWithAnItemAndNoProjectNamesTheItemAlone(t *testing.T) {
@@ -190,7 +198,7 @@ func TestStatus_ReadsTheSystemClockWhenTheBuildSetsNone(t *testing.T) {
 	assert.Regexp(t, `, 1d2[23]h left`, stdout.String())
 }
 
-func TestStatus_TheListWithJSONIsAnEmptyArrayForNoRuns(t *testing.T) {
+func TestStatus_TheListWithJSONHasAnEmptyRunListAndNoSectionForNoRuns(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
@@ -198,7 +206,129 @@ func TestStatus_TheListWithJSONIsAnEmptyArrayForNoRuns(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
 	require.Equal(t, 0, code, stderr)
 
-	assert.JSONEq(t, "[]", stdout)
+	assert.JSONEq(t, `{"runs":[]}`, stdout)
+}
+
+func TestStatus_TheScheduleShowsItsLastTickAndWhetherItFiresInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	last := statusNow.Add(-20 * time.Minute)
+
+	rig := newRig(t)
+	rig.steering.schedules = []flow.ScheduleInfo{
+		{Name: "review-poll", Workflow: "review_poll", Schedule: "@every 1h0m0s", LastTick: &last, Firing: true},
+		{Name: "fresh", Workflow: "w", Schedule: "@every 5m"},
+		{Name: "held", Workflow: "w", Schedule: "@every 5m", Paused: true},
+	}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, "no runs\n\nschedules\n"+
+		"review-poll\t@every 1h0m0s\tlast tick 2026-11-03T10:10:00Z\tfiring\n"+
+		"fresh\t@every 5m\tno tick yet\tnot firing, no engine runs\n"+
+		"held\t@every 5m\tno tick yet\tpaused\n", stdout)
+
+	code, stdout, stderr = rig.execute(t.Context(), "status", "--json")
+	require.Equal(t, 0, code, stderr)
+
+	assert.JSONEq(t, `{"runs":[],"schedules":[`+
+		`{"name":"review-poll","workflow":"review_poll","schedule":"@every 1h0m0s","firing":true,"last_tick":"2026-11-03T10:10:00Z"},`+
+		`{"name":"fresh","workflow":"w","schedule":"@every 5m","firing":false},`+
+		`{"name":"held","workflow":"w","schedule":"@every 5m","paused":true,"firing":false}]}`, stdout)
+}
+
+func TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.schedulesErr = errFake
+
+	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+		code, _, stderr := rig.execute(t.Context(), args...)
+
+		assert.Equal(t, 1, code, args)
+		assert.Contains(t, stderr, "fake failure", args)
+	}
+}
+
+func TestStatus_TheReviewPollSectionIsInTheJSONListAsInTheText(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.poll = &flow.PollOutput{At: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Projects: []flow.PollProject{
+		{Project: "alpha", Rows: []review.Row{{Kind: review.KindCIRed, Number: 7, Failed: 2}}},
+		{Project: "beta", Unread: "could not read beta"},
+		{Project: "gamma", NoForge: true},
+	}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
+	require.Equal(t, 0, code, stderr)
+
+	var list struct {
+		Poll struct {
+			At       string `json:"at"`
+			Projects []struct {
+				Project string `json:"project"`
+				Unread  string `json:"unread"`
+				NoForge bool   `json:"no_forge"`
+				Rows    []struct {
+					Kind   string `json:"kind"`
+					Number int    `json:"number"`
+				} `json:"rows"`
+			} `json:"projects"`
+		} `json:"poll"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(stdout), &list), stdout)
+	assert.Equal(t, "2026-10-31T09:00:00Z", list.Poll.At)
+	require.Len(t, list.Poll.Projects, 3)
+	require.Len(t, list.Poll.Projects[0].Rows, 1)
+	assert.Equal(t, 7, list.Poll.Projects[0].Rows[0].Number)
+	assert.Equal(t, "could not read beta", list.Poll.Projects[1].Unread)
+	assert.True(t, list.Poll.Projects[2].NoForge)
+}
+
+func TestStatus_AFailedReviewPollIsInTheJSONListWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.poll = &flow.PollOutput{At: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC), Projects: []flow.PollProject{}, Failure: "the store is locked"}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
+	require.Equal(t, 0, code, stderr)
+
+	assert.JSONEq(t, `{"runs":[],"poll":{"at":"2026-10-31T09:00:00Z","projects":[],"failure":"the store is locked"}}`, stdout)
+}
+
+func TestStatus_WhyThePollIsNotScheduledIsInTheJSONList(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.notSched = "the store\nis locked"
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
+	require.Equal(t, 0, code, stderr)
+
+	assert.JSONEq(t, `{"runs":[],"poll_not_scheduled":"the store\nis locked"}`, stdout)
+}
+
+func TestStatus_AReviewPollThatCannotBeReadFailsTheJSONList(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.pollErr = errFake
+
+	code, _, stderr := rig.execute(t.Context(), "status", "--json")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
+
+	rig.steering.pollErr, rig.steering.notSchedE = nil, errFake
+	code, _, stderr = rig.execute(t.Context(), "status", "--json")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "fake failure")
 }
 
 func TestStatus_TheListWithJSONReportsAReadError(t *testing.T) {
@@ -222,10 +352,14 @@ func TestStatus_TheListWithJSONKeepsFalseAndZeroApartFromAbsent(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status", "--json")
 	require.Equal(t, 0, code, stderr)
 
-	var got []map[string]any
+	var list struct {
+		Runs []map[string]any `json:"runs"`
+	}
 
-	require.NoError(t, json.Unmarshal([]byte(stdout), &got), stdout)
-	require.Len(t, got, 1)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &list), stdout)
+	require.Len(t, list.Runs, 1)
+
+	got := list.Runs
 
 	for key, want := range map[string]any{"stranded": false, "older_steps": false, "spent_usd": 0.0, "cap_usd": 0.0} {
 		assert.Equal(t, want, got[0][key], key)
