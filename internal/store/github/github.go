@@ -91,14 +91,10 @@ func (i ghIssue) identity() (string, string, error) {
 }
 
 func (i ghIssue) item(number, title string) model.Item {
-	severity, hold := model.SeverityUnknown, false
-	found := false
+	severity, hold := severityOf(i.Labels), false
 
 	for _, label := range i.Labels {
 		hold = hold || label.Name == holdLabel
-		if parsed, err := model.ParseSeverity(label.Name); err == nil && !found {
-			severity, found = parsed, true
-		}
 	}
 
 	logins := make([]string, len(i.Assignees))
@@ -109,18 +105,30 @@ func (i ghIssue) item(number, title string) model.Item {
 	return model.Item{ID: number, Severity: severity, Hold: hold, Assignee: strings.Join(logins, ","), Title: title}
 }
 
+// severityOf gives the first label that names a severity, or P? when none does.
+func severityOf(labels []ghLabel) model.Severity {
+	for _, label := range labels {
+		if parsed, err := model.ParseSeverity(label.Name); err == nil {
+			return parsed
+		}
+	}
+
+	return model.SeverityUnknown
+}
+
 type ghView struct {
-	Number int     `json:"number"`
-	Title  *string `json:"title"`
-	Body   *string `json:"body"`
+	Number int       `json:"number"`
+	Title  *string   `json:"title"`
+	Body   *string   `json:"body"`
+	Labels []ghLabel `json:"labels"`
 }
 
 // ItemFields declares the fields that Item returns.
 func (*Store) ItemFields() []string { return model.ItemFields() }
 
-// Item returns the number, title and body of an issue. An unreadable issue is a refusal with code 2.
+// Item returns the number, title, body and severity of an issue. An unreadable issue is a refusal with code 2.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
-	issue, err := read[ghView](ctx, s, item, "number,title,body")
+	issue, err := read[ghView](ctx, s, item, "number,title,body,labels")
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +138,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 		return nil, err
 	}
 
-	return map[string]string{"id": number, "title": title, "body": model.Deref(issue.Body)}, nil
+	return map[string]string{"id": number, "title": title, "body": model.Deref(issue.Body), "severity": string(severityOf(issue.Labels))}, nil
 }
 
 // openPage reads one page of open issues. A full page may be cut off, so it is a refusal, in every read.

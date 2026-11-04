@@ -29,7 +29,7 @@ func resultShape(t *testing.T) []string {
 // A change to a builtin or to a result field is a change to what a run records: bump stepsVersion and add the new shape under the new version.
 // The old entry goes away with the bump, because a build refuses the runs of an older version.
 var goldenShapes = map[string][]string{
-	"star23": {
+	"star24": {
 		"agent: cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,stop,text,transcript,violations",
 		"batch_merge: deferred,findings,gates,merged,note,rejected,tip,tree,unproven",
 		"board_sync: number,status",
@@ -68,7 +68,7 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // goldenKinds holds the table of step kinds for each steps version, as the engine records them. The test needs no workflow to call a builtin:
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
-	"star23": {
+	"star24": {
 		"agent", "board_sync", "command", "earlier_calls", "env", "facts", "gate", "gather", "host_teardown", "host_up",
 		"item_assign", "item_comment", "item_create", "item_status", "login", "merge", "now",
 		"pr_assign", "pr_comment", "pr_open", "preflight", "queue", "scope", "scope-check", "spawn", "wait", "write",

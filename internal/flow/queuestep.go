@@ -212,7 +212,7 @@ func queuedValue(got queued) *starlarkstruct.Struct {
 
 	for i, row := range got.Rows {
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-			itemName: starlark.String(row.Item), "state": starlark.String(row.State), "severity": starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
+			itemName: starlark.String(row.Item), "state": starlark.String(row.State), severityField: starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
 			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
 		})
 	}

@@ -15,18 +15,18 @@ func TestBeadsItemFields_DeclareIDTitleAndBody(t *testing.T) {
 
 	bd, _ := newBeads(t)
 
-	assert.Equal(t, []string{"id", "title", "body"}, bd.ItemFields())
+	assert.Equal(t, []string{"id", "title", "body", "severity"}, bd.ItemFields())
 }
 
 func TestBeadsItem_ReadsTheDeclaredFields(t *testing.T) {
 	t.Parallel()
 
 	bd, run := newBeads(t)
-	run.Plan(`[{"id":"p-1","title":"T","description":"Body"}]`, "show")
+	run.Plan(`[{"id":"p-1","title":"T","description":"Body","priority":0}]`, "show")
 
 	got, err := bd.Item(context.Background(), "p-1")
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"id": "p-1", "title": "T", "body": "Body"}, got)
+	assert.Equal(t, map[string]string{"id": "p-1", "title": "T", "body": "Body", "severity": "P0"}, got)
 	assert.Equal(t, []string{"show", "p-1", "--json"}, run.Calls[0])
 }
 

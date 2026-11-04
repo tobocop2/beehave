@@ -12,6 +12,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -29,6 +30,8 @@ type script struct {
 	ctx   dbos.Context
 	in    ItemInput
 	login string
+	// severity is the severity that the tracker gave the item, from the recorded fields of the run. It sets the place of the gates and the agent steps of the run in their queues.
+	severity model.Severity
 
 	// sources are the pinned files of the run. spawn asks them whether its entry is a function of the workflow file.
 	sources *workflow.Sources

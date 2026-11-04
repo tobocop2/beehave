@@ -21,7 +21,7 @@ import (
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star23"
+const stepsVersion = "star24"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
@@ -40,7 +40,7 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login string) (ItemResu
 		return ItemResult{}, fmt.Errorf("read the fields of item %s: %w", in.Item, err)
 	}
 
-	return e.playScript(&script{e: e, ctx: ctx, in: in, login: login, counts: map[string]int{}}, sources, fields)
+	return e.playScript(&script{e: e, ctx: ctx, in: in, login: login, severity: severityOfItem(fields), counts: map[string]int{}}, sources, fields)
 }
 
 // playScript runs main, then the finish of the workflow file, and returns what the item came to.

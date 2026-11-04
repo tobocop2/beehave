@@ -482,7 +482,7 @@ func (dryCommands) Run(context.Context, CommandRequest) (CommandOutput, error) {
 type dryItems struct{ item string }
 
 func (i dryItems) Fields(context.Context, string, string) (map[string]string, error) {
-	return map[string]string{"id": i.item, titleKeyword: "a dry-run item", bodyKeyword: "P0\tno tracker was read\tno body"}, nil
+	return map[string]string{"id": i.item, titleKeyword: "a dry-run item", bodyKeyword: "P0\tno tracker was read\tno body", severityField: string(model.SeverityUnknown)}, nil
 }
 
 // dryWriter accepts every write to the tracker and keeps none.

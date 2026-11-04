@@ -12,7 +12,7 @@ import (
 func TestItemFields_AreIDTitleAndBody(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"id", "title", "body"}, model.ItemFields())
+	assert.Equal(t, []string{"id", "title", "body", "severity"}, model.ItemFields())
 }
 
 func TestParseTracker(t *testing.T) {

@@ -19,9 +19,9 @@ const (
 // ErrUnknownTracker is returned when text names no tracker adapter.
 var ErrUnknownTracker = errors.New("unknown tracker")
 
-// ItemFields lists the fields that every tracker declares for an item: id, title and body. Each tracker returns this list from its ItemFields,
-// and the check of a workflow file reads it to refuse an item field that no tracker has.
-func ItemFields() []string { return []string{"id", "title", "body"} }
+// ItemFields lists the fields that every tracker declares for an item: id, title, body and severity. Each tracker returns this list from its ItemFields,
+// and the check of a workflow file reads it to refuse an item field that no tracker has. The severity is P0 to P3, or P? when the tracker keeps none.
+func ItemFields() []string { return []string{"id", "title", "body", "severity"} }
 
 // Trackers lists every tracker adapter.
 func Trackers() []TrackerName {

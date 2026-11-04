@@ -150,7 +150,7 @@ func (s *script) gate(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 
 	// The gate runs as a child workflow on the exclusive queue, so no merge of the repository starts while it runs.
 	// The call records its outputs as its own step, so a replay reads them and runs no gate again.
-	ran, err := s.e.queueExclusive(s.ctx, ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request})
+	ran, err := s.e.queueExclusive(s.ctx, ExclusiveInput{Kind: kindGate, Project: request.Project, Item: request.Item, Head: head, Request: request, Severity: string(s.severity)})
 	if err != nil {
 		return nil, fmt.Errorf("gate %q could not run: %w", label, err)
 	}

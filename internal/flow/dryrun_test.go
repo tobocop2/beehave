@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/obee/internal/model"
 	trackerstore "github.com/tobocop2/obee/internal/store"
 )
 
@@ -629,4 +630,15 @@ func TestDryRun_WithoutSendBackTheReviewApprovesAtOnceAndNoFixRoundRuns(t *testi
 
 	assert.Equal(t, 1, countStep(names, "agent:review"), names)
 	assert.Zero(t, countStep(names, "agent:fix"), names)
+}
+
+func TestDryRun_TheDryItemCarriesEveryFieldThatAWorkflowCanRead(t *testing.T) {
+	t.Parallel()
+
+	fields, err := dryItems{item: "7"}.Fields(context.Background(), "p", "7")
+	require.NoError(t, err)
+
+	for _, name := range model.ItemFields() {
+		assert.Contains(t, fields, name)
+	}
 }
