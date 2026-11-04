@@ -10,6 +10,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -145,7 +146,7 @@ func (e *Engine) firstRenewal(ctx context.Context, id string, in ItemInput, owne
 			return fmt.Errorf("renew the claim of item %s before the first agent starts: %w", in.Item, err)
 		}
 
-		if err := pause(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
+		if err := proc.Sleep(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
 			return err
 		}
 	}

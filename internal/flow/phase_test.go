@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -19,19 +18,6 @@ type blockedHandle struct {
 
 func (blockedHandle) GetResult(...dbos.GetResultOption) (PhaseOutput, error) {
 	select {}
-}
-
-func TestPause_AStoppedEngineEndsThePauseWithACancelThatKeepsTheCause(t *testing.T) {
-	t.Parallel()
-
-	ctx, stop := context.WithCancelCause(t.Context())
-	stopped := assert.AnError
-	stop(stopped)
-
-	err := pause(ctx, time.Hour)
-
-	require.ErrorIs(t, err, context.Canceled, "the library records a stopped run, not a failed one")
-	require.ErrorIs(t, err, stopped)
 }
 
 func TestFirstRenewal_AStoppedEngineEndsTheWaitWithACancelThatKeepsTheCause(t *testing.T) {

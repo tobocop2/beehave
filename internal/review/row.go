@@ -3,6 +3,8 @@ package review
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // Kind says what a row of the poll asks for.
@@ -61,7 +63,7 @@ func (r Row) String() string {
 	case KindOwn:
 		return fmt.Sprintf(ownLineFormat, r.Kind, r.Number, r.FreshReviews, r.Unresolved, r.ChangesRequested, r.draft())
 	case KindReply:
-		return fmt.Sprintf("%-10s #%d at=%s %s", r.Kind, r.Number, r.ReplyAt, cut(r.Title, issueTitleWidth))
+		return fmt.Sprintf("%-10s #%d at=%s %s", r.Kind, r.Number, r.ReplyAt, model.FirstRunes(r.Title, issueTitleWidth))
 	case KindCIRed:
 		return fmt.Sprintf("%-10s #%d failed=%d not_started=%d", r.Kind, r.Number, r.Failed, r.NotStarted)
 	case KindCINotRun:
@@ -78,13 +80,6 @@ func (r Row) reviewLine() string {
 		suffix = " reply=" + r.ReplyAt
 	}
 
-	return fmt.Sprintf("%-10s #%d %s head=%s ours=%s@%s draft=%s upd=%s %s%s", r.Kind, r.Number, r.Author, cut(r.Head, headWidth),
-		r.Ours, cut(r.OursAt, headWidth), r.draft(), cut(r.UpdatedAt, updatedWidth), cut(r.Title, titleWidth), suffix)
-}
-
-// cut returns the first width characters of text.
-func cut(text string, width int) string {
-	runes := []rune(text)
-
-	return string(runes[:min(len(runes), width)])
+	return fmt.Sprintf("%-10s #%d %s head=%s ours=%s@%s draft=%s upd=%s %s%s", r.Kind, r.Number, r.Author, model.FirstRunes(r.Head, headWidth),
+		r.Ours, model.FirstRunes(r.OursAt, headWidth), r.draft(), model.FirstRunes(r.UpdatedAt, updatedWidth), model.FirstRunes(r.Title, titleWidth), suffix)
 }

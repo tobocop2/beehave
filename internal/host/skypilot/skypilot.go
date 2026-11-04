@@ -63,7 +63,7 @@ func New(cluster string, config model.HostConfig, sky, ssh proc.Runner) (*Host, 
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, sky: sky, ssh: ssh, poll: defaultPoll, nonce: rand.Text, now: time.Now, sleep: sleepFor}
+	h := &Host{cluster: cluster, config: config, sky: sky, ssh: ssh, poll: defaultPoll, nonce: rand.Text, now: time.Now, sleep: proc.Sleep}
 	h.bank = h.bankWork
 
 	return h, nil
@@ -453,7 +453,7 @@ func (h *Host) WorkRoot(ctx context.Context) (string, error) {
 
 	lines := nonEmptyLines(out)
 	if len(lines) != 1 || !strings.HasPrefix(lines[0], "/") {
-		return "", fmt.Errorf("%w: %q", errWorkRoot, firstLine(out))
+		return "", fmt.Errorf("%w: %q", errWorkRoot, model.FirstLine(out))
 	}
 
 	return lines[0], nil
@@ -483,19 +483,6 @@ type remoteRunner struct {
 
 func (r remoteRunner) Run(ctx context.Context, args []string) model.CommandResult {
 	return r.h.ssh.Run(ctx, r.h.sshArgs(append([]string{r.binary}, args...)...))
-}
-
-// sleepFor sleeps for d, or returns the error of the context.
-func sleepFor(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 func (h *Host) jobState(ctx context.Context, id string) (model.JobState, error) {

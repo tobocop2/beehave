@@ -6,13 +6,14 @@ import (
 	"regexp"
 	"strings"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
-	minGitMajor = 2
-	minGitMinor = 38
-	decimal     = 10
+	// minGit is the first git with merge-tree --write-tree.
+	minGit = "v2.38"
 	// exitConflict is the exit code of git merge-tree when the merge has conflicts.
 	exitConflict = 1
 	// exitNoObject and exitFatal are the exit codes of git cat-file -e for an object that is missing or not a valid name.
@@ -32,29 +33,16 @@ func CheckGit(ctx context.Context, g Git) error {
 		return err
 	}
 
-	found := versionPattern.FindStringSubmatch(text)
-	if found == nil {
+	found := versionPattern.FindString(text)
+	if found == "" {
 		return fmt.Errorf("git 2.38 or newer is needed for batch_merge; git --version printed %q. Upgrade git on the gate host", text)
 	}
 
-	major, minor := number(found[1]), number(found[2])
-
-	if major < minGitMajor || (major == minGitMajor && minor < minGitMinor) {
-		return fmt.Errorf("git 2.38 or newer is needed for batch_merge; found %s.%s. Upgrade git on the gate host", found[1], found[2])
+	if semver.Compare("v"+found, minGit) < 0 {
+		return fmt.Errorf("git 2.38 or newer is needed for batch_merge; found %s. Upgrade git on the gate host", found)
 	}
 
 	return nil
-}
-
-// number reads a run of up to six digits, which the version pattern guarantees.
-func number(digits string) int {
-	value := 0
-
-	for _, digit := range digits {
-		value = value*decimal + int(digit-'0')
-	}
-
-	return value
 }
 
 // Exec runs git in the repository with the arguments, without the binary name. proc.Runner has this method.

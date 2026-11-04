@@ -24,7 +24,7 @@ type pin struct {
 func (g Gate) readPins(ctx context.Context, dir, base, file string) ([]pin, error) {
 	data, code := g.shell(ctx, dir, "git show "+model.ShellQuote("origin/"+base+":"+file))
 	if code != 0 {
-		return nil, fmt.Errorf("the pin file %s cannot be read at origin/%s (exit code %d): %s", file, base, code, firstLine(data))
+		return nil, fmt.Errorf("the pin file %s cannot be read at origin/%s (exit code %d): %s", file, base, code, model.FirstLine(data))
 	}
 
 	pins, err := parsePins(file, data)
@@ -99,7 +99,7 @@ func versionProblem(p pin, output string, code int) string {
 	}
 
 	if !hasVersion(output, p) {
-		return fmt.Sprintf("the tool %s pins version %s, but the tool says: %s", p.tool, p.version, firstLine(output))
+		return fmt.Sprintf("the tool %s pins version %s, but the tool says: %s", p.tool, p.version, model.FirstLine(output))
 	}
 
 	return ""
@@ -120,10 +120,4 @@ func hasVersion(output string, p pin) bool {
 
 func bare(word, tool string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(word, tool), "v")
-}
-
-func firstLine(output string) string {
-	line, _, _ := strings.Cut(strings.TrimSpace(output), "\n")
-
-	return line
 }

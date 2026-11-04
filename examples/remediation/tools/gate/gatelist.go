@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/obee/examples/remediation/tools/check"
 	"github.com/tobocop2/obee/examples/remediation/tools/job"
 	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/obee/internal/model"
 
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -150,7 +151,7 @@ func (s *gateScan) errors(g *gateList, name string) []string {
 func readGateList(text, name string) *gateList {
 	list, scan := &gateList{names: map[string]bool{}, unstated: map[string]bool{}}, &gateScan{}
 
-	for _, line := range recordsOf(text) {
+	for _, line := range model.Records(text) {
 		scan.read(list, line, name)
 	}
 
@@ -203,7 +204,7 @@ func (s *gateScript) readUnit(u shell.Unit) {
 	lines, stmts := s.scan(u)
 
 	for _, kept := range lines.outermost(append(lines.stmtSpans(stmts), lines.chainSpans(stmts)...)) {
-		s.addCall(flatText(u.Src[kept.start:kept.end]))
+		s.addCall(model.FlatText(u.Src[kept.start:kept.end]))
 	}
 }
 
@@ -234,7 +235,7 @@ func (s *gateScript) scan(u shell.Unit) (*unitLines, []*syntax.Stmt) {
 func (s *gateScript) visit(u shell.Unit, lines *unitLines, node syntax.Node) {
 	switch typed := node.(type) {
 	case *syntax.CallExpr:
-		s.track(flatText(shell.SrcOf(u.Src, typed)))
+		s.track(model.FlatText(shell.SrcOf(u.Src, typed)))
 	case *syntax.Redirect:
 		if typed.Hdoc != nil {
 			lines.heredocs = append(lines.heredocs, int(typed.Pos().Offset()))
@@ -411,7 +412,7 @@ func (l *unitLines) outermost(spans []span) []span {
 // addBody reads each line of a here-document body as a line of the job. A comment line is not a command.
 func (s *gateScript) addBody(body string) {
 	for _, line := range strings.Split(strings.ReplaceAll(body, "\\\n", " "), newline) {
-		if line = flatText(line); line != "" && !strings.HasPrefix(line, "#") {
+		if line = model.FlatText(line); line != "" && !strings.HasPrefix(line, "#") {
 			s.track(line)
 			s.addCall(line)
 		}
@@ -523,7 +524,7 @@ func holdsInOrder(text string, parts []string) bool {
 // hasName reports whether one command holds `name=<step>` as a whole word.
 func (s *gateScript) hasName(step string) bool {
 	return slices.ContainsFunc(s.calls, func(call string) bool {
-		return holdsToken(call, "name="+step, false, func(char byte) bool { return isAlnum(char) || strings.IndexByte(":_.-", char) >= 0 })
+		return model.HoldsToken(call, "name="+step, false, func(char byte) bool { return model.IsAlnum(char) || strings.IndexByte(":_.-", char) >= 0 })
 	})
 }
 

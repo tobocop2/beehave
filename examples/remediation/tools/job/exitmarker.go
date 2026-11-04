@@ -9,6 +9,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -320,7 +321,7 @@ func markerTail(rest string) bool {
 
 	rest = strings.NewReplacer(`\n`, " ", `\t`, " ").Replace(rest)
 
-	for _, word := range blankFields(rest) {
+	for _, word := range model.BlankFields(rest) {
 		if !keyValue.MatchString(word) {
 			return false
 		}
@@ -380,7 +381,7 @@ func (p *printed) call(u shell.Unit, call *syntax.CallExpr) {
 	}
 
 	if name := p.words.Literal(u, call.Args[0]); name == cmdEcho || name == cmdPrintf {
-		p.lines = append(p.lines, flatText(shell.SrcOf(u.Src, call)))
+		p.lines = append(p.lines, model.FlatText(shell.SrcOf(u.Src, call)))
 
 		return
 	}
@@ -397,7 +398,7 @@ func (p *printed) redirects(u shell.Unit, stmt *syntax.Stmt) {
 	for _, redirect := range stmt.Redirs {
 		switch {
 		case redirect.Op == syntax.WordHdoc:
-			p.lines = append(p.lines, flatText(shell.SrcOf(u.Src, redirect.Word)))
+			p.lines = append(p.lines, model.FlatText(shell.SrcOf(u.Src, redirect.Word)))
 		case redirect.Hdoc != nil && runsShell(u, stmt):
 			units, _ := shell.ParseUnits(shell.SrcOf(u.Src, redirect.Hdoc))
 			p.collect(units)

@@ -165,17 +165,9 @@ func (e Enforcer) helperCommand(ctx context.Context, s spec, cmd sandbox.Command
 
 	child := proc.GroupCommand(ctx, self, []string{helperArg, string(raw)}, cmd.Dir)
 	child.Env = []string{}
-	child.Stdout, child.Stderr = orDiscard(cmd.Stdout), orDiscard(cmd.Stderr)
+	child.Stdout, child.Stderr = sandbox.OrDiscard(cmd.Stdout), sandbox.OrDiscard(cmd.Stderr)
 
 	return child, nil
-}
-
-func orDiscard(w io.Writer) io.Writer {
-	if w == nil {
-		return io.Discard
-	}
-
-	return w
 }
 
 // codeOf returns the exit code, or 128 plus the signal number for a command that a signal ended.

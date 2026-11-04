@@ -261,7 +261,7 @@ func (s *spend) recordCall(line string) {
 	output, outputOK := countOf(entry.Message.Usage, "output_tokens")
 
 	if cacheOK && outputOK {
-		s.hour(firstRunes(entry.Timestamp, hourStamp)).add(cache.value, output.value)
+		s.hour(model.FirstRunes(entry.Timestamp, hourStamp)).add(cache.value, output.value)
 	}
 }
 
@@ -348,10 +348,10 @@ func (s *spend) findLane(key string) (string, bool) {
 	}
 
 	best, found := "", false
-	word := func(char byte) bool { return isAlnum(char) || char == '_' || char == '-' }
+	word := func(char byte) bool { return model.IsAlnum(char) || char == '_' || char == '-' }
 
 	for _, task := range s.order {
-		if holdsToken(s.lanes[task].desc, key, true, word) && (!found || s.lanes[task].stamp > s.lanes[best].stamp) {
+		if model.HoldsToken(s.lanes[task].desc, key, true, word) && (!found || s.lanes[task].stamp > s.lanes[best].stamp) {
 			best, found = task, true
 		}
 	}
@@ -406,7 +406,7 @@ func (s *spend) laneHours() (map[string]int64, map[string]bool) {
 	perHour, names := map[string]int64{}, map[string]bool{}
 
 	for _, current := range s.lanes {
-		hour := firstRunes(current.stamp, hourStamp)
+		hour := model.FirstRunes(current.stamp, hourStamp)
 		perHour[hour] += current.tokens
 		names[hour] = true
 	}

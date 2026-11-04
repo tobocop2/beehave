@@ -78,12 +78,12 @@ func decodeClusters(out string) ([]clusterRecord, error) {
 	var records []clusterRecord
 
 	if err := json.Unmarshal([]byte(out), &records); err != nil || records == nil {
-		return nil, fmt.Errorf("%w: %q", errClusterList, firstLine(out))
+		return nil, fmt.Errorf("%w: %q", errClusterList, model.FirstLine(out))
 	}
 
 	for _, record := range records {
 		if record.Name == nil || record.Status == nil {
-			return nil, fmt.Errorf("%w: %q", errClusterList, firstLine(out))
+			return nil, fmt.Errorf("%w: %q", errClusterList, model.FirstLine(out))
 		}
 	}
 
@@ -94,7 +94,7 @@ func decodeClusters(out string) ([]clusterRecord, error) {
 func parseSubmitted(out string) (string, error) {
 	match := jobIDPattern.FindStringSubmatch(strings.TrimSpace(out))
 	if match == nil {
-		return "", fmt.Errorf("%w: %q", errJobID, firstLine(out))
+		return "", fmt.Errorf("%w: %q", errJobID, model.FirstLine(out))
 	}
 
 	return match[1], nil
@@ -143,7 +143,7 @@ func slurmJobState(name string) (model.JobState, bool) {
 func parseJobState(out string) (model.JobState, error) {
 	lines := nonEmptyLines(out)
 	if len(lines) != 1 {
-		return model.JobUnknown, fmt.Errorf("%w: %q", errJobText, firstLine(out))
+		return model.JobUnknown, fmt.Errorf("%w: %q", errJobText, model.FirstLine(out))
 	}
 
 	word, _, _ := strings.Cut(lines[0], " ")
@@ -236,7 +236,7 @@ func nodeLineDrains(line string) (bool, error) {
 func parseFreeBytes(out string) (uint64, error) {
 	lines := nonEmptyLines(out)
 	if len(lines) != 2 || strings.Join(strings.Fields(lines[0]), " ") != diskHeaderWords {
-		return 0, fmt.Errorf("%w: %q", errDiskText, firstLine(out))
+		return 0, fmt.Errorf("%w: %q", errDiskText, model.FirstLine(out))
 	}
 
 	words := strings.Fields(lines[1])
@@ -262,12 +262,4 @@ func nonEmptyLines(text string) []string {
 	}
 
 	return lines
-}
-
-func firstLine(text string) string {
-	if lines := nonEmptyLines(text); len(lines) > 0 {
-		return lines[0]
-	}
-
-	return ""
 }

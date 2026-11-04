@@ -18,6 +18,16 @@ import (
 	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
 )
 
+func TestFail_AnErrorWithNoMappedCodeKeepsItsTextWithoutTheDriverCodes(t *testing.T) {
+	t.Parallel()
+
+	l := ledger.Open("/state")
+
+	err := ledger.Fail(l, "write", errors.New("disk I/O error (10) (SQLITE_IOERR)"))
+
+	require.EqualError(t, err, "cannot write /state/"+ledger.FileName+": disk I/O error")
+}
+
 var at = time.Date(2026, 10, 10, 12, 30, 0, 0, time.UTC)
 
 type harness struct {
