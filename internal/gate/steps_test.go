@@ -205,3 +205,96 @@ func TestSteps_AGateThatOurTimeoutKilledIsUnresolvedNotRed(t *testing.T) {
 		assert.Len(t, result.Steps, map[string]int{"": 1, "r/*.xml": 2}[report])
 	}
 }
+
+func TestSteps_AGateKilledByASignalGivesEveryStepUnknownAndNoError(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []int{128 + 9, 128 + 15} {
+		for _, report := range []string{"", "r/*.xml"} {
+			shell := &fakeShell{output: "partial output\n", code: code}
+			g := build(shell, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
+			project := project("local")
+			project.TestReport = report
+
+			result, err := g.Run(context.Background(), gate.Request{Project: project, Dir: "/w"})
+
+			require.NoError(t, err, "exit %d", code)
+			assert.False(t, result.Passed)
+			assert.Equal(t, headA, result.Head)
+			assert.Contains(t, result.Report, "killed by a signal")
+			assert.Contains(t, result.Report, "partial output")
+			assert.Equal(t, allUnknown(report != ""), result.Steps)
+		}
+	}
+}
+
+func TestSteps_AHostJobThatDiedWentStaleOrTimedOutGivesEveryStepUnknownAndNoError(t *testing.T) {
+	t.Parallel()
+
+	cases := map[model.JobState]string{
+		model.JobDied:     "the scheduler holds no record of it",
+		model.JobStale:    "raise `host.stale_minutes`",
+		model.JobTimedOut: "Raise `host.max_run`",
+	}
+
+	for state, advice := range cases {
+		for _, report := range []string{"", "r/*.xml"} {
+			g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
+			project := hostProject()
+			project.TestReport = report
+
+			result, err := g.Run(context.Background(), hostRequest(project))
+
+			require.NoError(t, err, string(state))
+			assert.False(t, result.Passed, string(state))
+			assert.Equal(t, headA, result.Head, string(state))
+			assert.Contains(t, result.Report, advice, string(state))
+			assert.Equal(t, allUnknown(report != ""), result.Steps, string(state))
+		}
+	}
+}
+
+func TestSteps_AStoppedRunIsAnErrorAndNeverAVoidGate(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	local := build(&fakeShell{output: "partial\n", code: 128 + 15}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{})
+	_, err := local.Run(ctx, gate.Request{Project: project("local"), Dir: "/w"})
+	require.ErrorIs(t, err, context.Canceled, "a shell killed by the stop of the run")
+
+	for _, state := range []model.JobState{model.JobDied, model.JobStale, model.JobTimedOut} {
+		g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
+
+		_, err = g.Run(ctx, hostRequest(hostProject()))
+		require.ErrorIs(t, err, context.Canceled, string(state))
+	}
+}
+
+func TestSteps_AResumedHostJobThatDiedGivesEveryStepUnknownForTheHeadItWasSubmittedWith(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []model.JobState{model.JobDied, model.JobStale, model.JobTimedOut} {
+		g := build(&fakeShell{}, &fakeTree{states: []gate.State{clean(headA)}}, &fakeRemote{state: state})
+		request := hostRequest(hostProject())
+		request.Resume, request.ResumeHead = "job-3", headB
+
+		result, err := g.Run(context.Background(), request)
+
+		require.NoError(t, err, string(state))
+		assert.False(t, result.Passed, string(state))
+		assert.Equal(t, headB, result.Head, string(state))
+		assert.Equal(t, allUnknown(false), result.Steps, string(state))
+	}
+}
+
+// allUnknown is the steps of a gate that gave no result: the command, and the tests when the project sets test_report.
+func allUnknown(withTests bool) []gate.Step {
+	steps := []gate.Step{step(gate.StepCommand, gate.StatusUnknown)}
+	if withTests {
+		steps = append(steps, step(gate.StepTests, gate.StatusUnknown))
+	}
+
+	return steps
+}

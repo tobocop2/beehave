@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +46,8 @@ const ExitTimedOut = -2
 // ErrTreeChanged is the cause when the tree is not the clean commit that the gate must judge.
 var ErrTreeChanged = errors.New("the tree is not the commit the gate judges")
 
-// ErrNoVerdict is the cause when a host job ends in a state that is neither passed nor failed, or a signal kills a local gate command.
+// ErrNoVerdict is the cause when a host job ends in a state that says nothing about the gate: pending, running, canceled, lost or unknown.
+// A signal, the time limit, and a host job that died, went stale or ran past its limit give a void result instead.
 var ErrNoVerdict = errors.New("the gate job gave no verdict")
 
 // ErrNoHead is the cause when a resumed host job comes without the head it was submitted with.
@@ -209,7 +211,7 @@ func (g Gate) local(ctx context.Context, request Request, head string) (Result, 
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	output, code := g.shell(ctx, request.Dir, request.Project.Gate)
 	if code > signalBase {
-		return Result{}, fmt.Errorf("%w: the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again", ErrNoVerdict, code)
+		return signaled(ctx, request.Project, head, output, code)
 	}
 
 	if code == ExitTimedOut {
@@ -237,7 +239,25 @@ func voided(request Request, head, reason string) Result {
 func timedOut(request Request, head, output string) Result {
 	note := "the gate command ran past its time limit and was killed. The gate has no result. Run the gate again, or raise the limit.\n"
 
-	return Result{Report: tail(output + "\n" + note), Head: head, Steps: unknownSteps(request.Project)}
+	return aborted(request.Project, head, output+"\n"+note)
+}
+
+// signaled is the result of a gate command that a signal killed: every step is unknown, and the report keeps the output up to the kill.
+// A stopped run kills the shell too. That kill ends the run, so it is the error of the context and not a gate that gave no result.
+func signaled(ctx context.Context, project model.Project, head, output string, code int) (Result, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("the gate command was stopped with the run: %w", err)
+	}
+
+	note := fmt.Sprintf("the gate command was killed by a signal (exit code %d). A killed gate is neither green nor red. Run the gate again.\n", code)
+
+	return aborted(project, head, output+"\n"+note), nil
+}
+
+// aborted is the result of a gate that a signal, the time limit or a host state stopped before it finished. Every step is unknown, so the
+// review loop reads a void gate and runs it again, as it does for a gate that wrote no report.
+func aborted(project model.Project, head, report string) Result {
+	return Result{Report: tail(report), Head: head, Steps: unknownSteps(project)}
 }
 
 // unknownSteps is one step of unknown for each step that the gate of the project gives: the command, and the tests when the project sets test_report.
@@ -316,7 +336,7 @@ func wait(ctx context.Context, host Remote, project model.Project, id model.JobI
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 
-	result, err := verdict(project, state)
+	result, err := verdict(ctx, project, head, state)
 
 	if err == nil && state == model.JobFailed && project.TestReport != "" {
 		result = explainFailure(ctx, host, project, id, result)
@@ -519,26 +539,41 @@ func limited(project model.Project, command string) string {
 }
 
 // verdict maps the final state of a host job to a result. Only a job that succeeded passes, and only one that failed is a failed gate.
+// A job that died, went stale or ran past its limit gave no result: every step is unknown. Any other state is an error.
 // The host command ends with the test count check, so a job that succeeded found a test case: both steps pass. A job that failed gives no
 // result line for the tests step, so that step is unknown.
-func verdict(project model.Project, state model.JobState) (Result, error) {
+func verdict(ctx context.Context, project model.Project, head string, state model.JobState) (Result, error) {
 	cluster := project.BuildHost
+
+	// A stopped run ends the wait in one of these states too. That is the end of the run, not a gate that gave no result.
+	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut}, state) {
+		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
+	}
 
 	switch state {
 	case model.JobSucceeded:
 		return Result{Passed: true, Steps: hostSteps(project, StatusPass, StatusPass)}, nil
 	case model.JobFailed:
 		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: hostSteps(project, StatusFail, StatusUnknown)}, nil
-	case model.JobDied:
-		return Result{}, fmt.Errorf("%w: the job died on %s: the scheduler holds no record of it. Run the gate again", ErrNoVerdict, cluster)
-	case model.JobStale:
-		return Result{}, fmt.Errorf("%w: the job on %s was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again", ErrNoVerdict, cluster)
-	case model.JobTimedOut:
-		return Result{}, fmt.Errorf("%w: the gate on %s was stopped by the run limit `host.max_run` and did not finish: it is not run. Raise `host.max_run` if the gate is slow, then run the gate again", ErrNoVerdict, cluster)
+	case model.JobDied, model.JobStale, model.JobTimedOut:
+		return aborted(project, head, abortNote(cluster, state)), nil
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
 
 	return Result{}, fmt.Errorf("%w: its state on %s is %s. Read the job in the scheduler of the host", ErrNoVerdict, cluster, state)
+}
+
+// abortNote is the report of a host job that gave no result, with the action for a person.
+func abortNote(cluster string, state model.JobState) string {
+	if state == model.JobStale {
+		return "the job on " + cluster + " was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again.\n"
+	}
+
+	if state == model.JobTimedOut {
+		return "the gate on " + cluster + " was stopped by the run limit `host.max_run` and did not finish: it is not run. Raise `host.max_run` if the gate is slow, then run the gate again.\n"
+	}
+
+	return "the job died on " + cluster + ": the scheduler holds no record of it. Run the gate again.\n"
 }
 
 // hostSteps is the steps of a host gate: the command, and the tests when the project sets test_report.
