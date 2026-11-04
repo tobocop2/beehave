@@ -191,7 +191,13 @@ func shipping(t *testing.T, over map[string]any) (pulls, *shipForge, flow.MergeS
 func exampleForbidText(t *testing.T) []string {
 	t.Helper()
 
-	var patterns []string
+	text, err := os.ReadFile("../../examples/remediation/workflow.star")
+	require.NoError(t, err)
+
+	patterns, err := workflowtest.Constant("workflow.star", text, "ATTRIBUTION")
+	require.NoError(t, err)
+
+	require.NotEmpty(t, patterns, "the example holds its attribution patterns in ATTRIBUTION")
 
 	walkExampleMerge(t, func(ship map[string]syntax.Expr) {
 		patterns = append(patterns, workflowtest.Literals(ship["forbid_text"])...)

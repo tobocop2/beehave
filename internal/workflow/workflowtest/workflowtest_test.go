@@ -9,6 +9,23 @@ import (
 	"github.com/tobocop2/obee/internal/workflow/workflowtest"
 )
 
+func TestConstant_ReadsTheLiteralsOfATopLevelAssignment(t *testing.T) {
+	t.Parallel()
+
+	text := []byte("A = [\"x\", \"y\"]\nB = [\"z\"]\nA += [\"w\"]\ndef main(item):\n    A = [\"inner\"]\n")
+
+	found, err := workflowtest.Constant("workflow.star", text, "A")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"x", "y"}, found, "a plain assignment at the top level, not an augmented one or one in a function")
+
+	none, err := workflowtest.Constant("workflow.star", text, "C")
+	require.NoError(t, err)
+	assert.Empty(t, none)
+
+	_, err = workflowtest.Constant("workflow.star", []byte("A = ("), "A")
+	require.Error(t, err)
+}
+
 func TestCalls_ListsTheBuiltinCallsWithTheirKeywordArguments(t *testing.T) {
 	t.Parallel()
 

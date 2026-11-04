@@ -72,13 +72,14 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 
 	var operator bool
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+	rules, err := unpackPosting(b, args, kwargs, map[string]any{
 		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, parentKeyword: &parent, assigneeKeyword: &assignee, severityField: &severity, "operator": &operator, nameKeyword: &label,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	if err := s.check(workflow.NotEmpty("title", title), workflow.NotEmpty(keyKeyword, key), checkSeverity(severity)); err != nil {
+	if err = s.check(workflow.NotEmpty("title", title), workflow.NotEmpty(keyKeyword, key), checkSeverity(severity), rules.refuse(postedText{"title", title}, postedText{"body", body})); err != nil {
 		return nil, err
 	}
 
@@ -132,13 +133,14 @@ func (s *script) itemAssign(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 func (s *script) itemComment(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var id, text, key, label string
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
+	rules, err := unpackPosting(b, args, kwargs, map[string]any{
 		"id": &id, textKeyword: &text, keyKeyword: &key, nameKeyword: &label,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	if err := s.check(workflow.NotEmpty("id", id), workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key)); err != nil {
+	if err = s.check(workflow.NotEmpty("id", id), workflow.NotEmpty(textKeyword, text), workflow.NotEmpty(keyKeyword, key), rules.refuse(postedText{"text", text})); err != nil {
 		return nil, err
 	}
 

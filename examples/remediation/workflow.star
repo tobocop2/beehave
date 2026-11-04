@@ -10,6 +10,10 @@ GRACE_HOURS = "1"
 # The severities in the order of the queue, most severe first. A severity that is not in the list sorts last.
 SEVERITIES = ["P0", "P1", "P2", "P3", "P4"]
 
+# The attribution patterns, each case-insensitive. No line of a pull request body, a commit message, an issue, a comment or a pull request title may match them.
+# The merge adds the pattern of the tracker id of each item (id_patterns); the posting steps use only this list, because their text names the item.
+ATTRIBUTION = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"]
+
 def _severity(row):
     if row.severity in SEVERITIES:
         return SEVERITIES.index(row.severity)
@@ -189,6 +193,7 @@ def file_parked(parked):
             body = entry["body"].rstrip() + "\n\n## How it was found\n\n" + entry["found"].strip(),
             severity = entry["severity"],
             operator = entry["operator"] == True,
+            forbid_text = ATTRIBUTION,
         )
 
 def land(item, pins):
@@ -225,7 +230,7 @@ def land(item, pins):
         prs.append(struct(item = id, head = head))
 
     for skipped in stopped:
-        item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason)
+        item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
         item_status(name = "stop-hold-" + skipped.item, id = skipped.item, status = "hold")
 
     if len(prs) == 0:
@@ -238,13 +243,13 @@ def land(item, pins):
         repo = env("REPO"),
         hold = "hold",
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
-        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"] + id_patterns([pr.item for pr in prs]),
+        forbid_text = ATTRIBUTION + id_patterns([pr.item for pr in prs]),
         integration = int(env("INTEGRATION_PR", default = "0")),
     )
 
     # A rejected item gets the reason as a comment and the hold status, so it does not come back until a person reads it.
     for rejected in out.rejected:
-        item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason)
+        item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason, forbid_text = ATTRIBUTION)
         item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
 
     # Each merged item moves its card to the merged column, as the pipeline of one item does. The item ids of a project with a board are issue numbers.
@@ -255,7 +260,7 @@ def land(item, pins):
     # A finding stops the run. The batch has landed, so the owner fixes the state of the issues by hand.
     if out.note != "":
         print("the issue check did not run: " + out.note)
-        item_comment(name = "issue-check", id = item.id, key = "issue-check", text = "the issue check did not run: " + out.note)
+        item_comment(name = "issue-check", id = item.id, key = "issue-check", text = "the issue check did not run: " + out.note, forbid_text = ATTRIBUTION)
 
     # A merged item named in unproven is not on the base, and not on the vehicle commit. The owner reads the lines before any issue closes.
     if len(out.unproven) > 0:
@@ -425,7 +430,7 @@ def finish(item):
 
     stop = host_teardown(name = "teardown")
     if not stop.down:
-        item_comment(name = "host-stays-up", id = item.id, key = "host-stays-up", text = "The build host stays up. " + stop.reason)
+        item_comment(name = "host-stays-up", id = item.id, key = "host-stays-up", text = "The build host stays up. " + stop.reason, forbid_text = ATTRIBUTION)
 
 def _move_card(project, stage, issue = 0):
     """Moves the card to the column that the board block of the project names for `stage` ("started" or "merged"), and reads it back.
@@ -506,6 +511,7 @@ def pipeline(item):
         base = env("BASE"),
         issue = int(item.id) if item.id.isdigit() else 0,
         parent = env("PARENT", default = ""),
+        forbid_text = ATTRIBUTION,
     )
 
     # The board is a project choice: the `board` block of the project file. With none, the facts hold board_number 0 and the run makes no board call.
@@ -530,7 +536,7 @@ def pipeline(item):
 
     # A reject verdict ends the loop with no fix round. The item gets the text of the review as the reason and the hold status.
     if loop.rejected:
-        item_comment(name = "rejected", id = item.id, key = "rejected", text = loop.review.text)
+        item_comment(name = "rejected", id = item.id, key = "rejected", text = loop.review.text, forbid_text = ATTRIBUTION)
         item_status(name = "hold-rejected", id = item.id, status = "hold")
         return
 
@@ -538,7 +544,7 @@ def pipeline(item):
     # The loop stops at the review that shows the rise: a held item gets no more fix lane, no owner ruling and no settle step. Nothing merges.
     # The last gate of an exhausted loop can be red. Then there is no review and no count; the item goes on to the ruling of the owner, and nothing merges after the settle step.
     if loop.held != "":
-        item_comment(name = "regression-rise", id = item.id, key = "regression-rise", text = loop.held)
+        item_comment(name = "regression-rise", id = item.id, key = "regression-rise", text = loop.held, forbid_text = ATTRIBUTION)
         item_status(name = "hold-regression-rise", id = item.id, status = "hold")
         return
 
@@ -550,6 +556,7 @@ def pipeline(item):
             id = item.id,
             key = "design",
             text = "Design decision for %s: %s. %s" % (loop.design.mechanism, loop.design.decision, loop.design.reason),
+            forbid_text = ATTRIBUTION,
         )
         item_status(name = "hold-design", id = item.id, status = "hold")
         return
@@ -607,7 +614,7 @@ def pipeline(item):
         hold = "hold",
         own = {"logins": [env("OWNER_LOGIN")], "emails": [env("OWNER_EMAIL")]},
         approved = loop.review.verdict == "approve",
-        forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"] + id_patterns([item.id]),
+        forbid_text = ATTRIBUTION + id_patterns([item.id]),
         children = "retarget",
     )
 

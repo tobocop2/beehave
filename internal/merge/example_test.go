@@ -24,7 +24,10 @@ var loadedPatterns = sync.OnceValues(func() ([]string, error) {
 		return nil, err
 	}
 
-	var patterns []string
+	patterns, err := workflowtest.Constant("workflow.star", text, "ATTRIBUTION")
+	if err != nil {
+		return nil, err
+	}
 
 	for _, call := range calls {
 		if call.Builtin == "merge" {
