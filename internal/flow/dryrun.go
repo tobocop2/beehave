@@ -324,7 +324,7 @@ func shorten(text string) string {
 	return text
 }
 
-// dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve), and reports the required skills as used.
+// dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve, any other output 0), and reports the required skills as used.
 type dryAgents struct{ skills []string }
 
 func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, error) {
@@ -345,13 +345,14 @@ func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, e
 	return agent.Result{Outcome: agent.OutcomeExited, Session: "dry-session", Transcript: "/dry.jsonl", Text: "dry run: no agent ran", Skills: a.skills}, nil
 }
 
-// dryOutput is the fixed value of a declared output in a dry run: a review approves, and any other output holds the text dry.
+// dryOutput is the fixed value of a declared output in a dry run: a review approves, and any other output holds the text 0.
+// The text 0 reads as a count of none, so a workflow that reads a count from an output walks the path of an approved item.
 func dryOutput(name string) string {
 	if name == outputVerdict {
 		return "approve"
 	}
 
-	return "dry"
+	return "0"
 }
 
 // dryGate runs on the commit of the dry-run folder and passes. With red set, its first run is red, with one failed step, so that a dry run walks the fix round of a workflow.

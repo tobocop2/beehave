@@ -86,11 +86,14 @@ numbers that the run names for this lane, compressed to the one or two that deci
 and anything OWED **by name**.
 Send no separate message with the report: the end-of-turn text goes to the orchestrator already.
 
+**Write the output `regressions` as a whole number.** Count only the regressions that are open at the head you plan from. It is the base of the regression count: the run compares the count of the last review with this one, and a rise holds the item. A count that is not a whole number holds the item too.
+Write it to {{ .output_file }} as JSON, as a text, for example `{"regressions":"0"}`.
+
 **When you stop before the item is done, write the handoff to the handoff file that the run names, under 300 words,
 yourself.** It carries: the plan file; the commit; what is done and proven; what is owed, in order; the one
 thing not to redo; and these lines:
 
-    Regressions of this pull request so far: <the count in the handoff you started from, plus each defect an earlier lane of this pull request introduced that you found>
+    Regressions of this pull request so far: <the number of regressions open at your head: defects that a lane of this pull request introduced and that no later lane has fixed; 0 when there are none>
     Tokens at handoff: <your context size>
 
 ## The item
