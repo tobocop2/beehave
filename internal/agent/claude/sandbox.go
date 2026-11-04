@@ -16,6 +16,10 @@ const minSandboxVersion = "2.1.285"
 // homeFolder is how the sandbox names the home folder of the owner. Everything under it is unreadable unless the plan allows it.
 const homeFolder = "~/"
 
+// subprocessScrub is the variable that makes the CLI strip credentials, by name or by value, from the environment of the subprocesses that it starts,
+// such as the Bash tool. The CLI keeps the token for its own calls. The docs describe it; no real run has shown that the token is gone from `env`.
+const subprocessScrub = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"
+
 // Tools that the settings deny by name. The sandbox covers the Bash tool; these two reach the network without it.
 func webTools() []string { return []string{"WebFetch", "WebSearch"} }
 
@@ -72,11 +76,14 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, _ string) agent.Launch {
 
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings and booleans always encodes
 
-	return agent.Launch{Args: []string{
-		"--setting-sources", "", "--strict-mcp-config",
-		"--disallowedTools", "WebFetch", "WebSearch",
-		"--settings", string(raw),
-	}}
+	return agent.Launch{
+		Args: []string{
+			"--setting-sources", "", "--strict-mcp-config",
+			"--disallowedTools", "WebFetch", "WebSearch",
+			"--settings", string(raw),
+		},
+		Env: map[string]string{subprocessScrub: "1"},
+	}
 }
 
 // settingsOf returns the settings of the sandbox and of the permission rules for a plan, with no hooks.

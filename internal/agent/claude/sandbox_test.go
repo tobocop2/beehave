@@ -39,6 +39,14 @@ func TestSandbox_IsolatesTheSettingSourcesAndTheMCPServersAndRemovesTheWebTools(
 	assert.Equal(t, []string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"}, flags)
 }
 
+func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses(t *testing.T) {
+	t.Parallel()
+
+	launch := claude.New().Sandbox(plan(), "", "/run")
+
+	assert.Equal(t, map[string]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"}, launch.Env)
+}
+
 func TestSandbox_WritesTheDenyByDefaultBaseTheCredentialLayerAndTheNetworkList(t *testing.T) {
 	t.Parallel()
 
