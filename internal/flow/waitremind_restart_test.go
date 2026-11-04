@@ -28,8 +28,6 @@ func TestWaitRemind_ARestartNeitherRepeatsASentReminderNorLosesAnOwedOne(t *test
 	clk := newRemindClock(time.Now())
 	h := newHarness(t)
 	h.flowIs(t, remindFlow)
-	h.migrated(t)
-
 	deps := h.deps()
 	deps.Clock.Reading, deps.Clock.OwnerWait = clk.now, 10*time.Millisecond
 

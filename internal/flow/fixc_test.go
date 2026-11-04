@@ -27,8 +27,6 @@ const (
 func engineOn(t *testing.T, harness *harness, deps Deps) *Engine {
 	t.Helper()
 
-	harness.migrated(t)
-
 	engine, err := NewEngine(t.Context(), harness.opts, deps)
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
@@ -181,7 +179,6 @@ func TestLaunch_DeletesTheTokenFileOfAFinishedRunWithTheRun(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 
 	first, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
@@ -205,7 +202,6 @@ func TestLaunch_AReusedRunIdTakesItsOwnClaim(t *testing.T) {
 
 	harness := newHarness(t)
 	harness.agents.err = errFake
-	harness.migrated(t)
 
 	first, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
@@ -240,7 +236,6 @@ func cancelAndStop(t *testing.T, harness *harness, item string) {
 	t.Helper()
 
 	harness.agents.gate = make(chan struct{})
-	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
@@ -517,7 +512,6 @@ func TestSweepCancels_LeavesTheMarkerWhenTheStoreCannotBeRead(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
 	require.NoError(t, markCancel(harness.opts.StateDir, testRun, ItemInput{Item: testItem, Project: testProject}))
@@ -606,7 +600,6 @@ func TestRegistered_AFailedRegistrationShutsTheEngineDown(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
 

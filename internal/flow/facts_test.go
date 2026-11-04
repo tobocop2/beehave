@@ -71,8 +71,6 @@ func TestFacts_AReplayKeepsTheFactsOfTheFirstRead(t *testing.T) {
 	h.facts = ownedBy("ann")
 	file := writeFlow(t, "def main(item):\n    f = facts()\n    wait(name = \"ask\", question = \"go?\")\n    fail(\"OWNER \" + f.people[\"owner\"])\n")
 
-	h.migrated(t)
-
 	stopCtx, stop := context.WithCancel(t.Context())
 	first, err := NewEngine(stopCtx, h.opts, h.deps())
 	require.NoError(t, err)

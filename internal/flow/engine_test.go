@@ -76,6 +76,7 @@ func TestOpenStore_RefusesAFolderOthersCanUse(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
+	harness.fresh(t)
 	require.NoError(t, os.Mkdir(harness.opts.StateDir, 0o700))
 	require.NoError(t, os.Chmod(harness.opts.StateDir, 0o777)) //nolint:gosec // the test needs an open folder to prove the refusal
 
@@ -91,6 +92,7 @@ func TestOpenStore_ReportsAnUnwritableLogAndAnUnopenableDatabase(t *testing.T) {
 			t.Parallel()
 
 			harness := newHarness(t)
+			harness.fresh(t)
 			require.NoError(t, os.MkdirAll(filepath.Join(harness.opts.StateDir, name), 0o700))
 
 			_, err := NewEngine(t.Context(), harness.opts, harness.deps())
@@ -107,7 +109,7 @@ func TestRun_AFileRunClaimsRunsItsStepsReleasesAndKeepsTheFilesPrivate(t *testin
 	t.Cleanup(func() { syscall.Umask(previous) })
 
 	harness := newHarness(t)
-	harness.freshStore = true
+	harness.fresh(t)
 	engine := harness.engine(t)
 
 	result, err := engine.Run(testItem, testProject)

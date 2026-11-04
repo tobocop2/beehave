@@ -34,8 +34,6 @@ const (
 func idleEngine(t *testing.T, harness *harness) *Engine {
 	t.Helper()
 
-	harness.migrated(t)
-
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
@@ -46,8 +44,6 @@ func idleEngine(t *testing.T, harness *harness) *Engine {
 // launchedWith builds and launches an engine over the harness with other collaborators. The cleanup shuts it down.
 func launchedWith(t *testing.T, harness *harness, change func(*Deps)) *Engine {
 	t.Helper()
-
-	harness.migrated(t)
 
 	deps := harness.deps()
 	change(&deps)
@@ -307,7 +303,6 @@ func TestTick_TheRealTickerRenewsAHeldClaim(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, Deps{Beats: harness.beats})
 	require.NoError(t, err)
@@ -345,8 +340,6 @@ func TestShutdown_StopsTheTrustTimerOfAClaimThatIsStillHeld(t *testing.T) {
 
 		return func() { stopped.Store(true) }
 	}
-
-	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, deps)
 	require.NoError(t, err)
@@ -434,7 +427,6 @@ func TestLaunch_ReportsAnAgentProcessFileItCannotRead(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
-	harness.migrated(t)
 
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)

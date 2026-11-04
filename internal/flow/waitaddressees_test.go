@@ -186,7 +186,6 @@ func TestWait_ADeadlineEndsAQuorumThatNobodyReached(t *testing.T) {
     if r.answer != "" or r.answers != {"ana": "yes"}:
         fail("WRONG " + str(r.answers))
 `)
-	h.migrated(t)
 
 	stopCtx, stop := context.WithCancel(t.Context())
 	first, err := NewEngine(stopCtx, h.opts, h.deps())
@@ -227,7 +226,6 @@ func TestWait_AReplayCountsTheSameAnswers(t *testing.T) {
 
 	h := newHarness(t)
 	h.flowIs(t, quorumFlow)
-	h.migrated(t)
 
 	stopCtx, stop := context.WithCancel(t.Context())
 	first, err := NewEngine(stopCtx, h.opts, h.deps())

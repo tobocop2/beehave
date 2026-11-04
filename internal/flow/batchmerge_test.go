@@ -46,8 +46,6 @@ func (r *batchRig) deps() Deps {
 func (r *batchRig) engine(t *testing.T) *Engine {
 	t.Helper()
 
-	r.h.migrated(t)
-
 	engine, err := NewEngine(t.Context(), r.h.opts, r.deps())
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
@@ -383,8 +381,6 @@ func TestBatchMerge_ACallThatTheBuildOrTheArgumentsCannotServeFailsWithAFix(t *t
 			if c.build != nil {
 				c.build(rig, &deps)
 			}
-
-			rig.h.migrated(t)
 
 			engine, err := NewEngine(t.Context(), rig.h.opts, deps)
 			require.NoError(t, err)
