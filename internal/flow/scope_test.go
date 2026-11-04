@@ -301,6 +301,24 @@ func TestScope_ANewRunOfTheItemKeepsTheScopeOfItsFirstReview(t *testing.T) {
 	assert.Empty(t, h.merge.asked)
 }
 
+func TestScope_ANewRunWithTheSameReferencesAsksNoQuestion(t *testing.T) {
+	t.Parallel()
+
+	h := mergeHarness(t, merge.Result{Stop: merge.Done})
+	h.forge.closing = [][]int{{12}, {12}}
+	engine := h.engine(t)
+
+	h.flowIs(t, bodyFlow("gate(name = \"g\")\n"))
+	_, err := engine.Run(testItem, testProject)
+	require.NoError(t, err)
+
+	h.flowIs(t, gateThenMerge(1))
+	_, err = engine.Run(testItem, testProject)
+
+	require.NoError(t, err, "the second run asks nothing: its references equal the first review")
+	assert.Len(t, h.merge.asked, 1)
+}
+
 func TestScope_AnEarlierRunThatFixedNoScopeLeavesTheNewRunToReadTheForge(t *testing.T) {
 	t.Parallel()
 
