@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/obee/internal/check/shell"
 	"github.com/tobocop2/obee/internal/flow"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc/gitexec"
@@ -215,31 +216,13 @@ func overlap(full string, protected []string) string {
 // within reports whether path is parent or inside it, as the names stand and again with every symbolic link resolved. Names compare without case,
 // because the default disk of the owner may not tell .Git from .git. This is stricter than a case-sensitive disk needs, and it is never looser.
 func within(parent, path string) bool {
-	return inside(parent, path) || inside(resolved(parent), resolved(path))
+	return inside(parent, path) || inside(shell.RealPath(parent), shell.RealPath(path))
 }
 
 func inside(parent, path string) bool {
 	rel, err := filepath.Rel(strings.ToLower(parent), strings.ToLower(path))
 
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// resolved returns the path with every symbolic link resolved. A path that does not exist yet is resolved at its nearest parent that exists,
-// and the names below that parent are kept as written.
-func resolved(path string) string {
-	path = filepath.Clean(path)
-
-	var tail []string
-
-	for current := path; current != filepath.Dir(current); current = filepath.Dir(current) {
-		if real, err := filepath.EvalSymlinks(current); err == nil {
-			return filepath.Join(append([]string{real}, tail...)...)
-		}
-
-		tail = append([]string{filepath.Base(current)}, tail...)
-	}
-
-	return path // the root, which is no link
 }
 
 // expand replaces a leading ~ with the home folder.
