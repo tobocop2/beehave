@@ -97,7 +97,7 @@ func TestOverlap_APathWithASpaceIsNotSplitIntoWords(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"api", "-X", "GET", "repos/o/n/commits", "-f", "sha=main", "-f", "path=docs/a b.md", "-f", "since=" + branchPoint,
-		"--jq", `.[] | "\(.sha[0:9]) \(.commit.message | split("\n")[0])"`,
+		"--paginate", "--jq", `.[] | "\(.sha[0:9]) \(.commit.message | split("\n")[0])"`,
 	}, history)
 }
 
