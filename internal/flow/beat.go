@@ -10,8 +10,8 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // errClaimLost is returned when the engine stopped trusting the claim of a run.
@@ -320,11 +320,11 @@ func (e *Engine) lostError(item, reason string) error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: item %s: %s. Run obee run %s again to claim it", errClaimLost, item, e.redact(reason), item)
+	return fmt.Errorf("%w: item %s: %s. Run beehave run %s again to claim it", errClaimLost, item, e.redact(reason), item)
 }
 
 // awaitClaim returns the context of the claim once the run that queued the phase holds a trusted claim. A run that has no first trust yet is waited for while it is open,
-// and for a grace time after it ended: obee resume reopens a phase before it reopens its run, so the phase can reach the queue first.
+// and for a grace time after it ended: beehave resume reopens a phase before it reopens its run, so the phase can reach the queue first.
 // Any other reason stops the phase. A phase of a run that ended for good stops when the grace time is over.
 func (e *Engine) awaitClaim(ctx context.Context, in PhaseInput) (context.Context, error) {
 	graceEnd := e.deps.Clock.now().Add(cmp.Or(e.deps.Clock.Grace, trustGrace))
@@ -354,7 +354,7 @@ func (e *Engine) waitOrStop(in PhaseInput, reason string, early bool, graceEnd t
 			return err
 		}
 
-		// obee resume saves the token of its fresh claim before it reopens the phase. A token younger than the claim lease means the reopen of
+		// beehave resume saves the token of its fresh claim before it reopens the phase. A token younger than the claim lease means the reopen of
 		// the run is still to come, however long a slow host takes for it, so the phase keeps waiting. An older token belongs to a resume that
 		// died or to a run that failed, and the phase stops. So does a token dated in the future: a wrong clock wrote it, and its age is unknown.
 		saved, found, err := savedOwnerAge(e.dir, in.Run)

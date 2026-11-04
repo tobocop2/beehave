@@ -10,7 +10,7 @@ import (
 // tokensPerPrice is the number of tokens that a price in the table covers.
 const tokensPerPrice = 1_000_000
 
-// priceData is the price table that ships with obee. A person updates it by hand. Its rows are estimates, never a bill.
+// priceData is the price table that ships with beehave. A person updates it by hand. Its rows are estimates, never a bill.
 //
 //go:embed prices.json
 var priceData []byte
@@ -48,7 +48,7 @@ func ParsePrices(raw []byte) (Prices, error) {
 	return prices, nil
 }
 
-// DefaultPrices returns the price table that ships with obee. A test reads the file, so it always parses; a table that did not parse would give no estimate.
+// DefaultPrices returns the price table that ships with beehave. A test reads the file, so it always parses; a table that did not parse would give no estimate.
 func DefaultPrices() Prices {
 	prices, _ := ParsePrices(priceData) //nolint:errcheck // a test parses the same file
 

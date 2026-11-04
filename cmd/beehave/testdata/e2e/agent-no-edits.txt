@@ -1,0 +1,12 @@
+# A step with edits = False starts without --permission-mode, so the fake claude refuses its Write, as the real claude does in print mode.
+cp flow/read-only.star edit-file
+exec beehave run 7 --workflow flow/read-only.star
+stdout 'item 7 finished'
+
+grep -count=1 '^implement ' calls.log
+grep -count=1 '^refused edited.txt' refused.log
+! exists edited.txt
+
+-- flow/read-only.star --
+def main(item):
+    agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", edits = False)

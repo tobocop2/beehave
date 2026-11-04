@@ -1,0 +1,54 @@
+# The on-call person rejects the proposal. Nothing is written: no saved state, no mitigation. The ops system gets the state rejected, and a person owns the incident.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=60
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec beehavereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec beehavereal run watch-1 incident --workflow ops/workflow.star &
+waitstatus 'paused: [primary] Approve rollback'
+exec beehavereal answer incident-2 reject: the deploy is not the cause
+wait
+stdout 'item watch-1 finished'
+
+! exists writes.log
+! exists home/.incident/incidents/incident-2/before.json
+grep '^incident-2 rejected$' status.log
+grep 'rejected by primary: reject: the deploy is not the cause' home/.incident/incidents/incident-2/timeline.tsv
+! exists home/.incident/postmortems/incident-2.md
+! grep postmortem calls.log
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"j1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"ROLLBACK error rate 40 percent"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics --
+{"error_rate":0.4}
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one
+-- resp/_services_checkout_state --
+{"version":"v413","replicas":3}
+-- resp/_services_checkout_health --
+{"healthy":true}

@@ -1,0 +1,44 @@
+# The metrics cannot be read. The diagnostics would be a partial report, so the script exits with 3 and the desk hands the case to a person without a call to the analyst.
+[!exec:jq] skip
+[!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+incidentinit
+incidentfakes
+subst home/.incident/config
+env HOME=$WORK/home
+env INCIDENT_DIR=$WORK/ops
+env INCIDENT_MINUTE_SECONDS=60
+env INCIDENT_ROUNDS=2
+env INCIDENT_ROUND_SECONDS=1
+
+stdin alert.json
+exec sh ops/scripts/spool-alert.sh
+exec beehavereal item add incident watch-1 --title 'Watch' --body-file body.txt
+exec beehavereal run watch-1 incident --workflow ops/workflow.star
+stdout 'item watch-1 finished'
+
+grep 'HANDOFF: the diagnostics could not be read \(rc 3\)' home/.incident/incidents/incident-2/timeline.tsv
+grep -count=1 '^incident-2 commander$' pages.log
+! exists calls.log
+! exists writes.log
+
+-- body.txt --
+The watch.
+-- alert.json --
+{"fingerprint":"d1","severity":"sev1","title":"Checkout errors","service":"checkout","detail":"ROLLBACK error rate 40 percent"}
+-- home/.incident/config --
+OPS_API=http://ops.test
+SPOOL=@WORK@/home/.incident/spool
+INC_POLL=1
+INC_MINUTE=1
+INC_TICK=1
+-- home/.incident/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_services_checkout_metrics.fail --
+-- resp/_services_checkout_deploys --
+[]
+-- resp/_services_checkout_logs --
+line one

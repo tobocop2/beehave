@@ -13,7 +13,7 @@ func TestCheck_RefusesTheArgumentsOfTheRunThatAreText(t *testing.T) {
 	cases := []struct{ name, call, want string }{
 		{"command env value", `command(run = ["x"], env = {"A": 1})`, "command: env must hold strings only"},
 		{"command env key", `command(run = ["x"], env = {1: "a"})`, "command: env must hold strings only"},
-		{"command env reserved", `command(run = ["x"], env = {"OBEE_X": "1"})`, "command: env cannot set `OBEE_X`"},
+		{"command env reserved", `command(run = ["x"], env = {"BEEHAVE_X": "1"})`, "command: env cannot set `BEEHAVE_X`"},
 		{"write env value", `write(run = ["x"], env = {"A": None})`, "write: env must hold strings only"},
 		{"env beside a computed entry", `command(run = ["x"], env = {"A": str(item), "B": 1})`, "command: env must hold strings only"},
 		{"env after a computed entry", `command(run = ["x"], env = {"B": 1, "A": str(item)})`, "command: env must hold strings only"},

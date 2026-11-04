@@ -7,7 +7,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	gatepkg "github.com/tobocop2/obee/internal/gate"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
 )
 
 // The functions of this file own the rules for the arguments of the builtins that land pull requests: merge, batch_merge and preflight.

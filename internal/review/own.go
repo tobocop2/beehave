@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // ownRows lists our open pull requests with a review after the last push, an open thread or a standing change request.

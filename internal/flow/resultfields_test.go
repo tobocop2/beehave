@@ -9,11 +9,11 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/batch"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/preflight"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func keysOf(m map[string]any) []string {

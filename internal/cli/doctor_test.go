@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/cli"
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // machine is a config folder, a login folder and a PATH folder with fake bd and gh files.
@@ -26,7 +26,7 @@ func newMachine(t *testing.T) machine {
 	t.Helper()
 
 	m := machine{config: t.TempDir(), login: t.TempDir(), bin: t.TempDir()}
-	writeConfig(t, m.config, "runners.star", "runner(name = \"a\", agent = \"claude\", config_dir = \""+m.login+"\", keychain = \"obee-a\")\n")
+	writeConfig(t, m.config, "runners.star", "runner(name = \"a\", agent = \"claude\", config_dir = \""+m.login+"\", keychain = \"beehave-a\")\n")
 
 	writeConfig(t, m.config, "projects/p.star", validProject)
 
@@ -229,8 +229,8 @@ func TestDoctor_AnUnreadableTokenFailsWithTheKeychainFix(t *testing.T) {
 	code, out := runDoctor(t, m, cli.Doctor{TokenReadable: tokens}, m.env())
 
 	require.Equal(t, 1, code)
-	require.Equal(t, []string{"obee-a"}, asked)
-	require.Contains(t, out, "FAIL token of a readable\n     fix: Run `claude setup-token`, then: security add-generic-password -s obee-a -a $USER -w\n")
+	require.Equal(t, []string{"beehave-a"}, asked)
+	require.Contains(t, out, "FAIL token of a readable\n     fix: Run `claude setup-token`, then: security add-generic-password -s beehave-a -a $USER -w\n")
 }
 
 func TestDoctor_ARunnerWithoutAKeychainEntryHasNoTokenCheck(t *testing.T) {
@@ -279,13 +279,13 @@ func TestDoctor_AnOldBdFailsWithTheMessageOfTheVersionCheck(t *testing.T) {
 
 	m := newMachine(t)
 	old := func(context.Context) error {
-		return errors.New("obee needs bd 1.3.2 or newer for claims; found 0.56.1")
+		return errors.New("beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 	}
 
 	code, out := runDoctor(t, m, cli.Doctor{BdVersion: old}, m.env())
 
 	require.Equal(t, 1, code)
-	require.Contains(t, out, "FAIL bd version\n     fix: obee needs bd 1.3.2 or newer for claims; found 0.56.1\n")
+	require.Contains(t, out, "FAIL bd version\n     fix: beehave needs bd 1.3.2 or newer for claims; found 0.56.1\n")
 }
 
 func TestDoctor_ADoctorWithoutAReaderIsRefusedAndNoCheckRuns(t *testing.T) {
@@ -340,7 +340,7 @@ func TestDoctor_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd, ReadUsage: func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }}}, map[string]string{}, &stdout, &stderr)
 
 	require.Equal(t, 1, code)
-	require.Contains(t, stderr.String(), "obee: cannot find the home folder")
+	require.Contains(t, stderr.String(), "beehave: cannot find the home folder")
 }
 
 func TestDoctor_AMissingConfigFolderFailsTheConfigCheck(t *testing.T) {

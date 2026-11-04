@@ -3,7 +3,7 @@ package gate
 import (
 	"slices"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Status is the result of one gate step. A step that gave no result line is unknown, never a pass.

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 const twoGates = "a = gate(name = \"first\")\nb = gate(name = \"second\")\ncommand(run = [\"show\", b.head, str(b.passed), b.report])\n"

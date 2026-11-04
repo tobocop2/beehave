@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -50,7 +50,7 @@ func (f *Forge) target(ctx context.Context, req model.OverlapRequest) ([]string,
 	}
 
 	if req.PR == "" && req.Files == "" {
-		return nil, "", forge.Refuse("usage: obee check overlap <pr> | --files <list> [--since <ISO date>]")
+		return nil, "", forge.Refuse("usage: beehave check overlap <pr> | --files <list> [--since <ISO date>]")
 	}
 
 	if req.PR != "" && !model.IsDigits(req.PR) {

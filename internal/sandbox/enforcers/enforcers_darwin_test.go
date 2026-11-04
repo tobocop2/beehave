@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 func TestAuto_PicksSeatbeltOnMacOS(t *testing.T) {

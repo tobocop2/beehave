@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
 )
 
 const takeSyntax = "take <pr> --me <login> --idle <hours> --grace <hours> [--head <sha>] [--item <id>] [--apply | --take [--reply-read]]"

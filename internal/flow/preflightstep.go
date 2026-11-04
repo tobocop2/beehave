@@ -8,8 +8,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/preflight"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // preflighter judges the pull request of an item before an agent works on it. The caller finds the pull request: Request.PR is zero.

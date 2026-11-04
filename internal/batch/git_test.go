@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -123,7 +123,7 @@ func TestGitCLI_NewCommit(t *testing.T) {
 	got, err := g.NewCommit(context.Background(), treeB, "p1", "p2")
 	require.NoError(t, err)
 	assert.Equal(t, treeA, got)
-	assert.Equal(t, []string{"commit-tree", treeB, "-m", "obee batch union", "-p", "p1", "-p", "p2"}, s.calls[0])
+	assert.Equal(t, []string{"commit-tree", treeB, "-m", "beehave batch union", "-p", "p1", "-p", "p2"}, s.calls[0])
 
 	_, err = g.NewCommit(context.Background(), treeB)
 	require.EqualError(t, err, "git commit-tree failed with exit code 128: fatal: bad tree")

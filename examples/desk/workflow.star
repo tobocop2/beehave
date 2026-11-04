@@ -6,8 +6,8 @@
 #   4. The saga runs each write with the `write` call: a read-back first, so a replay never writes twice, and an undo for each write that has one.
 #   5. A refusal at any step goes to the exception queue by its reason code. A failed saga fails the case run, and the engine runs the undos.
 # Set DESK_DIR to the absolute path of this folder. The desk home (default ~/.desk) holds the config, the credential header, the vault, the sent log and the gold sets.
-# Run a shift with `obee run <shift> desk --workflow workflow.star`, where the item <shift> is an item you add with `obee item add`.
-# `obee status` shows a case that waits for a person. Answer with `obee answer <case> approve` (or any other text to reject), then run the shift again.
+# Run a shift with `beehave run <shift> desk --workflow workflow.star`, where the item <shift> is an item you add with `beehave item add`.
+# `beehave status` shows a case that waits for a person. Answer with `beehave answer <case> approve` (or any other text to reject), then run the shift again.
 # The system of record (DESK_API) is the one part that this example does not ship: the scripts in gateway/ show the calls that it must answer.
 # tests/run.sh runs every script against stand-ins for curl and sendmail.
 load("//policy.star", "ITEM_STATUS", "NO_UNDO", "POLICY", "REASON", "ROUTES", "TEAM", "TIER")
@@ -200,7 +200,7 @@ TIER_HANDLERS = {
 def approve(item, answer, case_plan):
     return TIER_HANDLERS[case_plan.row.tier](item, answer, case_plan)
 
-# The engine owns the key, the read-back and the undo. The key is in OBEE_WRITE_KEY for the write, the read-back and the undo, and it is the same
+# The engine owns the key, the read-back and the undo. The key is in BEEHAVE_WRITE_KEY for the write, the read-back and the undo, and it is the same
 # on a replay, so a second run of the case cannot write twice. A read-back that exits 0 means the write is done, and the engine skips it.
 def apply_step(step, payload):
     program = ["sh", SCRIPT.WRITE, step.write]

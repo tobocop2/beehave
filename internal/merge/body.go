@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tobocop2/obee/internal/lockfile"
+	"github.com/tobocop2/beehave/internal/lockfile"
 )
 
 // lockRetry is the pause between two tries to take the lock; a canceled context ends the wait.

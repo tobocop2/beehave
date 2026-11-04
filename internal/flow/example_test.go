@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/config"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/config"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 func mustRead(t *testing.T, path string) []byte {
@@ -225,7 +225,7 @@ func TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix
 
 // libraryLoop is a workflow that runs the review loop of the library with the extra arguments.
 func libraryLoop(extra string) string {
-	return "load(\"@obee//review_fix.star\", \"review_fix\")\n" +
+	return "load(\"@beehave//review_fix.star\", \"review_fix\")\n" +
 		"def main(item):\n" +
 		"    impl = struct(violations = \"\", session = \"\", rewrote = False)\n" +
 		"    review_fix(item, impl, \"prompts/review.md\", \"prompts/fix.md\", facts = facts()" + extra + ")\n"

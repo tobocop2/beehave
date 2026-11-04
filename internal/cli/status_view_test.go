@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/cli"
-	"github.com/tobocop2/obee/internal/flow"
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 // statusNow is the clock that the rig gives the status view.

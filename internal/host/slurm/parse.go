@@ -7,18 +7,18 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // The refusals of the parsers. Each wraps the text that was not recognized.
 var (
 	errJobID    = errors.New("sbatch gave an answer that is not a job id")
 	errBadJobID = errors.New("a job id is the number and the nonce that Submit returned, joined by a dash")
-	errJobText  = errors.New("the scheduler gave a job state that obee does not know")
-	errNodeText = errors.New("sinfo gave a node state that obee does not know")
+	errJobText  = errors.New("the scheduler gave a job state that beehave does not know")
+	errNodeText = errors.New("sinfo gave a node state that beehave does not know")
 	errNodeDown = errors.New("a node is down, so the host cannot take a job")
-	errNodeName = errors.New("sinfo gave a node name that obee does not accept")
+	errNodeName = errors.New("sinfo gave a node name that beehave does not accept")
 	errNoNodes  = errors.New("sinfo listed no node")
 )
 
@@ -115,7 +115,7 @@ func parseNodes(out string) ([]string, error) {
 	return nodes, nil
 }
 
-// nodeDrains reports whether a node state means the node takes no new job, and whether obee knows the state.
+// nodeDrains reports whether a node state means the node takes no new job, and whether beehave knows the state.
 func nodeDrains(name string) (drains, known bool) {
 	switch name {
 	case "drained", "draining":
@@ -148,7 +148,7 @@ func parseDraining(out string) (bool, error) {
 	return draining, nil
 }
 
-// nodeLineDrains reads one node state. A node that is down and a state obee does not know are refused.
+// nodeLineDrains reads one node state. A node that is down and a state beehave does not know are refused.
 func nodeLineDrains(line string) (bool, error) {
 	name := strings.ToLower(strings.TrimRight(line, nodeSuffixes))
 	if name == "down" {

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // upHosts answers host_up. started is true for a host that this call launched, and false for a host that was already up.

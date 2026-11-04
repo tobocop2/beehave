@@ -20,7 +20,7 @@ func TestWalk_ACommandPassesItsStdinAndAnEnvironmentOfAllowedNamesAndItsOwnVaria
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"PATH": "/bin", "LC_ALL": "C", "GH_TOKEN": "secret", "OBEE_STATE_DIR": "/state", "MODE": "loose"}
+	h.opts.Env = map[string]string{"PATH": "/bin", "LC_ALL": "C", "GH_TOKEN": "secret", "BEEHAVE_STATE_DIR": "/state", "MODE": "loose"}
 
 	_, err := walkText(t, h, settingsFlow)
 
@@ -29,7 +29,7 @@ func TestWalk_ACommandPassesItsStdinAndAnEnvironmentOfAllowedNamesAndItsOwnVaria
 
 	got := h.commands.requests[0]
 	assert.Equal(t, "the text", got.Stdin)
-	assert.Equal(t, []string{"LC_ALL=C", "PATH=/bin", "AREA=all", "MODE=strict"}, got.Env, "the allowed names of the caller, then the variables of the step; no token, no OBEE_ or DBOS__ name")
+	assert.Equal(t, []string{"LC_ALL=C", "PATH=/bin", "AREA=all", "MODE=strict"}, got.Env, "the allowed names of the caller, then the variables of the step; no token, no BEEHAVE_ or DBOS__ name")
 }
 
 func TestWalk_ACommandWithNoSettingsGetsTheAllowedEnvironmentAndNoStdin(t *testing.T) {
@@ -99,7 +99,7 @@ func TestWalk_ASettingThatIsWrongFailsTheStepBeforeItRuns(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]string{
-		"env name OBEE_":       `env = {"OBEE_X": "1"}`,
+		"env name BEEHAVE_":    `env = {"BEEHAVE_X": "1"}`,
 		"env name DBOS__":      `env = {"DBOS__X": "1"}`,
 		"env value not string": `env = {"A": 1}`,
 		"env not a dict":       `env = "x"`,
@@ -146,11 +146,11 @@ func TestWalk_AnEnvNameThatIsReservedNamesTheNameAndTheSetting(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"NAME": "OBEE_X"}
+	h.opts.Env = map[string]string{"NAME": "BEEHAVE_X"}
 
 	_, err := walkBody(t, h, "command(run = [\"a\"], env = {env(\"NAME\"): \"1\"})\n")
 
-	require.ErrorContains(t, err, "OBEE_X")
+	require.ErrorContains(t, err, "BEEHAVE_X")
 	require.ErrorContains(t, err, "env")
 }
 

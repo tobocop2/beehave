@@ -12,8 +12,8 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Kind is the type that a keyword of a builtin takes. KindAny is a keyword that the check leaves to the run.

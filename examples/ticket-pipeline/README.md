@@ -32,13 +32,13 @@ The data folder (`PIPE_HOME`, default `~/.pipe`, mode 700) is outside the reposi
 ## How to run it
 
 1. Make the data folder with the files `config` and `credential.header`.
-2. Copy `config/projects/pipeline.star` to the config folder of obee.
+2. Copy `config/projects/pipeline.star` to the config folder of beehave.
 3. Set `PIPE_DIR` to the absolute path of this folder and `PIPE_HOME` to the data folder. Programs need `sqlite3`, `jq` and `curl`.
-4. Add the item: `obee item add pipeline bf-2025 --title 'Backfill 2025' --body-file body.txt`.
-5. Run it: `obee run bf-2025 pipeline --workflow backfill.star`.
-6. If the run waits for the budget, `obee status` shows the question. Answer with `obee answer bf-2025 500`.
+4. Add the item: `beehave item add pipeline bf-2025 --title 'Backfill 2025' --body-file body.txt`.
+5. Run it: `beehave run bf-2025 pipeline --workflow backfill.star`.
+6. If the run waits for the budget, `beehave status` shows the question. Answer with `beehave answer bf-2025 500`.
 
-Tests need Go and the obee source: `go test ./cmd/obee -run TestScripts/pipe`. The scripts `pipe-*.txt` in `cmd/obee/testdata/e2e` run the example with a stand-in for the source and a fake agent.
+Tests need Go and the beehave source: `go test ./cmd/beehave -run TestScripts/pipe`. The scripts `pipe-*.txt` in `cmd/beehave/testdata/e2e` run the example with a stand-in for the source and a fake agent.
 
 ## Engine gaps
 

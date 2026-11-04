@@ -1,4 +1,4 @@
-// Package slurm is the job half of the host contract for a Slurm cluster that obee reaches over ssh.
+// Package slurm is the job half of the host contract for a Slurm cluster that beehave reaches over ssh.
 // It runs sbatch, squeue, sacct, scancel, sinfo and scontrol on the head node through proc.Runner. It creates and deletes no machine:
 // an adapter that owns a cluster, such as skypilot, builds a Queue over the ssh runner of that cluster and adds its own Up, Down and Status.
 package slurm
@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 )
 
 const (
-	drainReason = "obee"
+	drainReason = "beehave"
 	defaultPoll = 10 * time.Second
 	timeoutExit = "124" // the exit status of `timeout` for a command that it stopped
 )
@@ -186,7 +186,7 @@ func (q *Queue) hold(ctx context.Context, job jobwait.Job) error {
 }
 
 // Wait polls Slurm until the job has a final state. It reads squeue while the controller knows the job and sacct afterwards.
-// A state that obee does not know is an error, never a guess.
+// A state that beehave does not know is an error, never a guess.
 //
 // A job holds its slot until its work is banked, for at most max_run. Wait banks the work in every repository under the work root
 // (WorkRoot, to host.private_remote), then releases the slot of the job. A host with no repository has nothing to bank.

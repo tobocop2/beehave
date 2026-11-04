@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Check
-description: Run the full obee gate and report the result
+description: Run the full beehave gate and report the result
 x-ai-rulez:
   kind: command
   id: check

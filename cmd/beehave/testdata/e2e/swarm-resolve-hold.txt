@@ -1,0 +1,22 @@
+# A conflict gets a merge task at most twice. If the file unresolvable exists, the fake agent leaves the branch as it is, so the pull request conflicts again and the swarm holds it for a person.
+isolate
+swarmfakes
+
+exec beehaveswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec beehaveswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# Two merge tasks ran, not three.
+grep -count=2 '^resolve ' calls.log
+
+# Only the P0 task landed. The P2 task did not.
+grep -count=1 '^MergePR ' forge/calls.log
+exec git --git-dir=remote.git show main:a.txt
+stdout 'swarm-3'
+
+# The report names the task that needs a person.
+exec grep -rhao '1 landed, 1 need a person' state
+
+-- unresolvable --
+-- backlog.txt --
+P2	late	a.txt
+P0	first	a.txt

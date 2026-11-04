@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -97,7 +97,7 @@ func (g GitCLI) MergeTree(ctx context.Context, ours, theirs string) (MergeResult
 
 // NewCommit makes a commit of the tree with the parents and prints its id. The caller supplies the author in the environment of Exec.
 func (g GitCLI) NewCommit(ctx context.Context, tree string, parents ...string) (string, error) {
-	args := []string{"commit-tree", tree, "-m", "obee batch union"}
+	args := []string{"commit-tree", tree, "-m", "beehave batch union"}
 	for _, parent := range parents {
 		args = append(args, "-p", parent)
 	}

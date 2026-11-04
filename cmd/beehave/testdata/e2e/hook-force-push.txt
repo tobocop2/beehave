@@ -1,0 +1,27 @@
+# The implementer force-pushes, sends a pack and deletes a branch through the forge API.
+# The fake claude obeys --settings: the hook of the step runs `beehave check command` before each call and exits 2 on a listed kind.
+# This proves the wiring from forbid_commands to the settings to the hook command. Each refused call is blocked and never ran.
+# A plain push passes the hook.
+cp cmds-all cmds
+cp flow/hit.star obey-hook
+exec beehave run 7 --workflow flow/hit.star
+stdout 'item 7 finished'
+
+grep -count=1 '^blocked git push --force origin HEAD$' blocked.log
+grep -count=1 '^blocked git send-pack --force h b$' blocked.log
+grep -count=1 '^blocked gh api -X DELETE repos/o/r/git/refs/heads/b$' blocked.log
+! grep 'git push origin HEAD' blocked.log
+grep -count=3 '^blocked ' blocked.log
+
+# Nothing ran, so the step records no violations and the audit sees an empty value.
+! exists seen.log
+
+-- cmds-all --
+git push --force origin HEAD
+git send-pack --force h b
+gh api -X DELETE repos/o/r/git/refs/heads/b
+git push origin HEAD
+-- flow/hit.star --
+def main(item):
+    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", forbid_commands = ["git-bypass", "remote-delete"])
+    agent(name = "audit", prompt = "prompts/audit.md", model = "sonnet", inputs = {"seen": implement.violations})

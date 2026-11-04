@@ -192,7 +192,7 @@ def already_closed(item, request, state, memory, number):
     return finished(memory)
 
 def give_up(item):
-    item_comment(name = "rounds", id = item.id, key = "rounds", text = "The rounds ran out before the request ended. Run obee resume.")
+    item_comment(name = "rounds", id = item.id, key = "rounds", text = "The rounds ran out before the request ended. Run beehave resume.")
     item_status(name = "hold", id = item.id, status = ITEM_STATUS.HOLD)
 
 HANDLERS = {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 func TestOrDiscard_KeepsAWriterAndReplacesNil(t *testing.T) {

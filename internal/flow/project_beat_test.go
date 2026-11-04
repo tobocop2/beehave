@@ -51,7 +51,7 @@ func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testin
 	require.ErrorIs(t, err, errProjectConflict)
 	require.ErrorContains(t, err, "project p")
 	require.ErrorContains(t, err, "other")
-	require.ErrorContains(t, err, "obee cancel 12")
+	require.ErrorContains(t, err, "beehave cancel 12")
 
 	require.NoError(t, client.Answer(testItem, "go"))
 	require.NoError(t, (<-first).err)

@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/batch"
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/preflight"
+	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/preflight"
 )
 
 // remoteBranches is a preflight reader over the branches on the remote: the head of each branch, and no entry for a branch that is gone.

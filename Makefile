@@ -23,7 +23,7 @@ FLOW_LETTERS := $(subst $(space),,$(FLOW_SHARDS))
 FLOW_PROFILES := $(subst $(space),,coverage.out$(foreach s,$(FLOW_SHARDS),$(comma)coverage-flow-$(s).out)$(comma)coverage-flow-rest.out)
 GOLANGCI_LINT_VERSION := v2.15.0
 AI_RULEZ_VERSION := v5.9.2
-BIN := bin/obee
+BIN := bin/beehave
 REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
@@ -39,8 +39,8 @@ setup:  ## Install the Go tools and generate the agent files
 	command -v deadcode >/dev/null 2>&1 || go install $(DEADCODE_VERSION)
 	$(MAKE) governance-generate
 
-build:  ## Build bin/obee and bin/remedy
-	go build -trimpath -o $(BIN) ./cmd/obee
+build:  ## Build bin/beehave and bin/remedy
+	go build -trimpath -o $(BIN) ./cmd/beehave
 	go build -trimpath -o $(REMEDY) ./examples/remediation/tools/cmd/remedy
 
 release-snapshot:  ## Build release archives without publishing
@@ -67,7 +67,7 @@ lint: lint-version  ## Lint the Go code
 vet:
 	go vet ./...
 
-# No package of the module may link DBOS Conductor, the enterprise module, viper or the shell interpreter. net/http and crypto/tls are allowed in dependencies: DBOS links both, and TestRun_OpensNoNetworkSocket proves obee opens no connection. The depguard rule no-http-client keeps net/http out of obee's own code.
+# No package of the module may link DBOS Conductor, the enterprise module, viper or the shell interpreter. net/http and crypto/tls are allowed in dependencies: DBOS links both, and TestRun_OpensNoNetworkSocket proves beehave opens no connection. The depguard rule no-http-client keeps net/http out of beehave's own code.
 deps:  ## Fail if the binary links a forbidden dependency
 	@if go list -deps ./... | grep -E '^(go\.dbos\.dev|github\.com/spf13/viper|mvdan\.cc/sh/v3/interp)'; then echo "forbidden dependency in the module"; exit 1; fi
 
@@ -96,7 +96,7 @@ coverage:  ## Enforce the coverage gate on coverage.out and the flow profiles (r
 	go-test-coverage --config=.go-test-coverage.yml --profile=$(FLOW_PROFILES)
 
 smoke: build  ## Run the built binary: --version prints and exits 0
-	$(BIN) --version | grep -q '^obee '
+	$(BIN) --version | grep -q '^beehave '
 	$(REMEDY) --help | grep -q '^usage: remedy '
 
 smoke-agent: build  ## Run examples/local once with the real claude CLI (costs an agent run; not part of check)

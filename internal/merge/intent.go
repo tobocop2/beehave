@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
-// DefaultSkew is the margin for the clock skew between obee and the forge, used when an intent sets none.
+// DefaultSkew is the margin for the clock skew between beehave and the forge, used when an intent sets none.
 const DefaultSkew = 2 * time.Minute
 
 // Intent is the record that a caller writes before a merge, so that a run which repeats after a crash can tell its own merge from none.

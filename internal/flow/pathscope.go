@@ -13,7 +13,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // scope is the set of path globs that an agent call may change. A scope with no globs allows every path.

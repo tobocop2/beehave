@@ -5,8 +5,8 @@ package seatbelt_test
 import (
 	"testing"
 
-	"github.com/tobocop2/obee/internal/sandbox/contract"
-	"github.com/tobocop2/obee/internal/sandbox/seatbelt"
+	"github.com/tobocop2/beehave/internal/sandbox/contract"
+	"github.com/tobocop2/beehave/internal/sandbox/seatbelt"
 )
 
 func TestEnforcer_PassesTheContractSuite(t *testing.T) {

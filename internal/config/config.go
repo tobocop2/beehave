@@ -11,20 +11,20 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
-// Names of the OBEE_* variables that override the config files.
+// Names of the BEEHAVE_* variables that override the config files.
 const (
-	envMaxConcurrent       = "OBEE_AGENTS_MAX_CONCURRENT"
-	envMaxReviewConcurrent = "OBEE_AGENTS_MAX_REVIEW_CONCURRENT"
-	envMaxTurns            = "OBEE_AGENTS_MAX_TURNS"
-	envMaxBudget           = "OBEE_AGENTS_MAX_BUDGET_USD"
-	envMaxRunBudget        = "OBEE_AGENTS_MAX_RUN_BUDGET_USD"
-	envRetentionDays       = "OBEE_AGENTS_RETENTION_DAYS"
-	envReviewPoll          = "OBEE_REVIEW_POLL_MINUTES"
-	envFiveHourMax         = "OBEE_POOL_FIVE_HOUR_MAX"
-	envSevenDayMax         = "OBEE_POOL_SEVEN_DAY_MAX"
+	envMaxConcurrent       = "BEEHAVE_AGENTS_MAX_CONCURRENT"
+	envMaxReviewConcurrent = "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT"
+	envMaxTurns            = "BEEHAVE_AGENTS_MAX_TURNS"
+	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
+	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
+	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
+	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
+	envFiveHourMax         = "BEEHAVE_POOL_FIVE_HOUR_MAX"
+	envSevenDayMax         = "BEEHAVE_POOL_SEVEN_DAY_MAX"
 )
 
 // maxReviewPollMinutes is one week. A larger value overflows the interval of the schedule.
@@ -36,7 +36,7 @@ const (
 	maxRetentionDays     = 36500
 )
 
-// floatBits is the bit size of a percent that the OBEE_* variables give.
+// floatBits is the bit size of a percent that the BEEHAVE_* variables give.
 const floatBits = 64
 
 // Config is the config folder: the agent limit, the pool caps, the runners and the projects.
@@ -69,7 +69,7 @@ func DefaultConfig() Config {
 	}
 }
 
-// LoadFolder loads runners.star and every projects/*.star of a config folder, applies the OBEE_*
+// LoadFolder loads runners.star and every projects/*.star of a config folder, applies the BEEHAVE_*
 // variables of env, and validates the result. It reports every problem it finds, one for each file.
 func LoadFolder(dir string, env map[string]string) (Config, Problems) {
 	cfg := DefaultConfig()

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/agent/agenttest"
-	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/agenttest"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 )
 
 const (
@@ -192,7 +192,7 @@ func texts(calls []agent.Call) []string {
 // The fixture of the reviewer: a Bash call, then the tool_result that the PreToolUse hook produced when it refused the call.
 const (
 	refusedCall   = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_9","name":"Bash","input":{"command":"git add -A"}}]}}`
-	refusedResult = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":"PreToolUse:Bash hook error: [obee check command]: obee refused the command: bulk-staging: git add -A"}]}}`
+	refusedResult = `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_9","is_error":true,"content":"PreToolUse:Bash hook error: [beehave check command]: beehave refused the command: bulk-staging: git add -A"}]}}`
 )
 
 func TestCalls_ACallCarriesItsIdAndAHookRefusalNamesTheSameId(t *testing.T) {

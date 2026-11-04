@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/review"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // outputVerdict and outputFindings are the outputs of a review call that the follow_ups option reads and sets.

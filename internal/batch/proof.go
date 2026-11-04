@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // ProofReads are the forge reads that prove a landing. Compare reads the status and both counts of the comparison of a commit with a branch.

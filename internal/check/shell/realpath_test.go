@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 func TestRealPath_ARelativeLinkBehindALinkedParentStartsAtTheRealFolder(t *testing.T) {

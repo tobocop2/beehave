@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/cli"
+	"github.com/tobocop2/beehave/internal/cli"
 )
 
 func runDry(t *testing.T, env map[string]string, args ...string) (int, string, string) {

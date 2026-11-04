@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // CreatePR opens a draft pull request and returns its number, which gh prints as the last part of the address. Title and body go as single arguments.

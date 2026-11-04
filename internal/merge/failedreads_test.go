@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/beehave/internal/merge"
 )
 
 // TestRun_AReadThatFailsRefusesTheMerge fails one read of the forge at a time. A failed read is never an empty answer: the merge does not go on.

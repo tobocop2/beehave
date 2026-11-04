@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // workingFolder is the folder the tools read: the repository of the process.

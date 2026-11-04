@@ -9,9 +9,9 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // ResumeOnThisBuild moves the canceled, failed or open run of an item that another build started to this build, from its last finished step.
@@ -46,7 +46,7 @@ func (c *Client) moveOpen(item string, last run) error {
 	}
 
 	if err := c.reopenHere(item, last); err != nil {
-		return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run obee resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
+		return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run beehave resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
 	}
 
 	return nil
@@ -56,12 +56,12 @@ func (c *Client) moveOpen(item string, last run) error {
 func (c *Client) requireMovable(item string, last run) error {
 	// A run replays its recorded steps. Under another step list the replay does not match them, whatever the build.
 	if was, now := stepListOf(last.Status.ApplicationVersion), stepListOf(c.version); was != now {
-		return fmt.Errorf("%w: %s was recorded under %s and this build has %s. A run cannot replay under another step list. Start the item again: obee run %s",
+		return fmt.Errorf("%w: %s was recorded under %s and this build has %s. A run cannot replay under another step list. Start the item again: beehave run %s",
 			errStranded, last.Status.ID, describeStepList(was), describeStepList(now), item)
 	}
 
 	if state := stateOf(last.Status.Status); last.terminal() && state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run obee run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if err := c.requireNoLiveHolder(item, last); err != nil {
@@ -88,7 +88,7 @@ func (c *Client) requireNoLiveHolder(item string, last run) error {
 		holder = owner
 	}
 
-	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run obee resume %s --on-this-build again",
+	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run beehave resume %s --on-this-build again",
 		errStranded, last.Status.ID, last.Status.ApplicationVersion, holder, ends.UTC().Format(time.RFC3339), item)
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 func command(env []string, argv ...string) sandbox.Command {
@@ -119,14 +119,14 @@ func TestRun_AProgramThatIsNotFoundGives127AndTheReasonOnStderr(t *testing.T) {
 
 	var stderr bytes.Buffer
 
-	cmd := command(systemPath, "obee-no-such-program")
+	cmd := command(systemPath, "beehave-no-such-program")
 	cmd.Stderr = &stderr
 
 	code, err := New().Run(t.Context(), sandbox.Plan{Read: sandbox.SystemRead()}, 0, cmd)
 
 	require.NoError(t, err)
 	assert.Equal(t, 127, code)
-	assert.Contains(t, stderr.String(), "obee-no-such-program")
+	assert.Contains(t, stderr.String(), "beehave-no-such-program")
 
 	code, err = New().Run(t.Context(), sandbox.Plan{}, 0, command([]string{"PATH="}, "true"))
 	require.NoError(t, err)

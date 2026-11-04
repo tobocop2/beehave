@@ -4,7 +4,7 @@ A document needs sign-off from several roles. One item is one request. The run f
 
 ## How it works
 
-- **Signed sign-offs.** A person signs a message with `ssh-keygen -Y sign` (`scripts/sign.sh`) and sends the two files to the inbox of the desk. `scripts/intake.sh` verifies the signature against `allowed_signers` (namespace `obee-signoff`). The desk holds no private key. A message with a bad or unknown signature goes to `refused/`, and a taken message cannot be taken twice.
+- **Signed sign-offs.** A person signs a message with `ssh-keygen -Y sign` (`scripts/sign.sh`) and sends the two files to the inbox of the desk. `scripts/intake.sh` verifies the signature against `allowed_signers` (namespace `beehave-signoff`). The desk holds no private key. A message with a bad or unknown signature goes to `refused/`, and a taken message cannot be taken twice.
 - **One version.** `scripts/submit.sh` stores a document in a git repository. A sign-off names the blob hash of the version it covers. A new version makes earlier sign-offs stale: the tally counts only the current hash, and the ledger keeps the old rows.
 - **The quorum is data.** `policy.star` gives each role its members, the number of people it needs and a `required` flag. A reject from a member of a required role is a veto. `min_roles` is the number of roles that must be satisfied. `scripts/tally.jq` evaluates the rule over the ledger.
 - **Delegation.** A member signs a delegation for a role, to a person, until a time. The tally counts the delegate while the delegation is in force.
@@ -22,7 +22,7 @@ A document needs sign-off from several roles. One item is one request. The run f
 
 ## The extension question and the wait
 
-The extension question is a wait with `to` (the people in `escalate_to`) and `choices` (`extend`, `cancel`). A person answers with `obee answer <item> --as rita extend`. The wait refuses a stranger. The ledger row of the extension names the person. The engine does not prove the name: anyone who can run `obee answer` can give a listed name. The sign-offs stay signed files, because a wait proves no name.
+The extension question is a wait with `to` (the people in `escalate_to`) and `choices` (`extend`, `cancel`). A person answers with `beehave answer <item> --as rita extend`. The wait refuses a stranger. The ledger row of the extension names the person. The engine does not prove the name: anyone who can run `beehave answer` can give a listed name. The sign-offs stay signed files, because a wait proves no name.
 
 The sign-offs do not use a wait with `quorum`. A quorum wait counts names that the engine does not prove, so it would add a weaker second path next to the signed inbox. The rounds that poll the inbox stay.
 
@@ -33,8 +33,8 @@ The sign-offs do not use a wait with `quorum`. A quorum wait counts names that t
 ## Run it
 
 1. Copy the folder to a git repository. Make `~/.approval` with `config` (`NOTIFY_API=...`), `credential.header` and `allowed_signers`.
-2. Copy `config/projects/approvals.star` to the obee config folder. Set `APPROVALS_DIR` to the absolute path of this folder.
-3. `sh scripts/submit.sh msa msa.md ann`, then add an item with the body `{"doc": "msa", "kind": "release", "author": "ann"}` and run `obee run <item> approvals --workflow workflow.star`.
+2. Copy `config/projects/approvals.star` to the beehave config folder. Set `APPROVALS_DIR` to the absolute path of this folder.
+3. `sh scripts/submit.sh msa msa.md ann`, then add an item with the body `{"doc": "msa", "kind": "release", "author": "ann"}` and run `beehave run <item> approvals --workflow workflow.star`.
 4. Each signer runs `sh scripts/sign.sh <key> . s1 type=signoff req=<item> doc=msa hash=<hash> role=security by=sam decision=approve reason=ok` and sends the files to `~/.approval/inbox`.
 5. A release pipeline calls `sh scripts/audit.sh <item> <hash> <head>`. The head is required.
 

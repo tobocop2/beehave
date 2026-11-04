@@ -96,7 +96,7 @@ type ClosingRefs struct {
 	Issues        []int
 }
 
-// PullRequest holds the fields of gh pr list and gh pr view that obee reads.
+// PullRequest holds the fields of gh pr list and gh pr view that beehave reads.
 // A pointer field is one a gate decides on: nil means gh sent null or the call did not ask for it, so a gate must not read nil as false or empty.
 type PullRequest struct {
 	Number         int             `json:"number"`

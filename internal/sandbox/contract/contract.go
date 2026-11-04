@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 const (
@@ -128,7 +128,7 @@ func homeFolder(r reporter) string {
 	home, err := os.UserHomeDir()
 	must(r, err)
 
-	dir, err := os.MkdirTemp(home, "obee-contract-")
+	dir, err := os.MkdirTemp(home, "beehave-contract-")
 	must(r, err)
 
 	r.Cleanup(func() { must(r, os.RemoveAll(dir)) })
@@ -178,7 +178,7 @@ func exists(path string) bool {
 func exitCode(r reporter, e sandbox.Enforcer) {
 	r.Helper()
 
-	for line, want := range map[string]int{"exit 0": 0, "exit " + strconv.Itoa(exitSeven): exitSeven, "obee-no-such-program": exitNotFound} {
+	for line, want := range map[string]int{"exit 0": 0, "exit " + strconv.Itoa(exitSeven): exitSeven, "beehave-no-such-program": exitNotFound} {
 		got := run(r, e, base(r), line).code
 		expect(r, got == want, "%q exited %d, want %d", line, got, want)
 	}
@@ -278,7 +278,7 @@ func selfSigned(r reporter) tls.Certificate {
 	must(r, err)
 
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "obee-contract"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "beehave-contract"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(certLifetime), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 
@@ -376,7 +376,7 @@ func unixSocket(r reporter, e sandbox.Enforcer) {
 func socketNames(r reporter) (addresses, flags map[string]string) {
 	r.Helper()
 
-	folder, err := os.MkdirTemp("", "obee-sock-")
+	folder, err := os.MkdirTemp("", "beehave-sock-")
 	must(r, err)
 	r.Cleanup(func() { must(r, os.RemoveAll(folder)) })
 
@@ -384,7 +384,7 @@ func socketNames(r reporter) (addresses, flags map[string]string) {
 	addresses, flags = map[string]string{"pathname": path}, map[string]string{"pathname": "--unix-socket " + path}
 
 	if runtime.GOOS == "linux" {
-		name := fmt.Sprintf("obee-contract-%d-%d", os.Getpid(), time.Now().UnixNano())
+		name := fmt.Sprintf("beehave-contract-%d-%d", os.Getpid(), time.Now().UnixNano())
 		addresses["abstract"], flags["abstract"] = "@"+name, "--abstract-unix-socket "+name
 	}
 

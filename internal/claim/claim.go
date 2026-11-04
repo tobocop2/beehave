@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const attempts = 4
@@ -194,7 +194,7 @@ func (c *Claims) claimRow(ctx context.Context, me, item string) error {
 		}
 	}
 
-	return refuse("claim: could not take #%s after %d attempts; check `obee claim who %s`", item, attempts, item)
+	return refuse("claim: could not take #%s after %d attempts; check `beehave claim who %s`", item, attempts, item)
 }
 
 // yield deals with a holder that won: after one reclaim it refuses with code 3, and before it asks for the reclaim.

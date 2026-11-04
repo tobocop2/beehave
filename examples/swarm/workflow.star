@@ -1,5 +1,5 @@
 # A swarm: one backlog, many tasks, many agents at once, and a merge queue that lands pull requests by priority.
-# Run: SWARM=<item> obee run <item> <project> --workflow workflow.star
+# Run: SWARM=<item> beehave run <item> <project> --workflow workflow.star
 # The body of the parent item holds one task on each line: a priority (P0 to P3), a tab, the title, and optionally a tab and a body.
 #
 # Variables of the environment:

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {

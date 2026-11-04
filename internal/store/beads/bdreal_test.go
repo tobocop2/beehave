@@ -12,19 +12,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/store/beads"
-	"github.com/tobocop2/obee/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
 
 // This file is the contract test of the claim store. The same scenarios run against the fake bd of beadstest, which keeps the
 // fake honest, and against a real bd 1.3.2 with a private dolt server, which keeps the code honest. The real run needs
-// OBEE_BD_132, the path of a bd 1.3.2 binary, and `dolt` on PATH. Without the variable the real run is skipped.
+// BEEHAVE_BD_132, the path of a bd 1.3.2 binary, and `dolt` on PATH. Without the variable the real run is skipped.
 
 const (
-	binaryVariable = "OBEE_BD_132"
+	binaryVariable = "BEEHAVE_BD_132"
 	realPrefix     = "ct"
 )
 
@@ -47,7 +47,7 @@ func fakeBackend(t *testing.T) leaseBackend {
 	return leaseBackend{run: bd, prefix: "p", beads: beadsOver(t, bd), expire: expire}
 }
 
-// realBackend starts a private dolt server and a beads database on it. It skips when OBEE_BD_132 is not set.
+// realBackend starts a private dolt server and a beads database on it. It skips when BEEHAVE_BD_132 is not set.
 // Every command runs through env(1), so the test never changes the environment of the test process and can run in parallel.
 func realBackend(t *testing.T) leaseBackend {
 	t.Helper()
@@ -88,7 +88,7 @@ func realBackend(t *testing.T) leaseBackend {
 
 func rowOf(b leaseBackend, item string) string { return b.prefix + "-lock-gh-" + item }
 
-// plant makes a claim row and applies the bd update arguments to it, the way an old obee or a person would leave it.
+// plant makes a claim row and applies the bd update arguments to it, the way an old beehave or a person would leave it.
 func (b leaseBackend) plant(t *testing.T, item string, update ...string) {
 	t.Helper()
 
@@ -279,7 +279,7 @@ func scenarioOldBd(t *testing.T, b leaseBackend) {
 	beads, err := beads.New(old, b.prefix)
 	require.NoError(t, err)
 
-	require.ErrorContains(t, beads.TryHold(t.Context(), hold("20", "session-a")), "obee needs bd 1.3.2 or newer for claims; found 0.56.1")
+	require.ErrorContains(t, beads.TryHold(t.Context(), hold("20", "session-a")), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 	assert.Equal(t, 1, old.calls, "only bd --version ran")
 }
 

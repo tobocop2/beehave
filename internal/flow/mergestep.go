@@ -7,9 +7,9 @@ import (
 
 	"go.starlark.net/starlark"
 
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/workflow"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // The values of the `state` output of a merge call. While the call waits for the owner, the run shows mergeOwner.

@@ -7,13 +7,13 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/tobocop2/obee/internal/lockfile"
+	"github.com/tobocop2/beehave/internal/lockfile"
 )
 
 const engineLockName = "engine.lock"
 
 // errStateBusy is returned when another engine holds the state folder.
-var errStateBusy = errors.New("another obee run owns this state folder; wait for it, or see obee status")
+var errStateBusy = errors.New("another beehave run owns this state folder; wait for it, or see beehave status")
 
 // lockFile names a lock file in dir.
 func lockFile(dir, name string) *flock.Flock {

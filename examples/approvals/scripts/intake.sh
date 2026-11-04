@@ -1,11 +1,11 @@
 set -eu
 # Take the signed messages from the inbox into the ledger. Usage: intake.sh
 # A message is NAME.msg (lines of key=value) with NAME.msg.sig, made by sign.sh. The signature must verify against
-# allowed_signers for the person in the by= line, in the namespace obee-signoff. Anything else goes to refused/ and the
+# allowed_signers for the person in the by= line, in the namespace beehave-signoff. Anything else goes to refused/ and the
 # ledger records why. A taken message moves to taken/ under the SHA-256 of its text, so a replay is not taken twice.
 # Types: signoff (req, doc, hash, role, decision, reason) and delegate (role, to, until, reason).
 . "$(dirname "$0")/lib.sh"
-NS=obee-signoff
+NS=beehave-signoff
 
 kv() { sed -n "s/^$1=//p" "$2" | head -n 1; }
 

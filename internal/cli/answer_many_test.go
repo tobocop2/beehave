@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/flow"
+	"github.com/tobocop2/beehave/internal/flow"
 )
 
 // waiting returns the status lines of runs that wait: item, project and question.

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 var _ store.Writer = (*Store)(nil)

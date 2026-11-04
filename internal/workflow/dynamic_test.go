@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func TestDynamicCommands_CountsTheCallsWhoseRunListIsNotALiteral(t *testing.T) {

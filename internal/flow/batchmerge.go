@@ -13,9 +13,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/batch"
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/batch"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // unknownReads is the number of reads of a pull request whose mergeable state stays UNKNOWN before the batch defers it.

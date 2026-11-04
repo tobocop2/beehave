@@ -7,10 +7,10 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
-// ScheduleInfo is one scheduled workflow of the store, as obee status shows it.
+// ScheduleInfo is one scheduled workflow of the store, as beehave status shows it.
 // LastTick is nil when the schedule has not fired. It is the time that the workflow library recorded after the last firing, which can be a few seconds after the tick.
 // Firing is true when an engine runs and the schedule is not paused: only a running engine fires a schedule.
-// The next due time is not shown. The workflow library counts a fixed delay from the launch of the engine, and obee records no launch time.
+// The next due time is not shown. The workflow library counts a fixed delay from the launch of the engine, and beehave records no launch time.
 type ScheduleInfo struct {
 	Name     string     `json:"name"`
 	Workflow string     `json:"workflow"`

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestParseSandboxMode_NamesOnAndOffAndRefusesTheRest(t *testing.T) {
@@ -55,7 +55,7 @@ func TestCheckAllowWrite_RefusesWhatTheDesignKeepsClosedAtAnyDepth(t *testing.T)
 	for _, bad := range []string{
 		".git", ".git/hooks", "app/.git/hooks", ".claude", "sub/.claude/settings.json", ".husky", ".githooks/pre-commit",
 		".env", "app/.env", "config/.env.production", ".envrc", "/work/tree/.git", "~/.ssh", "~/.ssh/keys", "~/.claude.json", "~/.cargo/credentials.toml",
-		"~/.config/obee/state", "~/Library/Keychains", "~", "~/",
+		"~/.config/beehave/state", "~/Library/Keychains", "~", "~/",
 	} {
 		require.Error(t, model.CheckAllowWrite([]string{bad}), bad)
 	}
@@ -68,7 +68,7 @@ func TestCheckAllowWrite_RefusesWhatTheDesignKeepsClosedAtAnyDepth(t *testing.T)
 func TestCheckAllowWrite_ComparesNamesWithoutCase(t *testing.T) {
 	t.Parallel()
 
-	for _, bad := range []string{".Git/hooks", ".GIT", ".CLAUDE", ".Husky", "sub/.GitHooks", ".ENV", "app/.Env.local", "~/.SSH", "~/.Config/Obee/x", "~/.CLAUDE.json"} {
+	for _, bad := range []string{".Git/hooks", ".GIT", ".CLAUDE", ".Husky", "sub/.GitHooks", ".ENV", "app/.Env.local", "~/.SSH", "~/.Config/Beehave/x", "~/.CLAUDE.json"} {
 		require.Error(t, model.CheckAllowWrite([]string{bad}), bad)
 	}
 

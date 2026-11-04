@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
 
 const (
@@ -176,9 +176,9 @@ func TestBeadsEnv_PointsBdAtThePrivateServerOnly(t *testing.T) {
 func TestEnvRunner_RunsTheBinaryUnderTheGivenVariables(t *testing.T) {
 	t.Parallel()
 
-	run := beadstest.EnvRunner{Inner: proc.NewExecRunner("env", t.TempDir()), Env: []string{"OBEE_PROBE=yes"}, Binary: "printenv"}
+	run := beadstest.EnvRunner{Inner: proc.NewExecRunner("env", t.TempDir()), Env: []string{"BEEHAVE_PROBE=yes"}, Binary: "printenv"}
 
-	done := run.Run(t.Context(), []string{"OBEE_PROBE"})
+	done := run.Run(t.Context(), []string{"BEEHAVE_PROBE"})
 
 	assert.Zero(t, done.ExitCode)
 	assert.Equal(t, "yes\n", done.Stdout)

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Exit codes a claim refusal carries to the command line.

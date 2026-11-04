@@ -5,7 +5,7 @@ import (
 	"flag"
 	"io"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 )
 
 const sizeSyntax = "size <brief> [--cap <tokens>] [--root <folder>]"

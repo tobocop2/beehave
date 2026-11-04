@@ -7,13 +7,13 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
 	maxFormText = 40
 	// markerName starts the parameter name that stands in for a zsh-only form while the text is parsed.
-	markerName = "OBEEZSH"
+	markerName = "BEEHAVEZSH"
 )
 
 var (

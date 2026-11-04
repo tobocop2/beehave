@@ -3,8 +3,8 @@ package beads
 import (
 	"context"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 var _ store.Reader = (*Store)(nil)

@@ -13,13 +13,13 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/atomicfile"
+	"github.com/tobocop2/beehave/internal/atomicfile"
 )
 
 const cancelsDir = "canceled"
 
 // A cancel marker is a file named for a run, in the canceled folder of the state folder. It holds the item and the project of the run.
-// obee cancel writes it before it cancels the run. The marker ends when the release of the worktree and the claim ends.
+// beehave cancel writes it before it cancels the run. The marker ends when the release of the worktree and the claim ends.
 // A marker that is still there at the next start shows a release that no process finished.
 
 func cancelPath(dir, id string) string {
@@ -125,7 +125,7 @@ func (e *Engine) warnOn(err error, id string) {
 	}
 }
 
-// sweepCancels gives back every run that obee cancel canceled while an engine ran, when that engine stopped before its release ended.
+// sweepCancels gives back every run that beehave cancel canceled while an engine ran, when that engine stopped before its release ended.
 // Launch calls it before the tick starts, so all the markers share one release timeout: a tracker that hangs delays the start once, not once for each marker.
 // A marker whose run is no longer canceled belongs to a run that was resumed, deleted or never canceled.
 // A marker whose item has a newer run is dropped: the give-back would stop the agents of the newer run.

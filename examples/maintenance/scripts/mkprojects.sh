@@ -1,10 +1,10 @@
 #!/bin/sh
 # Usage: mkprojects.sh [config folder]
-# Writes one obee project file for each row of repos.tsv, and one for the report. Run it after any change to repos.tsv.
+# Writes one beehave project file for each row of repos.tsv, and one for the report. Run it after any change to repos.tsv.
 # A file that a person wrote (no GENERATED marker on the first line) is never replaced.
 set -eu
 . "$(dirname "$0")/lib.sh"
-cfg=${1:-${OBEE_CONFIG:-$HOME/.config/obee}}/projects
+cfg=${1:-${BEEHAVE_CONFIG:-$HOME/.config/beehave}}/projects
 mkdir -p "$cfg"
 tab=$(printf '\t')
 

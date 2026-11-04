@@ -6,12 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/ssh"
-	"github.com/tobocop2/obee/internal/host/sshtest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/ssh"
+	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -122,14 +122,14 @@ func TestACallThatNeedsTheWorkRootFailsWhenTheRootCannotBeRead(t *testing.T) {
 	m := machineWith(map[string]int{"test -d": failed}, nil)
 	h, _, _ := newHost(t, m, config())
 
-	_, err := h.Log(t.Context(), "obee-x")
+	_, err := h.Log(t.Context(), "beehave-x")
 	require.Error(t, err)
 
-	state, err := h.Wait(t.Context(), "obee-x")
+	state, err := h.Wait(t.Context(), "beehave-x")
 	require.Error(t, err)
 	assert.Equal(t, model.JobUnknown, state)
 
-	require.Error(t, h.Cancel(t.Context(), "obee-x"))
+	require.Error(t, h.Cancel(t.Context(), "beehave-x"))
 	require.Error(t, h.Drain(t.Context()))
 	require.Error(t, h.Resume(t.Context()))
 
@@ -244,7 +244,7 @@ func TestWait_APollWithAValueTheTableDoesNotListIsAnError(t *testing.T) {
 
 	for _, raw := range []string{
 		"LoadState=masked\nActiveState=inactive\nSubState=dead\nResult=success\nExecMainCode=0\nExecMainStatus=0\n",
-		"obee-size x\n" + sshtest.Running,
+		"beehave-size x\n" + sshtest.Running,
 	} {
 		m := machineWith(nil, nil)
 		h, _, _ := newHost(t, m, config())

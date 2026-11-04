@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/beehave/internal/config"
 )
 
 func TestStateDir(t *testing.T) { //nolint:paralleltest // sets HOME
@@ -18,12 +18,12 @@ func TestStateDir(t *testing.T) { //nolint:paralleltest // sets HOME
 		env  map[string]string
 		want string
 	}{
-		{"override_wins", map[string]string{"OBEE_STATE_DIR": "/s", "XDG_STATE_HOME": "/x"}, "/s"},
-		{"xdg_state_home", map[string]string{"XDG_STATE_HOME": "/x"}, "/x/obee"},
-		{"empty_override_is_unset", map[string]string{"OBEE_STATE_DIR": "", "XDG_STATE_HOME": "/x"}, "/x/obee"},
-		{"default_is_under_the_home_folder", map[string]string{}, filepath.Join(home, ".local", "state", "obee")},
-		{"override_expands_the_home_folder", map[string]string{"OBEE_STATE_DIR": "~/s"}, filepath.Join(home, "s")},
-		{"relative_xdg_state_home_is_ignored", map[string]string{"XDG_STATE_HOME": "rel/state"}, filepath.Join(home, ".local", "state", "obee")},
+		{"override_wins", map[string]string{"BEEHAVE_STATE_DIR": "/s", "XDG_STATE_HOME": "/x"}, "/s"},
+		{"xdg_state_home", map[string]string{"XDG_STATE_HOME": "/x"}, "/x/beehave"},
+		{"empty_override_is_unset", map[string]string{"BEEHAVE_STATE_DIR": "", "XDG_STATE_HOME": "/x"}, "/x/beehave"},
+		{"default_is_under_the_home_folder", map[string]string{}, filepath.Join(home, ".local", "state", "beehave")},
+		{"override_expands_the_home_folder", map[string]string{"BEEHAVE_STATE_DIR": "~/s"}, filepath.Join(home, "s")},
+		{"relative_xdg_state_home_is_ignored", map[string]string{"XDG_STATE_HOME": "rel/state"}, filepath.Join(home, ".local", "state", "beehave")},
 	}
 
 	for _, tc := range tests { //nolint:paralleltest // sets HOME
@@ -39,16 +39,16 @@ func TestStateDir(t *testing.T) { //nolint:paralleltest // sets HOME
 func TestStateDir_RefusesARelativeOverride(t *testing.T) {
 	t.Parallel()
 
-	_, err := config.StateDir(map[string]string{"OBEE_STATE_DIR": "rel/state"})
+	_, err := config.StateDir(map[string]string{"BEEHAVE_STATE_DIR": "rel/state"})
 
 	require.ErrorIs(t, err, config.ErrRefused)
-	require.ErrorContains(t, err, "OBEE_STATE_DIR=rel/state is not an absolute path")
+	require.ErrorContains(t, err, "BEEHAVE_STATE_DIR=rel/state is not an absolute path")
 }
 
 func TestStateDir_RefusesAnOverrideWithTildeAndNoHomeFolder(t *testing.T) {
 	t.Setenv("HOME", "")
 
-	_, err := config.StateDir(map[string]string{"OBEE_STATE_DIR": "~/s"})
+	_, err := config.StateDir(map[string]string{"BEEHAVE_STATE_DIR": "~/s"})
 
 	require.ErrorIs(t, err, config.ErrRefused)
 }
@@ -64,7 +64,7 @@ func TestStateDir_RefusesWhenThereIsNoHomeFolder(t *testing.T) {
 func TestEnsureStateDir_CreatesTheFolderPrivate(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join(t.TempDir(), "a", "obee")
+	dir := filepath.Join(t.TempDir(), "a", "beehave")
 
 	require.NoError(t, config.EnsureStateDir(dir))
 
@@ -157,7 +157,7 @@ func TestEnsureStateDir_RefusesAFolderBehindAClosedParent(t *testing.T) {
 	chmod(t, parent, 0o000)
 	t.Cleanup(func() { chmod(t, parent, 0o700) })
 
-	err := config.EnsureStateDir(filepath.Join(parent, "obee"))
+	err := config.EnsureStateDir(filepath.Join(parent, "beehave"))
 
 	require.ErrorIs(t, err, config.ErrRefused)
 	require.ErrorContains(t, err, "cannot read the state folder")
@@ -169,8 +169,8 @@ func TestEnsureStateDir_RefusesAFolderItCannotCreate(t *testing.T) {
 	parent := t.TempDir()
 	chmod(t, parent, 0o500)
 
-	err := config.EnsureStateDir(filepath.Join(parent, "obee"))
+	err := config.EnsureStateDir(filepath.Join(parent, "beehave"))
 
 	require.ErrorIs(t, err, config.ErrRefused)
-	require.ErrorContains(t, err, "OBEE_STATE_DIR")
+	require.ErrorContains(t, err, "BEEHAVE_STATE_DIR")
 }

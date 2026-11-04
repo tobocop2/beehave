@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
 )
 
 const (

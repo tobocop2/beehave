@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/config"
+	"github.com/tobocop2/beehave/internal/config"
 )
 
 func TestUnknownProject_NamesTheProjectAndListsTheConfigProjectsSorted(t *testing.T) {

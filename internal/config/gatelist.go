@@ -6,7 +6,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // stepName is the name of a gate step. It is a plain word, so the host job can write it into a marker line.

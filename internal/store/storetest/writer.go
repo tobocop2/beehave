@@ -3,7 +3,7 @@ package storetest
 import (
 	"context"
 
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 // WriterProbe reads back what a writer under test did. A test builds it over the same fake or file as the writer.

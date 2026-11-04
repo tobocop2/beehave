@@ -15,7 +15,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
@@ -24,7 +24,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 	cases := []struct{ name, body, want string }{
 		{"command env is not a dict", `command(run = ["x"], env = "A=b" + "")`, "env must be a dict of strings"},
 		{"command env value is not text", `command(run = ["x"], env = {"A": 1})`, "env must hold strings only"},
-		{"command env name is reserved", `command(run = ["x"], env = {"OBEE_STATE_DIR": "b"})`, "env cannot set `OBEE_STATE_DIR`"},
+		{"command env name is reserved", `command(run = ["x"], env = {"BEEHAVE_STATE_DIR": "b"})`, "env cannot set `BEEHAVE_STATE_DIR`"},
 		{"command host with env", `command(run = ["x"], host = "h", env = {"A": "b"})`, "stdin and env cannot be used together with host"},
 		{"command stop code is not a number", `command(run = ["x"], stop_on_rc = ["a"])`, "stop_on_rc must hold whole numbers"},
 		{"command stop codes are not a list", `command(run = ["x"], stop_on_rc = 3)`, "stop_on_rc must be a list"},
@@ -39,7 +39,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"env has no name", `env()`, "name"},
 		{"earlier_calls has no call", `earlier_calls()`, "call"},
 		{"item_read has an unknown argument", `item_read(nope = 1)`, "nope"},
-		{"env reads a reserved name", `env("OBEE_STATE_DIR")`, "env cannot read `OBEE_STATE_DIR`"},
+		{"env reads a reserved name", `env("BEEHAVE_STATE_DIR")`, "env cannot read `BEEHAVE_STATE_DIR`"},
 		{"env reads a name that is not set", `env("NOPE_ZZ")`, "the environment variable NOPE_ZZ is not set"},
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},
 		{"agent has an empty model", `agent(prompt = "p", model = "")`, "an agent call needs a model"},

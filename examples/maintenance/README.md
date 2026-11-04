@@ -36,11 +36,11 @@ A skip costs no worktree, no agent and no run. The tick writes one row to `runs.
 
 ## When the tests stay red
 
-The gate runs after the update. If it fails, a fix agent runs for at most two rounds. If the tests are still red, the run waits with `wait(choices = ["retry", "hold"])`. Answer `retry` for two more fix rounds, or `hold`. With no answer before `RED_TIMEOUT`, the item holds. Nothing is pushed while the tests fail. A restart of obee keeps the question and the deadline.
+The gate runs after the update. If it fails, a fix agent runs for at most two rounds. If the tests are still red, the run waits with `wait(choices = ["retry", "hold"])`. Answer `retry` for two more fix rounds, or `hold`. With no answer before `RED_TIMEOUT`, the item holds. Nothing is pushed while the tests fail. A restart of beehave keeps the question and the deadline.
 
 ## Tests
 
-`cmd/obee/testdata/e2e/maint-*.txt` run the real scripts and the real workflows with stand-ins for `go`, `npm`, `gh` and the agent. Git runs for real, on local bare remotes.
+`cmd/beehave/testdata/e2e/maint-*.txt` run the real scripts and the real workflows with stand-ins for `go`, `npm`, `gh` and the agent. Git runs for real, on local bare remotes.
 
 - `maint-open`: a tick over three repositories, two pull requests, one skip, the report.
 - `maint-skips`: the three skip rules over four weeks.
@@ -52,13 +52,13 @@ The gate runs after the update. If it fails, a fix agent runs for at most two ro
 
 The example works around these. Each one is a reason to change the engine or to keep a script.
 
-- obee has no schedule. A job outside starts the week, and a missed week leaves no trace in obee. The report lists a repository with no row as "No record".
+- beehave has no schedule. A job outside starts the week, and a missed week leaves no trace in beehave. The report lists a repository with no row as "No record".
 - No step makes the worktree without an agent. A deterministic update followed by a gate needs a small agent step first, because the engine makes the worktree at the first agent step.
-- This example runs the repositories one after the other. `tick.sh` loops over `repos.tsv` and starts one `obee run` for each repository with news. The engine does not force this: a repository is a project, and one tick can start the runs side by side.
+- This example runs the repositories one after the other. `tick.sh` loops over `repos.tsv` and starts one `beehave run` for each repository with news. The engine does not force this: a repository is a project, and one tick can start the runs side by side.
 - The update step is an agent that runs one script and reports its exit code. If the agent writes no verdict, the tick logs the repository as `error`.
 - After a crash or a power cut, `tick.sh` can leave its lock folder behind, and every later tick exits 75. Remove the folder that `tick.sh` names on stderr.
 - A step cannot read the last run or the comments of its item. The scripts keep the state in `state/<repo>.env`.
 - Finished runs are deleted after seven days. The report reads its own log, `runs.tsv`.
 - A full usage cap blocks a run that needs no agent. The tick logs the exit code 3 as `deferred`.
-- obee has no cost cap for a week, and no forbid kind that refuses a push but allows a commit.
+- beehave has no cost cap for a week, and no forbid kind that refuses a push but allows a commit.
 - The scripts are outside the pinned workflow. A script change in the middle of a run reaches a replay of that run.

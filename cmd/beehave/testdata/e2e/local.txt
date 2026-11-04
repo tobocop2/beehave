@@ -1,0 +1,92 @@
+# A project with no tracker, no forge and no beads. The command is beehavereal, the real composition root.
+# The items are in local.db. The fake claude and the real git are the only programs on PATH.
+# The first review asks for changes, the fix commits, and the second review approves. The last step pushes the branch into the source repository.
+isolate
+exec git --version
+! exec bd version
+! exec gh version
+
+exec git init -q -b main origin
+exec git -C origin add readme.txt Makefile .gitignore
+exec git -C origin -c user.name=e2e -c user.email=e2e@example.com commit -q -m start
+
+# The workflow, its four prompts and its project file are the files of examples/local. Only the source of the project differs: it names the repository of the script.
+example local/workflow.star
+example local/prompts/plan.md
+example local/prompts/implement.md
+example local/prompts/review.md
+example local/prompts/fix.md
+example local/project.star config/projects/local.star
+replace config/projects/local.star '~/work/your-repo' $WORK/origin
+subst fake/claude
+chmod 755 fake/claude
+
+exec beehavereal check workflow local/workflow.star
+! stdout .
+! stderr .
+
+exec beehavereal item add local add-greeting --title 'Add a greeting' --body-file body.txt
+stdout 'added item add-greeting to project local'
+
+exec beehavereal run add-greeting local --workflow local/workflow.star
+stdout 'item add-greeting finished'
+
+exec beehavereal status
+stdout 'add-greeting-r1\tdone'
+
+# The steps ran in order: one plan, one implement, two reviews and one fix between them.
+cmp calls.log expected-calls.log
+
+# The run is done, so the claim row is free. The harness runs under umask 000, so the file is private only because the store asks for 0600.
+noclaims local
+mode state/local.db 600
+
+# The branch is in the source repository, with the commits of the agent. The checkout of the user has no change.
+exec git -C origin rev-parse --verify refs/heads/add-greeting
+exec git -C origin show add-greeting:greeting.txt
+stdout 'hello'
+exec git -C origin show add-greeting:fixed.txt
+stdout 'fixed'
+exec git -C origin status --porcelain
+! stdout .
+
+-- origin/readme.txt --
+The source repository.
+-- body.txt --
+Add a file with a greeting.
+-- origin/Makefile --
+check: ; @mkdir -p reports && echo '<testsuite tests="1"/>' > reports/r.xml
+-- origin/.gitignore --
+reports/
+-- expected-calls.log --
+plan
+implement
+review
+fix
+review
+-- fake/claude --
+#!/bin/sh
+# The fake claude. It names the step from the first words of the shipped prompt, and a review prompt holds the file for the verdict.
+# Each call adds the step to calls.log. A call leaves its work as a commit in the folder where it runs.
+step=
+write=
+while IFS= read -r line; do
+  case $line in
+    'Read the task below'*) step=plan ;;
+    'Make the change that'*) step=implement ;;
+    'Review the last commit'*) step=review ;;
+    'Fix each problem'*) step=fix ;;
+    'Write the verdict to '*) write=${line#Write the verdict to }; write=${write%% as JSON*} ;;
+  esac
+done
+echo "$step" >> "@WORK@/calls.log"
+commit() { git add "$1" && git -c user.name=agent -c user.email=agent@example.com commit -q -m "$step"; }
+case $step in
+  implement) echo hello > greeting.txt && commit greeting.txt ;;
+  fix) echo fixed > fixed.txt && commit fixed.txt ;;
+  review)
+    if [ -e "@WORK@/reviewed" ]; then verdict=approve; else verdict=changes; : > "@WORK@/reviewed"; fi
+    printf '{"verdict":"%s","mechanism":""}\n' "$verdict" > "$write"
+    ;;
+esac
+echo '{"type":"result","session_id":"s1","result":"done"}'

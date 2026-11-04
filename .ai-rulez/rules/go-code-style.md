@@ -16,7 +16,7 @@ x-ai-rulez:
 - Declare a small interface (1 to 5 methods) in the package that uses it. Do not declare it next to the implementation. Accept interfaces, return concrete types.
 - Add an interface only when a consumer needs a seam for a fake or a second implementation.
 - A constructor `NewX(deps...)` takes every dependency as a parameter. It does not read globals, the environment or the clock.
-- One composition root, `cmd/obee/main.go`, builds the object graph once and passes it down.
+- One composition root, `cmd/beehave/main.go`, builds the object graph once and passes it down.
 
 ## Functions
 
@@ -27,7 +27,7 @@ x-ai-rulez:
 
 ## Imports
 
-- Imports sit at the top of the file in three groups: standard library, third party, then `github.com/tobocop2/obee` (`goimports` with `local-prefixes` sorts them).
+- Imports sit at the top of the file in three groups: standard library, third party, then `github.com/tobocop2/beehave` (`goimports` with `local-prefixes` sorts them).
 - No dot imports. A blank import is allowed only for a driver that registers itself, with a comment that says which (`revive` enforces both).
 - Keep start-up cheap by not doing work in package scope.
 - A type assertion uses the two-value form (`errcheck` enforces it) and a comment that says why the assertion is needed (untyped payload, SDK value).
@@ -50,7 +50,7 @@ x-ai-rulez:
 ## Logging and output
 
 - Use `log/slog`. Pass a `*slog.Logger` in. Do not call `slog.Default()` in library code.
-- `fmt.Print*`, `os.Exit`, `panic` and `os.Stdout`/`os.Stderr` live only in `internal/cli` and `cmd/obee` (`forbidigo` enforces this). Other packages write to an `io.Writer` they receive.
+- `fmt.Print*`, `os.Exit`, `panic` and `os.Stdout`/`os.Stderr` live only in `internal/cli` and `cmd/beehave` (`forbidigo` enforces this). Other packages write to an `io.Writer` they receive.
 
 ## Text
 

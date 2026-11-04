@@ -16,14 +16,14 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
-	"github.com/tobocop2/obee/internal/agent"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/preflight"
-	"github.com/tobocop2/obee/internal/proc/gitexec"
-	"github.com/tobocop2/obee/internal/review"
-	trackerstore "github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/workflow/workflowtest"
+	"github.com/tobocop2/beehave/internal/agent"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/preflight"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/review"
+	trackerstore "github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/workflow/workflowtest"
 )
 
 const (
@@ -94,7 +94,7 @@ func chooseDry(options []DryOption) dryChoice {
 func DryRun(ctx context.Context, file, item string, env map[string]string, out io.Writer, options ...DryOption) (err error) {
 	chosen := chooseDry(options)
 
-	root, err := os.MkdirTemp("", "obee-dry-run-")
+	root, err := os.MkdirTemp("", "beehave-dry-run-")
 	if err != nil {
 		return fmt.Errorf("make the dry-run folder: %w", err)
 	}

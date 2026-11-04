@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // toolName is a program name that the gate starts by name. A pin file line with another name is refused, so a name never reaches the shell as code.
@@ -69,7 +69,7 @@ func validLine(fields []string) bool { return len(fields) >= 2 && toolName.Match
 
 const (
 	// voidMarker starts the line that the probe of a pinned tool writes when the tool is not at its pinned version. The tool and the first line of its version text follow.
-	voidMarker = "obee-gate-void"
+	voidMarker = "beehave-gate-void"
 
 	// voidCode is the exit code of the probe that wrote the void marker.
 	voidCode = 97

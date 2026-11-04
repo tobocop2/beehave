@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 const (
@@ -163,7 +163,7 @@ func (f floored) waitForSpace(ctx context.Context) error {
 //
 // The scan covers the working directory, the executable and the open files of each process and of each of its threads.
 // /proc shows resolved paths, so one call on the host resolves dir (`readlink -f`) and scans for both the cleaned and the resolved path.
-// Nothing resolves on the machine of obee.
+// Nothing resolves on the machine of beehave.
 func EnsureUnused(ctx context.Context, sh proc.Runner, dir string) error {
 	result := sh.Run(ctx, unusedArgs(dir))
 	if result.ExitCode != 0 {
@@ -193,7 +193,7 @@ find ` + procRoot + ` -maxdepth ` + strconv.Itoa(procScanDepth) + ` \( ` + strin
 
 	cleaned := filepath.Clean(dir)
 
-	return []string{"-c", script, "obee", cleaned, escapeGlob(cleaned)}
+	return []string{"-c", script, "beehave", cleaned, escapeGlob(cleaned)}
 }
 
 func escapeGlob(text string) string {

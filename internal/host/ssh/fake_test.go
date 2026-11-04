@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host/jobwait"
-	"github.com/tobocop2/obee/internal/host/ssh"
-	"github.com/tobocop2/obee/internal/host/sshtest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/ssh"
+	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // fakeClock moves its time forward by the sleep, so a wait of hours runs at once.

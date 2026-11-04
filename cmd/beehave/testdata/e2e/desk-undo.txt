@@ -1,0 +1,58 @@
+# The reply fails after the credit. The saga stops at the reply: the case goes to the exception queue with the reason code system-failure, which
+# goes to the team IT, and the case run fails. The engine then runs the undo of the credit with the key of the credit.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+subst home/.desk/config
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+
+exec beehavereal item add desk shift-1 --title 'Morning shift' --body-file body.txt
+exec beehavereal run shift-1 desk --workflow desk/workflow.star
+stdout 'item shift-1 finished'
+
+# The credit was written, then undone under the same key. The mail agent failed, so no mail went out.
+grep -count=1 '^credit-' writes.log
+grep -count=1 '^uncredit-' writes.log
+! exists mail.out
+exec sh same-key.sh
+
+# The reply was not recorded as sent, so a later run sends it.
+! exists home/.desk/sent.tsv
+
+exec beehavereal status
+stdout 'shift-1-r1\tdone'
+stdout 'desk-2-r1\tfailed'
+
+-- same-key.sh --
+credit=$(sed -n 's/^credit-//p' writes.log)
+undo=$(sed -n 's/^uncredit-//p' writes.log)
+[ -n "$credit" ] && [ "$credit" = "$undo" ]
+-- body.txt --
+The morning shift.
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=@WORK@/home/.desk/mail
+CHAT_SPOOL=@WORK@/home/.desk/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/mail/cur/keep --
+-- home/.desk/chat/keep --
+-- home/.desk/mail/new/m1 --
+Message-Id: <m1@mail.test>
+From: Ann Smith <ann@example.com>
+Subject: Refund BK-123456
+
+Thanks, Ann Smith. Please refund 80 for BK-123456.
+-- resp/_bookings_BK-123456 --
+{"ref":"BK-123456","status":"cancelled","paid":120,"currency":"EUR","date":"2026-12-01","customer_name":"Ann Smith","customer_email":"ann@example.com","refunded":0}
+-- resp/_eligibility_refund --
+{"eligible":true}
+-- resp/sendmail.fail --

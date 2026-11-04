@@ -12,7 +12,7 @@
 #
 # WARNING: the agent writes its transcript and state into the Claude profile of the run, under <profile>/projects.
 # That includes the denied actions of the task. A fresh profile in the temp folder cannot be used: it holds no login,
-# and obee refuses to pick a runner that has no plan limits. The transcript is also the record that this script reads.
+# and beehave refuses to pick a runner that has no plan limits. The transcript is also the record that this script reads.
 # SMOKE_CLAUDE_CONFIG_DIR is the Claude profile that the run uses. The default is CLAUDE_CONFIG_DIR, then ~/.claude.
 # The profile must be logged in to a Claude plan. SMOKE_ALLOWED_DOMAIN is the domain that the step may reach.
 # The default is example.org. The domain example.com is the one that the step must not reach.
@@ -30,7 +30,7 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 command -v jq >/dev/null 2>&1 || { echo "smoke-sandbox: jq is not on the path"; exit 1; }
 [ -d "$profile" ] || { echo "smoke-sandbox: $profile is not a folder. Set SMOKE_CLAUDE_CONFIG_DIR."; exit 1; }
-[ -x "$root/bin/obee" ] || { echo "smoke-sandbox: run make build first"; exit 1; }
+[ -x "$root/bin/beehave" ] || { echo "smoke-sandbox: run make build first"; exit 1; }
 
 work=$(mktemp -d)
 home="$work/home"
@@ -106,9 +106,9 @@ printf 'project(source = "%s", base_branch = "main", gate = "true", test_report 
 echo "smoke-sandbox: the files of this run are in $work"
 
 (
-	export HOME="$home" OBEE_CONFIG="$work/config" OBEE_STATE_DIR="$work/state"
-	"$root/bin/obee" item add demo sandbox-test --title "Test the sandbox" --body-file "$work/task.md"
-	"$root/bin/obee" run sandbox-test demo --workflow "$work/flow/workflow.star" || true
+	export HOME="$home" BEEHAVE_CONFIG="$work/config" BEEHAVE_STATE_DIR="$work/state"
+	"$root/bin/beehave" item add demo sandbox-test --title "Test the sandbox" --body-file "$work/task.md"
+	"$root/bin/beehave" run sandbox-test demo --workflow "$work/flow/workflow.star" || true
 )
 
 # The records of the run: every file of the state folder and every transcript of the profile that holds the run id.
@@ -239,8 +239,8 @@ for id in $ids; do
 done
 if [ "$got" -eq 1 ]; then check "fetch of $allowed works" ok ""; else check "fetch of $allowed works" bad "no page came back"; fi
 
-# No marker of a denied file is in any output of the run: the records above and the state folder of obee.
-# The scan covers every file of the temp folder, the work trees of obee included, except the fake files and the files that this script wrote.
+# No marker of a denied file is in any output of the run: the records above and the state folder of beehave.
+# The scan covers every file of the temp folder, the work trees of beehave included, except the fake files and the files that this script wrote.
 # A fake file keeps its marker on purpose, in the source repository and in each clone of it.
 outputs="$work/outputs.txt"
 find "$work" -type f -not -path '*/.git/*' \

@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/examples/remediation/tools/papers"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/examples/remediation/tools/papers"
 )
 
 const (

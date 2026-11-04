@@ -7,7 +7,7 @@ import (
 	"context"
 	"os/exec"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // cappedCommand returns a command that runs the binary in a scope with the cap of the runner, or no command and no error for a binary that is not found,

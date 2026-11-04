@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // folder writes the files into a new folder and returns the path of the first one.
@@ -42,7 +42,7 @@ func TestPin_FollowsLoadsAndHashesTheEmbeddedLibrary(t *testing.T) {
 	t.Parallel()
 
 	file := folder(t, map[string]string{
-		"workflow.star": "load(\"//lib/a.star\", \"a\")\nload(\"@obee//review_fix.star\", \"review_fix\")\ndef main(item):\n    return a\n",
+		"workflow.star": "load(\"//lib/a.star\", \"a\")\nload(\"@beehave//review_fix.star\", \"review_fix\")\ndef main(item):\n    return a\n",
 		"lib/a.star":    "load(\"//lib/b.star\", \"b\")\na = b\n",
 		"lib/b.star":    "b = 1\n",
 	}, "workflow.star")
@@ -50,7 +50,7 @@ func TestPin_FollowsLoadsAndHashesTheEmbeddedLibrary(t *testing.T) {
 	pinned, err := workflow.Pin(file)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"@obee//review_fix.star", "lib/a.star", "lib/b.star", "workflow.star"}, paths(pinned))
+	assert.Equal(t, []string{"@beehave//review_fix.star", "lib/a.star", "lib/b.star", "workflow.star"}, paths(pinned))
 
 	for _, p := range pinned {
 		assert.Len(t, p.SHA256, 64, p.Path)
@@ -166,7 +166,7 @@ func TestSourcesMain_RunsTheEmbeddedLibrary(t *testing.T) {
 	t.Parallel()
 
 	sources, _ := opened(t, map[string]string{
-		"workflow.star": "load(\"@obee//review_fix.star\", \"FORBID\")\ndef main(item):\n    return len(FORBID)\n",
+		"workflow.star": "load(\"@beehave//review_fix.star\", \"FORBID\")\ndef main(item):\n    return len(FORBID)\n",
 	})
 
 	got, err := call(t, sources)
@@ -301,7 +301,7 @@ func TestSourcesMain_RefusesALoadOfAnUnknownPath(t *testing.T) {
 func TestEnvNames(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"DBOS__APPVERSION", "OBEE_STATE"} {
+	for _, name := range []string{"DBOS__APPVERSION", "BEEHAVE_STATE"} {
 		assert.True(t, workflow.ReservedEnvName(name), name)
 	}
 

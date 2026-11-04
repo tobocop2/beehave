@@ -8,4 +8,4 @@ set -eu
 key="$1"; out="$2"; name="$3"; shift 3
 : > "$out/$name.msg"
 for kv in "$@"; do printf '%s\n' "$kv" >> "$out/$name.msg"; done
-ssh-keygen -Y sign -q -f "$key" -n obee-signoff "$out/$name.msg"
+ssh-keygen -Y sign -q -f "$key" -n beehave-signoff "$out/$name.msg"

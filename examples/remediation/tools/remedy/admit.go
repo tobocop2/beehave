@@ -7,8 +7,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/brief"
-	"github.com/tobocop2/obee/examples/remediation/tools/papers"
+	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
+	"github.com/tobocop2/beehave/examples/remediation/tools/papers"
 )
 
 const admitSyntax = "admit <kind> --lane <name> --key <pr> --state <folder> [--lane-kind fix|rework|relay] [--mechanism <token>] [--acceptance <path>] [--base-result <path>] [--new-behavior] [--handoff <file>] [--transcript <file>] [--cap <tokens>]"

@@ -1,4 +1,4 @@
-// Package lease holds what every binary that claims an item shares: how the claims are built over the rows, and how a repository finds its project in the obee config.
+// Package lease holds what every binary that claims an item shares: how the claims are built over the rows, and how a repository finds its project in the beehave config.
 // It imports no backend. The binary that owns the backend opens the rows and passes them to Open.
 package lease
 
@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var (
-	errNoProject    = errors.New("no project of the obee config has this repository")
-	errManyProjects = errors.New("more than one project of the obee config has this repository")
+	errNoProject    = errors.New("no project of the beehave config has this repository")
+	errManyProjects = errors.New("more than one project of the beehave config has this repository")
 )
 
 // Open builds the claims over the rows. The claims say nothing on their own: the caller shows what it wants to show.
@@ -25,7 +25,7 @@ func Open(rows claim.Rows) (*claim.Claims, error) {
 	return claim.New(claim.Options{Rows: rows, Clock: time.Now, Out: io.Discard})
 }
 
-// ProjectOf reads the obee config folder that env names, with the same rules as `obee run`, and returns the project that owns the repository (owner/name, or the `source` of the project).
+// ProjectOf reads the beehave config folder that env names, with the same rules as `beehave run`, and returns the project that owns the repository (owner/name, or the `source` of the project).
 func ProjectOf(env map[string]string, repo string) (model.Project, error) {
 	dir, err := config.FolderPath(env, "")
 	if err != nil {

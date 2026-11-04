@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 var _ store.Writer = (*Store)(nil)
@@ -37,7 +37,7 @@ type ghComment struct {
 	Body string `json:"body"`
 }
 
-// Create files an issue for the key. It writes the line `obee-key: <key>` at the end of the body and, before it writes, searches all issues for that line, so a repeated key returns the first issue.
+// Create files an issue for the key. It writes the line `beehave-key: <key>` at the end of the body and, before it writes, searches all issues for that line, so a repeated key returns the first issue.
 // The search index of GitHub can lag behind a create, so a search that finds nothing is followed by a read of the newest issues, which does not use the index.
 // A parent is set with --parent, which needs gh 2.101 or newer. The step record of the engine is the first guard
 // against a second write, and the key covers the window in which a crash comes between the create and the record.

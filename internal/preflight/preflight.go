@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // shaLength is the length of a full commit SHA. A shorter or longer text is never compared.

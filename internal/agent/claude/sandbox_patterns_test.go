@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 )
 
 func TestSandbox_DenyWritePatternsAreDeniedForWriteAndEditAndStayReadable(t *testing.T) {

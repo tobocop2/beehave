@@ -1,4 +1,4 @@
-// Package cli builds the obee command line.
+// Package cli builds the beehave command line.
 package cli
 
 import (
@@ -9,15 +9,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
 	exitOK    = 0
 	exitError = 1
 
-	commandName = "obee"
+	commandName = "beehave"
 	shortHelp   = "Take a backlog of issues to reviewed, gated pull requests with any coding agent"
 )
 

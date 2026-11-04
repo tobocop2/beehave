@@ -1,12 +1,12 @@
 #!/bin/sh
-# Runs one saga step, the only write. $1: step (credit, uncredit, rebook, unrebook, reply). The engine sets OBEE_WRITE_KEY: the key of the step.
+# Runs one saga step, the only write. $1: step (credit, uncredit, rebook, unrebook, reply). The engine sets BEEHAVE_WRITE_KEY: the key of the step.
 # stdin: {"args", "reply", "channel", "to"}. Exit 0 done, 2 unknown step or no key. The key goes in the Idempotency-Key header.
 # An undo step gets the key of the write that it undoes, so the system of record sees one pair of keys for one write.
 set -eu
 here=$(dirname "$0")
 . "$here/lib.sh"
-key="${OBEE_WRITE_KEY:-}"
-[ -n "$key" ] || die "OBEE_WRITE_KEY is not set"
+key="${BEEHAVE_WRITE_KEY:-}"
+[ -n "$key" ] || die "BEEHAVE_WRITE_KEY is not set"
 payload=$(cat)
 case "$1" in
     reply)

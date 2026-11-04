@@ -1,0 +1,26 @@
+# The swarm starts the ready tasks by priority, no more than the free slots, and it never runs more agents than the slots.
+# The backlog holds P2, P3, P0 and P1 tasks, in that order, and the config has two logins. The first two agents are the P0 and the P1 task.
+isolate
+swarmfakes
+
+exec beehaveswarm item add swarm swarm-1 --title 'The swarm' --body-file backlog.txt
+exec beehaveswarm run swarm-1 swarm --workflow swarm/workflow.star
+
+# Four tasks ran, and the first two to start were the P0 task and the P1 task.
+grep -count=4 '^task ' calls.log
+# The two lines are matched as a set: the order of two concurrent first writes is not defined.
+exec head -n 2 calls.log
+stdout 'task swarm-4'
+stdout 'task swarm-5'
+
+# No more than two agents ran at once.
+! grep '^[3-9]$' concurrency.log
+
+# All four landed.
+grep -count=4 '^MergePR ' forge/calls.log
+
+-- backlog.txt --
+P2	two	c.txt
+P3	three	d.txt
+P0	zero	a.txt
+P1	one	b.txt

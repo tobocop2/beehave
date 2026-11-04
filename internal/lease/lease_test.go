@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/lease"
+	"github.com/tobocop2/beehave/internal/lease"
 )
 
 const project = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
@@ -21,7 +21,7 @@ func configFolder(t *testing.T, text string) map[string]string {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte(text), 0o600))
 
-	return map[string]string{"OBEE_CONFIG": dir}
+	return map[string]string{"BEEHAVE_CONFIG": dir}
 }
 
 func TestOpen_NoRowsIsRefused(t *testing.T) {
@@ -79,14 +79,14 @@ func TestProjectOf_EmptyRepositoryMatchesNoProject(t *testing.T) {
 	_, err := lease.ProjectOf(configFolder(t, project), "")
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no project of the obee config has this repository")
+	assert.Contains(t, err.Error(), "no project of the beehave config has this repository")
 }
 
 func TestProjectOf_RepositoryInTwoProjectsIsRefusedAndNamesBoth(t *testing.T) {
 	t.Parallel()
 
 	env := configFolder(t, project)
-	require.NoError(t, os.WriteFile(filepath.Join(env["OBEE_CONFIG"], "projects", "q.star"), []byte(project), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(env["BEEHAVE_CONFIG"], "projects", "q.star"), []byte(project), 0o600))
 
 	_, err := lease.ProjectOf(env, "owner/name")
 
@@ -100,13 +100,13 @@ func TestProjectOf_RepositoryThatNoProjectOwnsIsRefused(t *testing.T) {
 	_, err := lease.ProjectOf(configFolder(t, project), "owner/other")
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no project of the obee config has this repository: owner/other")
+	assert.Contains(t, err.Error(), "no project of the beehave config has this repository: owner/other")
 }
 
 func TestProjectOf_ConfigFolderThatDoesNotExistIsRefused(t *testing.T) {
 	t.Parallel()
 
-	_, err := lease.ProjectOf(map[string]string{"OBEE_CONFIG": filepath.Join(t.TempDir(), "missing")}, "owner/name")
+	_, err := lease.ProjectOf(map[string]string{"BEEHAVE_CONFIG": filepath.Join(t.TempDir(), "missing")}, "owner/name")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")

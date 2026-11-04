@@ -1,4 +1,4 @@
-// Package landlock is the sandbox enforcer for Linux. Landlock restricts the process that asks for it, and the restriction passes to its children, so obee
+// Package landlock is the sandbox enforcer for Linux. Landlock restricts the process that asks for it, and the restriction passes to its children, so beehave
 // starts a copy of itself as a small helper. The helper applies the rules of the plan to itself and then replaces itself with the command.
 //
 // The kernel must report Landlock ABI 4 or later (Linux 6.7). Below ABI 4 the kernel cannot limit TCP connect, and a plan could not keep the network closed,
@@ -36,15 +36,15 @@ import (
 	ll "github.com/landlock-lsm/go-landlock/landlock"
 	llsys "github.com/landlock-lsm/go-landlock/landlock/syscall"
 
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // Name is the name of this enforcer in sandbox_enforcer.
 const Name = "landlock"
 
-// helperArg is the first argument that makes obee act as the helper.
-const helperArg = "--obee-landlock-helper"
+// helperArg is the first argument that makes beehave act as the helper.
+const helperArg = "--beehave-landlock-helper"
 
 // minABI is the first Landlock ABI that limits TCP connect.
 const minABI = 4
@@ -92,7 +92,7 @@ func (e Enforcer) Check() error {
 	}
 
 	if abi < minABI {
-		return fmt.Errorf("%w: this kernel reports Landlock ABI %d, and obee needs ABI %d (Linux 6.7) to limit TCP connect", sandbox.ErrUnavailable, abi, minABI)
+		return fmt.Errorf("%w: this kernel reports Landlock ABI %d, and beehave needs ABI %d (Linux 6.7) to limit TCP connect", sandbox.ErrUnavailable, abi, minABI)
 	}
 
 	if err := e.probe(); err != nil {
@@ -152,11 +152,11 @@ func (e Enforcer) Run(ctx context.Context, plan sandbox.Plan, proxyPort int, cmd
 }
 
 // helperCommand makes the process that runs this program as the helper, in its own process group. The helper gets the environment of the command in its
-// plan and starts with none of its own, so no variable of obee reaches the command.
+// plan and starts with none of its own, so no variable of beehave reaches the command.
 func (e Enforcer) helperCommand(ctx context.Context, s spec, cmd sandbox.Command) (*exec.Cmd, error) {
 	self, err := e.executable()
 	if err != nil {
-		return nil, fmt.Errorf("find the obee program to start the sandbox helper: %w", err)
+		return nil, fmt.Errorf("find the beehave program to start the sandbox helper: %w", err)
 	}
 
 	raw, err := e.marshal(s)
@@ -180,7 +180,7 @@ func codeOf(exited *exec.ExitError) int {
 	return exited.ExitCode()
 }
 
-// RunHelper is called first in main of obee, and in TestMain of a package that runs the contract suite. When the program was started as the helper,
+// RunHelper is called first in main of beehave, and in TestMain of a package that runs the contract suite. When the program was started as the helper,
 // it applies the plan and replaces itself with the command: on success it never returns. When it cannot start the command, it writes the reason to stderr
 // and returns the exit code to use (127 for a program that is not found, helperFailed for a plan that does not apply) and true. When the program was not
 // started as the helper, it returns 0 and false at once.
@@ -190,7 +190,7 @@ func RunHelper(args []string, stderr io.Writer) (int, bool) {
 	}
 
 	code, err := becomeCommand(args[2], system{abi: ABI, filter: newKernel().install, restrict: ll.Config.Restrict, execve: syscall.Exec})
-	fmt.Fprintf(stderr, "obee sandbox: %v. The command did not start.\n", err)
+	fmt.Fprintf(stderr, "beehave sandbox: %v. The command did not start.\n", err)
 
 	return code, true
 }
@@ -262,7 +262,7 @@ func findProgram(name string, env []string) (string, error) {
 	}
 
 	for _, pair := range env {
-		// An empty PATH finds nothing: proc.LookPath would take the PATH of obee for it.
+		// An empty PATH finds nothing: proc.LookPath would take the PATH of beehave for it.
 		if paths, ok := strings.CutPrefix(pair, "PATH="); ok && paths != "" {
 			if found, err := proc.LookPath(name, paths); err == nil {
 				return found, nil

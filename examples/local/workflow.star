@@ -1,10 +1,10 @@
 # A workflow for a project with no tracker and no forge: the items are in local.db, and the result is a branch in the source repository.
-# Add an item with `obee item add`, then run it with `obee run <item> --workflow workflow.star`.
+# Add an item with `beehave item add`, then run it with `beehave run <item> --workflow workflow.star`.
 
 def capped(step, name, item):
     """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the work of a capped run may be half done."""
     if step.stop != "":
-        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
+        fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run beehave resume %s." % (name, step.stop, item.id))
 
 def main(item):
     plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", edits = False, inputs = {"item": item})

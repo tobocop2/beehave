@@ -8,7 +8,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // callKeyword is the keyword of earlier_calls that names the agent calls to count.

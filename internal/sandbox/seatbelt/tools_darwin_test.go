@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // workPlan reads the system folders and writes one new folder, and returns the plan, the folder and an environment that keeps every cache in it.
@@ -110,7 +110,7 @@ func TestRun_ALaunchAgentAndAScriptingBridgeLeaveNoFileOutsideThePlan(t *testing
 	require.NoError(t, err)
 
 	for _, line := range []string{
-		"launchctl submit -l obee.probe.submit -- /usr/bin/touch " + filepath.Join(outside, "from-launchctl"),
+		"launchctl submit -l beehave.probe.submit -- /usr/bin/touch " + filepath.Join(outside, "from-launchctl"),
 		"osascript -e 'do shell script \"/usr/bin/touch " + filepath.Join(outside, "from-osascript") + "\"'",
 	} {
 		cmd := command(env, "sh", "-c", line+" || true")
@@ -123,7 +123,7 @@ func TestRun_ALaunchAgentAndAScriptingBridgeLeaveNoFileOutsideThePlan(t *testing
 	// A submitted job starts later, so give launchd a bounded moment before the check.
 	time.Sleep(2 * time.Second)
 	// The job may not exist, and then remove fails and there is nothing to remove.
-	if err := exec.CommandContext(t.Context(), "/bin/launchctl", "remove", "obee.probe.submit").Run(); err != nil {
+	if err := exec.CommandContext(t.Context(), "/bin/launchctl", "remove", "beehave.probe.submit").Run(); err != nil {
 		t.Logf("launchctl remove: %v", err)
 	}
 

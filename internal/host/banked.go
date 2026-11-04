@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 const (
 	unbornCommit   = "0000000000000000000000000000000000000000"
-	bankedRefSpace = "refs/heads/obee-banked/"
+	bankedRefSpace = "refs/heads/beehave-banked/"
 	shortCommit    = 12
 	tipsPerCall    = 1000
 	commitType     = "commit"
@@ -128,7 +128,7 @@ func unbankedIn(ctx context.Context, git proc.Runner, repo string, extra []strin
 // Bank makes sure every commit in repos is on a remote. It pushes what is missing to private, which must have a host part, and checks again.
 // With no usable private remote, or when a push does not bank the work, it refuses.
 //
-// Each missing commit goes to its own branch, `obee-banked/<12 characters of the commit>`, on the private remote. The push is never a force push.
+// Each missing commit goes to its own branch, `beehave-banked/<12 characters of the commit>`, on the private remote. The push is never a force push.
 // All repositories of the host share that one namespace. The branches stay until someone deletes them, and a CI system on the remote can see them.
 // A call that fails after some pushes leaves those branches in place. A new call pushes the same commit to the same name, so a retry is safe.
 // Only commits are banked: uncommitted and untracked files, and the index, are lost when the host goes.

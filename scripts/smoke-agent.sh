@@ -11,7 +11,7 @@ profile=${SMOKE_CLAUDE_CONFIG_DIR:-$HOME/.claude}
 
 command -v claude >/dev/null 2>&1 || { echo "smoke-agent: claude is not on the path"; exit 1; }
 [ -d "$profile" ] || { echo "smoke-agent: $profile is not a folder. Set SMOKE_CLAUDE_CONFIG_DIR."; exit 1; }
-[ -x "$root/bin/obee" ] || { echo "smoke-agent: run make build first"; exit 1; }
+[ -x "$root/bin/beehave" ] || { echo "smoke-agent: run make build first"; exit 1; }
 
 work=$(mktemp -d)
 mkdir -p "$work/config/projects" "$work/state" "$work/repo"
@@ -31,11 +31,11 @@ printf 'runner(name = "smoke", agent = "claude", config_dir = "%s")\n' "$profile
 printf 'project(source = "%s", base_branch = "main", gate = "make check", test_report = "reports/*.xml")\n' "$work/repo" > "$work/config/projects/demo.star"
 printf 'Add a file named hello.txt that holds the word hello.\n' > "$work/task.md"
 
-export OBEE_CONFIG="$work/config" OBEE_STATE_DIR="$work/state"
+export BEEHAVE_CONFIG="$work/config" BEEHAVE_STATE_DIR="$work/state"
 
 echo "smoke-agent: the files of this run are in $work"
 
-"$root/bin/obee" item add demo fix-login --title "Add hello.txt" --body-file "$work/task.md"
-"$root/bin/obee" run fix-login demo --workflow "$root/examples/local/workflow.star"
+"$root/bin/beehave" item add demo fix-login --title "Add hello.txt" --body-file "$work/task.md"
+"$root/bin/beehave" run fix-login demo --workflow "$root/examples/local/workflow.star"
 
 echo "smoke-agent: the run finished"

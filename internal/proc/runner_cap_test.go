@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // forkScript starts 40 sleeps of 2 seconds in the background. A start that the kernel refuses ends the shell with a non-zero code.
@@ -53,7 +53,7 @@ func TestExecRunner_AProcessCapKeepsTheArgumentsAndTheExitCodeOfTheCommand(t *te
 }
 
 func TestExecRunner_AProcessCapOnAMissingCommandReadsAsNotFound(t *testing.T) { //nolint:paralleltest // see above
-	done := proc.ExecRunner{Binary: "obee-no-such-binary", MaxNewProcesses: 10}.Run(context.Background(), nil)
+	done := proc.ExecRunner{Binary: "beehave-no-such-binary", MaxNewProcesses: 10}.Run(context.Background(), nil)
 
 	assert.Equal(t, 127, done.ExitCode)
 	assert.Contains(t, done.Stderr, "command not found")
@@ -111,13 +111,13 @@ func TestExecRunner_ACappedCallThatCannotStartReadsAsNotFound(t *testing.T) { //
 func TestExecRunner_ACappedCommandGetsExactlyTheEnvironmentItIsGiven(t *testing.T) { //nolint:paralleltest // see above
 	requireCap(t)
 
-	runner := proc.ExecRunner{Binary: "env", Timeout: 30 * time.Second, Only: []string{"OBEE_ONLY=one"}, Env: []string{"OBEE_PROC_TEST=seen"}}
+	runner := proc.ExecRunner{Binary: "env", Timeout: 30 * time.Second, Only: []string{"BEEHAVE_ONLY=one"}, Env: []string{"BEEHAVE_PROC_TEST=seen"}}
 	plain := runner.Run(context.Background(), nil)
 	runner.MaxNewProcesses = 1000
 	capped := runner.Run(context.Background(), nil)
 
 	require.NoError(t, capped.SetupErr)
 	require.Zero(t, plain.ExitCode, plain.Stderr)
-	assert.Equal(t, "OBEE_ONLY=one\nOBEE_PROC_TEST=seen\n", capped.Stdout, "no variable of obee reaches the command, also none that the cap itself needs")
+	assert.Equal(t, "BEEHAVE_ONLY=one\nBEEHAVE_PROC_TEST=seen\n", capped.Stdout, "no variable of beehave reaches the command, also none that the cap itself needs")
 	assert.Equal(t, plain.Stdout, capped.Stdout)
 }

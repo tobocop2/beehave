@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // hangingBeats is a tracker that never answers: each renewal ends only when its context ends.
@@ -101,7 +101,7 @@ func TestResume_RefusesWhenTheFreshClaimCannotBeTaken(t *testing.T) {
 	err = client.Resume(testItem)
 
 	require.ErrorContains(t, err, "claim of item 12")
-	require.ErrorContains(t, err, "If a canceled run holds the claim, the next obee run frees it. Then run obee resume 12 again")
+	require.ErrorContains(t, err, "If a canceled run holds the claim, the next beehave run frees it. Then run beehave resume 12 again")
 
 	rows, err := client.Status()
 	require.NoError(t, err)
@@ -575,7 +575,7 @@ func TestLaunch_DeletesFinishedRunsPastTheRetentionAndKeepsTheOthers(t *testing.
 	rows, err = client.Status()
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "the finished run is deleted")
-	assert.Equal(t, "item-13-r1", rows[0].ID, "a failed run stays: obee resume can reopen it")
+	assert.Equal(t, "item-13-r1", rows[0].ID, "a failed run stays: beehave resume can reopen it")
 }
 
 func TestRun_ALoginThatFailsInsideTheRunEndsItAtTheFirstAgentStep(t *testing.T) {

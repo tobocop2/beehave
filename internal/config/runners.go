@@ -7,7 +7,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -39,8 +39,8 @@ type agents struct {
 	// MaxRunBudgetUSD is the most dollars that the agent steps of one item run spend in all, failed runs included. An agent step does not start when the sum is at or past it, so the last step can pass it by its own cost.
 	// A child workflow that the run spawns starts its own sum. 0 means no cap.
 	MaxRunBudgetUSD float64
-	// RetentionDays is the age in days at which `obee run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
-	// A failed or canceled run is never deleted, because `obee resume` can reopen it.
+	// RetentionDays is the age in days at which `beehave run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
+	// A failed or canceled run is never deleted, because `beehave resume` can reopen it.
 	RetentionDays int
 }
 

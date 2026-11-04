@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/check/shell"
 )
 
 func policyCases() []shellCase {

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // firstReview records the first review of a key whose pull request body closed the issues of the text.

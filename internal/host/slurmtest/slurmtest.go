@@ -8,14 +8,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 const (
 	// Target is the name of the head node in the ssh config.
-	Target    = "obee-test"
+	Target    = "beehave-test"
 	sshFailed = 255 // the exit status of ssh for a link that dropped
 	sshPrefix = 3   // the words before the remote command: -o BatchMode=yes <cluster>
 )

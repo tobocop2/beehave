@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/cli"
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func writeConfig(t *testing.T, dir, name, content string) {
@@ -158,7 +158,7 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 func TestCheckConfig_ReportsAnOverlayProblem(t *testing.T) {
 	t.Parallel()
 
-	code, _, stderr := runCheckConfig(t, map[string]string{"OBEE_AGENTS_MAX_CONCURRENT": "0"}, "--config", t.TempDir())
+	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": "0"}, "--config", t.TempDir())
 
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, "agents.max_concurrent must be 1 or more")
@@ -179,7 +179,7 @@ func TestCheckConfig_TakesTheFolderFromTheEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	writeConfig(t, dir, "projects/p.star", "shade()\n")
 
-	code, _, stderr := runCheckConfig(t, map[string]string{"OBEE_CONFIG": dir})
+	code, _, stderr := runCheckConfig(t, map[string]string{"BEEHAVE_CONFIG": dir})
 
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, filepath.Join(dir, "projects", "p.star"))
@@ -191,7 +191,7 @@ func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 	bad := t.TempDir()
 	writeConfig(t, bad, "projects/p.star", "shade()\n")
 
-	code, _, _ := runCheckConfig(t, map[string]string{"OBEE_CONFIG": bad}, "--config", t.TempDir())
+	code, _, _ := runCheckConfig(t, map[string]string{"BEEHAVE_CONFIG": bad}, "--config", t.TempDir())
 
 	require.Equal(t, 0, code)
 }
@@ -199,12 +199,12 @@ func TestCheckConfig_TheFlagBeatsTheEnvironment(t *testing.T) {
 func TestCheckConfig_UsesTheHomeFolderByDefault(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	writeConfig(t, home, ".config/obee/projects/p.star", "shade()\n")
+	writeConfig(t, home, ".config/beehave/projects/p.star", "shade()\n")
 
 	code, _, stderr := runCheckConfig(t, map[string]string{})
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, filepath.Join(home, ".config", "obee", "projects", "p.star"))
+	require.Contains(t, stderr, filepath.Join(home, ".config", "beehave", "projects", "p.star"))
 }
 
 func TestCheckConfig_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
@@ -213,7 +213,7 @@ func TestCheckConfig_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 	code, _, stderr := runCheckConfig(t, map[string]string{})
 
 	require.Equal(t, 1, code)
-	require.Contains(t, stderr, "obee: cannot find the home folder")
+	require.Contains(t, stderr, "beehave: cannot find the home folder")
 }
 
 func TestCheckConfig_RejectsAnArgument(t *testing.T) {

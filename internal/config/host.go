@@ -9,7 +9,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -166,7 +166,7 @@ func fillProvider(raw rawHost, host *model.HostConfig) error {
 	return err
 }
 
-// checkBlocks refuses a block of another provider, and idle_minutes for a provider that obee does not delete the machine of.
+// checkBlocks refuses a block of another provider, and idle_minutes for a provider that beehave does not delete the machine of.
 func checkBlocks(raw rawHost, provider model.HostProvider) error {
 	want := providerBlock(provider)
 
@@ -180,7 +180,7 @@ func checkBlocks(raw rawHost, provider model.HostProvider) error {
 	}
 
 	if provider != model.HostSkyPilot && raw.IdleMinutes != idleUnset {
-		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: obee does not delete the machine. Remove the key.", provider)
+		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", provider)
 	}
 
 	return nil

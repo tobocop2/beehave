@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tobocop2/obee/internal/agent/claude"
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -38,7 +38,7 @@ func replyOf(id string, five, seven any) string {
 	return limitsReplyOf(id, map[string]any{"five_hour": five, "seven_day": seven})
 }
 
-func limitsReply(limits map[string]any) string { return limitsReplyOf("obee-usage", limits) }
+func limitsReply(limits map[string]any) string { return limitsReplyOf("beehave-usage", limits) }
 
 func limitsReplyOf(id string, limits map[string]any) string {
 	text, _ := json.Marshal(map[string]any{ //nolint:errcheck // a map of strings and numbers always encodes
@@ -51,7 +51,7 @@ func limitsReplyOf(id string, limits map[string]any) string {
 	return string(text) + "\n"
 }
 
-func reply(five, seven any) string { return replyOf("obee-usage", five, seven) }
+func reply(five, seven any) string { return replyOf("beehave-usage", five, seven) }
 
 func goodReply() string {
 	return reply(window(12.5, "2026-10-24T05:00:00Z"), window(40, "2026-10-25T07:00:00Z"))
@@ -77,7 +77,7 @@ func write(t *testing.T, path, text string, mode os.FileMode) {
 
 // warmupVar tells a script that this start is the warm-up: the script of scriptHead ends at once and writes nothing,
 // so a file that a script writes proves a real start, however fast the machine runs the warm-up.
-const warmupVar = "OBEE_WARMUP"
+const warmupVar = "BEEHAVE_WARMUP"
 
 // startOnce starts a new script and stops it at once, so the first-run scan of macOS happens before any timer starts.
 // A script that cannot start is not an error here.
@@ -312,7 +312,7 @@ func TestParseUsage_AReplyWithNoRateLimitsAndNoSignOfMissingPlanLimitsIsUnknownA
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			text := `{"type":"control_response","response":{"request_id":"obee-usage","subtype":"success","response":` + response + "}}\n"
+			text := `{"type":"control_response","response":{"request_id":"beehave-usage","subtype":"success","response":` + response + "}}\n"
 			reading := claude.ParseUsage(text)
 
 			wantUnknown(t, reading, "the reply has no rate_limits")
@@ -346,10 +346,10 @@ func TestParseUsage_AReplyWithoutBothWindowsIsUnknownWithTheReason(t *testing.T)
 		{"text utilization", reply(window("9", nil), window(1, nil)), "five_hour window has no utilization"},
 		{"bool utilization", reply(window(true, nil), window(1, nil)), "five_hour window has no utilization"},
 		{"no seven-day utilization", reply(window(1, nil), window(nil, nil)), "seven_day window has no utilization"},
-		{"a response with no rate_limits", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": map[string]any{}}), "no rate_limits"},
-		{"an error answer", envelope(map[string]any{"request_id": "obee-usage", "subtype": "error", "error": " nope "}), "refused get_usage: nope"},
-		{"an error answer without an error", envelope(map[string]any{"request_id": "obee-usage", "subtype": "error"}), "refused get_usage:"},
-		{"a response that is not an object", envelope(map[string]any{"request_id": "obee-usage", "subtype": "success", "response": "x"}), "the reply is not an object"},
+		{"a response with no rate_limits", envelope(map[string]any{"request_id": "beehave-usage", "subtype": "success", "response": map[string]any{}}), "no rate_limits"},
+		{"an error answer", envelope(map[string]any{"request_id": "beehave-usage", "subtype": "error", "error": " nope "}), "refused get_usage: nope"},
+		{"an error answer without an error", envelope(map[string]any{"request_id": "beehave-usage", "subtype": "error"}), "refused get_usage:"},
+		{"a response that is not an object", envelope(map[string]any{"request_id": "beehave-usage", "subtype": "success", "response": "x"}), "the reply is not an object"},
 		{"an envelope without a response object", `{"type":"control_response","response":"x"}`, "ended without answering"},
 		{"the mark in a line that is not JSON", "control_response {", "ended without answering"},
 		{"the mark in a message of another type", `{"type":"assistant","text":"control_response"}`, "ended without answering"},
@@ -415,7 +415,7 @@ func wantUsageRequest(t *testing.T, line string) {
 		t.Fatal(err)
 	}
 
-	if request.Type != "control_request" || request.RequestID != "obee-usage" || request.Request.Subtype != "get_usage" || !request.Request.SkipBehaviors {
+	if request.Type != "control_request" || request.RequestID != "beehave-usage" || request.Request.Subtype != "get_usage" || !request.Request.SkipBehaviors {
 		t.Fatalf("request = %+v", request)
 	}
 }

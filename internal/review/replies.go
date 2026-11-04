@@ -5,7 +5,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // replyRows lists the items of the last days, issues and pull requests, where someone else wrote after our last word.

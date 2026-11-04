@@ -1,11 +1,11 @@
 #!/bin/sh
-# Reads a write back. $1: saga step. The engine sets OBEE_WRITE_KEY: the key of the step. It changes nothing.
+# Reads a write back. $1: saga step. The engine sets BEEHAVE_WRITE_KEY: the key of the step. It changes nothing.
 # Exit 0: the write is applied (for a reply: the key is in the sent log). Exit 1: the write is not applied. Exit 2: the script cannot tell.
 # The engine runs this before each write, and write.sh runs it before an undo, so one reader answers both.
 set -eu
 . "$(dirname "$0")/lib.sh"
-key="${OBEE_WRITE_KEY:-}"
-[ -n "$key" ] || die "OBEE_WRITE_KEY is not set"
+key="${BEEHAVE_WRITE_KEY:-}"
+[ -n "$key" ] || die "BEEHAVE_WRITE_KEY is not set"
 if [ "$1" = reply ]; then
     [ -r "$DESK_HOME/sent.tsv" ] || exit 2
     grep -q "^$key	" "$DESK_HOME/sent.tsv" || exit 1

@@ -33,7 +33,7 @@ func (h platformHooks) run() string { return orDefault(h.systemdRun, "systemd-ru
 
 func (h platformHooks) ctl() string { return orDefault(h.systemctl, "systemctl") }
 
-func (h platformHooks) prefix() string { return orDefault(h.unitPrefix, "obee-") }
+func (h platformHooks) prefix() string { return orDefault(h.unitPrefix, "beehave-") }
 
 func orDefault(value, fallback string) string {
 	if value == "" {
@@ -142,7 +142,7 @@ func probeAdvice(env []string) string {
 		}
 	}
 
-	return fmt.Sprintf("XDG_RUNTIME_DIR is not set, so systemd-run cannot find the user bus. Set XDG_RUNTIME_DIR=/run/user/%d for obee, or remove max_new_processes from the step", os.Getuid())
+	return fmt.Sprintf("XDG_RUNTIME_DIR is not set, so systemd-run cannot find the user bus. Set XDG_RUNTIME_DIR=/run/user/%d for beehave, or remove max_new_processes from the step", os.Getuid())
 }
 
 // stopScope kills every process of the scope. The call is best effort: a scope that does not exist yet has nothing to kill, and the kill of the process group follows.

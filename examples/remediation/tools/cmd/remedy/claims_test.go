@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 const claimProject = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
@@ -23,7 +23,7 @@ func configEnv(t *testing.T) map[string]string {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), treeFolderMode))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte(claimProject), 0o600))
 
-	return map[string]string{"OBEE_CONFIG": dir}
+	return map[string]string{"BEEHAVE_CONFIG": dir}
 }
 
 func TestOpenClaims_OpensTheClaimStoreOfTheProjectThatOwnsTheRepository(t *testing.T) {
@@ -102,7 +102,7 @@ func TestOpenClaims_OpensTheLocalClaimsOfALocalProjectInTheStateFolder(t *testin
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte("project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"), 0o600))
 	state := filepath.Join(t.TempDir(), "state")
 
-	claims, err := openClaims(map[string]string{"OBEE_CONFIG": dir, "OBEE_STATE_DIR": state}, proctest.Always(model.CommandResult{}))("/srv/repo")
+	claims, err := openClaims(map[string]string{"BEEHAVE_CONFIG": dir, "BEEHAVE_STATE_DIR": state}, proctest.Always(model.CommandResult{}))("/srv/repo")
 
 	require.NoError(t, err)
 	require.NoError(t, claims.Take(t.Context(), "ownerone", "fix-login"))

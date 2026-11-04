@@ -6,8 +6,8 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // forbidKeyword is the keyword that holds the RE2 patterns that the public text of a step may not match.

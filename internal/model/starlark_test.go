@@ -7,7 +7,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestInnermostPosition_SkipsBuiltinFramesAndKeepsTheFirstFileFrame(t *testing.T) {

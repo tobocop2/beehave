@@ -10,8 +10,8 @@ import (
 
 const stateDirMode os.FileMode = 0o700
 
-// StateDir returns the state folder: OBEE_STATE_DIR (a leading ~ expands), else
-// $XDG_STATE_HOME/obee, else ~/.local/state/obee. The path must be absolute; a relative
+// StateDir returns the state folder: BEEHAVE_STATE_DIR (a leading ~ expands), else
+// $XDG_STATE_HOME/beehave, else ~/.local/state/beehave. The path must be absolute; a relative
 // XDG_STATE_HOME is ignored, as the XDG specification says.
 func StateDir(env map[string]string) (string, error) {
 	if dir := env[stateDirVar]; dir != "" {
@@ -32,7 +32,7 @@ func absoluteStateDir(dir string) (string, error) {
 	}
 
 	if !filepath.IsAbs(expanded) {
-		return "", refuse("%s=%s is not an absolute path. Write the full path, for example ~/state/obee.", stateDirVar, dir)
+		return "", refuse("%s=%s is not an absolute path. Write the full path, for example ~/state/beehave.", stateDirVar, dir)
 	}
 
 	return expanded, nil
@@ -73,7 +73,7 @@ func checkStateDir(dir string, info os.FileInfo, uid int) error {
 	}
 
 	if mode := info.Mode().Perm(); mode != stateDirMode {
-		return refuse("the state folder %s has mode %04o, and obee needs 0700 (owner only). Run: chmod 700 %s", dir, mode, dir)
+		return refuse("the state folder %s has mode %04o, and beehave needs 0700 (owner only). Run: chmod 700 %s", dir, mode, dir)
 	}
 
 	return nil

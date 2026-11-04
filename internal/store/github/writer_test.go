@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc/proctest"
-	"github.com/tobocop2/obee/internal/store"
-	"github.com/tobocop2/obee/internal/store/github"
-	"github.com/tobocop2/obee/internal/store/storetest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 var _ store.Writer = (*github.Store)(nil)
@@ -261,9 +261,9 @@ func TestCreate_RunsTheExactCommands(t *testing.T) {
 	assert.Equal(t, "1", id)
 
 	assert.Equal(t, [][]string{
-		{"issue", "list", "--repo", ghRepo, "--state", "all", "--search", `"obee-key: run-1:plan" in:body`, "--json", "number,body", "--limit", "1000"},
+		{"issue", "list", "--repo", ghRepo, "--state", "all", "--search", `"beehave-key: run-1:plan" in:body`, "--json", "number,body", "--limit", "1000"},
 		{"issue", "list", "--repo", ghRepo, "--state", "all", "--json", "number,body", "--limit", "100"},
-		{"issue", "create", "--repo", ghRepo, "--title", "the title", "--body", "the body\n\nobee-key: run-1:plan", "--parent", "7"},
+		{"issue", "create", "--repo", ghRepo, "--title", "the title", "--body", "the body\n\nbeehave-key: run-1:plan", "--parent", "7"},
 	}, fake.calls)
 }
 
@@ -273,7 +273,7 @@ func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
 	fake := newFakeGh()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Assignee: "alice"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--assignee", "alice"}, fake.calls[len(fake.calls)-1])
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "beehave-key: run-1:a", "--assignee", "alice"}, fake.calls[len(fake.calls)-1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
 	require.NoError(t, err)
@@ -286,7 +286,7 @@ func TestCreate_FilesTheSeverityAsExactlyOneLabelAndNoLabelWhenThereIsNone(t *te
 	fake := newFakeGh()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P1"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--label", "P1"}, fake.calls[len(fake.calls)-1])
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "beehave-key: run-1:a", "--label", "P1"}, fake.calls[len(fake.calls)-1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
 	require.NoError(t, err)
@@ -299,7 +299,7 @@ func TestCreate_FilesTheOperatorFlagAsTheOperatorLabelBesideTheSeverity(t *testi
 	fake := newFakeGh()
 	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P1", Operator: true})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "obee-key: run-1:a", "--label", "P1", "--label", "operator"}, fake.calls[len(fake.calls)-1])
+	assert.Equal(t, []string{"issue", "create", "--repo", ghRepo, "--title", "t", "--body", "beehave-key: run-1:a", "--label", "P1", "--label", "operator"}, fake.calls[len(fake.calls)-1])
 
 	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t", Severity: "P1"})
 	require.NoError(t, err)
@@ -326,7 +326,7 @@ func TestCreate_FindsTheKeyInTheListWhenTheSearchIndexLags(t *testing.T) {
 	t.Parallel()
 
 	fake := newFakeGh()
-	fake.issues[1] = &fakeIssue{title: "t", body: "b\n\nobee-key: run-1:plan"}
+	fake.issues[1] = &fakeIssue{title: "t", body: "b\n\nbeehave-key: run-1:plan"}
 	fake.lagging = true
 
 	id, created, err := writerOver(t, fake).Create(t.Context(), "run-1:plan", store.NewItem{Title: "t"})
@@ -545,7 +545,7 @@ func TestComment_RunsTheExactCommands(t *testing.T) {
 	require.NoError(t, writerOver(t, fake).Comment(t.Context(), "3", "note", "the text"))
 	assert.Equal(t, [][]string{
 		{"api", "--paginate", "--slurp", "repos/" + ghRepo + "/issues/3/comments"},
-		{"issue", "comment", "3", "--repo", ghRepo, "--body", "the text\n\nobee-key: note"},
+		{"issue", "comment", "3", "--repo", ghRepo, "--body", "the text\n\nbeehave-key: note"},
 	}, fake.calls)
 }
 
@@ -554,7 +554,7 @@ func TestComment_FindsTheMarkerOnALaterPage(t *testing.T) {
 
 	fake := newFakeGh()
 	fake.pageSize = 1
-	fake.issues[3] = &fakeIssue{title: "t", comments: []string{"first", "the text\n\nobee-key: note"}}
+	fake.issues[3] = &fakeIssue{title: "t", comments: []string{"first", "the text\n\nbeehave-key: note"}}
 
 	require.NoError(t, writerOver(t, fake).Comment(t.Context(), "3", "note", "the text"))
 	assert.Len(t, fake.issues[3].comments, 2)

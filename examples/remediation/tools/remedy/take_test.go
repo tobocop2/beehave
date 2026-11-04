@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var takeNow = time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
@@ -176,7 +176,7 @@ func TestTake_ClaimThatAnotherOwnerHoldsRefusesTheTakeAndPostsNothing(t *testing
 
 	for mode, pull := range map[string]fields{"--apply": pullOf("them", 9, 0), "--take": pullOf("them", 9, 5)} {
 		store := newClaimStore()
-		store.heldBy["12"] = "session-obeeabc"
+		store.heldBy["12"] = "session-beehaveabc"
 		world := &takeWorld{pr: pull}
 		deps := takeDeps(world)
 		deps.Claims = claimsOf(store)
@@ -186,7 +186,7 @@ func TestTake_ClaimThatAnotherOwnerHoldsRefusesTheTakeAndPostsNothing(t *testing
 		assert.Equal(t, remedy.ExitRefused, code, mode)
 		assert.NotContains(t, out, "TAKEN", mode)
 		assert.NotContains(t, out, "notice posted", mode)
-		assert.Contains(t, errOut, "held by session-obeeabc", mode)
+		assert.Contains(t, errOut, "held by session-beehaveabc", mode)
 		assert.Empty(t, world.posted, mode)
 	}
 }
@@ -228,7 +228,7 @@ func TestTake_ClaimReadUsesTheItemOfTheFlagAndNotThePullRequest(t *testing.T) {
 	t.Parallel()
 
 	store := newClaimStore()
-	store.heldBy["7"] = "session-obeeabc"
+	store.heldBy["7"] = "session-beehaveabc"
 	deps := takeDeps(&takeWorld{pr: pullOf("them", 9, 0)})
 	deps.Claims = claimsOf(store)
 

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"io/fs"
 
-	"github.com/tobocop2/obee/internal/batch"
-	forgepkg "github.com/tobocop2/obee/internal/forge"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/beehave/internal/batch"
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/host"
 )
 
 // Failure is how a child run returns an error: its text and the kind of each known error in its chain. A child run ends with no error,

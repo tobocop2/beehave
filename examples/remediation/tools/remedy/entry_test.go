@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
 )
 
 func TestOpenForge_GivesTheForgeThatTheBackendOpened(t *testing.T) {

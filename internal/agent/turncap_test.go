@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/agent/claude"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // stepAdapter reads each output line "tool <n>" as a shell call with the id of the line. A CLI with noTurnFlag has no turn cap of its own.
@@ -60,7 +60,7 @@ func TestRunner_TheRunFolderIsGoneAfterARunThatTheTurnCapKilled(t *testing.T) { 
 	launch, folders := foldersOf(map[string]string{"conf/hooks.json": "x"})
 	f := stepFixture(t, "tools5", true, 2)
 	f.spec.Adapter = launchAdapter{Adapter: f.spec.Adapter, launch: launch}
-	f.spec.Guard = "obee check command"
+	f.spec.Guard = "beehave check command"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 

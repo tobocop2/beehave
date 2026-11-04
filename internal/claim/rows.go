@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Rows is what claim needs from the claim store. store.ClaimRows documents each method.

@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/store"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store"
 )
 
 var _ store.Writer = (*Store)(nil)
@@ -21,7 +21,7 @@ type bdComment struct {
 	Text string `json:"text"`
 }
 
-// Create files an item for the key and returns its id. It writes the line `obee-key: <key>` at the end of the description and, before it writes,
+// Create files an item for the key and returns its id. It writes the line `beehave-key: <key>` at the end of the description and, before it writes,
 // lists all items whose description holds that line, so a repeated key returns the first item. bd create --silent prints the new id and nothing else.
 // A parent is set with --parent. The lookup matches the whole line, so the key r:1 does not match r:10.
 func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (string, bool, error) {

@@ -1,0 +1,63 @@
+# The cost budget and a restart in the middle of a backfill. Each day of 3 tickets reserves 1 cent, and the budget is 5 cents. Chunks hold 4 days.
+# The first chunk loads 4 days and the second loads 1, then the reservation of day 6 is refused and the backfill waits for a person.
+# The beehave process dies in that wait. The next run replays to the same wait, a person adds 20 cents, and the rest loads. No day is labeled twice.
+[!exec:jq] skip
+[!exec:sqlite3] skip
+isolate
+! exec bd version
+! exec gh version
+
+pipeinit
+pipefakes
+env HOME=$WORK/home
+env PIPE_DIR=$WORK/pl
+env PIPE_HOME=$WORK/pipe
+replace pl/version.star 'CHUNK = 100' 'CHUNK = 4'
+
+exec beehavereal item add pipeline bf-1 --title 'February' --body-file body.txt
+! exec beehavereal run bf-1 pipeline --workflow pl/backfill.star &
+waitstatus 'paused: The budget of 5 cents is spent'
+kill -KILL
+wait
+
+# Five days are loaded, the sixth is not, and the stand-in agent ran five times.
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest'
+stdout '^5$'
+grep -count=5 '^classify ' calls.log
+exec sqlite3 pipe/warehouse.db 'SELECT SUM(est_cents) FROM spend'
+stdout '^5$'
+
+# The new process reaches the same wait. It does not call the agent again. The answer raises the budget.
+exec beehavereal run bf-1 pipeline --workflow pl/backfill.star &
+waitstatus 'paused: The budget of 5 cents is spent'
+grep -count=5 '^classify ' calls.log
+exec beehavereal answer bf-1 20
+wait
+stdout 'item bf-1 finished'
+
+grep -count=12 '^classify ' calls.log
+grep -count=1 '^classify 2026-02-01$' calls.log
+grep -count=1 '^classify 2026-02-06$' calls.log
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest'
+stdout '^12$'
+exec sqlite3 pipe/warehouse.db 'SELECT SUM(est_cents) FROM spend'
+stdout '^12$'
+
+# A person who answers stop ends the backfill with the days that the budget covered.
+exec beehavereal item add pipeline bf-2 --title 'March' --body-file body2.txt
+exec beehavereal run bf-2 pipeline --workflow pl/backfill.star &
+waitstatus 'paused: The budget of 2 cents is spent'
+exec beehavereal answer bf-2 stop
+wait
+stdout 'item bf-2 finished'
+exec sqlite3 pipe/warehouse.db 'SELECT COUNT(*) FROM manifest WHERE day LIKE "2026-03-%"'
+stdout '^2$'
+
+-- body.txt --
+2026-02-01 2026-02-12 5
+-- body2.txt --
+2026-03-01 2026-03-06 2
+-- pipe/config --
+SOURCE_API=http://source.test
+-- pipe/credential.header --
+X-Token: TESTONLY

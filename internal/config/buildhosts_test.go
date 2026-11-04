@@ -54,5 +54,5 @@ func TestLoadFolder_TheKeyBuildHostsIsNotAKey(t *testing.T) {
 
 	_, problems := loadProjectText(t, call(clusterProject+`, build_hosts = ["gpu-b"], host = `+hostCall("")))
 
-	require.NotEmpty(t, problems, "obee has one key for the hosts of a project")
+	require.NotEmpty(t, problems, "beehave has one key for the hosts of a project")
 }

@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/tobocop2/obee/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // redactingHandler removes secrets from the message and the attributes of every record before the inner handler writes it.

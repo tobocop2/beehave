@@ -1,19 +1,19 @@
-# obee
+# beehave
 
-obee takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer agents build and prove the change. Reviewer agents check it at a pinned commit. obee merges only the head that was reviewed.
+beehave takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer agents build and prove the change. Reviewer agents check it at a pinned commit. beehave merges only the head that was reviewed.
 
 ## Status
 
-obee is under construction. The command line tool builds and prints its version. The packages land one milestone at a time; `docs/architecture.md` lists them.
+beehave is under construction. The command line tool builds and prints its version. The packages land one milestone at a time; `docs/architecture.md` lists them.
 
 ## Build
 
-obee needs Go 1.27 and Make.
+beehave needs Go 1.27 and Make.
 
 ```bash
 make setup    # install the Go tools and generate the agent files
 make check    # the full gate, the same as CI
-make build    # write bin/obee
+make build    # write bin/beehave
 ```
 
 `make check` runs on Linux and cannot compile the macOS code. A change under `internal/sandbox/seatbelt` must pass `make check-darwin` on a Mac before it merges. That target runs the Seatbelt tests and the contract suite under the real `sandbox-exec`.
@@ -25,24 +25,24 @@ make build    # write bin/obee
 `examples/local` needs no tracker and no forge. The items are in `local.db`, and the result is a branch in a git repository on this machine. Copy `examples/local/project.star` to `<config folder>/projects/<name>.star`, set `source`, and run:
 
 ```bash
-obee item add <name> fix-login --title "Fix the login" --body-file task.md
-obee run fix-login <name> --workflow examples/local/workflow.star
+beehave item add <name> fix-login --title "Fix the login" --body-file task.md
+beehave run fix-login <name> --workflow examples/local/workflow.star
 ```
 
-`obee run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
+`beehave run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
 
 ```bash
-obee status
-obee status item-fix-login-r1
+beehave status
+beehave status item-fix-login-r1
 ```
 
-The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `obee run` writes its progress lines to stderr.
+The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `beehave run` writes its progress lines to stderr.
 
 `examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
 
 `examples/incident` is an incident desk. An alert starts a run. An analyst agent proposes one mitigation from a runbook table, and the on-call roles approve it in order, each before a deadline. A safe mitigation runs when someone was paged and nobody answered. A risky one never does. If no page reaches a person, the desk holds the incident. The desk checks the health of the service and restores the earlier state if the check fails. Set `INCIDENT_DIR` to the absolute path of `examples/incident` and `OPS_API` to your ops API.
 
-`examples/research-desk` turns a question into a cited report on a wiki. A planner splits the question into sections, one child run reads each section, and a script tests every quote against the page. A judge agent grades the claims and a person approves the draft before the publish. Set `RESEARCH_DESK_DIR` to the absolute path of the folder, `RESEARCH_HOME` to the folder of the store, `SEARCH_API` to a search server and `WIKI_API` to the page store. The review and the budget pause end with a failed run if nobody answers in time. Run `obee resume <item>` and then `obee run` again to continue at the same question.
+`examples/research-desk` turns a question into a cited report on a wiki. A planner splits the question into sections, one child run reads each section, and a script tests every quote against the page. A judge agent grades the claims and a person approves the draft before the publish. Set `RESEARCH_DESK_DIR` to the absolute path of the folder, `RESEARCH_HOME` to the folder of the store, `SEARCH_API` to a search server and `WIKI_API` to the page store. The review and the budget pause end with a failed run if nobody answers in time. Run `beehave resume <item>` and then `beehave run` again to continue at the same question.
 
 `examples/ticket-pipeline` loads the support tickets of each day to a warehouse, with an agent that labels the tickets. It covers a backfill of many days in chunks, the retry of one day, a re-run of a range, an idempotent load, a cost budget that waits for a person, and a version change in the middle of a backfill. Set `PIPE_DIR` to the absolute path of the folder and `PIPE_HOME` to the data folder. The folder holds its own README with the engine gaps.
 
@@ -56,7 +56,7 @@ The first command prints one line for each run, starting with the run id. The se
 
 ## Claude Code plugin
 
-`plugins/claude-code` adds five slash commands to Claude Code: `/obee:queue`, `/obee:run`, `/obee:status`, `/obee:answer` and `/obee:cancel`. Each one runs an obee command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.
+`plugins/claude-code` adds five slash commands to Claude Code: `/beehave:queue`, `/beehave:run`, `/beehave:status`, `/beehave:answer` and `/beehave:cancel`. Each one runs an beehave command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.
 
 ## Design
 

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // noSandbox is an adapter whose profile has no sandbox.
@@ -48,7 +48,7 @@ func boxed(t *testing.T) *fixture {
 
 func TestRunner_ASandboxedRunGetsTheSandboxArgumentsInOneSettingsObject(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := boxed(t)
-	f.spec.Guard = "obee check command"
+	f.spec.Guard = "beehave check command"
 
 	got := agent.Runner{Version: seen("2.1.316 (Claude Code)\n")}.Run(context.Background(), f.spec)
 
@@ -57,7 +57,7 @@ func TestRunner_ASandboxedRunGetsTheSandboxArgumentsInOneSettingsObject(t *testi
 	args := record(t, f.records, "args")
 	assert.Contains(t, args, "--setting-sources  --strict-mcp-config --disallowedTools WebFetch WebSearch --settings {")
 	assert.Contains(t, args, `"allowedDomains":["api.example.org"]`)
-	assert.Contains(t, args, `"command":"obee check command"`)
+	assert.Contains(t, args, `"command":"beehave check command"`)
 	assert.Equal(t, 1, countWord(args, "--settings"))
 }
 

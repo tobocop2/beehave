@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 const (
@@ -328,16 +328,16 @@ func (m *Machine) observe(words []string) model.CommandResult {
 
 	var lines []string
 	if m.Files[base+".canceled"] {
-		lines = append(lines, "obee-canceled")
+		lines = append(lines, "beehave-canceled")
 	}
 
 	for _, state := range []string{"succeeded", "failed", "timed_out"} {
 		if m.Files[base+"."+state] {
-			lines = append(lines, "obee-result "+state)
+			lines = append(lines, "beehave-result "+state)
 		}
 	}
 
-	lines = append(lines, strings.TrimSuffix(m.properties(u), "\n"), "obee-size "+strconv.Itoa(m.size(u)))
+	lines = append(lines, strings.TrimSuffix(m.properties(u), "\n"), "beehave-size "+strconv.Itoa(m.size(u)))
 
 	return ok(strings.Join(lines, "\n") + "\n")
 }

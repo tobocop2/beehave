@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/agent/claude"
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // launchScript records, for one run, what it sees of the launch: the arguments, the run folder, its mode, the content of one file and one variable.
@@ -65,7 +65,7 @@ func launchFixture(t *testing.T, adapter agent.Adapter) (*fixture, string) {
 	require.NoError(t, exectest.Write(filepath.Join(f.records, "claude"), launchScript))
 
 	f.spec.Adapter = adapter
-	f.spec.Guard = "obee check command"
+	f.spec.Guard = "beehave check command"
 	f.spec.Log = &bytes.Buffer{}
 
 	return f, f.records
@@ -168,7 +168,7 @@ func TestRunner_TheRunFolderIsGoneAfterARefusalThatCameAfterItWasMade(t *testing
 func TestRunner_TheRunFolderIsGoneAfterACancelledRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	launch, folders := foldersOf(map[string]string{"conf/hooks.json": "x"})
 	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
-	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(), launch: launch}, "obee check command", &bytes.Buffer{}
+	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(), launch: launch}, "beehave check command", &bytes.Buffer{}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/examples/remediation/tools/transcript"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/examples/remediation/tools/transcript"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (

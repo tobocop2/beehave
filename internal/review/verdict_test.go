@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 func TestNeedsCommit_NoFollowUpsTurnsAnyOpenFindingIntoACommit(t *testing.T) {

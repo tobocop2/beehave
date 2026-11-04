@@ -28,7 +28,7 @@ x-ai-rulez:
 
 - GoReleaser builds darwin and linux for amd64 and arm64 with `CGO_ENABLED=0`. `make release-snapshot` runs it without publishing.
 - A new gate must be proven to fail. Run it against input it should reject before you trust it.
-- `obee --version` passing is not verification of a binary. The smoke step runs a real command on the built artifact.
+- `beehave --version` passing is not verification of a binary. The smoke step runs a real command on the built artifact.
 - Never put `continue-on-error` on a smoke or correctness step. Skip a step that cannot run in an environment with an explicit `if:` and a stated reason.
 - Release shell lives in `scripts/*.sh`, not inline in a workflow, so it can be linted and tested off a runner.
 - `gh api --paginate` runs the `-q` filter once per page. Do not use it with a filter that returns a count.

@@ -1,4 +1,4 @@
-module github.com/tobocop2/obee
+module github.com/tobocop2/beehave
 
 go 1.27
 

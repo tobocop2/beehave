@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	forgepkg "github.com/tobocop2/obee/internal/forge"
-	gatepkg "github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/host"
+	forgepkg "github.com/tobocop2/beehave/internal/forge"
+	gatepkg "github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/host"
 )
 
 var errNotKept = errors.New("an error that nobody keeps")

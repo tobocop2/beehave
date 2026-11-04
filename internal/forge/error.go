@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // ErrNoForge is the cause when a project has no forge and a caller asks for one. A caller that must have a forge tests for it with errors.Is.

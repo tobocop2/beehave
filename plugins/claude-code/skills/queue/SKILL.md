@@ -1,11 +1,11 @@
 ---
-description: Add an item to the backlog of an obee project that has the local tracker
+description: Add an item to the backlog of an beehave project that has the local tracker
 argument-hint: <project> <id> <title>
-allowed-tools: Bash(obee item add:*)
+allowed-tools: Bash(beehave item add:*)
 disable-model-invocation: true
 ---
 
-Add one item to the backlog with obee.
+Add one item to the backlog with beehave.
 
 The arguments are: $ARGUMENTS
 
@@ -16,7 +16,7 @@ The arguments are: $ARGUMENTS
 5. Show the command, then run it with the file you wrote. Pass the title as one single-quoted argument, and write each `'` in the title as `'\''`. For the title `Don't crash`, the command is:
 
 ```sh
-obee item add <project> <id> --title 'Don'\''t crash' --body-file <file>
+beehave item add <project> <id> --title 'Don'\''t crash' --body-file <file>
 ```
 
-6. Report the output of obee. To start the item, the user runs `/obee:run <id>`.
+6. Report the output of beehave. To start the item, the user runs `/beehave:run <id>`.

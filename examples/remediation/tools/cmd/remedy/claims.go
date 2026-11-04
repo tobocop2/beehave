@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/lease"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/store/beads"
-	"github.com/tobocop2/obee/internal/store/local"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/lease"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
-// openClaims opens the claim store of the project that owns the repository, from the obee config folder that env names.
-// The claims are built by the code that `obee run` uses.
+// openClaims opens the claim store of the project that owns the repository, from the beehave config folder that env names.
+// The claims are built by the code that `beehave run` uses.
 func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim.Claims, error) {
 	return func(repo string) (*claim.Claims, error) {
 		project, err := lease.ProjectOf(env, repo)

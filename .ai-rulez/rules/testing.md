@@ -10,7 +10,7 @@ x-ai-rulez:
 
 # Testing
 
-- 100% statement coverage per package, enforced by `go-test-coverage` in `make coverage` (after `make test`). Only `cmd/obee/main.go` is excluded; the smoke step in `make check` runs the built binary. Never lower the threshold.
+- 100% statement coverage per package, enforced by `go-test-coverage` in `make coverage` (after `make test`). Only `cmd/beehave/main.go` is excluded; the smoke step in `make check` runs the built binary. Never lower the threshold.
 - Write the test before or with the code. Every exported function has a test. Every test asserts something. A test that cannot fail is a defect: break the code and watch it go red.
 - Use table-driven tests with named cases and `t.Run`. Name a case for the behavior (`rejects_unknown_key`), not a number.
 - Use `t.Parallel()` where the test shares nothing. Use `t.TempDir()`, `t.Setenv`, `t.Cleanup` and `t.Helper()`. Never write to a real path or the real home folder.

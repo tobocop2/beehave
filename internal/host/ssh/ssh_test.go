@@ -10,12 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/host/ssh"
-	"github.com/tobocop2/obee/internal/host/sshtest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/ssh"
+	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestHost_PassesTheConformanceSuiteAsAMachineTheOwnerProvides(t *testing.T) {
@@ -39,17 +39,17 @@ func TestSubmit_RunsTheCommandAsATransientUnitThatKeepsItsResult(t *testing.T) {
 	id, err := h.Submit(t.Context(), model.JobSpec{Name: "gate", Command: `echo "$$ ${HOME} %h"; exit 3`})
 
 	require.NoError(t, err)
-	assert.Equal(t, model.JobID("obee-n1"), id)
+	assert.Equal(t, model.JobID("beehave-n1"), id)
 
-	u := m.Units["obee-n1"]
+	u := m.Units["beehave-n1"]
 	require.NotNil(t, u)
 	assert.Equal(t, `echo "$$ ${HOME} %h"; exit 3`, u.Command, "the command reaches the unit byte for byte")
 
 	root := sshtest.Root + "/work"
 	assert.Equal(t, []string{
-		"systemd-run", "--user", "--quiet", "--unit=obee-n1", "--remain-after-exit",
+		"systemd-run", "--user", "--quiet", "--unit=beehave-n1", "--remain-after-exit",
 		"-p", "RuntimeMaxSec=7200", "-p", "TimeoutStopSec=30", "-p", "WorkingDirectory=" + root,
-		"-p", "StandardOutput=append:" + root + "/.obee/obee-n1.log", "-p", "StandardError=inherit",
+		"-p", "StandardOutput=append:" + root + "/.beehave/beehave-n1.log", "-p", "StandardError=inherit",
 		"--", "sh", "-c", `eval "$(printf %s ` + base64.StdEncoding.EncodeToString([]byte(u.Command)) + ` | base64 -d)"`,
 	}, u.Args)
 	assert.NotContains(t, strings.Join(u.Args, " "), "CollectMode")
@@ -113,7 +113,7 @@ func TestWait_BanksTheWorkThenEndsTheUnit(t *testing.T) {
 	require.Len(t, bank.calls, 1)
 
 	after := words(m)[bank.calls[0]:]
-	assert.Equal(t, []string{"systemctl --user reset-failed obee-n1", "systemctl --user stop obee-n1"}, after, "reset-failed and stop run after the bank")
+	assert.Equal(t, []string{"systemctl --user reset-failed beehave-n1", "systemctl --user stop beehave-n1"}, after, "reset-failed and stop run after the bank")
 }
 
 func TestWait_AFailedBankKeepsTheUnitAndReturnsTheStateWithTheError(t *testing.T) {
@@ -140,7 +140,7 @@ func TestWait_RefusesAnIdThatSubmitDidNotReturn(t *testing.T) {
 	m := sshtest.New(hosttest.Working)
 	h, _, _ := newHost(t, m, config())
 
-	for _, id := range []model.JobID{"", "7", "obee-", "obee-x; rm -rf /", "-obee-x", "obee-x y"} {
+	for _, id := range []model.JobID{"", "7", "beehave-", "beehave-x; rm -rf /", "-beehave-x", "beehave-x y"} {
 		_, err := h.Wait(t.Context(), id)
 		require.Error(t, err, id)
 		require.Error(t, h.Cancel(t.Context(), id), id)
@@ -189,7 +189,7 @@ func TestWait_TheStateTableOfASystemdUnit(t *testing.T) {
 			require.NoError(t, err)
 
 			m.Units[string(id)].Raw = []string{tc.raw}
-			m.Files[sshtest.Root+"/work/.obee/"+string(id)+".canceled"] = tc.marker
+			m.Files[sshtest.Root+"/work/.beehave/"+string(id)+".canceled"] = tc.marker
 
 			state, err := h.Wait(t.Context(), id)
 
@@ -259,7 +259,7 @@ func TestWait_AUnitInTheMiddleOfAChangeIsStillRunning(t *testing.T) {
 				}
 
 				m.Units[string(id)].Raw = []string{rec(tc.active, tc.sub), rec(tc.active, tc.sub), end}
-				m.Files[sshtest.Root+"/work/.obee/"+string(id)+".canceled"] = marker
+				m.Files[sshtest.Root+"/work/.beehave/"+string(id)+".canceled"] = marker
 
 				state, err := h.Wait(t.Context(), id)
 
@@ -312,8 +312,8 @@ func TestWait_ASecondWaitAfterTheReleaseReadsTheSameResult(t *testing.T) {
 	}
 }
 
-// A record of a state that obee never writes (died, or any word) is an error, never a guess.
-func TestWait_ARecordOfAStateObeeNeverWritesIsAnError(t *testing.T) {
+// A record of a state that beehave never writes (died, or any word) is an error, never a guess.
+func TestWait_ARecordOfAStateBeehaveNeverWritesIsAnError(t *testing.T) {
 	t.Parallel()
 
 	for _, word := range []string{"died", "running", "nonsense"} {
@@ -323,7 +323,7 @@ func TestWait_ARecordOfAStateObeeNeverWritesIsAnError(t *testing.T) {
 		id, err := h.Submit(t.Context(), model.JobSpec{Name: "x", Command: "x"})
 		require.NoError(t, err)
 
-		m.Say = map[string]string{"sh -c": "obee-result " + word + "\n" + sshtest.Succeeded}
+		m.Say = map[string]string{"sh -c": "beehave-result " + word + "\n" + sshtest.Succeeded}
 
 		state, err := h.Wait(t.Context(), id)
 
@@ -438,7 +438,7 @@ func TestWait_AStaleLogCancelsTheUnitWithAMarkerThenStopsIt(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobStale, state)
-	assert.True(t, m.Files[sshtest.Root+"/work/.obee/obee-n1.canceled"])
+	assert.True(t, m.Files[sshtest.Root+"/work/.beehave/beehave-n1.canceled"])
 	assert.True(t, u.Stopped)
 	assert.Len(t, bank.calls, 1)
 }
@@ -460,8 +460,8 @@ func TestCancel_WritesTheMarkerThenStopsThenWaitsThenBanks(t *testing.T) {
 
 	got := words(m)[before:]
 	require.GreaterOrEqual(t, len(got), 4)
-	assert.Equal(t, "touch "+sshtest.Root+"/work/.obee/obee-n1.canceled", got[0])
-	assert.Equal(t, "systemctl --user stop obee-n1", got[1])
+	assert.Equal(t, "touch "+sshtest.Root+"/work/.beehave/beehave-n1.canceled", got[0])
+	assert.Equal(t, "systemctl --user stop beehave-n1", got[1])
 	assert.Len(t, bank.calls, 1)
 	assert.GreaterOrEqual(t, bank.calls[0]-before, 2+4, "the bank waits until a unit that still runs after the stop is gone")
 
@@ -512,5 +512,5 @@ func TestLog_ReadsTheEndOfTheLogFile(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "log text\n", out)
-	assert.Equal(t, "tail -c 16384 "+sshtest.Root+"/work/.obee/obee-n1.log", words(m)[len(words(m))-1])
+	assert.Equal(t, "tail -c 16384 "+sshtest.Root+"/work/.beehave/beehave-n1.log", words(m)[len(words(m))-1])
 }

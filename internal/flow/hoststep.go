@@ -7,12 +7,12 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // hostKeeper starts and stops the build host of a project. The host package owns the order of a stop: scan, bank, then stop.
 // A host that cannot bank its work stays up, and Teardown returns the reason.
-// For a machine or a cluster that the owner provides (the providers ssh and slurm), Teardown banks the work and leaves the machine up: obee never deletes it.
+// For a machine or a cluster that the owner provides (the providers ssh and slurm), Teardown banks the work and leaves the machine up: beehave never deletes it.
 // Up launches the host when it is absent. started is true only for a host that this call launched: a host that was up, and a project with no host, give false.
 // cluster names one build host of the project. An empty cluster means the build host of the project, and Up returns the cluster it used.
 // A cluster that the project file does not declare is an error.
@@ -76,7 +76,7 @@ func (s *script) startHost(ctx context.Context, cluster string) (stepResult, err
 }
 
 // hostTeardown stops the build host of the project: it banks the work first. The output down is true when the host is released, which for the providers
-// ssh and slurm means banked and not in use by obee; the machine stays up. A host that stays up is a result, not an error: down is false and reason says why,
+// ssh and slurm means banked and not in use by beehave; the machine stays up. A host that stays up is a result, not an error: down is false and reason says why,
 // so the workflow can report it. A build with no host stopper fails the call, and so does a run that was canceled.
 func (s *script) hostTeardown(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var label, cluster string

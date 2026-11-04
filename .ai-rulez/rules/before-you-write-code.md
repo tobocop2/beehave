@@ -19,7 +19,7 @@ Apply these four rules before you write, not after.
 
 ## Project
 
-obee takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer lanes build and prove, reviewer lanes verify at pinned SHAs, and the loop merges pinned. The engine is DBOS Transact Go on SQLite. The TUI is Bubble Tea. Go 1.27, module `github.com/tobocop2/obee`.
+beehave takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer lanes build and prove, reviewer lanes verify at pinned SHAs, and the loop merges pinned. The engine is DBOS Transact Go on SQLite. The TUI is Bubble Tea. Go 1.27, module `github.com/tobocop2/beehave`.
 
 ## Commands
 
@@ -31,7 +31,7 @@ make lint              # golangci-lint
 make test              # go test -race, writes coverage.out
 make coverage          # the 100% coverage gate on coverage.out
 make vuln              # govulncheck
-make build             # build bin/obee
+make build             # build bin/beehave
 ```
 
 Use `make`, never the underlying tools, for the checks. `make check` mirrors CI.

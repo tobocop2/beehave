@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // sleep moves the wall reading of the clock and leaves the monotonic reading behind, as a sleeping machine does.
@@ -292,7 +292,7 @@ func failedAtTheAgent(t *testing.T) (*harness, *Engine, *leaseClock, int) {
 	return harness, engine, clk, agents
 }
 
-// resumeTheRun puts the failed run back, as obee resume does. The claim step of the run then replays with the fresh claim that the resume took,
+// resumeTheRun puts the failed run back, as beehave resume does. The claim step of the run then replays with the fresh claim that the resume took,
 // so the run does not know how old that lease is.
 // It returns the result of that same run, joined by its id.
 func resumeTheRun(t *testing.T, harness *harness, engine *Engine) (ItemResult, error) {
@@ -585,7 +585,7 @@ func TestAwaitClaim_AResumeThatTookAClaimForTheRunKeepsThePhaseWaitingPastTheGra
 	engine.deps.Clock.Grace = 20 * time.Millisecond
 	engine.deps.Clock.Poll = storePoll
 
-	// obee resume saves the fresh token before it reopens the phase, and the run itself reopens later, as slowly as the host is.
+	// beehave resume saves the fresh token before it reopens the phase, and the run itself reopens later, as slowly as the host is.
 	require.NoError(t, saveOwner(engine.dir, "item-12-r9", "owner-12"))
 
 	go func() {

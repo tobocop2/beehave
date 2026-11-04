@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/review"
+	"github.com/tobocop2/beehave/internal/review"
 )
 
 // shipHarness is a harness whose workflow file is one merge step that marks the pull request ready and leaves the merge to the owner.

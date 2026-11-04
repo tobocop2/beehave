@@ -3,7 +3,7 @@ package store
 import (
 	"errors"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Unreadable turns the failure of model.Decode into a store refusal that names the command. The cause of the refusal is the cause of the decode failure. A nil error stays nil, and any other error passes through.

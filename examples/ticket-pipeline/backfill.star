@@ -6,7 +6,7 @@
 #   4. Before each day, scripts/budget.sh reserves the cost of the agent calls in one SQL statement. When the budget is spent, the run waits for a person:
 #      answer the number of cents to add, or stop. The wait has a deadline (BUDGET_TIMEOUT), and a fail at the deadline keeps every loaded day.
 # Set PIPE_DIR to the absolute path of this folder and PIPE_HOME to the folder of the data (config, credential.header, warehouse.db, stage/).
-# Run: obee run <item> pipeline --workflow backfill.star. A change of PIPE_VERSION takes effect for a new run: cancel the item, set the variable, run a new item.
+# Run: beehave run <item> pipeline --workflow backfill.star. A change of PIPE_VERSION takes effect for a new run: cancel the item, set the variable, run a new item.
 load("//version.star", "VERSION", "CHUNK", "MAX_DAYS")
 load("//partition.star", "DAY", "PIPE_DIR", "PIPE_HOME", "DEFAULT_BUDGET_CENTS", "STATUS", "load_day", "script_env")
 

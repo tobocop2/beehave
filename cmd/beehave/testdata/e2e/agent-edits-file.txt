@@ -1,0 +1,13 @@
+# An agent step edits a file in its work folder. The fake claude refuses the Write unless the start arguments hold
+# --permission-mode acceptEdits, as the real claude does in print mode, so the file exists only when the adapter passes the mode.
+cp flow/edit.star edit-file
+exec beehave run 7 --workflow flow/edit.star
+stdout 'item 7 finished'
+
+grep -count=1 '^implement ' calls.log
+exists edited.txt
+! exists refused.log
+
+-- flow/edit.star --
+def main(item):
+    agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet")

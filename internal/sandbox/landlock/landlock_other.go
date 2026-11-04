@@ -9,7 +9,7 @@ import (
 	"io"
 	"runtime"
 
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // Name is the name of this enforcer in sandbox_enforcer.

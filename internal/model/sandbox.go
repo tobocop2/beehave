@@ -64,7 +64,7 @@ const EnvPrefix = ".env"
 func CredentialPatterns() []string {
 	return []string{
 		".ssh", ".aws", ".config/gh", ".config/gcloud", ".azure", ".gnupg", ".netrc", ".npmrc", ".pypirc", ".git-credentials", ".docker", ".kube",
-		".cargo/credentials*", ".terraform.d", ".config/op", ".config/obee", ".claude*", "Library/Keychains", ".local/share/keyrings",
+		".cargo/credentials*", ".terraform.d", ".config/op", ".config/beehave", ".claude*", "Library/Keychains", ".local/share/keyrings",
 	}
 }
 

@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/sandbox"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/sandbox"
 )
 
 // sandboxExec is the program that applies a profile to a command. It is at this path on every macOS.
@@ -60,7 +60,7 @@ func (e Enforcer) probe() error {
 	ctx, cancel := context.WithTimeout(context.Background(), probeLimit)
 	defer cancel()
 
-	folder, err := os.MkdirTemp("", "obee-seatbelt-probe-")
+	folder, err := os.MkdirTemp("", "beehave-seatbelt-probe-")
 	if err != nil {
 		return fmt.Errorf("make the folder of the probe: %w", err)
 	}
@@ -110,7 +110,7 @@ func (e Enforcer) Run(ctx context.Context, plan sandbox.Plan, proxyPort int, cmd
 
 	program, err := find(cmd.Argv[0], cmd.Env)
 	if err != nil {
-		fmt.Fprintf(sandbox.OrDiscard(cmd.Stderr), "obee sandbox: %v. The command did not start.\n", err)
+		fmt.Fprintf(sandbox.OrDiscard(cmd.Stderr), "beehave sandbox: %v. The command did not start.\n", err)
 
 		return notFound, nil
 	}
@@ -177,7 +177,7 @@ func find(name string, env []string) (string, error) {
 	}
 
 	for _, pair := range env {
-		// An empty PATH finds nothing: proc.LookPath would take the PATH of obee for it.
+		// An empty PATH finds nothing: proc.LookPath would take the PATH of beehave for it.
 		if paths, ok := strings.CutPrefix(pair, "PATH="); ok && paths != "" {
 			if found, err := proc.LookPath(name, paths); err == nil {
 				return found, nil

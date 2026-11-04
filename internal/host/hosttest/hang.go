@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // HangingGit wraps the ssh runner of a fake host. The host holds one repository, at repo. Its find lists that repository,

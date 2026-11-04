@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 func TestCheck_ChecksThePathRulesOfAnAgentStepForLiterals(t *testing.T) {
@@ -62,7 +62,7 @@ func TestCheck_AcceptsTheShippedWorkflowsOnThePathRules(t *testing.T) {
 	t.Parallel()
 
 	loader := folder(t, map[string]string{
-		"workflow.star": "load(\"@obee//review_fix.star\", \"review_fix\")\ndef main(item):\n    return gate(name = \"check\")\n",
+		"workflow.star": "load(\"@beehave//review_fix.star\", \"review_fix\")\ndef main(item):\n    return gate(name = \"check\")\n",
 	}, "workflow.star")
 
 	for _, path := range []string{loader, filepath.Join("..", "..", "examples", "remediation", "workflow.star")} {

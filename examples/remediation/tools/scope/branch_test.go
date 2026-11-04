@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/check"
-	"github.com/tobocop2/obee/examples/remediation/tools/scope"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/examples/remediation/tools/check"
+	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // refusalOf fails the test unless err is a check.Refusal (exit code 2), and returns it.

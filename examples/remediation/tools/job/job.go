@@ -9,8 +9,8 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"github.com/tobocop2/obee/internal/check/shell"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var makeTarget = regexp.MustCompile(`^test[A-Za-z0-9_.:-]*$`)

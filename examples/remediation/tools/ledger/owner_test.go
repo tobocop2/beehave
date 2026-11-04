@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/examples/remediation/tools/ledger"
+	"github.com/tobocop2/beehave/examples/remediation/tools/ledger"
 )
 
 func (h *harness) approve(key, issue, words string) (ledger.Added, error) {

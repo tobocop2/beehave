@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // spec is the schema of one constructor: its name and its argument names, in the order of the destinations that unpack takes.

@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/tobocop2/obee/internal/merge"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestIsOwn_MatchesALoginInAnyCaseAndNeverAnEmptyName(t *testing.T) {
@@ -22,7 +22,7 @@ func TestIsOwn_MatchesALoginInAnyCaseAndNeverAnEmptyName(t *testing.T) {
 	assert.False(t, merge.IsOwn("owner", nil))
 }
 
-// ownWorkCases are the pull requests that obee must never merge. Each one refuses before the first write.
+// ownWorkCases are the pull requests that beehave must never merge. Each one refuses before the first write.
 func ownWorkCases() map[string]map[string]any {
 	return map[string]map[string]any{
 		"the author of the pull request is me":      {"author": map[string]any{"login": me}},

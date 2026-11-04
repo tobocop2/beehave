@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // ItemStore is the item list of one project with the local tracker. Close ends its use of the file.
@@ -182,7 +182,7 @@ func (f flowCommands) localProject(cmd *cobra.Command, flag, name string) (model
 
 	project := cfg.Projects[name].Project
 	if project.Tracker != model.TrackerLocal {
-		return model.Project{}, fmt.Errorf("project %s has the %s tracker. obee item works only on a project with tracker = \"local\"", name, project.Tracker)
+		return model.Project{}, fmt.Errorf("project %s has the %s tracker. beehave item works only on a project with tracker = \"local\"", name, project.Tracker)
 	}
 
 	return project, nil

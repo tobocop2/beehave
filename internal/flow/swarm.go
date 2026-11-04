@@ -12,9 +12,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/proc"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
@@ -181,7 +181,7 @@ func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]s
 }
 
 // planOne plans one item. An open run is refused, as a joined run has no parent row and a cancel of the parent would not reach it.
-// A failed last attempt is refused until obee resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
+// A failed last attempt is refused until beehave resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
 // taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
 func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []string) (spawnedRun, error) {
 	last, found, err := latestRun(e.ctx, id)
@@ -236,7 +236,7 @@ func openRunError(open run, item, project string) error {
 		return conflictError(item, held, project)
 	}
 
-	return fmt.Errorf("item %s has an open run, %s. Run obee status to see it, or obee cancel %s to end it, then start this item again", item, open.Status.ID, item)
+	return fmt.Errorf("item %s has an open run, %s. Run beehave status to see it, or beehave cancel %s to end it, then start this item again", item, open.Status.ID, item)
 }
 
 // startRuns starts the runs of the plan as child workflows of this run, on the items queue. The call is outside a step, so the library records each child.
@@ -467,10 +467,10 @@ func settled(parent string, looks []look, fired raiseResult) gathered {
 
 	if fired.trigger >= 0 {
 		failed := looks[fired.trigger]
-		done.Failed = fmt.Sprintf("item %s did not finish: %s. Run obee resume %s to reopen item %s and run the spawn again", failed.out.Item, failed.out.Error, parent, failed.out.Item)
+		done.Failed = fmt.Sprintf("item %s did not finish: %s. Run beehave resume %s to reopen item %s and run the spawn again", failed.out.Item, failed.out.Error, parent, failed.out.Item)
 
 		if failed.canceled {
-			done.Failed = fmt.Sprintf("item %s did not finish: %s. It was canceled by hand, and obee resume %s does not reopen a child canceled by hand", failed.out.Item, failed.out.Error, parent)
+			done.Failed = fmt.Sprintf("item %s did not finish: %s. It was canceled by hand, and beehave resume %s does not reopen a child canceled by hand", failed.out.Item, failed.out.Error, parent)
 		}
 	}
 
@@ -549,7 +549,7 @@ func succeeded(ref spawnedRun, row dbos.WorkflowStatus) childOutcome {
 	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Closed: result.Closed, Stopped: result.Stopped, Value: result.Value}
 }
 
-// cancelOpen cancels the runs that are still open, as obee cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.
+// cancelOpen cancels the runs that are still open, as beehave cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.
 // The cancel reaches the phases of each run, so none waits in the queue. The tick of the engine ends each local run and gives its claim back.
 // It returns the ids of the runs it canceled.
 func (e *Engine) cancelOpen(project string, looks []look) ([]string, error) {

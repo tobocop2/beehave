@@ -1,7 +1,7 @@
 # An eval of one intent of the refund desk. The item body names the intent, such as refund. Set DESK_DIR to the absolute path of this folder.
 # The clerk runs on each gold case as shadow work, and the judge grades each calibration reply. The scripts in evals/ score the run with a cost-weighted
 # confusion matrix, and compare the judge with the two people who graded each reply. A good score proposes a tier change to a person. It never makes one.
-# Run it with `obee run <eval> desk --workflow eval.star`.
+# Run it with `beehave run <eval> desk --workflow eval.star`.
 load("//policy.star", "ITEM_STATUS", "POLICY", "TIERS")
 load("//clerk.star", "DECISION", "READ_ONLY_FORBIDDEN", "check_intent", "clerk")
 

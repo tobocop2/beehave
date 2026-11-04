@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // workflowDir is the folder of the workflow files. A change there needs the workflow scope on the token.

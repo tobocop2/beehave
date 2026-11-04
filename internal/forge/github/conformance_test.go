@@ -3,9 +3,9 @@ package github_test
 import (
 	"testing"
 
-	"github.com/tobocop2/obee/internal/forge"
-	"github.com/tobocop2/obee/internal/forge/forgetest"
-	"github.com/tobocop2/obee/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/forge/forgetest"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestForge_ConformsToForge(t *testing.T) {

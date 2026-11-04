@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tobocop2/obee/internal/host"
-	"github.com/tobocop2/obee/internal/host/link"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var errCancelStuck = errors.New("the cancel did not take")
@@ -74,7 +74,7 @@ func New(sched Scheduler, release func(ctx context.Context, job Job) error, cloc
 	return &Engine{sched: sched, release: release, clock: clock, bank: bank, stale: stale}
 }
 
-// Wait polls the scheduler until the job has a final state. A state that obee does not know is an error, never a guess.
+// Wait polls the scheduler until the job has a final state. A state that beehave does not know is an error, never a guess.
 //
 // A job holds its slot until its work is banked. Wait banks the work of the host, then releases the slot of the job.
 // Work that cannot be banked is an error, and Wait returns the state of the job together with that error.

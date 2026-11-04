@@ -1,0 +1,67 @@
+# The final exam of the refund intent. The exam reads the held-out case g3, and the clerk is right on it, so the mean cost is 0 and the policy allows a promotion
+# of the refund intent from contain to transact. The desk does not change the policy. It asks the approvers of the intent, and only the answer yes opens an item
+# for a reviewed edit of policy.star. The first run is answered yes and the second run is answered no.
+[!exec:jq] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+deskinit
+deskfakes
+env HOME=$WORK/home
+env DESK_DIR=$WORK/desk
+env EXAM=yes
+
+exec beehavereal item add desk eval-yes --title 'Exam of refund' --body-file body.txt
+exec beehavereal run eval-yes desk --workflow desk/eval.star &
+waitstatus 'Promote it to transact'
+exec beehavereal status
+stdout 'paused: \[billing\] refund passed the final exam'
+exec beehavereal item list desk
+! stdout 'Promote'
+exec beehavereal answer eval-yes yes
+wait
+stdout 'item eval-yes finished'
+
+# The answer yes opened one item, with the report of the exam as its body.
+exec beehavereal item list desk
+stdout -count=1 'Promote refund to transact in policy.star'
+! stdout 'Demote'
+
+exec beehavereal item add desk eval-no --title 'Exam of refund' --body-file body.txt
+exec beehavereal run eval-no desk --workflow desk/eval.star &
+waitstatus 'Promote it to transact'
+exec beehavereal answer eval-no no
+wait
+stdout 'item eval-no finished'
+
+# The answer no opened nothing: the list still holds the one item of the first run.
+exec beehavereal item list desk
+stdout -count=1 'Promote refund to transact in policy.star'
+
+-- body.txt --
+refund
+-- home/.desk/config --
+DESK_API=http://desk.test
+MAILDIR=/nonexistent/mail
+CHAT_SPOOL=/nonexistent/chat
+CHAT_API=http://chat.test
+MASK_SALT=testsalt
+-- home/.desk/credential.header --
+Authorization: Bearer TESTONLY
+-- home/.desk/gold/refund.tsv --
+id	held	ka	aa	kb	ab	file
+g1	no	refund	80	refund	80	g1.txt
+g3	yes	refund	50	refund	50	g3.txt
+-- home/.desk/gold/g1.txt --
+Please refund 80 for BK-123456.
+-- home/.desk/gold/g3.txt --
+Please refund 50 for BK-123456.
+-- home/.desk/gold/costs.tsv --
+none	person	2
+-- home/.desk/gold/refund-replies.tsv --
+id	case	reply	ga	gb
+r1	g1.txt	r1.txt	good	good
+-- home/.desk/gold/r1.txt --
+reply one

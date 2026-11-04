@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // IssueReads are the two forge reads that the check after a batch needs.

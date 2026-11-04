@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/exectest"
-	"github.com/tobocop2/obee/internal/gate"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func pinnedHostProject() model.Project {
@@ -24,7 +24,7 @@ func pinnedHostProject() model.Project {
 func TestPins_AHostGateWithAPinFileIsVoidWhenTheHostToolIsAtAnotherVersion(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "obee-gate-void gofake 1.27 gofake version 1.26.0\nobee-gate-done\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehave-gate-void gofake 1.27 gofake version 1.26.0\nbeehave-gate-done\n"}
 	g := gate.New((&fakeShell{output: "gofake 1.27\n"}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
 	p := pinnedHostProject()
 	p.TestReport = "r/*.xml"
@@ -41,7 +41,7 @@ func TestPins_AHostGateWithAPinFileIsVoidWhenTheHostToolIsAtAnotherVersion(t *te
 func TestPins_AHostGateWithAPinFileAndNoTestReportIsVoidWhenTheHostToolIsAtAnotherVersion(t *testing.T) {
 	t.Parallel()
 
-	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "obee-gate-void gofake 1.27 gofake version 1.26.0\nobee-gate-done\n"}
+	remote := logRemote{fakeRemote: &fakeRemote{state: model.JobFailed}, log: "beehave-gate-void gofake 1.27 gofake version 1.26.0\nbeehave-gate-done\n"}
 	g := gate.New((&fakeShell{output: "gofake 1.27\n"}).run, (&fakeTree{states: []gate.State{clean(headA)}}).read, func(model.Project) (gate.Remote, error) { return remote, nil })
 	p := pinnedHostProject()
 
@@ -169,6 +169,6 @@ func TestPins_TheHostCommandProbesThePinnedToolBeforeTheGateAndAToolAtAnotherVer
 	var exit *exec.ExitError
 	require.ErrorAs(t, runErr, &exit)
 	assert.NotZero(t, exit.ExitCode())
-	assert.Contains(t, string(out), "obee-gate-void git 2.99.0")
+	assert.Contains(t, string(out), "beehave-gate-void git 2.99.0")
 	assert.NoFileExists(t, filepath.Join(home, "gate-ran"), "the gate command must not run")
 }

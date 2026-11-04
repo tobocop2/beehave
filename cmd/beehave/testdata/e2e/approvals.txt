@@ -1,0 +1,73 @@
+# A contract needs two of three legal members, one security member and one product member (policy.star). Every sign-off is a file
+# signed with ssh-keygen -Y sign and checked against allowed_signers. A key that the desk does not know is refused.
+# Every window is 300 seconds. Sign-offs arrive inside it. The audit checks the chain, every signature, the close and the head.
+[!exec:jq] skip
+[!exec:ssh-keygen] skip
+[!exec:sqlite3] skip
+[!exec:flock] skip
+[!exec:git] skip
+[!exec:sha256sum] [!exec:shasum] skip
+isolate
+! exec bd version
+! exec gh version
+
+approvalsinit
+approvalsfakes
+approvalskeys ann lee lou luz sam pat outsider-mal
+subst home/.approval/config
+env HOME=$WORK/home
+env APPROVALS_DIR=$WORK/ops
+env APPROVALS_WINDOW_SECONDS=300
+env APPROVAL_POLL=1
+
+exec beehavereal check workflow ops/workflow.star
+! stdout .
+exec beehavereal check workflow ops/audit.star
+! stdout .
+
+exec sh ops/scripts/submit.sh contract contract.md ann
+exec beehavereal item add approvals req-1 --title 'Sign off the contract' --body-file body.txt
+exec beehavereal run req-1 approvals --workflow ops/workflow.star &
+waitfile notices.log
+grep '^version-req-1-' notices.log
+grep 'lee,lou,luz,pat,paula,sam,sue' notices.log
+
+# One legal member is not enough. A key that the desk does not know is refused.
+exec signoff lee legal approve req-1 contract
+exec signoff outsider-mal legal approve req-1 contract
+exec signoff sam security approve req-1 contract
+exec signoff pat product approve req-1 contract
+# The tally takes the inbox first, so the four files are counted when it answers.
+exec sh ops/scripts/tally.sh req-1
+stdout '"status":"pending"'
+stdout '"missing":\["legal"\]'
+exec signoff lou legal approve req-1 contract
+wait
+stdout 'item req-1 finished'
+
+! grep '^remind-' notices.log
+grep -count=1 '^outcome-req-1 ann' notices.log
+exec sh -c 'sh ops/scripts/audit.sh req-1 $(git hash-object home/.approval/docs/contract.md) $(jq -r .head home/.approval/certs/req-1.json)'
+stdout 'chain ok'
+stdout '\tsignoff\tlee\tlegal\tapprove\t'
+stdout '\tsignoff\tlou\tlegal\tapprove\t'
+stdout '\trefused\toutsider-mal\t'
+stdout '\tclosed\t.*\tapproved\t'
+exec sqlite3 state/local.db 'SELECT state FROM items WHERE id = "req-1"'
+stdout '^closed$'
+
+# Rows after the close do not hide a cut tail: the head from the close pins it.
+exec sqlite3 home/.approval/ledger.db 'DROP TRIGGER events_no_delete; DELETE FROM events WHERE seq >= (SELECT seq FROM events WHERE type = "closed");'
+! exec sh ops/scripts/audit.sh req-1
+stderr 'REFUSE'
+! exec sh -c 'sh ops/scripts/audit.sh req-1 $(git hash-object home/.approval/docs/contract.md) $(jq -r .head home/.approval/certs/req-1.json)'
+stdout 'BROKEN the row'
+
+-- body.txt --
+{"doc":"contract","kind":"contract","author":"ann"}
+-- contract.md --
+The supplier delivers in 30 days.
+-- home/.approval/config --
+NOTIFY_API=http://notify.test
+-- home/.approval/credential.header --
+Authorization: Bearer TESTONLY

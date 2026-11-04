@@ -14,16 +14,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tobocop2/obee/internal/config"
-	"github.com/tobocop2/obee/internal/flow"
-	"github.com/tobocop2/obee/internal/model"
-	"github.com/tobocop2/obee/internal/workflow"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
 	// maxRunArgs is the item and the optional project.
 	maxRunArgs = 2
-	// overCapFlag is the flag of obee run that lets the first agent step take a runner over its usage cap.
+	// overCapFlag is the flag of beehave run that lets the first agent step take a runner over its usage cap.
 	overCapFlag = "over-cap"
 )
 
@@ -31,7 +31,7 @@ const (
 var errNoWorkflow = errors.New("the run has no workflow file")
 
 // errInterrupted is returned by run when the user stops the command before the item ends.
-var errInterrupted = errors.New("stopped before the item finished: run obee run again to continue it")
+var errInterrupted = errors.New("stopped before the item finished: run beehave run again to continue it")
 
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
@@ -159,15 +159,15 @@ func oneItem(cmd *cobra.Command, args []string) error {
 }
 
 func addConfigFlag(command *cobra.Command, target *string) {
-	command.Flags().StringVar(target, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+	command.Flags().StringVar(target, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/beehave)")
 }
 
 const runLong = "Take one item through its workflow.\nName the project when the config holds more than one.\n\n" +
 	"The steps of the workflow file run in file order. Name the file with --workflow, or keep " + defaultWorkflowFile + " in the current folder. " +
-	"obee checks the file first and refuses on any problem. If no file is named and the folder has none, obee run refuses, unless the item has an open run.\n\n" +
-	"If an earlier run of the item is open, obee run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and obee run continues it.\n" +
-	"If the last run failed, obee run refuses and names the step that failed. Run obee resume, then obee run.\n" +
-	"After a finished or a canceled run, obee run starts a new run.\n\n" +
+	"beehave checks the file first and refuses on any problem. If no file is named and the folder has none, beehave run refuses, unless the item has an open run.\n\n" +
+	"If an earlier run of the item is open, beehave run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and beehave run continues it.\n" +
+	"If the last run failed, beehave run refuses and names the step that failed. Run beehave resume, then beehave run.\n" +
+	"After a finished or a canceled run, beehave run starts a new run.\n\n" +
 	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
 	"If none is under the caps, the step waits for the earliest reset time that is known, then picks again. If no reset time is known, the step fails and says why. " +
 	"With --" + overCapFlag + ", the step takes the runner with the lowest use instead of waiting, and the run records that the runner was over its cap."
@@ -361,7 +361,7 @@ func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, pro
 }
 
 // openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
-// obee run ignores --workflow when it joins an open run.
+// beehave run ignores --workflow when it joins an open run.
 func (f flowCommands) openRunFile(stdout io.Writer, cfg config.Config, opts flow.Options, item string) (string, error) {
 	client, err := f.factory.Client(f.ctx, cfg, opts)
 	if err != nil {
@@ -657,9 +657,9 @@ func statusLine(info flow.RunInfo, now time.Time) string {
 
 	switch {
 	case info.OlderSteps:
-		line += "\tstranded: made by an older step format. Start the obee build that made it to finish it"
+		line += "\tstranded: made by an older step format. Start the beehave build that made it to finish it"
 	case info.Stranded:
-		line += fmt.Sprintf("\tstranded: start obee version %s to finish it", info.Version)
+		line += fmt.Sprintf("\tstranded: start beehave version %s to finish it", info.Version)
 	case info.Question != "":
 		line += "\tpaused: " + model.OneLine(info.Question) + askedTail(info.Asked)
 	default:
@@ -787,7 +787,7 @@ func sendAnswer(client Steering, item, as, text string) error {
 	return client.AnswerAs(item, as, text)
 }
 
-// manyAnswer holds the flags that make obee answer reply to many waiting runs.
+// manyAnswer holds the flags that make beehave answer reply to many waiting runs.
 type manyAnswer struct {
 	all             bool
 	project, asking string
@@ -827,16 +827,16 @@ func (m manyAnswer) picks(info flow.RunInfo) bool {
 		(len(m.items) == 0 || slices.Contains(m.items, info.Item))
 }
 
-// errNoWaiting is returned when obee answer --all finds no waiting run that fits the selectors.
-var errNoWaiting = errors.New("no waiting run matches. Run obee status to see the runs that wait for an answer")
+// errNoWaiting is returned when beehave answer --all finds no waiting run that fits the selectors.
+var errNoWaiting = errors.New("no waiting run matches. Run beehave status to see the runs that wait for an answer")
 
-// errNotTaken is returned when at least one run of obee answer --all refused the answer.
+// errNotTaken is returned when at least one run of beehave answer --all refused the answer.
 var errNotTaken = errors.New("some runs did not take the answer")
 
 // errAnswerShape is returned when the item and the --all flag do not fit together.
 var errAnswerShape = errors.New("give an item and the text, or --all with the text and no item")
 
-// answerArgs checks the arguments of obee answer: an item and the text, or with --all the text alone.
+// answerArgs checks the arguments of beehave answer: an item and the text, or with --all the text alone.
 func (m *manyAnswer) answerArgs(cmd *cobra.Command, args []string) error {
 	names := given(cmd)
 
@@ -925,7 +925,7 @@ func (m manyAnswer) picked(infos []flow.RunInfo) []string {
 	return items
 }
 
-// addFlags adds the flags of obee answer --all.
+// addFlags adds the flags of beehave answer --all.
 func (m *manyAnswer) addFlags(command *cobra.Command) {
 	command.Flags().BoolVar(&m.all, "all", false, "answer every paused run that fits the selectors; give the text and no item")
 	command.Flags().StringVar(&m.project, "project", "", "with --all: answer only runs of this project")
@@ -933,7 +933,7 @@ func (m *manyAnswer) addFlags(command *cobra.Command) {
 	command.Flags().StringSliceVar(&m.items, "items", nil, "with --all: answer only these items, a comma-separated list")
 }
 
-// answer runs obee answer: one item, or with --all every run that the selectors pick.
+// answer runs beehave answer: one item, or with --all every run that the selectors pick.
 func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, as string, args []string) error {
 	if many.all {
 		return f.withClient(cmd, flag, func(client Steering) error {
@@ -946,11 +946,11 @@ func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, a
 
 const answerLong = "Answer the question of a paused item.\n" +
 	"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
-	"A wait that sets choices takes only those texts. obee status shows the people, the choices and who answered.\n" +
-	"obee does not prove the name: anyone who can run obee answer on the run can give any name that the wait asks.\n\n" +
-	"Add --all to give the same answer to every run that obee status shows as paused with a question, and give the text alone, with no item. " +
+	"A wait that sets choices takes only those texts. beehave status shows the people, the choices and who answered.\n" +
+	"beehave does not prove the name: anyone who can run beehave answer on the run can give any name that the wait asks.\n\n" +
+	"Add --all to give the same answer to every run that beehave status shows as paused with a question, and give the text alone, with no item. " +
 	"Narrow the runs with --project (the project of the run), --question (a text that the question holds) and --items (a list of item ids). A run must fit every selector that is set.\n" +
-	"Each run takes the answer as obee answer <item> would send it, and keeps every refusal rule of that command: a run that refuses prints one line with the reason, and the other runs still take the answer. " +
+	"Each run takes the answer as beehave answer <item> would send it, and keeps every refusal rule of that command: a run that refuses prints one line with the reason, and the other runs still take the answer. " +
 	"The command prints one line for each run. It exits 0 only when every run took the answer, and exits 1 when a run refused or when no run waits."
 
 func (f flowCommands) answerCommand() *cobra.Command {
@@ -974,9 +974,9 @@ func (f flowCommands) answerCommand() *cobra.Command {
 
 const resumeLong = "Reopen the cancelled or failed run of an item. The run restarts from its last finished step.\n" + //nolint:misspell // user-facing state word, same as the cancelled run state
 	"Resume takes a fresh claim on the item first, and refuses if another holder has it.\n" +
-	"A canceled run that left its claim gives it back at the next obee run.\n" +
-	"Run obee run for the item next: it continues the reopened run and renews the claim.\n" +
-	"A run that another build of obee started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
+	"A canceled run that left its claim gives it back at the next beehave run.\n" +
+	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
+	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
 	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned."
 
 // resumeItem reopens the run of an item, and moves it to this build first when the owner asked for that.

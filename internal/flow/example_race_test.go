@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/claim"
-	"github.com/tobocop2/obee/internal/store/local"
+	"github.com/tobocop2/beehave/internal/claim"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 // A claim in these tests is the real claim package over the real local store: one SQLite file that two runs share.
-// The runs are two engines with their own state folders, as two obee processes have, so the claim row is the only thing they share.
+// The runs are two engines with their own state folders, as two beehave processes have, so the claim row is the only thing they share.
 
 const raceWait = 30 * time.Second
 

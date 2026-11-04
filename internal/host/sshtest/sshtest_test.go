@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/host/hosttest"
-	"github.com/tobocop2/obee/internal/host/sshtest"
-	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/sshtest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // call runs the words on the machine as the link does: options, "--", the target, then each word quoted.
@@ -155,8 +155,8 @@ func TestMachine_ARecordedResultIsPrintedByThePoll(t *testing.T) {
 	submit(m, "u1", hosttest.PassingCommand)
 	m.Files["/b/u1.timed_out"] = true
 
-	assert.Contains(t, observe(m, "u1"), "obee-result timed_out\n")
-	assert.NotContains(t, observe(m, "u1"), "obee-result succeeded")
+	assert.Contains(t, observe(m, "u1"), "beehave-result timed_out\n")
+	assert.NotContains(t, observe(m, "u1"), "beehave-result succeeded")
 }
 
 func TestMachine_AHostileCommandThatTravelsAsBase64ArrivesWhole(t *testing.T) {
@@ -190,9 +190,9 @@ func TestMachine_ANeverStartedUnitIsNotFoundAndCarriesTheMarkerAndSize(t *testin
 
 	out := observe(m, "ghost")
 
-	assert.Contains(t, out, "obee-canceled")
+	assert.Contains(t, out, "beehave-canceled")
 	assert.Contains(t, out, "LoadState=not-found")
-	assert.True(t, strings.HasSuffix(out, "obee-size -1\n"))
+	assert.True(t, strings.HasSuffix(out, "beehave-size -1\n"))
 }
 
 func TestMachine_PlannedReadsSizesAndStops(t *testing.T) {
@@ -203,9 +203,9 @@ func TestMachine_PlannedReadsSizesAndStops(t *testing.T) {
 	m.Units["r"].Raw = []string{"first\n", "second\n"}
 	m.Units["r"].LogSizes = []int{4, 9}
 
-	assert.Equal(t, "first\nobee-size 4\n", observe(m, "r"))
-	assert.Equal(t, "second\nobee-size 9\n", observe(m, "r"))
-	assert.Equal(t, "second\nobee-size 9\n", observe(m, "r"), "the last read repeats")
+	assert.Equal(t, "first\nbeehave-size 4\n", observe(m, "r"))
+	assert.Equal(t, "second\nbeehave-size 9\n", observe(m, "r"))
+	assert.Equal(t, "second\nbeehave-size 9\n", observe(m, "r"), "the last read repeats")
 
 	submit(m, "s", "x")
 	m.Units["s"].Live = 9

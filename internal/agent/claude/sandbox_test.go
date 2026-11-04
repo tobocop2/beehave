@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/agent"
-	"github.com/tobocop2/obee/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 )
 
 func plan() agent.SandboxPlan {
@@ -145,7 +145,7 @@ func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New().Sandbox(plan(), "/bin/obee check command", "/run").Args
+	args := claude.New().Sandbox(plan(), "/bin/beehave check command", "/run").Args
 	text := args[len(args)-1]
 
 	for _, key := range []string{"excludedCommands", "allowLocalBinding", "allowAllUnixSockets", "allowAppleEvents"} {
@@ -165,7 +165,7 @@ func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New().Sandbox(plan(), "/bin/obee check command", "/run").Args
+	args := claude.New().Sandbox(plan(), "/bin/beehave check command", "/run").Args
 
 	assert.Equal(t, 1, countOf(args, "--settings"), "one settings object holds the hook and the sandbox")
 
@@ -175,7 +175,7 @@ func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 
 	hook, err := json.Marshal(settings["hooks"])
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/obee check command","onFailure":"block"}]}]}`, string(hook))
+	assert.JSONEq(t, `{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}`, string(hook))
 }
 
 func TestSandbox_WithoutAGuardWritesNoHook(t *testing.T) {

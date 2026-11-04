@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/obee/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // requireCap skips a test on a machine where a systemd user scope with a task cap cannot start.
