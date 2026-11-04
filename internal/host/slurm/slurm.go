@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,8 @@ type Queue struct {
 	config model.HostConfig
 	slot   Slot
 	engine *jobwait.Engine
+	limit  time.Duration // the run limit that sbatch gets; zero sends none
+	bank   func(ctx context.Context) error
 }
 
 // settings are the production values that an Option replaces. They are for tests.
@@ -51,6 +54,7 @@ type settings struct {
 	clock jobwait.Clock
 	bank  func(ctx context.Context) error
 	nonce func() string
+	limit time.Duration
 }
 
 type Option func(*settings)
@@ -70,7 +74,7 @@ func New(l *link.Link, config model.HostConfig, slot Slot, opts ...Option) *Queu
 		opt(&s)
 	}
 
-	q.nonce = s.nonce
+	q.nonce, q.limit, q.bank = s.nonce, s.limit, s.bank
 	q.engine = jobwait.New(scheduler{l}, slot.Release, s.clock, s.bank, time.Duration(config.StaleMinutes)*time.Minute)
 
 	return q
@@ -97,7 +101,7 @@ func (q *Queue) Readings(ctx context.Context) (model.HostStatus, error) {
 }
 
 func (q *Queue) draining(ctx context.Context) (bool, error) {
-	out, err := q.link.Remote(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%T")
+	out, err := q.read(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%T")
 	if err != nil {
 		return false, err
 	}
@@ -105,8 +109,22 @@ func (q *Queue) draining(ctx context.Context) (bool, error) {
 	return parseDraining(out)
 }
 
+// read runs a command on the head node. A dropped ssh link wraps link.ErrDropped, so a caller tells a head node that does not answer from a command that fails.
+func (q *Queue) read(ctx context.Context, name string, words ...string) (string, error) {
+	result := q.link.Exec(ctx, words...)
+	if err := q.link.Drop(result); err != nil {
+		return "", err
+	}
+
+	if result.ExitCode != 0 {
+		return "", link.Failure(name, result)
+	}
+
+	return result.Stdout, nil
+}
+
 func (q *Queue) freeBytes(ctx context.Context) (uint64, error) {
-	out, err := q.link.Remote(ctx, "df", "df", "-P", "-k", ".")
+	out, err := q.read(ctx, "df", "df", "-P", "-k", ".")
 	if err != nil {
 		return 0, err
 	}
@@ -135,7 +153,12 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 
 // queue runs sbatch and returns the handle of the new job, with a nonce made for this Submit.
 func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, error) {
-	out, err := q.link.Remote(ctx, "sbatch", "sbatch", "--parsable", "--job-name="+spec.Name, "--wrap="+spec.Command)
+	words := []string{"sbatch", "--parsable", "--job-name=" + spec.Name}
+	if q.limit > 0 {
+		words = append(words, "--time="+strconv.FormatInt(int64(math.Ceil(q.limit.Minutes())), 10))
+	}
+
+	out, err := q.link.Remote(ctx, "sbatch", append(words, "--wrap="+spec.Command)...)
 	if err != nil {
 		return jobwait.Job{}, err
 	}

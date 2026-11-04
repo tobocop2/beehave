@@ -220,6 +220,42 @@ func TestWithDiskFloor_EveryOtherMethodIsTheMethodOfTheHost(t *testing.T) {
 	assert.Zero(t, stub.submits)
 }
 
+// tearing is a stubHost with a Teardown, as the providers have.
+type tearing struct {
+	*stubHost
+
+	teardowns int
+}
+
+func (h *tearing) Teardown(context.Context) error {
+	h.teardowns++
+
+	return nil
+}
+
+func TestDiskGuards_KeepTheTeardownOfAHostThatHasOne(t *testing.T) {
+	t.Parallel()
+
+	type keeper interface {
+		Teardown(ctx context.Context) error
+	}
+
+	for name, wrap := range map[string]func(host.Host) host.Host{
+		"floor": func(h host.Host) host.Host { return host.WithDiskFloor(h, 50) },
+		"wait":  func(h host.Host) host.Host { return host.WithDiskWait(h, 50, time.Hour, time.Hour) },
+	} {
+		inner := &tearing{stubHost: &stubHost{}}
+		wrapped, ok := wrap(inner).(keeper)
+
+		require.True(t, ok, "%s: a wrapped provider keeps its Teardown, or host_teardown cannot bank its work", name)
+		require.NoError(t, wrapped.Teardown(t.Context()), name)
+		assert.Equal(t, 1, inner.teardowns, name)
+
+		_, ok = wrap(&stubHost{}).(keeper)
+		assert.False(t, ok, "%s: a host with no Teardown gets none, so a caller still sees it cannot bank", name)
+	}
+}
+
 func TestWaitJob(t *testing.T) {
 	t.Parallel()
 

@@ -173,7 +173,8 @@ linters:
             - pkg: github.com/tobocop2/obee/internal/host/ssh
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
         # The skypilot adapter queues its jobs through the slurm adapter, so it is the one backend that imports another. no-backend-to-backend-host-skypilot
-        # keeps it from importing any other backend.
+        # keeps it from importing any other backend. The three host adapters (ssh, slurm, skypilot) never import each other otherwise: a blank-import probe in
+        # each of ssh, slurm, skypilot and flow shows a denial. The slurm to skypilot import is a Go import cycle, so the compiler also refuses it.
         backends-only-in-main:
           files: ["!$test", "!**/cmd/obee/**", "!**/examples/remediation/tools/cmd/remedy/**", "!**/internal/host/skypilot/**"]
           deny:
