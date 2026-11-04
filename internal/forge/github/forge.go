@@ -19,6 +19,7 @@ const (
 	argMerge       = "merge"
 	argView        = "view"
 	argRepo        = "--repo"
+	argBody        = "--body"
 	argJSON        = "--json"
 	argPaginate    = "--paginate"
 	argJQ          = "--jq"

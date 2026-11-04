@@ -15,6 +15,23 @@ import (
 // errNotReady is returned by the ready step when the forge shows a reason to hold the pull request back.
 var errNotReady = errors.New("the pull request is not ready")
 
+// OpenRequest is what the pr_open step asks of the forge. Issue is the issue number of the item, or 0 for none: the forge adds the closing line for it to the body.
+// Parent is the id of the item that this one depends on, or empty.
+type OpenRequest struct {
+	Title  string
+	Body   string
+	Issue  int
+	Base   string
+	Parent string
+}
+
+// OpenResult is the pull request that Open found or made. Stack is the id of its native stack, or empty when it is in none.
+type OpenResult struct {
+	Number  int
+	Created bool
+	Stack   string
+}
+
 // forge reads the pull request of an item and takes it out of draft. A failed read is an error, never an empty standing.
 // Ready runs after an approved review and a clean Pull.
 // Reviewed reads the same standing as Pull for a review of the commit reviewed. A head that is not that commit but holds the same tree
@@ -28,6 +45,9 @@ type forge interface {
 	// Comment adds a comment to the pull request of the item and returns its number. The same key on the same pull request adds one comment.
 	// An item with no pull request is an error. So is a project with no forge.
 	Comment(ctx context.Context, project, item, key, text string) (number int, err error)
+	// Open finds the open pull request on the branch of the item, or opens a draft one, and makes its body and stack right. The same call again opens no second pull request.
+	// A project with no forge, and a forge that cannot open pull requests, are errors.
+	Open(ctx context.Context, project, item string, req OpenRequest) (OpenResult, error)
 	// Assign assigns the pull request of the item to a login and returns its number. With linked it also assigns each issue that the pull request closes and returns their numbers.
 	// The same call again changes nothing. An item with no pull request is an error. So is a project with no forge.
 	Assign(ctx context.Context, project, item, assignee string, linked bool) (number int, issues []int, err error)

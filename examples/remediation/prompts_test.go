@@ -209,8 +209,6 @@ func reviewFormatRules() []rule {
 
 func briefRules() []rule {
 	return []rule{
-		{"brief_rules", "On a round branch, the pull request body says `Addresses #N`", workLanes()},
-		{"brief_rules", "When the base is the default branch, it says `Closes #N`", workLanes()},
 		{"brief_rules", "Read an issue or pull request thread from the thread file", everyLane()},
 		{"brief_rules", "A reproduction is self-contained", everyLane()},
 	}
@@ -218,10 +216,9 @@ func briefRules() []rule {
 
 func mergeRules() []rule {
 	return []rule{
-		{"merge_rules", "Open a draft pull request at the first checkpoint", workLanes()},
-		{"merge_rules", "Push every later commit to it at once", workLanes()},
-		{"merge_rules", "goes into a native stack", workLanes()},
-		{"merge_rules", "Link the branches from the bottom to the top with `gh stack link`", workLanes()},
+		{"merge_rules", "Push the branch when the first commit is green", []string{implement}},
+		{"merge_rules", "the engine does these after this step", []string{implement}},
+		{"merge_rules", "the engine owns both", []string{fix}},
 		{"merge_rules", "Never use the merge queue of GitHub", []string{implement, fix, review, integrate}},
 		{"merge_rules", "Known base reds are in one file", workAndReview()},
 		{"merge_rules", "A finding that survives the review is filed before the merge", []string{review}},
@@ -230,9 +227,6 @@ func mergeRules() []rule {
 		{"integrate_rules", "Add a closing row for each issue that the merge resolves", []string{integrate}},
 		{"integrate_rules", "Close each resolved issue with the evidence", []string{integrate}},
 		{"merge_rules", "a commit that stays local is lost with the lane", workLanes()},
-		{"merge_rules", "check that all of them show the same non-empty id", workLanes()},
-		{"merge_rules", "the pull request body says `Addresses #N`", workLanes()},
-		{"merge_rules", "When the base is the default branch, it says `Closes #N`", workLanes()},
 		{"integrate_rules", "Never close an issue with no such comment", []string{integrate}},
 		{"integrate_rules", "Closing keywords belong to the integration pull request only", []string{integrate}},
 		{"integrate_rules", "A finding that survives is filed before the merge", []string{integrate}},
@@ -292,6 +286,22 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 153, counted)
+	assert.Equal(t, 147, counted)
 	assert.Positive(t, held)
+}
+
+// The engine opens the pull request, sets its body and links the stack (pr_open in workflow.star), so a work lane carries no rule that does the same.
+func TestPrompts_TheWorkLanesLeaveThePullRequestToTheEngine(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range workLanes() {
+		raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
+		require.NoError(t, err)
+
+		text := squash(string(raw))
+
+		for _, gone := range []string{"Addresses #N", "Closes #N", "gh stack link", "native stack", "Open a draft pull request"} {
+			assert.NotContains(t, text, gone, name)
+		}
+	}
 }

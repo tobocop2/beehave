@@ -420,6 +420,11 @@ func (dryForge) Comment(context.Context, string, string, string, string) (int, e
 	return dryPull, nil
 }
 
+// Open shows the dry-run pull request as found, in no stack.
+func (dryForge) Open(context.Context, string, string, OpenRequest) (OpenResult, error) {
+	return OpenResult{Number: dryPull}, nil
+}
+
 // Assign shows the dry-run pull request as assigned, with no linked issue.
 func (dryForge) Assign(context.Context, string, string, string, bool) (int, []int, error) {
 	return dryPull, nil, nil
@@ -450,7 +455,7 @@ func (dryCommands) Run(context.Context, CommandRequest) (CommandOutput, error) {
 type dryItems struct{ item string }
 
 func (i dryItems) Fields(context.Context, string, string) (map[string]string, error) {
-	return map[string]string{"id": i.item, "title": "a dry-run item", "body": "P0\tno tracker was read\tno body"}, nil
+	return map[string]string{"id": i.item, titleKeyword: "a dry-run item", bodyKeyword: "P0\tno tracker was read\tno body"}, nil
 }
 
 // dryWriter accepts every write to the tracker and keeps none.
