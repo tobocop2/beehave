@@ -29,7 +29,7 @@ func (Adapter) Profile() agent.Profile {
 		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",
-		ResumeFlag: "--resume",
+		Resume:     func(id string) []string { return []string{"--resume", id} },
 		TurnsFlag:  "--max-turns",
 		BudgetFlag: "--max-budget-usd",
 		Sandbox:    true,
@@ -61,10 +61,10 @@ type hookHandler struct {
 // Claude Code merges hook entries across settings sources, so no settings file of the user changes.
 // The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
 // "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
-func (Adapter) Guard(command string) []string {
+func (Adapter) Guard(command, _ string) agent.Launch {
 	raw, _ := json.Marshal(hookSettings{Hooks: guardHooks(command)}) //nolint:errcheck,errchkjson // a struct of strings always encodes
 
-	return []string{"--settings", string(raw)}
+	return agent.Launch{Args: []string{"--settings", string(raw)}}
 }
 
 // guardHooks is the PreToolUse hook on the Bash tool that runs command.

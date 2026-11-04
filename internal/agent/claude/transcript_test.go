@@ -54,7 +54,8 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	p := claude.New().Profile()
 
 	assert.Equal(t, "--model", p.ModelFlag)
-	assert.Equal(t, "--resume", p.ResumeFlag)
+	assert.Equal(t, []string{"--resume", "sess-1"}, p.Resume("sess-1"))
+	assert.False(t, p.ResumeLast, "the resume flag keeps its place before the caps")
 }
 
 func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {

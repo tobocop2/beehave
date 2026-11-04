@@ -87,8 +87,11 @@ func TestGuard_TheHookLetsACleanCommandThrough(t *testing.T) {
 func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 	t.Parallel()
 
-	got := claude.New().Guard("/bin/obee check command")
+	launch := claude.New().Guard("/bin/obee check command", "/run")
+	got := launch.Args
 
+	assert.Empty(t, launch.Env)
+	assert.Empty(t, launch.Files)
 	require.Len(t, got, 2)
 	assert.Equal(t, "--settings", got[0])
 	assert.JSONEq(t, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/obee check command","onFailure":"block"}]}]}}`, got[1])

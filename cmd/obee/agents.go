@@ -148,7 +148,7 @@ func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind
 		return ""
 	case guard == "":
 		return "The step lists forbid_commands, but obee cannot find the path of its own program to start the check of the commands. The step did not start."
-	case adapter.Guard(guard) == nil:
+	case adapter.Guard(guard, "").Empty():
 		return "The step lists forbid_commands, but the agent CLI of the runner has no hook to refuse a command before it runs. The step did not start."
 	}
 

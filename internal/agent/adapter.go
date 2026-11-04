@@ -2,7 +2,7 @@
 package agent
 
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
-// ModelFlag and ResumeFlag are the flags that take a model name and a session id. An empty flag means the CLI has no such option.
+// ModelFlag is the flag that takes a model name. An empty flag means the CLI has no such option.
 type Profile struct {
 	Binary string
 	Args   []string
@@ -11,8 +11,13 @@ type Profile struct {
 	ConfigVars []string
 	TokenVar   string
 	ModelFlag  string
-	ResumeFlag string
+	// Resume returns the arguments that resume the session with the given id. A nil Resume means the CLI has no such option.
+	// ResumeLast is true when those arguments open a subcommand, so the runner puts them after every other argument.
+	Resume     func(id string) []string
+	ResumeLast bool
 	// TurnsFlag and BudgetFlag are the flags that cap the turns and the dollars of one run. An empty flag means the CLI has no such option.
+	// A set turn cap on a profile without TurnsFlag is enforced by the runner, which counts the shell calls of the run (the tool steps) as turns.
+	// A set cost cap on a profile without BudgetFlag refuses the run, because the runner learns the cost of a run too late to stop it.
 	TurnsFlag  string
 	BudgetFlag string
 	// Sandbox is true when the CLI has a sandbox that the adapter maps a SandboxPlan to. A run with a sandbox on an adapter without it does not start.
@@ -30,6 +35,35 @@ const (
 	StopBudget Stop = "budget"
 )
 
+// Launch is what an adapter adds to the start of one run, beyond the arguments of its profile.
+// Args are appended to the command line. Env is added to the environment after the allow-list; it never replaces a login variable or the token.
+// Files maps a path inside the run folder to its content. The runner writes them before the CLI starts, with mode 0600 in a folder of mode 0700.
+// A path must be local: no absolute path and no "..". The runner removes the folder when the run ends.
+type Launch struct {
+	Args  []string
+	Env   map[string]string
+	Files map[string]string
+}
+
+// Empty is true when the launch adds nothing to the run.
+func (l Launch) Empty() bool {
+	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0
+}
+
+// Tokens counts the tokens of a run. Input holds every input token, the cached ones included; Output holds every output token, the reasoning ones included.
+// CachedInput and Reasoning say how much of Input and Output they are.
+type Tokens struct {
+	Input       int64
+	CachedInput int64
+	Output      int64
+	Reasoning   int64
+}
+
+// Add returns the sum of two counts.
+func (t Tokens) Add(o Tokens) Tokens {
+	return Tokens{t.Input + o.Input, t.CachedInput + o.CachedInput, t.Output + o.Output, t.Reasoning + o.Reasoning}
+}
+
 // Call is one shell call: the id that the CLI gave the call, and its command. The id is empty when the line has none.
 type Call struct {
 	ID   string
@@ -42,8 +76,10 @@ type Call struct {
 // Stop is the cap that the CLI reports on its result line: StopTurns, StopBudget, or empty when the line reports no cap.
 // Failed is the error subtype of a result line that reports an error and no cap, or empty when the line reports none.
 // Cost is the total cost in dollars that the CLI reports on its result line, or 0 when the line reports none.
+// Usage is the tokens that the line reports for the part of the run that it closes, or zero when it reports none; the caller adds the Usage of all lines.
 type Seen struct {
 	Cost    float64
+	Usage   Tokens
 	Stop    Stop
 	Failed  string
 	Shell   []Call
@@ -59,12 +95,12 @@ type Seen struct {
 type Adapter interface {
 	// Profile returns the command line and the login variables of the CLI.
 	Profile() Profile
-	// Guard returns the arguments that make the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
-	// It returns nil when the CLI has no such option.
-	Guard(command string) []string
-	// Sandbox returns the arguments that confine the shell of one run to the plan, and nothing else the CLI reads can widen it: no settings file and no MCP server.
-	// A non-empty guard is the hook of Guard, and the arguments carry it in the same settings as the sandbox. Only a profile with Sandbox true is asked.
-	Sandbox(plan SandboxPlan, guard string) []string
+	// Guard returns the launch that makes the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
+	// It returns an empty launch when the CLI has no such option. runDir is the folder of the run: a path in Files is relative to it, and Args or Env can name a file in it.
+	Guard(command, runDir string) Launch
+	// Sandbox returns the launch that confines the shell of one run to the plan, and nothing else the CLI reads can widen it: no settings file and no MCP server.
+	// A non-empty guard is the hook of Guard, and the launch carries it in the same settings as the sandbox. Only a profile with Sandbox true is asked.
+	Sandbox(plan SandboxPlan, guard, runDir string) Launch
 	// Line reads one line of the output of the CLI. It returns the session id and the message text that the line holds, or empty strings.
 	Line(line string) (session, text string)
 	// Calls reads one line of the output of the CLI and returns what it holds.

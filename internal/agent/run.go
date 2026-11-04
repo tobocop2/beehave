@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,8 +35,13 @@ const (
 	OutcomeBudgetCap Outcome = "budget-cap"
 )
 
-// floatBits is the bit size of a dollar amount in a flag.
-const floatBits = 64
+const (
+	// floatBits is the bit size of a dollar amount in a flag.
+	floatBits = 64
+	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
+	runDirMode     = 0o700
+	launchFileMode = 0o600
+)
 
 var (
 	errTotalTimeout = errors.New("total timeout")
@@ -169,7 +176,7 @@ func optionProblem(spec Spec, p Profile) string {
 		return fmt.Sprintf("%s has no option to set a model, so model %q is not used. Remove the model from the step.", p.Binary, spec.Model)
 	}
 
-	if spec.Resume != "" && p.ResumeFlag == "" {
+	if spec.Resume != "" && p.Resume == nil {
 		return p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
 	}
 
@@ -201,13 +208,31 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
-	env := envFor(spec, p)
+	runDir, err := os.MkdirTemp("", "obee-run-") // mode 0700
+	if err != nil {
+		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
+	}
+
+	defer os.RemoveAll(runDir)
+
+	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+}
+
+// launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
+func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
+	launch := launchOf(spec, runDir)
+
+	if problem := writeFiles(runDir, launch.Files); problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
+	env := envFor(spec, p, launch.Env)
 
 	if problem := versionProblem(ctx, spec, p, binary, env, version); problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
-	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p), spec.Dir)
+	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch), spec.Dir)
 
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
@@ -229,8 +254,9 @@ func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) 
 	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
 }
 
-// argsOf returns the arguments of the profile, then the model and the session to resume when the spec sets them.
-func argsOf(spec Spec, p Profile) []string {
+// argsOf returns the arguments of the profile, then the model, the session to resume, the caps and the arguments of the launch.
+// A resume that opens a subcommand (Profile.ResumeLast) comes after all of them.
+func argsOf(spec Spec, p Profile, launch Launch) []string {
 	args := slices.Clone(p.Args)
 	args = append(args, editArgs(spec, p)...)
 
@@ -238,25 +264,52 @@ func argsOf(spec Spec, p Profile) []string {
 		args = append(args, p.ModelFlag, spec.Model)
 	}
 
-	if spec.Resume != "" {
-		args = append(args, p.ResumeFlag, spec.Resume)
+	if spec.Resume != "" && !p.ResumeLast {
+		args = append(args, p.Resume(spec.Resume)...)
 	}
 
 	args = append(args, capArgs(spec, p)...)
+	args = append(args, launch.Args...)
 
-	return append(args, shellArgs(spec)...)
-}
-
-// shellArgs returns the arguments that start the sandbox of the spec, or the command guard when the spec has no sandbox.
-func shellArgs(spec Spec) []string {
-	switch {
-	case spec.Sandbox != nil:
-		return spec.Adapter.Sandbox(*spec.Sandbox, spec.Guard)
-	case spec.Guard != "":
-		return spec.Adapter.Guard(spec.Guard)
+	if spec.Resume != "" && p.ResumeLast {
+		args = append(args, p.Resume(spec.Resume)...)
 	}
 
-	return nil
+	return args
+}
+
+// launchOf returns what the adapter adds to the start: the sandbox of the spec, or the command guard when the spec has no sandbox.
+func launchOf(spec Spec, runDir string) Launch {
+	switch {
+	case spec.Sandbox != nil:
+		return spec.Adapter.Sandbox(*spec.Sandbox, spec.Guard, runDir)
+	case spec.Guard != "":
+		return spec.Adapter.Guard(spec.Guard, runDir)
+	}
+
+	return Launch{}
+}
+
+// writeFiles writes the files of a launch into runDir. It returns why it cannot, or "" when every file is written.
+// A path that is not local (absolute, empty or with "..") is refused, because the file would land outside the run folder.
+func writeFiles(runDir string, files map[string]string) string {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if !filepath.IsLocal(name) {
+			return fmt.Sprintf("the launch of the agent puts the file %q outside its run folder, so the run does not start.", name)
+		}
+
+		path := filepath.Join(runDir, name)
+
+		if err := os.MkdirAll(filepath.Dir(path), runDirMode); err != nil {
+			return fmt.Sprintf("cannot make the folder of the launch file %q: %v", name, err)
+		}
+
+		if err := os.WriteFile(path, []byte(files[name]), launchFileMode); err != nil {
+			return fmt.Sprintf("cannot write the launch file %q: %v", name, err)
+		}
+	}
+
+	return ""
 }
 
 // editArgs returns the arguments that let the CLI edit files, or none for a spec with NoEdits.

@@ -28,13 +28,17 @@ type fakeAdapter struct {
 	profile agent.Profile
 	// invent makes Calls report a call on every line.
 	invent bool
+	// files is the Files of the launch of the guard and of the sandbox.
+	files map[string]string
 }
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
 
-func (fakeAdapter) Guard(string) []string { return nil }
+func (a fakeAdapter) Guard(string, string) agent.Launch { return agent.Launch{Files: a.files} }
 
-func (fakeAdapter) Sandbox(agent.SandboxPlan, string) []string { return nil }
+func (a fakeAdapter) Sandbox(agent.SandboxPlan, string, string) agent.Launch {
+	return agent.Launch{Files: a.files}
+}
 
 func (fakeAdapter) Line(string) (string, string) { return "", "" }
 
@@ -151,6 +155,59 @@ func TestCheckRun(t *testing.T) {
 		assert.Len(t, r.failures, 1)
 		assert.Contains(t, r.failures[0], "cannot write the fake CLI")
 	})
+}
+
+func TestCheckLaunch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{"no_file", nil, ""},
+		{"a_file_in_a_folder_of_the_run_folder", map[string]string{"conf/hooks.json": "x"}, ""},
+		{"a_path_with_dot_dot", map[string]string{"../hooks.json": "x"}, `the launch file "../hooks.json" is outside the run folder`},
+		{"a_path_that_climbs_inside", map[string]string{"a/../../b": "x"}, `the launch file "a/../../b" is outside the run folder`},
+		{"an_absolute_path", map[string]string{"/etc/hooks.json": "x"}, `the launch file "/etc/hooks.json" is outside the run folder`},
+		{"an_empty_path", map[string]string{"": "x"}, `the launch file "" is outside the run folder`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := good()
+			a.files = tc.files
+			a.profile.Sandbox = true
+
+			var r recorder
+
+			agenttest.CheckLaunch(&r, a)
+
+			if tc.want == "" {
+				assert.Empty(t, r.failures)
+
+				return
+			}
+
+			assert.Contains(t, r.failures, tc.want+" (guard)")
+			assert.Contains(t, r.failures, tc.want+" (sandbox)")
+		})
+	}
+}
+
+func TestCheckLaunch_DoesNotAskAProfileWithoutASandboxForOne(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.files = map[string]string{"../x": "x"}
+
+	var r recorder
+
+	agenttest.CheckLaunch(&r, a)
+
+	assert.Equal(t, []string{`the launch file "../x" is outside the run folder (guard)`}, r.failures)
 }
 
 func TestCheckCalls(t *testing.T) {

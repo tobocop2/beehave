@@ -173,7 +173,7 @@ type noFlags struct{ agent.Adapter }
 
 func (n noFlags) Profile() agent.Profile {
 	p := n.Adapter.Profile()
-	p.ModelFlag, p.ResumeFlag, p.TurnsFlag, p.BudgetFlag = "", "", "", ""
+	p.ModelFlag, p.Resume, p.TurnsFlag, p.BudgetFlag = "", nil, "", ""
 
 	return p
 }
