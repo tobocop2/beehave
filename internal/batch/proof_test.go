@@ -21,6 +21,7 @@ type proofWorld struct {
 	trees      map[string]string
 	blobs      map[string]map[string]string
 	blobsErr   map[string]error
+	treeErr    map[string]error
 	asked      []string
 	// branch is the current tip of the branch of each item. An item with no entry has no branch. branchErr fails the read of an item.
 	branch    map[string]string
@@ -43,6 +44,10 @@ func (w *proofWorld) Compare(_ context.Context, commit, base string) (model.Comp
 
 func (w *proofWorld) CommitTree(_ context.Context, commit string) (string, error) {
 	w.asked = append(w.asked, "tree "+commit)
+
+	if err := w.treeErr[commit]; err != nil {
+		return "", err
+	}
 
 	tree, ok := w.trees[commit]
 	if !ok {
@@ -206,7 +211,7 @@ func TestProve_AReadThatFailsLeavesTheMemberUnprovenNeverLanded(t *testing.T) {
 
 	tests := map[string]func(w *proofWorld){
 		"compare": func(w *proofWorld) { w.compareErr = map[string]error{"h-b": errRead} },
-		"commit":  func(w *proofWorld) { delete(w.trees, "h-b") },
+		"commit":  func(w *proofWorld) { w.treeErr = map[string]error{"h-b": errRead} },
 		"member":  func(w *proofWorld) { w.blobsErr = map[string]error{"t-b": errRead} },
 		"start":   func(w *proofWorld) { w.blobsErr = map[string]error{"t-start": errRead} },
 		"end":     func(w *proofWorld) { w.blobsErr = map[string]error{"t-end": errRead} },

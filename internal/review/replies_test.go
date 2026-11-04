@@ -65,6 +65,21 @@ func TestReplies_199SearchRowsPassAnd200AreCutOff(t *testing.T) {
 	require.ErrorContains(t, err, "cannot search issues")
 }
 
+func TestReplies_AFailedSearchStopsThePollForEachKind(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []model.SearchKind{model.SearchIssues, model.SearchPulls} {
+		w := newWorld()
+		w.searches[kind] = []int{5}
+		w.fails["Search"] = true
+
+		rows, err := poll(t, w)
+		require.ErrorIs(t, err, errDown, string(kind))
+		require.ErrorContains(t, err, "cannot search", string(kind))
+		assert.Empty(t, rows, "a search that failed is not an empty list")
+	}
+}
+
 func TestReplies_AnUnreadableItemStopsThePoll(t *testing.T) {
 	t.Parallel()
 
