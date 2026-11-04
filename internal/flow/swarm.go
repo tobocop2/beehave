@@ -12,6 +12,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -381,7 +382,7 @@ func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, ra
 			return done, nil
 		}
 
-		if err := pause(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
+		if err := proc.Sleep(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
 			return gathered{}, err
 		}
 	}

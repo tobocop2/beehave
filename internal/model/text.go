@@ -7,6 +7,13 @@ func Records(text string) []string {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 }
 
+// FirstLine returns the first line of the text that holds more than blanks, trimmed.
+func FirstLine(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+
+	return strings.TrimSpace(line)
+}
+
 // BlankFields splits on spaces, tabs and newlines only, as awk does.
 func BlankFields(text string) []string {
 	return strings.FieldsFunc(text, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' })

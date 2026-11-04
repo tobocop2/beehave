@@ -11,6 +11,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 )
 
 // errClaimLost is returned when the engine stopped trusting the claim of a run.
@@ -338,22 +339,9 @@ func (e *Engine) awaitClaim(ctx context.Context, in PhaseInput) (context.Context
 			return nil, err
 		}
 
-		if err := pause(ctx, cmp.Or(e.deps.Clock.Poll, trustPoll)); err != nil {
+		if err := proc.Sleep(ctx, cmp.Or(e.deps.Clock.Poll, trustPoll)); err != nil {
 			return nil, err
 		}
-	}
-}
-
-// pause waits for d, or returns the stop error of ctx.
-func pause(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return stopError(ctx)
-	case <-timer.C:
-		return nil
 	}
 }
 

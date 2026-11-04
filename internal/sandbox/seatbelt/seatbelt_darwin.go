@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,7 +110,7 @@ func (e Enforcer) Run(ctx context.Context, plan sandbox.Plan, proxyPort int, cmd
 
 	program, err := find(cmd.Argv[0], cmd.Env)
 	if err != nil {
-		fmt.Fprintf(orDiscard(cmd.Stderr), "obee sandbox: %v. The command did not start.\n", err)
+		fmt.Fprintf(sandbox.OrDiscard(cmd.Stderr), "obee sandbox: %v. The command did not start.\n", err)
 
 		return notFound, nil
 	}
@@ -122,7 +121,7 @@ func (e Enforcer) Run(ctx context.Context, plan sandbox.Plan, proxyPort int, cmd
 
 	child := proc.GroupCommand(ctx, e.program, arguments(plan, proxyPort, program, cmd.Argv[1:]), cmd.Dir)
 	child.Env = append([]string{}, cmd.Env...)
-	child.Stdout, child.Stderr = orDiscard(cmd.Stdout), orDiscard(cmd.Stderr)
+	child.Stdout, child.Stderr = sandbox.OrDiscard(cmd.Stdout), sandbox.OrDiscard(cmd.Stderr)
 
 	return codeOf(child.Run())
 }
@@ -187,14 +186,6 @@ func find(name string, env []string) (string, error) {
 	}
 
 	return "", &exec.Error{Name: name, Err: exec.ErrNotFound}
-}
-
-func orDiscard(w io.Writer) io.Writer {
-	if w == nil {
-		return io.Discard
-	}
-
-	return w
 }
 
 // codeOf turns the result of waiting for the child into an exit code: 0 for success, the code of the command, or 128 plus the signal number for a command

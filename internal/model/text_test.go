@@ -15,6 +15,13 @@ func TestRecords_SplitsOnNewlineOnlyAndDropsTheLastEmptyRecord(t *testing.T) {
 	assert.Equal(t, []string{"a"}, model.Records("a"))
 }
 
+func TestFirstLine_SkipsBlankLinesAndTrimsTheLine(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "a b", model.FirstLine("  \n\n a b \r\nc\n"))
+	assert.Empty(t, model.FirstLine(" \n "))
+}
+
 func TestBlankFields_SplitsOnSpaceTabAndNewlineOnly(t *testing.T) {
 	t.Parallel()
 
