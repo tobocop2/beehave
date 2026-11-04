@@ -10,6 +10,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
+	"github.com/tobocop2/obee/internal/atomicfile"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -33,7 +34,7 @@ func saveOwner(dir, id, owner string) error {
 		return fmt.Errorf("save the claim of run %s: %w", id, err)
 	}
 
-	if err := os.WriteFile(ownerPath(dir, id), []byte(owner), ownerMode); err != nil {
+	if err := atomicfile.Write(ownerPath(dir, id), []byte(owner), ownerMode); err != nil {
 		return fmt.Errorf("save the claim of run %s: %w", id, err)
 	}
 

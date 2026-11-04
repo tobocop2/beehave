@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
+	"github.com/tobocop2/obee/internal/atomicfile"
 	"github.com/tobocop2/obee/internal/review"
 )
 
@@ -144,7 +144,7 @@ func (e *Engine) recordSchedule(err error) {
 		e.logger.Warn("the review poll is not scheduled", "error", text)
 	}
 
-	if werr := os.WriteFile(pollScheduleFile(e.dir), []byte(text), ownerMode); werr != nil {
+	if werr := atomicfile.Write(pollScheduleFile(e.dir), []byte(text), ownerMode); werr != nil {
 		e.logger.Warn("could not record the state of the review poll schedule", "error", e.redact(werr.Error()))
 	}
 }
