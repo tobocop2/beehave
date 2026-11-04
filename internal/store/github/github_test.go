@@ -58,7 +58,7 @@ func TestNew_NeedsOwnerAndName(t *testing.T) {
 func TestNew_TakesLettersDigitsDotsUnderscoresAndHyphens(t *testing.T) {
 	t.Parallel()
 
-	for _, repo := range []string{"tobocop2/obee", "A.b_c-1/Z.y_x-0"} {
+	for _, repo := range []string{"tobocop2/beehave", "A.b_c-1/Z.y_x-0"} {
 		_, err := github.New(repo, &proctest.Scripted{})
 		require.NoError(t, err, repo)
 	}
