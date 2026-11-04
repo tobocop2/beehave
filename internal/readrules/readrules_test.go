@@ -182,6 +182,7 @@ var rules = map[string]rule{
 	"internal/host.Host.Wait":                     {NotHeld: inAdapter},
 	"internal/host.Host.WorkRoot":                 {NotHeld: inAdapter},
 	"internal/host.Host.Log":                      {NotHeld: inAdapter},
+	"internal/host/jobwait.Scheduler.Observe":     {NotHeld: inAdapter},
 	"internal/store.Tracker.Item":                 {NotHeld: inAdapter},
 	"internal/store.Tracker.OpenItems":            {NotHeld: inAdapter},
 	"internal/store.ClaimRows.HeldRows":           {NotHeld: inAdapter},

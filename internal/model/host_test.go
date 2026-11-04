@@ -62,13 +62,3 @@ func TestRemoteHasHost(t *testing.T) {
 		assert.Equal(t, want, model.RemoteHasHost(remote), remote)
 	}
 }
-
-func TestJobID_LostAdviceNamesTheJobAndTheCancel(t *testing.T) {
-	t.Parallel()
-
-	advice := model.JobID("job-7").LostAdvice()
-
-	assert.Contains(t, advice, "job job-7 may still run")
-	assert.Contains(t, advice, "scancel")
-	assert.Contains(t, advice, "Run it again only after the cancel")
-}

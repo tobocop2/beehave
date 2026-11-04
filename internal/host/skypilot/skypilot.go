@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/model"
@@ -148,14 +149,14 @@ func (h *Host) Teardown(ctx context.Context) error {
 type slot struct{ h *Host }
 
 // Hold starts the SkyPilot job that keeps the cluster busy.
-func (s slot) Hold(ctx context.Context, job slurm.Job) error {
+func (s slot) Hold(ctx context.Context, job jobwait.Job) error {
 	_, err := link.Run(ctx, s.h.sky, "sky exec", []string{"exec", s.h.cluster, "-d", slotCommand(s.h.config.MaxRun, s.markerName(job))})
 
 	return err
 }
 
 // Release writes the marker that ends the slot job.
-func (s slot) Release(ctx context.Context, job slurm.Job) error {
+func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 	marker := s.markerName(job)
 	_, err := s.h.link.Remote(ctx, "touch", "touch", marker)
 
@@ -164,7 +165,7 @@ func (s slot) Release(ctx context.Context, job slurm.Job) error {
 
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
 // so a job id that Slurm uses again never matches the marker of an earlier job.
-func (s slot) markerName(job slurm.Job) string {
+func (s slot) markerName(job jobwait.Job) string {
 	return ".obee-banked-" + s.h.cluster + "-" + job.String()
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
@@ -57,7 +58,7 @@ func newClockedHostWith(t *testing.T, staleMinutes int, with ...func(*fakeClock,
 	f := slurmtest.New(hosttest.Working)
 	f.Up = true
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
-	opts := []Option{WithClock(clockPoll, clock.read, clock.sleep), WithBank(noBank)}
+	opts := []Option{WithClock(jobwait.Clock{Poll: clockPoll, Now: clock.read, Sleep: clock.sleep}), WithBank(noBank)}
 
 	for _, option := range with {
 		opts = append(opts, option(clock, f))
@@ -223,13 +224,13 @@ func TestWait_ADropAfterLongerThanTheLostLimitOfAnsweredReadsKeepsWaiting(t *tes
 
 	start, dropped := time.Unix(1_000_000, 0), false
 	h, f, _ := newClockedHostWith(t, 0, func(clock *fakeClock, f *slurmtest.Cluster) Option {
-		return WithClock(clockPoll, clock.read, func(ctx context.Context, d time.Duration) error {
+		return WithClock(jobwait.Clock{Poll: clockPoll, Now: clock.read, Sleep: func(ctx context.Context, d time.Duration) error {
 			if !dropped && clock.now.Sub(start) > 6*time.Minute {
 				dropped, f.Drops = true, 1
 			}
 
 			return clock.sleep(ctx, d)
-		})
+		}})
 	})
 	id, job := submitted(t, h, f)
 	job.Live, job.LogSizes = 60, []int{1}
@@ -358,7 +359,7 @@ func TestWait_ANewHandleWaitsOnTheRecordedJobAndSubmitsNoSecondCopy(t *testing.T
 	first, f, clock := newClockedHost(t)
 	id, _ := submitted(t, first, f)
 
-	second := newTestQueue(f, first.config, WithClock(clockPoll, clock.read, clock.sleep), WithBank(noBank))
+	second := newTestQueue(f, first.config, WithClock(jobwait.Clock{Poll: clockPoll, Now: clock.read, Sleep: clock.sleep}), WithBank(noBank))
 
 	state, err := second.Wait(context.Background(), id)
 

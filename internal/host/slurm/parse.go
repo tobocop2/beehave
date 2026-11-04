@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/model"
 )
 
@@ -48,23 +49,14 @@ func parseSubmitted(out string) (string, error) {
 	return match[1], nil
 }
 
-// Job is what the job id of this adapter holds: the Slurm job id and the nonce that Submit made for the slot of the job.
-type Job struct {
-	ID    string
-	Nonce string
-}
-
-// String is the job id that Submit returns: the Slurm job id, a dash, and the nonce.
-func (j Job) String() string { return j.ID + "-" + j.Nonce }
-
 // parseJobID reads a job id that Submit returned. It refuses any other text, so none reaches the scheduler command line.
-func parseJobID(id model.JobID) (Job, error) {
+func parseJobID(id model.JobID) (jobwait.Job, error) {
 	match := handlePattern.FindStringSubmatch(string(id))
 	if match == nil {
-		return Job{}, fmt.Errorf("%w: got %q", errBadJobID, string(id))
+		return jobwait.Job{}, fmt.Errorf("%w: got %q", errBadJobID, string(id))
 	}
 
-	return Job{ID: match[1], Nonce: match[2]}, nil
+	return jobwait.Job{ID: match[1], Nonce: match[2]}, nil
 }
 
 // slurmJobState maps a Slurm state name to a job state. The names are Slurm's own spelling.

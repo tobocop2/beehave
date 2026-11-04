@@ -9,6 +9,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
@@ -96,5 +97,5 @@ func newTestHost(t *testing.T, mode hosttest.Mode) host.Host {
 
 // fastWaits are the options of a test host whose polls are one millisecond apart and whose bank has nothing to do.
 func fastWaits() []slurm.Option {
-	return []slurm.Option{slurm.WithClock(time.Millisecond, time.Now, proc.Sleep), slurm.WithBank(func(context.Context) error { return nil })}
+	return []slurm.Option{slurm.WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), slurm.WithBank(func(context.Context) error { return nil })}
 }

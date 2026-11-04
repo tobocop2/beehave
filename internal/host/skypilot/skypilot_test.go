@@ -10,6 +10,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/model"
@@ -60,7 +61,7 @@ func newBanking(t *testing.T, private string) (*Host, *proctest.Scripted) {
 	cfg := config()
 	cfg.PrivateRemote = private
 
-	h, err := New("lane-host", cfg, &proctest.Scripted{}, ssh, slurm.WithClock(time.Millisecond, time.Now, proc.Sleep), slurm.WithNonce(func() string { return "n" }))
+	h, err := New("lane-host", cfg, &proctest.Scripted{}, ssh, slurm.WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), slurm.WithNonce(func() string { return "n" }))
 	require.NoError(t, err)
 
 	planHome(ssh)

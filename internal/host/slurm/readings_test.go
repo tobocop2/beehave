@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/jobwait"
 	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
@@ -84,8 +85,8 @@ func TestReadings_ReportsEachCommandThatFails(t *testing.T) {
 // stubSlot is a slot whose Hold or Release returns the error it is given. The zero value holds and releases nothing.
 type stubSlot struct{ hold, release error }
 
-func (s stubSlot) Hold(context.Context, Job) error    { return s.hold }
-func (s stubSlot) Release(context.Context, Job) error { return s.release }
+func (s stubSlot) Hold(context.Context, jobwait.Job) error    { return s.hold }
+func (s stubSlot) Release(context.Context, jobwait.Job) error { return s.release }
 
 var (
 	errHold    = errors.New("hold failed")
@@ -96,7 +97,7 @@ func newSlotted(t *testing.T, slot Slot, opts ...Option) (*Queue, *proctest.Scri
 	t.Helper()
 
 	ssh := &proctest.Scripted{}
-	opts = append([]Option{WithClock(1, time.Now, proc.Sleep), WithNonce(fixedNonce)}, opts...)
+	opts = append([]Option{WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}), WithNonce(fixedNonce)}, opts...)
 
 	return New(link.New("lane-host", ssh), config(), slot, opts...), ssh
 }
@@ -183,7 +184,7 @@ func TestWait_BanksTheWorkOfTheHeadNodeThroughSSHFromTheLoginFolder(t *testing.T
 	ssh := &proctest.Scripted{}
 	cfg := config()
 	cfg.PrivateRemote = "git@private.test:org/bank.git"
-	h := New(link.New("lane-host", ssh), cfg, stubSlot{}, WithClock(1, time.Now, proc.Sleep))
+	h := New(link.New("lane-host", ssh), cfg, stubSlot{}, WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}))
 
 	ssh.Plan("/home/lane\n", "pwd")
 	ssh.Plan("COMPLETED\n", "squeue")
