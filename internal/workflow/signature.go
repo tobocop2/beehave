@@ -378,14 +378,7 @@ func Signature(builtin string) ([]Param, bool) {
 
 // Signed lists the builtins that have a signature.
 func Signed() []string {
-	names := make([]string, 0, len(signatures()))
-	for name := range signatures() {
-		names = append(names, name)
-	}
-
-	slices.Sort(names)
-
-	return names
+	return slices.Sorted(maps.Keys(signatures()))
 }
 
 // Unpack reads the arguments of a call of the builtin into the destinations, each named by its keyword.
@@ -532,22 +525,23 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 // proof checks the tree and steps arguments of a merge call with the rules of the run. The run reads them only when the call sets merge to True,
 // so the check does the same. An empty list of steps is reported by mergeNeedsSteps, and a value of the wrong kind by the kind check.
 func (g *graph) proof(call *syntax.CallExpr, params []Param) {
-	index := func(name string) int {
-		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
-	}
-
-	if merges, isIdent := argument(call, "merge", index("merge")).(*syntax.Ident); !isIdent || merges.Name != trueName {
+	if merges, isIdent := paramArg(call, params, "merge").(*syntax.Ident); !isIdent || merges.Name != trueName {
 		return
 	}
 
-	if tree := argument(call, treeKeyword, index(treeKeyword)); tree != nil && g.proofFits(tree, KindText) {
+	if tree := paramArg(call, params, treeKeyword); tree != nil && g.proofFits(tree, KindText) {
 		_, err := GatedTree(g.literal(tree))
 		g.proofError(tree, err)
 	}
 
-	if steps := argument(call, "steps", index("steps")); steps != nil && !emptyList(steps) && g.proofFits(steps, KindList) {
+	if steps := paramArg(call, params, "steps"); steps != nil && !emptyList(steps) && g.proofFits(steps, KindList) {
 		g.proofError(steps, GateSteps(g.literal(steps)))
 	}
+}
+
+// paramArg returns the expression of the keyword of a call, found by the place of the keyword in the signature. It is nil when the call leaves it out.
+func paramArg(call *syntax.CallExpr, params []Param, keyword string) syntax.Expr { //nolint:ireturn // the syntax tree of starlark-go holds expressions as an interface
+	return argument(call, keyword, slices.IndexFunc(params, func(p Param) bool { return p.Name == keyword }))
 }
 
 // proofFits reports whether an argument is a literal of the kind, or None.
@@ -575,13 +569,9 @@ func (g *graph) proofError(arg syntax.Expr, err error) {
 // the host. It reports one error for the argument. A value that is not a literal, or a host that is neither absent nor a text literal, is left
 // to the run, and so is a value of the wrong kind, which the kind check reports.
 func (g *graph) hostWithCap(call *syntax.CallExpr, params []Param) {
-	index := func(name string) int {
-		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
-	}
-
-	limit := argument(call, "max_new_processes", index("max_new_processes"))
+	limit := paramArg(call, params, "max_new_processes")
 	value, isLiteral := capLiteral(limit)
-	host, known := hostText(argument(call, "host", index("host")))
+	host, known := hostText(paramArg(call, params, "host"))
 
 	if !isLiteral || !known {
 		return
@@ -625,11 +615,7 @@ func (g *graph) missing(call *syntax.CallExpr, builtin string, param Param) {
 // need such a kind. An empty path is always wrong. Both rules need both sides to be absent or list literals of text literals, and every kind to be
 // a known one (the check of each kind reports the rest). Any other value is left to the run.
 func (g *graph) protection(call *syntax.CallExpr, params []Param) {
-	index := func(name string) int {
-		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
-	}
-
-	pathsArg := argument(call, "protect_paths", index("protect_paths"))
+	pathsArg := paramArg(call, params, "protect_paths")
 	paths, pathsKnown := textList(pathsArg)
 
 	if hasEmptyText(pathsArg) {
@@ -638,7 +624,7 @@ func (g *graph) protection(call *syntax.CallExpr, params []Param) {
 		return
 	}
 
-	kinds, kindsKnown := textList(argument(call, "forbid_commands", index("forbid_commands")))
+	kinds, kindsKnown := textList(paramArg(call, params, "forbid_commands"))
 	if pathsKnown && kindsKnown {
 		g.pair(call, kinds, paths)
 	}
@@ -707,16 +693,12 @@ func (g *graph) mergeNeedsSteps(call *syntax.CallExpr, params []Param) {
 		return
 	}
 
-	index := func(name string) int {
-		return slices.IndexFunc(params, func(p Param) bool { return p.Name == name })
-	}
-
-	merges := argument(call, "merge", index("merge"))
+	merges := paramArg(call, params, "merge")
 	if ident, isIdent := merges.(*syntax.Ident); merges == nil || (isIdent && ident.Name == falseName) {
 		return
 	}
 
-	steps := argument(call, "steps", index("steps"))
+	steps := paramArg(call, params, "steps")
 	if steps != nil && !emptyList(steps) {
 		return
 	}
@@ -821,18 +803,35 @@ func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
 // literalValue is the Starlark value of an expression made of literals only: text, numbers, True, False, None, and lists, tuples and dicts of them.
 // It reads the syntax and runs no code. ok is false for any other expression.
 func literalValue(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch e := expr.(type) {
-	case *syntax.ParenExpr:
-		return literalValue(e.X)
-	case *syntax.Literal:
-		return literalOf(e)
-	case *syntax.UnaryExpr:
-		return negated(e)
-	case *syntax.Ident:
-		return constant(e.Name)
+	if !onlyLiterals(expr) {
+		return nil, false
 	}
 
-	return literalCollection(expr)
+	value, err := starlark.EvalExprOptions(model.StarlarkFileOptions(), &starlark.Thread{}, expr, nil)
+
+	return value, err == nil
+}
+
+// onlyLiterals is true when every node of the expression is a literal, a minus sign, True, False, None, a paren, or a list, tuple or dict.
+// The expression then names no variable and calls no function, so evaluating it runs no code.
+func onlyLiterals(expr syntax.Expr) bool {
+	only := true
+
+	syntax.Walk(expr, func(node syntax.Node) bool {
+		switch n := node.(type) {
+		case nil, *syntax.Literal, *syntax.ParenExpr, *syntax.ListExpr, *syntax.TupleExpr, *syntax.DictExpr, *syntax.DictEntry:
+		case *syntax.UnaryExpr:
+			only = only && n.Op == syntax.MINUS
+		case *syntax.Ident:
+			only = only && (n.Name == trueName || n.Name == falseName || n.Name == noneName)
+		default:
+			only = false
+		}
+
+		return only
+	})
+
+	return only
 }
 
 // literalPart is the value of an expression made of literals, or for a list, tuple or dict with computed members, the same collection with only
@@ -898,98 +897,6 @@ func literalEntries(e *syntax.DictExpr) *starlark.Dict {
 	}
 
 	return dict
-}
-
-// literalCollection is the value of a list, a tuple or a dict of literals.
-func literalCollection(expr syntax.Expr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch e := expr.(type) {
-	case *syntax.ListExpr:
-		items, ok := literalItems(e.List)
-
-		return starlark.NewList(items), ok
-	case *syntax.TupleExpr:
-		items, ok := literalItems(e.List)
-
-		return starlark.Tuple(items), ok
-	case *syntax.DictExpr:
-		return literalDict(e)
-	}
-
-	return nil, false
-}
-
-func literalOf(lit *syntax.Literal) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch v := lit.Value.(type) {
-	case string:
-		return starlark.String(v), true
-	case int64:
-		return starlark.MakeInt64(v), true
-	case *big.Int:
-		return starlark.MakeBigInt(v), true
-	}
-
-	f, _ := lit.Value.(float64) //nolint:errcheck // the only other literal is a float
-	return starlark.Float(f), true
-}
-
-func negated(e *syntax.UnaryExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	if e.Op != syntax.MINUS {
-		return nil, false
-	}
-
-	switch inner, ok := literalValue(e.X); v := inner.(type) {
-	case starlark.Int:
-		return starlark.MakeInt(0).Sub(v), ok
-	case starlark.Float:
-		return -v, ok
-	}
-
-	return nil, false
-}
-
-func constant(name string) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	switch name {
-	case trueName:
-		return starlark.True, true
-	case falseName:
-		return starlark.False, true
-	case noneName:
-		return starlark.None, true
-	}
-
-	return nil, false
-}
-
-func literalItems(exprs []syntax.Expr) ([]starlark.Value, bool) {
-	items := make([]starlark.Value, 0, len(exprs))
-
-	for _, expr := range exprs {
-		item, ok := literalValue(expr)
-		if !ok {
-			return nil, false
-		}
-
-		items = append(items, item)
-	}
-
-	return items, true
-}
-
-func literalDict(e *syntax.DictExpr) (starlark.Value, bool) { //nolint:ireturn // the value is any of the Starlark types
-	dict := starlark.NewDict(len(e.List))
-
-	for _, entry := range e.List {
-		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
-
-		key, keyOK := literalValue(pair.Key)
-		val, valOK := literalValue(pair.Value)
-
-		if !keyOK || !valOK || dict.SetKey(key, val) != nil {
-			return nil, false
-		}
-	}
-
-	return dict, true
 }
 
 // each checks the literal elements of a list literal against the closed set of its keyword. An element that is not a literal is left to the run.
