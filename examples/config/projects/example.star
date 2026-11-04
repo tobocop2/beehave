@@ -39,6 +39,16 @@ project(
     #     merged = "Done",             # the Status column that it sets after the merge; required
     #     owner = "your-org",          # the login that owns the board; the default is the owner of `repo`
     # ),                               # optional. With no board block the example makes no board call. The token needs the `project` scope
+    # schedules = [
+    #     schedule(
+    #         name = "weekly-bump",          # lower case letters, digits and hyphens; unique in the project; required
+    #         cron = "0 0 9 * * 1",          # six fields with the seconds first, or a descriptor such as "@weekly"; required
+    #         workflow = "bump.star",        # a workflow file; a relative path starts in the folder of this file; required
+    #         item = "bump",                 # the prefix of the item id; required
+    #         timezone = "Europe/Berlin",    # an IANA zone; the default is "UTC"
+    #         catch_up = False,              # True asks for the ticks that no engine ran; the default is False
+    #     ),
+    # ],                               # optional. This key only declares the schedules and `beehave check config` validates them
     build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster), or a list of names such as ["gpu", "gpu-b"]
     # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".

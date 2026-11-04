@@ -94,6 +94,19 @@ type Project struct {
 	TokenRules   []string
 	// Board is the GitHub Project that a workflow keeps in step with the item. The zero value means the project has no board.
 	Board Board
+	// Schedules are the cron schedules that start an item run. The file order is kept.
+	Schedules []Schedule
+}
+
+// Schedule starts a run of Workflow on a new item each time Cron fires. Cron has seconds, or is a descriptor such as @weekly.
+// Workflow is an absolute path. Timezone names an IANA zone. Item is the prefix of the item id. CatchUp asks for the ticks that an engine missed.
+type Schedule struct {
+	Name     string
+	Cron     string
+	Workflow string
+	Item     string
+	Timezone string
+	CatchUp  bool
 }
 
 // Board names a GitHub Project board and the two status columns that a workflow sets. Owner is empty when the owner of the repository owns the board.

@@ -54,6 +54,8 @@ type rawProject struct {
 	GateFiles, Conventions, BriefRules, StackedRules, Limits, Traps, TokenRules paths
 
 	Board *rawBoard
+
+	Schedules schedules
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
@@ -76,11 +78,11 @@ func loadProject(path string) (Project, error) {
 }
 
 func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?"}}
+	return spec{"project", []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?", "schedules?"}}
 }
 
 func projectSpecs() []spec {
-	return []spec{projectSpec(), hostSpec(), skypilotSpec(), sshSpec(), boardSpec()}
+	return []spec{projectSpec(), hostSpec(), skypilotSpec(), sshSpec(), boardSpec(), scheduleSpec()}
 }
 
 // evalProject evaluates a project file and returns the one project block that it calls.
@@ -101,6 +103,7 @@ func evalProject(path string) (*rawProject, error) {
 		blocks(file, skypilotSpec(), true, newSkyPilot),
 		blocks(file, sshSpec(), true, newSSH),
 		blocks(file, boardSpec(), true, newBoard),
+		blocks(file, scheduleSpec(), false, newSchedule),
 	)
 
 	return raw, err
@@ -114,7 +117,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 	board := nested[rawBoard]{want: boardSpec().name}
 
 	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
-		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board)
+		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board, &raw.Schedules)
 	raw.Host, raw.Board = host.block, board.block
 
 	return raw, err
@@ -137,7 +140,7 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	return withFacts(model.Project{
+	return withFacts(path, model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
