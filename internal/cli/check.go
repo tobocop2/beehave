@@ -68,6 +68,7 @@ const (
 	dryRunItemFlag  = "item"
 	dryRunItemValue = "1"
 	redGateFlag     = "red-gate"
+	sendBackFlag    = "send-back"
 )
 
 const checkWorkflowLong = "Check that a workflow file and the files it loads parse, that each name in them is defined, and that the file defines main. " +
@@ -78,6 +79,7 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"The run uses a temporary state folder that obee deletes at the end. It calls no forge, agent, tracker or host. " +
 	"Every gate in the run passes. With --" + redGateFlag + ", the first gate is red with one failed step, and each later gate passes, so the run walks the fix round of the workflow. " +
 	"A workflow that stops at a red gate exits 1 with --" + redGateFlag + ". " +
+	"Every review in the run approves. With --" + sendBackFlag + ", the first review sends the item back, and each later review approves, so the run walks a send-back and a fix round. " +
 	"A dry run has three exit codes. " +
 	"Exit 0: the run reached the end of the file and every step passed. " +
 	"Exit 1: a Starlark error, a REFUSE or a failed faked step; the output shows the error and the last step that ran. " +
@@ -85,18 +87,21 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"The last line says what that step does."
 
 // runCheckedWorkflow refuses the calls that the named project cannot make, then checks the file and runs it as runDryWorkflow does.
-func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, named projectCheck, args []string, item string, dryRun, redGate bool) error {
+func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, named projectCheck, args []string, item string, dry dryFlags) error {
 	file, err := named.fileOf(cmd.ErrOrStderr(), env, args)
 	if err != nil {
 		return err
 	}
 
-	return runDryWorkflow(ctx, cmd, env, file, item, dryRun, redGate)
+	return runDryWorkflow(ctx, cmd, env, file, item, dry)
 }
 
-// runDryWorkflow checks the file, and with dryRun set it then runs the file over fakes and prints the steps. With redGate set, the first gate of the run is red.
-func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dryRun, redGate bool) error {
-	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dryRun {
+// dryFlags holds the flags of a dry run: whether to run, and which fakes walk a red gate or a send-back.
+type dryFlags struct{ run, redGate, sendBack bool }
+
+// runDryWorkflow checks the file, and with the run flag set it then runs the file over fakes and prints the steps. With redGate set, the first gate of the run is red. With sendBack set, the first review sends the item back.
+func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dry dryFlags) error {
+	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dry.run {
 		return err
 	}
 
@@ -105,8 +110,12 @@ func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]stri
 	}
 
 	var options []flow.DryOption
-	if redGate {
+	if dry.redGate {
 		options = append(options, flow.WithRedGate())
+	}
+
+	if dry.sendBack {
+		options = append(options, flow.WithSendBack())
 	}
 
 	return dryExit(flow.DryRun(ctx, file, item, env, cmd.OutOrStdout(), options...))
@@ -125,7 +134,7 @@ func dryExit(err error) error {
 }
 
 func newCheckWorkflowCommand(ctx context.Context, env map[string]string, refusal GateRefusal) *cobra.Command {
-	var dryRun, redGate bool
+	var dry dryFlags
 
 	var item string
 
@@ -137,11 +146,11 @@ func newCheckWorkflowCommand(ctx context.Context, env map[string]string, refusal
 		Long:  checkWorkflowLong,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCheckedWorkflow(ctx, cmd, env, named, args, item, dryRun, redGate)
+			return runCheckedWorkflow(ctx, cmd, env, named, args, item, dry)
 		},
 	}
 
-	return addDryRunFlags(named.flags(command), &dryRun, &redGate, &item)
+	return addDryRunFlags(named.flags(command), &dry, &item)
 }
 
 // flags adds --project and --config to the command.
@@ -226,9 +235,10 @@ func (p projectCheck) refusedCalls(found config.Project, file string) []workflow
 	return calls
 }
 
-func addDryRunFlags(command *cobra.Command, dryRun, redGate *bool, item *string) *cobra.Command {
-	command.Flags().BoolVar(dryRun, dryRunFlag, false, "after the check, run the file over fakes and print each step")
-	command.Flags().BoolVar(redGate, redGateFlag, false, "with --"+dryRunFlag+", make the first gate red so the run walks the fix round")
+func addDryRunFlags(command *cobra.Command, dry *dryFlags, item *string) *cobra.Command {
+	command.Flags().BoolVar(&dry.run, dryRunFlag, false, "after the check, run the file over fakes and print each step")
+	command.Flags().BoolVar(&dry.redGate, redGateFlag, false, "with --"+dryRunFlag+", make the first gate red so the run walks the fix round")
+	command.Flags().BoolVar(&dry.sendBack, sendBackFlag, false, "with --"+dryRunFlag+", make the first review send the item back so the run walks a fix round")
 	command.Flags().StringVar(item, dryRunItemFlag, dryRunItemValue, "the item id for --"+dryRunFlag)
 
 	return command

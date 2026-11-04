@@ -138,3 +138,18 @@ func TestCheckWorkflowDryRun_RefusesABadItemId(t *testing.T) {
 	assert.Empty(t, stdout)
 	assert.Contains(t, stderr, "item id")
 }
+
+func TestCheckWorkflowDryRun_TheSendBackFlagWalksAFixRoundAfterTheFirstReview(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{"REPO": "o/r", "BASE": "integration", "OWNER_LOGIN": "owner", "OWNER_EMAIL": "owner@example.com", "SOURCE_CHECKOUT": "/own/checkout", "MERGE": "false", "EXPECT_HEAD": ""}
+	file := filepath.Join("..", "..", "examples", "remediation", "workflow.star")
+
+	code, stdout, _ := runDry(t, env, "--item", "12", file)
+	require.Equal(t, 0, code, stdout)
+	assert.NotContains(t, stdout, "agent:fix")
+
+	code, stdout, _ = runDry(t, env, "--item", "12", "--send-back", file)
+	require.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "agent:fix")
+}

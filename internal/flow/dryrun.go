@@ -64,13 +64,16 @@ func dryReading() func() time.Time {
 }
 
 // dryChoice holds what the caller chose for a dry run.
-type dryChoice struct{ redGate bool }
+type dryChoice struct{ redGate, sendBack bool }
 
 // DryOption is a choice for a dry run.
 type DryOption func(*dryChoice)
 
 // WithRedGate makes the first gate of the dry run red, with one failed step, so that the run walks the fix round of the workflow. Each later gate passes.
 func WithRedGate() DryOption { return func(c *dryChoice) { c.redGate = true } }
+
+// WithSendBack makes the first review of the dry run end with the verdict changes, so that the run walks a send-back and a fix round. Each later review approves.
+func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } }
 
 // chooseDry applies the options of a dry run in order.
 func chooseDry(options []DryOption) dryChoice {
@@ -125,7 +128,7 @@ func dryPrepare(ctx context.Context, root, file, item string, chosen dryChoice) 
 		return Deps{}, err
 	}
 
-	return dryDeps(tree, head, item, skills, chosen.redGate), nil
+	return dryDeps(tree, head, item, skills, chosen), nil
 }
 
 // dryWalk opens an engine over the deps, takes the item through the file and stops the engine.
@@ -182,9 +185,15 @@ func onlyAbsent(err error) bool {
 }
 
 // dryDeps holds the only collaborators of a dry run. Each one answers from a fixed value and touches nothing outside the folder of the run.
-func dryDeps(tree, head, item string, skills []string, redGate bool) Deps {
+func dryDeps(tree, head, item string, skills []string, chosen dryChoice) Deps {
+	agents := dryAgents{skills: skills}
+	if chosen.sendBack {
+		agents.sendBack = new(atomic.Bool)
+		agents.sendBack.Store(true)
+	}
+
 	return Deps{
-		Agents: dryAgents{skills: skills}, Gate: newDryGate(head, redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
+		Agents: agents, Gate: newDryGate(head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Watch: dryWatch{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Preflight: dryPreflight{},
 		Clock: clock{Poll: dryPoll, Watch: dryWait, Settle: dryWait, Reading: dryReading()},
@@ -316,17 +325,15 @@ func dryLine(n int, step dbos.StepInfo) string {
 }
 
 // dryAgents ends every agent as done. It writes the output file of the request with one fixed value for each declared output (the verdict approve, any other output 0), and reports the required skills as used.
-type dryAgents struct{ skills []string }
+// With sendBack set, the first agent that declares a verdict writes changes instead; the flag then clears.
+type dryAgents struct {
+	skills   []string
+	sendBack *atomic.Bool
+}
 
 func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, error) {
 	if len(request.Outputs) > 0 {
-		// The file holds one string for each declared output, and an empty findings list for a call that forbids follow-ups.
-		fields := []string{`"findings":[]`}
-		for _, name := range request.Outputs {
-			fields = append(fields, strconv.Quote(name)+":"+strconv.Quote(dryOutput(name)))
-		}
-
-		raw := []byte("{" + strings.Join(fields, ",") + "}")
+		raw := a.outputs(request.Outputs)
 
 		if err := errors.Join(os.MkdirAll(filepath.Dir(request.OutputFile), dryDirMode), os.WriteFile(request.OutputFile, raw, dryFileMode)); err != nil {
 			return agent.Result{}, fmt.Errorf("write the fake outputs: %w", err)
@@ -334,6 +341,23 @@ func (a dryAgents) Run(_ context.Context, request AgentRequest) (agent.Result, e
 	}
 
 	return agent.Result{Outcome: agent.OutcomeExited, Session: "dry-session", Transcript: "/dry.jsonl", Text: "dry run: no agent ran", Skills: a.skills}, nil
+}
+
+// outputs is the content of the output file: one string for each declared output, and an empty findings list for a call that forbids follow-ups.
+func (a dryAgents) outputs(declared []string) []byte {
+	sendBack := a.sendBack != nil && slices.Contains(declared, outputVerdict) && a.sendBack.Swap(false)
+	fields := []string{`"findings":[]`}
+
+	for _, name := range declared {
+		value := dryOutput(name)
+		if sendBack && name == outputVerdict {
+			value = verdictChanges
+		}
+
+		fields = append(fields, strconv.Quote(name)+":"+strconv.Quote(value))
+	}
+
+	return []byte("{" + strings.Join(fields, ",") + "}")
 }
 
 // dryOutput is the fixed value of a declared output in a dry run: a review approves, and any other output holds the text 0.
