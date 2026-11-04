@@ -4,6 +4,10 @@ The pull request {{ .pr }} belongs to somebody else. Review it with one complete
 Post every finding on the pull request as one changes-requested review, now. Do not keep the findings on disk.
 The notice that asks the author for an answer is refused until this review is on the pull request.
 
+**When the author hands the branch over with terms, the terms win.** Read the hand-over message of the author before
+you review. If it sets terms (what to leave alone, what to change, what to ask first), follow them over your own plan.
+Report a term you cannot follow, and do not break it.
+
 ## Facts of the project
 
 The run read these facts from the project file at its start. A fact that is empty holds no fact: ask the owner, and do not guess it.

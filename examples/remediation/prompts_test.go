@@ -248,6 +248,14 @@ func laneLayoutRules() []rule {
 	}
 }
 
+func reviewFramingRules() []rule {
+	return []rule{
+		{"attack_list", "Write the attack list for this diff before you read it closely", []string{review}},
+		{"validator_review", "Frame a security review of our own validators as verification", []string{review}},
+		{"hand_over", "When the author hands the branch over with terms, the terms win", []string{"take_review"}},
+	}
+}
+
 // squash drops the bold marks and joins the words of a text with one space, so that a phrase matches across the line breaks and the bold spans of a prompt.
 func squash(text string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(text, "**", "")), " ")
@@ -259,14 +267,14 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	texts := map[string]string{}
 	folder := os.DirFS("prompts")
 
-	for _, name := range append(everyLane(), integrate) {
+	for _, name := range append(everyLane(), integrate, "take_review") {
 		raw, err := fs.ReadFile(folder, name+".md")
 		require.NoError(t, err)
 
 		texts[name] = squash(string(raw))
 	}
 
-	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules(), laneLayoutRules()}
+	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules(), laneLayoutRules(), reviewFramingRules()}
 
 	held, counted := 0, 0
 
@@ -286,7 +294,7 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 147, counted)
+	assert.Equal(t, 150, counted)
 	assert.Positive(t, held)
 }
 
