@@ -81,7 +81,7 @@ func (a *attempt) retarget() *refusal {
 
 // mergeWord says whether the pull request is merged when the children move: they move after a queued merge, and before a direct one.
 func (a *attempt) mergeWord() string {
-	if text(a.view.State) == stateMerged {
+	if model.Deref(a.view.State) == stateMerged {
 		return "merged"
 	}
 
@@ -99,7 +99,7 @@ func listed(names []string) string {
 
 // children returns the children that a merge would orphan. A read that fails refuses: an unreadable guard is not a passing one.
 func (a *attempt) children() ([]int, *refusal) {
-	branch := text(a.view.HeadRefName)
+	branch := model.Deref(a.view.HeadRefName)
 	if branch == "" {
 		return nil, refuse(fmt.Sprintf("REFUSE: cannot read #%d's own branch name, so its children cannot be found", a.req.PR))
 	}
@@ -121,7 +121,7 @@ func onBranch(rows []model.PullRequest, branch string) []int {
 	var kids []int
 
 	for _, row := range rows {
-		if text(row.BaseRefName) == branch {
+		if model.Deref(row.BaseRefName) == branch {
 			kids = append(kids, row.Number)
 		}
 	}

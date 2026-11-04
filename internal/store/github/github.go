@@ -48,8 +48,7 @@ type Store struct {
 
 // New returns the store of repo, written owner/name. It reads issues, and it writes them through the store.Writer methods. The claim rows live in beads.
 func New(repo string, run proc.Runner) (*Store, error) {
-	owner, name, found := strings.Cut(repo, "/")
-	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
+	if _, _, ok := model.SplitRepo(repo); !ok {
 		return nil, store.Refuse("REFUSE: the repository must be written owner/name.")
 	}
 
@@ -121,14 +120,9 @@ func (*Store) ItemFields() []string { return model.ItemFields() }
 
 // Item returns the number, title and body of an issue. An unreadable issue is a refusal with code 2.
 func (s *Store) Item(ctx context.Context, item string) (map[string]string, error) {
-	done := s.run.Run(ctx, []string{argIssue, argView, item, argRepo, s.repo, argJSON, "number,title,body"})
-	if done.ExitCode != 0 {
-		return nil, store.Refuse("REFUSE: cannot read item %s in %s", item, s.repo)
-	}
-
-	issue, err := model.Decode[ghView](viewCommand, done.Stdout)
+	issue, err := read[ghView](ctx, s, item, "number,title,body")
 	if err != nil {
-		return nil, store.Unreadable(err)
+		return nil, err
 	}
 
 	title, number, err := ghIssue{Number: issue.Number, Title: issue.Title}.identity()
@@ -136,15 +130,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 		return nil, err
 	}
 
-	return map[string]string{"id": number, "title": title, "body": derefText(issue.Body)}, nil
-}
-
-func derefText(text *string) string {
-	if text == nil {
-		return ""
-	}
-
-	return *text
+	return map[string]string{"id": number, "title": title, "body": model.Deref(issue.Body)}, nil
 }
 
 // openPage reads one page of open issues. A full page may be cut off, so it is a refusal, in every read.

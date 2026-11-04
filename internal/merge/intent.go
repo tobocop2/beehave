@@ -29,7 +29,7 @@ type Intent struct {
 // NewIntent makes the intent from a read of the pull request. It writes nothing to the forge.
 // A read that lacks the state, the head or the base is an error, because an intent with a hole proves nothing.
 func NewIntent(view model.PullRequest, baseTipTree string, now time.Time) (Intent, error) {
-	state, head, base := text(view.State), text(view.HeadRefOid), text(view.BaseRefName)
+	state, head, base := model.Deref(view.State), model.Deref(view.HeadRefOid), model.Deref(view.BaseRefName)
 	if state == "" || head == "" || base == "" {
 		return Intent{}, fmt.Errorf("cannot make an intent for #%d: the read has no state, head or base", view.Number)
 	}
@@ -41,7 +41,7 @@ var errNoMergeTime = errors.New("no readable merge time")
 
 // replayed is true when the request has an intent and the first read found the pull request merged.
 func (a *attempt) replayed() bool {
-	return a.req.Intent != nil && text(a.view.State) == stateMerged
+	return a.req.Intent != nil && model.Deref(a.view.State) == stateMerged
 }
 
 // asked is the list of fields of the first read. An intent adds the merge time.

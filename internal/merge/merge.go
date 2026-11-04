@@ -243,12 +243,3 @@ func Run(ctx context.Context, forge Forge, req Request) Result {
 
 	return Result{Stop: Done, Lines: run.lines}
 }
-
-// text returns the text of a field that gh may send as null.
-func text(value *string) string {
-	if value == nil {
-		return ""
-	}
-
-	return *value
-}

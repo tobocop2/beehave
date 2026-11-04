@@ -180,9 +180,9 @@ func read(ctx context.Context, r Reader, pr int) (view, error) {
 		pr:     pr,
 		state:  *pull.State,
 		draft:  *pull.IsDraft,
-		head:   model.OrNull(text(pull.HeadRefOid)),
+		head:   model.OrNull(model.Deref(pull.HeadRefOid)),
 		ref:    *pull.HeadRefName,
-		base:   model.OrNull(text(pull.BaseRefName)),
+		base:   model.OrNull(model.Deref(pull.BaseRefName)),
 		labels: labelNames(pull),
 		author: pull.Author.Login,
 	}, nil
@@ -196,14 +196,6 @@ func labelNames(pull model.PullRequest) string {
 	}
 
 	return strings.Join(names, ",")
-}
-
-func text(field *string) string {
-	if field == nil {
-		return ""
-	}
-
-	return *field
 }
 
 func stateStop(v view) (Stop, []string) {

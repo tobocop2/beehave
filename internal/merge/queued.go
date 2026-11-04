@@ -3,6 +3,8 @@ package merge
 import (
 	"context"
 	"fmt"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // queued asks the forge to merge a pull request in a native stack. The forge owns the merge: it holds the queued merge and merges when its requirements pass.
@@ -48,7 +50,7 @@ func (a *attempt) poll(last bool) *refusal {
 	}
 
 	a.view = view
-	head, state := text(view.HeadRefOid), text(view.State)
+	head, state := model.Deref(view.HeadRefOid), model.Deref(view.State)
 
 	switch {
 	case state == stateMerged:

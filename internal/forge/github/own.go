@@ -256,26 +256,31 @@ func (f *Forge) fillThreads(ctx context.Context, pull *model.OwnPull, threads *t
 
 // Title returns the title of an issue or pull request.
 func (f *Forge) Title(ctx context.Context, number int) (string, error) {
-	base := fmt.Sprintf("cannot read the title of #%d", number)
+	text, err := f.issueField(ctx, number, "title", fmt.Sprintf("cannot read the title of #%d", number))
 
-	done := f.run.Run(ctx, []string{"issue", argView, strconv.Itoa(number), "-R", f.repo, argJSON, "title", argJQ, ".title"})
+	return strings.TrimSuffix(text, "\n"), err
+}
+
+// issueField prints one field of an issue with gh issue view. A failed read is a refusal with the message.
+func (f *Forge) issueField(ctx context.Context, number int, field, message string) (string, error) {
+	done := f.run.Run(ctx, []string{"issue", argView, strconv.Itoa(number), "-R", f.repo, argJSON, field, argJQ, "." + field})
 	if done.ExitCode != 0 {
-		return "", forge.Refuse("%s", base)
+		return "", forge.Refuse("%s", message)
 	}
 
-	return strings.TrimSuffix(done.Stdout, "\n"), nil
+	return done.Stdout, nil
 }
 
 // IssueState returns the state of an issue as the forge names it: OPEN or CLOSED.
 func (f *Forge) IssueState(ctx context.Context, number int) (string, error) {
 	base := fmt.Sprintf("cannot read the state of issue #%d", number)
 
-	done := f.run.Run(ctx, []string{"issue", argView, strconv.Itoa(number), "-R", f.repo, argJSON, "state", argJQ, ".state"})
-	if done.ExitCode != 0 {
-		return "", forge.Refuse("%s", base)
+	text, err := f.issueField(ctx, number, "state", base)
+	if err != nil {
+		return "", err
 	}
 
-	state := strings.ToUpper(strings.TrimSpace(done.Stdout))
+	state := strings.ToUpper(strings.TrimSpace(text))
 	if state != "OPEN" && state != "CLOSED" {
 		return "", forge.Refuse("%s: the forge answered %q", base, state)
 	}

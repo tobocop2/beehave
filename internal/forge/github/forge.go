@@ -31,11 +31,7 @@ const (
 	noChecksPrefix = "no checks reported on the "
 )
 
-var (
-	errNonZero  = errors.New("the command failed")
-	errNullPage = errors.New("a page is null")
-	errNullItem = errors.New("an item is null")
-)
+var errNonZero = errors.New("the command failed")
 
 // Forge is the gh reads for one repository, written owner/name.
 type Forge struct {
@@ -47,8 +43,8 @@ type Forge struct {
 
 // New returns the forge of repo, written owner/name. Any other spelling is refused.
 func New(repo string, run proc.Runner) (*Forge, error) {
-	owner, name, found := strings.Cut(repo, "/")
-	if !found || !model.IsRepoPart(owner) || !model.IsRepoPart(name) {
+	owner, name, ok := model.SplitRepo(repo)
+	if !ok {
 		return nil, forge.Refuse("The repository must be written owner/name.")
 	}
 
@@ -67,33 +63,7 @@ func readPages[T any](ctx context.Context, f *Forge, path string) ([]T, error) {
 		return nil, errNonZero
 	}
 
-	pages, err := model.Decode[[]*[]*T](cmdAPI+" "+path, done.Stdout)
-	if err != nil {
-		return nil, err
-	}
-
-	return joinPages(cmdAPI+" "+path, pages)
-}
-
-// joinPages joins the pages into one list. A null page or a null item is an answer of the wrong shape, not an empty one.
-func joinPages[T any](command string, pages []*[]*T) ([]T, error) {
-	items := []T{}
-
-	for _, page := range pages {
-		if page == nil {
-			return nil, &model.DecodeError{Command: command, Cause: errNullPage}
-		}
-
-		for _, item := range *page {
-			if item == nil {
-				return nil, &model.DecodeError{Command: command, Cause: errNullItem}
-			}
-
-			items = append(items, *item)
-		}
-	}
-
-	return items, nil
+	return model.DecodePages[T](cmdAPI+" "+path, done.Stdout)
 }
 
 // Reviews returns every review of a pull request, all pages joined.
@@ -161,19 +131,11 @@ func (f *Forge) Item(ctx context.Context, pr int) (map[string]string, error) {
 	}
 
 	return map[string]string{
-		"branch":   deref(view.HeadRefName),
-		"head_sha": deref(view.HeadRefOid),
+		"branch":   model.Deref(view.HeadRefName),
+		"head_sha": model.Deref(view.HeadRefOid),
 		"pr":       strconv.Itoa(view.Number),
 		"author":   view.Author.Login,
 	}, nil
-}
-
-func deref(text *string) string {
-	if text == nil {
-		return ""
-	}
-
-	return *text
 }
 
 // countsAnswer is the answer of the pull request read of the REST API. A nil count means the API sent null or no field.
