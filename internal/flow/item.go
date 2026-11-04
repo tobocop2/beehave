@@ -3,6 +3,7 @@ package flow
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -40,6 +41,8 @@ type ItemResult struct {
 	Merge string `json:"merge,omitempty"`
 	// Stopped is the command step that ended the item on a code of its `stop_on_rc`. It is nil when no step did.
 	Stopped *Stopped `json:"stopped,omitempty"`
+	// Value is the JSON text of what the entry function of a run that spawn started returned. It is empty for a run that returned None, and for a run that a user started.
+	Value json.RawMessage `json:"value,omitempty"`
 }
 
 // Stopped is a command step that ended the item: its name, its exit code and what it printed.

@@ -3,6 +3,7 @@ package flow
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -62,6 +63,8 @@ type childOutcome struct {
 	SentBack string   `json:"sent_back,omitempty"`
 	Closed   string   `json:"closed,omitempty"`
 	Stopped  *Stopped `json:"stopped,omitempty"`
+	// Value is the JSON text that the entry function of the run returned. It is empty when the run returned None, and for a run that did not succeed.
+	Value json.RawMessage `json:"value,omitempty"`
 }
 
 // gathered is the output of the gather step: the outcome of each run in the order of the call. Failed holds the error that fail="raise" raises after the step.
@@ -262,7 +265,7 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return nil, errors.New(done.Failed)
 	}
 
-	return outcomesValue(done.Outcomes), nil
+	return outcomesValue(done.Outcomes)
 }
 
 // gatherCall is the arguments of a gather call.
@@ -332,26 +335,35 @@ func textAttr(holder starlark.HasAttrs, name string) string {
 	return text
 }
 
-// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed and stopped.
-func outcomesValue(outcomes []childOutcome) *starlarkstruct.Struct {
+// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped and value.
+// The value is what the entry function of the run returned, or None.
+func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 	results := make([]starlark.Value, len(outcomes))
 
 	for i, one := range outcomes {
-		var stopped starlark.Value = starlark.None
-
-		if one.Stopped != nil {
-			stopped = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-				"step": starlark.String(one.Stopped.Step), "rc": starlark.MakeInt(one.Stopped.RC), "output": starlark.String(one.Stopped.Output),
-			})
+		value, err := valueOf(one.Value)
+		if err != nil {
+			return nil, fmt.Errorf("read the value of the run of item %s: %w", one.Item, err)
 		}
 
 		results[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
-			"merge": starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stopped,
+			"merge": starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "value": value,
 		})
 	}
 
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"results": starlark.NewList(results)})
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"results": starlark.NewList(results)}), nil
+}
+
+// stoppedValue makes the struct of the command step that ended a run, or None.
+func stoppedValue(stopped *Stopped) starlark.Value { //nolint:ireturn // the value is a struct or None
+	if stopped == nil {
+		return starlark.None
+	}
+
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"step": starlark.String(stopped.Step), "rc": starlark.MakeInt(stopped.RC), "output": starlark.String(stopped.Output),
+	})
 }
 
 // look is one read of a run: open while it can still change, and its outcome once it ended.
@@ -511,7 +523,7 @@ func succeeded(ref spawnedRun, row dbos.WorkflowStatus) childOutcome {
 		return childOutcome{Item: ref.Item, Error: err.Error()}
 	}
 
-	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Closed: result.Closed, Stopped: result.Stopped}
+	return childOutcome{Item: ref.Item, OK: true, Merge: result.Merge, SentBack: result.SentBack, Closed: result.Closed, Stopped: result.Stopped, Value: result.Value}
 }
 
 // cancelOpen cancels the runs that are still open, as obee cancel does: the cancel marker first, so an engine that stops before the release leaves it for the next start.

@@ -78,9 +78,12 @@ func batchStruct(t *testing.T, value starlark.Value) *starlarkstruct.Struct {
 func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *testing.T) {
 	t.Parallel()
 
+	gathered, err := outcomesValue([]childOutcome{{}})
+	require.NoError(t, err)
+
 	got := map[string][]string{
 		"batch_merge": batchStruct(t, batchResult(batch.Result{}, batch.Report{}, nil)).AttrNames(),
-		"gather":      outcomesValue([]childOutcome{{}}).AttrNames(),
+		"gather":      gathered.AttrNames(),
 		"queue":       queuedValue(queued{}).AttrNames(),
 		"spawn":       runsValue([]spawnedRun{{}}).AttrNames(),
 	}

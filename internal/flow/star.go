@@ -21,7 +21,7 @@ import (
 const jsonModule = "json"
 
 // stepsVersion changes when a builtin changes its steps. It is part of the application version, so an old run is not replayed by a new build.
-const stepsVersion = "star22"
+const stepsVersion = "star23"
 
 // runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
@@ -61,7 +61,7 @@ func (e *Engine) playScript(s *script, sources *workflow.Sources, fields map[str
 		err = errors.Join(err, finishErr)
 	}
 
-	return ItemResult{Item: s.in.Item, Merge: s.mergeState, SentBack: s.sentBack, Closed: s.closed, Stopped: s.stopped}, err
+	return ItemResult{Item: s.in.Item, Merge: s.mergeState, SentBack: s.sentBack, Closed: s.closed, Stopped: s.stopped, Value: s.value}, err
 }
 
 // thread makes the thread of a run. It logs print at the debug level and stops after model.StarlarkMaxSteps instructions.
@@ -97,7 +97,13 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 		return err
 	}
 
-	_, err = starlark.Call(thread, main, starlark.Tuple{itemArg(fields)}, nil)
+	returned, err := starlark.Call(thread, main, starlark.Tuple{itemArg(fields)}, nil)
+	if err != nil || s.in.Entry == "" {
+		return err
+	}
+
+	// Only a run that spawn started keeps what its entry returns: a parent reads it from gather. The main of a run that a user started returns nothing to read.
+	s.value, err = returnedValue(s.in.Entry, returned)
 
 	return err
 }
