@@ -56,6 +56,9 @@ type script struct {
 	// stopped is the command that ended the item on a code of its stop_on_rc.
 	stopped *Stopped
 
+	// value is the JSON text that the entry function of a run that spawn started returned.
+	value json.RawMessage
+
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 
