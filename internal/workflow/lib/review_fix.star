@@ -12,6 +12,11 @@ def capped(step, name, item):
     if step.stop != "":
         fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
 
+def kept_history(step, name, item):
+    """Stops the item when an agent step rewrote history (amend, squash, reset). The reviewed commits must stay, and a rewrite can reach the remote only through a force-push."""
+    if step.rewrote:
+        fail("REFUSE: the %s step rewrote the history of the item folder. A step adds commits and never amends, squashes or resets. Check the folder, then run obee resume %s." % (name, item.id))
+
 DECISIONS = ["keep", "replace", "delete"]
 
 # The fix rounds on one mechanism after which the next round decides whether the mechanism should exist.
@@ -96,6 +101,8 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
     review = None
     fixes = {}
     decided = {}
+
+    kept_history(impl, "implement", item)
 
     for round in range(1, rounds + 1):
         check = settled_gate(item)
@@ -205,6 +212,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             **scope
         )
         capped(fix, "fix", item)
+        kept_history(fix, "fix", item)
         violations = fix.violations
 
         if mechanism != "":
