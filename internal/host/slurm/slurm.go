@@ -13,22 +13,18 @@ import (
 	"time"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/proc"
 )
 
-// ErrCommand is returned for a command on the head node that exits with a failure.
-var ErrCommand = errors.New("command failed")
-
 var (
-	errLink        = errors.New("the ssh link to the host dropped")
 	errJobFields   = errors.New("a job needs a name and a command")
 	errCancelStuck = errors.New("the cancel did not take")
 	errWorkRoot    = errors.New("the head node gave a login folder that is not one absolute path")
 )
 
 const (
-	sshFailed    = 255
 	drainReason  = "obee"
 	defaultPoll  = 10 * time.Second
 	defaultStale = 20 * time.Minute
@@ -47,25 +43,39 @@ type Slot interface {
 
 // Queue is the Slurm queue on the head node of a cluster.
 //
-// Poll, Now, Sleep, Bank and Nonce are the time between two polls, the clock, the pause, the bank of the work of the host and the nonce source.
-// New sets each to its production value; a test replaces them.
+// The time between two polls, the clock, the pause, the bank of the work of the host and the nonce source have production values.
+// A test replaces them with an Option.
 type Queue struct {
-	Poll  time.Duration
-	Now   func() time.Time
-	Sleep func(context.Context, time.Duration) error
-	Bank  func(ctx context.Context) error
-	Nonce func() string
+	poll  time.Duration
+	now   func() time.Time
+	sleep func(context.Context, time.Duration) error
+	bank  func(ctx context.Context) error
+	nonce func() string
 
-	target string
+	link   *link.Link
 	config model.HostConfig
-	ssh    proc.Runner
 	slot   Slot
 }
 
-// New returns the queue of the cluster that ssh reaches. The first argument of an ssh call is target: the name of the head node in the ssh config.
-func New(target string, config model.HostConfig, ssh proc.Runner, slot Slot) *Queue {
-	q := &Queue{Poll: defaultPoll, Now: time.Now, Sleep: proc.Sleep, Nonce: rand.Text, target: target, config: config, ssh: ssh, slot: slot}
-	q.Bank = q.bankWork
+// Option replaces a production value of a Queue. It is for tests.
+type Option func(*Queue)
+
+func WithClock(poll time.Duration, now func() time.Time, sleep func(context.Context, time.Duration) error) Option {
+	return func(q *Queue) { q.poll, q.now, q.sleep = poll, now, sleep }
+}
+
+func WithBank(bank func(context.Context) error) Option { return func(q *Queue) { q.bank = bank } }
+
+func WithNonce(nonce func() string) Option { return func(q *Queue) { q.nonce = nonce } }
+
+// New returns the queue of the cluster that the link reaches.
+func New(l *link.Link, config model.HostConfig, slot Slot, opts ...Option) *Queue {
+	q := &Queue{poll: defaultPoll, now: time.Now, sleep: proc.Sleep, nonce: rand.Text, link: l, config: config, slot: slot}
+	q.bank = q.bankWork
+
+	for _, opt := range opts {
+		opt(q)
+	}
 
 	return q
 }
@@ -91,7 +101,7 @@ func (q *Queue) Readings(ctx context.Context) (model.HostStatus, error) {
 }
 
 func (q *Queue) draining(ctx context.Context) (bool, error) {
-	out, err := q.Remote(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%T")
+	out, err := q.link.Remote(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%T")
 	if err != nil {
 		return false, err
 	}
@@ -100,7 +110,7 @@ func (q *Queue) draining(ctx context.Context) (bool, error) {
 }
 
 func (q *Queue) freeBytes(ctx context.Context) (uint64, error) {
-	out, err := q.Remote(ctx, "df", "df", "-P", "-k", ".")
+	out, err := q.link.Remote(ctx, "df", "df", "-P", "-k", ".")
 	if err != nil {
 		return 0, err
 	}
@@ -129,7 +139,7 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 
 // queue runs sbatch and returns the handle of the new job, with a nonce made for this Submit.
 func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (Job, error) {
-	out, err := q.Remote(ctx, "sbatch", "sbatch", "--parsable", "--job-name="+spec.Name, "--wrap="+spec.Command)
+	out, err := q.link.Remote(ctx, "sbatch", "sbatch", "--parsable", "--job-name="+spec.Name, "--wrap="+spec.Command)
 	if err != nil {
 		return Job{}, err
 	}
@@ -139,7 +149,7 @@ func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (Job, error) {
 		return Job{}, err
 	}
 
-	return Job{ID: id, Nonce: q.Nonce()}, nil
+	return Job{ID: id, Nonce: q.nonce()}, nil
 }
 
 // hold asks the slot to hold the cluster. If it cannot, the Slurm job is canceled.
@@ -149,7 +159,7 @@ func (q *Queue) hold(ctx context.Context, job Job) error {
 		return nil
 	}
 
-	if _, cancelErr := q.Remote(ctx, "scancel", "scancel", job.ID); cancelErr != nil {
+	if _, cancelErr := q.link.Remote(ctx, "scancel", "scancel", job.ID); cancelErr != nil {
 		err = errors.Join(err, cancelErr)
 	}
 
@@ -176,9 +186,9 @@ func (q *Queue) waitFor(ctx context.Context, id model.JobID, stopping bool) (mod
 		return model.JobUnknown, err
 	}
 
-	w := waiting{grew: q.Now(), answered: q.Now(), size: -1}
+	w := waiting{grew: q.now(), answered: q.now(), size: -1}
 	if stopping {
-		w.stopBy = q.Now().Add(stopLimit)
+		w.stopBy = q.now().Add(stopLimit)
 	}
 
 	for {
@@ -186,7 +196,7 @@ func (q *Queue) waitFor(ctx context.Context, id model.JobID, stopping bool) (mod
 			return end.state, end.err
 		}
 
-		if err := q.Sleep(ctx, q.Poll); err != nil {
+		if err := q.sleep(ctx, q.poll); err != nil {
 			return model.JobUnknown, fmt.Errorf("wait for job %s: %w", id, err)
 		}
 	}
@@ -203,9 +213,9 @@ func (q *Queue) pollOnce(ctx context.Context, job Job, w *waiting) (ending, bool
 	state, err := q.observe(ctx, job, w)
 
 	switch {
-	case errors.Is(err, errLink) && q.Now().Sub(w.answered) >= lostAfter:
+	case errors.Is(err, link.ErrDropped) && q.now().Sub(w.answered) >= lostAfter:
 		return ending{model.JobLost, fmt.Errorf("job %s: no read of the job answered for %s (%w): %w. %s", job, lostAfter, err, host.ErrLost, model.JobID(job.String()).LostAdvice())}, true
-	case err != nil && !errors.Is(err, errLink):
+	case err != nil && !errors.Is(err, link.ErrDropped):
 		return ending{model.JobUnknown, err}, true
 	case err == nil && state.Terminal():
 		return endOf(q.banked(ctx, job, state)), true
@@ -219,9 +229,9 @@ func (q *Queue) pollOnce(ctx context.Context, job Job, w *waiting) (ending, bool
 // unfinished says whether the wait is over for a job that is not final. A stop wait ends at its limit; any other wait ends when the log is stale.
 func (q *Queue) unfinished(ctx context.Context, job Job, w *waiting) (ending, bool) {
 	switch {
-	case !w.stopBy.IsZero() && !q.Now().Before(w.stopBy):
+	case !w.stopBy.IsZero() && !q.now().Before(w.stopBy):
 		return ending{model.JobUnknown, fmt.Errorf("%w: job %s was not final %s after the cancel. Check it with `squeue` on the host and cancel it again with `scancel %s`", errCancelStuck, job, stopLimit, job.ID)}, true
-	case w.stopBy.IsZero() && q.Now().Sub(w.grew) >= q.staleAfter():
+	case w.stopBy.IsZero() && q.now().Sub(w.grew) >= q.staleAfter():
 		return endOf(q.stale(ctx, job)), true
 	}
 
@@ -245,14 +255,14 @@ type waiting struct {
 // A job that runs counts as answered only when its log read answers too, so a link that drops every log read ends as lost.
 func (q *Queue) observe(ctx context.Context, job Job, w *waiting) (model.JobState, error) {
 	state, err := q.jobState(ctx, job.ID)
-	if errors.Is(err, errLink) {
+	if errors.Is(err, link.ErrDropped) {
 		return model.JobUnknown, err
 	}
 
 	state = q.afterGrace(state, w)
 
 	if err != nil || state != model.JobRunning {
-		w.answered, w.grew = q.Now(), q.Now()
+		w.answered, w.grew = q.now(), q.now()
 
 		return state, err
 	}
@@ -261,7 +271,7 @@ func (q *Queue) observe(ctx context.Context, job Job, w *waiting) (model.JobStat
 		return state, err
 	}
 
-	w.answered = q.Now()
+	w.answered = q.now()
 
 	return state, nil
 }
@@ -276,10 +286,10 @@ func (q *Queue) afterGrace(state model.JobState, w *waiting) model.JobState {
 	}
 
 	if w.empty.IsZero() {
-		w.empty = q.Now()
+		w.empty = q.now()
 	}
 
-	if q.Now().Sub(w.empty) < diedGrace {
+	if q.now().Sub(w.empty) < diedGrace {
 		return model.JobPending
 	}
 
@@ -288,14 +298,14 @@ func (q *Queue) afterGrace(state model.JobState, w *waiting) model.JobState {
 
 // readLog reads the size of the log of the job. A log that has no size yet counts as no growth.
 func (q *Queue) readLog(ctx context.Context, id string, w *waiting) error {
-	result := q.ssh.Run(ctx, q.sshArgs("stat", "-c", "%s", "slurm-"+id+".out"))
-	if result.ExitCode == sshFailed {
-		return q.linkError(result)
+	result := q.link.Exec(ctx, "stat", "-c", "%s", "slurm-"+id+".out")
+	if err := q.link.Drop(result); err != nil {
+		return err
 	}
 
 	size, err := strconv.ParseInt(strings.TrimSpace(result.Stdout), 10, 64)
 	if result.ExitCode == 0 && err == nil && size != w.size {
-		w.size, w.grew = size, q.Now()
+		w.size, w.grew = size, q.now()
 	}
 
 	return nil
@@ -324,7 +334,7 @@ func (q *Queue) stale(ctx context.Context, job Job) (model.JobState, error) {
 func (q *Queue) banked(ctx context.Context, job Job, state model.JobState) (model.JobState, error) {
 	id := job.ID
 
-	if err := q.Bank(ctx); err != nil && !errors.Is(err, host.ErrNoRepos) {
+	if err := q.bank(ctx); err != nil && !errors.Is(err, host.ErrNoRepos) {
 		return state, fmt.Errorf("job %s is %s but the host holds work that is not banked: %w", id, state, err)
 	}
 
@@ -337,7 +347,7 @@ func (q *Queue) banked(ctx context.Context, job Job, state model.JobState) (mode
 
 // WorkRoot is the absolute path of the login folder of the head node. Wait and host.Teardown scan it for repositories.
 func (q *Queue) WorkRoot(ctx context.Context) (string, error) {
-	out, err := q.Remote(ctx, "pwd", "pwd", "-P")
+	out, err := q.link.Remote(ctx, "pwd", "pwd", "-P")
 	if err != nil {
 		return "", err
 	}
@@ -357,27 +367,13 @@ func (q *Queue) bankWork(ctx context.Context) error {
 		return err
 	}
 
-	return host.BankAll(ctx, q.Runner("git"), q.Runner("find"), root, q.config.PrivateRemote)
-}
-
-// Runner is the command line of a binary on the head node. host.Teardown takes git and find as runners of this kind.
-func (q *Queue) Runner(binary string) proc.Runner { //nolint:ireturn // host.Teardown takes the runner contract
-	return remoteRunner{q: q, binary: binary}
-}
-
-type remoteRunner struct {
-	q      *Queue
-	binary string
-}
-
-func (r remoteRunner) Run(ctx context.Context, args []string) model.CommandResult {
-	return r.q.ssh.Run(ctx, r.q.sshArgs(append([]string{r.binary}, args...)...))
+	return host.BankAll(ctx, q.link.Runner("git"), q.link.Runner("find"), root, q.config.PrivateRemote)
 }
 
 func (q *Queue) jobState(ctx context.Context, id string) (model.JobState, error) {
-	result := q.ssh.Run(ctx, q.sshArgs("squeue", "-h", "-j", id, "-o", "%T"))
-	if result.ExitCode == sshFailed {
-		return model.JobUnknown, q.linkError(result)
+	result := q.link.Exec(ctx, "squeue", "-h", "-j", id, "-o", "%T")
+	if err := q.link.Drop(result); err != nil {
+		return model.JobUnknown, err
 	}
 
 	if result.ExitCode == 0 && strings.TrimSpace(result.Stdout) != "" {
@@ -389,23 +385,21 @@ func (q *Queue) jobState(ctx context.Context, id string) (model.JobState, error)
 
 // recorded reads the state of a job from sacct, which keeps it after the controller forgets the job.
 func (q *Queue) recorded(ctx context.Context, id string) (model.JobState, error) {
-	result := q.ssh.Run(ctx, q.sshArgs("sacct", "-X", "-n", "-P", "-j", id, "-o", "State,ExitCode"))
+	result := q.link.Exec(ctx, "sacct", "-X", "-n", "-P", "-j", id, "-o", "State,ExitCode")
+
+	if err := q.link.Drop(result); err != nil {
+		return model.JobUnknown, err
+	}
 
 	switch {
-	case result.ExitCode == sshFailed:
-		return model.JobUnknown, q.linkError(result)
 	case result.ExitCode != 0:
-		return model.JobUnknown, fmt.Errorf("%w: sacct: exit %d: %s", ErrCommand, result.ExitCode, strings.TrimSpace(result.Stderr))
+		return model.JobUnknown, link.Failure("sacct", result)
 	case strings.TrimSpace(result.Stdout) == "":
 		// Neither squeue nor sacct holds the job: nothing runs it and no result exists.
 		return model.JobDied, nil
 	}
 
 	return parseJobState(result.Stdout)
-}
-
-func (q *Queue) linkError(result model.CommandResult) error {
-	return fmt.Errorf("%w: ssh to %s: %s", errLink, q.target, strings.TrimSpace(result.Stderr))
 }
 
 // Cancel stops the job, waits until Slurm reports it final, banks the work of the host and releases the slot, as Wait does.
@@ -418,7 +412,7 @@ func (q *Queue) Cancel(ctx context.Context, id model.JobID) error {
 		return err
 	}
 
-	if _, err = q.Remote(ctx, "scancel", "scancel", job.ID); err != nil {
+	if _, err = q.link.Remote(ctx, "scancel", "scancel", job.ID); err != nil {
 		return err
 	}
 
@@ -437,7 +431,7 @@ func (q *Queue) Log(ctx context.Context, id model.JobID) (string, error) {
 		return "", err
 	}
 
-	return q.Remote(ctx, "tail", "tail", "-c", strconv.Itoa(logTailBytes), "slurm-"+job.ID+".out")
+	return q.link.Remote(ctx, "tail", "tail", "-c", strconv.Itoa(logTailBytes), "slurm-"+job.ID+".out")
 }
 
 // Drain makes every node refuse new jobs. Running jobs finish.
@@ -451,7 +445,7 @@ func (q *Queue) Resume(ctx context.Context) error {
 }
 
 func (q *Queue) setNodes(ctx context.Context, state string, extra ...string) error {
-	out, err := q.Remote(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%N")
+	out, err := q.link.Remote(ctx, "sinfo", "sinfo", "-h", "-N", "-o", "%N")
 	if err != nil {
 		return err
 	}
@@ -463,31 +457,10 @@ func (q *Queue) setNodes(ctx context.Context, state string, extra ...string) err
 
 	for _, node := range nodes {
 		words := append([]string{"scontrol", "update", "NodeName=" + node, "State=" + state}, extra...)
-		if _, err = q.Remote(ctx, "scontrol", words...); err != nil {
+		if _, err = q.link.Remote(ctx, "scontrol", words...); err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-// Remote runs a command on the head node and returns what it printed. A failure wraps ErrCommand. name is the word that the error shows.
-func (q *Queue) Remote(ctx context.Context, name string, words ...string) (string, error) {
-	result := q.ssh.Run(ctx, q.sshArgs(words...))
-	if result.ExitCode != 0 {
-		return "", fmt.Errorf("%w: %s: exit %d: %s", ErrCommand, name, result.ExitCode, strings.TrimSpace(result.Stderr))
-	}
-
-	return result.Stdout, nil
-}
-
-// sshArgs returns the ssh arguments for a command. ssh joins the words with spaces and sends them to the shell of the host, so each word is quoted.
-func (q *Queue) sshArgs(words ...string) []string {
-	args := []string{"-o", "BatchMode=yes", q.target}
-
-	for _, word := range words {
-		args = append(args, model.ShellQuote(word))
-	}
-
-	return args
 }

@@ -10,7 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/host"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
@@ -31,18 +33,20 @@ func config() model.HostConfig {
 	return model.HostConfig{IdleMinutes: 45, MaxRun: 12 * time.Hour}
 }
 
-func newScripted(t *testing.T) (*Queue, *proctest.Scripted) {
+// newScripted returns a queue over a scripted ssh runner, with a real clock of 1 ms polls and a bank that has nothing to do.
+// A later option replaces an earlier one.
+func newScripted(t *testing.T, opts ...Option) (*Queue, *proctest.Scripted) {
 	t.Helper()
 
 	ssh := &proctest.Scripted{}
-	h := New("lane-host", config(), ssh, stubSlot{})
+	opts = append([]Option{WithClock(time.Millisecond, time.Now, proc.Sleep), WithBank(noBank), WithNonce(fixedNonce)}, opts...)
 
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
-	h.Nonce = func() string { return "n" }
-
-	return h, ssh
+	return New(link.New("lane-host", ssh), config(), stubSlot{}, opts...), ssh
 }
+
+func noBank(context.Context) error { return nil }
+
+func fixedNonce() string { return "n" }
 
 func TestWait_RefusesTwoStatesFromSqueueWithoutAskingSacct(t *testing.T) {
 	t.Parallel()
@@ -76,18 +80,16 @@ func TestWait_RefusesAnUnknownStateInsteadOfPollingOnIt(t *testing.T) {
 func TestWait_AnSSHFailureIsNotAnOrdinaryFailure(t *testing.T) {
 	t.Parallel()
 
-	h, ssh := newScripted(t)
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
-	h.Now, h.Sleep = clock.read, clock.sleep
 	// The fake clock moves one poll per pause, and the wait ends after lostAfter on that clock.
 	// A 1 ms poll makes 300 000 reads, which is more than the 5 s deadline on a busy host. A 10 s poll makes 30.
-	h.Poll = 10 * time.Second
+	h, ssh := newScripted(t, WithClock(clockPoll, clock.read, clock.sleep))
 	ssh.PlanResult(model.CommandResult{ExitCode: sshFailed, Stderr: "no route"}, "squeue")
 	ssh.Plan("COMPLETED\n", "sacct")
 
 	state, err := h.Wait(deadline(t), "5-n")
 
-	require.ErrorIs(t, err, errLink)
+	require.ErrorIs(t, err, link.ErrDropped)
 	require.ErrorIs(t, err, host.ErrLost)
 	require.ErrorContains(t, err, "ssh to lane-host: no route")
 	assert.Equal(t, model.JobLost, state)
@@ -143,7 +145,7 @@ func TestSubmit_QuotesTheCommandAndRefusesAnAnswerItDoesNotRecognise(t *testing.
 	ssh.PlanFail("boom", "sbatch")
 
 	_, err = h.Submit(context.Background(), model.JobSpec{Name: "g", Command: "x"})
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 }
 
 func TestWait_ReadsTheStateFromSlurmAndMapsEachName(t *testing.T) {
@@ -348,5 +350,5 @@ func TestWorkRoot_RefusesAnythingButOneAbsolutePath(t *testing.T) {
 
 	_, err := h.WorkRoot(context.Background())
 
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 }

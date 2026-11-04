@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/link"
 	"github.com/tobocop2/obee/internal/host/slurmtest"
 	"github.com/tobocop2/obee/internal/model"
 )
@@ -24,6 +25,9 @@ type fakeClock struct {
 }
 
 var errStepLimit = errors.New("the test step limit")
+
+// clockPoll is the time between two polls on the fake clock.
+const clockPoll = 10 * time.Second
 
 func (c *fakeClock) read() time.Time { return c.now }
 
@@ -45,19 +49,21 @@ func newClockedHost(t *testing.T) (*Queue, *slurmtest.Cluster, *fakeClock) {
 	return newClockedHostWith(t, 0)
 }
 
-// newClockedHostWith is newClockedHost for a project that sets host.stale_minutes.
-func newClockedHostWith(t *testing.T, staleMinutes int) (*Queue, *slurmtest.Cluster, *fakeClock) {
+// newClockedHostWith is newClockedHost for a project that sets host.stale_minutes. Each with function makes an option from the clock and the
+// fake cluster; a later option replaces an earlier one.
+func newClockedHostWith(t *testing.T, staleMinutes int, with ...func(*fakeClock, *slurmtest.Cluster) Option) (*Queue, *slurmtest.Cluster, *fakeClock) {
 	t.Helper()
 
 	f := slurmtest.New(hosttest.Working)
 	f.Up = true
 	clock := &fakeClock{now: time.Unix(1_000_000, 0)}
+	opts := []Option{WithClock(clockPoll, clock.read, clock.sleep), WithBank(noBank)}
 
-	h := newTestQueue(f, model.HostConfig{IdleMinutes: 60, MaxRun: 24 * time.Hour, StaleMinutes: staleMinutes})
+	for _, option := range with {
+		opts = append(opts, option(clock, f))
+	}
 
-	h.Poll = 10 * time.Second
-	h.Now, h.Sleep = clock.read, clock.sleep
-	h.Bank = func(context.Context) error { return nil }
+	h := newTestQueue(f, model.HostConfig{IdleMinutes: 60, MaxRun: 24 * time.Hour, StaleMinutes: staleMinutes}, opts...)
 
 	return h, f, clock
 }
@@ -99,7 +105,7 @@ func TestWait_DiedEndsOnlyAfterTheEmptyReadRepeatsForTheGrace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, model.JobDied, state)
 	assert.GreaterOrEqual(t, clock.now.Sub(start), time.Minute, "an empty read repeats for the grace before it reads as died")
-	assert.Less(t, clock.now.Sub(start), time.Minute+h.Poll+time.Second)
+	assert.Less(t, clock.now.Sub(start), time.Minute+clockPoll+time.Second)
 	assert.Zero(t, f.WaitingSlots(), "the slot of a dead job ends")
 }
 
@@ -119,17 +125,23 @@ func TestWait_ARecordThatAppearsInTheGraceGivesItsRealState(t *testing.T) {
 func TestWait_AStaleStopWaitsForTheJobToEndBeforeItBanks(t *testing.T) {
 	t.Parallel()
 
-	h, f, _ := newClockedHost(t)
-	id, job := submitted(t, h, f)
+	var (
+		job             *slurmtest.Job
+		lingeringAtBank int
+	)
+
+	h, f, _ := newClockedHostWith(t, 0, func(*fakeClock, *slurmtest.Cluster) Option {
+		return WithBank(func(context.Context) error {
+			lingeringAtBank = job.Lingers
+
+			return nil
+		})
+	})
+
+	var id model.JobID
+
+	id, job = submitted(t, h, f)
 	job.Live, job.LogSizes, job.Lingers = 100000, []int{1}, 3
-
-	var lingeringAtBank int
-
-	h.Bank = func(context.Context) error {
-		lingeringAtBank = job.Lingers
-
-		return nil
-	}
 
 	state, err := h.Wait(context.Background(), id)
 
@@ -209,17 +221,18 @@ func TestWait_ALinkThatDropsAndReturnsKeepsWaitingOnTheSameJob(t *testing.T) {
 func TestWait_ADropAfterLongerThanTheLostLimitOfAnsweredReadsKeepsWaiting(t *testing.T) {
 	t.Parallel()
 
-	h, f, clock := newClockedHost(t)
+	start, dropped := time.Unix(1_000_000, 0), false
+	h, f, _ := newClockedHostWith(t, 0, func(clock *fakeClock, f *slurmtest.Cluster) Option {
+		return WithClock(clockPoll, clock.read, func(ctx context.Context, d time.Duration) error {
+			if !dropped && clock.now.Sub(start) > 6*time.Minute {
+				dropped, f.Drops = true, 1
+			}
+
+			return clock.sleep(ctx, d)
+		})
+	})
 	id, job := submitted(t, h, f)
 	job.Live, job.LogSizes = 60, []int{1}
-	start, dropped := clock.now, false
-	h.Sleep = func(ctx context.Context, d time.Duration) error {
-		if !dropped && clock.now.Sub(start) > 6*time.Minute {
-			dropped, f.Drops = true, 1
-		}
-
-		return clock.sleep(ctx, d)
-	}
 
 	state, err := h.Wait(context.Background(), id)
 
@@ -246,7 +259,7 @@ func TestWait_LostEndsAfterFiveMinutesWithoutAnAnsweredReadAndLeavesTheJobRunnin
 	assert.Equal(t, model.JobLost, state)
 	assert.False(t, state.Terminal())
 	assert.GreaterOrEqual(t, clock.now.Sub(start), 5*time.Minute)
-	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.Poll+time.Second)
+	assert.Less(t, clock.now.Sub(start), 5*time.Minute+clockPoll+time.Second)
 	assert.Equal(t, 1, f.Sbatches)
 	assert.False(t, job.Canceled, "the job keeps running on the host")
 }
@@ -276,7 +289,7 @@ func TestWait_AStaleJobThatCannotBeStoppedSaysItMayStillRun(t *testing.T) {
 
 	state, err := h.Wait(context.Background(), id)
 
-	require.ErrorIs(t, err, ErrCommand)
+	require.ErrorIs(t, err, link.ErrCommand)
 	require.ErrorContains(t, err, "may still run")
 	assert.Equal(t, model.JobStale, state)
 	assert.False(t, job.Canceled)
@@ -316,7 +329,7 @@ func TestWait_ALogReadThatAlwaysDropsDoesNotCountAsAnAnsweredRead(t *testing.T) 
 	require.ErrorIs(t, err, host.ErrLost)
 	assert.Equal(t, model.JobLost, state)
 	assert.GreaterOrEqual(t, clock.now.Sub(start), 5*time.Minute)
-	assert.Less(t, clock.now.Sub(start), 5*time.Minute+h.Poll+time.Second)
+	assert.Less(t, clock.now.Sub(start), 5*time.Minute+clockPoll+time.Second)
 	assert.False(t, job.Canceled, "a job whose log was never read is not stopped as stale")
 }
 
@@ -345,9 +358,7 @@ func TestWait_ANewHandleWaitsOnTheRecordedJobAndSubmitsNoSecondCopy(t *testing.T
 	first, f, clock := newClockedHost(t)
 	id, _ := submitted(t, first, f)
 
-	second := newTestQueue(f, first.config)
-
-	second.Now, second.Sleep, second.Bank = clock.read, clock.sleep, func(context.Context) error { return nil }
+	second := newTestQueue(f, first.config, WithClock(clockPoll, clock.read, clock.sleep), WithBank(noBank))
 
 	state, err := second.Wait(context.Background(), id)
 

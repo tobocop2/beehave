@@ -10,7 +10,10 @@ import (
 
 	"github.com/tobocop2/obee/internal/host"
 	"github.com/tobocop2/obee/internal/host/hosttest"
+	"github.com/tobocop2/obee/internal/host/link"
+	"github.com/tobocop2/obee/internal/host/slurm"
 	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc"
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
@@ -33,17 +36,16 @@ func config() model.HostConfig {
 	}
 }
 
-func newScripted(t *testing.T) (*Host, *proctest.Scripted, *proctest.Scripted) {
+// newScripted returns a host over scripted sky and ssh runners. A later option replaces an earlier one.
+func newScripted(t *testing.T, opts ...slurm.Option) (*Host, *proctest.Scripted, *proctest.Scripted) {
 	t.Helper()
 
 	sky, ssh := &proctest.Scripted{}, &proctest.Scripted{}
 
-	h, err := New("lane-host", config(), sky, ssh)
-	require.NoError(t, err)
+	opts = append(append(fastWaits(), slurm.WithNonce(func() string { return "n" })), opts...)
 
-	h.Poll = time.Millisecond
-	h.Bank = func(context.Context) error { return nil }
-	h.Nonce = func() string { return "n" }
+	h, err := New("lane-host", config(), sky, ssh, opts...)
+	require.NoError(t, err)
 
 	ssh.Plan("", "touch")
 
@@ -58,11 +60,8 @@ func newBanking(t *testing.T, private string) (*Host, *proctest.Scripted) {
 	cfg := config()
 	cfg.PrivateRemote = private
 
-	h, err := New("lane-host", cfg, &proctest.Scripted{}, ssh)
+	h, err := New("lane-host", cfg, &proctest.Scripted{}, ssh, slurm.WithClock(time.Millisecond, time.Now, proc.Sleep), slurm.WithNonce(func() string { return "n" }))
 	require.NoError(t, err)
-
-	h.Poll = time.Millisecond
-	h.Nonce = func() string { return "n" }
 
 	planHome(ssh)
 
@@ -287,7 +286,7 @@ func TestStatus_ReportsEachCommandThatFails(t *testing.T) {
 			}
 
 			_, err := h.Status(context.Background())
-			require.ErrorIs(t, err, errCommand)
+			require.ErrorIs(t, err, link.ErrCommand)
 		})
 	}
 }
@@ -370,7 +369,7 @@ func TestCancel_KeepsTheSlotJobWhenScancelFails(t *testing.T) {
 	h, _, ssh := newScripted(t)
 	ssh.PlanFail("no such job", "scancel")
 
-	require.ErrorIs(t, h.Cancel(context.Background(), "5-n"), errCommand)
+	require.ErrorIs(t, h.Cancel(context.Background(), "5-n"), link.ErrCommand)
 	assert.False(t, ssh.Called("touch"))
 }
 
@@ -381,5 +380,5 @@ func TestCancel_ReturnsTheErrorOfTheMarkerWrite(t *testing.T) {
 	ssh.Plan("", "scancel")
 	ssh.PlanFail("read-only", "touch")
 
-	require.ErrorIs(t, h.Cancel(context.Background(), "5-n"), errCommand)
+	require.ErrorIs(t, h.Cancel(context.Background(), "5-n"), link.ErrCommand)
 }
