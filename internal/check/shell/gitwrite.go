@@ -11,7 +11,7 @@ const (
 // alwaysWrites reports whether a git subcommand changes the tree, the index, a ref, the history or a remote whatever its arguments.
 func alwaysWrites(sub string) bool {
 	return slices.Contains([]string{
-		"add", "stage", subCommit, "push", "apply", "am", "merge", "rebase", "cherry-pick", "revert", "reset", "restore", "rm", "mv", "clean", "pull",
+		"add", "stage", subCommit, "push", subSendPack, "apply", "am", "merge", "rebase", "cherry-pick", "revert", "reset", "restore", "rm", "mv", "clean", "pull",
 		"checkout", "switch", "update-ref", "commit-tree", "init", "clone",
 	}, sub)
 }

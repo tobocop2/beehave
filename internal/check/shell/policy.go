@@ -14,13 +14,17 @@ import (
 var (
 	// remoteDeleteKey names the remote settings that make a plain push delete or mirror branches with no flag.
 	remoteDeleteKey = regexp.MustCompile(`(?i)^remote\..+\.(mirror|push)$`)
-	authorKey       = regexp.MustCompile(`(?i)^(user|author|committer)\.(name|email)$`)
-	authorEnv       = regexp.MustCompile(`^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$`)
-	overrideEnv     = regexp.MustCompile(`^(PATH|BASH_ENV|ENV|ZDOTDIR|PROMPT_COMMAND|NODE_OPTIONS|GIT_EXEC_PATH|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG_COUNT|LD_[A-Z_]+|DYLD_[A-Z_]+)$`)
+	// gitRefPath matches a forge API path of the refs of a repository, such as repos/o/r/git/refs/heads/b.
+	gitRefPath  = regexp.MustCompile(`(^|/)git/refs(/|$)`)
+	authorKey   = regexp.MustCompile(`(?i)^(user|author|committer)\.(name|email)$`)
+	authorEnv   = regexp.MustCompile(`^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$`)
+	overrideEnv = regexp.MustCompile(`^(PATH|BASH_ENV|ENV|ZDOTDIR|PROMPT_COMMAND|NODE_OPTIONS|GIT_EXEC_PATH|GIT_CONFIG_GLOBAL|GIT_CONFIG_SYSTEM|GIT_CONFIG_COUNT|LD_[A-Z_]+|DYLD_[A-Z_]+)$`)
 )
 
 const (
 	cmdGit      = "git"
+	cmdGh       = "gh"
+	subSendPack = "send-pack"
 	cmdConfig   = "config"
 	subCommit   = "commit"
 	noVerify    = "--no-verify"
@@ -100,7 +104,50 @@ func (s *scanner) scanPolicy(cmd *command) {
 	}
 
 	s.scanGit(cmd.head)
+	s.scanForgeAPI(cmd.head)
 	s.scanFiles(cmd.head)
+}
+
+// scanForgeAPI judges `gh api`, which changes a branch or a tag through the forge with no git command:
+// the method DELETE on a git ref path is a remote-delete; the method PATCH on a git ref path with force=true is a force-push;
+// a GraphQL query that names deleteRef is a remote-delete, and one that names updateRef is a force-push.
+// The query read from a file (`-F query=@file`) and a method that a variable gives are not read.
+func (s *scanner) scanForgeAPI(head []string) {
+	if path.Base(head[0]) != cmdGh || !slices.Contains(head[1:], "api") {
+		return
+	}
+
+	onRef := slices.ContainsFunc(head[1:], gitRefPath.MatchString)
+	method := func(want string) bool {
+		return slices.ContainsFunc(methodsOf(head), func(m string) bool { return strings.EqualFold(m, want) })
+	}
+	names := func(text string) bool {
+		return slices.ContainsFunc(head[1:], func(word string) bool { return strings.Contains(word, text) })
+	}
+
+	switch {
+	case onRef && method("DELETE"), names("deleteRef"):
+		s.add(model.FindingRemoteDelete, head)
+	case onRef && method("PATCH") && names("force=true"), names("updateRef"):
+		s.add(model.FindingGitBypass, head)
+	}
+}
+
+// methodsOf lists the HTTP methods that a `gh api` command names: `--method M`, `--method=M`, `-X M` and `-XM`.
+func methodsOf(head []string) []string {
+	var methods []string
+
+	for i, word := range head {
+		if method, ok := strings.CutPrefix(word, "--method="); ok {
+			methods = append(methods, method)
+		} else if (word == "--method" || word == "-X") && i+1 < len(head) {
+			methods = append(methods, head[i+1])
+		} else if strings.HasPrefix(word, "-X") && !strings.HasPrefix(word, dashDash) {
+			methods = append(methods, word[len("-X"):])
+		}
+	}
+
+	return methods
 }
 
 // declared reads the assignments of `export`, `declare` and the like.
@@ -225,7 +272,7 @@ func skipsSafeguard(sub string, set flagSet) bool {
 		return len(set.pos) == 0 || !slices.Contains([]string{"list", "show"}, set.pos[0])
 	case subCommit:
 		return set.has("n", noVerify) || hasLong(set, noVerify)
-	case "push":
+	case "push", subSendPack:
 		return pushForces(set) || pushDeletes(set) || hasLong(set, noVerify)
 	case "merge", "rebase", "am", "cherry-pick":
 		return hasLong(set, noVerify)
