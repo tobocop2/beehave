@@ -74,7 +74,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, flag)
 		},
 	}
-	command.Flags().StringVar(&flag, configFlag, "", "the config folder (default: $"+config.ConfigDirVariable+", then ~/.config/obee)")
+	addConfigFlag(command, &flag)
 
 	return command
 }

@@ -107,10 +107,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 
 	cfg, problems := config.LoadFolder(dir, f.env)
 	if len(problems) > 0 {
-		for _, problem := range problems {
-			// A failed write to stderr has no recovery.
-			_, _ = fmt.Fprintln(stderr, problem)
-		}
+		printLines(stderr, problems)
 
 		return cfg, flow.Options{}, &ExitError{Code: exitProblems}
 	}
@@ -292,7 +289,7 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 
 	if len(named) == 1 {
 		if _, ok := cfg.Projects[named[0]]; !ok {
-			return "", fmt.Errorf("no project %q in the config: use one of %s", named[0], strings.Join(names, ", "))
+			return "", unknownProject(named[0], cfg)
 		}
 
 		return named[0], nil
