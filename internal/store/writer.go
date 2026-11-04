@@ -27,12 +27,19 @@ func ParseStatus(text string) (Status, error) {
 }
 
 // NewItem is the item that Create files. Parent is the id of the parent item, or empty. Assignee is the login or name that the item is assigned to, or empty for no assignee.
+// Severity is one of P0 to P3, or empty for an item with no severity. The caller checks the value, so an adapter never sees another one.
 type NewItem struct {
 	Title    string
 	Body     string
 	Parent   string
 	Assignee string
+	Severity string
+	// Operator marks an item that only the operator can resolve. A tracker that keeps labels files it as the label "operator"; one that keeps none refuses it.
+	Operator bool
 }
+
+// OperatorLabel is the label that marks an item for the operator.
+const OperatorLabel = "operator"
 
 // KeyPrefix starts the marker line that makes a write safe to repeat.
 const KeyPrefix = "obee-key: "

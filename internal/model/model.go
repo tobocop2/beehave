@@ -57,9 +57,11 @@ type Project struct {
 	Gate        string
 	TestReport  string
 	PinFile     string
-	BuildHost   string
-	Host        *HostConfig
-	Visibility  Visibility
+	// Changelog is the path of the changelog file of the repository, or empty when the project declares none. It is a fact for the workflow, which refuses a merge that leaves it unchanged.
+	Changelog  string
+	BuildHost  string
+	Host       *HostConfig
+	Visibility Visibility
 	// Sandbox is the default for a step that sets no sandbox. SandboxRead and SandboxDeny extend the read base and the credential list of the engine.
 	Sandbox     SandboxMode
 	SandboxRead []string

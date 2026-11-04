@@ -353,7 +353,7 @@ func itemSignatures() map[string][]Param {
 		itemAssignName:  {filled("id"), filled("assignee"), label},
 		itemCommentName: {filled("id"), filled("text"), filled("key"), label},
 		itemCreateName: {
-			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), label,
+			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), opt("severity", KindText), opt("operator", KindBool), label,
 		},
 		itemStatusName: {filled("id"), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
 		prAssignName:   {filled("assignee"), opt("linked", KindBool), label},

@@ -74,7 +74,7 @@ func facts() map[string]any {
 		"people": map[string]any{"owner": "ann", "third_party_idle_hours": "24"}, "epics": map[string]any{"bugs": "E-1"},
 		"gate_files": []any{".github/workflows/ci.yml"}, "conventions": []any{"AGENTS.md"}, "brief_rules": []any{"name the tempting wrong fix"},
 		"stacked_rules": []any{"merge the base first"}, "limits": []any{"never run rm on a glob"}, "traps": []any{"the cache hides a stale build"},
-		"token_rules": []any{"read a log by its summary lines"},
+		"token_rules": []any{"read a log by its summary lines"}, "changelog": "CHANGELOG.md",
 	}
 }
 
@@ -109,7 +109,7 @@ func TestPrompts_AnEmptyFactRendersAsEmptyNotMissing(t *testing.T) {
 
 	empty := map[string]any{
 		"repo": "", "source": "", "forge": "", "tracker": "", "base_branch": "", "gate": "", "build_host": "", "people": map[string]any{}, "epics": map[string]any{},
-		"gate_files": []any{}, "conventions": []any{}, "brief_rules": []any{}, "stacked_rules": []any{}, "limits": []any{}, "traps": []any{}, "token_rules": []any{},
+		"gate_files": []any{}, "conventions": []any{}, "brief_rules": []any{}, "stacked_rules": []any{}, "limits": []any{}, "traps": []any{}, "token_rules": []any{}, "changelog": "",
 	}
 
 	for _, name := range factsLanes() {

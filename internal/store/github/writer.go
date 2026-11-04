@@ -56,16 +56,7 @@ func (s *Store) Create(ctx context.Context, key string, item store.NewItem) (str
 
 // file runs gh issue create and returns the number of the new issue, which is the end of the URL that gh prints.
 func (s *Store) file(ctx context.Context, key string, item store.NewItem) (string, error) {
-	args := []string{argIssue, "create", argRepo, s.repo, "--title", item.Title, argBody, store.WithMarker(item.Body, key)}
-	if item.Parent != "" {
-		args = append(args, "--parent", item.Parent)
-	}
-
-	if item.Assignee != "" {
-		args = append(args, "--assignee", item.Assignee)
-	}
-
-	done := s.run.Run(ctx, args)
+	done := s.run.Run(ctx, s.createArgs(key, item))
 	if done.ExitCode != 0 {
 		return "", store.Refuse("REFUSE: cannot create an item in %s", s.repo)
 	}
@@ -76,6 +67,28 @@ func (s *Store) file(ctx context.Context, key string, item store.NewItem) (strin
 	}
 
 	return id, nil
+}
+
+// createArgs are the arguments of gh issue create, with the marker of the key. The parent, the assignee and the severity label are set only when the item has one.
+func (s *Store) createArgs(key string, item store.NewItem) []string {
+	args := []string{argIssue, "create", argRepo, s.repo, "--title", item.Title, argBody, store.WithMarker(item.Body, key)}
+	if item.Parent != "" {
+		args = append(args, "--parent", item.Parent)
+	}
+
+	if item.Assignee != "" {
+		args = append(args, "--assignee", item.Assignee)
+	}
+
+	if item.Severity != "" {
+		args = append(args, "--label", item.Severity)
+	}
+
+	if item.Operator {
+		args = append(args, "--label", store.OperatorLabel)
+	}
+
+	return args
 }
 
 // keyed returns the number of the issue whose body holds the marker line of the key, or empty. A full page of matches is a refusal, as in every list.

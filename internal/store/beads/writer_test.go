@@ -216,6 +216,32 @@ func TestCreate_PassesTheAssigneeOnlyWhenOneIsSet(t *testing.T) {
 	assert.NotContains(t, fake.calls[3], "--assignee", "the default is no assignee")
 }
 
+func TestCreate_FilesTheSeverityAsThePriorityOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	fake := newWriteBd()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P2"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--priority", "2", "--silent"}, fake.calls[1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[3], "--priority")
+}
+
+func TestCreate_FilesTheOperatorFlagAsTheOperatorLabel(t *testing.T) {
+	t.Parallel()
+
+	fake := newWriteBd()
+	_, _, err := writerOver(t, fake).Create(t.Context(), "run-1:a", store.NewItem{Title: "t", Severity: "P2", Operator: true})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"create", "--title", "t", "--description", "obee-key: run-1:a", "--priority", "2", "--labels", "operator", "--silent"}, fake.calls[1])
+
+	_, _, err = writerOver(t, fake).Create(t.Context(), "run-1:b", store.NewItem{Title: "t"})
+	require.NoError(t, err)
+	assert.NotContains(t, fake.calls[3], "--labels")
+}
+
 func TestAssign_SetsTheAssigneeOfAnItemThatHasNoneOrTheSameOne(t *testing.T) {
 	t.Parallel()
 

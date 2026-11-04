@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/merge"
+	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/preflight"
 )
 
@@ -157,6 +158,98 @@ func TestExampleBatch_AMissingBranchIsReportedAndTheOtherItemLands(t *testing.T)
 	assert.Equal(t, []string{testProject + "|1|hold"}, writer.statuses)
 	require.Len(t, writer.notes, 1)
 	assert.Contains(t, writer.notes[0], "no longer exists")
+}
+
+func TestExampleBatch_AnItemWithNoChangelogEntryIsHeldWhenTheProjectDeclaresOneAndTheOtherItemLands(t *testing.T) {
+	t.Parallel()
+
+	rig, file, writer, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.h.facts = func(project string) model.Project { return model.Project{Name: project, Changelog: "CHANGELOG.md"} }
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[1] == "diff" && strings.HasSuffix(request.Run[len(request.Run)-1], rig.heads["1"]) {
+			return CommandOutput{Stdout: "one.txt\n"}, nil
+		}
+
+		return CommandOutput{Stdout: "three.txt\nCHANGELOG.md\n"}, nil
+	}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"3"}, rig.merger.landed(), "the item with no entry never reaches the merge")
+	assert.Equal(t, []string{testProject + "|1|hold"}, writer.statuses)
+	require.Len(t, writer.notes, 1)
+	assert.Contains(t, writer.notes[0], "the project declares the changelog CHANGELOG.md")
+	assert.Equal(t, []string{
+		"git fetch origin " + rig.heads["1"], "git diff --name-only origin/main..." + rig.heads["1"],
+		"git fetch origin " + rig.heads["3"], "git diff --name-only origin/main..." + rig.heads["3"],
+	}, rig.h.commands.ran(), "each member is fetched, then read from the base to its own head")
+}
+
+func TestExampleBatch_TheChangelogChecksOfTwoItemsRecordTheirOwnSteps(t *testing.T) {
+	t.Parallel()
+
+	rig, file, _, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.h.facts = func(project string) model.Project { return model.Project{Name: project, Changelog: "CHANGELOG.md"} }
+	rig.h.commands.reply = func(CommandRequest) (CommandOutput, error) { return CommandOutput{Stdout: "CHANGELOG.md\n"}, nil }
+	engine := rig.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, file)
+
+	require.NoError(t, err)
+
+	joined := strings.Join(stepNames(t, engine), " ")
+	for _, id := range []string{"1", "3"} {
+		assert.Contains(t, joined, "changelog-fetch-"+id+"#")
+		assert.Contains(t, joined, "changed-paths-"+id+"#")
+	}
+}
+
+func TestExampleBatch_AnItemWhoseHeadCannotBeFetchedIsHeldWithTheReasonAndTheOtherItemLands(t *testing.T) {
+	t.Parallel()
+
+	rig, file, writer, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.h.facts = func(project string) model.Project { return model.Project{Name: project, Changelog: "CHANGELOG.md"} }
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[1] == "fetch" && request.Run[len(request.Run)-1] == rig.heads["1"] {
+			return CommandOutput{RC: 1, Stderr: "fatal: no such ref\n"}, nil
+		}
+
+		return CommandOutput{Stdout: "CHANGELOG.md\n"}, nil
+	}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err, "a code of 1 is a result, not a stop of the run")
+	assert.Equal(t, []string{"3"}, rig.merger.landed(), "the item that cannot be checked never reaches the merge")
+	assert.Equal(t, []string{testProject + "|1|hold"}, writer.statuses)
+	require.Len(t, writer.notes, 1)
+	assert.Contains(t, writer.notes[0], "could not be fetched")
+	assert.Contains(t, writer.notes[0], "fatal: no such ref")
+	assert.NotContains(t, rig.h.commands.ran(), "git diff --name-only origin/main..."+rig.heads["1"], "no diff runs after a failed fetch")
+}
+
+func TestExampleBatch_AnItemWhoseChangedPathsCannotBeReadIsHeldWithTheReasonAndTheOtherItemLands(t *testing.T) {
+	t.Parallel()
+
+	rig, file, writer, _ := landingExample(t, reviewed("1 3"), "true")
+	rig.h.facts = func(project string) model.Project { return model.Project{Name: project, Changelog: "CHANGELOG.md"} }
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[1] == "diff" && strings.HasSuffix(request.Run[len(request.Run)-1], rig.heads["1"]) {
+			return CommandOutput{RC: 1, Stderr: "fatal: bad revision\n"}, nil
+		}
+
+		return CommandOutput{Stdout: "CHANGELOG.md\n"}, nil
+	}
+
+	_, err := rig.engine(t).RunFile(testItem, testProject, file)
+
+	require.NoError(t, err, "a code of 1 is a result, not a stop of the run")
+	assert.Equal(t, []string{"3"}, rig.merger.landed(), "the item that cannot be checked never reaches the merge")
+	assert.Equal(t, []string{testProject + "|1|hold"}, writer.statuses)
+	require.Len(t, writer.notes, 1)
+	assert.Contains(t, writer.notes[0], "changed paths of item 1 could not be read")
+	assert.Contains(t, writer.notes[0], "fatal: bad revision")
 }
 
 func TestExampleBatch_EveryItemGetsTheStopsOfOneItemBeforeTheBatch(t *testing.T) {

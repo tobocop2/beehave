@@ -83,6 +83,31 @@ item_create(title = "b", key = "b", name = "b")
 	assert.Equal(t, []string{testRun + ":a|alice", testRun + ":b|"}, w.assignees)
 }
 
+func TestPRWrite_ItemCreateTakesOneSeverityAndRefusesAnyOtherBeforeTheWrite(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	w := newFakeWriter()
+	h.writer = w
+
+	_, err := walkBody(t, h, `item_create(title = "a", key = "a", severity = "P1", name = "a")
+item_create(title = "b", key = "b", name = "b")
+`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{testRun + ":a|P1", testRun + ":b|"}, w.severities)
+
+	for _, bad := range []string{"P4", "p1", "P?", "high", "P1,P2"} {
+		bad := bad
+		w := newFakeWriter()
+		h := newHarness(t)
+		h.writer = w
+
+		_, err := walkBody(t, h, `item_create(title = "a", key = "a", severity = "`+bad+`", name = "a")`+"\n")
+		require.ErrorContains(t, err, "severity", bad)
+		assert.Empty(t, w.created, bad)
+	}
+}
+
 func TestPRWrite_ArefusedArgumentWritesNothing(t *testing.T) {
 	t.Parallel()
 
