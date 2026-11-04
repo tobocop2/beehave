@@ -26,6 +26,7 @@ append_raw closed "$1" "$doc" "$h" - - "$2" "$(printf '%s' "$t" | jq -c '{satisf
 ev=$(sqlite3 -batch -json -cmd '.timeout 5000' "$LEDGER" "SELECT * FROM events WHERE req IN ('$(qt "$1")','-') ORDER BY seq;")
 head=$(sql "SELECT seq || ':' || row_hash FROM events ORDER BY seq DESC LIMIT 1;")
 release
-jq -n --argjson t "$t" --argjson ev "$ev" --arg head "$head" '{state: $t, head: $head, ledger: $ev}' > "$AP_HOME/certs/$1.json"
+# The state and the rows go to jq on stdin: the rows can be far over the size of one argument.
+{ printf '%s\n' "$t"; printf '%s\n' "$ev"; } | jq -n --arg head "$head" '[inputs] as $in | {state: $in[0], head: $head, ledger: $in[1]}' > "$AP_HOME/certs/$1.json"
 echo "$AP_HOME/certs/$1.json"
 echo "head $head"

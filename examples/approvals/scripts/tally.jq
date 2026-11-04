@@ -1,15 +1,18 @@
-# The state of one request. Run as jq -n with these arguments:
-#   $ev    the ledger rows of the request and the rows for everybody (version and delegate rows have the request "-")
-#   $req   the request id
-#   $hash  the hash of the current version of the document
-#   $known whether the ledger knows that hash as a version
-#   $now   the clock, in epoch seconds
+# The state of one request. The input is the array of rows that tally.sh read in one query: the rows of the request and the rows for
+# everybody ("-"). Each row has "seen", the seq of the last change. Arguments:
+#   $req     the request id
+#   $now     the clock, in epoch seconds
+# The seq, the current version (the last version row of the document) and the rows all come from that one read, so no order of reads can
+# split them. A request that has no opened row is an error.
 # The ledger rows are facts. This program decides what they mean now: which sign-offs count, which roles are satisfied
 # and the status. Nothing here is stored, so a change to the document or to the clock changes the answer with no write.
 def uniq: reduce .[] as $x ([]; if index($x) == null then . + [$x] else . end);
 
-($ev | map(select(.type == "opened" and .req == $req)) | first) as $o
-| if $o == null then {req: $req, status: "unknown"} else
+(.[0].seen // 0) as $seq
+| (map(select(.type == "opened" and .req == $req)) | first) as $o
+| (map(select(.type == "version" and .doc == $o.doc)) | last | .hash // "") as $hash
+| map(del(.seen)) as $ev
+| if $o == null then error("no such request") else
   ($o.detail | fromjson) as $d
   | $d.policy as $p
   | ($ev | map(select(.type == "closed" and .req == $req)) | last) as $closed
@@ -51,7 +54,7 @@ def uniq: reduce .[] as $x ([]; if index($x) == null then . + [$x] else . end);
   | ($all | map(select(.hash != $hash and .decision == "approve" and standing(.)))
         | map(select(. as $s | ($final | any(.who == $s.who)) | not))) as $old
   | ($old | unique_by(.who)) as $stale
-  | {req: $req, doc: $o.doc, kind: $d.kind, author: $d.author, hash: $hash, hash_known: $known, now: $now, opened: $o.at,
+  | {req: $req, doc: $o.doc, kind: $d.kind, author: $d.author, hash: $hash, seq: $seq, now: $now, opened: $o.at,
      deadline: $deadline, left: ($deadline - $now), pct: ((($now - $o.at) * 100) / ($deadline - $o.at) | floor),
      extensions: ($exts | length), escalate_to: $p.escalate_to, min_roles: $p.min_roles, satisfied: ($okroles | length),
      roles: $roles, missing: $missing, rejections: ($final | map(select(.decision == "reject"))),

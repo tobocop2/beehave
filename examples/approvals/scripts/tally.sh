@@ -6,11 +6,9 @@ set -eu
 [ $# -eq 1 ] || die "usage: tally.sh <req>"
 safe req "$1"
 [ -n "${NO_INTAKE:-}" ] || sh "$SELF/intake.sh" > /dev/null || die "intake failed"
-doc=$(sql "SELECT doc FROM events WHERE type='opened' AND req='$(qt "$1")' LIMIT 1;")
-[ -n "$doc" ] || die "no such request: $1"
-h=$(doc_hash "$doc")
-known=$(sql "SELECT count(*) FROM events WHERE type='version' AND doc='$(qt "$doc")' AND hash='$h';")
-[ "$known" -gt 0 ] && known=true || known=false
-ev=$(sqlite3 -batch -json -cmd '.timeout 5000' "$LEDGER" "SELECT * FROM events WHERE req IN ('$(qt "$1")','-') ORDER BY seq;")
-[ -n "$ev" ] || ev='[]'
-jq -nc -f "$SELF/tally.jq" --argjson ev "$ev" --arg req "$1" --arg hash "$h" --argjson known "$known" --argjson now "$(now)"
+# One query, so one read. It returns the rows of the request and the rows for everybody ("-": version and delegate rows). Each row
+# carries "seen", the seq of the last change (CHANGE_ROWS, the rule await.sh uses too). The snapshot goes to jq on stdin: it can be large.
+state=$(sqlite3 -batch -json -cmd '.timeout 5000' "$LEDGER" "SELECT *, (SELECT coalesce(max(seq),0) FROM events WHERE $CHANGE_ROWS) AS seen FROM events WHERE req IN ('$(qt "$1")','-') ORDER BY seq;" \
+    | jq -c -f "$SELF/tally.jq" --arg req "$1" --argjson now "$(now)") || die "no such request: $1"
+[ -n "$state" ] || die "no such request: $1"
+printf '%s\n' "$state"
