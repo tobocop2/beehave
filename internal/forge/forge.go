@@ -26,6 +26,14 @@ type Opener interface {
 	LinkStack(ctx context.Context, parent, child int) error
 }
 
+// Boarder is the optional side of a forge that keeps project boards. A forge that lacks it cannot be used by board_sync.
+// PlaceCard puts the card on the board and sets its Status column. The same call again changes nothing, and a column that the board lacks is refused before any write.
+// CardStatus reads the Status column of the card from the board. It is an error when the card is not on the board.
+type Boarder interface {
+	PlaceCard(ctx context.Context, card model.Card) error
+	CardStatus(ctx context.Context, card model.Card) (string, error)
+}
+
 // Remote names where the repository of the forge is cloned from. CloneURL needs no call to the forge.
 type Remote interface {
 	CloneURL() string

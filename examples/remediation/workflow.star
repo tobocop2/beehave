@@ -247,6 +247,10 @@ def land(item, pins):
         item_comment(name = "no-" + rejected.item, id = rejected.item, key = "rejected", text = rejected.reason)
         item_status(name = "hold-" + rejected.item, id = rejected.item, status = "hold")
 
+    # Each merged item moves its card to the merged column, as the pipeline of one item does. The item ids of a project with a board are issue numbers.
+    for landed in out.merged:
+        _move_card(project, "merged", int(landed))
+
     # The read of the issues after the batch. A note means the read did not run, which is not a pass: the owner sees it as a comment.
     # A finding stops the run. The batch has landed, so the owner fixes the state of the issues by hand.
     if out.note != "":
@@ -417,6 +421,20 @@ def finish(item):
     if not stop.down:
         item_comment(name = "host-stays-up", id = item.id, key = "host-stays-up", text = "The build host stays up. " + stop.reason)
 
+def _move_card(project, stage, issue = 0):
+    """Moves the card to the column that the board block of the project names for `stage` ("started" or "merged"), and reads it back.
+    `issue` names the issue card of a landed item, and 0 means the pull request of the item of the run. A project with no board makes no call."""
+    if project.board_number == 0:
+        return
+
+    board_sync(
+        name = "board-" + stage + ("-" + str(issue) if issue != 0 else ""),
+        board = project.board_number,
+        owner = project.board_owner,
+        status = project.board_started if stage == "started" else project.board_merged,
+        issue = issue,
+    )
+
 def pipeline(item):
     # LAND lists ready items as id=sha, split by spaces. A run with LAND set starts no agent: it lands those items with one batch_merge. Without LAND, the run is the pipeline of one item.
     ready = env("LAND", default = "").split()
@@ -480,6 +498,10 @@ def pipeline(item):
         issue = int(item.id) if item.id.isdigit() else 0,
         parent = env("PARENT", default = ""),
     )
+
+    # The board is a project choice: the `board` block of the project file. With none, the facts hold board_number 0 and the run makes no board call.
+    # With one, the card of the item moves to the started column now and to the merged column after the merge, and each call reads the card back.
+    _move_card(project, "started")
 
     # Five fix rounds need six passes: the sixth reviews the fifth fix.
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
@@ -563,7 +585,7 @@ def pipeline(item):
     if missing != "":
         fail(missing)
 
-    merge(
+    shipped = merge(
         name = "ship",
         head = loop.gate.head,
         tree = loop.gate.tree,
@@ -577,3 +599,6 @@ def pipeline(item):
         forbid_text = ["(?i)noreply@anthropic", "(?i)laude-Session", "(?i)uthored-By: Claude", "(?i)Generated with \\[Claude"] + id_patterns([item.id]),
         children = "retarget",
     )
+
+    if shipped.state == "merged":
+        _move_card(project, "merged")

@@ -78,8 +78,10 @@ func TestDryRun_TheWritesToAPullRequestAndAnItemAreShownAndChangeNothing(t *test
 
 	var out bytes.Buffer
 
-	body := "def main(item):\n    pr_comment(text = \"x\", key = \"k\", name = \"c\")\n    pr_assign(assignee = \"alice\", linked = True, name = \"a\")\n    pr_open(title = \"t\", base = \"b\", name = \"o\")\n    item_assign(id = \"1\", assignee = \"alice\", name = \"i\")\n"
+	body := "def main(item):\n    pr_comment(text = \"x\", key = \"k\", name = \"c\")\n    pr_assign(assignee = \"alice\", linked = True, name = \"a\")\n    pr_open(title = \"t\", base = \"b\", name = \"o\")\n    item_assign(id = \"1\", assignee = \"alice\", name = \"i\")\n    board_sync(board = 3, status = \"Done\", name = \"b\")\n"
 	require.NoError(t, DryRun(t.Context(), dryFile(t, body), "12", map[string]string{}, &out), out.String())
+
+	assert.Contains(t, out.String(), "board_sync:b#1")
 
 	assert.Contains(t, out.String(), "pr_comment:c#1")
 	assert.Contains(t, out.String(), "pr_assign:a#1")

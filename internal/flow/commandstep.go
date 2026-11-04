@@ -389,7 +389,7 @@ func (s *script) now(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark
 		return nil, err
 	}
 
-	value, err := runStep(s.e, s.ctx, s.name("now", ""), func(context.Context) (string, error) {
+	value, err := countedStep(s, "now", "", func(context.Context) (string, error) {
 		return s.e.deps.Clock.reading().UTC().Format(time.RFC3339), nil
 	})
 
@@ -410,7 +410,7 @@ func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark
 		return nil, err
 	}
 
-	value, err := runStep(s.e, s.ctx, s.name("env", name), func(context.Context) (string, error) { return s.e.variableOr(name, fallback) })
+	value, err := countedStep(s, "env", name, func(context.Context) (string, error) { return s.e.variableOr(name, fallback) })
 	if err != nil {
 		return nil, err
 	}

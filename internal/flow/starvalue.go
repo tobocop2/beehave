@@ -34,6 +34,8 @@ type script struct {
 
 	// counts holds the number of calls so far of each builtin, which numbers its steps.
 	counts map[string]int
+	// kinds is the table of step kinds that name accepts. It is nil, and so the table of the engine, unless a test sets it.
+	kinds []string
 
 	// spent is the sum in dollars of the costs that the agent steps of this run recorded so far. A replay adds the same recorded costs again in the same order.
 	spent float64
@@ -65,7 +67,32 @@ type script struct {
 
 // name returns the name of the DBOS step of one call: `<builtin>:<label>#<n>`, or `<builtin>#<n>` for a call with no label.
 // The count is the position of the call among the calls of that builtin, so a replay that makes the same calls gets the same names.
-func (s *script) name(builtin, label string) string {
+func (s *script) name(builtin, label string) (string, error) {
+	kinds := s.kinds
+	if kinds == nil {
+		kinds = stepKinds()
+	}
+
+	if err := checkStepKind(kinds, builtin); err != nil {
+		return "", err
+	}
+
+	return s.countedName(builtin, label), nil
+}
+
+// countedStep runs fn as the step of the next call of a step kind. The kind must be in the table of step kinds.
+func countedStep[T any](s *script, kind, label string, fn func(context.Context) (T, error)) (T, error) { //nolint:ireturn // the step returns the caller's own type
+	name, err := s.name(kind, label)
+	if err != nil {
+		var zero T
+
+		return zero, err
+	}
+
+	return runStep(s.e, s.ctx, name, fn)
+}
+
+func (s *script) countedName(builtin, label string) string {
 	s.counts[builtin]++
 	n := strconv.Itoa(s.counts[builtin])
 
@@ -95,7 +122,10 @@ func (s *script) durableWith(builtin, label string, zeros map[string]any, fn fun
 
 // durableFields runs a recorded step and returns the Starlark value of each output field, by name.
 func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.StringDict, error) {
-	name := s.name(builtin, label)
+	name, err := s.name(builtin, label)
+	if err != nil {
+		return nil, err
+	}
 
 	done, err := runStep(s.e, s.ctx, name, func(ctx context.Context) (stepResult, error) { return fn(ctx, name) })
 	if err != nil {

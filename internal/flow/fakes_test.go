@@ -736,7 +736,13 @@ type fakeForge struct {
 	notes    []string
 	assigned []string
 	opened   []string // each Open call as project|item|title|body|issue|base|parent
-	writeErr error
+	placed   []string // each PlaceCard call as project|item|board|owner|issue|status
+	// cardStatus is the status that the board holds for the card. dropCards makes PlaceCard lose its write. readErr fails ReadCard.
+	cardStatus string
+	dropCards  bool
+	cardReads  int
+	readErr    error
+	writeErr   error
 }
 
 // Comment records the call and answers with the number of the standing.
@@ -763,6 +769,30 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	}
 
 	return out, f.writeErr
+}
+
+// PlaceCard records the call as project|item|board|owner|issue|status and keeps the status of the card, unless dropCards makes the board lose the write.
+func (f *fakeForge) PlaceCard(_ context.Context, project, item string, req CardRequest) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.placed = append(f.placed, strings.Join([]string{project, item, strconv.Itoa(req.Board), req.Owner, strconv.Itoa(req.Issue), req.Status}, "|"))
+
+	if !f.dropCards && f.writeErr == nil {
+		f.cardStatus = req.Status
+	}
+
+	return f.state.Number, f.writeErr
+}
+
+// ReadCard answers with the status that the board holds, empty for a card that was never placed.
+func (f *fakeForge) ReadCard(_ context.Context, _, _ string, _ CardRequest) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.cardReads++
+
+	return f.cardStatus, f.readErr
 }
 
 // Assign records the call. A linked call answers with two issues.

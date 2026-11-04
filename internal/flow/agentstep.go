@@ -231,9 +231,7 @@ func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, err
 	}
 
-	name := s.name("agent", label)
-
-	login, prompt, err := s.ready(&a, name)
+	name, login, prompt, err := s.ready(&a, label)
 	if err != nil {
 		return nil, err
 	}
@@ -246,15 +244,19 @@ func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	return result(done.Outputs)
 }
 
-// ready returns the login and the rendered prompt of an agent call. The login comes first, so a call that waits for a usage cap holds no start mark.
-func (s *script) ready(a *agentArgs, name string) (login, prompt string, err error) {
+// ready returns the step name, the login and the rendered prompt of an agent call. The login comes first, so a call that waits for a usage cap holds no start mark.
+func (s *script) ready(a *agentArgs, label string) (name, login, prompt string, err error) {
+	if name, err = s.name("agent", label); err != nil {
+		return "", "", "", err
+	}
+
 	if login, err = s.loginFor(*a); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	prompt, err = s.promptOf(a, name)
 
-	return login, prompt, err
+	return name, login, prompt, err
 }
 
 // promptOf finds the folder and the output file of the call, then renders the prompt in a step and returns it.

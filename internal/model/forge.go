@@ -18,6 +18,16 @@ type NewPull struct {
 	Body  string
 }
 
+// Card is one card of a GitHub Project board: the pull request (Pull) or issue (not Pull) with the number, on the board with the number Board.
+// Owner is the login that owns the board, empty for the owner of the repository. Status is the name of the column.
+type Card struct {
+	Board  int
+	Owner  string
+	Number int
+	Pull   bool
+	Status string
+}
+
 // changedFile is one file a pull request changes.
 type changedFile struct {
 	Path string `json:"path"`

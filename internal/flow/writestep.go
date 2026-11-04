@@ -56,22 +56,28 @@ func writeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 }
 
 // writePlan makes the requests of a write call. Each request is built by the rules of command, and all of them carry the key of the step.
-func (s *script) writePlan(w writeRaw, step string) (writePlan, error) {
+// It also returns the name of the step.
+func (s *script) writePlan(w writeRaw) (string, writePlan, error) {
+	step, err := s.name(builtinWrite, w.label)
+	if err != nil {
+		return "", writePlan{}, err
+	}
+
 	request, _, err := s.commandRequest(w.commandRaw)
 	if err != nil {
-		return writePlan{}, err
+		return "", writePlan{}, err
 	}
 
 	plan := writePlan{run: request, key: writeKey(workflowID(s.ctx), step)}
 	plan.run.Env = append(plan.run.Env, writeKeyEnv+"="+plan.key)
 
 	if plan.readBack, err = sibling(plan.run, "read_back", w.readBack); err != nil {
-		return plan, err
+		return step, plan, err
 	}
 
 	plan.undo, err = sibling(plan.run, "undo", w.undo)
 
-	return plan, err
+	return step, plan, err
 }
 
 // sibling makes the request of the read-back or the undo of a write: its own program, and the project, item, environment and timeout of the write.
@@ -101,9 +107,7 @@ func (s *script) writeOutside(b *starlark.Builtin, args starlark.Tuple, kwargs [
 		return nil, err
 	}
 
-	step := s.name(builtinWrite, raw.label)
-
-	plan, err := s.writePlan(raw, step)
+	step, plan, err := s.writePlan(raw)
 	if err != nil {
 		return nil, err
 	}

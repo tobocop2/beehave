@@ -87,6 +87,16 @@ type Project struct {
 	Limits       []string
 	Traps        []string
 	TokenRules   []string
+	// Board is the GitHub Project that a workflow keeps in step with the item. The zero value means the project has no board.
+	Board Board
+}
+
+// Board names a GitHub Project board and the two status columns that a workflow sets. Owner is empty when the owner of the repository owns the board.
+type Board struct {
+	Owner   string
+	Number  int
+	Started string
+	Merged  string
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.
