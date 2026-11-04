@@ -8,6 +8,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/workflow"
 )
 
@@ -26,8 +27,9 @@ type GateSeen struct {
 // RunProgress is what the status of a run shows besides its state. Every value comes from what the workflow library records for the run:
 // the step records, the events and the options of the client. The store holds no table for it.
 type RunProgress struct {
-	// Spent is the dollars that the agent steps of the run spent, failed runs included: the sum that the run cap checks.
-	Spent float64 `json:"spent_usd"`
+	// Spent is what the agent steps of the run spent, failed runs included: the sum that the run cap checks. It says when the sum holds an estimate
+	// and when some cost is unknown.
+	Spent agent.Spend `json:"spent"`
 	// Cap is agents.max_run_budget_usd. It is 0 for no cap.
 	Cap float64 `json:"cap_usd"`
 	// Now is the step that an open run is in. It is empty for a finished run.
@@ -98,16 +100,41 @@ func TimeLeft(left time.Duration) string {
 	return fmt.Sprintf("%dd%dh left", int(left/day), int(left%day/time.Hour))
 }
 
-// spentNotes is the cost note: the dollars spent, against the cap when one is set. A run that spent nothing has none.
+// spentNotes is the cost note: the dollars spent with the marks of the sum, against the cap when one is set. A run that spent nothing has none.
+// A run whose only cost is unknown says so, and never shows $0.
 func (p RunProgress) spentNotes() []string {
 	switch {
-	case p.Spent <= 0:
+	case p.Spent.Cost <= 0 && p.Spent.Unknown:
+		return []string{"cost unknown"}
+	case p.Spent.Cost <= 0:
 		return nil
-	case p.Cap <= 0:
-		return []string{"spent $" + dollars(p.Spent)}
 	}
 
-	return []string{"spent $" + dollars(p.Spent) + " of $" + dollars(p.Cap)}
+	note := "spent $" + dollars(p.Spent.Cost) + spendMarks(p.Spent)
+	if p.Cap > 0 {
+		note += " of $" + dollars(p.Cap)
+	}
+
+	return []string{note}
+}
+
+// marks is the text after an amount that says what the amount holds: " (estimate)", " (some cost unknown)" or both. It is empty for a cost that is all reported.
+func spendMarks(s agent.Spend) string {
+	var marks []string
+
+	if s.Estimated {
+		marks = append(marks, "estimate")
+	}
+
+	if s.Unknown {
+		marks = append(marks, "some cost unknown")
+	}
+
+	if len(marks) == 0 {
+		return ""
+	}
+
+	return " (" + strings.Join(marks, ", ") + ")"
 }
 
 func (g GateSeen) text() string {
@@ -149,7 +176,7 @@ func progressOf(lines []StepLine, limit float64, open bool) RunProgress {
 
 // take adds one step line to the progress.
 func (p *RunProgress) take(line StepLine, open bool) {
-	p.Spent += line.Cost
+	p.Spent = p.Spent.Plus(line.Spend)
 
 	if line.Passed != nil {
 		p.Gate = &GateSeen{Passed: *line.Passed, Head: line.Head}

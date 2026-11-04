@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,16 +31,23 @@ const (
 	OutcomeCancelled  Outcome = "cancelled" //nolint:misspell // the same spelling as the note proc prints
 	OutcomeNotStarted Outcome = "not-started"
 	// OutcomeTurnCap and OutcomeBudgetCap mean the CLI stopped the run at the cap of turns or of dollars. The caller sets them from the result line of the CLI.
+	// A profile without a turn flag gets OutcomeTurnCap from the runner, when the run starts more shell calls than the cap.
 	OutcomeTurnCap   Outcome = "turn-cap"
 	OutcomeBudgetCap Outcome = "budget-cap"
 )
 
-// floatBits is the bit size of a dollar amount in a flag.
-const floatBits = 64
+const (
+	// floatBits is the bit size of a dollar amount in a flag.
+	floatBits = 64
+	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
+	runDirMode     = 0o700
+	launchFileMode = 0o600
+)
 
 var (
 	errTotalTimeout = errors.New("total timeout")
 	errIdleTimeout  = errors.New("idle timeout")
+	errTurnCap      = errors.New("turn cap")
 )
 
 // Spec describes one agent run. A zero Timeout or IdleTimeout means no limit of that kind.
@@ -56,7 +65,8 @@ type Spec struct {
 	IdleTimeout time.Duration
 	Model       string
 	Resume      string
-	// MaxTurns and MaxBudget cap one run. 0 means no cap. A profile without the matching flag refuses a set cap.
+	// MaxTurns and MaxBudget cap one run. 0 means no cap. A profile without the cost flag refuses a set MaxBudget.
+	// A profile without the turn flag has no turns of its own: the runner counts the shell calls of the run, and a call past MaxTurns ends the run with OutcomeTurnCap.
 	MaxTurns  int
 	MaxBudget float64
 	Log       io.Writer
@@ -73,9 +83,10 @@ type Spec struct {
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
 // Session, Transcript, Text, Skills and Violations describe the finished session: its id, the path of its transcript, its last message, the skills it called
 // and one line for each Bash call that broke a forbidden kind. The Runner leaves them empty. The caller that owns the Adapter fills them from the output lines.
-// Cost is the total cost in dollars that the CLI reported on its result line, filled the same way.
+// Spend is the cost of the run, filled the same way: the cost that the CLI reported on its result line, or an estimate from the tokens, or the mark
+// that the cost is unknown.
 type Result struct {
-	Cost       float64
+	Spend
 	Outcome    Outcome
 	ExitCode   int
 	Stderr     string
@@ -169,12 +180,8 @@ func optionProblem(spec Spec, p Profile) string {
 		return fmt.Sprintf("%s has no option to set a model, so model %q is not used. Remove the model from the step.", p.Binary, spec.Model)
 	}
 
-	if spec.Resume != "" && p.ResumeFlag == "" {
+	if spec.Resume != "" && p.Resume == nil {
 		return p.Binary + " has no option to resume a session, so the run does not start. Remove resume from the step."
-	}
-
-	if spec.MaxTurns > 0 && p.TurnsFlag == "" {
-		return p.Binary + " has no option to cap the turns, so the run does not start. Set agents.max_turns to 0."
 	}
 
 	if spec.MaxBudget > 0 && p.BudgetFlag == "" {
@@ -201,13 +208,31 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
 	}
 
-	env := envFor(spec, p)
+	runDir, err := os.MkdirTemp("", "obee-run-") // mode 0700
+	if err != nil {
+		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
+	}
+
+	defer os.RemoveAll(runDir)
+
+	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+}
+
+// launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
+func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
+	launch := launchOf(spec, runDir)
+
+	if problem := writeFiles(runDir, launch.Files); problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
+	env := envFor(spec, p, launch.Env)
 
 	if problem := versionProblem(ctx, spec, p, binary, env, version); problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
-	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p), spec.Dir)
+	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch), spec.Dir)
 
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
@@ -217,7 +242,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 // runCommand starts the command, waits for it and returns what it left.
 func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) Result {
-	stdout, stderr, tail := newStreams(spec)
+	stdout, stderr, tail := newStreams(spec, idle.cancel)
 	cmd.Stdout, cmd.Stderr = idle.watch(stdout), idle.watch(stderr)
 
 	idle.start()
@@ -229,8 +254,9 @@ func runCommand(ctx context.Context, spec Spec, cmd *exec.Cmd, idle *idleTimer) 
 	return finish(ctx, cmd, runErr, errors.Join(stdout.flush(), stderr.flush()), tail)
 }
 
-// argsOf returns the arguments of the profile, then the model and the session to resume when the spec sets them.
-func argsOf(spec Spec, p Profile) []string {
+// argsOf returns the arguments of the profile, then the model, the session to resume, the caps and the arguments of the launch.
+// A resume that opens a subcommand (Profile.ResumeLast) comes after all of them.
+func argsOf(spec Spec, p Profile, launch Launch) []string {
 	args := slices.Clone(p.Args)
 	args = append(args, editArgs(spec, p)...)
 
@@ -238,25 +264,52 @@ func argsOf(spec Spec, p Profile) []string {
 		args = append(args, p.ModelFlag, spec.Model)
 	}
 
-	if spec.Resume != "" {
-		args = append(args, p.ResumeFlag, spec.Resume)
+	if spec.Resume != "" && !p.ResumeLast {
+		args = append(args, p.Resume(spec.Resume)...)
 	}
 
 	args = append(args, capArgs(spec, p)...)
+	args = append(args, launch.Args...)
 
-	return append(args, shellArgs(spec)...)
-}
-
-// shellArgs returns the arguments that start the sandbox of the spec, or the command guard when the spec has no sandbox.
-func shellArgs(spec Spec) []string {
-	switch {
-	case spec.Sandbox != nil:
-		return spec.Adapter.Sandbox(*spec.Sandbox, spec.Guard)
-	case spec.Guard != "":
-		return spec.Adapter.Guard(spec.Guard)
+	if spec.Resume != "" && p.ResumeLast {
+		args = append(args, p.Resume(spec.Resume)...)
 	}
 
-	return nil
+	return args
+}
+
+// launchOf returns what the adapter adds to the start: the sandbox of the spec, or the command guard when the spec has no sandbox.
+func launchOf(spec Spec, runDir string) Launch {
+	switch {
+	case spec.Sandbox != nil:
+		return spec.Adapter.Sandbox(*spec.Sandbox, spec.Guard, runDir)
+	case spec.Guard != "":
+		return spec.Adapter.Guard(spec.Guard, runDir)
+	}
+
+	return Launch{}
+}
+
+// writeFiles writes the files of a launch into runDir. It returns why it cannot, or "" when every file is written.
+// A path that is not local (absolute, empty or with "..") is refused, because the file would land outside the run folder.
+func writeFiles(runDir string, files map[string]string) string {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if !filepath.IsLocal(name) {
+			return fmt.Sprintf("the launch of the agent puts the file %q outside its run folder, so the run does not start.", name)
+		}
+
+		path := filepath.Join(runDir, name)
+
+		if err := os.MkdirAll(filepath.Dir(path), runDirMode); err != nil {
+			return fmt.Sprintf("cannot make the folder of the launch file %q: %v", name, err)
+		}
+
+		if err := os.WriteFile(path, []byte(files[name]), launchFileMode); err != nil {
+			return fmt.Sprintf("cannot write the launch file %q: %v", name, err)
+		}
+	}
+
+	return ""
 }
 
 // editArgs returns the arguments that let the CLI edit files, or none for a spec with NoEdits.
@@ -305,10 +358,15 @@ func startAndWait(cmd *exec.Cmd, onStart func(pid int)) error {
 }
 
 // newStreams returns the redacting writers for stdout (to the log) and stderr (to a tail buffer).
-func newStreams(spec Spec) (*redactWriter, *redactWriter, *proc.Tail) {
+// When the runner enforces the turn cap, the log goes through a stepCounter that calls cancel on the call past the cap.
+func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *redactWriter, *proc.Tail) {
 	log := spec.Log
 	if log == nil {
 		log = io.Discard
+	}
+
+	if spec.MaxTurns > 0 && spec.Adapter.Profile().TurnsFlag == "" {
+		log = &stepCounter{out: log, adapter: spec.Adapter, limit: spec.MaxTurns, cancel: cancel, seen: map[string]bool{}}
 	}
 
 	secrets := newRedactor(spec.Token)
@@ -339,6 +397,8 @@ func outcomeOf(cause error) Outcome {
 		return OutcomeIdle
 	case errors.Is(cause, errTotalTimeout), errors.Is(cause, context.DeadlineExceeded):
 		return OutcomeTimedOut
+	case errors.Is(cause, errTurnCap):
+		return OutcomeTurnCap
 	}
 
 	return OutcomeCancelled

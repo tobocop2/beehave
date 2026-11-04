@@ -67,8 +67,8 @@ type PhaseOutput struct {
 	Text       string   `json:"text,omitempty"`
 	Skills     []string `json:"skills,omitempty"`
 	Violations []string `json:"violations,omitempty"`
-	// Cost is the total cost in dollars that the agent CLI reported for the run. A record that an older version wrote has none, and reads as 0.
-	Cost float64 `json:"cost_usd,omitempty"`
+	// Spend is the cost of the run: the dollars that the agent CLI reported, or an estimate that obee made from the tokens, or the mark that the cost is unknown.
+	agent.Spend
 	// Rounds is the loop cap that the step named. The status view shows the rounds used against it.
 	Rounds int `json:"rounds,omitempty"`
 }
@@ -92,16 +92,16 @@ func (e *Engine) phase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error) {
 
 // agentStep runs the agent of the phase as a step. A failed step returns no output, so it leaves the cost of the failed run in an event that the queuing run reads.
 func (e *Engine) agentStep(ctx dbos.Context, claim context.Context, in PhaseInput) (PhaseOutput, error) { //nolint:revive // ctx of the workflow first, then the context of the claim
-	var spent float64
+	var spent agent.Spend
 
 	out, err := runStep(e, ctx, agentStepName, func(c context.Context) (PhaseOutput, error) {
 		ran, runErr := e.runAgent(c, claim, in)
-		spent = ran.Cost
+		spent = ran.Spend
 
 		return ran, runErr
 	})
 
-	if err != nil && spent > 0 {
+	if err != nil && spent != (agent.Spend{}) {
 		return out, errors.Join(err, dbos.SetEvent(ctx, costEvent, spent)) // Join drops a nil error
 	}
 
@@ -139,7 +139,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 func phaseOutput(result agent.Result) PhaseOutput {
 	return PhaseOutput{
 		Outcome: result.Outcome, ExitCode: result.ExitCode, Note: result.Note, Session: result.Session, Transcript: result.Transcript,
-		Text: result.Text, Skills: result.Skills, Violations: result.Violations, Cost: result.Cost,
+		Text: result.Text, Skills: result.Skills, Violations: result.Violations, Spend: result.Spend,
 	}
 }
 
@@ -194,23 +194,23 @@ func (e *Engine) queuePhase(ctx dbos.Context, in PhaseInput) (PhaseOutput, error
 	out, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
 	// A stopped wait leaves the reading goroutine running, and it shares the step counter of the workflow: a stopped run, or a run of a stopped engine, reads no cost.
 	if err != nil && ctx.Err() == nil && e.ctx.Err() == nil {
-		out.Cost = failedCost(ctx, handle.GetWorkflowID())
+		out.Spend = failedCost(ctx, handle.GetWorkflowID())
 	}
 
 	return out, err
 }
 
 // costEvent is the key of the event in which a failed phase leaves the cost of its run. A failed workflow returns no output, and an event outlives the failure.
-const costEvent = "cost_usd"
+const costEvent = "spend"
 
-// failedCost reads the cost that a failed phase left in its event. A phase that left none, or whose event cannot be read, cost 0.
-func failedCost(ctx dbos.Context, phaseID string) float64 {
-	cost, err := dbos.GetEvent[float64](ctx, phaseID, costEvent, 0)
+// failedCost reads the cost that a failed phase left in its event, marks included. A phase that left none, or whose event cannot be read, cost 0.
+func failedCost(ctx dbos.Context, phaseID string) agent.Spend {
+	spend, err := dbos.GetEvent[agent.Spend](ctx, phaseID, costEvent, 0)
 	if err != nil {
-		return 0
+		return agent.Spend{}
 	}
 
-	return cost
+	return spend
 }
 
 // childResult is how a child workflow ended.

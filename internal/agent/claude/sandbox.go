@@ -62,7 +62,7 @@ type permissions struct {
 // permission rules of the file tools (a path in the sandbox alone leaves the Read tool open, and the reverse leaves cat open).
 // A permission path is written as //absolute. The settings never set excludedCommands, allowLocalBinding, allowAllUnixSockets or allowAppleEvents,
 // and never put the shared git directory in allowWrite: a linked work tree gets it, and an explicit entry could open hooks and config.
-func (Adapter) Sandbox(plan agent.SandboxPlan, guard string) []string {
+func (Adapter) Sandbox(plan agent.SandboxPlan, guard, _ string) agent.Launch {
 	settings := settingsOf(plan)
 
 	if guard != "" {
@@ -72,11 +72,11 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard string) []string {
 
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings and booleans always encodes
 
-	return []string{
+	return agent.Launch{Args: []string{
 		"--setting-sources", "", "--strict-mcp-config",
 		"--disallowedTools", "WebFetch", "WebSearch",
 		"--settings", string(raw),
-	}
+	}}
 }
 
 // settingsOf returns the settings of the sandbox and of the permission rules for a plan, with no hooks.

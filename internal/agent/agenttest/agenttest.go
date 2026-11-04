@@ -42,6 +42,9 @@ func TestAdapter(t *testing.T, make Factory) {
 	t.Run("a_run_follows_the_profile", func(t *testing.T) {
 		CheckRun(t, make(), t.TempDir())
 	})
+	t.Run("a_launch_keeps_its_files_inside_the_run_folder", func(t *testing.T) {
+		CheckLaunch(t, make())
+	})
 	t.Run("a_line_with_no_call_holds_no_call", func(t *testing.T) {
 		CheckCalls(t, make())
 	})
@@ -114,6 +117,28 @@ func checkSeen(r Reporter, profile agent.Profile, dir string, seen []string) {
 
 	expect(r, profile.TokenVar == "" || hasPrefix(seen, profile.TokenVar+"="), "the token variable %s is not set", profile.TokenVar)
 	expect(r, !hasPrefix(seen, leakName+"="), "the CLI saw %s, a variable of the caller", leakName)
+}
+
+// CheckLaunch checks that every file of the launch of the guard and of the sandbox stays inside the run folder: a local path, with no absolute path and no "..".
+// The runner refuses a run whose launch breaks this, so an adapter that breaks it never starts.
+func CheckLaunch(r Reporter, adapter agent.Adapter) {
+	r.Helper()
+
+	const runDir = "/run/folder"
+
+	checkFiles(r, "guard", adapter.Guard("obee check command", runDir).Files)
+
+	if adapter.Profile().Sandbox {
+		checkFiles(r, "sandbox", adapter.Sandbox(agent.SandboxPlan{Work: "/work"}, "obee check command", runDir).Files)
+	}
+}
+
+func checkFiles(r Reporter, source string, files map[string]string) {
+	r.Helper()
+
+	for name := range files {
+		expect(r, filepath.IsLocal(name), "the launch file %q is outside the run folder (%s)", name, source)
+	}
 }
 
 // CheckCalls checks that a line which is not a tool call holds no call.

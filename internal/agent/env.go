@@ -56,17 +56,21 @@ func LoginEnv(base map[string]string, p Profile, dir string) []string {
 
 // envFor returns the environment of one run: the allowlisted names, the login folder and the token.
 // A sandboxed run gets no proxy variable and no agent socket, and sets the two git variables.
-func envFor(spec Spec, p Profile) []string {
-	if spec.Sandbox == nil {
-		return buildEnv(spec.Env, p, spec.Runner.ConfigDir, spec.Token)
-	}
-
+// The variables of the launch come after the allow-list. The git variables of a sandboxed run, the login folder and the token come after them, so a launch cannot change those.
+func envFor(spec Spec, p Profile, launch map[string]string) []string {
 	env := allowed(spec.Env)
-	for _, name := range sandboxDropped() {
-		delete(env, name)
+
+	if spec.Sandbox != nil {
+		for _, name := range sandboxDropped() {
+			delete(env, name)
+		}
 	}
 
-	maps.Copy(env, sandboxEnv())
+	maps.Copy(env, launch)
+
+	if spec.Sandbox != nil {
+		maps.Copy(env, sandboxEnv())
+	}
 
 	return list(env, p, spec.Runner.ConfigDir, spec.Token)
 }

@@ -9,6 +9,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/tobocop2/obee/internal/agent"
 	"github.com/tobocop2/obee/internal/batch"
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/preflight"
@@ -40,7 +41,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 	t.Parallel()
 
 	got := map[string][]string{
-		"agent":         keysOf(agentOutputs("", "", "", "", "", "", 0, false)),
+		"agent":         keysOf(agentOutputs("", "", "", "", "", "", agent.Spend{}, false)),
 		"board_sync":    keysOf(boardOutputs(0, "")),
 		"command":       keysOf(commandOutputs("", "", 0)),
 		"earlier_calls": keysOf(earlierOutputs(0)),

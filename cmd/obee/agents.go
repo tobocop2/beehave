@@ -46,9 +46,12 @@ type agents struct {
 	run      func(ctx context.Context, spec agent.Spec) agent.Result
 	// guard is the command line of `obee check command`, without its flags. Empty means the agent runs with no hook, and the check after the run is the only one.
 	guard string
-	// maxTurns and maxBudget are agents.max_turns and agents.max_budget_usd. 0 means no cap.
-	maxTurns  int
-	maxBudget float64
+	// maxTurns and maxBudget are agents.max_turns and agents.max_budget_usd. maxRunBudget is agents.max_run_budget_usd. 0 means no cap.
+	maxTurns     int
+	maxBudget    float64
+	maxRunBudget float64
+	// prices is the price table that estimates the cost of a CLI that reports tokens and no dollars.
+	prices agent.Prices
 	// home returns the home folder of the owner, which a sandboxed step cannot read.
 	home func() (string, error)
 }
@@ -65,7 +68,8 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		guard:    guardCommand(os.Executable),
 		home:     os.UserHomeDir,
 
-		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD,
+		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD,
+		prices: agent.DefaultPrices(),
 	}
 }
 
@@ -148,7 +152,7 @@ func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind
 		return ""
 	case guard == "":
 		return "The step lists forbid_commands, but obee cannot find the path of its own program to start the check of the commands. The step did not start."
-	case adapter.Guard(guard) == nil:
+	case adapter.Guard(guard, "").Empty():
 		return "The step lists forbid_commands, but the agent CLI of the runner has no hook to refuse a command before it runs. The step did not start."
 	}
 
@@ -171,11 +175,34 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
-	tap := newSessionTap(adapter)
-	result := a.run(ctx, a.specOf(request, runner, dir, adapter, tap, guard, box))
-	result.Cost = tap.spent()
+	tap := newSessionTap(adapter, a.prices)
 
-	return describe(adapter, runner, dir, tap, result, request.Forbid, protect)
+	return describe(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box), request.Model), request.Forbid, protect)
+}
+
+// runCosted runs the spec and gives the result its cost: the one the CLI reported, or an estimate from the tokens of the run for the model.
+func (a agents) runCosted(ctx context.Context, tap *sessionTap, spec agent.Spec, modelName string) agent.Result {
+	result := a.run(ctx, spec)
+	result.Spend = tap.spent(modelName)
+
+	return result
+}
+
+// unpricedCapNote returns the reason why a run cannot start, or "" when it can. A dollar cap on a CLI that does not cap dollars itself is checked against the
+// cost that obee adds up after each run, and a model with no price gives no cost to add: the cap could not be checked, so the run does not start.
+func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest) string {
+	capped := a.maxRunBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
+	if !capped || adapter.Profile().BudgetFlag != "" || a.prices.Has(request.Model) {
+		return ""
+	}
+
+	name := "the default model"
+	if request.Model != "" {
+		name = "the model " + request.Model
+	}
+
+	return fmt.Sprintf("The run has a cost cap, but the agent CLI cannot cap dollars itself and %s has no price in the price table, so obee cannot check the cap. "+
+		"The step did not start. Add a price for the model, or set agents.max_run_budget_usd and agents.max_budget_usd to 0.", name)
 }
 
 // protection returns the paths that the step must not change, and whether the project is private.
@@ -186,8 +213,12 @@ func (a agents) protection(request flow.AgentRequest, dir string) shell.Protecti
 	return protect
 }
 
-// boxOf returns the sandbox plan of a step, or nil when the step has no sandbox. A step that cannot start, for want of its guard or its sandbox, returns the reason.
+// boxOf returns the sandbox plan of a step, or nil when the step has no sandbox. A step that cannot start, for want of its guard, its sandbox or a price to check its cost cap, returns the reason.
 func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (*agent.SandboxPlan, string) {
+	if note := a.unpricedCapNote(adapter, request); note != "" {
+		return nil, note
+	}
+
 	if note := noGuardNote(adapter, guard, request.Forbid); note != "" {
 		return nil, note
 	}
@@ -344,10 +375,14 @@ type sessionTap struct {
 	failed           string
 	// cost is the total cost in dollars of the last result line that reported one.
 	cost float64
+	// usage is the sum of the tokens that the lines reported.
+	usage  agent.Tokens
+	prices agent.Prices
 }
 
-func newSessionTap(adapter agent.Adapter) *sessionTap {
-	return &sessionTap{adapter: adapter, refused: map[string]bool{}}
+// newSessionTap returns a tap that estimates the cost of a run from the price table.
+func newSessionTap(adapter agent.Adapter, prices agent.Prices) *sessionTap {
+	return &sessionTap{adapter: adapter, refused: map[string]bool{}, prices: prices}
 }
 
 // The violation lines that say the check did not see the whole output of the run.
@@ -394,6 +429,7 @@ func (t *sessionTap) see(line string) {
 
 	t.ended = t.ended || seen.Result
 	t.stop, t.failed, t.cost = cmp.Or(seen.Stop, t.stop), cmp.Or(seen.Failed, t.failed), cmp.Or(seen.Cost, t.cost)
+	t.usage = t.usage.Add(seen.Usage)
 
 	if seen.Invalid {
 		t.invalid++
@@ -445,12 +481,23 @@ func (t *sessionTap) skillCalls() []string {
 	return slices.Clone(t.skills)
 }
 
-// spent returns the cost in dollars that the result line reported, or 0 when it reported none.
-func (t *sessionTap) spent() float64 {
+// spent returns the cost of the run: the dollars that the result line reported, or 0 when it reported none and no tokens.
+// A run whose CLI reported no cost but did report tokens gets an estimate for the model from the price table, marked Estimated.
+// If the model has no price, the cost is marked Unknown, which is not the same as a cost of 0.
+func (t *sessionTap) spent(modelName string) agent.Spend {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	return t.cost
+	switch dollars, estimated := t.prices.Estimate(modelName, t.usage); {
+	case t.cost > 0:
+		return agent.Spend{Cost: t.cost}
+	case estimated:
+		return agent.Spend{Cost: dollars, Estimated: true}
+	case t.usage != agent.Tokens{}:
+		return agent.Spend{Unknown: true}
+	}
+
+	return agent.Spend{}
 }
 
 // stopped returns the cap that the result line reported, or "" when it reported none.

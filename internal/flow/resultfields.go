@@ -1,5 +1,7 @@
 package flow
 
+import "github.com/tobocop2/obee/internal/agent"
+
 // The outputs of each builtin that records a step, one function each. The fields of a function are the fields in workflow.ResultFields,
 // and a test compares them, so the check of a workflow file and the run read the same names.
 
@@ -80,13 +82,39 @@ func prOutputs(number int, issues []int) map[string]any {
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.
 // stop is "turns" or "budget" when a cap ended the run, and empty otherwise.
 // cost_usd is the total cost in dollars that the agent CLI reported for the run, or 0 when it reported none.
+// cost_estimated is true when cost_usd is an estimate that obee made from the tokens of the run, and false when the agent CLI reported the cost.
+// cost_unknown is true when the run used tokens of a model that has no price, so cost_usd holds no dollars for it.
 // rewrote is true when the commit the run started on is not in the history of the commit it ended on.
-func agentOutputs(text, session, transcript, head, violations, stop string, cost float64, rewrote bool) map[string]any {
-	return map[string]any{textKeyword: text, "session": session, "transcript": transcript, "head_sha": head, "violations": violations, "stop": stop, costField: cost, "rewrote": rewrote}
+func agentOutputs(text, session, transcript, head, violations, stop string, spend agent.Spend, rewrote bool) map[string]any {
+	out := spendOutputs(spend)
+	out[textKeyword], out["session"], out["transcript"], out["head_sha"], out["violations"], out["stop"] = text, session, transcript, head, violations, stop
+	out["rewrote"] = rewrote
+
+	return out
 }
 
 // costField is the output of an agent call that holds the cost of the run in dollars.
 const costField = "cost_usd"
+
+// The other outputs of an agent call that describe its cost.
+const (
+	estimatedField = "cost_estimated"
+	unknownField   = "cost_unknown"
+)
+
+// spendOutputs are the outputs that hold a cost: the dollars and both marks.
+func spendOutputs(spend agent.Spend) map[string]any {
+	return map[string]any{costField: spend.Cost, estimatedField: spend.Estimated, unknownField: spend.Unknown}
+}
+
+// spendOf reads the cost that the outputs of an agent call hold. An output that is missing or has another type reads as no cost and no mark.
+func spendOf(outputs map[string]any) agent.Spend {
+	cost, _ := outputs[costField].(float64)        //nolint:errcheck // a missing or ill-typed cost reads as 0
+	estimated, _ := outputs[estimatedField].(bool) //nolint:errcheck // a missing mark reads as false
+	unknown, _ := outputs[unknownField].(bool)     //nolint:errcheck // a missing mark reads as false
+
+	return agent.Spend{Cost: cost, Estimated: estimated, Unknown: unknown}
+}
 
 // floatBits is the bit size of a dollar amount.
 const floatBits = 64
@@ -94,12 +122,13 @@ const floatBits = 64
 // agentFields are the fields that every agent call returns, as the view of a run reads them. A test decodes agentOutputs into it.
 // The output verdict is declared by the call, so a reader takes it by its name.
 type agentFields struct {
-	Text       string  `json:"text"`
-	Session    string  `json:"session"`
-	Transcript string  `json:"transcript"`
-	Head       string  `json:"head_sha"`
-	Violations string  `json:"violations"`
-	Stop       string  `json:"stop"`
-	Cost       float64 `json:"cost_usd"`
-	Rewrote    bool    `json:"rewrote"`
+	agent.Spend
+
+	Text       string `json:"text"`
+	Session    string `json:"session"`
+	Transcript string `json:"transcript"`
+	Head       string `json:"head_sha"`
+	Violations string `json:"violations"`
+	Stop       string `json:"stop"`
+	Rewrote    bool   `json:"rewrote"`
 }
