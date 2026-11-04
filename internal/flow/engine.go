@@ -180,7 +180,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 		return nil, err
 	}
 
-	held, err := holdEngine(state.dir)
+	held, err := claimFolder(state.dir, applicationVersion(opts.Version))
 	if err != nil {
 		return nil, errors.Join(err, state.log.Close())
 	}
@@ -188,10 +188,34 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	engine := newEngine(opts, deps, state, held)
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), held.Unlock(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), removeEngineVersion(state.dir), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts))
+}
+
+// claimFolder takes the engine lock of the state folder and writes the version of this engine, both under probe.lock, so no check reads the version of an engine that stopped. It leaves the engine lock free when it fails.
+func claimFolder(dir, version string) (*flock.Flock, error) {
+	probe, err := holdProbe(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	held, err := holdEngine(dir)
+	if err != nil {
+		return nil, errors.Join(err, probe.Unlock())
+	}
+
+	err = announceEngine(dir, version)
+	if err != nil {
+		err = errors.Join(err, held.Unlock())
+	}
+
+	if err = errors.Join(err, probe.Unlock()); err != nil {
+		return nil, err
+	}
+
+	return held, nil
 }
 
 // newEngine makes the engine value for an opened store and a held folder lock.
@@ -430,14 +454,24 @@ func (e *Engine) oldRuns() ([]string, error) {
 // The item belongs to the project from this call on; an open run under another project is refused.
 // The run pins the SHA-256 of the file, and a replay refuses a changed file.
 func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
+	in, err := pinnedInput(item, project, file)
+	if err != nil {
+		return ItemResult{}, err
+	}
+
+	return e.run(in)
+}
+
+// pinnedInput reads the workflow file once and returns the input of a run that executes only those bytes.
+func pinnedInput(item, project, file string) (ItemInput, error) {
 	abs, absErr := filepath.Abs(file)
 
 	pinned, pinErr := workflow.Pin(abs)
 	if err := errors.Join(pinErr, absErr); err != nil {
-		return ItemResult{}, err
+		return ItemInput{}, err
 	}
 
-	return e.run(ItemInput{Item: item, Project: project, File: abs, Files: pinned})
+	return ItemInput{Item: item, Project: project, File: abs, Files: pinned}, nil
 }
 
 // check refuses an item that is not an item id, and a missing project.
@@ -503,26 +537,21 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	item, project := in.Item, in.Project
-
-	last, found, err := latestRun(e.ctx, item)
+	last, found, err := latestRun(e.ctx, in.Item)
 	if err != nil {
 		return nil, err
 	}
 
-	if found && !last.terminal() {
-		return e.join(last, item, project)
+	plan, err := planOf(last, found, in, e.version, found && e.resumedByLaunch(last))
+	if err != nil {
+		return nil, err
 	}
 
-	if found && e.resumedByLaunch(last) {
-		return dbos.RetrieveWorkflow[ItemResult](e.ctx, last.Status.ID)
+	if plan.Join != "" {
+		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
 	}
 
-	if found && last.failed() {
-		return nil, failedError(last, item)
-	}
-
-	return e.start(in, last.Attempt+1)
+	return e.start(in, plan.Attempt)
 }
 
 // resumedByLaunch reports whether the Launch of this engine resumed the run and the run ended since.
@@ -609,24 +638,6 @@ func heldLogin(row dbos.WorkflowStatus) (string, error) {
 	return in.Login, nil
 }
 
-// join returns the handle of an open run. It refuses a run of another project or another version.
-func (e *Engine) join(open run, item, project string) (dbos.WorkflowHandle[ItemResult], error) {
-	held, err := open.project()
-	if err != nil {
-		return nil, err
-	}
-
-	if held != project {
-		return nil, conflictError(item, held, project)
-	}
-
-	if open.Status.ApplicationVersion != e.version {
-		return nil, strandedError(open, e.version)
-	}
-
-	return dbos.RetrieveWorkflow[ItemResult](e.ctx, open.Status.ID)
-}
-
 // Shutdown stops the workers and closes the log. Runs that are not finished resume at the next Launch.
 // A second call returns the result of the first.
 func (e *Engine) Shutdown() error {
@@ -651,5 +662,5 @@ func (e *Engine) shutdown() error {
 
 	e.holds.clear()
 
-	return errors.Join(killed, waited, e.log.Close(), e.lock.Unlock())
+	return errors.Join(killed, waited, e.log.Close(), removeEngineVersion(e.dir), e.lock.Unlock())
 }

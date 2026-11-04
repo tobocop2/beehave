@@ -161,6 +161,8 @@ type clock struct {
 	Watch     time.Duration
 	Settle    time.Duration
 	Queued    time.Duration
+	// Gone is how long a joining run waits for an engine to come back before it reports that the engine stopped.
+	Gone time.Duration
 }
 
 // now reads the clock of the process. The reading carries the monotonic clock, so a difference of two readings counts the time that the machine ran.

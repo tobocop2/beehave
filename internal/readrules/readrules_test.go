@@ -96,6 +96,7 @@ var rules = map[string]rule{
 	// Methods that start, create or record something. The error is the result of the action, not a read that a guard depends on.
 	"internal/batch.Recorder.Step":   {Exempt: doesWork},
 	"internal/cli.Runner.RunFile":    {Exempt: doesWork},
+	"internal/cli.Steering.JoinRun":  {Exempt: doesWork},
 	"internal/flow.agents.Run":       {Exempt: doesWork},
 	"internal/flow.logins.Pick":      {Exempt: doesWork},
 	"internal/flow.lifecycle.Claim":  {Exempt: doesWork},
@@ -119,6 +120,7 @@ var rules = map[string]rule{
 	"internal/batch.Base.Merge":                   {NotHeld: inAdapter},
 	"internal/batch.IssueReads.IssueState":        {NotHeld: inAdapter},
 	"internal/batch.IssueReads.ClosingRefs":       {NotHeld: inAdapter},
+	"internal/cli.Steering.EngineRuns":            {Proof: "TestRun_AFailureToTellWhetherAnEngineRunsStopsTheCommand", Needle: "runningErr"},
 	"internal/cli.Reading.Status":                 {NotHeld: noEngine},
 	"internal/cli.Reading.Steps":                  {NotHeld: noEngine},
 	"internal/cli.Reading.Lanes":                  {NotHeld: noEngine},

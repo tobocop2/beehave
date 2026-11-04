@@ -66,6 +66,10 @@ type Steering interface {
 	Answer(item, text string) error
 	AnswerAs(item, from, text string) error
 	Resume(item string) error
+	// EngineRuns reports whether an engine holds the state folder.
+	EngineRuns() (bool, error)
+	// JoinRun gives the item to the engine that holds the state folder and waits for its result.
+	JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error)
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
 	ResumeOnThisBuild(item string) error
 	Cancel(item string) error
@@ -168,6 +172,9 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 	"If an earlier run of the item is open, beehave run continues it with the file that the run pinned. Press Ctrl-C to stop the command: the run stays open, and beehave run continues it.\n" +
 	"If the last run failed, beehave run refuses and names the step that failed. Run beehave resume, then beehave run.\n" +
 	"After a finished or a canceled run, beehave run starts a new run.\n\n" +
+	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
+	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
+	"If that engine stops, the run stays queued and the command exits with code 1: start the engine or run beehave run again.\n\n" +
 	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
 	"If none is under the caps, the step waits for the earliest reset time that is known, then picks again. If no reset time is known, the step fails and says why. " +
 	"With --" + overCapFlag + ", the step takes the runner with the lowest use instead of waiting, and the run records that the runner was over its cap."
@@ -314,20 +321,85 @@ func chooseProject(cfg config.Config, named []string) (string, error) {
 
 // runItem takes the item to the end of its run. An open run continues with the file that it pinned, so a folder without a workflow file is enough for it.
 // The pinned file is read through the client, which launches nothing: a refused run never opens the engine.
+// When an engine already holds the state folder, as beehave serve does, the run joins that engine and the command waits for the result.
 func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
-	pinned, err := f.openRunFile(stdout, cfg, opts, item)
+	client, err := f.factory.Client(f.ctx, cfg, opts)
 	if err != nil {
 		return err
 	}
 
-	if file == "" && pinned == "" {
-		return missingWorkflow()
+	chosen, running, err := f.chooseRunFile(stdout, client, item, file)
+	if err != nil {
+		return errors.Join(err, client.Close())
 	}
 
+	if running {
+		return f.joinEngine(stdout, stderr, client, item, project, chosen)
+	}
+
+	if err := client.Close(); err != nil {
+		return err
+	}
+
+	return f.ownEngine(stdout, stderr, cfg, opts, item, project, chosen)
+}
+
+// ownEngine runs the item on an engine of this command, and joins the other engine when one takes the state folder first.
+func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
 	// The engine writes the start of the run and the start and end of each step to stderr, so that stdout keeps the result lines.
 	opts.Progress = stderr
 
-	return f.runOnEngine(stdout, cfg, opts, item, project, cmp.Or(file, pinned))
+	err := f.runOnEngine(stdout, cfg, opts, item, project, file)
+	if !errors.Is(err, flow.ErrStateBusy) {
+		return err
+	}
+
+	// An engine took the state folder after the check and before this command opened its own: join that one.
+	return f.joinLater(stdout, stderr, cfg, opts, item, project, file)
+}
+
+// chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
+func (f flowCommands) chooseRunFile(stdout io.Writer, client Steering, item, file string) (string, bool, error) {
+	pinned, err := f.openRunFile(stdout, client, item)
+	if err != nil {
+		return "", false, err
+	}
+
+	if file == "" && pinned == "" {
+		return "", false, missingWorkflow()
+	}
+
+	running, err := client.EngineRuns()
+
+	return cmp.Or(file, pinned), running, err
+}
+
+// joinLater opens a new client and joins the engine that holds the state folder.
+func (f flowCommands) joinLater(stdout, stderr io.Writer, cfg config.Config, opts flow.Options, item, project, file string) error {
+	client, err := f.factory.Client(f.ctx, cfg, opts)
+	if err != nil {
+		return err
+	}
+
+	return f.joinEngine(stdout, stderr, client, item, project, file)
+}
+
+// joinEngine gives the item to the engine that holds the state folder, waits for the result, and closes the client.
+// The run sits in the queue of that engine, so agents.max_concurrent applies to it, and its progress lines go to the log of that engine.
+func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, item, project, file string) error {
+	// A failed write to stderr has no recovery.
+	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
+
+	result, err := client.JoinRun(f.ctx, item, project, file)
+	if err = errors.Join(err, client.Close()); err != nil {
+		if f.ctx.Err() != nil {
+			return errInterrupted
+		}
+
+		return err
+	}
+
+	return finish(stdout, item, result)
 }
 
 // runOnEngine opens the engine, runs the item on it and shuts it down.
@@ -350,9 +422,13 @@ func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, pro
 		return err
 	}
 
+	return finish(stdout, item, result)
+}
+
+// finish prints how the run ended. A stop ends the run without done, so it is a failed run for a script.
+func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 	printResult(stdout, item, result)
 
-	// A stop ends the run without done, so it is a failed run for a script.
 	if result.Stopped != nil {
 		return &ExitError{Code: exitError}
 	}
@@ -362,14 +438,9 @@ func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, pro
 
 // openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
 // beehave run ignores --workflow when it joins an open run.
-func (f flowCommands) openRunFile(stdout io.Writer, cfg config.Config, opts flow.Options, item string) (string, error) {
-	client, err := f.factory.Client(f.ctx, cfg, opts)
-	if err != nil {
-		return "", err
-	}
-
+func (f flowCommands) openRunFile(stdout io.Writer, client Steering, item string) (string, error) {
 	pinned, err := client.PinnedFile(item)
-	if err = errors.Join(err, client.Close()); err != nil || pinned == "" {
+	if err != nil || pinned == "" {
 		return "", err
 	}
 
