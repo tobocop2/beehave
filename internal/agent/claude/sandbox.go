@@ -88,12 +88,12 @@ func settingsOf(plan agent.SandboxPlan) sandboxSettings {
 			Filesystem: filesystem{
 				DenyRead:   join([]string{homeFolder}, plan.Deny, plan.DenyPatterns),
 				AllowRead:  join([]string{plan.Work}, plan.GitDirs, plan.Read),
-				DenyWrite:  join(plan.Deny, plan.DenyPatterns, plan.DenyWrite),
+				DenyWrite:  join(plan.Deny, plan.DenyPatterns, plan.DenyWrite, plan.DenyWritePatterns),
 				AllowWrite: join(plan.AllowWrite),
 			},
 			Network: network{AllowedDomains: join(plan.Network), StrictAllowlist: true},
 		},
-		Permissions: permissions{BlockReadsOutsideWorkingDirectories: true, Deny: append(append(webTools(), fileRules(plan.Deny, plan.DenyPatterns)...), editRules(plan.DenyWrite)...)},
+		Permissions: permissions{BlockReadsOutsideWorkingDirectories: true, Deny: slices.Concat(webTools(), fileRules(plan.Deny, plan.DenyPatterns), editRules(plan.DenyWrite), patternEditRules(plan.DenyWritePatterns))},
 	}
 }
 
@@ -119,6 +119,17 @@ func editRules(paths []string) []string {
 
 	for _, path := range paths {
 		rules = append(rules, "Edit(//"+strings.TrimPrefix(strings.TrimSuffix(path, "/"), "/")+"/**)")
+	}
+
+	return rules
+}
+
+// patternEditRules returns the Edit deny rule of each pattern, as //absolute.
+func patternEditRules(patterns []string) []string {
+	rules := make([]string, 0, len(patterns))
+
+	for _, pattern := range patterns {
+		rules = append(rules, "Edit(//"+strings.TrimPrefix(pattern, "/")+")")
 	}
 
 	return rules
