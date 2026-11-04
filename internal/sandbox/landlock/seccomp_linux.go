@@ -69,8 +69,17 @@ func socketProgram() []bpf.Instruction {
 	}
 }
 
-// install loads the filter into every thread of this process, and into the children of the process. The kernel needs no_new_privs for that.
+// install loads the filter into every thread of this process, and into the children of the process. The kernel needs no_new_privs for that. no_new_privs is an
+// attribute of one thread, and the load fails with EACCES on a thread that lacks it, so install keeps its goroutine on one thread for both calls.
 func (k filterKernel) install() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	return k.load()
+}
+
+// load sets no_new_privs and then loads the filter. The caller keeps the goroutine on one thread.
+func (k filterKernel) load() error {
 	raw, err := k.assemble(socketProgram())
 	if err != nil {
 		return fmt.Errorf("assemble the socket filter: %w", err)
