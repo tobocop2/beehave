@@ -104,6 +104,33 @@ func TestEditBody_ALockHeldByAnotherHolderMakesTheCallWait(t *testing.T) {
 	assert.Equal(t, "x\n", forge.body)
 }
 
+func TestEditBody_ACanceledContextEndsTheWaitForTheLock(t *testing.T) {
+	t.Parallel()
+
+	dir, forge := t.TempDir(), &slowBody{body: "keep"}
+	held := lockfile.Open(filepath.Join(dir, "integration-9.lock"))
+	require.NoError(t, held.Lock())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+
+	go func() { done <- merge.EditBody(ctx, dir, forge, 9, addRow("x")) }()
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		require.NoError(t, held.Unlock())
+		require.FailNow(t, "timed out after 2 s: the wait for the lock ignored the canceled context")
+	}
+
+	require.NoError(t, held.Unlock())
+	assert.Equal(t, "keep", forge.body)
+}
+
 func TestEditBody_AFailedWriteReleasesTheLock(t *testing.T) {
 	t.Parallel()
 
