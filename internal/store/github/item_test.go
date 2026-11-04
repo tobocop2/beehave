@@ -10,6 +10,34 @@ import (
 	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
+func TestGithubComment_ANullPageOrItemIsAnAnswerOfTheWrongShape(t *testing.T) {
+	t.Parallel()
+
+	for name, body := range map[string]string{"null_page": "[[],null]", "null_item": "[[null]]"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			gh, run := newGithub(t)
+			run.Plan(body, "api", "--paginate")
+
+			err := gh.Comment(context.Background(), "5", "k", "text")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "is null")
+			assert.Len(t, run.Calls, 1)
+		})
+	}
+}
+
+func TestGithubItem_RefusesAnIdThatIsNotANumberWithoutCallingGh(t *testing.T) {
+	t.Parallel()
+
+	gh, run := newGithub(t)
+
+	_, err := gh.Item(context.Background(), "abc")
+	require.Error(t, err)
+	assert.Empty(t, run.Calls)
+}
+
 func TestGithubItemFields_DeclareIDTitleAndBody(t *testing.T) {
 	t.Parallel()
 

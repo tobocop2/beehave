@@ -78,7 +78,7 @@ func (s *Store) HeldRows(ctx context.Context) ([]model.ClaimRow, error) {
 
 // claimRowOf reads a claim row from a bd row. It reports false for a row that is no claim row.
 func claimRowOf(r bdRow) (model.ClaimRow, bool, error) {
-	item, ok := claimedItem(derefText(r.Title))
+	item, ok := claimedItem(model.Deref(r.Title))
 	if !ok || r.ID == "" {
 		return model.ClaimRow{}, false, nil
 	}
@@ -300,7 +300,7 @@ func (s *Store) itemTitle(ctx context.Context, item string) string {
 		return ""
 	}
 
-	return derefText(shown.Title)
+	return model.Deref(shown.Title)
 }
 
 // Reclaim runs bd reclaim for the row of the item with no grace window, so it frees the row only when the lease of its holder ended.

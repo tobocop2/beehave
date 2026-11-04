@@ -2,7 +2,6 @@ package github_test
 
 import (
 	"context"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,10 +41,16 @@ func batchedNode() fields {
 	}
 }
 
+// searchPage is one page of the search: the count of all rows and the nodes on the page.
+func searchPage(count int, nodes ...fields) fields {
+	return fields{"data": fields{"search": fields{"issueCount": count, "nodes": nodes}}}
+}
+
+// searchAnswer is what `gh api graphql --paginate --slurp` prints for a search that fits on one page.
 func searchAnswer(t *testing.T, count int, nodes ...fields) string {
 	t.Helper()
 
-	return toJSON(t, fields{"data": fields{"search": fields{"issueCount": count, "nodes": nodes}}})
+	return toJSON(t, []fields{searchPage(count, nodes...)})
 }
 
 // perPullRun serves the same data as batchedNode through the per-pull-request reads.
@@ -211,7 +216,7 @@ func TestOwnPulls_RefuseAFailedMalformedEmptyOrLongAnswer(t *testing.T) {
 	_, err = bad.OwnPulls(context.Background(), "me")
 	require.ErrorContains(t, err, "cannot read our open pull requests")
 
-	for _, body := range []string{`{"data":null}`, `{"data":{"search":null}}`} {
+	for _, body := range []string{`[{"data":null}]`, `[{"data":{"search":null}}]`, `[]`} {
 		none, _ := fixed(t, body)
 		_, err = none.OwnPulls(context.Background(), "me")
 		require.ErrorContains(t, err, "the answer holds none")
@@ -226,29 +231,23 @@ func TestOwnPulls_ACountOneAboveTheNodesRefusesTheAnswer(t *testing.T) {
 	require.ErrorContains(t, err, "2 pull requests")
 }
 
-// pagedAnswer is one page of the search: the count of all rows, the cursor of the next page ("" for the last) and the numbers on the page.
-func pagedAnswer(t *testing.T, count int, next string, numbers ...int) string {
-	t.Helper()
-
+// numbered is one page of the search with a node for each number.
+func numbered(count int, numbers ...int) fields {
 	nodes := make([]fields, 0, len(numbers))
 	for _, n := range numbers {
 		nodes = append(nodes, fields{"number": n})
 	}
 
-	return toJSON(t, fields{"data": fields{"search": fields{
-		"issueCount": count, "nodes": nodes,
-		"pageInfo": fields{"hasNextPage": next != "", "endCursor": next},
-	}}})
+	return searchPage(count, nodes...)
 }
 
-func TestOwnPulls_ReadsEveryPageWithTheCursorAndSortsByNumber(t *testing.T) {
+func TestOwnPulls_ReadsEveryPageInOneSlurpedCallAndSortsByNumber(t *testing.T) {
 	t.Parallel()
 
-	run := &proctest.Scripted{}
-	run.PlanContaining(pagedAnswer(t, 3, "c1", 9, 4), ownMarker)
-	run.PlanContaining(pagedAnswer(t, 3, "", 2), "after=c1")
+	// The later page reports another count: only the count of the first page counts.
+	f, run := fixed(t, toJSON(t, []fields{numbered(3, 9, 4), numbered(7, 2)}))
 
-	got, err := newForge(t, repo, run).OwnPulls(context.Background(), "me")
+	got, err := f.OwnPulls(context.Background(), "me")
 	require.NoError(t, err)
 
 	numbers := make([]int, 0, len(got))
@@ -257,60 +256,43 @@ func TestOwnPulls_ReadsEveryPageWithTheCursorAndSortsByNumber(t *testing.T) {
 	}
 
 	assert.Equal(t, []int{2, 4, 9}, numbers)
-	assert.Len(t, run.Calls, 2)
-	assert.NotContains(t, run.Calls[0], "after=c1")
-	assert.Contains(t, run.Calls[1], "after=c1")
+	require.Len(t, run.Calls, 1)
+	assert.Contains(t, run.Calls[0], "--paginate")
+	assert.Contains(t, run.Calls[0], "--slurp")
 }
 
 func TestOwnPulls_ReadsUpToAThousandRowsAndRefusesMore(t *testing.T) {
 	t.Parallel()
 
-	run := &proctest.Scripted{}
-	run.PlanContaining(pagedAnswer(t, 1000, "c1", rowsFrom(1)...), ownMarker)
-
-	for page := 1; page < 10; page++ {
-		next := "c" + strconv.Itoa(page+1)
-		if page == 9 {
-			next = ""
-		}
-
-		run.PlanContaining(pagedAnswer(t, 1000, next, rowsFrom(page*100+1)...), "after=c"+strconv.Itoa(page))
+	pages := make([]fields, 0, 10)
+	for page := range 10 {
+		pages = append(pages, numbered(1000, rowsFrom(page*100+1)...))
 	}
 
-	got, err := newForge(t, repo, run).OwnPulls(context.Background(), "me")
+	f, run := fixed(t, toJSON(t, pages))
+	got, err := f.OwnPulls(context.Background(), "me")
 	require.NoError(t, err)
 	assert.Len(t, got, 1000)
-	assert.Len(t, run.Calls, 10)
+	assert.Len(t, run.Calls, 1)
 
-	over, _ := fixed(t, pagedAnswer(t, 1001, "", 1))
+	over, _ := fixed(t, toJSON(t, []fields{numbered(1001, 1)}))
 	_, err = over.OwnPulls(context.Background(), "me")
 	require.ErrorContains(t, err, "1001 pull requests, more than 1000")
 }
 
-func TestOwnPulls_RefuseAPageThatPromisesAnotherAndGivesNoCursor(t *testing.T) {
-	t.Parallel()
-
-	body := toJSON(t, fields{"data": fields{"search": fields{
-		"issueCount": 2, "nodes": []fields{{"number": 1}}, "pageInfo": fields{"hasNextPage": true, "endCursor": ""},
-	}}})
-	f, _ := fixed(t, body)
-	_, err := f.OwnPulls(context.Background(), "me")
-	require.ErrorContains(t, err, "no cursor")
-}
-
-func TestOwnPulls_RefuseAForgeThatRepeatsAPageInsteadOfReadingForever(t *testing.T) {
+func TestOwnPulls_RefuseAPageListThatDoesNotMatchTheCount(t *testing.T) {
 	t.Parallel()
 
 	for name, body := range map[string]string{
-		"more rows than counted":       pagedAnswer(t, 2, "c1", 1),
-		"no rows and another promised": pagedAnswer(t, 2, "c1"),
+		"more rows than counted":  toJSON(t, []fields{numbered(1, 1), numbered(1, 2)}),
+		"fewer rows than counted": toJSON(t, []fields{numbered(3, 1), numbered(3, 2)}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			f, _ := fixed(t, body)
 			_, err := f.OwnPulls(context.Background(), "me")
-			require.ErrorContains(t, err, "cannot read our open pull requests")
+			require.ErrorContains(t, err, "pull requests counted")
 		})
 	}
 }

@@ -2,15 +2,12 @@ package github
 
 import (
 	"context"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/forge"
 	"github.com/tobocop2/obee/internal/model"
 )
-
-var pullAddress = regexp.MustCompile(`/pull/(\d+)\s*$`)
 
 // CreatePR opens a draft pull request and returns its number, which gh prints as the last part of the address. Title and body go as single arguments.
 // The branch must be on the remote already: gh refuses a branch that is not.
@@ -20,14 +17,9 @@ func (f *Forge) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
 		return 0, forge.Refuse("cannot open a draft pull request for branch %s into %s. Push the branch first", req.Head, req.Base)
 	}
 
-	found := pullAddress.FindStringSubmatch(done.Stdout)
-	if found == nil {
+	number, ok := model.URLNumber(done.Stdout, "pull")
+	if !ok {
 		return 0, forge.Refuse("cannot read the number of the pull request that gh opened for branch %s", req.Head)
-	}
-
-	number, err := strconv.Atoi(found[1])
-	if err != nil {
-		return 0, forge.Refusal("cannot read the number of the pull request that gh opened for branch "+req.Head, err)
 	}
 
 	return number, nil

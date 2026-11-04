@@ -115,7 +115,7 @@ func (a *attempt) unmoved() *refusal {
 
 // unchanged refuses a read whose head is not the gated head, whose state is not open, or which is a draft.
 func (a *attempt) unchanged(again model.PullRequest) *refusal {
-	if head := text(again.HeadRefOid); head != a.req.Gated {
+	if head := model.Deref(again.HeadRefOid); head != a.req.Gated {
 		return refuse(fmt.Sprintf("REFUSE: head moved to %s while preparing. Re-gate.", head))
 	}
 
@@ -132,7 +132,7 @@ func (a *attempt) unchanged(again model.PullRequest) *refusal {
 
 // stillOpen refuses a read whose state is not OPEN. A state the read does not hold counts as not open: an unknown state is not a passing one.
 func (a *attempt) stillOpen(view model.PullRequest) *refusal {
-	if state := text(view.State); state != stateOpen {
+	if state := model.Deref(view.State); state != stateOpen {
 		return refuse(fmt.Sprintf("REFUSE: #%d is %s now, so nothing more is done to it.", a.req.PR, state))
 	}
 

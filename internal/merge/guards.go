@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 // settings refuses a merge with no repository or base.
@@ -39,7 +41,7 @@ func (a *attempt) state() *refusal {
 		return transient(fmt.Sprintf("REFUSE: cannot read #%d for its state", a.req.PR))
 	}
 
-	state, base, head, mergeable := text(view.State), text(view.BaseRefName), text(view.HeadRefOid), text(view.Mergeable)
+	state, base, head, mergeable := model.Deref(view.State), model.Deref(view.BaseRefName), model.Deref(view.HeadRefOid), model.Deref(view.Mergeable)
 	a.say("before: " + tsvLine(state, strconv.FormatBool(*view.IsDraft), base, head, mergeable))
 
 	return a.readRefusal(state, base, head, mergeable)

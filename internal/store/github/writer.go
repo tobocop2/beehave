@@ -2,10 +2,8 @@ package github
 
 import (
 	"context"
-	"path"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/tobocop2/obee/internal/model"
 	"github.com/tobocop2/obee/internal/store"
@@ -61,12 +59,12 @@ func (s *Store) file(ctx context.Context, key string, item store.NewItem) (strin
 		return "", store.Refuse("REFUSE: cannot create an item in %s", s.repo)
 	}
 
-	id := path.Base(strings.TrimSpace(done.Stdout))
-	if err := number(id); err != nil {
+	id, ok := model.URLNumber(done.Stdout, "issues")
+	if !ok {
 		return "", store.Refuse("store: gh did not print the URL of the new issue in %s; refusing", s.repo)
 	}
 
-	return id, nil
+	return strconv.Itoa(id), nil
 }
 
 // createArgs are the arguments of gh issue create, with the marker of the key. The parent, the assignee and the severity label are set only when the item has one.
@@ -256,10 +254,7 @@ func (s *Store) comments(ctx context.Context, id string) ([]ghComment, error) {
 		return nil, store.Refuse("REFUSE: cannot read the comments of item %s in %s", id, s.repo)
 	}
 
-	pages, err := model.Decode[[][]ghComment]("gh api", done.Stdout)
-	if err != nil {
-		return nil, store.Unreadable(err)
-	}
+	rows, err := model.DecodePages[ghComment]("gh api", done.Stdout)
 
-	return slices.Concat(pages...), nil
+	return rows, store.Unreadable(err)
 }

@@ -70,7 +70,7 @@ func (s *Store) keyed(ctx context.Context, key string) (string, error) {
 	}
 
 	for _, row := range rows {
-		if store.HasMarker(derefText(row.Description), key) {
+		if store.HasMarker(model.Deref(row.Description), key) {
 			return readableID(row.ID)
 		}
 	}

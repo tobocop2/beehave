@@ -31,14 +31,6 @@ func readableID(id string) (string, error) {
 	return id, nil
 }
 
-func derefText(text *string) string {
-	if text == nil {
-		return ""
-	}
-
-	return *text
-}
-
 type bdRow struct {
 	ID          string   `json:"id"`
 	Title       *string  `json:"title"`
@@ -245,7 +237,7 @@ func (s *Store) Item(ctx context.Context, item string) (map[string]string, error
 		return nil, err
 	}
 
-	return map[string]string{"id": id, "title": title, "body": derefText(row.Description)}, nil
+	return map[string]string{"id": id, "title": title, "body": model.Deref(row.Description)}, nil
 }
 
 // decodeShown reads the row of bd show, which prints one object or a list of one.
