@@ -231,6 +231,7 @@ func TestLaunch_ASchedulePollThatFailsDoesNotStopTheEngineAndTheClientSeesTheCau
 	t.Parallel()
 
 	harness := newHarness(t)
+	harness.opts.ReviewPoll = time.Hour
 	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
 	require.NoError(t, err)
 
@@ -423,6 +424,7 @@ func TestRecordSchedule_TheClientReadsWhyThePollIsNotScheduled(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
+	harness.opts.ReviewPoll = time.Hour
 	engine := idleEngine(t, harness)
 	client := harness.client(t, testVersion)
 
@@ -441,6 +443,48 @@ func TestRecordSchedule_TheClientReadsWhyThePollIsNotScheduled(t *testing.T) {
 	cause, err = client.PollNotScheduled()
 	require.NoError(t, err)
 	assert.Empty(t, cause, "a launch that scheduled the poll clears the cause")
+}
+
+func TestClient_PollNotScheduledSaysWhenTheIntervalIsZero(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.opts.ReviewPoll = 0
+	client := harness.client(t, testVersion)
+
+	cause, err := client.PollNotScheduled()
+	require.NoError(t, err)
+	assert.Equal(t, pollOff, cause, "no launch ran")
+
+	launchedWith(t, harness, func(*Deps) {})
+
+	cause, err = client.PollNotScheduled()
+	require.NoError(t, err)
+	assert.Equal(t, pollOff, cause, "a launch with 0 deletes the schedule and records an empty file")
+
+	require.NoError(t, os.WriteFile(pollScheduleFile(client.dir), []byte(errFake.Error()), 0o600))
+
+	cause, err = client.PollNotScheduled()
+	require.NoError(t, err)
+	assert.Equal(t, pollOff+" "+errFake.Error(), cause, "a recorded error is added to the text")
+}
+
+func TestClient_PollNotScheduledIsEmptyWhenTheIntervalIsSetAndNoErrorIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.opts.ReviewPoll = time.Hour
+	client := harness.client(t, testVersion)
+
+	cause, err := client.PollNotScheduled()
+	require.NoError(t, err)
+	assert.Empty(t, cause)
+
+	launchedWith(t, harness, func(*Deps) {})
+
+	cause, err = client.PollNotScheduled()
+	require.NoError(t, err)
+	assert.Empty(t, cause, "a launch that scheduled the poll leaves an empty record")
 }
 
 func TestRecordSchedule_AFolderThatCannotBeWrittenIsLoggedAndNothingElse(t *testing.T) {

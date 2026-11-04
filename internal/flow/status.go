@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -81,10 +82,12 @@ type Client struct {
 	version string
 	// maxRunBudget is Options.MaxRunBudget, the cap that the status shows the spent sum against.
 	maxRunBudget float64
-	dir          string
-	give         ReleaseDeps
-	logger       *slog.Logger
-	log          io.Closer
+	// reviewPoll is Options.ReviewPoll, so the status can say that the poll is off.
+	reviewPoll time.Duration
+	dir        string
+	give       ReleaseDeps
+	logger     *slog.Logger
+	log        io.Closer
 }
 
 // OpenClient opens the state folder for the status, answer, resume and cancel commands.
@@ -95,7 +98,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 		return nil, err
 	}
 
-	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, dir: state.dir, give: give, log: state.log}
+	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, dir: state.dir, give: give, log: state.log}
 	if err := client.connect(ctx, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), state.log.Close())
 	}
@@ -197,15 +200,16 @@ func failureOf(row dbos.WorkflowStatus) string {
 	return string(row.Status)
 }
 
-// PollNotScheduled returns why the last launch could not set the schedule of the review poll. It is empty when the launch set it or none ran.
+// PollNotScheduled returns why the review poll does not run: the interval is 0, or the last launch could not set the schedule. It is empty when the poll is scheduled or no launch ran.
+// The configured interval decides the first case, whatever the record holds: a launch with 0 deletes the schedule and records no error.
 func (c *Client) PollNotScheduled() (string, error) {
 	text, err := os.ReadFile(pollScheduleFile(c.dir))
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("read the state of the review poll schedule: %w", err)
 	}
 
-	if err != nil {
-		return "", fmt.Errorf("read the state of the review poll schedule: %w", err)
+	if c.reviewPoll <= 0 {
+		return strings.TrimSpace(pollOff + " " + string(text)), nil
 	}
 
 	return string(text), nil
