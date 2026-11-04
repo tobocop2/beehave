@@ -78,11 +78,12 @@ func TestDryRun_TheWritesToAPullRequestAndAnItemAreShownAndChangeNothing(t *test
 
 	var out bytes.Buffer
 
-	body := "def main(item):\n    pr_comment(text = \"x\", key = \"k\", name = \"c\")\n    pr_assign(assignee = \"alice\", linked = True, name = \"a\")\n    item_assign(id = \"1\", assignee = \"alice\", name = \"i\")\n"
+	body := "def main(item):\n    pr_comment(text = \"x\", key = \"k\", name = \"c\")\n    pr_assign(assignee = \"alice\", linked = True, name = \"a\")\n    pr_open(title = \"t\", base = \"b\", name = \"o\")\n    item_assign(id = \"1\", assignee = \"alice\", name = \"i\")\n"
 	require.NoError(t, DryRun(t.Context(), dryFile(t, body), "12", map[string]string{}, &out), out.String())
 
 	assert.Contains(t, out.String(), "pr_comment:c#1")
 	assert.Contains(t, out.String(), "pr_assign:a#1")
+	assert.Contains(t, out.String(), "pr_open:o#1")
 	assert.Contains(t, out.String(), "item_assign:i#1")
 }
 
@@ -243,11 +244,11 @@ func TestDryRun_TheStepListOfTheRemediationExampleIsComplete(t *testing.T) {
 	assert.Equal(t, []string{
 		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:ROUND_STEP#3", "env:HOST_UP#4", "env:LAND#5", "env:EXPECT_HEAD#6", "env:BASE#7", "env:OWNER_LOGIN#8", "preflight:intake#1", "env:LANE_KIND#9", "env:PATCH_ROUNDS#10", "facts#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:OWNER_LOGIN#13", "env:SOURCE_CHECKOUT#14",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:PARENT#13", "pr_open:draft#1", "env:BASE#14", "env:OWNER_LOGIN#15", "env:SOURCE_CHECKOUT#16",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-review-1#2",
 		"agent:review#3/render", "agent:review#3/clear1", "phase", "DBOS.getResult", "agent:review#3/read1",
-		"env:MERGE#15", "env:REPO#16", "env:BASE#17", "env:OWNER_LOGIN#18", "env:OWNER_EMAIL#19", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
-		"env:HOST_TEARDOWN#20", "worktree", "release",
+		"env:MERGE#17", "env:REPO#18", "env:BASE#19", "env:OWNER_LOGIN#20", "env:OWNER_EMAIL#21", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#22", "worktree", "release",
 	}, remediationStepNames(t))
 }
 
@@ -257,13 +258,13 @@ func TestDryRun_TheStepListOfTheRemediationExampleWithARedGateHoldsTheFixRound(t
 	assert.Equal(t, []string{
 		"claim", "item", "env:QUEUE_SWEEP#1", "env:TAKE_PR#2", "env:ROUND_STEP#3", "env:HOST_UP#4", "env:LAND#5", "env:EXPECT_HEAD#6", "env:BASE#7", "env:OWNER_LOGIN#8", "preflight:intake#1", "env:LANE_KIND#9", "env:PATCH_ROUNDS#10", "facts#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1", "env:SOURCE_CHECKOUT#11",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:OWNER_LOGIN#13", "env:SOURCE_CHECKOUT#14",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "env:BASE#12", "env:PARENT#13", "pr_open:draft#1", "env:BASE#14", "env:OWNER_LOGIN#15", "env:SOURCE_CHECKOUT#16",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:check#1", "gate:check#1", "preflight:before-fix-1#2",
 		"agent:fix#3/render", "agent:fix#3/clear1", "phase", "DBOS.getResult", "agent:fix#3/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:check#2", "preflight:before-review-2#3",
 		"agent:review#4/render", "agent:review#4/clear1", "phase", "DBOS.getResult", "agent:review#4/read1",
-		"env:MERGE#15", "env:REPO#16", "env:BASE#17", "env:OWNER_LOGIN#18", "env:OWNER_EMAIL#19", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
-		"env:HOST_TEARDOWN#20", "worktree", "release",
+		"env:MERGE#17", "env:REPO#18", "env:BASE#19", "env:OWNER_LOGIN#20", "env:OWNER_EMAIL#21", "ready", "DBOS.setEvent", "watch", "watch", "merge:ship#1",
+		"env:HOST_TEARDOWN#22", "worktree", "release",
 	}, remediationStepNames(t, WithRedGate()))
 }
 

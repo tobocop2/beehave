@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -734,6 +735,7 @@ type fakeForge struct {
 	// notes holds each Comment call as project|item|key|text. assigned holds each Assign call as project|item|assignee|linked. writeErr fails both.
 	notes    []string
 	assigned []string
+	opened   []string // each Open call as project|item|title|body|issue|base|parent
 	writeErr error
 }
 
@@ -745,6 +747,22 @@ func (f *fakeForge) Comment(_ context.Context, project, item, key, text string) 
 	f.notes = append(f.notes, project+"|"+item+"|"+key+"|"+text)
 
 	return f.state.Number, f.writeErr
+}
+
+// Open records the call as project|item|title|body|issue|base|parent. The first call creates the pull request and the later ones find it.
+// A parent gives the stack S_1.
+func (f *fakeForge) Open(_ context.Context, project, item string, req OpenRequest) (OpenResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
+
+	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
+	if req.Parent != "" {
+		out.Stack = "S_1"
+	}
+
+	return out, f.writeErr
 }
 
 // Assign records the call. A linked call answers with two issues.

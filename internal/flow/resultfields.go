@@ -51,7 +51,12 @@ func statusOutputs(id, status string) map[string]any {
 func commentOutputs(id string) map[string]any { return map[string]any{"id": id} }
 
 // prCommentOutputs are the fields of pr_comment: the number of the pull request.
-func prCommentOutputs(number int) map[string]any { return map[string]any{"number": number} }
+func prCommentOutputs(number int) map[string]any { return map[string]any{numberField: number} }
+
+// openOutputs are the fields of pr_open: the number of the pull request, whether this call opened it, and the id of its native stack (empty for a pull request in none).
+func openOutputs(r OpenResult) map[string]any {
+	return map[string]any{numberField: r.Number, "created": r.Created, "stack": r.Stack}
+}
 
 // prOutputs are the fields of pr_assign: the number of the pull request, and the issues that the call assigned besides it. issues is an empty list, never null.
 func prOutputs(number int, issues []int) map[string]any {
@@ -59,7 +64,7 @@ func prOutputs(number int, issues []int) map[string]any {
 		issues = []int{}
 	}
 
-	return map[string]any{"number": number, "issues": issues}
+	return map[string]any{numberField: number, "issues": issues}
 }
 
 // agentOutputs are the fields that every agent call returns. The outputs that the call declares come in addition.

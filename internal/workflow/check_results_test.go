@@ -22,6 +22,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 		{"item_create", `item_create("t", "k")`, "3:11 haed is not a field of the result of item_create. It has: id, created."},
 		{"item_status", `item_status("1", "open")`, "3:11 haed is not a field of the result of item_status. It has: id, status."},
 		{"merge", `merge("h")`, "3:11 haed is not a field of the result of merge. It has: state, reason."},
+		{"pr_open", `pr_open(title = "t", base = "b")`, "3:11 haed is not a field of the result of pr_open. It has: number, created, stack."},
 		{"preflight", `preflight()`, "3:11 haed is not a field of the result of preflight. It has: ok, stop, code, reason."},
 		{"queue", `queue()`, "3:11 haed is not a field of the result of queue. It has: rows, free."},
 		{"spawn", `spawn(["1"])`, "3:11 haed is not a field of the result of spawn. It has: runs."},
@@ -156,7 +157,7 @@ func TestCheck_AFieldThatFactsDoesNotReturnIsRefused(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "batch_merge", "command", "facts", "gate", "gather", "host_teardown", "host_up", "item_assign", "item_comment", "item_create", "item_status", "merge", "pr_assign", "pr_comment", "preflight", "queue", "spawn", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "batch_merge", "command", "facts", "gate", "gather", "host_teardown", "host_up", "item_assign", "item_comment", "item_create", "item_status", "merge", "pr_assign", "pr_comment", "pr_open", "preflight", "queue", "spawn", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

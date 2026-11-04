@@ -172,7 +172,7 @@ func (f *Forge) refGone(ctx context.Context, done model.CommandResult) bool {
 
 // PostComment adds a comment to a pull request. The body goes as one argument, so no word of it reads as a flag.
 func (f *Forge) PostComment(ctx context.Context, pr int, body string) error {
-	done := f.run.Run(ctx, []string{argPR, "comment", strconv.Itoa(pr), argRepo, f.repo, "--body", body})
+	done := f.run.Run(ctx, []string{argPR, "comment", strconv.Itoa(pr), argRepo, f.repo, argBody, body})
 	if done.ExitCode != 0 {
 		return forge.Refuse("cannot comment on pull request %d", pr)
 	}

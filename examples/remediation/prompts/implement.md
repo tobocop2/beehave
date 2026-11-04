@@ -136,14 +136,12 @@ silently discards other uncommitted edits.
 
 ## Brief rules
 
-**The closing keyword depends on the base.** On a round branch, the pull request body says `Addresses #N`. When the base is the default branch, it says `Closes #N`.
 **Read an issue or pull request thread from the thread file that the brief names.** Dump a thread into a file and name the file; never paste a thread into a prompt.
 **A reproduction is self-contained.** A stranger must run it from the issue alone, with no round path, no lane name and no scratch file.
 
 ## Merge rules
 
-**Open a draft pull request at the first checkpoint.** Push the branch and open the pull request as a draft when the first commit is green. Push every later commit to it at once; a commit that stays local is lost with the lane.
-**A pull request that depends on another open one goes into a native stack.** Never express the dependency with a hand-set base alone. Link the branches from the bottom to the top with `gh stack link`, then read the stack id of each pull request and check that all of them show the same non-empty id. Read each head before and after the link: a head that moved is a push you did not intend.
+**Push at the first checkpoint.** Push the branch when the first commit is green. Push every later commit to it at once; a commit that stays local is lost with the lane. Do not open the pull request, set its body or link a stack: the engine does these after this step.
 **Never use the merge queue of GitHub.** The orchestrator merges a pinned head with `gh pr merge`. Never run `gh pr merge --auto` and never add a pull request to a queue.
 **Known base reds are in one file.** The run names the file. Read it, and re-derive each red at the tip you branch from. Never copy the list into a report or a brief.
 

@@ -31,6 +31,8 @@ const (
 	itemStatusName   = "item_status"
 	prAssignName     = "pr_assign"
 	prCommentName    = "pr_comment"
+	prOpenName       = "pr_open"
+	numberField      = "number"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -75,8 +77,9 @@ func trackerResultFields() map[string][]string {
 		itemCommentName: {"id"},
 		itemCreateName:  {"id", "created"},
 		itemStatusName:  {"id", "status"},
-		prAssignName:    {"number", "issues"},
-		prCommentName:   {"number"},
+		prAssignName:    {numberField, "issues"},
+		prCommentName:   {numberField},
+		prOpenName:      {numberField, "created", "stack"},
 	}
 }
 

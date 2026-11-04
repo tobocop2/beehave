@@ -356,6 +356,18 @@ def pipeline(item):
     if implement.stop != "":
         fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (implement.stop, item.id))
 
+    # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the agent pushed.
+    # The engine opens the draft pull request of the item once (a resume finds the open one) and,
+    # when PARENT names the item this one depends on, links it into the native stack of the pull request of that item. The call owns only the closing line of the body:
+    # `Closes #N` when the base is the default branch and `Addresses #N` on any other. An item id that is not an issue number gets no line, and a body that exists is kept.
+    pr_open(
+        name = "draft",
+        title = item.title,
+        base = env("BASE"),
+        issue = int(item.id) if item.id.isdigit() else 0,
+        parent = env("PARENT", default = ""),
+    )
+
     # Five fix rounds need six passes: the sixth reviews the fifth fix.
     # The reviewer starts fresh in each round and judges the commit the gate ran on.
     # Rounds 1 to 3 resume the implementer on a cheaper model. Rounds 4 and 5 start fresh, one tier up.

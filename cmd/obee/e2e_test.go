@@ -124,6 +124,10 @@ func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, err
 
 func (e2eFiles) Comment(context.Context, string, string, string, string) (int, error) { return 0, nil }
 
+func (e2eFiles) Open(context.Context, string, string, flow.OpenRequest) (flow.OpenResult, error) {
+	return flow.OpenResult{}, nil
+}
+
 func (e2eFiles) Assign(context.Context, string, string, string, bool) (int, []int, error) {
 	return 0, nil, nil
 }

@@ -52,6 +52,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"host_up":       keysOf(upOutputs(true)),
 		"pr_assign":     keysOf(prOutputs(0, nil)),
 		"pr_comment":    keysOf(prCommentOutputs(0)),
+		"pr_open":       keysOf(openOutputs(OpenResult{})),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
 		"wait":          keysOf(answerOutputs("", nil, false)),
 		"write":         keysOf(writeOutputs("", "", 0, "", false)),

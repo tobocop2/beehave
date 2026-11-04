@@ -350,16 +350,15 @@ func itemSignatures() map[string][]Param {
 	label := opt(nameKeyword, KindText)
 
 	return map[string][]Param{
-		itemAssignName: {filled("id"), filled("assignee"), label},
-		itemCommentName: {
-			filled("id"), filled("text"), filled("key"), label,
-		},
+		itemAssignName:  {filled("id"), filled("assignee"), label},
+		itemCommentName: {filled("id"), filled("text"), filled("key"), label},
 		itemCreateName: {
 			filled("title"), filled("key"), opt("body", KindText), opt("parent", KindText), opt("assignee", KindText), label,
 		},
 		itemStatusName: {filled("id"), {Name: "status", Kind: KindText, Required: true, Values: StatusValues()}, label},
 		prAssignName:   {filled("assignee"), opt("linked", KindBool), label},
 		prCommentName:  {filled("text"), filled("key"), label},
+		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), label},
 		mergeName: {
 			req("head", KindText), opt("repo", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("approved", KindBool),

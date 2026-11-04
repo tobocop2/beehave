@@ -10,6 +10,14 @@ type Account struct {
 	Login string `json:"login"`
 }
 
+// NewPull is a draft pull request to open: the branch with the commits, the branch to merge into, and the title and body.
+type NewPull struct {
+	Head  string
+	Base  string
+	Title string
+	Body  string
+}
+
 // changedFile is one file a pull request changes.
 type changedFile struct {
 	Path string `json:"path"`

@@ -55,7 +55,7 @@ func (s *script) itemCreate(b *starlark.Builtin, args starlark.Tuple, kwargs []s
 	var title, key, body, parent, assignee, label string
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"title": &title, keyKeyword: &key, "body": &body, "parent": &parent, assigneeKeyword: &assignee, nameKeyword: &label,
+		titleKeyword: &title, keyKeyword: &key, bodyKeyword: &body, "parent": &parent, assigneeKeyword: &assignee, nameKeyword: &label,
 	}); err != nil {
 		return nil, err
 	}
