@@ -246,15 +246,11 @@ func forgetCopies(ctx context.Context, dir, root string) {
 	}
 }
 
-// underAny says whether path lies inside one of the folders.
+// underAny says whether path lies inside one of the folders, and is not the folder itself.
 func underAny(roots []string, path string) bool {
-	for _, root := range roots {
-		if rel, err := filepath.Rel(root, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return nameInside(root, path) && filepath.Clean(path) != filepath.Clean(root)
+	})
 }
 
 // forgetLimit bounds the git calls that forget the worktrees of gates that ended.

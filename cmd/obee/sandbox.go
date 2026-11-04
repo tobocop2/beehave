@@ -220,7 +220,12 @@ func within(parent, path string) bool {
 }
 
 func inside(parent, path string) bool {
-	rel, err := filepath.Rel(strings.ToLower(parent), strings.ToLower(path))
+	return nameInside(strings.ToLower(parent), strings.ToLower(path))
+}
+
+// nameInside reports whether path is parent or lies below it, by name and with case kept. A child named ..x lies below its parent.
+func nameInside(parent, path string) bool {
+	rel, err := filepath.Rel(parent, path)
 
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
