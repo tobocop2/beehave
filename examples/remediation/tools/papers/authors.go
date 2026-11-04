@@ -3,6 +3,8 @@ package papers
 import (
 	"fmt"
 	"strings"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const (
@@ -33,7 +35,7 @@ func Authors(text, meEmail, meLogin string) AuthorsResult {
 		return AuthorsResult{Code: exitAuthorsRefused, Err: []string{"REFUSE: no commit authors to check; refusing to call that clean"}}
 	}
 
-	tally := tallyAuthors(recordsOf(text), meEmail, meLogin)
+	tally := tallyAuthors(model.Records(text), meEmail, meLogin)
 	if messages := authorMessages(tally.bad, tally.unlinked, meEmail); len(messages) > 0 {
 		return AuthorsResult{Code: exitWrongAddress, Err: messages}
 	}
@@ -108,6 +110,6 @@ func indented(lines []string) []string {
 
 // authorFields2 returns the second and third field of a line, empty when missing.
 func authorFields2(line string) (string, string) {
-	fields := append(blankFields(strings.Trim(line, blanks)), "", "", "")
+	fields := append(model.BlankFields(strings.Trim(line, blanks)), "", "", "")
 	return fields[1], fields[2]
 }

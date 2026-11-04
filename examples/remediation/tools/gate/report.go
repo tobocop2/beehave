@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 type section string
@@ -74,7 +76,7 @@ func (r ReportResult) Summary(head string) string {
 		counts = append(counts, fmt.Sprintf("%s %d", strings.ToLower(string(name)), r.rows[name]))
 	}
 
-	return fmt.Sprintf("check-report: OK at %s (%s)", firstRunes(head, headShown), strings.Join(counts, ", "))
+	return fmt.Sprintf("check-report: OK at %s (%s)", model.FirstRunes(head, headShown), strings.Join(counts, ", "))
 }
 
 // splitRow splits a Markdown table row into trimmed cells; a pipe written as `\|` stays in its cell.
@@ -146,7 +148,7 @@ func staleClaim(cells []string, head, where string) []string {
 		return nil
 	}
 
-	return []string{fmt.Sprintf(`%s: verified at %s, not at the head %s ("%s")`, where, cells[verifiedCell], firstRunes(head, headShown), cells[0])}
+	return []string{fmt.Sprintf(`%s: verified at %s, not at the head %s ("%s")`, where, cells[verifiedCell], model.FirstRunes(head, headShown), cells[0])}
 }
 
 // Report checks a lane report against the head commit. Every failure is one line.

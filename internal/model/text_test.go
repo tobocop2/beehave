@@ -1,0 +1,62 @@
+package model_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/tobocop2/obee/internal/model"
+)
+
+func TestRecords_SplitsOnNewlineOnlyAndDropsTheLastEmptyRecord(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"a", "b\r", "c"}, model.Records("a\nb\r\nc\n"))
+	assert.Equal(t, []string{"a"}, model.Records("a"))
+}
+
+func TestBlankFields_SplitsOnSpaceTabAndNewlineOnly(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"a", "b", "c d"}, model.BlankFields(" a\tb\n\nc d "))
+}
+
+func TestFlatText_JoinsContinuedLinesAndFoldsBlanks(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "cargo test --all", model.FlatText("cargo  test \\\n   --all"))
+	assert.Equal(t, "a b c d", model.FlatText(" a\tb\n\nc d "))
+}
+
+func TestFirstRunes_CutsOnRunesNotBytes(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "ab", model.FirstRunes("abc", 2))
+	assert.Equal(t, "é", model.FirstRunes("éa", 1))
+	assert.Equal(t, "ab", model.FirstRunes("ab", 5))
+}
+
+func TestIsAlnum_AcceptsAsciiLettersAndDigitsOnly(t *testing.T) {
+	t.Parallel()
+
+	for _, char := range []byte("azAZ09") {
+		assert.True(t, model.IsAlnum(char), string(char))
+	}
+
+	for _, char := range []byte("_-/ @[`{:") {
+		assert.False(t, model.IsAlnum(char), string(char))
+	}
+}
+
+func TestHoldsToken_NeedsNoWordByteAfterAndBeforeWhenLeadIsSet(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, model.HoldsToken("run name=fmt now", "name=fmt", false, model.IsAlnum))
+	assert.True(t, model.HoldsToken("name=fmt", "name=fmt", true, model.IsAlnum))
+	assert.False(t, model.HoldsToken("name=fmtx", "name=fmt", false, model.IsAlnum))
+	assert.False(t, model.HoldsToken("xname=fmt", "name=fmt", true, model.IsAlnum))
+	assert.True(t, model.HoldsToken("xname=fmt", "name=fmt", false, model.IsAlnum))
+	assert.True(t, model.HoldsToken("name=fmtx name=fmt", "name=fmt", false, model.IsAlnum))
+	assert.False(t, model.HoldsToken("other", "name=fmt", false, model.IsAlnum))
+	assert.False(t, model.HoldsToken("ab", "b", true, model.IsAlnum), "a token that ends the text with a word byte before it")
+}
