@@ -12,6 +12,11 @@ def capped(step, name, item):
     if step.stop != "":
         fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item, then run obee resume %s." % (name, step.stop, item.id))
 
+def kept_history(step, name, item):
+    """Stops the item when an agent step rewrote history (amend, squash, reset). The reviewed commits must stay, and a rewrite can reach the remote only through a force-push."""
+    if step.rewrote:
+        fail("REFUSE: the %s step rewrote the history of the item folder. A step adds commits and never amends, squashes or resets. Check the folder, then run obee resume %s." % (name, item.id))
+
 DECISIONS = ["keep", "replace", "delete"]
 
 # The fix rounds on one mechanism after which the next round decides whether the mechanism should exist.
@@ -97,6 +102,8 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
     fixes = {}
     decided = {}
 
+    kept_history(impl, "implement", item)
+
     for round in range(1, rounds + 1):
         check = settled_gate(item)
         review = None
@@ -126,7 +133,10 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             )
             capped(review, "review", item)
 
-        if check.passed and review.verdict == "approve" and violations == "":
+        # A read-only step that changed the folder is a violation of this round: the approve of that review is not clean.
+        review_violations = review.violations if review != None else ""
+
+        if check.passed and review.verdict == "approve" and violations == "" and review_violations == "":
             return struct(stopped = False, exhausted = False, rejected = False, design = None, gate = check, review = review)
 
         # A reject ends the loop with no fix round, whatever the gate says. The review runs only on a passing gate, so a missing review is no reject.
@@ -138,6 +148,9 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             break
 
         findings = review.text if check.passed else check.report
+        if review_violations != "":
+            findings = review_violations + "\n\n" + findings
+
         if violations != "":
             findings = violations + "\n\n" + findings
 
@@ -163,6 +176,9 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
                 inputs = {"item": item, "mechanism": mechanism, "fixes": fixes[mechanism], "findings": findings, "facts": facts},
             )
             capped(design, "design", item)
+
+            if design.violations != "":
+                fail("REFUSE: the design step changed the item folder, and it is read-only. %s Check the folder, then run obee resume %s." % (design.violations, item.id))
 
             if design.decision not in DECISIONS:
                 fail("REFUSE: the design step wrote the decision %r. Use one of: %s. Run obee resume %s." % (design.decision, ", ".join(DECISIONS), item.id))
@@ -196,6 +212,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, rounds = 6, follow_ups = "
             **scope
         )
         capped(fix, "fix", item)
+        kept_history(fix, "fix", item)
         violations = fix.violations
 
         if mechanism != "":

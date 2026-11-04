@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/obee/internal/forge"
+	"github.com/tobocop2/obee/internal/forge/github"
+	"github.com/tobocop2/obee/internal/model"
+	"github.com/tobocop2/obee/internal/proc/proctest"
 )
 
 const (
@@ -220,17 +223,76 @@ func TestAddAssignee_PostsTheLoginToTheAssigneesOfTheNumber(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot assign #4 to alice")
 }
 
+// authored is a forge whose pull request 4 was written by author and whose token belongs to the login me.
+func authored(t *testing.T, author string) (*github.Forge, *proctest.Scripted) {
+	t.Helper()
+
+	run := &proctest.Scripted{}
+	run.Plan(toJSON(t, fields{"author": fields{"login": author}}), "pr", "view", "4")
+	run.Plan("Me\n", "api", "user")
+	run.Plan("", "pr", "edit")
+
+	return newForge(t, repo, run), run
+}
+
+// requireNotAuthor fails the test unless err is the refusal of a body write on a pull request of another author.
+func requireNotAuthor(t *testing.T, err error) {
+	t.Helper()
+
+	var refused *model.NotAuthorError
+
+	require.ErrorAs(t, err, &refused)
+}
+
 func TestSetBody_SendsTheBodyAsOneArgument(t *testing.T) {
 	t.Parallel()
 
-	f, run := fixed(t, "")
+	f, run := authored(t, "me")
 	body := "--admin\nline two"
 
 	require.NoError(t, f.SetBody(context.Background(), 4, body))
-	assert.Equal(t, [][]string{{"pr", "edit", "4", "--repo", repo, "--body", body}}, run.Calls)
+	assert.True(t, run.Called("pr", "edit", "4", "--repo", repo, "--body", body))
 
-	down, _ := failing(t, "HTTP 502")
-	err := down.SetBody(context.Background(), 4, body)
+	run.PlanFail("HTTP 502", "pr", "edit")
+	err := f.SetBody(context.Background(), 4, body)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot set the body of pull request 4")
+}
+
+func TestSetBody_WritesNothingOnAPullRequestOfAnotherAuthor(t *testing.T) {
+	t.Parallel()
+
+	f, run := authored(t, "dev")
+
+	err := f.SetBody(context.Background(), 4, "x")
+
+	requireNotAuthor(t, err)
+	assert.Equal(t, `its author is "dev", not the owner`, err.Error())
+	assert.False(t, run.Called("pr", "edit"))
+}
+
+func TestSetBody_WritesNothingWhenTheAuthorCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	f, run := authored(t, "me")
+	run.PlanFail("HTTP 502", "pr", "view")
+
+	err := f.SetBody(context.Background(), 4, "x")
+
+	requireNotAuthor(t, err)
+	assert.Contains(t, err.Error(), "cannot read its author")
+	assert.False(t, run.Called("pr", "edit"))
+}
+
+func TestSetBody_WritesNothingWhenTheLoginOfTheTokenCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	f, run := authored(t, "me")
+	run.PlanFail("HTTP 401", "api", "user")
+
+	err := f.SetBody(context.Background(), 4, "x")
+
+	requireNotAuthor(t, err)
+	assert.Contains(t, err.Error(), "cannot read the login of the token")
+	assert.False(t, run.Called("pr", "edit"))
 }

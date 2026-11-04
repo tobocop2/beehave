@@ -1,6 +1,7 @@
 package merge
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -240,24 +241,6 @@ func (a *attempt) merged() string {
 	return tip
 }
 
-// writesOwnBody reads the author of the integration pull request and says whether the owner wrote it. A body of another author, or of an author that cannot be read, is never edited. The merge stays done, and the step says that the row is for the owner to add.
-func (a *attempt) writesOwnBody() bool {
-	view, err := a.forge.PRView(a.ctx, a.req.IntegrationPR, "author")
-	if err != nil {
-		a.say(fmt.Sprintf("REFUSE: integration-row not recorded on #%d: cannot read its author: %v. Add the row by hand.", a.req.IntegrationPR, err))
-
-		return false
-	}
-
-	if !IsOwn(view.Author.Login, a.req.OwnLogins) {
-		a.say(fmt.Sprintf("REFUSE: integration-row not recorded on #%d: its author is %q, not the owner. Add the row by hand.", a.req.IntegrationPR, view.Author.Login))
-
-		return false
-	}
-
-	return true
-}
-
 // record adds the row of the merge to the integration pull request, under the lock of its body. A body that already holds the exact row, on a line of its own with either line ending, stays as it is, so a replay writes the row once. A row that cannot be written does not undo the merge.
 func (a *attempt) record() {
 	row := fmt.Sprintf("- #%d merged at %s", a.req.PR, a.req.Gated)
@@ -269,15 +252,19 @@ func (a *attempt) record() {
 		return strings.TrimRight(body, "\n") + "\n" + row
 	}
 
-	if !a.writesOwnBody() {
-		return
+	a.say(rowOutcome(a.req.IntegrationPR, EditBody(a.ctx, a.req.Dir, a.forge, a.req.IntegrationPR, add)))
+}
+
+// rowOutcome is the line of the step about the row: recorded, refused because the forge write found that the pull request is not the work of the owner, or not recorded.
+func rowOutcome(pr int, err error) string {
+	var refused *model.NotAuthorError
+
+	switch {
+	case err == nil:
+		return fmt.Sprintf("integration-row: recorded on #%d", pr)
+	case errors.As(err, &refused):
+		return fmt.Sprintf("REFUSE: integration-row not recorded on #%d: %s. Add the row by hand.", pr, refused.Reason)
 	}
 
-	if err := EditBody(a.ctx, a.req.Dir, a.forge, a.req.IntegrationPR, add); err != nil {
-		a.say(fmt.Sprintf("integration-row: not recorded on #%d: %s. Add the row by hand.", a.req.IntegrationPR, err))
-
-		return
-	}
-
-	a.say(fmt.Sprintf("integration-row: recorded on #%d", a.req.IntegrationPR))
+	return fmt.Sprintf("integration-row: not recorded on #%d: %s. Add the row by hand.", pr, err)
 }

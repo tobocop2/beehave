@@ -554,12 +554,12 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{}, err
 	}
 
-	head, rewrote, err := a.checkEnd(ctx)
+	head, rewrote, violations, err := a.endState(ctx, ended.Violations)
 	if err != nil {
 		return stepResult{}, err
 	}
 
-	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(ended.Violations, "\n"), capOf(ended.Outcome), ended.Cost, rewrote)
+	outputs := agentOutputs(ended.Text, ended.Session, ended.Transcript, head, strings.Join(violations, "\n"), capOf(ended.Outcome), ended.Cost, rewrote)
 
 	// A run that left a bad output file still cost money, so its outputs stay in the result and the run cap counts them.
 	if problem := a.readOutputs(outputs); problem != "" {
@@ -688,6 +688,46 @@ func (a agentArgs) checkEnd(ctx context.Context) (head string, rewrote bool, err
 	rewrote, err = rewroteHistory(ctx, a.dir, a.startHead, head)
 
 	return head, rewrote, err
+}
+
+// endState reads the folder after a run: its head, whether the run rewrote history, and the violations of the run with one more line
+// when a call with edits = False changed the folder.
+func (a agentArgs) endState(ctx context.Context, violations []string) (head string, rewrote bool, all []string, err error) {
+	head, rewrote, err = a.checkEnd(ctx)
+	if err != nil {
+		return "", false, nil, err
+	}
+
+	changed, err := a.changedReadOnly(ctx, head)
+	if err != nil {
+		return "", false, nil, err
+	}
+
+	if changed {
+		violations = append(slices.Clone(violations), "a step with edits = False changed the item folder: a tracked file or the commit moved")
+	}
+
+	return head, rewrote, violations, nil
+}
+
+// changedReadOnly is true when a call with edits = False left the folder other than it found it: HEAD moved, or a tracked file differs from HEAD.
+// The permission mode refuses the file tools only, so a shell write passes it. Untracked files do not count: a reviewer may build tables there.
+// A plain folder, and a record made before the render step kept the start head, are not checked.
+func (a agentArgs) changedReadOnly(ctx context.Context, head string) (bool, error) {
+	if a.edits || a.plain || a.startHead == "" {
+		return false, nil
+	}
+
+	if head != a.startHead {
+		return true, nil
+	}
+
+	out, err := git(ctx, a.dir, "status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return false, fmt.Errorf("read the tracked changes of the item folder: %w", err)
+	}
+
+	return strings.TrimSpace(out) != "", nil
 }
 
 // rewroteHistory is true when the commit the agent started on is not in the history of the commit it ended on: the agent amended, squashed or reset.

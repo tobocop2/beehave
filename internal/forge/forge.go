@@ -67,7 +67,7 @@ type PullReads interface {
 
 // Activity is what is said on a pull request and what is done to it. Every method but the two reads changes the forge.
 // MergePR merges only if the head of the pull request is still sha, a full 40-character commit id. A shorter pin is refused.
-// CreateBranch makes a branch at sha and fails if the branch exists. SetBase retargets a pull request. SetBody replaces its body.
+// CreateBranch makes a branch at sha and fails if the branch exists. SetBase retargets a pull request. SetBody replaces its body, but only on a pull request that the owner wrote: any other author, and an author that cannot be read, is a model.NotAuthorError.
 type Activity interface {
 	Comments(ctx context.Context, number int) ([]model.Comment, error)
 	ReviewComments(ctx context.Context, pr int) ([]model.Comment, error)

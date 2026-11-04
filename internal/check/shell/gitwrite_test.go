@@ -54,6 +54,12 @@ func TestScanFor_GitWriteIsOffUnlessTheStepListsIt(t *testing.T) {
 	assert.Empty(t, shell.Scan("git commit -m x"))
 }
 
+func TestScanFor_GitWriteRefusesSendPack(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, hasKind(shell.ScanFor("git send-pack git@h:o/r.git b:b", []model.FindingKind{model.FindingGitWrite}), "git-write"))
+}
+
 func TestScanFor_ReturnsOnlyTheListedKinds(t *testing.T) {
 	t.Parallel()
 

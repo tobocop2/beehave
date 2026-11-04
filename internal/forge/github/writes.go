@@ -2,11 +2,13 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/tobocop2/obee/internal/forge"
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const scopesMarker = "Token scopes:"
@@ -129,8 +131,40 @@ func (f *Forge) AddAssignee(ctx context.Context, number int, login string) error
 	return nil
 }
 
-// SetBody replaces the body of a pull request. The body goes as one argument, so no word of it reads as a flag.
+// notAuthor returns the refusal of a body write because the pull request is not the work of the owner.
+func notAuthor(format string, args ...any) *model.NotAuthorError {
+	return &model.NotAuthorError{Reason: fmt.Sprintf(format, args...)}
+}
+
+// requireAuthor refuses unless the author of the pull request is the login of the token that the forge command line uses.
+// An author or a token login that cannot be read refuses too, so a failed read never lets a write through.
+func (f *Forge) requireAuthor(ctx context.Context, pr int) error {
+	view, err := f.PRView(ctx, pr, "author")
+	if err != nil {
+		return notAuthor("cannot read its author: %v", err)
+	}
+
+	self := f.run.Run(ctx, []string{argAPI, "user", "--jq", ".login"})
+	login := strings.TrimSpace(self.Stdout)
+
+	if self.ExitCode != 0 || login == "" {
+		return notAuthor("cannot read the login of the token, so its author %q cannot be compared", view.Author.Login)
+	}
+
+	if !strings.EqualFold(view.Author.Login, login) {
+		return notAuthor("its author is %q, not the owner", view.Author.Login)
+	}
+
+	return nil
+}
+
+// SetBody replaces the body of a pull request that the owner wrote: it is the only write of a body, so no caller can skip the author check.
+// The body goes as one argument, so no word of it reads as a flag.
 func (f *Forge) SetBody(ctx context.Context, pr int, body string) error {
+	if err := f.requireAuthor(ctx, pr); err != nil {
+		return err
+	}
+
 	done := f.run.Run(ctx, []string{argPR, "edit", strconv.Itoa(pr), argRepo, f.repo, argBody, body})
 	if done.ExitCode != 0 {
 		return forge.Refuse("cannot set the body of pull request %d", pr)
