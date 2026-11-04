@@ -266,6 +266,58 @@ func TestPoll_AFailedReadKeepsWaitingUntilTheLastRead(t *testing.T) {
 	assert.Equal(t, []string{"DisableAutoMergePR 5"}, q.writes, "the last read disarms even when it cannot read")
 }
 
+func TestDisarm_TurnsOffTheQueuedMergeOfAnOpenPullRequest(t *testing.T) {
+	t.Parallel()
+
+	q := queued(t, "OPEN")
+	result := merge.Disarm(context.Background(), q, queuing())
+
+	assert.Equal(t, merge.Done, result.Stop)
+	assert.Equal(t, []string{"DisableAutoMergePR 5"}, q.writes)
+}
+
+func TestDisarm_ALandedPullRequestIsNotTouched(t *testing.T) {
+	t.Parallel()
+
+	q := queued(t, "MERGED")
+	result := merge.Disarm(context.Background(), q, queuing())
+
+	assert.Equal(t, merge.Done, result.Stop)
+	assert.Empty(t, q.writes, "a merged pull request has no queued merge to turn off")
+}
+
+func TestDisarm_AFailedReadStillTurnsOffTheQueuedMerge(t *testing.T) {
+	t.Parallel()
+
+	q := queued(t, "MERGED")
+	q.fails["PRView poll"] = true
+	result := merge.Disarm(context.Background(), q, queuing())
+
+	assert.Equal(t, merge.Done, result.Stop)
+	assert.Equal(t, []string{"DisableAutoMergePR 5"}, q.writes, "the state is unknown, so the merge is turned off")
+}
+
+func TestDisarm_AWriteThatFailsSaysTheMergeMayStillBeArmed(t *testing.T) {
+	t.Parallel()
+
+	q := queued(t, "OPEN")
+	q.fails["DisableAutoMergePR"] = true
+	result := merge.Disarm(context.Background(), q, queuing())
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Contains(t, result.Lines[len(result.Lines)-1], "may still be armed")
+}
+
+func TestDisarm_AForgeThatCannotQueueRefuses(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	result := merge.Disarm(context.Background(), w, queuing())
+
+	assert.Equal(t, merge.Refused, result.Stop)
+	assert.Empty(t, w.writes)
+}
+
 func TestPoll_AForgeThatCannotQueueRefuses(t *testing.T) {
 	t.Parallel()
 

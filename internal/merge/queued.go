@@ -120,3 +120,24 @@ func (a *attempt) disarmed(stop *refusal) *refusal {
 
 	return stop
 }
+
+// Disarm turns off the queued merge of a pull request whose wait ended with no verdict: an owner cancel or an engine error. Poll disarms on every verdict it gives,
+// so only a wait that leaves without a verdict calls this. A pull request that the forge already merged has nothing to turn off, and the call does not touch it.
+// A read that fails does not stop the disarm: the merge may be armed, and turning it off is safe when none is. If the pull request was in fact merged and
+// the forge refuses to turn off a merge on it, the caller gets a refusal for a pull request that landed. The result is Done when no merge stays armed.
+func Disarm(ctx context.Context, forge Forge, req Request) Result {
+	queue, ok := forge.(Queuer)
+	if !ok {
+		return Result{Stop: Refused, Lines: []string{"REFUSE: the forge cannot queue a merge, so it cannot turn one off."}}
+	}
+
+	run := &attempt{ctx: ctx, forge: forge, req: req, queue: queue}
+
+	if view, err := forge.PRView(ctx, req.PR, "state", "headRefOid", "headRefName"); err == nil && model.Deref(view.State) == stateMerged {
+		return Result{Stop: Done, Lines: []string{fmt.Sprintf("#%d is merged, so no queued merge is armed", req.PR)}}
+	}
+
+	stop := run.disarmed(&refusal{stop: Done})
+
+	return Result{Stop: stop.stop, Reason: stop.reason, Lines: stop.lines}
+}

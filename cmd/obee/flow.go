@@ -162,7 +162,7 @@ func backendErrors() []error {
 // releaseDeps builds what the client needs: the claim to take and give back, the lease reader of a move to this build, and the worktrees.
 // The projects tell the worktrees and the release which projects have no repository, so a release never reads git in a plain folder.
 func releaseDeps(life itemLife, projects map[string]config.Project, opts flow.Options) flow.ReleaseDeps {
-	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: newWorktrees(projects, opts, nil), Repository: repositoryOf(projects)}
+	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: newWorktrees(projects, opts, nil), Repository: repositoryOf(projects), Merge: life}
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.

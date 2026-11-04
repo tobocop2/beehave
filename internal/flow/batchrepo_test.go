@@ -358,6 +358,10 @@ func (m *landMerger) Poll(context.Context, string, string, string, MergeSettings
 	return merge.Result{}, errFake
 }
 
+func (m *landMerger) Disarm(context.Context, string, string, string, MergeSettings) error {
+	return nil
+}
+
 func (m *landMerger) Merge(ctx context.Context, _, item, head string, settings MergeSettings) (merge.Result, error) {
 	m.mu.Lock()
 	m.asked = append(m.asked, item)

@@ -155,6 +155,14 @@ func (e *Engine) sweepOne(ctx context.Context, open openRun) {
 	case !canceled || superseded:
 		e.warnOn(removeFile(cancelPath(e.dir, open.id)), open.id)
 	default:
+		// The engine stopped after the cancel and before the run woke, so no live wait turned off the queued merge.
+		list := func(opts ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
+			return dbos.ListWorkflows(e.ctx, opts...)
+		}
+		if err := disarmCanceled(ctx, list, e.deps.Merge, open.id); err != nil {
+			e.logger.WarnContext(ctx, "cannot turn off the queued merge of a canceled run", "run", open.id, "error", err)
+		}
+
 		e.giveBack(ctx, open)
 	}
 }

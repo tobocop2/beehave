@@ -307,6 +307,50 @@ func TestPulls_PollJudgesTheQueuedMergeWithTheRequestOfTheMerge(t *testing.T) {
 	assert.Empty(t, f.writes)
 }
 
+func TestPulls_DisarmOfAForgeThatCannotQueueIsAnErrorThatSaysSo(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+
+	err := p.Disarm(t.Context(), "p", "item", gated, settings)
+
+	require.ErrorContains(t, err, "may still be armed")
+	assert.Empty(t, f.writes)
+}
+
+// armedForge is a ship forge that can queue a merge and records the calls that turn it off.
+type armedForge struct {
+	*shipForge
+	off []int
+}
+
+func (*armedForge) AutoMergePR(context.Context, int, string) error { return nil }
+
+func (a *armedForge) DisableAutoMergePR(_ context.Context, pr int) error {
+	a.off = append(a.off, pr)
+
+	return nil
+}
+
+func TestPulls_DisarmTurnsOffTheQueuedMergeOfThePullRequestOfTheItem(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	armed := &armedForge{shipForge: f}
+	p.forge = func(model.Project) (forge.Forge, error) { return armed, nil }
+
+	require.NoError(t, p.Disarm(t.Context(), "p", "item", gated, settings))
+	assert.Equal(t, []int{number}, armed.off)
+}
+
+func TestPulls_DisarmOfAProjectThatIsNotKnownIsAnError(t *testing.T) {
+	t.Parallel()
+
+	p, _, settings := shipping(t, nil)
+
+	require.Error(t, p.Disarm(t.Context(), "unknown", "item", gated, settings))
+}
+
 func TestOpened_ADisableIsPassedThroughOrGivesAnError(t *testing.T) {
 	t.Parallel()
 

@@ -771,6 +771,20 @@ func (p pulls) Poll(ctx context.Context, project, item, head string, settings fl
 	})
 }
 
+// Disarm turns off the queued merge of the pull request of the item, with the same request as Merge. A merge that may still be armed is an error whose text is the lines of the refusal.
+func (p pulls) Disarm(ctx context.Context, project, item, head string, settings flow.MergeSettings) error {
+	result, err := p.judged(ctx, project, item, head, settings, merge.Disarm)
+	if err != nil {
+		return err
+	}
+
+	if result.Stop != merge.Done {
+		return errors.New(strings.Join(result.Lines, "; "))
+	}
+
+	return nil
+}
+
 // judged builds the merge request of the item and passes it to judge.
 func (p pulls) judged(ctx context.Context, project, item, head string, settings flow.MergeSettings, judge func(context.Context, merge.Forge, merge.Request) merge.Result) (merge.Result, error) {
 	found, rules, err := p.prepared(project, settings.ForbidText)
