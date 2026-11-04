@@ -68,10 +68,8 @@ func (h batchHost) Checkout(ctx context.Context, project, item, commit string) (
 		return "", err
 	}
 
-	run := h.programs.local("git", dir, batchGitTimeout).Run
-
-	if out := run(ctx, []string{"checkout", "-q", "--detach", commit}); out.ExitCode != 0 {
-		return "", fmt.Errorf("git checkout of the union %s in %s: %s", commit, dir, strings.TrimSpace(out.Stderr))
+	if _, err := h.programs.git(ctx, dir, batchGitTimeout, "git checkout of the union "+commit, "checkout", "-q", "--detach", commit); err != nil {
+		return "", err
 	}
 
 	return h.tree(ctx, dir, commit)
@@ -79,12 +77,7 @@ func (h batchHost) Checkout(ctx context.Context, project, item, commit string) (
 
 // tree reads the tree id of a commit in dir.
 func (h batchHost) tree(ctx context.Context, dir, commit string) (string, error) {
-	out := h.programs.local("git", dir, batchGitTimeout).Run(ctx, []string{"rev-parse", commit + "^{tree}"})
-	if out.ExitCode != 0 {
-		return "", fmt.Errorf("git rev-parse of %s in %s: %s", commit, dir, strings.TrimSpace(out.Stderr))
-	}
-
-	return strings.TrimSpace(out.Stdout), nil
+	return h.programs.git(ctx, dir, batchGitTimeout, "git rev-parse of "+commit, "rev-parse", commit+"^{tree}")
 }
 
 // Tip fetches the remote, reads the tip of the base on the forge, and returns it with its tree id.
@@ -130,8 +123,8 @@ func (h batchHost) fetched(ctx context.Context, project, item string) (string, e
 		return "", err
 	}
 
-	if out := h.programs.local("git", dir, batchGitTimeout).Run(ctx, []string{"fetch", "-q", "origin"}); out.ExitCode != 0 {
-		return "", fmt.Errorf("git fetch in %s: %s", dir, strings.TrimSpace(out.Stderr))
+	if _, err := h.programs.git(ctx, dir, batchGitTimeout, "git fetch", "fetch", "-q", "origin"); err != nil {
+		return "", err
 	}
 
 	return dir, nil
@@ -187,7 +180,7 @@ func notMerged(ctx context.Context, built forge.Forge, integration int) (batch.R
 		return batch.Report{Findings: []string{fmt.Sprintf("cannot read pull request #%d: %v", integration, err)}}, true
 	}
 
-	switch state := strings.ToUpper(strings.TrimSpace(deref(view.State))); state {
+	switch state := strings.ToUpper(strings.TrimSpace(model.Deref(view.State))); state {
 	case "MERGED":
 		return batch.Report{}, false
 	case "OPEN", "CLOSED":
@@ -209,19 +202,11 @@ func (h batchHost) Intent(ctx context.Context, project, item, repo, _, tipTree s
 		return merge.Intent{}, fmt.Errorf("read the pull request of item %s: %w", item, err)
 	}
 
-	if state := strings.ToUpper(strings.TrimSpace(deref(view.State))); state != "OPEN" {
+	if state := strings.ToUpper(strings.TrimSpace(model.Deref(view.State))); state != "OPEN" {
 		return merge.Intent{}, fmt.Errorf("the pull request of item %s is %s, %w, so a merge cannot be tied to this run", item, state, flow.ErrMemberNotOpen)
 	}
 
 	view.Number = number
 
 	return merge.NewIntent(view, tipTree, now)
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-
-	return *s
 }

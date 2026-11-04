@@ -207,8 +207,13 @@ func cloneSource(project model.Project, forges func(model.Project) (forge.Forge,
 // run runs git with args in dir and returns an error that carries what git printed when it fails.
 func (w worktrees) run(ctx context.Context, dir string, args ...string) error {
 	out := w.git(dir).Run(ctx, args)
+	return gitExit(args[0], dir, out)
+}
+
+// gitExit returns nil when git exited with code 0, and an error that carries what git printed when it did not.
+func gitExit(name, dir string, out model.CommandResult) error {
 	if out.ExitCode != 0 {
-		return fmt.Errorf("git %s in %s exited with code %d: %s", args[0], dir, out.ExitCode, strings.TrimSpace(out.Stderr))
+		return fmt.Errorf("git %s in %s exited with code %d: %s", name, dir, out.ExitCode, strings.TrimSpace(out.Stderr))
 	}
 
 	return nil
@@ -253,19 +258,24 @@ func (w worktrees) ifListed(ctx context.Context, dir, want string) (string, erro
 // listed returns the path of each worktree that git lists for the repository of dir.
 func (w worktrees) listed(ctx context.Context, dir string) ([]string, error) {
 	out := w.git(dir).Run(ctx, []string{gitWorktree, "list", "--porcelain"})
-	if out.ExitCode != 0 {
-		return nil, fmt.Errorf("git worktree list in %s exited with code %d: %s", dir, out.ExitCode, strings.TrimSpace(out.Stderr))
+	if err := gitExit("worktree list", dir, out); err != nil {
+		return nil, err
 	}
 
+	return worktreePaths(out.Stdout), nil
+}
+
+// worktreePaths returns the path of each worktree in the output of git worktree list --porcelain.
+func worktreePaths(listing string) []string {
 	var paths []string
 
-	for _, line := range strings.Split(out.Stdout, "\n") {
-		if path, found := strings.CutPrefix(line, "worktree "); found {
+	for line := range strings.Lines(listing) {
+		if path, found := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "worktree "); found {
 			paths = append(paths, path)
 		}
 	}
 
-	return paths, nil
+	return paths
 }
 
 // treeFinder is what the command runner needs of the worktrees.
@@ -288,6 +298,17 @@ type programs struct {
 	declared func(project, cluster string) (string, error)
 	// sandbox runs a gate under the sandbox of its project.
 	sandbox gateSandbox
+}
+
+// git runs git with args in dir for at most timeout and returns what it printed, without the space at both ends.
+// When git fails, the error starts with failure and ends with what git printed on stderr.
+func (p programs) git(ctx context.Context, dir string, timeout time.Duration, failure string, args ...string) (string, error) {
+	out := p.local("git", dir, timeout).Run(ctx, args)
+	if out.ExitCode != 0 {
+		return "", fmt.Errorf("%s in %s: %s", failure, dir, strings.TrimSpace(out.Stderr))
+	}
+
+	return strings.TrimSpace(out.Stdout), nil
 }
 
 // Run runs the program of the request and returns what it printed and its exit code.
@@ -439,15 +460,10 @@ func hostAdvice(state model.JobState) string {
 func shellLine(words []string) string {
 	quoted := make([]string, len(words))
 	for i, word := range words {
-		quoted[i] = shellQuote(word)
+		quoted[i] = model.ShellQuote(word)
 	}
 
 	return strings.Join(quoted, " ")
-}
-
-// shellQuote quotes one word for a POSIX shell.
-func shellQuote(word string) string {
-	return "'" + strings.ReplaceAll(word, "'", `'\''`) + "'"
 }
 
 // trackerItems reads the fields of an item from the tracker of its project.

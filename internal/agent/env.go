@@ -3,8 +3,9 @@ package agent
 import (
 	"maps"
 	"slices"
-	"sort"
 	"strings"
+
+	"github.com/tobocop2/obee/internal/model"
 )
 
 const localePrefix = "LC_"
@@ -85,12 +86,5 @@ func list(env map[string]string, p Profile, dir, token string) []string {
 		env[p.TokenVar] = token
 	}
 
-	pairs := make([]string, 0, len(env))
-	for name, value := range env {
-		pairs = append(pairs, name+"="+value)
-	}
-
-	sort.Strings(pairs)
-
-	return pairs
+	return model.EnvPairs(env)
 }

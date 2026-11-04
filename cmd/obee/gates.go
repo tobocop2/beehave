@@ -205,7 +205,7 @@ func (g projectGate) run(ctx context.Context, program, dir string, args []string
 // tree reads the head of the worktree in dir, the tree of that head and whether it has no uncommitted change.
 func (g projectGate) tree(ctx context.Context, dir string) (gate.State, error) {
 	// One call reads both, so the tree always belongs to the head.
-	ids, err := g.git(ctx, dir, "rev-parse", "HEAD", "HEAD^{tree}")
+	ids, err := g.programs.git(ctx, dir, gateTimeout, "git rev-parse", "rev-parse", "HEAD", "HEAD^{tree}")
 	if err != nil {
 		return gate.State{}, err
 	}
@@ -217,20 +217,10 @@ func (g projectGate) tree(ctx context.Context, dir string) (gate.State, error) {
 
 	head, tree := lines[0], lines[1]
 
-	changes, err := g.git(ctx, dir, "status", "--porcelain")
+	changes, err := g.programs.git(ctx, dir, gateTimeout, "git status", "status", "--porcelain")
 	if err != nil {
 		return gate.State{}, err
 	}
 
 	return gate.State{Head: head, Tree: tree, Clean: changes == ""}, nil
-}
-
-// git runs git in dir and returns what it printed, without the space at both ends.
-func (g projectGate) git(ctx context.Context, dir string, args ...string) (string, error) {
-	result := g.programs.local("git", dir, gateTimeout).Run(ctx, args)
-	if result.ExitCode != 0 {
-		return "", fmt.Errorf("git %s in %s: %s", args[0], dir, strings.TrimSpace(result.Stderr))
-	}
-
-	return strings.TrimSpace(result.Stdout), nil
 }

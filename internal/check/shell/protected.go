@@ -65,7 +65,7 @@ func guard(p Protection, dir string) []guarded {
 
 	fold := ignoresCase(dir)
 
-	return []guarded{{dir, fold}, {realPath(dir), fold}}
+	return []guarded{{dir, fold}, {RealPath(dir), fold}}
 }
 
 // foldsCase reports whether the file system of a directory ignores case: the same path with its case swapped names the same file.
@@ -99,8 +99,8 @@ func swapCase(r rune) rune {
 	return r
 }
 
-// realPath resolves the symbolic links of the longest part of the path that exists, and keeps the rest as written.
-func realPath(name string) string {
+// RealPath resolves the symbolic links of the longest part of the path that exists, and keeps the rest as written.
+func RealPath(name string) string {
 	if resolved, err := filepath.EvalSymlinks(name); err == nil {
 		return resolved
 	}
@@ -132,7 +132,7 @@ func inside(name, dir string, fold bool) bool {
 
 // holds reports whether an absolute path is in a protected directory.
 func (g *protector) holds(name string) bool {
-	lexical, real := filepath.Clean(name), realPath(name)
+	lexical, real := filepath.Clean(name), RealPath(name)
 
 	return slices.ContainsFunc(g.dirs, func(held guarded) bool {
 		return inside(lexical, held.dir, held.fold) || inside(real, held.dir, held.fold)
@@ -145,7 +145,7 @@ func (g *protector) reaches(dir string) bool {
 		return true
 	}
 
-	lexical, real := filepath.Clean(dir), realPath(dir)
+	lexical, real := filepath.Clean(dir), RealPath(dir)
 
 	return slices.ContainsFunc(g.dirs, func(held guarded) bool {
 		return inside(held.dir, lexical, held.fold) || inside(held.dir, real, held.fold)

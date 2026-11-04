@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tobocop2/obee/internal/check/shell"
 	"github.com/tobocop2/obee/internal/config"
 	"github.com/tobocop2/obee/internal/gate"
 	"github.com/tobocop2/obee/internal/model"
@@ -47,19 +48,7 @@ func newGateSandbox(projects map[string]config.Project) gateSandbox {
 		return table[key], nil
 	}
 
-	return gateSandbox{projects: projects, enforcer: choose, home: os.UserHomeDir, environ: environList(config.ProcessEnv())}
-}
-
-// environList turns an environment map into NAME=value pairs in name order.
-func environList(env map[string]string) []string {
-	pairs := make([]string, 0, len(env))
-	for name, value := range env {
-		pairs = append(pairs, name+"="+value)
-	}
-
-	slices.Sort(pairs)
-
-	return pairs
+	return gateSandbox{projects: projects, enforcer: choose, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv())}
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.
@@ -231,12 +220,10 @@ func forgetCopies(ctx context.Context, dir, root string) {
 	}
 
 	// Git prints the real path of a worktree, and root may reach it through a link.
-	resolved, _ := filepath.EvalSymlinks(root) //nolint:errcheck // a root that cannot be resolved matches by its own name only
-	roots := []string{root, resolved}
+	roots := []string{root, shell.RealPath(root)}
 
-	for line := range strings.Lines(out) {
-		path, found := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "worktree ")
-		if !found || !underAny(roots, path) {
+	for _, path := range worktreePaths(out) {
+		if !underAny(roots, path) {
 			continue
 		}
 
@@ -246,15 +233,11 @@ func forgetCopies(ctx context.Context, dir, root string) {
 	}
 }
 
-// underAny says whether path lies inside one of the folders.
+// underAny says whether path lies inside one of the folders, and is not the folder itself.
 func underAny(roots []string, path string) bool {
-	for _, root := range roots {
-		if rel, err := filepath.Rel(root, path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return nameInside(root, path) && filepath.Clean(path) != filepath.Clean(root)
+	})
 }
 
 // forgetLimit bounds the git calls that forget the worktrees of gates that ended.
