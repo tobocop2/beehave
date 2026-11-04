@@ -359,12 +359,33 @@ func TestScope_AnItemWhoseNameEndsInAnAttemptMarkerLendsNoScopeToAnItemWithTheSh
 	h.flowIs(t, gateThenMerge(1))
 	done := runInBackground(engine, testItem)
 
-	select {
-	case out := <-done:
-		require.NoError(t, out.err, "the item has its own scope and merges without a question")
-		assert.Len(t, h.merge.asked, 1)
-	case <-time.After(20 * time.Second):
-		t.Fatal("the run asked the owner about an issue of another item")
+	// A question is the failure under test, so a poll for one ends the wait at once. A slow host only delays the end of the run.
+	client := h.client(t, testVersion)
+	poll := time.NewTicker(pollEvery)
+
+	defer poll.Stop()
+
+	deadline := time.After(eventTimeout)
+
+	for {
+		select {
+		case out := <-done:
+			require.NoError(t, out.err, "the item has its own scope and merges without a question")
+			assert.Len(t, h.merge.asked, 1)
+
+			return
+		case <-poll.C:
+			infos, err := client.Status()
+			if err != nil {
+				continue
+			}
+
+			for _, info := range infos {
+				require.Empty(t, info.Question, "the run asked the owner about an issue of another item")
+			}
+		case <-deadline:
+			t.Fatalf("the run neither ended nor asked a question within %s: it waited for the merge of item %s", eventTimeout, testItem)
+		}
 	}
 }
 

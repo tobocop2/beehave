@@ -723,11 +723,26 @@ func waitForTheOwner(t *testing.T, h *harness) {
 	t.Helper()
 
 	client := h.client(t, testVersion)
-	eventually(t, func() bool {
-		infos, err := client.Status()
+	var last []RunInfo
 
-		return err == nil && len(infos) == 1 && infos[0].Question != ""
-	})
+	var lastErr error
+
+	poll := time.NewTicker(pollEvery)
+	defer poll.Stop()
+
+	deadline := time.After(eventTimeout)
+
+	for {
+		select {
+		case <-poll.C:
+			last, lastErr = client.Status()
+			if lastErr == nil && len(last) == 1 && last[0].Question != "" {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("waited %s for the open run to show a question; the last status read was %+v with error %v", eventTimeout, last, lastErr)
+		}
+	}
 }
 
 // runInBackground runs an item on the engine and returns the channel that gets the outcome.
