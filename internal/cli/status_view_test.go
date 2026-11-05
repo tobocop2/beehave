@@ -253,6 +253,20 @@ func TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T)
 	}
 }
 
+func TestStatus_AnEngineThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.engineErr = errFake
+
+	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+		code, _, stderr := rig.execute(t.Context(), args...)
+
+		assert.Equal(t, 1, code, args)
+		assert.Contains(t, stderr, "fake failure", args)
+	}
+}
+
 func TestStatus_ThePerDayFiguresAreInTheTextAndTheJSONList(t *testing.T) {
 	t.Parallel()
 

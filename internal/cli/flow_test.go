@@ -121,8 +121,9 @@ type fakeSteering struct {
 	// running is what EngineRuns returns, and runningErr its error.
 	running    bool
 	runningErr error
-	// engine is what Engine returns while running is true.
-	engine flow.EngineInfo
+	// engine is what Engine returns while running is true, and engineErr its error.
+	engine    flow.EngineInfo
+	engineErr error
 	// joinResult and joinErr are what JoinRun returns. joined lists its calls.
 	joinResult flow.ItemResult
 	joinErr    error
@@ -136,6 +137,10 @@ type fakeSteering struct {
 func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }
 
 func (s *fakeSteering) Engine() (flow.EngineInfo, bool, error) {
+	if s.engineErr != nil {
+		return flow.EngineInfo{}, false, s.engineErr
+	}
+
 	return s.engine, s.running, s.runningErr
 }
 

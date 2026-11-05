@@ -121,6 +121,7 @@ var rules = map[string]rule{
 	"internal/batch.IssueReads.IssueState":        {NotHeld: inAdapter},
 	"internal/batch.IssueReads.ClosingRefs":       {NotHeld: inAdapter},
 	"internal/cli.Steering.EngineRuns":            {Proof: "TestRun_AFailureToTellWhetherAnEngineRunsStopsTheCommand", Needle: "runningErr"},
+	"internal/cli.Steering.Engine":                {Proof: "TestStatus_AnEngineThatCannotBeReadFailsTheListInTextAndJSON", Needle: "engineErr"},
 	"internal/cli.Reading.Status":                 {NotHeld: noEngine},
 	"internal/cli.Reading.Steps":                  {NotHeld: noEngine},
 	"internal/cli.Reading.Lanes":                  {NotHeld: noEngine},
