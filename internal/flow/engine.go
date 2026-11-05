@@ -75,6 +75,8 @@ type Options struct {
 	OverCap bool
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends. A nil Progress prints nothing.
 	Progress io.Writer
+	// Mode is ModeRun or ModeServe: what beehave status says about the engine that holds the state folder. The empty value means ModeRun.
+	Mode string
 }
 
 func (o Options) validate() error {
@@ -180,7 +182,7 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 		return nil, err
 	}
 
-	held, err := claimFolder(state.dir, applicationVersion(opts.Version))
+	held, err := claimFolder(state.dir, applicationVersion(opts.Version), cmp.Or(opts.Mode, ModeRun))
 	if err != nil {
 		return nil, errors.Join(err, state.log.Close())
 	}
@@ -188,14 +190,14 @@ func NewEngine(ctx context.Context, opts Options, deps Deps) (*Engine, error) {
 	engine := newEngine(opts, deps, state, held)
 
 	if err := engine.open(ctx, opts, state); err != nil {
-		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), removeEngineVersion(state.dir), held.Unlock(), state.log.Close())
+		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), removeEngineFiles(state.dir), held.Unlock(), state.log.Close())
 	}
 
 	return engine.registered(engine.register(opts))
 }
 
-// claimFolder takes the engine lock of the state folder and writes the version of this engine, both under probe.lock, so no check reads the version of an engine that stopped. It leaves the engine lock free when it fails.
-func claimFolder(dir, version string) (*flock.Flock, error) {
+// claimFolder takes the engine lock of the state folder and writes the version and the description of this engine, all under probe.lock, so no check reads the files of an engine that stopped. It leaves the engine lock free when it fails.
+func claimFolder(dir, version, mode string) (*flock.Flock, error) {
 	probe, err := holdProbe(dir)
 	if err != nil {
 		return nil, err
@@ -206,7 +208,7 @@ func claimFolder(dir, version string) (*flock.Flock, error) {
 		return nil, errors.Join(err, probe.Unlock())
 	}
 
-	err = announceEngine(dir, version)
+	err = errors.Join(announceEngine(dir, version), writeEngineInfo(dir, mode, os.Getpid(), time.Now()))
 	if err != nil {
 		err = errors.Join(err, held.Unlock())
 	}
@@ -662,5 +664,5 @@ func (e *Engine) shutdown() error {
 
 	e.holds.clear()
 
-	return errors.Join(killed, waited, e.log.Close(), removeEngineVersion(e.dir), e.lock.Unlock())
+	return errors.Join(killed, waited, e.log.Close(), removeEngineFiles(e.dir), e.lock.Unlock())
 }

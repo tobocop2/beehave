@@ -18,7 +18,9 @@ type runView struct {
 // statusList is everything that the status list shows: the runs, the schedules, the newest review poll and why the poll is not scheduled.
 // The text view and the JSON view both print this one value, so they cannot show different facts.
 type statusList struct {
-	Runs      []flow.RunInfo      `json:"-"`
+	Runs []flow.RunInfo `json:"-"`
+	// Engine is nil when no engine holds the state folder. The lock decides; a description that an engine left is never shown.
+	Engine    *flow.EngineInfo    `json:"engine,omitempty"`
 	Schedules []flow.ScheduleInfo `json:"schedules,omitempty"`
 	// Days is the per-day figures of the window. It is empty for a window with no run.
 	Days []flow.DayFigures `json:"days,omitempty"`
@@ -39,7 +41,7 @@ func readStatusList(client Steering, since time.Time) (statusList, error) {
 		return statusList{}, err
 	}
 
-	if list.Schedules, err = client.Schedules(); err != nil {
+	if err = readEngineSection(client, &list); err != nil {
 		return statusList{}, err
 	}
 
@@ -50,6 +52,27 @@ func readStatusList(client Steering, since time.Time) (statusList, error) {
 	err = readPollSection(client, &list)
 
 	return list, err
+}
+
+// readEngineSection reads what holds the state folder and the schedules, which both depend on the engine lock.
+func readEngineSection(client Steering, list *statusList) (err error) {
+	if list.Engine, err = readEngine(client); err != nil {
+		return err
+	}
+
+	list.Schedules, err = client.Schedules()
+
+	return err
+}
+
+// readEngine reads what holds the state folder. It returns nil when no engine does.
+func readEngine(client Steering) (*flow.EngineInfo, error) {
+	info, running, err := client.Engine()
+	if err != nil || !running {
+		return nil, err
+	}
+
+	return &info, nil
 }
 
 // readPollSection reads the newest review poll and the cause when it is not scheduled.
