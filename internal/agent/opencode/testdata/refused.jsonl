@@ -1,0 +1,5 @@
+{"type":"step_start","timestamp":1,"sessionID":"ses_2","part":{"type":"step-start"}}
+{"type":"tool_use","timestamp":2,"sessionID":"ses_2","part":{"type":"tool","callID":"call_9","tool":"bash","state":{"status":"error","input":{"command":"git add -A"},"error":"beehave refused: bulk staging is refused"}}}
+{"type":"step_finish","timestamp":3,"sessionID":"ses_2","part":{"type":"step-finish","reason":"tool-calls","cost":0,"tokens":{"input":10,"output":2,"reasoning":0,"cache":{"read":0,"write":0}}}}
+{"type":"text","timestamp":4,"sessionID":"ses_2","part":{"type":"text","text":"The command was refused."}}
+{"type":"step_finish","timestamp":5,"sessionID":"ses_2","part":{"type":"step-finish","reason":"stop","cost":0,"tokens":{"input":12,"output":4,"reasoning":0,"cache":{"read":0,"write":0}}}}
