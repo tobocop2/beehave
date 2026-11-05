@@ -7,7 +7,22 @@ GO_TEST_P ?=
 # GO_TEST_DRIVER_PKGS are the fast packages that use the driver directly. The second run in "test" runs them with the pointer checks
 # on for the driver, so a driver upgrade is still checked for pointer misuse on every gate.
 GO_TEST_DRIVER_PKGS := ./internal/store/local
-GO_TEST_FLAGS := -race -gcflags='modernc.org/...=-d=checkptr=0' -count=1 $(if $(GO_TEST_P),-p $(GO_TEST_P))
+# "test" starts one go test run for each flow shard, one for the rest of the flow package and one for the other packages. Each run gets a
+# share of the cores (at least one) as GOMAXPROCS, which also sets the -p and -parallel defaults, so one gate uses about the core
+# count and does not oversubscribe the host. GO_TEST_PROCS overrides the share.
+GO_CORES := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu)
+# The run of the other packages and the shard in FLOW_HEAVY_SHARD take about twice the CPU of the others, so each counts as two shares.
+FLOW_HEAVY_SHARD := E
+GO_TEST_UNITS = $(shell echo $$(( $(words $(FLOW_SHARDS)) + 4 )))
+GO_TEST_PROCS ?= $(shell n=$$(( $(GO_CORES) / $(GO_TEST_UNITS) )); [ $$n -ge 1 ] || n=1; echo $$n)
+GO_TEST_PROCS_HEAVY = $(shell echo $$(( 2 * $(GO_TEST_PROCS) )))
+ifneq ($(shell printf '%s' '$(GO_TEST_PROCS)' | grep -Ec '^[1-9][0-9]*$$'),1)
+$(error GO_TEST_PROCS must be a whole number of at least 1, not "$(GO_TEST_PROCS)")
+endif
+# The CPU work of a run does not change with its share, so a smaller share takes longer. The Go default timeout of 10 minutes is too short for
+# the run of the other packages at a share of 2 (a 2-core CI runner). Each run gets GO_TEST_TIMEOUT, which stays under the 20 minute CI job limit.
+GO_TEST_TIMEOUT ?= 18m
+GO_TEST_FLAGS := -race -gcflags='modernc.org/...=-d=checkptr=0' -count=1 -timeout $(GO_TEST_TIMEOUT) $(if $(GO_TEST_P),-p $(GO_TEST_P))
 # The flow package has over 1000 tests, and under the race detector one run of it takes about 300 s on an idle host. A test binary has its own
 # 10 minute timeout, so "test" runs the package in shards, one go test run for each shard. A shard is a letter class for the first letter
 # after "Test" (a bracket range such as A-D). The last run takes every test that no shard names (a name that does not start with an
@@ -80,12 +95,13 @@ vuln:  ## Fail on a known vulnerability the code can reach
 
 test:  ## Run the Go tests with the race detector and write coverage.out and the flow profiles
 	@logs=test-other.log; \
-	go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $$(go list ./... | grep -v '/internal/flow$$') > test-other.log 2>&1 & pids=$$!; \
+	GOMAXPROCS=$(GO_TEST_PROCS_HEAVY) go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $$(go list ./... | grep -v '/internal/flow$$') > test-other.log 2>&1 & pids=$$!; \
 	for s in $(FLOW_SHARDS); do \
-		go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$$s.out -run "^Test[$$s]" $(FLOW_PKG) > test-flow-$$s.log 2>&1 & pids="$$pids $$!"; \
+		procs=$(GO_TEST_PROCS); [ "$$s" != "$(FLOW_HEAVY_SHARD)" ] || procs=$(GO_TEST_PROCS_HEAVY); \
+		GOMAXPROCS=$$procs go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$$s.out -run "^Test[$$s]" $(FLOW_PKG) > test-flow-$$s.log 2>&1 & pids="$$pids $$!"; \
 		logs="$$logs test-flow-$$s.log"; \
 	done; \
-	go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-rest.out -skip "^Test[$(FLOW_LETTERS)]" $(FLOW_PKG) > test-flow-rest.log 2>&1 & pids="$$pids $$!"; \
+	GOMAXPROCS=$(GO_TEST_PROCS) go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-rest.out -skip "^Test[$(FLOW_LETTERS)]" $(FLOW_PKG) > test-flow-rest.log 2>&1 & pids="$$pids $$!"; \
 	logs="$$logs test-flow-rest.log"; \
 	rc=0; for p in $$pids; do wait $$p || rc=1; done; \
 	for l in $$logs; do echo "== $$l"; cat $$l; done; \

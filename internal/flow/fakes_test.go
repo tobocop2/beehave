@@ -723,11 +723,62 @@ func waitForTheOwner(t *testing.T, h *harness) {
 	t.Helper()
 
 	client := h.client(t, testVersion)
-	eventually(t, func() bool {
-		infos, err := client.Status()
+	read := newStatusRead(client)
 
-		return err == nil && len(infos) == 1 && infos[0].Question != ""
+	pollUntil(t, "the open run to show a question", read.last, func() (bool, error) {
+		infos := read.next()
+
+		return read.err == nil && len(infos) == 1 && infos[0].Question != "", nil
 	})
+}
+
+// statusRead reads the status of the runs and keeps the last result and the last error, so a wait that ends at its deadline can report them.
+type statusRead struct {
+	client *Client
+	infos  []RunInfo
+	err    error
+}
+
+func newStatusRead(client *Client) *statusRead { return &statusRead{client: client} }
+
+// next reads the status once. On an error it keeps the error and returns the infos of the last good read.
+func (s *statusRead) next() []RunInfo {
+	infos, err := s.client.Status()
+	s.err = err
+
+	if err == nil {
+		s.infos = infos
+	}
+
+	return s.infos
+}
+
+func (s *statusRead) last() string {
+	return fmt.Sprintf("the last status read was %+v with error %v", s.infos, s.err)
+}
+
+// pollUntil calls step every pollEvery until it reports done. A step that returns an error ends the wait at once with that error. At eventTimeout the wait fails with what it waited for and the text of last, which says where the wait stood.
+func pollUntil(t *testing.T, what string, last func() string, step func() (done bool, failNow error)) {
+	t.Helper()
+
+	poll := time.NewTicker(pollEvery)
+	defer poll.Stop()
+
+	deadline := time.After(eventTimeout)
+
+	for {
+		select {
+		case <-poll.C:
+			done, failNow := step()
+			require.NoError(t, failNow)
+
+			if done {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("waited %s for %s; %s", eventTimeout, what, last())
+		}
+	}
 }
 
 // runInBackground runs an item on the engine and returns the channel that gets the outcome.

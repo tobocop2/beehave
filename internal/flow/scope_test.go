@@ -1,10 +1,10 @@
 package flow
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -359,13 +359,29 @@ func TestScope_AnItemWhoseNameEndsInAnAttemptMarkerLendsNoScopeToAnItemWithTheSh
 	h.flowIs(t, gateThenMerge(1))
 	done := runInBackground(engine, testItem)
 
-	select {
-	case out := <-done:
-		require.NoError(t, out.err, "the item has its own scope and merges without a question")
-		assert.Len(t, h.merge.asked, 1)
-	case <-time.After(20 * time.Second):
-		t.Fatal("the run asked the owner about an issue of another item")
-	}
+	// A question is the failure under test, so a poll for one ends the wait at once. A slow host only delays the end of the run.
+	read := newStatusRead(h.client(t, testVersion))
+
+	var out runOutcome
+
+	pollUntil(t, "the run to end without a question", read.last, func() (bool, error) {
+		select {
+		case out = <-done:
+			return true, nil
+		default:
+		}
+
+		for _, info := range read.next() {
+			if info.Question != "" {
+				return false, fmt.Errorf("the run asked the owner about an issue of another item: %s", info.Question)
+			}
+		}
+
+		return false, nil
+	})
+
+	require.NoError(t, out.err, "the item has its own scope and merges without a question")
+	assert.Len(t, h.merge.asked, 1)
 }
 
 func TestScope_TheEarlierRunsOfAnItemComeNewestAttemptFirstAndNumericallyAndWithoutTheRunItself(t *testing.T) {
