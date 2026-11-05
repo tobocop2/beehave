@@ -1,67 +1,143 @@
-# beehave
+<h1 align="center">beehave</h1>
 
-beehave takes a backlog of issues to reviewed, gated pull requests with any coding agent. Implementer agents build and prove the change. Reviewer agents check it at a pinned commit. beehave merges only the head that was reviewed.
+<p align="center">
+  <strong>Run AI agents through your own process, and pick up where they stopped.</strong><br/>
+  Write your process down once. beehave makes your AI agents follow it, every time.
+</p>
 
-## Status
+<p align="center">
+  <a href="https://github.com/tobocop2/beehave/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehave?style=flat" alt="GitHub stars"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
+  <img src="https://img.shields.io/badge/go-1.27-00ADD8.svg" alt="Go 1.27"/>
+  <img src="https://img.shields.io/badge/status-early-orange.svg" alt="Status: early"/>
+</p>
 
-beehave is under construction. The command line tool builds and prints its version. The packages land one milestone at a time; `docs/architecture.md` lists them.
+<!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
 
-## Build
+AI agents are good at one task at a time and bad at following a process. Give one a big job and it skips steps, forgets what it already did, says it finished when it did not, and stops halfway when something crashes. So you become its manager: you repeat the steps, check every claim, and start again after each failure.
 
-beehave needs Go 1.27 and Make.
+beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours.
 
-```bash
-make setup    # install the Go tools and generate the agent files
-make check    # the full gate, the same as CI
-make build    # write bin/beehave
+## Why beehave
+
+- **Write the process once.** Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
+- **Nothing is lost.** If the laptop sleeps, the program crashes or the account runs out of credit, run the same command again. Finished steps stay finished, so you do not wait for them or pay for them twice.
+- **Limits that hold.** You set the most time, turns and money a job may use. beehave stops the job at the limit. It does not ask the agent to stop.
+- **It asks you only what it cannot decide.** A job that needs you waits with its question, and the other jobs keep going. Answer when you are ready.
+- **A whole backlog at once.** Give it a list of jobs. It runs as many at a time as you allow and queues the rest.
+- **Try it before it costs money.** A dry run walks the whole process with fake agents, so you see every step before a real one runs.
+- **It runs on your own machine.** One program and one small database file. No server and no account to sign up for.
+- **Any job with steps.** Code changes are the first use. The same engine runs research reports, an incident desk, sign-offs and a daily data load. See [the examples](#examples).
+
+<details>
+<summary><strong>The problems this came from</strong></summary>
+
+beehave grew out of months of running teams of AI agents on real backlogs. These are the failures that cost the most, worst first.
+
+1. **Agents ran far past their token limit.** A limit written in the instructions did nothing: agents told to stop at 70k tokens used 120k to 240k. Across 295 agent runs, the median was 187k. *In beehave, each agent step has a cap on turns and on dollars, and each run has a total budget. The engine stops the step.*
+2. **Fix loops patched the same bug again and again.** One pull request used 27 agent runs. Another got five review rounds for code that the tool it wrapped could already do. *In beehave, the number of rounds is a number in the workflow file, not a hope in a prompt.*
+3. **Agents said a review or a test ran when it never did.** Reports named reviews that did not happen, and "tests pass" came from a log that said they failed. *In beehave, every step is recorded. `beehave status` shows what ran, and the engine reads the exit code itself.*
+4. **Waiting burned tokens.** A model that checks on other agents pays for every check: 123 calls in one hour went to status wake-ups alone. *In beehave, the engine waits, not a model. A step that waits for a person or for another run costs nothing.*
+5. **Agents redid work that was already done.** Agents spent hours on issues that were already fixed on main, and two sessions started the same 118-issue audit within minutes. *In beehave, a finished step never runs again, an item is claimed before work starts, and an open pull request by someone else holds the item.*
+6. **Agents ignored the rules in their instructions.** In one day, one agent run in three broke a written rule: bulk `git add`, unsafe deletes, `--no-verify`. One bulk commit pushed a 4.3 MB data file to a public pull request. *In beehave, a shell check refuses those commands before they run, and protected paths stop the step.*
+7. **Too many builds at once overloaded the machine,** so tests failed on timeouts and ran again, 25 minutes each time. *In beehave, `max_concurrent` caps the agent processes, and the items wait in a queue.*
+8. **One open question stopped all the work.** A single question to the owner sat for seven hours while a rented machine billed. *In beehave, a question pauses only its own run. The other runs go on, and `beehave answer` lets the paused run continue.*
+9. **Merges went in under running reviews.** Eleven pull requests merged in one minute, and one merge ignored an open "changes requested". *In beehave, the merge guard reads every review and lands only the commit that was reviewed.*
+10. **Rented machines kept billing, or were deleted with work on them.** One machine billed for 16 days after the work ended. *In beehave, a workflow starts the build host when it needs one and stops it when the run ends. It saves the work on the host first.
+11. **A crash meant starting again, and paying again.** *That is why beehave saves each step before the next one starts.*
+
+</details>
+
+## What it looks like
+
+```starlark
+# workflow.star
+def main(item):
+    plan = agent(name = "plan", prompt = "prompts/plan.md", edits = False, inputs = {"item": item})
+    agent(name = "implement", prompt = "prompts/implement.md", inputs = {"item": item, "plan": plan.text})
+
+    for _ in range(3):                                # at most three rounds of test, review and fix
+        check = gate(name = "check")                  # your own test command
+        if check.passed:
+            review = agent(
+                name = "review",
+                prompt = "prompts/review.md",
+                pin = check.head,                     # review the exact commit that passed
+                edits = False,                        # the reviewer cannot change the code
+                outputs = ["verdict"],
+                inputs = {"item": item},
+            )
+            if review.verdict == "approve":
+                command(name = "push", run = ["git", "push", "origin", "HEAD:refs/heads/" + item.id])
+                return
+            findings = review.text
+        else:
+            findings = check.report
+        agent(name = "fix", prompt = "prompts/fix.md", inputs = {"item": item, "findings": findings})
 ```
 
-`make check` runs on Linux and cannot compile the macOS code. A change under `internal/sandbox/seatbelt` must pass `make check-darwin` on a Mac before it merges. That target runs the Seatbelt tests and the contract suite under the real `sandbox-exec`.
+```mermaid
+flowchart LR
+    P[plan] --> I[implement] --> G{tests pass?}
+    G -- no --> F[fix] --> G
+    G -- yes --> R{review approves?}
+    R -- no --> F
+    R -- yes --> M[push]
+```
+
+```bash
+beehave run fix-login myrepo --workflow workflow.star
+```
+
+The file is [Starlark](https://github.com/bazelbuild/starlark), the configuration language of Bazel: loops, functions and conditions, with no clock, no randomness and no direct access to files or the network. Each call (`agent`, `gate`, `command`) is one recorded step.
+
+## Quickstart
+
+beehave builds from source today. You need Go 1.27, Make and [Claude Code](https://claude.ai/code).
+
+```bash
+git clone https://github.com/tobocop2/beehave && cd beehave && make build
+bin/beehave check workflow examples/local/workflow.star --dry-run     # walk the workflow, no agent calls
+
+mkdir -p ~/.config/beehave/projects
+cp examples/local/project.star ~/.config/beehave/projects/myrepo.star   # set source to your repository
+bin/beehave item add myrepo fix-login --title "Fix the login" --body-file task.md
+bin/beehave run fix-login myrepo --workflow examples/local/workflow.star
+```
+
+The result is a branch named `fix-login` in your repository. If the run stops, run the same command again. `beehave status` lists the runs and the questions that wait for you.
 
 ## Examples
 
-`examples/remediation` takes issues from beads and GitHub to reviewed pull requests. Set `MERGE` to `true` to let the workflow merge an approved pull request through the merge guards. With any other value, the owner merges. A run fails if `MERGE` is not set. Set `SOURCE_CHECKOUT` to the absolute path of the checkout of the owner: the implement, review and fix agents cannot write in it, and a git command there that is not a read is refused. A run that starts an agent fails if `SOURCE_CHECKOUT` is not set. Set `EXPECT_HEAD` to the full SHA the owner reviewed, and the run stops before any agent starts if the head of the pull request moved. When `EXPECT_HEAD` is not set, no head is checked. Set `LANE_KIND` to `papers` or `design` for a lane that changes no source path, and set `ALLOW_PATHS` to the globs it may change, split by spaces: the implement step and each fix step fail when they change any other path. The default `LANE_KIND` is `impl`, which has no path limit. A stop of this kind shows in the result of the run as `stopped`, with the step, the exit code and the reason. Set `LAND` to `id=sha` pairs, split by spaces, and the run starts no agent. Each `sha` is the full SHA the owner reviewed for that item. The run applies the stops of one item to each item, then lands the items that pass with one batch merge: one gate run, the same guards, and a split of the union if the gate is red. An item that stops, or whose head moved since the review, gets its reason as a comment and the hold status, and the other items still land. In that mode, `MERGE` works as for one item: a run fails if `MERGE` is not set, and a `MERGE` that is not `true` lands nothing.
+| Folder | What it does |
+|---|---|
+| [`local`](examples/local) | One item to a reviewed branch. No tracker, no forge. |
+| [`remediation`](examples/remediation) | Issues from GitHub or beads to reviewed pull requests, with the merge guards. |
+| [`queue`](examples/queue) | Works the open items of a project until no work remains. |
+| [`swarm`](examples/swarm) | Splits a job into tasks, one agent each, and lands them with one merge per priority. |
+| [`maintenance`](examples/maintenance) | Bumps the dependencies of many repositories once a week. |
+| [`research`](examples/research) | Answers a question with notes and sources. No code. |
+| [`research-desk`](examples/research-desk) | A cited report on a wiki, with every quote checked and a person who approves. |
+| [`incident`](examples/incident) | An incident desk: an agent proposes, the on-call roles approve in order. |
+| [`approvals`](examples/approvals) | Signed sign-offs by role, with a tamper-evident ledger. |
+| [`ticket-pipeline`](examples/ticket-pipeline) | A daily load to a warehouse, with backfill, retry and a cost budget. |
 
-`examples/local` needs no tracker and no forge. The items are in `local.db`, and the result is a branch in a git repository on this machine. Copy `examples/local/project.star` to `<config folder>/projects/<name>.star`, set `source`, and run:
+[`docs/examples.md`](docs/examples.md) lists the settings of each example.
 
-```bash
-beehave item add <name> fix-login --title "Fix the login" --body-file task.md
-beehave run fix-login <name> --workflow examples/local/workflow.star
-```
+## Status
 
-`beehave run` prints a line when the run starts and when each step starts and ends. To see a run later, list the runs, then name one:
+beehave is early, and the workflow API can still change.
 
-```bash
-beehave status
-beehave status item-fix-login-r1
-```
+- **Works today:** the engine, the CLI, the examples, the merge guards, the sandbox on Linux and macOS, and Claude Code as the agent.
+- **Next:** OpenCode, pi, Codex and Hermes as agents, and `beehave serve`, a resident engine that runs schedules.
+- **Windows** comes last.
 
-The first command prints one line for each run, starting with the run id. The second prints one line for each step of that run: the name, the start time, the duration, the outcome and the fields that decide the flow. The last line gives the state of the run and, for a failed run, its error. Add `--json` to the second command for one JSON object with the fields `run`, `state`, `error` and `steps`. `beehave run` writes its progress lines to stderr.
+## Learn more
 
-`examples/research` answers a question with notes and sources instead of code. It needs no tracker and no forge, and the result is a report file. Set `RESEARCH_TOOLS` to the absolute path of `examples/research/tools` and `RESEARCH_OUT` to the folder for the report.
-
-`examples/incident` is an incident desk. An alert starts a run. An analyst agent proposes one mitigation from a runbook table, and the on-call roles approve it in order, each before a deadline. A safe mitigation runs when someone was paged and nobody answered. A risky one never does. If no page reaches a person, the desk holds the incident. The desk checks the health of the service and restores the earlier state if the check fails. Set `INCIDENT_DIR` to the absolute path of `examples/incident` and `OPS_API` to your ops API.
-
-`examples/research-desk` turns a question into a cited report on a wiki. A planner splits the question into sections, one child run reads each section, and a script tests every quote against the page. A judge agent grades the claims and a person approves the draft before the publish. Set `RESEARCH_DESK_DIR` to the absolute path of the folder, `RESEARCH_HOME` to the folder of the store, `SEARCH_API` to a search server and `WIKI_API` to the page store. The review and the budget pause end with a failed run if nobody answers in time. Run `beehave resume <item>` and then `beehave run` again to continue at the same question.
-
-`examples/ticket-pipeline` loads the support tickets of each day to a warehouse, with an agent that labels the tickets. It covers a backfill of many days in chunks, the retry of one day, a re-run of a range, an idempotent load, a cost budget that waits for a person, and a version change in the middle of a backfill. Set `PIPE_DIR` to the absolute path of the folder and `PIPE_HOME` to the data folder. The folder holds its own README with the engine gaps.
-
-`examples/approvals` is an approval desk. A document needs sign-offs from roles, such as legal, security and product. A person signs each sign-off with an ssh key, and the desk checks the signature. A sign-off binds to one version of the document, and a new version makes the earlier sign-offs stale. The quorum is data: each role has members, a count and a required flag, and `min_roles` sets how many roles must be satisfied. A member can delegate to a person until a time. A run has a deadline, reminders and one extension. Every step is a row in an append-only SQLite ledger, and each row holds the hash of the row before it. `audit.star` checks the chain and the signatures. Set `APPROVALS_DIR` to the absolute path of `examples/approvals` and `NOTIFY_API` to your notifier.
-
-`examples/swarm` runs one backlog with many agents at once. Put one task on each line of the body of the parent item: a priority (`P0` to `P3`), a tab and a title. The parent starts the tasks by priority, no more than the free slots, and lands the pull requests with one `batch_merge` for each priority, `P0` first. A conflict gets a fix run, at most twice, and then a person reads the item. Set `REPO`, `BASE`, `OWNER_LOGIN`, `OWNER_EMAIL`, `SWARM`, `SWARM_DIR` and `CAP_USD`. The folder holds its own README with the engine gaps.
-
-`examples/maintenance` bumps the dependencies of a list of repositories once a week. A scheduler (launchd or cron) starts `scripts/tick.sh`, which skips a repository with nothing new, with the same updates as last week, or with a bump pull request still open, and runs `bump.star` for the others. The workflow updates, runs the gate, lets an agent fix the code for at most two rounds, and opens a draft pull request. If the tests stay red, the run waits for the answer `retry` or `hold`. A weekly report counts every outcome and posts once. Copy the folder to `~/.upkeep`, or set `UPKEEP_HOME`. The README of the folder lists the gaps of the engine.
-
-`examples/queue` runs the open items of a project until no work remains. The parent reads `queue`, starts the ready items in the free slots, and starts the next item when any run ends. A failed item gets a comment and the status `hold`, and the loop goes on. Set `BASE` to the integration branch, and `OWNER_LOGIN` to your own login: each item reads the forge before its agent starts, and an open pull request by another login holds the item. One login runs one agent step at a time. The pick of a login prefers a login with no agent step running or queued, so the items spread over your logins. The parent run holds no login. With one login, the items run one at a time.
-
-## Claude Code plugin
-
-`plugins/claude-code` adds five slash commands to Claude Code: `/beehave:queue`, `/beehave:run`, `/beehave:status`, `/beehave:answer` and `/beehave:cancel`. Each one runs an beehave command. To try it, run `claude --plugin-dir plugins/claude-code`. `docs/claude-code-plugin.md` has the install steps.
-
-## Design
-
-`docs/architecture.md` describes the packages, their layers and the durable loop. The loop runs on DBOS Transact Go with SQLite. The terminal screens use Bubble Tea.
+- [`docs/architecture.md`](docs/architecture.md): the packages, the durable loop, and the reasons for DBOS and Starlark.
+- [`docs/claude-code-plugin.md`](docs/claude-code-plugin.md): `/beehave:run`, `/beehave:status` and the other slash commands for Claude Code.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): build, test and the gate.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).
