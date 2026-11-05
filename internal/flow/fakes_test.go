@@ -723,9 +723,43 @@ func waitForTheOwner(t *testing.T, h *harness) {
 	t.Helper()
 
 	client := h.client(t, testVersion)
-	var last []RunInfo
+	read := newStatusRead(client)
 
-	var lastErr error
+	pollUntil(t, "the open run to show a question", read.last, func() (bool, error) {
+		infos := read.next()
+
+		return read.err == nil && len(infos) == 1 && infos[0].Question != "", nil
+	})
+}
+
+// statusRead reads the status of the runs and keeps the last result and the last error, so a wait that ends at its deadline can report them.
+type statusRead struct {
+	client *Client
+	infos  []RunInfo
+	err    error
+}
+
+func newStatusRead(client *Client) *statusRead { return &statusRead{client: client} }
+
+// next reads the status once. On an error it keeps the error and returns the infos of the last good read.
+func (s *statusRead) next() []RunInfo {
+	infos, err := s.client.Status()
+	s.err = err
+
+	if err == nil {
+		s.infos = infos
+	}
+
+	return s.infos
+}
+
+func (s *statusRead) last() string {
+	return fmt.Sprintf("the last status read was %+v with error %v", s.infos, s.err)
+}
+
+// pollUntil calls step every pollEvery until it reports done. A step that returns an error ends the wait at once with that error. At eventTimeout the wait fails with what it waited for and the text of last, which says where the wait stood.
+func pollUntil(t *testing.T, what string, last func() string, step func() (done bool, failNow error)) {
+	t.Helper()
 
 	poll := time.NewTicker(pollEvery)
 	defer poll.Stop()
@@ -735,12 +769,14 @@ func waitForTheOwner(t *testing.T, h *harness) {
 	for {
 		select {
 		case <-poll.C:
-			last, lastErr = client.Status()
-			if lastErr == nil && len(last) == 1 && last[0].Question != "" {
+			done, failNow := step()
+			require.NoError(t, failNow)
+
+			if done {
 				return
 			}
 		case <-deadline:
-			t.Fatalf("waited %s for the open run to show a question; the last status read was %+v with error %v", eventTimeout, last, lastErr)
+			t.Fatalf("waited %s for %s; %s", eventTimeout, what, last())
 		}
 	}
 }
