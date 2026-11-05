@@ -7,7 +7,11 @@ type Profile struct {
 	Binary string
 	Args   []string
 	// EditArgs follow Args unless the spec sets NoEdits. They let the CLI edit files in the work folder.
-	EditArgs   []string
+	EditArgs []string
+	// NoEditArgs and NoEditEnv are for a CLI that edits files unless told not to. The runner adds NoEditArgs after Args and NoEditEnv after the allow-list
+	// when the spec sets NoEdits, and adds neither otherwise. A launch cannot change a variable of NoEditEnv.
+	NoEditArgs []string
+	NoEditEnv  map[string]string
 	ConfigVars []string
 	TokenVar   string
 	ModelFlag  string
@@ -17,9 +21,13 @@ type Profile struct {
 	ResumeLast bool
 	// TurnsFlag and BudgetFlag are the flags that cap the turns and the dollars of one run. An empty flag means the CLI has no such option.
 	// A set turn cap on a profile without TurnsFlag is enforced by the runner, which counts the shell calls of the run (the tool steps) as turns.
-	// A set cost cap on a profile without BudgetFlag refuses the run, because the runner learns the cost of a run too late to stop it.
-	TurnsFlag  string
-	BudgetFlag string
+	// A set cost cap on a profile without BudgetFlag refuses the run, because the runner learns the cost of a run too late to stop it,
+	// unless StreamsCost is true: the CLI then reports the dollars of each step on its output (Seen.Spent), and the runner ends the run with OutcomeBudgetCap
+	// when their sum passes the cap. The step in flight is not counted yet, so a run can pass the cap by the cost of one step.
+	// A capped run of such a CLI that reports no dollars at all ends as OutcomeBudgetCap when it exits, because the cap was not checked; it never counts as zero.
+	TurnsFlag   string
+	BudgetFlag  string
+	StreamsCost bool
 	// Sandbox is true when the CLI has a sandbox that the adapter maps a SandboxPlan to. A run with a sandbox on an adapter without it does not start.
 	// MinVersion is the oldest version of the CLI that knows every setting of that mapping; an older CLI ignores a setting it does not know.
 	Sandbox    bool
@@ -76,9 +84,16 @@ type Call struct {
 // Stop is the cap that the CLI reports on its result line: StopTurns, StopBudget, or empty when the line reports no cap.
 // Failed is the error subtype of a result line that reports an error and no cap, or empty when the line reports none.
 // Cost is the total cost in dollars that the CLI reports on its result line, or 0 when the line reports none.
+// Spent is the dollars that the line reports for the part of the run that it closes, or 0 when it reports none; the runner adds the Spent of all lines
+// (Result.Streamed), and it is the only reader of Spent. A value that is not above 0 adds nothing. A line past the length limit of the runner is dropped
+// before any reader sees it, so its dollars are lost.
+// Priced is true when the line carries a cost field, even when the cost is 0, so a free run (a local model) differs from a CLI that reports no cost at all.
+// A line with Spent above 0 counts as priced without it. A capped run of a profile with StreamsCost ends as a budget cap only when no line was priced.
+// A CLI that reports a run total in Cost does not also set Spent for the same dollars.
 // Usage is the tokens that the line reports for the part of the run that it closes, or zero when it reports none; the caller adds the Usage of all lines.
 type Seen struct {
 	Cost    float64
+	Spent   float64
 	Usage   Tokens
 	Stop    Stop
 	Failed  string
@@ -87,6 +102,7 @@ type Seen struct {
 	Refused []string
 	Result  bool
 	Invalid bool
+	Priced  bool
 }
 
 // Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.
@@ -103,7 +119,9 @@ type Adapter interface {
 	Sandbox(plan SandboxPlan, guard, runDir string) Launch
 	// Line reads one line of the output of the CLI. It returns the session id and the message text that the line holds, or empty strings.
 	Line(line string) (session, text string)
-	// Calls reads one line of the output of the CLI and returns what it holds.
+	// Calls reads one line of the output of the CLI and returns what it holds. More than one reader asks for the same line (the runner for the turn cap and
+	// the dollars, the caller for the calls), so a call that keeps state for a line must not change what a later reader gets for it in any field but
+	// Seen.Spent. The runner reads Seen.Spent once for each line; no other reader does, so a dedupe of the dollars by message id is allowed.
 	Calls(line string) Seen
 	// TranscriptPath returns where the CLI keeps the transcript of a session that ran in dir with the login folder configDir. Nothing reads the file.
 	TranscriptPath(configDir, dir, session string) string

@@ -3,6 +3,7 @@ package agenttest_test
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,6 +29,8 @@ type fakeAdapter struct {
 	profile agent.Profile
 	// invent makes Calls report a call on every line.
 	invent bool
+	// reads makes Calls read dollars from a line "spent <n>".
+	reads bool
 	// files is the Files of the launch of the guard and of the sandbox.
 	files map[string]string
 }
@@ -46,7 +49,11 @@ func (fakeAdapter) TranscriptPath(configDir, _, session string) string {
 	return filepath.Join(configDir, session)
 }
 
-func (a fakeAdapter) Calls(string) agent.Seen {
+func (a fakeAdapter) Calls(line string) agent.Seen {
+	if a.reads && strings.HasPrefix(line, "spent ") {
+		return agent.Seen{Spent: 1}
+	}
+
 	if a.invent {
 		return agent.Seen{Shell: []agent.Call{{Text: "ls"}}, Skills: []string{"s"}}
 	}
@@ -210,6 +217,101 @@ func TestCheckLaunch_DoesNotAskAProfileWithoutASandboxForOne(t *testing.T) {
 	assert.Equal(t, []string{`the launch file "../x" is outside the run folder (guard)`}, r.failures)
 }
 
+func TestTestAdapter_PassesAnAdapterThatStreamsItsCostWhenGivenACostLine(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.profile.StreamsCost, a.reads = true, true
+
+	agenttest.TestAdapter(t, func() agent.Adapter { return a }, agenttest.WithCostLine("spent 1"))
+}
+
+func TestCheckNoEdits(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a_profile_with_no_edit_arguments_and_variables_passes", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.profile.EditArgs = []string{"--edit"}
+		a.profile.NoEditArgs = []string{"--read-only"}
+		a.profile.NoEditEnv = map[string]string{"FAKE_PERMISSION": "deny"}
+
+		var r recorder
+
+		agenttest.CheckNoEdits(&r, a, t.TempDir())
+
+		assert.Empty(t, r.failures)
+	})
+
+	t.Run("a_no_edit_variable_that_is_a_login_variable_fails", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.profile.NoEditEnv = map[string]string{"FAKE_CONFIG_DIR": "deny"}
+
+		var r recorder
+
+		agenttest.CheckNoEdits(&r, a, t.TempDir())
+
+		assert.Contains(t, r.failures, "the no-edit variable FAKE_CONFIG_DIR is a login variable of the profile")
+	})
+}
+
+func TestCheckBudget(t *testing.T) {
+	t.Parallel()
+
+	streams := func() fakeAdapter {
+		a := good()
+		a.profile.StreamsCost, a.reads = true, true
+
+		return a
+	}
+
+	cases := []struct {
+		name    string
+		adapter fakeAdapter
+		line    string
+		want    string
+	}{
+		{"a_profile_with_no_cap_refuses_the_run", good(), "", ""},
+		{"a_profile_that_streams_its_cost", streams(), "spent 1", ""},
+		{"a_profile_that_streams_its_cost_with_no_cost_line", streams(), "", "the profile sets StreamsCost, but the suite has no line that reports dollars: pass WithCostLine"},
+		{"a_cost_line_that_calls_does_not_read", func() fakeAdapter { a := streams(); a.reads = false; return a }(), "spent 1", `the line "spent 1" reports dollars, but Calls returns Spent 0`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var r recorder
+
+			agenttest.CheckBudget(&r, tc.adapter, t.TempDir(), tc.line)
+
+			if tc.want == "" {
+				assert.Empty(t, r.failures)
+
+				return
+			}
+
+			assert.Contains(t, r.failures, tc.want)
+		})
+	}
+
+	t.Run("a_profile_with_a_cost_flag_gets_the_cap", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.profile.BudgetFlag = "--max-budget"
+
+		var r recorder
+
+		agenttest.CheckBudget(&r, a, t.TempDir(), "")
+
+		assert.Empty(t, r.failures)
+	})
+}
+
 func TestCheckCalls(t *testing.T) {
 	t.Parallel()
 
@@ -227,4 +329,22 @@ func TestCheckCalls(t *testing.T) {
 	require.Len(t, r.failures, 2)
 	assert.Contains(t, r.failures[0], "shell calls")
 	assert.Contains(t, r.failures[1], "skill calls")
+}
+
+func TestTheSuiteReportsAFakeCLIThatCannotBeWritten(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	for name, check := range map[string]func(*recorder){
+		"CheckNoEdits": func(r *recorder) { agenttest.CheckNoEdits(r, good(), missing) },
+		"CheckBudget":  func(r *recorder) { agenttest.CheckBudget(r, good(), missing, "") },
+	} {
+		var r recorder
+
+		check(&r)
+
+		require.Len(t, r.failures, 1, name)
+		assert.Contains(t, r.failures[0], "cannot write the fake CLI", name)
+	}
 }
