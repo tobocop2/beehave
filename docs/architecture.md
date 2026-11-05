@@ -672,7 +672,7 @@ Each builtin call is checked against one table of keywords, which the run also r
 
 ### Item and phase workflows
 
-An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. The ID makes a second start of the same attempt join the first. The item workflow is not queued. It runs these steps in order:
+An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. The ID makes a second start of the same attempt join the first. The engine that `beehave run` starts runs the item workflow at once, outside any queue. When an engine already holds the state folder (`beehave serve` or another `beehave run`), `beehave run` joins it: it enqueues the item workflow on the queue `items` with the same ID, and `agents.max_concurrent` applies, so a full queue delays the run. The join refuses a build that differs from the version the live engine wrote into the file `engine.version` of the state folder. The joined run gets the default place, because the client sets no severity, and progress lines print in the log of the engine, not in the terminal of the joiner. The workflow runs these steps in order:
 
 1. Claim the item.
 2. Run `main(item)` of the workflow file on one Starlark thread. The first `agent` step that names no `runner` picks the agent login of the run from the pool, and waits when the usage caps leave no room. Each builtin call runs as a recorded step, so a restart replays `main` and skips the steps that finished. Then run `finish(item)` if the file defines it, unless the run was canceled.
@@ -808,7 +808,7 @@ When `agents.review_poll_minutes` is set, `beehave run` schedules a review poll.
 
 ### One engine for each state folder
 
-`beehave run` takes an exclusive lock on `engine.lock` in the state folder and holds it until the command ends. A second `beehave run` on the same state folder refuses and tells the owner to wait or to run `beehave status`. The client commands do not take this lock. Several processes can open a new state folder at the same time: the migration of the workflow library is safe for that.
+`beehave run` takes an exclusive lock on `engine.lock` in the state folder and holds it until the command ends. A second engine on the same state folder (`beehave serve` or `beehave run`) refuses and tells the owner to wait or to run `beehave status`. The refusal is immediate. A second file, `probe.lock`, serializes every check of `engine.lock` and every engine start, and each holder keeps it for a moment. So a held `engine.lock` is always an engine, or a `beehave cancel` that gives back a run when no engine runs (it holds both locks for the release, so a check waits for it). The engine writes its version into `engine.version` with an atomic replace while it holds `probe.lock`, and removes the file when it stops. A client reads that file under `probe.lock`, so it never reads the version of a crashed engine. A client that finds `engine.lock` free removes a version that a crashed engine left. The client commands that join a run, show the schedules, or cancel a run take these locks for the check only; the other client commands take none. Several processes can open a new state folder at the same time: the migration of the workflow library is safe for that.
 
 An item belongs to the project that `run` names. `run` refuses an item that has an open run under another project.
 

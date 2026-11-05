@@ -99,6 +99,34 @@ type fakeSteering struct {
 	closeOK   bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
+	// running is what EngineRuns returns, and runningErr its error.
+	running    bool
+	runningErr error
+	// joinResult and joinErr are what JoinRun returns. joined lists its calls.
+	joinResult flow.ItemResult
+	joinErr    error
+	joined     []string
+	// joinBlock holds JoinRun until the context ends.
+	joinBlock bool
+	// closeErr is what Close returns.
+	closeErr error
+}
+
+func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }
+
+func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error) {
+	s.joined = append(s.joined, item+"@"+project+" "+file)
+
+	if s.joinBlock {
+		<-ctx.Done()
+
+		return flow.ItemResult{}, ctx.Err()
+	}
+
+	result := s.joinResult
+	result.Item = item
+
+	return result, s.joinErr
 }
 
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
@@ -164,7 +192,7 @@ func (s *fakeSteering) Cancel(item string) error {
 func (s *fakeSteering) Close() error {
 	s.closeOK = true
 
-	return nil
+	return s.closeErr
 }
 
 type flowRig struct {
@@ -224,7 +252,9 @@ func (rig *flowRig) factory() cli.Flow {
 		Client: func(_ context.Context, _ config.Config, opts flow.Options) (cli.Steering, error) {
 			rig.options = opts
 			if rig.clientOf != nil {
-				return nil, rig.clientOf()
+				if err := rig.clientOf(); err != nil {
+					return nil, err
+				}
 			}
 
 			return rig.steering, nil

@@ -531,10 +531,20 @@ func (c *Client) markCancel(item string, last run) (string, error) {
 
 // giveBackUnowned releases the worktree and the claim of a canceled run when no engine runs. A running engine does it on its next tick,
 // and an engine that stops first leaves the cancel marker, so the next start does it.
-// The engine lock stays held until the release ends, so no engine starts in between.
+// It holds probe.lock and the engine lock until the release ends, so no engine starts in between and no check meets a holder that is not an engine.
 func (c *Client) giveBackUnowned(project, item string, last run) error {
+	probe, err := holdProbe(c.dir)
+	if err != nil {
+		return err
+	}
+
+	return errors.Join(c.releaseUnowned(project, item, last), probe.Unlock())
+}
+
+// releaseUnowned does the release of giveBackUnowned, under probe.lock, when it takes the engine lock.
+func (c *Client) releaseUnowned(project, item string, last run) error {
 	held, err := holdEngine(c.dir)
-	if errors.Is(err, errStateBusy) {
+	if errors.Is(err, ErrStateBusy) {
 		return nil
 	}
 
