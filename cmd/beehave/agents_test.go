@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
@@ -370,6 +371,55 @@ func TestAgents_ALineThatTheRunnerDroppedIsAViolationLine(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a line of the output was too long to check"}, got.Violations)
+}
+
+func TestAgents_AGuardThatDidNotLoadIsAViolationLine(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited, GuardMissing: true})
+	req := request()
+	req.Forbid = []model.FindingKind{model.FindingBulkStaging}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{guardNotLoaded}, got.Violations)
+
+	f = newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	got, err = f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Empty(t, got.Violations)
+}
+
+func TestAgents_RequireSkillsOnACLIThatReportsNoSkillCallsDoesNotStartTheRun(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.agents.adapter = func(model.Agent) agent.Adapter { return opencode.New() }
+	f.agents.run = func(context.Context, agent.Spec) agent.Result { t.Fatal("the paid run started"); return agent.Result{} }
+	req := request()
+	req.RequireSkills = []string{"blast"}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, "require_skills")
+	assert.Contains(t, got.Note, "opencode does not report skill calls")
+}
+
+func TestAgents_RequireSkillsOnACLIThatReportsThemStarts(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	req := request()
+	req.RequireSkills = []string{"blast"}
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeExited, got.Outcome)
 }
 
 func TestAgents_AnOutputWithNoResultLineIsAViolationLine(t *testing.T) {

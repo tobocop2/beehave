@@ -3,17 +3,28 @@
 // Limits that a step author must know:
 //   - OpenCode shows a tool call on its output when the call ends, not when it starts, so the turn cap counts a shell call one call late.
 //   - OpenCode has no sandbox. The profile has none, so a step with a sandbox does not start; set sandbox = None on the step.
-//   - OpenCode reports no skill calls, so a step with require_skills ends with an error.
+//   - OpenCode reports no skill calls, so a step with require_skills does not start.
 //   - The session lives in the login folder of the runner. A resume works on the runner that made the session only.
-//   - If the guard plugin does not load, OpenCode runs the shell commands with no check and exits with code 0. Only a smoke run of the pinned version proves the load.
+//   - If the guard plugin does not load, OpenCode runs the shell commands with no check and exits with code 0. A step with forbid_commands does not start on a version
+//     older than the pinned one, and a run whose plugin left no marker file ends with a violation line.
+//   - The guard needs a POSIX shell, so a step with forbid_commands does not start on Windows.
+//   - A run that sets no timeout ends after one hour. A model over its free quota prints nothing and retries until it is killed; the note of the timed-out run names that cause.
 //   - A cost cap is checked on the dollars of finished steps, so a run can pass the cap by the cost of one step.
 package opencode
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/tobocop2/beehave/internal/agent"
 )
+
+// pinnedVersion is the OpenCode version that the recorded output in testdata comes from, and the oldest version whose plugin interface is known to load the guard.
+const pinnedVersion = "1.19.5"
+
+// stallNote names the likely cause of a run that printed nothing until its limit. With --format json, OpenCode prints no error for a model over its usage quota and retries.
+const stallNote = "OpenCode prints nothing and retries when the model is over its usage quota, which is the likely cause if the run printed no line. " +
+	"Check the quota of the model, or use a model with a key."
 
 // Adapter is the OpenCode CLI.
 type Adapter struct{}
@@ -36,6 +47,13 @@ func (Adapter) Profile() agent.Profile {
 		ModelFlag:   "--model",
 		Resume:      func(id string) []string { return []string{"--session", id} },
 		StreamsCost: true,
+
+		MinVersion:      pinnedVersion,
+		GuardMinVersion: pinnedVersion,
+		GuardPosixOnly:  true,
+		NoSkillCalls:    true,
+		DefaultTimeout:  time.Hour,
+		StallNote:       stallNote,
 	}
 }
 

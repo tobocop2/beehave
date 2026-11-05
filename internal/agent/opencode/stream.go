@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"cmp"
+	"encoding/json"
 	"math"
 	"strings"
 
@@ -57,8 +58,47 @@ type tokens struct {
 	} `json:"cache"`
 }
 
+// errBody is the error of an error line: {"name":"APIError","data":{"message":"Not Found"}} in 1.19.5. A plain string reads as its message,
+// so a version that writes the error in another shape still fails the run and does not make the line unreadable.
 type errBody struct {
-	Name string `json:"name"`
+	Name    string
+	Message string
+}
+
+func (e *errBody) UnmarshalJSON(raw []byte) error {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		e.Message = text
+
+		return nil
+	}
+
+	var object struct {
+		Name string `json:"name"`
+		Data struct {
+			Message string `json:"message"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil //nolint:nilerr // an error of a shape that is not known still fails the run, as "unknown"
+	}
+
+	e.Name, e.Message = object.Name, object.Data.Message
+
+	return nil
+}
+
+// text returns the name and the message of the error, or "unknown" when it has neither.
+func (e errBody) text() string {
+	switch {
+	case e.Name != "" && e.Message != "":
+		return e.Name + ": " + e.Message
+	case e.Name != "":
+		return e.Name
+	}
+
+	return cmp.Or(e.Message, "unknown")
 }
 
 // Line reads the session id of any line and the text of a text line. The caller keeps the last text, which is the answer of the run.
@@ -79,7 +119,8 @@ func (Adapter) Line(line string) (string, string) {
 // A tool_use line of the bash tool is a shell call. OpenCode writes it when the call ends, so a call shows after it ran.
 // A call whose error starts with "beehave refused:" is refused: the guard plugin threw before the call ran. It still counts as a shell call, with its id in Refused.
 // A step_finish line carries the dollars (Spent) and the tokens (Usage) of its step. A step that ends for any reason but "tool-calls" ends the run (Result),
-// because OpenCode has no result line. An error line sets Failed, because a failed run can exit with code 0.
+// because OpenCode has no result line. A step that ends with the reason "error", "length" or "content-filter" also sets Failed, as does an error line,
+// because a failed run can exit with code 0.
 // A line that is not valid JSON is Invalid.
 func (Adapter) Calls(line string) agent.Seen {
 	if strings.TrimSpace(line) == "" {
@@ -97,7 +138,7 @@ func (Adapter) Calls(line string) agent.Seen {
 	case stepFinish:
 		return stepSeen(parsed.Part)
 	case errorType:
-		return agent.Seen{Failed: cmp.Or(parsed.Error.Name, "unknown")}
+		return agent.Seen{Failed: parsed.Error.text()}
 	}
 
 	return agent.Seen{}
@@ -118,9 +159,30 @@ func toolSeen(p part) agent.Seen {
 	return seen
 }
 
+// usageOf returns the tokens of a step. Input holds the cached tokens too, and Output the reasoning tokens.
+func usageOf(t tokens) agent.Tokens {
+	return agent.Tokens{
+		Input:       t.Input + t.Cache.Read + t.Cache.Write,
+		CachedInput: t.Cache.Read,
+		Output:      t.Output + t.Reasoning,
+		Reasoning:   t.Reasoning,
+	}
+}
+
+// failedReason returns why a step that ended for the reason has no answer ("error", "length" or "content-filter": the model failed, ran out of room or was filtered),
+// or "" for any other reason.
+func failedReason(reason string) string {
+	switch reason {
+	case "error", "length", "content-filter":
+		return "the step ended with the reason " + reason
+	}
+
+	return ""
+}
+
 // stepSeen returns the dollars, the tokens and the end of a step_finish line. A cost that is not a number of 0 or more adds nothing.
 func stepSeen(p part) agent.Seen {
-	seen := agent.Seen{Result: p.Reason != "" && p.Reason != toolStep}
+	seen := agent.Seen{Result: p.Reason != "" && p.Reason != toolStep, Failed: failedReason(p.Reason)}
 
 	if p.Cost != nil {
 		seen.Priced = true
@@ -131,12 +193,7 @@ func stepSeen(p part) agent.Seen {
 	}
 
 	if t := p.Tokens; t != nil {
-		seen.Usage = agent.Tokens{
-			Input:       t.Input + t.Cache.Read + t.Cache.Write,
-			CachedInput: t.Cache.Read,
-			Output:      t.Output + t.Reasoning,
-			Reasoning:   t.Reasoning,
-		}
+		seen.Usage = usageOf(*t)
 	}
 
 	return seen

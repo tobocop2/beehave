@@ -15,6 +15,7 @@ func TestLaunch_IsEmptyOnlyWhenItAddsNothing(t *testing.T) {
 	assert.False(t, agent.Launch{Args: []string{"-x"}}.Empty())
 	assert.False(t, agent.Launch{Env: map[string]string{"A": "b"}}.Empty())
 	assert.False(t, agent.Launch{Files: map[string]string{"f": "c"}}.Empty())
+	assert.False(t, agent.Launch{Loaded: "loaded"}.Empty())
 }
 
 func TestTokens_AddSumsEveryCount(t *testing.T) {

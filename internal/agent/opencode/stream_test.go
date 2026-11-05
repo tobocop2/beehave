@@ -75,13 +75,13 @@ func read(t *testing.T, lines []string) total {
 func TestStream_ReadsTheSessionTheLastTextTheDollarsAndTheTokens(t *testing.T) {
 	t.Parallel()
 
-	got := read(t, fixtureLines(t, "stream.jsonl"))
+	got := read(t, fixtureLines(t, "ok.jsonl"))
 
-	assert.Equal(t, "ses_1", got.session)
-	assert.Equal(t, "All done.", got.text)
-	assert.InDelta(t, 0.03, got.spent, 1e-9)
-	assert.Equal(t, agent.Tokens{Input: 440, CachedInput: 130, Output: 55, Reasoning: 5}, got.usage)
-	assert.Equal(t, []string{"git status"}, got.commands)
+	assert.Equal(t, "ses_e56bc95d1ffeLiRaZ6Ozp5CEin", got.session)
+	assert.Equal(t, "done", got.text)
+	assert.InDelta(t, 0.000046, got.spent, 1e-12)
+	assert.Equal(t, agent.Tokens{Input: 30, Output: 8}, got.usage)
+	assert.Equal(t, []string{"echo hi"}, got.commands)
 	assert.Empty(t, got.refused)
 	assert.Empty(t, got.failed)
 	assert.True(t, got.result)
@@ -91,10 +91,10 @@ func TestStream_ReadsTheSessionTheLastTextTheDollarsAndTheTokens(t *testing.T) {
 func TestStream_ACutStreamHasNoResultLine(t *testing.T) {
 	t.Parallel()
 
-	got := read(t, fixtureLines(t, "stream.jsonl")[:4])
+	got := read(t, fixtureLines(t, "ok.jsonl")[:3])
 
 	assert.False(t, got.result, "a step that ends in tool-calls is not the end of the run")
-	assert.Equal(t, []string{"git status"}, got.commands)
+	assert.Equal(t, []string{"echo hi"}, got.commands)
 }
 
 func TestStream_ARefusedCallIsRefusedAndStillShown(t *testing.T) {
@@ -102,11 +102,20 @@ func TestStream_ARefusedCallIsRefusedAndStillShown(t *testing.T) {
 
 	got := read(t, fixtureLines(t, "refused.jsonl"))
 
-	assert.Equal(t, []string{"call_9"}, got.refused)
-	assert.Equal(t, []string{"git add -A"}, got.commands)
+	assert.Equal(t, []string{"call_1"}, got.refused)
+	assert.Equal(t, []string{"touch /home/jobs/ocs1/work/forbidden-ran"}, got.commands)
 	assert.True(t, got.result)
-	assert.True(t, got.priced, "a cost field of 0 is still a price")
-	assert.InDelta(t, 0, got.spent, 0)
+	assert.True(t, got.priced)
+	assert.Empty(t, got.failed, "a refused call is no failed run: the model went on and answered")
+}
+
+func TestStream_ACallThatRanWithNoPluginIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	got := read(t, fixtureLines(t, "noguard.jsonl"))
+
+	assert.Empty(t, got.refused, "nothing in the output of a run with no plugin tells it from a run with a guard that let the call through")
+	assert.Equal(t, []string{"touch /home/jobs/ocs1/work/forbidden-ran"}, got.commands)
 }
 
 func TestCalls_AnErrorOfAToolThatIsNotARefusalIsNotRefused(t *testing.T) {
@@ -132,7 +141,11 @@ func TestCalls_AnErrorLineSetsFailed(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct{ name, line, want string }{
-		{"named", `{"type":"error","sessionID":"s","error":{"name":"APIError","data":{"message":"no key"}}}`, "APIError"},
+		{"recorded unknown model", fixtureLines(t, "error.jsonl")[0], "UnknownError: Unexpected server error. Check server logs for details."},
+		{"named with a message", `{"type":"error","sessionID":"s","error":{"name":"APIError","data":{"message":"Not Found","statusCode":404}}}`, "APIError: Not Found"},
+		{"named with no message", `{"type":"error","sessionID":"s","error":{"name":"APIError"}}`, "APIError"},
+		{"a plain string", `{"type":"error","sessionID":"s","error":"quota"}`, "quota"},
+		{"a shape that is not known", `{"type":"error","sessionID":"s","error":5}`, "unknown"},
 		{"unnamed", `{"type":"error","sessionID":"s"}`, "unknown"},
 	}
 
@@ -142,6 +155,17 @@ func TestCalls_AnErrorLineSetsFailed(t *testing.T) {
 
 			assert.Equal(t, tc.want, opencode.New().Calls(tc.line).Failed)
 		})
+	}
+}
+
+func TestCalls_AStepThatEndsInAFailureReasonFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	for reason, failed := range map[string]bool{"error": true, "length": true, "content-filter": true, "stop": false, "tool-calls": false, "unknown": false} {
+		seen := opencode.New().Calls(`{"type":"step_finish","sessionID":"s","part":{"reason":"` + reason + `"}}`)
+
+		assert.Equal(t, failed, seen.Failed != "", reason)
+		assert.Equal(t, reason != "tool-calls", seen.Result, reason)
 	}
 }
 

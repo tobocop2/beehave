@@ -1,6 +1,8 @@
 // Package agent starts coding-agent CLIs. An Adapter supplies the profile of one CLI and reads its output stream.
 package agent
 
+import "time"
+
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
 // ModelFlag is the flag that takes a model name. An empty flag means the CLI has no such option.
 type Profile struct {
@@ -32,6 +34,17 @@ type Profile struct {
 	// MinVersion is the oldest version of the CLI that knows every setting of that mapping; an older CLI ignores a setting it does not know.
 	Sandbox    bool
 	MinVersion string
+	// GuardMinVersion is the oldest version of the CLI whose hook of Guard is known to load. A CLI that does not load the hook runs every shell command
+	// with no check and exits with code 0, so a run with a guard on an older or unreadable version does not start. Empty means no check.
+	GuardMinVersion string
+	// GuardPosixOnly is true when the hook of Guard needs a POSIX shell, so a run with a guard does not start on Windows.
+	GuardPosixOnly bool
+	// NoSkillCalls is true when the CLI reports no skill calls on its output, so a step that requires skills cannot be proved and does not start.
+	NoSkillCalls bool
+	// DefaultTimeout is the total limit of a run whose spec sets no Timeout. Zero means no limit. StallNote is added to the Note of a run that a total or idle
+	// limit ended, for a CLI that prints nothing and retries when it cannot work (for example a model over its quota). It names the likely cause.
+	DefaultTimeout time.Duration
+	StallNote      string
 }
 
 // Stop names the cap that ended a run.
@@ -47,15 +60,18 @@ const (
 // Args are appended to the command line. Env is added to the environment after the allow-list; it never replaces a login variable or the token.
 // Files maps a path inside the run folder to its content. The runner writes them before the CLI starts, with mode 0600 in a folder of mode 0700.
 // A path must be local: no absolute path and no "..". The runner removes the folder when the run ends.
+// Loaded is a local path in the run folder that the hook of the launch creates when it loads. The runner looks for it when the run ends, before it removes
+// the folder, and sets Result.GuardMissing when it is not there. Empty means the launch has no proof of the load.
 type Launch struct {
-	Args  []string
-	Env   map[string]string
-	Files map[string]string
+	Args   []string
+	Env    map[string]string
+	Files  map[string]string
+	Loaded string
 }
 
 // Empty is true when the launch adds nothing to the run.
 func (l Launch) Empty() bool {
-	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0
+	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0 && l.Loaded == ""
 }
 
 // Tokens counts the tokens of a run. Input holds every input token, the cached ones included; Output holds every output token, the reasoning ones included.

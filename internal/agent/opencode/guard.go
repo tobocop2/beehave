@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	pluginPath         = "config/plugins/beehave-guard.js"
+	pluginPath = "config/plugins/beehave-guard.js"
+	// loadedPath is the marker that the plugin writes when it loads, inside the config folder of the run.
+	loadedPath         = "config/beehave-guard-loaded"
 	commandPlaceholder = "__GUARD_COMMAND__"
+	loadedPlaceholder  = "__LOADED_PATH__"
 )
 
 //go:embed guardplugin.js
@@ -21,7 +24,8 @@ var pluginTemplate string
 // The plugin refuses the call when the command exits with code 2, and on any other failure of the command.
 // The launch also closes the run: the project config, the Claude Code files and the external skills are off, no update or download runs,
 // and XDG_CONFIG_HOME names an empty folder so that no global plugin of the owner loads. OPENCODE_PURE stays unset, because it may switch off the plugin.
-// The plugin loads through the plugin interface of the version that the fixtures come from. Nothing in a run proves the load; a smoke run does.
+// The plugin loads through the plugin interface of the version that the profile pins (GuardMinVersion), and the runner refuses an older version.
+// The plugin writes a marker file when it loads (Launch.Loaded); the runner sets Result.GuardMissing when the marker is missing at the end of the run.
 func (Adapter) Guard(command, runDir string) agent.Launch {
 	return launch(command, runDir)
 }
@@ -45,16 +49,22 @@ func launch(command, runDir string) agent.Launch {
 	}}
 
 	if command != "" {
-		result.Files = map[string]string{pluginPath: plugin(command)}
+		result.Files = map[string]string{pluginPath: plugin(command, filepath.Join(runDir, loadedPath))}
+		result.Loaded = loadedPath
 	}
 
 	return result
 }
 
-// plugin returns the plugin text with command as one JavaScript string. The encoder escapes the quote, the backslash and the line breaks,
-// and one replacement does not read the inserted text again, so no command can leave the string.
-func plugin(command string) string {
-	literal, _ := json.Marshal(command) //nolint:errcheck,errchkjson // a string always encodes
+// plugin returns the plugin text with command and the path of the marker as JavaScript strings. The encoder escapes the quote, the backslash and the line breaks,
+// and one pass of the replacer does not read the inserted text again, so no command can leave the string or fill the other place.
+func plugin(command, marker string) string {
+	return strings.NewReplacer(commandPlaceholder, literal(command), loadedPlaceholder, literal(marker)).Replace(pluginTemplate)
+}
 
-	return strings.Replace(pluginTemplate, commandPlaceholder, string(literal), 1)
+// literal returns text as one JavaScript string.
+func literal(text string) string {
+	encoded, _ := json.Marshal(text) //nolint:errcheck,errchkjson // a string always encodes
+
+	return string(encoded)
 }

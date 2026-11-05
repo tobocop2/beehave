@@ -1,7 +1,0 @@
-{"type":"step_start","timestamp":1,"sessionID":"ses_1","part":{"type":"step-start"}}
-{"type":"text","timestamp":2,"sessionID":"ses_1","part":{"type":"text","text":"I will check the status."}}
-{"type":"tool_use","timestamp":3,"sessionID":"ses_1","part":{"type":"tool","callID":"call_1","tool":"bash","state":{"status":"completed","input":{"command":"git status"},"output":"clean"}}}
-{"type":"step_finish","timestamp":4,"sessionID":"ses_1","part":{"type":"step-finish","reason":"tool-calls","cost":0.01,"tokens":{"input":100,"output":20,"reasoning":5,"cache":{"read":50,"write":10}}}}
-{"type":"step_start","timestamp":5,"sessionID":"ses_1","part":{"type":"step-start"}}
-{"type":"text","timestamp":6,"sessionID":"ses_1","part":{"type":"text","text":"All done."}}
-{"type":"step_finish","timestamp":7,"sessionID":"ses_1","part":{"type":"step-finish","reason":"stop","cost":0.02,"tokens":{"input":200,"output":30,"reasoning":0,"cache":{"read":80,"write":0}}}}
