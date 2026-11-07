@@ -1,15 +1,20 @@
+> [!CAUTION]
+> # 🚧 UNDER CONSTRUCTION 🚧
+>
+> **beehave is not ready for use.** The workflow API, the commands and the file formats change without notice, and there is no release yet. Do not run it on work you cannot lose.
+
 <h1 align="center">beehave</h1>
 
 <p align="center">
-  <strong>Run AI agents through your own process, and pick up where they stopped.</strong><br/>
-  Write your process down once. beehave makes your AI agents follow it, every time.
+  <strong>A durable workflow engine for AI coding agents.</strong><br/>
+  Write your process down once. beehave makes your AI agents follow it, every time, and picks up where they stopped.
 </p>
 
 <p align="center">
   <a href="https://github.com/tobocop2/beehave/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehave?style=flat" alt="GitHub stars"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
   <img src="https://img.shields.io/badge/go-1.27-00ADD8.svg" alt="Go 1.27"/>
-  <img src="https://img.shields.io/badge/status-early-orange.svg" alt="Status: early"/>
+  <img src="https://img.shields.io/badge/status-under%20construction-red.svg" alt="Status: under construction"/>
 </p>
 
 <!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
@@ -17,6 +22,8 @@
 AI agents are good at one task at a time and bad at following a process. Give one a big job and it skips steps, forgets what it already did, says it finished when it did not, and stops halfway when something crashes. So you become its manager: you repeat the steps, check every claim, and start again after each failure.
 
 beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours.
+
+beehave is an orchestrator for coding agents such as Claude Code. It takes a backlog of GitHub issues through plan, implement, test, code review and merge, and lands only the commit that was reviewed. Each workflow is a Starlark file. The engine is one Go binary with durable execution on DBOS and SQLite, so a run resumes after a crash and stops at its token and cost budget.
 
 ## Why beehave
 
@@ -126,7 +133,7 @@ The result is a branch named `fix-login` in your repository. If the run stops, r
 
 ## Status
 
-beehave is early, and the workflow API can still change.
+beehave is under construction, and the workflow API changes without notice.
 
 - **Works today:** the engine, the CLI, the examples, the merge guards, the sandbox on Linux and macOS, and Claude Code as the agent.
 - **Next:** OpenCode, pi, Codex and Hermes as agents, and `beehave serve`, a resident engine that runs schedules.
