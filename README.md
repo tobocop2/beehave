@@ -3,18 +3,31 @@
 >
 > **beehave is not ready for use.** The workflow API, the commands and the file formats change without notice, and there is no release yet. Do not run it on work you cannot lose.
 
-<h1 align="center">beehave</h1>
+<p align="center">
+  <a href="https://github.com/tobocop2/beehave">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tobocop2/beehave/main/docs/beehave-logo-dark.svg">
+      <img alt="beehave" src="https://raw.githubusercontent.com/tobocop2/beehave/main/docs/beehave-logo-light.svg" width="580">
+    </picture>
+  </a>
+</p>
+
+<p align="center"><strong>A deterministic, durable workflow engine for AI coding agents: write your process down once, and beehave makes your agents follow it, every time.</strong></p>
+
+<p align="center"><a href="#quickstart">Quickstart</a> &nbsp;·&nbsp; <a href="#examples">Examples</a> &nbsp;·&nbsp; <a href="docs/architecture.md">Architecture</a> &nbsp;·&nbsp; <a href="docs/claude-code-plugin.md">Claude Code plugin</a></p>
 
 <p align="center">
-  <strong>A deterministic, durable workflow engine for AI coding agents.</strong><br/>
-  Write your process down once. beehave makes your AI agents follow it, every time, and picks up where they stopped.
+  <img src="https://img.shields.io/badge/status-under%20construction-eb6f92?style=flat-square&labelColor=191724" alt="Status: under construction">
+  <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/go-1.27-9ccfd8?logo=go&logoColor=9ccfd8&style=flat-square&labelColor=191724" alt="Go 1.27"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6e6a86?style=flat-square&labelColor=191724" alt="License: MIT"></a>
+  <a href="https://github.com/tobocop2/beehave/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehave?logo=github&logoColor=f6c177&style=flat-square&labelColor=191724&color=f6c177" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/tobocop2/beehave/stargazers"><img src="https://img.shields.io/github/stars/tobocop2/beehave?style=flat" alt="GitHub stars"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
-  <img src="https://img.shields.io/badge/go-1.27-00ADD8.svg" alt="Go 1.27"/>
-  <img src="https://img.shields.io/badge/status-under%20construction-red.svg" alt="Status: under construction"/>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-908caa?style=flat-square&labelColor=191724" alt="Platforms">
+  <a href="https://github.com/bazelbuild/starlark"><img src="https://img.shields.io/badge/workflows-Starlark-c4a7e7?style=flat-square&labelColor=191724" alt="Workflows in Starlark"></a>
+  <a href="https://www.dbos.dev/"><img src="https://img.shields.io/badge/durable-DBOS%20%2B%20SQLite-31748f?style=flat-square&labelColor=191724" alt="Durable on DBOS and SQLite"></a>
+  <a href="https://claude.ai/code"><img src="https://img.shields.io/badge/agent-Claude%20Code-ebbcba?logo=claude&logoColor=ebbcba&style=flat-square&labelColor=191724" alt="Agent: Claude Code"></a>
 </p>
 
 <!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
