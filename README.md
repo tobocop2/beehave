@@ -19,11 +19,9 @@
 
 <!-- demo: a terminal recording. Start a run, kill it at the review step, run the same command again, and the run continues at the review. -->
 
-AI agents are good at one task at a time and bad at following a process. Give one a big job and it skips steps, forgets what it already did, says it finished when it did not, and stops halfway when something crashes. So you become its manager: you repeat the steps, check every claim, and start again after each failure.
+AI agents are good at one task at a time and bad at following a process. On a big job they skip steps, forget what they did, say they finished when they did not, and stop when something crashes.
 
-beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours. The agents still think for themselves inside each step, but the process around them is deterministic: code decides the next step, not a model.
-
-beehave is an orchestrator for AI coding agents. It takes a backlog of GitHub issues through plan, implement, test, code review and merge, and lands only the commit that was reviewed. Each workflow is a Starlark file. The engine is one Go binary with durable execution on DBOS and SQLite, so a run resumes after a crash and stops at its token and cost budget.
+beehave runs them through your process instead. You write the steps once in a short Starlark file: plan, implement, test, review, merge. Code picks the next step, not a model. A run resumes where it stopped, and beehave asks you only when a decision is yours.
 
 ## Why beehave
 
