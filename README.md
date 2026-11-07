@@ -23,7 +23,7 @@ AI agents are good at one task at a time and bad at following a process. Give on
 
 beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours.
 
-beehave is an orchestrator for coding agents such as Claude Code. It takes a backlog of GitHub issues through plan, implement, test, code review and merge, and lands only the commit that was reviewed. Each workflow is a Starlark file. The engine is one Go binary with durable execution on DBOS and SQLite, so a run resumes after a crash and stops at its token and cost budget.
+beehave is an orchestrator for AI coding agents. It takes a backlog of GitHub issues through plan, implement, test, code review and merge, and lands only the commit that was reviewed. Each workflow is a Starlark file. The engine is one Go binary with durable execution on DBOS and SQLite, so a run resumes after a crash and stops at its token and cost budget.
 
 ## Why beehave
 
