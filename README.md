@@ -6,7 +6,7 @@
 <h1 align="center">beehave</h1>
 
 <p align="center">
-  <strong>A durable workflow engine for AI coding agents.</strong><br/>
+  <strong>A deterministic, durable workflow engine for AI coding agents.</strong><br/>
   Write your process down once. beehave makes your AI agents follow it, every time, and picks up where they stopped.
 </p>
 
@@ -21,12 +21,13 @@
 
 AI agents are good at one task at a time and bad at following a process. Give one a big job and it skips steps, forgets what it already did, says it finished when it did not, and stops halfway when something crashes. So you become its manager: you repeat the steps, check every claim, and start again after each failure.
 
-beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours.
+beehave does that managing for you. You write your process down once, as a short list of steps. beehave runs every job through those steps, keeps the work safe, and comes to you only when a decision is yours. The agents still think for themselves inside each step, but the process around them is deterministic: code decides the next step, not a model.
 
 beehave is an orchestrator for AI coding agents. It takes a backlog of GitHub issues through plan, implement, test, code review and merge, and lands only the commit that was reviewed. Each workflow is a Starlark file. The engine is one Go binary with durable execution on DBOS and SQLite, so a run resumes after a crash and stops at its token and cost budget.
 
 ## Why beehave
 
+- **Deterministic by design.** The workflow file has no clock, no randomness and no direct access to files or the network. The same results always lead to the same next step, and a run that resumes after a crash takes the same path it took before. Pass or fail comes from exit codes and test reports that the engine reads itself, not from what an agent says.
 - **Write the process once.** Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
 - **Nothing is lost.** If the laptop sleeps, the program crashes or the account runs out of credit, run the same command again. Finished steps stay finished, so you do not wait for them or pay for them twice.
 - **Limits that hold.** You set the most time, turns and money a job may use. beehave stops the job at the limit. It does not ask the agent to stop.
