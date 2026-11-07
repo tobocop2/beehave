@@ -38,16 +38,56 @@ beehave runs them through your process instead. You write the steps once in a sh
 
 ## Why beehave
 
-- **Deterministic by design.** The workflow file has no clock, no randomness and no direct access to files or the network. The same results always lead to the same next step, and a run that resumes after a crash takes the same path it took before. Pass or fail comes from exit codes and test reports that the engine reads itself, not from what an agent says.
-- **Write the process once.** Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
-- **Works with the tools you already use.** Adapters connect beehave to [beads](https://github.com/steveyegge/beads) and GitHub issues for the backlog, GitHub for pull requests, reviews and merges, and [SkyPilot](https://github.com/skypilot-org/skypilot), [Slurm](https://slurm.schedmd.com/) or plain SSH for build machines. Claude Code is the agent today. The adapters fit coding work first, but the engine is not tied to them.
-- **Nothing is lost.** If the laptop sleeps, the program crashes or the account runs out of credit, run the same command again. Finished steps stay finished, so you do not wait for them or pay for them twice.
-- **Limits that hold.** You set the most time, turns and money a job may use. beehave stops the job at the limit. It does not ask the agent to stop.
-- **It asks you only what it cannot decide.** A job that needs you waits with its question, and the other jobs keep going. Answer when you are ready.
-- **A whole backlog at once.** Give it a list of jobs. It runs as many at a time as you allow and queues the rest.
-- **Try it before it costs money.** A dry run walks the whole process with fake agents, so you see every step before a real one runs.
-- **It runs on your own machine.** One program and one small database file. No server and no account to sign up for.
-- **Any job with steps.** Code changes are the first use. The same engine runs research reports, an incident desk, sign-offs and a daily data load. See [the examples](#examples).
+<details><summary><strong>Deterministic by design</strong>: code picks the next step, not a model</summary>
+
+The workflow file has no clock, no randomness and no direct access to files or the network. The same results always lead to the same next step, and a run that resumes after a crash takes the same path it took before. Pass or fail comes from exit codes and test reports that the engine reads itself, not from what an agent says.
+
+</details>
+<details><summary><strong>Write the process once</strong>: every job follows the same steps</summary>
+
+Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
+
+</details>
+<details><summary><strong>Works with the tools you already use</strong>: beads, GitHub, SkyPilot, Slurm</summary>
+
+Adapters connect beehave to [beads](https://github.com/steveyegge/beads) and GitHub issues for the backlog, GitHub for pull requests, reviews and merges, and [SkyPilot](https://github.com/skypilot-org/skypilot), [Slurm](https://slurm.schedmd.com/) or plain SSH for build machines. Claude Code is the agent today. The adapters fit coding work first, but the engine is not tied to them.
+
+</details>
+<details><summary><strong>Nothing is lost</strong>: a crash resumes where it stopped</summary>
+
+If the laptop sleeps, the program crashes or the account runs out of credit, run the same command again. Finished steps stay finished, so you do not wait for them or pay for them twice.
+
+</details>
+<details><summary><strong>Limits that hold</strong>: time, turns and money</summary>
+
+You set the most time, turns and money a job may use. beehave stops the job at the limit. It does not ask the agent to stop.
+
+</details>
+<details><summary><strong>It asks you only what it cannot decide</strong>: other jobs keep going</summary>
+
+A job that needs you waits with its question, and the other jobs keep going. Answer when you are ready.
+
+</details>
+<details><summary><strong>A whole backlog at once</strong>: runs in parallel, queues the rest</summary>
+
+Give it a list of jobs. It runs as many at a time as you allow and queues the rest.
+
+</details>
+<details><summary><strong>Try it before it costs money</strong>: dry runs with fake agents</summary>
+
+A dry run walks the whole process with fake agents, so you see every step before a real one runs.
+
+</details>
+<details><summary><strong>It runs on your own machine</strong>: no server, no account</summary>
+
+One program and one small database file. No server and no account to sign up for.
+
+</details>
+<details><summary><strong>Any job with steps</strong>: not only code</summary>
+
+Code changes are the first use. The same engine runs research reports, an incident desk, sign-offs and a daily data load. See [the examples](#examples).
+
+</details>
 
 <details>
 <summary><strong>The problems this came from</strong></summary>
