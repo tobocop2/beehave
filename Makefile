@@ -20,7 +20,7 @@ ifneq ($(shell printf '%s' '$(GO_TEST_PROCS)' | grep -Ec '^[1-9][0-9]*$$'),1)
 $(error GO_TEST_PROCS must be a whole number of at least 1, not "$(GO_TEST_PROCS)")
 endif
 # The CPU work of a run does not change with its share, so a smaller share takes longer. The Go default timeout of 10 minutes is too short for
-# the run of the other packages at a share of 2 (a 2-core CI runner). Each run gets GO_TEST_TIMEOUT, which stays under the 20 minute CI job limit.
+# the run of the other packages at a share of 2 (a 2-core CI runner). Each run gets GO_TEST_TIMEOUT, which stays under the 30 minute limit of the CI test job.
 GO_TEST_TIMEOUT ?= 18m
 GO_TEST_FLAGS := -race -gcflags='modernc.org/...=-d=checkptr=0' -count=1 -timeout $(GO_TEST_TIMEOUT) $(if $(GO_TEST_P),-p $(GO_TEST_P))
 # The flow package has over 1000 tests, and under the race detector one run of it takes about 300 s on an idle host. A test binary has its own
