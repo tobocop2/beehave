@@ -15,6 +15,7 @@ var (
 	errParentNoPull = errors.New("the parent item has no pull request")
 	errBaseMoved    = errors.New("the stack link moved the base of the bottom pull request")
 	errNoBase       = errors.New("the forge returned no base branch")
+	errStillStacked = errors.New("the unstack left the pull request in its stack")
 )
 
 // Open finds the open pull request on the branch of the item, or opens a draft one into the base. It then makes the body right and links the pull request
@@ -203,50 +204,56 @@ func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent
 }
 
 // linkIfApart links the pull request on top of the parent unless both already show one stack id.
-// A parent in no stack is the bottom of a new one, and that link keeps its base.
+// A parent in no stack is the bottom of a new one, and that link passes the base branch of the round.
+// Every link reads the base of the parent before and after, because a link can move it.
 func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) error {
 	same, top, err := sharedStack(ctx, built, parent, number)
 	if err != nil || same {
 		return err
 	}
 
-	if top != "" {
-		return opener.LinkStack(ctx, parent, number, "")
-	}
-
-	return linkBottom(ctx, built, opener, parent, number, base)
-}
-
-// linkBottom links a new stack with the base branch and reads the base of the bottom pull request before and after.
-// A bottom that moved is unstacked, set back and linked once more. A second move is an error.
-func linkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) error {
 	before, err := baseOf(ctx, built, parent)
 	if err != nil {
 		return err
+	}
+
+	first := top == ""
+	if !first {
+		base = ""
 	}
 
 	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
 		return err
 	}
 
-	if err := keptBase(ctx, built, parent, before); !errors.Is(err, errBaseMoved) {
+	if err := keptBase(ctx, built, parent, before); !errors.Is(err, errBaseMoved) || !first {
 		return err
 	}
 
-	return relinkBottom(ctx, built, opener, parent, number, base, before)
+	return relinkBottom(ctx, built, opener, parent, number, before)
 }
 
-// relinkBottom takes the pull request out of its stack, sets its base back and links once more.
-func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base, before string) error {
+// relinkBottom takes the new stack apart, sets the base of its bottom back and links once more with that base.
+// A stack that stays after the unstack, or a second move of the base, is an error.
+func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, before string) error {
 	if err := opener.Unstack(ctx, parent); err != nil {
 		return err
+	}
+
+	left, err := built.StackID(ctx, parent)
+	if err != nil {
+		return err
+	}
+
+	if left != "" {
+		return fmt.Errorf("%w: pull request %d is still in stack %s", errStillStacked, parent, left)
 	}
 
 	if err := built.SetBase(ctx, parent, before); err != nil {
 		return err
 	}
 
-	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+	if err := opener.LinkStack(ctx, parent, number, before); err != nil {
 		return err
 	}
 
