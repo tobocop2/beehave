@@ -36,7 +36,7 @@ func TestStatus_AWaitingRunShowsItsItemItsProjectAndTheTimeLeft(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 
 	assert.Equal(t, "item-12-r1\trunning\tpaused: Ship it?\tasks ana, bo, cy, 1 of 2 answered (ana); choices yes, no\t"+
-		"answer by 2026-11-03T12:00:00Z, 1h30m left\titem 12 of p\n", stdout)
+		"answer by 2026-11-03T12:00:00Z, 1h30m left\titem 12 of p\n\nno engine runs\n", stdout)
 }
 
 func TestStatus_AWaitWithRemindersShowsTheNextOneInTextAndJSON(t *testing.T) {
@@ -177,7 +177,7 @@ func TestStatus_ARunWithAnItemAndNoProjectNamesTheItemAlone(t *testing.T) {
 
 	_, stdout, _ := rig.execute(t.Context(), "status")
 
-	assert.Equal(t, "item-9-r1\tdone\titem 9\n", stdout)
+	assert.Equal(t, "item-9-r1\tdone\titem 9\n\nno engine runs\n", stdout)
 }
 
 func TestStatus_ReadsTheSystemClockWhenTheBuildSetsNone(t *testing.T) {
@@ -225,7 +225,7 @@ func TestStatus_TheScheduleShowsItsLastTickAndWhetherItFiresInTextAndJSON(t *tes
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 	require.Equal(t, 0, code, stderr)
 
-	assert.Equal(t, "no runs\n\nschedules\n"+
+	assert.Equal(t, "no runs\n\nno engine runs\n\nschedules\n"+
 		"review-poll\t@every 1h0m0s\tlast tick 2026-11-03T10:10:00Z\tfiring\n"+
 		"fresh\t@every 5m\tno tick yet\tnot firing, no engine runs\n"+
 		"held\t@every 5m\tno tick yet\tpaused\n", stdout)
@@ -253,6 +253,20 @@ func TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T)
 	}
 }
 
+func TestStatus_AnEngineThatCannotBeReadFailsTheListInTextAndJSON(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.engineErr = errFake
+
+	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+		code, _, stderr := rig.execute(t.Context(), args...)
+
+		assert.Equal(t, 1, code, args)
+		assert.Contains(t, stderr, "fake failure", args)
+	}
+}
+
 func TestStatus_ThePerDayFiguresAreInTheTextAndTheJSONList(t *testing.T) {
 	t.Parallel()
 
@@ -265,7 +279,7 @@ func TestStatus_ThePerDayFiguresAreInTheTextAndTheJSONList(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 	require.Equal(t, 0, code, stderr)
 
-	assert.Equal(t, "no runs\n\nper day\n"+
+	assert.Equal(t, "no runs\n\nno engine runs\n\nper day\n"+
 		"2026-11-02\tstarted 2\tdone 1, failed 1, canceled 0\tspent $1.5 (estimate)\n"+
 		"2026-11-03\tstarted 1\tdone 0, failed 0, canceled 1\n", stdout)
 

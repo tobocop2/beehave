@@ -694,7 +694,7 @@ A resumed run writes these lines again for the steps it replays from the record.
 
 #### The review poll in `beehave status`
 
-When `agents.review_poll_minutes` is set, `beehave run` schedules a review poll. Each tick reads the open pull requests of every project with a forge, in read-only calls. The interval is at most 10080 minutes (one week).
+When `agents.review_poll_minutes` is set, `beehave run` schedules a review poll. Each tick reads the open pull requests of every project with a forge, in read-only calls. The interval is at most 10080 minutes (one week). Under `beehave serve`, set `agents.review_poll_minutes` to 60.
 
 `beehave status` lists each schedule of the store after the runs, with its last tick and whether it fires. The workflow library records the last tick, and beehave adds no record.
 
@@ -745,7 +745,7 @@ After a crash, or after Ctrl-C of `beehave run`, the run stays open. `beehave ru
 
 #### The engine lock
 
-`beehave run` takes an exclusive lock on `engine.lock` in the state folder and holds it until the command ends. A second engine on the same state folder (`beehave serve` or `beehave run`) refuses at once and tells the owner to wait or to run `beehave status`.
+`beehave run` and `beehave serve` take an exclusive lock on `engine.lock` in the state folder and hold it until the command ends. `beehave serve` runs in the foreground until SIGINT or SIGTERM. It starts no daemon and writes no pid file (see `docs/serve.md`). A second engine on the same state folder (`beehave serve` or `beehave run`) refuses at once and tells the owner to wait or to run `beehave status`.
 
 #### The probe lock
 
@@ -763,6 +763,13 @@ The client commands that join a run, show the schedules, or cancel a run take th
 - The engine writes its version into `engine.version` with an atomic replace while it holds `probe.lock`. It removes the file when it stops.
 - A client reads that file under `probe.lock`, so it never reads the version of a crashed engine.
 - A client that finds `engine.lock` free removes a version that a crashed engine left.
+
+#### The file `engine.info`
+
+- The engine writes `engine.info` the same way, under the same `probe.lock` rule. It holds the mode (`run` or `serve`), the pid and the start time in UTC.
+- `beehave status` reads `engine.info` only while `engine.lock` is held. It prints `engine: serve, pid N, since T`, `engine: run, pid N` or `no engine runs`.
+- The lock decides whether an engine runs. The file only describes the engine.
+- A client that finds `engine.lock` free removes the version and the info that a crashed engine left.
 
 #### A new state folder
 

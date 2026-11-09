@@ -41,9 +41,19 @@ type fakeRunner struct {
 	items             []string
 	files             []string
 	shutdowns         int
+	// launched is closed by Launch. started is closed by the first Shutdown. slow holds Shutdown until it is closed.
+	launched, started, slow chan struct{}
+	// shutdownErr is what Shutdown returns.
+	shutdownErr error
 }
 
-func (r *fakeRunner) Launch() error { return r.launchErr }
+func (r *fakeRunner) Launch() error {
+	if r.launched != nil {
+		close(r.launched)
+	}
+
+	return r.launchErr
+}
 
 func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error) {
 	r.mu.Lock()
@@ -61,14 +71,23 @@ func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error
 // Shutdown releases a blocked Run, as a real engine shutdown ends the run it holds.
 func (r *fakeRunner) Shutdown() error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	r.shutdowns++
 	if r.block != nil {
 		close(r.block)
 	}
 
-	return nil
+	if r.started != nil && r.shutdowns == 1 {
+		close(r.started)
+	}
+
+	r.mu.Unlock()
+
+	if r.slow != nil {
+		<-r.slow
+	}
+
+	return r.shutdownErr
 }
 
 func (r *fakeRunner) count() int {
@@ -102,6 +121,9 @@ type fakeSteering struct {
 	// running is what EngineRuns returns, and runningErr its error.
 	running    bool
 	runningErr error
+	// engine is what Engine returns while running is true, and engineErr its error.
+	engine    flow.EngineInfo
+	engineErr error
 	// joinResult and joinErr are what JoinRun returns. joined lists its calls.
 	joinResult flow.ItemResult
 	joinErr    error
@@ -113,6 +135,14 @@ type fakeSteering struct {
 }
 
 func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }
+
+func (s *fakeSteering) Engine() (flow.EngineInfo, bool, error) {
+	if s.engineErr != nil {
+		return flow.EngineInfo{}, false, s.engineErr
+	}
+
+	return s.engine, s.running, s.runningErr
+}
 
 func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error) {
 	s.joined = append(s.joined, item+"@"+project+" "+file)
@@ -569,7 +599,7 @@ func TestStatus_ShowsEachRunWithItsQuestionOrItsVersion(t *testing.T) {
 		"item-6-r1\tstopped\tstopped at check rc 2: refused\n"+
 		"item-7-r1\trunning\tstranded: made by an older step format. Start the beehave build that made it to finish it\n"+
 		"item-8-r1\tdone\tended: the pull request was closed\n"+
-		"item-9-r1\trunning\tother orchestrators: ann: 3, 4; bob: 7\n", stdout)
+		"item-9-r1\trunning\tother orchestrators: ann: 3, 4; bob: 7\n\nno engine runs\n", stdout)
 	assert.True(t, rig.steering.closeOK)
 }
 
@@ -592,7 +622,7 @@ func TestStatus_ShowsTheCostTheStepTheGateAndTheRoundsOfEachRun(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "a-r1\trunning\tspent $3.5 of $20\tnow agent:fix#2\tgate fail at abc123\tfix 2 of 5\treview 3 of 6\n"+
-		"b-r1\trunning\tpaused: go on?\tanswer by 2026-11-03T12:00:00Z, 1h30m left\n", stdout)
+		"b-r1\trunning\tpaused: go on?\tanswer by 2026-11-03T12:00:00Z, 1h30m left\n\nno engine runs\n", stdout)
 }
 
 func TestStatus_CutsLongStopOutputAndOmitsEmptyOutput(t *testing.T) {
@@ -608,7 +638,7 @@ func TestStatus_CutsLongStopOutputAndOmitsEmptyOutput(t *testing.T) {
 
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, "a-r1\tstopped\tstopped at check rc 3\n"+
-		"b-r1\tstopped\tstopped at check rc 3: "+strings.Repeat("x", 120)+"…\n", stdout)
+		"b-r1\tstopped\tstopped at check rc 3: "+strings.Repeat("x", 120)+"…\n\nno engine runs\n", stdout)
 }
 
 func TestStatus_SaysWhenThereAreNoRunsAndReportsAnError(t *testing.T) {
@@ -617,7 +647,7 @@ func TestStatus_SaysWhenThereAreNoRunsAndReportsAnError(t *testing.T) {
 	rig := newRig(t)
 
 	_, stdout, _ := rig.execute(t.Context(), "status")
-	assert.Equal(t, "no runs\n", stdout)
+	assert.Equal(t, "no runs\n\nno engine runs\n", stdout)
 
 	rig.steering.err = errFake
 	code, _, stderr := rig.execute(t.Context(), "status")
@@ -643,7 +673,7 @@ func TestStatus_ShowsTheNewestReviewPollInItsOwnSection(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "no runs\n\nreview poll at 2026-10-31T09:00:00Z\n"+
+	assert.Equal(t, "no runs\n\nno engine runs\n\nreview poll at 2026-10-31T09:00:00Z\n"+
 		"alpha\tCI-RED     #7 failed=2 not_started=0\n"+
 		"beta\tcould not read beta: cannot list our pull requests\n"+
 		"gamma\tnothing to review\n"+
@@ -659,7 +689,7 @@ func TestStatus_ShowsAReviewPollThatGaveUpAsAFailureWithItsStatus(t *testing.T) 
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "no runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: MAX_RECOVERY_ATTEMPTS_EXCEEDED\n", stdout)
+	assert.Equal(t, "no runs\n\nno engine runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: MAX_RECOVERY_ATTEMPTS_EXCEEDED\n", stdout)
 }
 
 func TestStatus_ShowsWhyTheReviewPollIsNotScheduled(t *testing.T) {
@@ -671,7 +701,7 @@ func TestStatus_ShowsWhyTheReviewPollIsNotScheduled(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "no runs\n\nthe review poll is not scheduled: the store is locked\n", stdout)
+	assert.Equal(t, "no runs\n\nno engine runs\n\nthe review poll is not scheduled: the store is locked\n", stdout)
 
 	rig.steering.notSched, rig.steering.notSchedE = "", errFake
 	code, _, stderr = rig.execute(t.Context(), "status")
@@ -689,7 +719,7 @@ func TestStatus_ShowsAFailedReviewPollWithItsCause(t *testing.T) {
 	code, stdout, stderr := rig.execute(t.Context(), "status")
 
 	require.Equal(t, 0, code, stderr)
-	assert.Equal(t, "no runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: the store is locked\n", stdout)
+	assert.Equal(t, "no runs\n\nno engine runs\n\nthe review poll failed at 2026-10-31T09:00:00Z: the store is locked\n", stdout)
 }
 
 func TestOptions_TheReviewPollMinutesBecomeTheIntervalOfTheEngine(t *testing.T) {
