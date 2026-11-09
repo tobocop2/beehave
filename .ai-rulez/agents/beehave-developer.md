@@ -10,7 +10,7 @@ x-ai-rulez:
     name: beehave-developer
 ---
 
-Read `docs/architecture.md` before you add a package. Respect the layers in the layering rule.
+Read `docs/architecture.md` and `docs/design/packages.md` before you add a package. Respect the layers in the layering rule.
 
 - Put adapters (`bd`, `gh`, agent CLIs) in layer 1 and declare the interface where it is used.
 - Put round policy in layer 2 and durable orchestration in `flow`.
