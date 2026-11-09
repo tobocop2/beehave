@@ -26,7 +26,7 @@ A swarm runs one backlog with many agents at once. Each line of the parent item 
 
 Each gap is true on main now.
 
-- **A swarm cap needs a ledger.** The results of `gather` carry no cost, and a spawned run has its own sum. The example writes the cost of each agent step to `scripts/ledger.sh` and reads the total before each pass. `docs/architecture.md` says that a cap for an item tree or a swarm is not covered.
+- **A swarm cap needs a ledger.** The results of `gather` carry no cost, and a spawned run has its own sum. The example writes the cost of each agent step to `scripts/ledger.sh` and reads the total before each pass. `docs/design/durable-loop.md` says that a cap for an item tree or a swarm is not covered.
 - **The clock is text.** `now()` returns an RFC 3339 string. The deadline parses it in Starlark.
 - **One priority for each call.** `batch_merge` folds its members in the order of the item id, so priority needs one call for each tier.
 - **An item has no priority.** `item_create` takes no severity or priority argument, and `queue` sorts rows by severity. The example keeps the priority of each item in its own map and sorts the ready items itself.
