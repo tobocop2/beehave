@@ -56,5 +56,5 @@ x-ai-rulez:
 
 - No em dashes. No divider comments (`// ------`).
 - A comment states what or a constraint, in one line. Default to no comment. Doc comments describe what the code is, not how it got there.
-- Design rationale lives in `docs/architecture.md`, not in code comments. A package comment is 3 lines or fewer.
+- Design rationale lives in `docs/architecture.md` and the topic files under `docs/design/`, not in code comments. A package comment is 3 lines or fewer.
 - Use literal unicode characters, not escapes, and name them as constants.
