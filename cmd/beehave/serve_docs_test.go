@@ -38,7 +38,7 @@ func TestServeDocs_TheSampleFilesAndTheReviewPollSentenceExist(t *testing.T) {
 		assert.Contains(t, serve, want)
 	}
 
-	assert.Contains(t, readDoc(t, "architecture.md"), reviewPollSentence)
+	assert.Contains(t, readDoc(t, "design/durable-loop.md"), reviewPollSentence)
 }
 
 func TestServeDocs_TheReviewPollKeyAndTheValueOfTheSentenceLoad(t *testing.T) {
