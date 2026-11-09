@@ -189,3 +189,17 @@ func TestServe_TakesNoItem(t *testing.T) {
 	assert.Contains(t, stderr, "unknown command")
 	assert.Zero(t, rig.engines)
 }
+
+func TestServe_AConfigWithProblemsExitsTwoAndOpensNoEngine(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "runners.star", "agents(max_concurrent = 0)\n"+validRunners)
+
+	code, stdout, stderr := rig.execute(t.Context(), "serve")
+
+	assert.Equal(t, 2, code)
+	assert.Empty(t, stdout)
+	assert.Contains(t, stderr, "agents.max_concurrent must be 1 or more")
+	assert.Zero(t, rig.engines, "a config with problems opens no engine")
+}

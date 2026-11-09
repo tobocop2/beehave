@@ -73,3 +73,38 @@ func TestClientEngine_AFileThatCannotBeReadIsReported(t *testing.T) {
 	_, _, err := client.Engine()
 	require.ErrorContains(t, err, engineInfoName)
 }
+
+func TestWriteEngineInfo_AStartTimeThatJSONCannotEncodeWritesNoFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tooLate := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+	err := writeEngineInfo(dir, ModeServe, 1, tooLate)
+
+	require.ErrorContains(t, err, "encode "+engineInfoName)
+	assert.NoFileExists(t, filepath.Join(dir, engineInfoName))
+}
+
+func TestWriteEngineInfo_AFolderThatCannotBeWrittenIsReported(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	err := writeEngineInfo(missing, ModeServe, 1, time.Now())
+
+	require.ErrorContains(t, err, "write "+engineInfoName)
+	assert.NoFileExists(t, filepath.Join(missing, engineInfoName))
+}
+
+func TestReadEngineInfo_AnInfoPathThatIsAFolderIsReportedNotTakenForNoEngine(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, engineInfoName), 0o700))
+
+	info, err := readEngineInfo(dir)
+
+	require.ErrorContains(t, err, "read "+engineInfoName)
+	assert.Zero(t, info)
+}
