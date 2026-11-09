@@ -29,22 +29,37 @@ jobs:
           version: v2.15.0
           args: --timeout=5m
 
-      - name: Install go-test-coverage
-        run: go install github.com/vladopajic/go-test-coverage/v2@v2.20.1
-
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Install ai-rulez
         run: make ai-rulez-install
 
-      - name: Format, vet, vulnerabilities, race tests, coverage gate, smoke
-        run: make format-check vet deps vuln test coverage smoke
+      - name: Format, vet, dependencies, vulnerabilities
+        run: make format-check vet deps vuln
         env:
           GOTELEMETRY: "off"
 
       - name: Agent rules
         run: make governance-verify
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install go-test-coverage
+        run: go install github.com/vladopajic/go-test-coverage/v2@v2.20.1
+
+      - name: Race tests, coverage gate, smoke
+        run: make test coverage smoke
+        env:
+          GOTELEMETRY: "off"
 
   release-snapshot:
     runs-on: ubuntu-latest
