@@ -323,7 +323,7 @@ func hostName(raw rawProject, name string, earlier []string) error {
 	}
 
 	if !clusterName.MatchString(name) {
-		return refuseAt(raw.At, "`build_host` must be %q or the name of a build host (a letter, then letters, digits and hyphens); got `%s`. Fix the value.", LocalHost, name)
+		return refuseAt(raw.At, "`build_host` must be %q or the name of a build host (a letter, then letters, digits, dots and hyphens); got `%s`. Fix the value.", LocalHost, name)
 	}
 
 	if slices.Contains(earlier, name) {

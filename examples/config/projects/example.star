@@ -49,7 +49,7 @@ project(
     #         catch_up = False,              # True asks for the ticks that no engine ran; the default is False
     #     ),
     # ],                               # optional. This key only declares the schedules and `beehave check config` validates them
-    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster), or a list of names such as ["gpu", "gpu-b"]
+    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster; a letter, then letters, digits, dots and hyphens), or a list of names such as ["gpu", "gpu-b"]
     # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
