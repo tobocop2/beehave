@@ -30,8 +30,8 @@ const (
 		"Set sandbox = \"off\" in the project file, or build on a host. The project gate of a build host runs as before."
 )
 
-// The value goes into an ssh command, so a cluster name is a letter, then letters, digits, hyphens.
-var clusterName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+// clusterName is the form of a build host name: a letter, then letters, digits, dots and hyphens.
+var clusterName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9.-]*$`)
 
 func isFile(path string) bool {
 	info, err := os.Stat(path)
