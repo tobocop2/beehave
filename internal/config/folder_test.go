@@ -173,6 +173,20 @@ func TestLoadFolder_BuildHost(t *testing.T) {
 	}
 }
 
+func TestLoadFolder_BuildHostAcceptsAnSSHAliasWithDots(t *testing.T) {
+	t.Parallel()
+
+	const alias = "beehave-rig.us-central1-a.lance-bench-8389"
+
+	project, problems := loadProjectText(t, call(hostProject+`, build_host = "`+alias+`", host = `+hostCall("")))
+	require.Empty(t, problems)
+	require.Equal(t, alias, project.BuildHost)
+
+	project, problems = loadProjectText(t, call(hostProject+`, build_host = ["`+alias+`", "gpu-b"], host = `+hostCall("")))
+	require.Empty(t, problems)
+	require.Equal(t, []string{alias, "gpu-b"}, project.BuildHosts)
+}
+
 func TestLoadFolder_TheBuildHostRefusalNamesTheKeyAndBothForms(t *testing.T) {
 	t.Parallel()
 
@@ -224,6 +238,7 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"empty_build_host", call(hostProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
 		{"build_host_starts_with_a_digit", call(hostProject + `, build_host = "1gpu"`), hostWords},
 		{"build_host_with_underscore", call(hostProject + `, build_host = "gpu_a"`), hostWords},
+		{"build_host_starts_with_a_dot", call(hostProject + `, build_host = ".gpu"`), hostWords},
 		{"build_host_with_space", call(hostProject + `, build_host = "gpu a"`), hostWords},
 		{"build_host_with_shell_text", call(hostProject + `, build_host = "gpu;id"`), hostWords},
 		{"build_host_with_newline", call(hostProject + `, build_host = "gpu\n"`), hostWords},
