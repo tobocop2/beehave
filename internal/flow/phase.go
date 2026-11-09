@@ -37,6 +37,8 @@ type PhaseInput struct {
 	Forbid []model.FindingKind `json:"forbid,omitempty"`
 	// Protect lists the directories of the kind protected-path. It is empty, and so left out of a recorded phase, for a step that does not use the kind.
 	Protect []string `json:"protect,omitempty"`
+	// RequireSkills is the require_skills of the step. It is left out of a recorded phase for a step that names none, so a stored phase keeps its form.
+	RequireSkills []string `json:"require_skills,omitempty"`
 
 	// MaxBudget is the max_budget_usd of the step. It is left out of a recorded phase for a step that sets none.
 	MaxBudget float64 `json:"max_budget_usd,omitempty"`
@@ -123,7 +125,7 @@ func (e *Engine) runAgent(ctx, claim context.Context, in PhaseInput) (PhaseOutpu
 	result, err := e.deps.Agents.Run(agentCtx, AgentRequest{
 		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, in),
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, OutputFile: in.OutputFile, Outputs: in.Outputs,
+		Forbid: in.Forbid, Protect: in.Protect, RequireSkills: in.RequireSkills, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, OutputFile: in.OutputFile, Outputs: in.Outputs,
 	})
 
 	out := phaseOutput(result)

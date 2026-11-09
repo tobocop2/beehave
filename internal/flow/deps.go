@@ -31,6 +31,8 @@ type AgentRequest struct {
 	IdleTimeout time.Duration
 	Forbid      []model.FindingKind
 	Protect     []string
+	// RequireSkills lists the skills that the run must call. A CLI that reports no skill calls refuses the request before the run starts.
+	RequireSkills []string
 	// MaxBudget is the most dollars that the run may spend, passed to the budget option of the agent CLI. 0 means the step sets no cap.
 	MaxBudget float64
 	// NoEdits starts the agent so that it cannot edit files. Shell commands stay allowed.

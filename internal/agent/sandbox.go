@@ -54,35 +54,70 @@ func sandboxProblem(spec Spec, p Profile, goos string) string {
 	return ""
 }
 
-// versionProblem runs the CLI with --version and says why the sandbox cannot start, or returns "" when the version is new enough.
-// A CLI that ignores a sandbox setting it does not know runs with no sandbox and exits with code 0, so an old or unreadable version stops the run.
+// guardProblem says why a run with a guard cannot start on this system, or returns "" when it can.
+func guardProblem(spec Spec, p Profile, goos string) string {
+	if spec.Guard != "" && p.GuardPosixOnly && goos == "windows" {
+		return p.Binary + " checks commands with a POSIX shell, so a step with forbid_commands does not start on Windows. Remove forbid_commands from the step, or run it on Linux or macOS."
+	}
+
+	return ""
+}
+
+// versionNeed is one reason to read the version of the CLI: the oldest version that the reason needs, what stops when the version is not enough, and how
+// the step author turns the reason off.
+type versionNeed struct{ least, subject, stop, off string }
+
+// versionNeeds lists what the spec needs from the version of the CLI. A sandbox needs MinVersion. A guard needs GuardMinVersion, when the profile names one.
+func versionNeeds(spec Spec, p Profile) []versionNeed {
+	var needs []versionNeed
+
+	if spec.Sandbox != nil {
+		needs = append(needs, versionNeed{p.MinVersion, "the sandbox", "the sandbox is not started", "set sandbox = None on the step to run it with no sandbox"})
+	}
+
+	if spec.Guard != "" && p.GuardMinVersion != "" {
+		needs = append(needs, versionNeed{p.GuardMinVersion, "the command guard", "the step is not started", "remove forbid_commands from the step to run it with no check of its commands"})
+	}
+
+	return needs
+}
+
+// versionProblem runs the CLI with --version and says why the run cannot start, or returns "" when the version is new enough for the sandbox and the guard.
+// A CLI that ignores a sandbox setting or a hook it does not know runs with no sandbox or no guard and exits with code 0, so an old or unreadable version stops the run.
 func versionProblem(ctx context.Context, spec Spec, p Profile, binary string, env []string, version versionOf) string {
-	if spec.Sandbox == nil {
+	needs := versionNeeds(spec, p)
+	if len(needs) == 0 {
 		return ""
 	}
 
 	out, err := version(ctx, binary, env)
 	if err != nil {
-		return fmt.Sprintf("cannot read the version of %s (%v), so the sandbox is not started. Set sandbox = None on the step to run it with no sandbox.", p.Binary, err)
+		return fmt.Sprintf("cannot read the version of %s (%v), so %s. To go on, %s.", p.Binary, err, needs[0].stop, needs[0].off)
 	}
 
-	return versionText(p, out)
+	for _, need := range needs {
+		if problem := versionText(p, out, need); problem != "" {
+			return problem
+		}
+	}
+
+	return ""
 }
 
-// versionText says why the version that the CLI printed is not enough for the sandbox, or returns "" when it is enough.
-func versionText(p Profile, out string) string {
+// versionText says why the version that the CLI printed is not enough for the need, or returns "" when it is enough.
+func versionText(p Profile, out string, need versionNeed) string {
 	found := versionNumber.FindStringSubmatch(out)
 	if found == nil {
-		return fmt.Sprintf("the version of %s is not readable from %q, so the sandbox is not started. Update it to %s or later.", p.Binary, out, p.MinVersion)
+		return fmt.Sprintf("the version of %s is not readable from %q, so %s. Update it to %s or later.", p.Binary, out, need.stop, need.least)
 	}
 
-	least := versionNumber.FindStringSubmatch(p.MinVersion)
+	least := versionNumber.FindStringSubmatch(need.least)
 	if least == nil {
-		return fmt.Sprintf("the profile of %s names the minimum version %q, which is not a version number, so the sandbox is not started.", p.Binary, p.MinVersion)
+		return fmt.Sprintf("the profile of %s names the minimum version %q, which is not a version number, so %s.", p.Binary, need.least, need.stop)
 	}
 
 	if semver.Compare(semverOf(found), semverOf(least)) < 0 {
-		return fmt.Sprintf("%s is at version %s.%s.%s and the sandbox needs %s or later. Update it, or set sandbox = None on the step.", p.Binary, found[1], found[2], found[3], p.MinVersion)
+		return fmt.Sprintf("%s is at version %s.%s.%s and %s needs %s or later, so %s. Update it, or %s.", p.Binary, found[1], found[2], found[3], need.subject, need.least, need.stop, need.off)
 	}
 
 	return ""

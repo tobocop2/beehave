@@ -370,6 +370,26 @@ func TestRunner_TheRealIdleTimerStopsASilentAgent(t *testing.T) { //nolint:paral
 	assert.Equal(t, agent.OutcomeIdle, got.Outcome)
 }
 
+type stallNoteAdapter struct{ agent.Adapter }
+
+func (a stallNoteAdapter) Profile() agent.Profile {
+	profile := a.Adapter.Profile()
+	profile.StallNote = "the model may be over its quota"
+
+	return profile
+}
+
+func TestRunner_ATimeoutAddsTheStallNoteOfTheProfile(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f.spec.Adapter = stallNoteAdapter{claude.New()}
+	f.spec.Timeout = 300 * time.Millisecond
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeTimedOut, got.Outcome)
+	assert.Contains(t, got.Note, "the model may be over its quota")
+}
+
 func TestRunner_ACancelKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
 	ctx, cancel := context.WithCancel(context.Background())

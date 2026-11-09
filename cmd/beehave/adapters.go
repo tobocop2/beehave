@@ -9,6 +9,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/forge"
@@ -70,7 +71,8 @@ func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
 			model.ForgeGithub: newGithubForge,
 		},
 		agents: map[model.Agent]func() agent.Adapter{
-			model.AgentClaude: func() agent.Adapter { return claude.New() },
+			model.AgentClaude:   func() agent.Adapter { return claude.New() },
+			model.AgentOpenCode: func() agent.Adapter { return opencode.New() },
 		},
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,

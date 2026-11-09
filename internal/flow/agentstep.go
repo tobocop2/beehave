@@ -357,7 +357,7 @@ func (a agentArgs) refusePlain(project string) error {
 func (a agentArgs) phase(in ItemInput, login, prompt string) PhaseInput {
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Kind: a.kind, Lane: a.lane, Prompt: prompt,
-		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
+		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, RequireSkills: a.requireSkills, MaxBudget: a.maxBudget,
 		Rounds: a.rounds, NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box,
 	}
 }

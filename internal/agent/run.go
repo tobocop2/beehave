@@ -104,6 +104,9 @@ type Result struct {
 	Text       string
 	Skills     []string
 	Violations []string
+	// GuardMissing is true when the launch named a marker file for its hook (Launch.Loaded) and the file was not there when the run ended: the hook did not load,
+	// so the CLI ran its shell commands with no check. The runner sets it; the caller turns it into a violation.
+	GuardMissing bool
 }
 
 // Timer is the part of time.Timer that the idle limit and the total limit use.
@@ -133,12 +136,21 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 
 	after := r.after()
 
-	defer startTotalTimeout(spec.Timeout, after, cancel)()
+	defer startTotalTimeout(cmp.Or(spec.Timeout, p.DefaultTimeout), after, cancel)()
 
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return execute(ctx, spec, p, idle, r.version())
+	return stalled(execute(ctx, spec, p, idle, r.version()), p)
+}
+
+// stalled adds the StallNote of the profile to a run that a total or idle limit ended.
+func stalled(result Result, p Profile) Result {
+	if p.StallNote != "" && (result.Outcome == OutcomeTimedOut || result.Outcome == OutcomeIdle) {
+		result.Note = strings.TrimSpace(result.Note + " " + p.StallNote)
+	}
+
+	return result
 }
 
 // after returns the timer function of the runner, or the one of the standard library when the runner sets none.
@@ -170,7 +182,7 @@ func prepare(spec Spec, goos string) (Profile, string) {
 		return p, problem
 	}
 
-	if problem := sandboxProblem(spec, p, goos); problem != "" {
+	if problem := cmp.Or(sandboxProblem(spec, p, goos), guardProblem(spec, p, goos)); problem != "" {
 		return p, problem
 	}
 
@@ -245,7 +257,25 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 
-	return runCommand(ctx, spec, cmd, idle)
+	return withGuardProof(runCommand(ctx, spec, cmd, idle), runDir, launch.Loaded)
+}
+
+// withGuardProof sets GuardMissing on the result when the launch named a marker file and the file is not in the run folder.
+func withGuardProof(result Result, runDir, marker string) Result {
+	result.GuardMissing = marker != "" && !loaded(runDir, marker)
+
+	return result
+}
+
+// loaded is true when the hook of the launch created its marker file in the run folder. The caller has checked that the path is local.
+func loaded(runDir, name string) bool {
+	if !filepath.IsLocal(name) {
+		return false
+	}
+
+	_, err := os.Stat(filepath.Join(runDir, name))
+
+	return err == nil
 }
 
 // runCommand starts the command, waits for it and returns what it left.

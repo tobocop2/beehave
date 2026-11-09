@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/link"
@@ -37,13 +38,15 @@ func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T
 	assert.Len(t, table.forges, len(model.Forges()))
 }
 
-func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *testing.T) {
+func TestAdapters_AgentBuildsTheAdapterOfEachAgentAndNothingForAnUnknownName(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil)
 
 	assert.Equal(t, claude.New(), table.agent(model.AgentClaude))
-	assert.Nil(t, table.agent(model.AgentOpenCode))
+	assert.Equal(t, opencode.New(), table.agent(model.AgentOpenCode))
+	assert.Nil(t, table.agent(model.Agent("gpt")))
+	assert.Len(t, table.agents, 2)
 }
 
 func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
