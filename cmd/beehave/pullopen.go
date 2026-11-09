@@ -11,7 +11,11 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-var errParentNoPull = errors.New("the parent item has no pull request")
+var (
+	errParentNoPull = errors.New("the parent item has no pull request")
+	errBaseMoved    = errors.New("the stack link moved the base of the bottom pull request")
+	errNoBase       = errors.New("the forge returned no base branch")
+)
 
 // Open finds the open pull request on the branch of the item, or opens a draft one into the base. It then makes the body right and links the pull request
 // into the native stack of its parent. The find comes first, so a resume after a lost step record opens no second pull request.
@@ -32,7 +36,7 @@ func (p pulls) Open(ctx context.Context, project, item string, req flow.OpenRequ
 		return flow.OpenResult{}, err
 	}
 
-	stack, err := stackOf(ctx, built, opener, parent, number)
+	stack, err := stackOf(ctx, built, opener, parent, number, req.Base)
 
 	return flow.OpenResult{Number: number, Created: created, Stack: stack}, err
 }
@@ -176,13 +180,13 @@ func withLine(body string, issue int, line string) string {
 }
 
 // stackOf links the pull request on top of the parent when they are not yet in one stack, then reads both ids and requires one non-empty id.
-// No parent means no stack and an empty id.
-func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int) (string, error) {
+// The first link of a stack carries the base branch of the round. No parent means no stack and an empty id.
+func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) (string, error) {
 	if parent == 0 {
 		return "", nil
 	}
 
-	if err := linkIfApart(ctx, built, opener, parent, number); err != nil {
+	if err := linkIfApart(ctx, built, opener, parent, number, base); err != nil {
 		return "", err
 	}
 
@@ -199,13 +203,82 @@ func stackOf(ctx context.Context, built forge.Forge, opener forge.Opener, parent
 }
 
 // linkIfApart links the pull request on top of the parent unless both already show one stack id.
-func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int) error {
-	same, _, err := sharedStack(ctx, built, parent, number)
+// A parent in no stack is the bottom of a new one, and that link keeps its base.
+func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) error {
+	same, top, err := sharedStack(ctx, built, parent, number)
 	if err != nil || same {
 		return err
 	}
 
-	return opener.LinkStack(ctx, parent, number)
+	if top != "" {
+		return opener.LinkStack(ctx, parent, number, "")
+	}
+
+	return linkBottom(ctx, built, opener, parent, number, base)
+}
+
+// linkBottom links a new stack with the base branch and reads the base of the bottom pull request before and after.
+// A bottom that moved is unstacked, set back and linked once more. A second move is an error.
+func linkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string) error {
+	before, err := baseOf(ctx, built, parent)
+	if err != nil {
+		return err
+	}
+
+	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+		return err
+	}
+
+	if err := keptBase(ctx, built, parent, before); !errors.Is(err, errBaseMoved) {
+		return err
+	}
+
+	return relinkBottom(ctx, built, opener, parent, number, base, before)
+}
+
+// relinkBottom takes the pull request out of its stack, sets its base back and links once more.
+func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base, before string) error {
+	if err := opener.Unstack(ctx, parent); err != nil {
+		return err
+	}
+
+	if err := built.SetBase(ctx, parent, before); err != nil {
+		return err
+	}
+
+	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+		return err
+	}
+
+	return keptBase(ctx, built, parent, before)
+}
+
+// keptBase is nil when the pull request still targets the branch it targeted before, and an errBaseMoved error when it does not.
+func keptBase(ctx context.Context, built forge.Forge, pr int, before string) error {
+	now, err := baseOf(ctx, built, pr)
+	if err != nil {
+		return err
+	}
+
+	if now != before {
+		return fmt.Errorf("%w: pull request %d targets %s, not %s", errBaseMoved, pr, now, before)
+	}
+
+	return nil
+}
+
+// baseOf returns the base branch of a pull request. A read with no base is an error.
+func baseOf(ctx context.Context, built forge.Forge, pr int) (string, error) {
+	view, err := built.PRView(ctx, pr, "baseRefName")
+	if err != nil {
+		return "", err
+	}
+
+	if view.BaseRefName == nil || *view.BaseRefName == "" {
+		return "", fmt.Errorf("%w: pull request %d", errNoBase, pr)
+	}
+
+	return *view.BaseRefName, nil
 }
 
 // sharedStack tells whether both pull requests show the same non-empty stack id.

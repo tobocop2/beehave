@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -26,13 +27,54 @@ func (f *Forge) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
 }
 
 // LinkStack puts the child pull request on top of the parent in a native stack. gh takes the pull requests by address, because the command has no repository flag.
-func (f *Forge) LinkStack(ctx context.Context, parent, child int) error {
-	base := "https://github.com/" + strings.TrimSpace(f.repo) + "/pull/"
+// A non-empty base goes to gh as the branch of the bottom pull request.
+func (f *Forge) LinkStack(ctx context.Context, parent, child int, base string) error {
+	prefix := "https://github.com/" + strings.TrimSpace(f.repo) + "/pull/"
+	args := []string{"stack", "link"}
 
-	done := f.run.Run(ctx, []string{"stack", "link", base + strconv.Itoa(parent), base + strconv.Itoa(child)})
+	if base != "" {
+		args = append(args, "--base", base)
+	}
+
+	done := f.run.Run(ctx, append(args, prefix+strconv.Itoa(parent), prefix+strconv.Itoa(child)))
 	if done.ExitCode != 0 {
 		return forge.Refuse("cannot link pull request %d into the stack of pull request %d", child, parent)
 	}
 
 	return nil
+}
+
+// Unstack removes the stack of the pull request on GitHub. gh takes the number of the stack, which the forge reads first.
+func (f *Forge) Unstack(ctx context.Context, pr int) error {
+	number, err := f.stackNumber(ctx, pr)
+	if err != nil {
+		return err
+	}
+
+	done := f.run.Run(ctx, []string{"stack", "unstack", strconv.Itoa(number)})
+	if done.ExitCode != 0 {
+		return forge.Refuse("cannot unstack pull request %d", pr)
+	}
+
+	return nil
+}
+
+// stackNumber returns the number that gh uses for the stack of the pull request. A pull request in no stack is a refusal.
+func (f *Forge) stackNumber(ctx context.Context, pr int) (int, error) {
+	base := fmt.Sprintf("cannot unstack pull request %d", pr)
+
+	pull, err := readPull[struct {
+		Stack *struct {
+			Number int `json:"number"`
+		} `json:"stack"`
+	}](ctx, f, pr, stackNumberQuery, base)
+	if err != nil {
+		return 0, err
+	}
+
+	if pull == nil || pull.Stack == nil || pull.Stack.Number == 0 {
+		return 0, forge.Refuse("%s: it is in no stack", base)
+	}
+
+	return pull.Stack.Number, nil
 }

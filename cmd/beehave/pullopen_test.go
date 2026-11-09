@@ -27,6 +27,13 @@ type openForge struct {
 	linked   []string
 	setBody  []string
 	linkMake string // the stack id that a link gives both pull requests
+	// bases is the base branch of each pull request; a pull request not in it targets round-1.
+	bases     map[int]string
+	linkBases []string // the base that each link was given
+	unstacked []int
+	// A link with no base moves the base of the parent to main, as the forge does. movesFirst makes the first link do it whatever its base, and stubborn makes every link do it.
+	movesFirst bool
+	stubborn   bool
 	// fail makes the call of that key fail with errFake. A key is the method, then the argument that tells calls apart: "PRList:open:bb-4", "StackID:20", "StackID:20:linked" (after a link).
 	fail map[string]bool
 }
@@ -92,15 +99,53 @@ func (f *openForge) CreatePR(_ context.Context, req model.NewPull) (int, error) 
 	return f.open[req.Head], nil
 }
 
-func (f *openForge) LinkStack(_ context.Context, parent, child int) error {
+func (f *openForge) LinkStack(_ context.Context, parent, child int, base string) error {
 	f.linked = append(f.linked, strconv.Itoa(parent)+">"+strconv.Itoa(child))
+	f.linkBases = append(f.linkBases, base)
+
+	if len(f.linked) == 2 {
+		if err := f.failed("LinkStack:2"); err != nil {
+			return err
+		}
+	}
 	f.stacks[parent], f.stacks[child] = f.linkMake, f.linkMake
+
+	if base == "" || f.stubborn || (f.movesFirst && len(f.linked) == 1) {
+		f.bases[parent] = "main"
+	}
 
 	return f.failed("LinkStack")
 }
 
+func (f *openForge) Unstack(_ context.Context, pr int) error {
+	f.unstacked = append(f.unstacked, pr)
+	f.stacks = map[int]string{}
+
+	return f.failed("Unstack")
+}
+
+func (f *openForge) SetBase(_ context.Context, pr int, base string) error {
+	f.bases[pr] = base
+
+	return f.failed("SetBase")
+}
+
+func (f *openForge) PRView(_ context.Context, pr int, _ ...string) (model.PullRequest, error) {
+	key := "PRView:" + strconv.Itoa(pr)
+	if len(f.linked) > 0 {
+		key += ":linked" + strconv.Itoa(len(f.linked))
+	}
+
+	base, ok := f.bases[pr]
+	if !ok {
+		base = "round-1"
+	}
+
+	return model.PullRequest{BaseRefName: &base}, f.failed(key)
+}
+
 func newOpenForge() *openForge {
-	return &openForge{open: map[string]int{}, merged: map[string]int{}, def: "main", bodies: map[int]string{}, stacks: map[int]string{}, linkMake: "S_1"}
+	return &openForge{open: map[string]int{}, merged: map[string]int{}, def: "main", bodies: map[int]string{}, stacks: map[int]string{}, bases: map[int]string{}, linkMake: "S_1"}
 }
 
 func openOver(f forge.Forge) pulls {
@@ -215,6 +260,8 @@ func TestPullsOpen_ADependentGoesIntoTheStackOfItsParent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "S_1", got.Stack)
 	assert.Equal(t, []string{"20>51"}, f.linked)
+	assert.Equal(t, []string{"round-1"}, f.linkBases, "the first link of a stack carries the base of the round")
+	assert.NotEqual(t, "main", f.bases[20], "the link leaves the bottom on the branch of the round")
 	assert.Equal(t, "bb-4", f.created[0].Base, "the dependent is based on the branch of its parent")
 
 	// A resume finds both pull requests in one stack and links nothing.
@@ -222,6 +269,59 @@ func TestPullsOpen_ADependentGoesIntoTheStackOfItsParent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "S_1", again.Stack)
 	assert.Len(t, f.linked, 1)
+}
+
+func TestPullsOpen_ALinkThatMovesTheBaseIsUnstackedRestoredAndLinkedAgain(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	f.open["bb-4"] = 20
+	f.movesFirst = true
+
+	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
+	require.NoError(t, err)
+	assert.Equal(t, "S_1", got.Stack)
+	assert.Equal(t, []int{20}, f.unstacked)
+	assert.Equal(t, []string{"20>51", "20>51"}, f.linked)
+	assert.Equal(t, []string{"round-1", "round-1"}, f.linkBases, "the second link carries the base too")
+	assert.Equal(t, "round-1", f.bases[20], "the base is back on the branch of the round")
+}
+
+func TestPullsOpen_ALinkThatMovesTheBaseTwiceIsAnError(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	f.open["bb-4"] = 20
+	f.stubborn = true
+
+	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
+	require.ErrorIs(t, err, errBaseMoved)
+	assert.Len(t, f.linked, 2, "the link is repaired once and never a third time")
+}
+
+func TestPullsOpen_AParentInAStackLinksWithNoBase(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	f.open["bb-4"] = 20
+	f.stacks[20] = "S_1"
+	f.bases[20] = "bb-3"
+
+	got, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
+	require.NoError(t, err)
+	assert.Equal(t, "S_1", got.Stack)
+	assert.Equal(t, []string{""}, f.linkBases, "only the first link of a stack names the base")
+}
+
+func TestPullsOpen_AParentWithNoBaseInTheAnswerIsAnError(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	f.open["bb-4"] = 20
+	f.bases[20] = ""
+
+	_, err := openOver(f).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "round-1", Parent: "bb-4"})
+	require.ErrorIs(t, err, errNoBase)
 }
 
 func TestPullsOpen_AStackThatDoesNotShowOneIdIsAnError(t *testing.T) {
@@ -271,6 +371,12 @@ func TestPullsOpen_AFailedCallOfTheForgeIsAnErrorAndNeverAGuess(t *testing.T) {
 		{"StackID:51", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"LinkStack", func(f *openForge) { f.open["bb-4"] = 20 }},
 		{"StackID:20:linked", func(f *openForge) { f.open["bb-4"] = 20 }},
+		{"PRView:20", func(f *openForge) { f.open["bb-4"] = 20 }},
+		{"PRView:20:linked1", func(f *openForge) { f.open["bb-4"] = 20 }},
+		{"PRView:20:linked2", func(f *openForge) { f.open["bb-4"] = 20; f.movesFirst = true }},
+		{"LinkStack:2", func(f *openForge) { f.open["bb-4"] = 20; f.movesFirst = true }},
+		{"Unstack", func(f *openForge) { f.open["bb-4"] = 20; f.movesFirst = true }},
+		{"SetBase", func(f *openForge) { f.open["bb-4"] = 20; f.movesFirst = true }},
 	}
 
 	for _, tt := range tests {
