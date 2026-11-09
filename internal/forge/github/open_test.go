@@ -39,12 +39,56 @@ func TestLinkStack_LinksTheChildOnTopOfTheParentByAddress(t *testing.T) {
 	t.Parallel()
 
 	f, run := fixed(t, "")
+	pulls := []string{"https://github.com/" + repo + "/pull/3", "https://github.com/" + repo + "/pull/4"}
 
-	require.NoError(t, f.LinkStack(context.Background(), 3, 4))
-	assert.Equal(t, [][]string{{"stack", "link", "https://github.com/" + repo + "/pull/3", "https://github.com/" + repo + "/pull/4"}}, run.Calls)
+	require.NoError(t, f.LinkStack(context.Background(), 3, 4, ""))
+	assert.Equal(t, [][]string{append([]string{"stack", "link"}, pulls...)}, run.Calls, "no base means no --base flag")
 
 	down, _ := failing(t, "HTTP 502")
-	err := down.LinkStack(context.Background(), 3, 4)
+	err := down.LinkStack(context.Background(), 3, 4, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot link pull request 4 into the stack of pull request 3")
+}
+
+func TestLinkStack_ABaseGoesToGhAsTheBaseOfTheBottom(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	require.NoError(t, f.LinkStack(context.Background(), 3, 4, "round-1"))
+	assert.Equal(t, [][]string{{"stack", "link", "--base", "round-1", "https://github.com/" + repo + "/pull/3", "https://github.com/" + repo + "/pull/4"}}, run.Calls)
+}
+
+func TestUnstack_RemovesTheStackByItsNumber(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, graph(t, fields{"stack": fields{"number": 7}}))
+
+	require.NoError(t, f.Unstack(context.Background(), 3))
+	assert.Equal(t, []string{"stack", "unstack", "7"}, run.Calls[len(run.Calls)-1])
+}
+
+func TestUnstack_Refusals(t *testing.T) {
+	t.Parallel()
+
+	for name, pull := range map[string]fields{"no_stack": {"stack": nil}, "stack_number_zero": {"stack": fields{"number": 0}}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f, run := fixed(t, graph(t, pull))
+			err := f.Unstack(context.Background(), 3)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cannot unstack pull request 3: it is in no stack")
+			assert.False(t, run.Called("stack", "unstack"))
+		})
+	}
+
+	down, _ := failing(t, "HTTP 502")
+	require.Error(t, down.Unstack(context.Background(), 3))
+
+	f, run := fixed(t, graph(t, fields{"stack": fields{"number": 7}}))
+	run.PlanFail("no", "stack", "unstack")
+	err := f.Unstack(context.Background(), 3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot unstack pull request 3")
 }
