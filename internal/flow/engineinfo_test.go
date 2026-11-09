@@ -108,3 +108,22 @@ func TestReadEngineInfo_AnInfoPathThatIsAFolderIsReportedNotTakenForNoEngine(t *
 	require.ErrorContains(t, err, "read "+engineInfoName)
 	assert.Zero(t, info)
 }
+
+func TestNewEngine_AnInfoFileThatCannotBeWrittenFailsTheOpenAndLeavesTheLockFree(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	client := harness.client(t, testVersion)
+	folder := filepath.Join(client.dir, engineInfoName)
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "x"), nil, 0o600))
+
+	engine, err := NewEngine(t.Context(), harness.opts, harness.deps())
+
+	require.ErrorContains(t, err, "write "+engineInfoName)
+	assert.Nil(t, engine)
+
+	held, err := holdEngine(client.dir)
+	require.NoError(t, err, "a failed open leaves the engine lock free")
+	require.NoError(t, held.Unlock())
+}
