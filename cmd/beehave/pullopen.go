@@ -212,52 +212,68 @@ func linkIfApart(ctx context.Context, built forge.Forge, opener forge.Opener, pa
 		return err
 	}
 
-	before, err := baseOf(ctx, built, parent)
-	if err != nil {
-		return err
-	}
-
 	first := top == ""
 	if !first {
 		base = ""
 	}
 
-	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+	return linkChecked(ctx, built, opener, parent, number, base, first)
+}
+
+// linkChecked reads the base of the parent, links, and reads it again. A new stack whose bottom moved is repaired.
+func linkChecked(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base string, first bool) error {
+	before, err := baseOf(ctx, built, parent)
+	if err != nil {
 		return err
 	}
 
-	if err := keptBase(ctx, built, parent, before); !errors.Is(err, errBaseMoved) || !first {
+	err = linkKeeping(ctx, built, opener, parent, number, base, before)
+	if !errors.Is(err, errBaseMoved) || !first {
 		return err
 	}
 
 	return relinkBottom(ctx, built, opener, parent, number, before)
 }
 
+// linkKeeping links with the base and returns an errBaseMoved error when the parent no longer targets the branch it targeted before.
+func linkKeeping(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, base, before string) error {
+	if err := opener.LinkStack(ctx, parent, number, base); err != nil {
+		return err
+	}
+
+	return keptBase(ctx, built, parent, before)
+}
+
 // relinkBottom takes the new stack apart, sets the base of its bottom back and links once more with that base.
 // A stack that stays after the unstack, or a second move of the base, is an error.
 func relinkBottom(ctx context.Context, built forge.Forge, opener forge.Opener, parent, number int, before string) error {
-	if err := opener.Unstack(ctx, parent); err != nil {
+	if err := unstack(ctx, built, opener, parent); err != nil {
 		return err
-	}
-
-	left, err := built.StackID(ctx, parent)
-	if err != nil {
-		return err
-	}
-
-	if left != "" {
-		return fmt.Errorf("%w: pull request %d is still in stack %s", errStillStacked, parent, left)
 	}
 
 	if err := built.SetBase(ctx, parent, before); err != nil {
 		return err
 	}
 
-	if err := opener.LinkStack(ctx, parent, number, before); err != nil {
+	return linkKeeping(ctx, built, opener, parent, number, before, before)
+}
+
+// unstack removes the stack of the pull request and reads it again, because gh leaves a pull request that is queued for merge in its stack.
+func unstack(ctx context.Context, built forge.Forge, opener forge.Opener, pr int) error {
+	if err := opener.Unstack(ctx, pr); err != nil {
 		return err
 	}
 
-	return keptBase(ctx, built, parent, before)
+	left, err := built.StackID(ctx, pr)
+	if err != nil {
+		return err
+	}
+
+	if left != "" {
+		return fmt.Errorf("%w: pull request %d is still in stack %s", errStillStacked, pr, left)
+	}
+
+	return nil
 }
 
 // keptBase is nil when the pull request still targets the branch it targeted before, and an errBaseMoved error when it does not.
