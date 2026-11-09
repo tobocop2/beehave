@@ -113,6 +113,8 @@ A gate that exits 0 has not proved that tests ran. The project key `test_report`
 
 Every project that has a gate must set `test_report`, with or without a repository and on any build host. The config refuses a gate without it, because the gate would have no test count.
 
+The beehave repository itself writes its JUnit files with `make test`, through gotestsum, into the folder `reports/` (git ignores it). A project config for beehave sets `test_report` to `reports/*.xml`.
+
 #### On a build host
 
 A gate on a build host cannot read the report files here. So its job command first refuses a report file that the repository tracks. It ends with a check that the glob matches at least one `testcase` element. The job writes a marker line before it fails, and the gate reads the end of the job log:
