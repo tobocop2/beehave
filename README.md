@@ -43,6 +43,13 @@ beehave runs them through your process instead. You write the steps once in a sh
 The workflow file has no clock, no randomness and no direct access to files or the network. The same results always lead to the same next step, and a run that resumes after a crash takes the same path it took before. Pass or fail comes from exit codes and test reports that the engine reads itself, not from what an agent says.
 
 </details>
+<details><summary><strong>Far fewer tokens</strong>: the loop is code, so it costs nothing</summary>
+
+When a model runs the loop, every check is a model call: is the test done, did the review pass, what comes next. Each call sends the whole conversation again. In our own runs, such an orchestrator read 60 to 250 million cached tokens an hour, many times more than the agents that did the work.
+
+In beehave, the workflow file is the loop. Waiting, routing, testing and merging cost no tokens. Each agent gets the prompt of its own step, not a long manual of rules for the whole process. A finished step never runs again after a crash, so you never pay for it twice.
+
+</details>
 <details><summary><strong>Write the process once</strong>: every job follows the same steps</summary>
 
 Plan, do the work, check it, get a second opinion, finish. You write those steps in one short file, and every job follows them in the same order. The agent does the thinking inside each step. It does not decide which steps to skip.
