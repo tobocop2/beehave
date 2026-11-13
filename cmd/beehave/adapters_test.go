@@ -42,7 +42,7 @@ func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *t
 
 	table := newAdapters(beadstest.NewBd(t), nil)
 
-	assert.Equal(t, claude.New(), table.agent(model.AgentClaude))
+	assert.Equal(t, claude.New(nil), table.agent(claude.Name))
 	assert.Nil(t, table.agent(model.AgentOpenCode))
 }
 

@@ -26,7 +26,7 @@ func bg() context.Context {
 func beadsOver(t *testing.T, run proc.Runner) *beads.Store {
 	t.Helper()
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	return bd
@@ -71,9 +71,15 @@ func TestStore_ConformsToClaimRows(t *testing.T) {
 func TestNew_NeedsAnIDPrefix(t *testing.T) {
 	t.Parallel()
 
-	_, err := beads.New(&proctest.Scripted{}, "")
-	require.ErrorContains(t, err, "the beads id prefix is required")
-	assert.Equal(t, store.CodeRefused, codeOf(t, err))
+	for name, block := range map[string]*model.Block{"no_block": nil, "no_prefix": model.NewBlock("test", nil), "empty_prefix": prefixBlock(""), "blank_prefix": prefixBlock(" ")} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := beads.New(&proctest.Scripted{}, block)
+			require.ErrorContains(t, err, "the beads id prefix is required")
+			assert.Equal(t, store.CodeRefused, codeOf(t, err))
+		})
+	}
 }
 
 func TestBeadsHeldRows_ReadsClaimRowsAndTheEndOfTheirLease(t *testing.T) {

@@ -113,8 +113,8 @@ func TestLoadFolder_EveryArgumentNamesItsConstructor(t *testing.T) {
 	t.Parallel()
 
 	// The table comes from the constructor definitions, so no second copy exists.
-	owners := config.ArgumentOwners()
-	require.Len(t, owners, 73)
+	owners := config.ArgumentOwners(registry())
+	require.Len(t, owners, 75)
 
 	for key, owner := range owners {
 		t.Run(key, func(t *testing.T) {

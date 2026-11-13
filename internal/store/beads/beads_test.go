@@ -31,7 +31,7 @@ func newBeads(t *testing.T) (*beads.Store, *proctest.Scripted) {
 		run.Plan("[]", words...)
 	}
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	return bd, run

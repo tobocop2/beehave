@@ -26,15 +26,20 @@ type Host struct {
 // It runs nothing, so a check of the config needs no network. A setting that could change a command line is refused.
 // Jobs run in the login folder of the head node, so `host.ssh.work_root` is refused: a folder that Slurm does not use would hide the logs and the work.
 func NewHost(target string, config model.HostConfig, ssh proc.Runner, opts ...Option) (*Host, error) {
+	values, err := decodeBlock(config.Block)
+	if err != nil {
+		return nil, err
+	}
+
 	switch {
 	case config.MaxRun < time.Second:
 		return nil, fmt.Errorf("%w: `host.max_run` must be at least one second", link.ErrConfig)
-	case config.SSH.WorkRoot != "":
-		return nil, fmt.Errorf("%w: `host.ssh.work_root` is not used with the slurm provider. Jobs run in the login folder of the head node. Remove the key", link.ErrConfig)
+	case values.workRoot != "":
+		return nil, fmt.Errorf("%w: `host.slurm.work_root` is not used with the slurm provider. Jobs run in the login folder of the head node. Remove the key", link.ErrConfig)
 	}
 
 	l, err := link.ForMachine(target, link.Options{
-		Address: config.SSH.Address, User: config.SSH.User, Identity: config.SSH.Identity, KnownHosts: config.SSH.KnownHosts, Port: config.SSH.Port,
+		Address: values.address, User: values.user, Identity: values.identity, KnownHosts: values.knownHosts, Port: values.port,
 	}, ssh)
 	if err != nil {
 		return nil, err

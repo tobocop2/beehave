@@ -148,17 +148,34 @@ func TestKey_ABuildHostGateDoesNotReadInstalledTools(t *testing.T) {
 	assert.False(t, asked)
 }
 
+// skyBlock returns a host block that holds a cloud and an instance type.
+func skyBlock(instanceType string) *model.Block {
+	return model.NewBlock("p.star:1:1", []model.BlockEntry{model.TextEntry("cloud", "gcp"), model.TextEntry("instance_type", instanceType)})
+}
+
+func TestKey_TheSamePositionlessHostBlockGivesTheSameKey(t *testing.T) {
+	t.Parallel()
+
+	one, other := project("cluster"), project("cluster")
+	one.Host = &model.HostConfig{Provider: "skypilot", Block: model.NewBlock("a.star:1:1", []model.BlockEntry{model.TextEntry("cloud", "gcp")})}
+	other.Host = &model.HostConfig{Provider: "skypilot", Block: model.NewBlock("b.star:7:3", []model.BlockEntry{model.TextEntry("cloud", "gcp")})}
+
+	state := gate.State{Head: headA, Tree: "t1", Clean: true}
+
+	assert.Equal(t, keyOf(t, state, &fakeShell{}, one).ID, keyOf(t, state, &fakeShell{}, other).ID)
+}
+
 func TestKey_ADifferentProjectNameRepoOrHostDefinitionGivesAnotherKey(t *testing.T) {
 	t.Parallel()
 
 	base := project("cluster")
-	base.Host = &model.HostConfig{Provider: "skypilot", SkyPilot: model.SkyPilotConfig{Cloud: "gcp", InstanceType: "n2"}}
+	base.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("n2")}
 	want := keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, base).ID
 
 	name, repo, host, none := base, base, base, base
 	name.Name = "other"
 	repo.Repo = "owner/other"
-	host.Host = &model.HostConfig{Provider: "skypilot", SkyPilot: model.SkyPilotConfig{Cloud: "gcp", InstanceType: "n4"}}
+	host.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("n4")}
 	none.Host = nil
 
 	for _, other := range []model.Project{name, repo, host, none} {

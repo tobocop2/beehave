@@ -2,6 +2,7 @@ package ssh_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -170,9 +171,7 @@ func TestWorkRoot_IsTheConfiguredFolderOrTheLoginFolder(t *testing.T) {
 		"home relative": {"~/work", sshtest.Root + "/work"},
 		"login folder":  {"", sshtest.Root},
 	} {
-		cfg := config()
-		cfg.SSH.WorkRoot = tc.root
-		h, _, _ := newHost(t, sshtest.New(hosttest.Working), cfg)
+		h, _, _ := newHost(t, sshtest.New(hosttest.Working), configWith(map[string]string{ssh.BlockWorkRoot: tc.root}))
 
 		got, err := h.WorkRoot(t.Context())
 
@@ -184,11 +183,9 @@ func TestWorkRoot_IsTheConfiguredFolderOrTheLoginFolder(t *testing.T) {
 func TestWorkRoot_ALoginFolderThatIsNotOneAbsolutePathIsAnError(t *testing.T) {
 	t.Parallel()
 
-	cfg := config()
-	cfg.SSH.WorkRoot = ""
 	runner := proctest.Always(model.CommandResult{Stdout: "relative\n"})
 
-	h, err := ssh.New("gates", cfg, runner)
+	h, err := ssh.New("gates", configWith(map[string]string{ssh.BlockWorkRoot: ""}), runner)
 	require.NoError(t, err)
 
 	_, err = h.WorkRoot(t.Context())
@@ -199,23 +196,86 @@ func TestWorkRoot_ALoginFolderThatIsNotOneAbsolutePathIsAnError(t *testing.T) {
 func TestNew_RefusesASettingThatCouldChangeACommandLine(t *testing.T) {
 	t.Parallel()
 
-	for name, edit := range map[string]func(*model.HostConfig){
-		"a percent in the work root": func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/a%h" },
-		"a dollar in the work root":  func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/$HOME" },
-		"a relative work root":       func(c *model.HostConfig) { c.SSH.WorkRoot = "work" },
-		"a max run under a second":   func(c *model.HostConfig) { c.MaxRun = 0 },
-		"a bad address":              func(c *model.HostConfig) { c.SSH.Address = "-x" },
+	for name, set := range map[string]map[string]string{
+		"a percent in the work root": {ssh.BlockWorkRoot: "/home/a%h"},
+		"a dollar in the work root":  {ssh.BlockWorkRoot: "/home/$HOME"},
+		"a relative work root":       {ssh.BlockWorkRoot: "work"},
+		"a bad address":              {ssh.BlockAddress: "-x"},
+		"an address with a space":    {ssh.BlockAddress: "a b"},
+		"a bad user":                 {ssh.BlockUser: "-oProxyCommand=x"},
+		"an unknown host key policy": {ssh.BlockKnownHosts: "off"},
 	} {
-		cfg := config()
-		edit(&cfg)
-
-		_, err := ssh.New("gates", cfg, proctest.Always(model.CommandResult{}))
+		_, err := ssh.New("gates", configWith(set), proctest.Always(model.CommandResult{}))
 
 		require.ErrorIs(t, err, link.ErrConfig, name)
 	}
 
-	_, err := ssh.New("-oProxyCommand=x", config(), proctest.Always(model.CommandResult{}))
+	cfg := config()
+	cfg.MaxRun = 0
+
+	_, err := ssh.New("gates", cfg, proctest.Always(model.CommandResult{}))
+	require.ErrorIs(t, err, link.ErrConfig, "a max run under a second")
+
+	_, err = ssh.New("-oProxyCommand=x", config(), proctest.Always(model.CommandResult{}))
 	require.ErrorIs(t, err, link.ErrConfig)
+}
+
+func TestNew_ReadsTheKeysOfTheBlock(t *testing.T) {
+	t.Parallel()
+
+	whole := func(key string, value int) model.HostConfig {
+		cfg := config()
+		cfg.Block = model.NewBlock("t", []model.BlockEntry{model.WholeEntry(key, value)})
+
+		return cfg
+	}
+
+	text := func(key, value string) model.HostConfig {
+		cfg := config()
+		cfg.Block = model.NewBlock("t", []model.BlockEntry{model.TextEntry(key, value)})
+
+		return cfg
+	}
+
+	tests := map[string]struct {
+		cfg     model.HostConfig
+		refused string
+	}{
+		"port_zero":                {cfg: whole(ssh.BlockPort, 0), refused: "from 1 to 65535"},
+		"port_above_the_range":     {cfg: whole(ssh.BlockPort, 65536), refused: "from 1 to 65535"},
+		"port_negative":            {cfg: whole(ssh.BlockPort, -1), refused: "from 1 to 65535"},
+		"port_at_the_top":          {cfg: whole(ssh.BlockPort, 65535)},
+		"port_at_the_bottom":       {cfg: whole(ssh.BlockPort, 1)},
+		"identity_relative":        {cfg: text(ssh.BlockIdentity, "id_ed25519"), refused: "absolute path"},
+		"identity_control":         {cfg: text(ssh.BlockIdentity, "/home/a\nb"), refused: "no control character"},
+		"identity_under_home":      {cfg: text(ssh.BlockIdentity, "~/.ssh/id")},
+		"work_root_relative":       {cfg: text(ssh.BlockWorkRoot, "work"), refused: "absolute path"},
+		"work_root_control":        {cfg: text(ssh.BlockWorkRoot, "/work\x00"), refused: "no control character"},
+		"nil_block":                {cfg: model.HostConfig{MaxRun: time.Hour}},
+		"block_with_no_entry":      {cfg: model.HostConfig{MaxRun: time.Hour, Block: model.NewBlock("t", nil)}},
+		"known_hosts_accept_new":   {cfg: text(ssh.BlockKnownHosts, model.KnownHostsAcceptNew)},
+		"known_hosts_not_a_policy": {cfg: text(ssh.BlockKnownHosts, "off"), refused: "known_hosts"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.cfg.MaxRun == 0 {
+				tt.cfg.MaxRun = time.Hour
+			}
+
+			_, err := ssh.New("gates", tt.cfg, proctest.Always(model.CommandResult{}))
+			if tt.refused == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, link.ErrConfig)
+			require.ErrorContains(t, err, tt.refused)
+		})
+	}
 }
 
 func TestNew_BuildsNoConnection(t *testing.T) {
@@ -242,4 +302,21 @@ func TestEveryCallPutsTheTargetAfterTheGuardAndAllowsNoWeakHostKeyPolicy(t *test
 		assert.NotContains(t, options, "StrictHostKeyChecking=no")
 		assert.Contains(t, options, "BatchMode=yes")
 	}
+}
+
+func TestBlock_DeclaresTheKeysOfTheLinkAndTheWorkRootAllOptional(t *testing.T) {
+	t.Parallel()
+
+	schema := ssh.Block()
+
+	var keys []string
+
+	for _, arg := range schema.Args {
+		assert.True(t, arg.Optional, arg.Key)
+
+		keys = append(keys, arg.Key)
+	}
+
+	assert.Equal(t, "ssh", schema.Name)
+	assert.ElementsMatch(t, []string{ssh.BlockAddress, ssh.BlockUser, ssh.BlockPort, ssh.BlockIdentity, ssh.BlockWorkRoot, ssh.BlockKnownHosts}, keys)
 }

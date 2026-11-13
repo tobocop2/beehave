@@ -1,4 +1,4 @@
-package skypilot
+package skyslurm
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/hosttest"
 	"github.com/tobocop2/beehave/internal/host/link"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
@@ -56,12 +57,12 @@ func TestSubmit_HoldsTheSkyPilotSlotUntilTheWorkIsBanked(t *testing.T) {
 }
 
 // newFakeSlots returns a host that is up, over a fake that keeps the files of the login folder and the slot jobs.
-func newFakeSlots(t *testing.T) (*Host, *fakeHost) {
+func newFakeSlots(t *testing.T) (*skypilot.Host, *fakeHost) {
 	t.Helper()
 
 	f := newFakeHost(hosttest.Working)
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
+	h, err := newHost(fakeCluster, model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
 
 	require.NoError(t, h.Up(t.Context()))
@@ -85,10 +86,10 @@ func TestCancel_EndsTheSlotJob(t *testing.T) {
 }
 
 // newSecondHandle returns a host over the same fake as the first, as after a restart: it never submitted anything.
-func newSecondHandle(t *testing.T, f *fakeHost) *Host {
+func newSecondHandle(t *testing.T, f *fakeHost) *skypilot.Host {
 	t.Helper()
 
-	h, err := New(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
+	h, err := newHost(fakeCluster, model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
 
 	return h

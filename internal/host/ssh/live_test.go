@@ -67,7 +67,7 @@ func TestLive_AJobRunsAsASystemdUserUnit(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(root)) })
 
 	n := 0
-	cfg := model.HostConfig{Provider: model.HostSSH, MaxRun: 2 * time.Minute, StaleMinutes: 5, SSH: model.SSHConfig{WorkRoot: root}}
+	cfg := model.HostConfig{Provider: ssh.Name, MaxRun: 2 * time.Minute, StaleMinutes: 5, Block: model.NewBlock("t", []model.BlockEntry{model.TextEntry(ssh.BlockWorkRoot, root)})}
 
 	h, err := ssh.New("localhost", cfg, localSSH{}, ssh.WithBank(func(context.Context) error { return nil }),
 		ssh.WithNonce(func() string { n++; return "livetest" + strconv.Itoa(n) }))

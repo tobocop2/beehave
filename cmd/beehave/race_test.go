@@ -17,6 +17,11 @@ import (
 	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
 
+// prefixBlock returns the beads block of a project file that gives the id prefix.
+func prefixBlock(prefix string) *model.Block {
+	return model.NewBlock("test", []model.BlockEntry{model.TextEntry(beads.BlockPrefix, prefix)})
+}
+
 // The tests here run claim over the real beads claim store, which only the composition root may join.
 // The fake bd is the one of internal/store/beadstest. It implements --claim, heartbeat, reclaim, --if-assignee and --if-status as bd does:
 // a test calls a second claimer from a hook, between the read of the first claimer and its write.
@@ -49,7 +54,7 @@ func claimCode(t *testing.T, err error) int {
 func beadsOver(t *testing.T, run proc.Runner) *beads.Store {
 	t.Helper()
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	return bd

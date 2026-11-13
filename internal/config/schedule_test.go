@@ -23,7 +23,7 @@ func loadSchedules(t *testing.T, list string) (config.Project, config.Problems) 
 	list = strings.ReplaceAll(list, "WORKFLOW", workflow)
 
 	writeFile(t, filepath.Join(dir, "projects", "p.star"), "\n"+call(localProject+", schedules = "+list))
-	cfg, problems := config.LoadFolder(dir, nil)
+	cfg, problems := config.LoadFolder(dir, nil, registry())
 
 	return cfg.Projects["p"], problems
 }
@@ -148,7 +148,7 @@ func TestLoadFolder_AScheduleWithARelativeWorkflowReadsItFromTheFolderOfTheProje
 	writeFile(t, filepath.Join(dir, "flows", "bump.star"), scheduleWorkflow)
 	writeFile(t, filepath.Join(dir, "projects", "p.star"), call(localProject+`, schedules = [schedule(name = "bump", cron = "@daily", workflow = "../flows/bump.star", item = "bump")]`))
 
-	cfg, problems := config.LoadFolder(dir, nil)
+	cfg, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Empty(t, problems)
 	require.Equal(t, filepath.Join(dir, "flows", "bump.star"), cfg.Projects["p"].Schedules[0].Workflow)

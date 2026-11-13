@@ -9,13 +9,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 // goodProject is the argument list of a project call that loads. A test adds arguments after it.
 // unreportedProject has no test_report, which the loader refuses for a gate on this machine and for a gate on a build host.
-const unreportedProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
+const unreportedProject = `repo = "o/n", tracker = "github", forge = "github", base_branch = "main", gate = "make check"`
 
 const hostProject = unreportedProject + `, test_report = "reports/*.xml"`
 
@@ -44,7 +49,7 @@ func loadProjectText(t *testing.T, text string) (config.Project, config.Problems
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects", "p.star"), text)
-	cfg, problems := config.LoadFolder(dir, nil)
+	cfg, problems := config.LoadFolder(dir, nil, registry())
 
 	return cfg.Projects["p"], problems
 }
@@ -55,7 +60,7 @@ func loadRunnersText(t *testing.T, text string) (config.Config, config.Problems)
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), text)
 
-	return config.LoadFolder(dir, nil)
+	return config.LoadFolder(dir, nil, registry())
 }
 
 var exampleConfig = filepath.Join("..", "..", "examples", "config")
@@ -63,18 +68,22 @@ var exampleConfig = filepath.Join("..", "..", "examples", "config")
 func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest // sets HOME
 	home := homeDir(t)
 
-	cfg, problems := config.LoadFolder(exampleConfig, nil)
+	cfg, problems := config.LoadFolder(exampleConfig, nil, registry())
 
 	require.Empty(t, problems)
 	require.Equal(t, []model.Runner{
-		{Name: "claude-a", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, ".claude-profiles/a")},
-		{Name: "claude-b", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, ".claude-profiles/b")},
+		{Name: "claude-a", Agent: claude.Name, ConfigDir: filepath.Join(home, ".claude-profiles/a")},
+		{Name: "claude-b", Agent: claude.Name, ConfigDir: filepath.Join(home, ".claude-profiles/b")},
 	}, cfg.Runners)
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub, BeadsPrefix: "proj", BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
-		cfg.Projects["example"].Project)
+	got := cfg.Projects["example"].Project
+	prefix, _ := got.Block.Text(beads.BlockPrefix)
+	require.Equal(t, "proj", prefix)
+
+	got.Block = nil
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: storegithub.Tracker, Claims: beads.Claims, Forge: forgegithub.Name, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"}, got)
 }
 
 func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralleltest // sets HOME
@@ -87,7 +96,7 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralle
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: filepath.Join(home, "work/your-repo"), BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local",
+		Name: "p", Tracker: local.Tracker, Claims: local.Claims, Source: filepath.Join(home, "work/your-repo"), BaseBranch: "main", Gate: "make check", Tools: []string{"git"}, TestReport: "reports/*.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -112,7 +121,7 @@ func TestLoadFolder_AFolderWithNoFilesIsTheDefaultConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	cfg, problems := config.LoadFolder(dir, nil)
+	cfg, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Empty(t, problems)
 
@@ -125,7 +134,7 @@ func TestLoadFolder_AMissingFolderIsAProblem(t *testing.T) {
 	t.Parallel()
 
 	missing := filepath.Join(t.TempDir(), "none")
-	_, problems := config.LoadFolder(missing, nil)
+	_, problems := config.LoadFolder(missing, nil, registry())
 
 	require.Len(t, problems, 1)
 	require.ErrorIs(t, problems[0], config.ErrRefused)
@@ -133,7 +142,7 @@ func TestLoadFolder_AMissingFolderIsAProblem(t *testing.T) {
 	require.ErrorContains(t, problems[0], "BEEHAVE_CONFIG")
 
 	file := writeFile(t, filepath.Join(t.TempDir(), "f"), "")
-	_, problems = config.LoadFolder(file, nil)
+	_, problems = config.LoadFolder(file, nil, registry())
 	require.Len(t, problems, 1)
 }
 
@@ -142,10 +151,10 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects", "b.star"), call(goodProject))
-	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "g", test_report = "r.xml"`))
+	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", base_branch = "main", gate = "g", test_report = "r.xml"`))
 	writeFile(t, filepath.Join(dir, "projects", "notes.md"), "not a project")
 
-	cfg, problems := config.LoadFolder(dir, nil)
+	cfg, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Empty(t, problems)
 	require.Len(t, cfg.Projects, 2)
@@ -218,21 +227,20 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"unknown_argument_gives_the_position", call(goodProject + `, shade = "red"`), "p.star:1:8: project: unexpected keyword argument"},
 		{"positional_argument", call(`"o/n"`), "p.star:1:8: `project` takes keyword arguments only"},
 		{"missing_repo", call(`tracker = "github", base_branch = "main", gate = "g", source = "/s"`), "p.star:1:8: `repo` must be a non-empty string"},
-		{"blank_repo", call(`repo = " ", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be a non-empty string"},
+		{"blank_repo", call(`repo = " ", ` + github), "p.star:1:8: `repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", call(`repo = ["o/n"], base_branch = "main", gate = "g"`), `for parameter "repo": got list, want string`},
-		{"repo_without_owner", call(`repo = "justname", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_with_three_parts", call(`repo = "a/b/c", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_without_owner_text", call(`repo = "/n", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_without_name", call(`repo = "o/", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"unknown_tracker", call(`repo = "o/n", tracker = "jira", forge = "github", ` + local), "p.star:1:8: `tracker`: unknown tracker \"jira\": use one of local, beads, github"},
+		{"repo_without_owner", call(`repo = "justname", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_with_three_parts", call(`repo = "a/b/c", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_owner_text", call(`repo = "/n", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_name", call(`repo = "o/", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"unknown_tracker", call(`repo = "o/n", tracker = "jira", forge = "github", ` + local), "p.star:1:8: `tracker`: unknown tracker \"jira\": use one of beads, github, local"},
 		{"unknown_forge", call(`repo = "o/n", tracker = "github", forge = "gitlab", ` + local), "p.star:1:8: `forge`: unknown forge \"gitlab\": use one of github"},
-		{"beads_without_a_prefix", call(`repo = "o/n", tracker = "beads", forge = "github", ` + local), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"beads_claims_without_a_prefix", call(`repo = "o/n", claims = "beads", ` + github), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"missing_gate", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main"`), "`gate` must be a non-empty string"},
-		{"missing_base_branch", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", gate = "g"`), "`base_branch` must be a non-empty string"},
+		{"beads_without_a_prefix", call(`repo = "o/n", tracker = "beads", forge = "github", ` + local), "p.star:1:8: the project names an adapter whose `beads` block it must hold. Write beads(...)."},
+		{"beads_claims_without_a_prefix", call(`repo = "o/n", claims = "beads", ` + github), "p.star:1:8: the project names an adapter whose `beads` block it must hold. Write beads(...)."},
+		{"missing_gate", call(`repo = "o/n", tracker = "github", forge = "github", base_branch = "main"`), "`gate` must be a non-empty string"},
+		{"missing_base_branch", call(`repo = "o/n", tracker = "github", forge = "github", gate = "g"`), "`base_branch` must be a non-empty string"},
 		{"blank_tracker", call(strings.Replace(goodProject, `tracker = "github"`, `tracker = " "`, 1)), "p.star:1:8: `tracker` must be a non-empty string"},
 		{"blank_forge", call(strings.Replace(goodProject, `forge = "github"`, `forge = " "`, 1)), "p.star:1:8: `forge` must be a non-empty string"},
-		{"blank_beads_prefix", call(strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + `, claims = "beads"`), "p.star:1:8: `beads_prefix` must be a non-empty string"},
 		{"blank_base_branch", call(strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1)), "p.star:1:8: `base_branch` must be a non-empty string"},
 		{"blank_gate", call(strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1)), "p.star:1:8: `gate` must be a non-empty string"},
 		{"empty_build_host", call(hostProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
@@ -268,17 +276,19 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g", test_report = "r.xml"`))
+	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads = beads(prefix = "proj"), base_branch = "main", gate = "g", test_report = "r.xml"`))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.TrackerBeads, project.Tracker)
-	require.Equal(t, "proj", project.BeadsPrefix)
+	require.Equal(t, beads.Tracker, project.Tracker)
+	prefix, _ := project.Block.Text(beads.BlockPrefix)
+	require.Equal(t, "proj", prefix)
+	require.Equal(t, []string{"git", "bd", "gh"}, project.Tools)
 }
 
 func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\", beads_prefix = \"p\",\r\n  base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\",\r\n)\r\n")
+	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\",\r\n  base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\",\r\n)\r\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)
@@ -287,7 +297,7 @@ func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()
 
-	base := `repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g"`
+	base := `repo = "o/n", tracker = "beads", forge = "github", beads = beads(prefix = "proj"), base_branch = "main", gate = "g"`
 
 	project, problems := loadProjectText(t, "project("+base+", test_report = \"out/*.xml\")\n")
 	require.Empty(t, problems)
@@ -380,7 +390,7 @@ func TestLoadFolder_AProjectPathThatIsNotAFileIsReported(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects", "d.star"), 0o700))
 
-	_, problems := config.LoadFolder(dir, nil)
+	_, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "cannot read")
@@ -394,7 +404,7 @@ func TestLoadFolder_EveryBadFileIsReportedOnce(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "projects", "a.star"), "x()\n")
 	writeFile(t, filepath.Join(dir, "projects", "b.star"), "y()\n")
 
-	_, problems := config.LoadFolder(dir, nil)
+	_, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Len(t, problems, 3)
 	require.Contains(t, problems.Error(), "runners.star")
@@ -409,7 +419,7 @@ func TestLoadFolder_AnOldHCLFileIsRefusedByName(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "runners.star"), goodRunner)
 	oldProject := writeFile(t, filepath.Join(dir, "projects", "demo.hcl"), "source = \"/s\"\n")
 
-	_, problems := config.LoadFolder(dir, nil)
+	_, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Len(t, problems, 2)
 	require.ErrorIs(t, problems[0], config.ErrRefused)
@@ -426,8 +436,8 @@ func TestLoadFolder_Runners(t *testing.T) { //nolint:paralleltest // sets HOME
 
 	require.Empty(t, problems)
 	require.Equal(t, []model.Runner{
-		{Name: "a", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, "c")},
-		{Name: "b", Agent: model.AgentOpenCode, Keychain: "svc"},
+		{Name: "a", Agent: claude.Name, ConfigDir: filepath.Join(home, "c")},
+		{Name: "b", Agent: model.Agent("opencode"), Keychain: "svc"},
 	}, cfg.Runners)
 }
 
@@ -613,14 +623,14 @@ func TestLoadFolder_AgentsMaxReviewConcurrentIsItsOwnLimit(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_review_concurrent = 2)\n")
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "many"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "many"}, registry())
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT=many is not a whole number")
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "0"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "0"}, registry())
 	require.ErrorContains(t, problems[0], "agents.max_review_concurrent must be 1 or more")
 }
 
@@ -667,11 +677,11 @@ func TestLoadFolder_AgentsMaxRunBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadVa
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_run_budget_usd = 1)\n")
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "7.5"})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "7.5"}, registry())
 	require.Empty(t, problems)
 	require.InDelta(t, 7.5, cfg.Agents.MaxRunBudgetUSD, 0)
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "lots"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD": "lots"}, registry())
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD=lots is not a number")
 }
@@ -682,16 +692,16 @@ func TestLoadFolder_TheCapVariablesOverlayTheFileAndABadValueIsRefused(t *testin
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_turns = 10, max_budget_usd = 1)\n")
 
-	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "25", "BEEHAVE_AGENTS_MAX_BUDGET_USD": "3.25"})
+	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "25", "BEEHAVE_AGENTS_MAX_BUDGET_USD": "3.25"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 25, cfg.Agents.MaxTurns)
 	require.InDelta(t, 3.25, cfg.Agents.MaxBudgetUSD, 0)
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "many"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_TURNS": "many"}, registry())
 	require.NotEmpty(t, problems)
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_TURNS=many is not a whole number")
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": "lots"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": "lots"}, registry())
 	require.NotEmpty(t, problems)
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD=lots is not a number")
 }
@@ -700,7 +710,7 @@ func TestLoadFolder_ABudgetThatIsNotFiniteIsRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, value := range []string{"Inf", "+Inf", "-Inf", "NaN", "1e999"} {
-		_, problems := config.LoadFolder(t.TempDir(), map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": value})
+		_, problems := config.LoadFolder(t.TempDir(), map[string]string{"BEEHAVE_AGENTS_MAX_BUDGET_USD": value}, registry())
 
 		require.NotEmpty(t, problems, value)
 		require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_BUDGET_USD", value)
@@ -719,16 +729,16 @@ func TestLoadFolder_EnvironmentOverlay(t *testing.T) {
 
 	cfg, problems := config.LoadFolder(dir, map[string]string{
 		"BEEHAVE_AGENTS_MAX_CONCURRENT": "6", "BEEHAVE_POOL_FIVE_HOUR_MAX": "70", "BEEHAVE_POOL_SEVEN_DAY_MAX": "80.5", "REPO": "ignored",
-	})
+	}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 6, cfg.Agents.MaxConcurrent)
 	require.Equal(t, config.Pool{FiveHourMax: 70, SevenDayMax: 80.5}, cfg.Pool)
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": ""})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_CONCURRENT": ""}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "an empty variable leaves the file value")
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "5"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 5, cfg.Agents.MaxReviewConcurrent)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent, "the review limit is its own variable")
@@ -755,7 +765,7 @@ func TestLoadFolder_AnOverlayValueIsValidated(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, problems := config.LoadFolder(t.TempDir(), tc.env)
+			_, problems := config.LoadFolder(t.TempDir(), tc.env, registry())
 
 			require.NotEmpty(t, problems)
 			require.ErrorContains(t, problems, tc.words)
@@ -769,7 +779,7 @@ func TestLoadFolder_AProjectsPathThatIsAFileIsReported(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects"), "not a folder")
 
-	_, problems := config.LoadFolder(dir, nil)
+	_, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Len(t, problems, 1)
 	require.ErrorContains(t, problems[0], "cannot read "+filepath.Join(dir, "projects"))
@@ -782,17 +792,17 @@ func TestLoadFolder_ARefusalKeepsItsCause(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
 	require.NoError(t, os.Symlink(filepath.Join(dir, "missing.star"), filepath.Join(dir, "projects", "p.star")))
 
-	_, problems := config.LoadFolder(dir, nil)
+	_, problems := config.LoadFolder(dir, nil, registry())
 
 	require.Len(t, problems, 1)
 	require.ErrorIs(t, problems[0], config.ErrRefused)
 	require.ErrorIs(t, problems[0], fs.ErrNotExist)
 
 	file := writeFile(t, filepath.Join(dir, "projects", "f"), "x")
-	_, problems = config.LoadFolder(file, nil)
+	_, problems = config.LoadFolder(file, nil, registry())
 	require.Len(t, problems, 1)
 
-	_, problems = config.LoadFolder(filepath.Join(file, "sub"), nil)
+	_, problems = config.LoadFolder(filepath.Join(file, "sub"), nil, registry())
 	require.Len(t, problems, 1)
 }
 
@@ -819,7 +829,7 @@ func TestLoadFolder_ANotANumberPoolCapIsRefused(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{"BEEHAVE_POOL_FIVE_HOUR_MAX", "BEEHAVE_POOL_SEVEN_DAY_MAX"} {
-		_, problems := config.LoadFolder(t.TempDir(), map[string]string{name: "NaN"})
+		_, problems := config.LoadFolder(t.TempDir(), map[string]string{name: "NaN"}, registry())
 
 		require.Len(t, problems, 1, name)
 		require.ErrorContains(t, problems[0], "must be a number above 0 and up to 100")
@@ -830,7 +840,7 @@ func TestLoadFolder_ABadPoolCapNamesTheFileAndTheVariable(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	_, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_POOL_FIVE_HOUR_MAX": "101", "BEEHAVE_POOL_SEVEN_DAY_MAX": "0"})
+	_, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_POOL_FIVE_HOUR_MAX": "101", "BEEHAVE_POOL_SEVEN_DAY_MAX": "0"}, registry())
 
 	require.Len(t, problems, 2)
 
@@ -896,19 +906,19 @@ func TestLoadFolder_TheRetentionVariableOverlaysTheFileAndIsValidated(t *testing
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(retention_days = 30)\n")
 
-	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "14"})
+	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "14"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 14, cfg.Agents.RetentionDays)
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "0"})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "0"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 0, cfg.Agents.RetentionDays, "0 in the variable keeps the runs for ever")
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": ""})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": ""}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 30, cfg.Agents.RetentionDays, "an empty variable leaves the file value")
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "a week"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_AGENTS_RETENTION_DAYS": "a week"}, registry())
 	require.ErrorContains(t, problems, "BEEHAVE_AGENTS_RETENTION_DAYS=a week is not a whole number")
 }
 
@@ -918,15 +928,15 @@ func TestLoadFolder_TheReviewPollVariableOverlaysTheFileAndIsValidated(t *testin
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents(review_poll_minutes = 30)\n")
 
-	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "15"})
+	cfg, problems := config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "15"}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 15, cfg.Agents.ReviewPollMinutes)
 
-	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": ""})
+	cfg, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": ""}, registry())
 	require.Empty(t, problems)
 	require.Equal(t, 30, cfg.Agents.ReviewPollMinutes, "an empty variable leaves the file value")
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "hourly"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "hourly"}, registry())
 	require.ErrorContains(t, problems, "BEEHAVE_REVIEW_POLL_MINUTES=hourly is not a whole number")
 }
 
@@ -945,6 +955,6 @@ func TestLoadFolder_TheReviewPollIntervalHasAnUpperBoundOfOneWeek(t *testing.T) 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "runners.star"), "agents()\n")
 
-	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "307445735"})
+	_, problems = config.LoadFolder(dir, map[string]string{"BEEHAVE_REVIEW_POLL_MINUTES": "307445735"}, registry())
 	require.ErrorContains(t, problems, "agents.review_poll_minutes is 307445735: set it to 10080 (one week) or less")
 }

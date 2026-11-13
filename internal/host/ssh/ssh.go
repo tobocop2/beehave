@@ -79,16 +79,21 @@ func WithNonce(nonce func() string) Option { return func(s *settings) { s.nonce 
 // New returns the host for the machine. target is the ssh alias, or a label when `host.ssh.address` names the machine. runner is the ssh command line.
 // It runs nothing, so a check of the config needs no network. A setting that could change a command line is refused.
 func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option) (*Host, error) {
-	if err := checkConfig(config); err != nil {
-		return nil, err
-	}
-
-	l, err := link.ForMachine(target, linkOptions(config.SSH), ssh)
+	values, err := decodeBlock(config.Block)
 	if err != nil {
 		return nil, err
 	}
 
-	h := &Host{config: config, link: l}
+	if err := checkConfig(config, values); err != nil {
+		return nil, err
+	}
+
+	l, err := link.ForMachine(target, linkOptions(values), ssh)
+	if err != nil {
+		return nil, err
+	}
+
+	h := &Host{config: config, settings: values, link: l}
 	set := settings{clock: jobwait.Clock{Poll: defaultPoll, Now: time.Now, Sleep: proc.Sleep}, bank: h.bankWork, nonce: rand.Text}
 
 	for _, opt := range opts {
@@ -101,19 +106,18 @@ func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option
 	return h, nil
 }
 
-func linkOptions(s model.SSHConfig) link.Options {
-	return link.Options{Address: s.Address, User: s.User, Identity: s.Identity, KnownHosts: s.KnownHosts, Port: s.Port}
+func linkOptions(s block) link.Options {
+	return link.Options{Address: s.address, User: s.user, Identity: s.identity, KnownHosts: s.knownHosts, Port: s.port}
 }
 
 // checkConfig refuses a work root that systemd or the shell would change: systemd expands a percent sign in a path, and a dollar sign is no path.
-func checkConfig(config model.HostConfig) error {
-	root := config.SSH.WorkRoot
+// The block decode has already refused a work root that is not absolute.
+func checkConfig(config model.HostConfig, s block) error {
+	root := s.workRoot
 
 	switch {
 	case config.MaxRun < time.Second:
 		return fmt.Errorf("%w: `host.max_run` must be at least one second", link.ErrConfig)
-	case root != "" && !path.IsAbs(root) && !strings.HasPrefix(root, "~/"):
-		return fmt.Errorf("%w: `host.ssh.work_root` %q must be an absolute path or start with ~/", link.ErrConfig, root)
 	case strings.ContainsAny(root, "%$"):
 		return fmt.Errorf("%w: `host.ssh.work_root` %q must not hold a percent or dollar sign, which systemd and the shell would expand", link.ErrConfig, root)
 	}
@@ -327,7 +331,7 @@ func (h *Host) WorkRoot(ctx context.Context) (string, error) {
 }
 
 func (h *Host) resolveRoot(ctx context.Context) (string, error) {
-	configured := h.config.SSH.WorkRoot
+	configured := h.settings.workRoot
 
 	if path.IsAbs(configured) {
 		return h.existing(ctx, configured)

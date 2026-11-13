@@ -88,11 +88,12 @@ type Flow struct {
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
 type flowCommands struct {
-	ctx     context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
-	env     map[string]string
-	version string
-	factory Flow
-	items   ItemOpener
+	ctx      context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
+	env      map[string]string
+	version  string
+	factory  Flow
+	items    map[model.TrackerName]ItemOpener
+	registry config.Adapters
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -115,7 +116,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 		return config.Config{}, flow.Options{}, err
 	}
 
-	cfg, problems := config.LoadFolder(dir, f.env)
+	cfg, problems := config.LoadFolder(dir, f.env, f.registry)
 	if len(problems) > 0 {
 		printLines(stderr, problems)
 

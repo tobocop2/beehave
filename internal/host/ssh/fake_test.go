@@ -2,6 +2,7 @@ package ssh_test
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,10 +45,24 @@ func (b *bankLog) bank(context.Context) error {
 	return b.err
 }
 
-func config() model.HostConfig {
+func config() model.HostConfig { return configWith(nil) }
+
+// configWith returns the host of config() with the keys of set written over the ssh block. An empty value leaves the key out.
+func configWith(set map[string]string) model.HostConfig {
+	keys := map[string]string{ssh.BlockUser: "lane", ssh.BlockWorkRoot: sshtest.Root + "/work", ssh.BlockKnownHosts: model.KnownHostsStrict}
+	maps.Copy(keys, set)
+
+	var entries []model.BlockEntry
+
+	for key, value := range keys {
+		if value != "" {
+			entries = append(entries, model.TextEntry(key, value))
+		}
+	}
+
 	return model.HostConfig{
-		Provider: model.HostSSH, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
-		SSH: model.SSHConfig{User: "lane", WorkRoot: sshtest.Root + "/work", KnownHosts: model.KnownHostsStrict},
+		Provider: ssh.Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
+		Block: model.NewBlock("t", entries),
 	}
 }
 

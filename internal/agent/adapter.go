@@ -1,7 +1,11 @@
 // Package agent starts coding-agent CLIs. An Adapter supplies the profile of one CLI and reads its output stream.
 package agent
 
-import "github.com/tobocop2/beehave/internal/model"
+import (
+	"context"
+
+	"github.com/tobocop2/beehave/internal/model"
+)
 
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
 // ModelFlag is the flag that takes a model name. An empty flag means the CLI has no such option.

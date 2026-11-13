@@ -9,7 +9,7 @@ project(
     tracker = "github",        # "local" (default), "beads" or "github" (GitHub Issues); this chooses where work items live
     claims = "beads",          # "local" (default) or "beads"; this chooses where the claim leases live
     forge = "github",          # "github", or leave the argument out for a project with no forge
-    beads_prefix = "proj",     # the id prefix of the beads database; required when tracker or claims is "beads"
+    beads = beads(prefix = "proj"),  # the beads block: the id prefix of the beads database; required when tracker or claims is "beads", and refused otherwise
     base_branch = "main",
     gate = "make check",       # the same command that your CI runs
     # gate_steps = {"fmt": "make fmt", "lint": "make lint", "test": "make test"},  # instead of `gate`: one named step for each command, in order. The gate gives a result for each name, and a merge needs a pass for every one. The loader refuses `gate` and `gate_steps` together, and the name `tests`
@@ -67,8 +67,8 @@ project(
     #         instance_type = "n2-standard-8",
     #     ),
     # ),
-    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the skypilot block. beehave never deletes the machine: host_teardown banks the work and leaves it up.
-    # A Slurm cluster you own: provider = "slurm" takes the same ssh block, which names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
+    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and any other provider block. beehave never deletes the machine: host_teardown banks the work and leaves it up.
+    # A Slurm cluster you own: provider = "slurm" takes the slurm block, with the same keys as the ssh block. It names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
     # max_run goes to sbatch as --time. The cluster is yours, so no slot job holds it and host_teardown banks the work and leaves it up.
     # host = host(
     #     provider = "ssh",

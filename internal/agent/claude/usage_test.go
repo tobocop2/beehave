@@ -171,7 +171,7 @@ func (f fakeCLI) environment(t *testing.T) map[string]string {
 func login(t *testing.T) model.Runner {
 	t.Helper()
 
-	return model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: t.TempDir()}
+	return model.Runner{Name: "a", Agent: claude.Name, ConfigDir: t.TempDir()}
 }
 
 func (f fakeCLI) read(t *testing.T, runner model.Runner) model.Reading {
@@ -652,10 +652,10 @@ func TestUsageReader_ARunnerThatCannotBeReadIsUnknownAndClaudeIsNotStarted(t *te
 		runner model.Runner
 		reason string
 	}{
-		{"another agent", model.Runner{Name: "o", Agent: model.AgentOpenCode, ConfigDir: t.TempDir()}, "usage is read for claude runners only, not opencode"},
-		{"no config_dir", model.Runner{Name: "a", Agent: model.AgentClaude}, "no config_dir"},
-		{"a missing config_dir", model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: filepath.Join(t.TempDir(), "none")}, "does not exist, so claude is not started"},
-		{"a config_dir that is a file", model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: file}, "does not exist, so claude is not started"},
+		{"another agent", model.Runner{Name: "o", Agent: model.Agent("opencode"), ConfigDir: t.TempDir()}, "usage is read for claude runners only, not opencode"},
+		{"no config_dir", model.Runner{Name: "a", Agent: claude.Name}, "no config_dir"},
+		{"a missing config_dir", model.Runner{Name: "a", Agent: claude.Name, ConfigDir: filepath.Join(t.TempDir(), "none")}, "does not exist, so claude is not started"},
+		{"a config_dir that is a file", model.Runner{Name: "a", Agent: claude.Name, ConfigDir: file}, "does not exist, so claude is not started"},
 	}
 
 	for _, tc := range cases {

@@ -2,100 +2,72 @@ package skypilot
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/hosttest"
-	"github.com/tobocop2/beehave/internal/host/jobwait"
-	"github.com/tobocop2/beehave/internal/host/slurm"
-	"github.com/tobocop2/beehave/internal/host/slurmtest"
+	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 const (
-	fakeCluster = slurmtest.Target
-	fakeDF      = slurmtest.DF
-	sshFailed   = 255 // the exit status of ssh for a link that dropped
+	clusterName = "lane-host"
+	loginFolder = "/home/lane"
 )
 
-// fakeHost is a sky command line over the same state as the fake Slurm cluster behind the ssh command line.
-type fakeHost struct {
-	*slurmtest.Cluster
+// fakeQueue is a Queue that answers from fields. It stands in for the job queue on the head node.
+type fakeQueue struct {
+	status model.HostStatus
+	err    error
+	slot   Slot
 }
 
-func newFakeHost(mode hosttest.Mode) *fakeHost { return &fakeHost{slurmtest.New(mode)} }
+func (q *fakeQueue) Readings(context.Context) (model.HostStatus, error) { return q.status, q.err }
 
-// slotMarker returns the marker that a slot command waits for.
-func slotMarker(command string) string {
-	_, rest, _ := strings.Cut(command, "test -e ")
-	marker, _, _ := strings.Cut(rest, ";")
+func (q *fakeQueue) Submit(context.Context, model.JobSpec) (model.JobID, error) { return "1", nil }
 
-	return marker
+func (q *fakeQueue) Wait(context.Context, model.JobID) (model.JobState, error) {
+	return model.JobSucceeded, nil
 }
 
-func (f *fakeHost) sky() fakeRunner { return fakeRunner{run: f.runSky} }
+func (q *fakeQueue) Cancel(context.Context, model.JobID) error { return nil }
 
-type fakeRunner struct {
-	run func(args []string) model.CommandResult
+func (q *fakeQueue) WorkRoot(context.Context) (string, error) { return loginFolder, nil }
+
+func (q *fakeQueue) Log(context.Context, model.JobID) (string, error) { return "", nil }
+
+func (q *fakeQueue) Drain(context.Context) error { return nil }
+
+func (q *fakeQueue) Resume(context.Context) error { return nil }
+
+// scripts are the scripted sky and ssh command lines of a host.
+type scripts struct{ sky, ssh *proctest.Scripted }
+
+// hostConfig is a valid host with the placement of the block.
+func hostConfig(block *model.Block) model.HostConfig {
+	return model.HostConfig{Provider: Name, IdleMinutes: 45, MaxRun: 12 * time.Hour, Block: block}
 }
 
-func (r fakeRunner) Run(_ context.Context, args []string) model.CommandResult { return r.run(args) }
-
-func failure(text string) model.CommandResult { return model.CommandResult{ExitCode: 1, Stderr: text} }
-
-func ok(out string) model.CommandResult { return model.CommandResult{Stdout: out} }
-
-func (f *fakeHost) runSky(args []string) model.CommandResult {
-	f.Mu.Lock()
-	defer f.Mu.Unlock()
-
-	if f.Broken {
-		return failure("sky: broken")
-	}
-
-	switch args[0] {
-	case "launch":
-		f.Up = true
-
-		return ok("")
-	case "down":
-		f.Up, f.Draining = false, false
-
-		return ok("")
-	case "exec":
-		f.Slots = append(f.Slots, slotMarker(args[len(args)-1]))
-
-		return ok("")
-	case "status":
-		if !f.Up {
-			return ok("[]\n")
-		}
-
-		return ok(fmt.Sprintf(`[{"name": %q, "status": "UP", "autostop": 60, "to_down": true}, {"name": "other", "status": "UP"}]`, fakeCluster))
-	}
-
-	return failure("sky: unknown command")
+func placement() *model.Block {
+	return model.NewBlock("t", []model.BlockEntry{
+		model.TextEntry(BlockCloud, "gcp"), model.TextEntry(BlockRegion, "us-central1"), model.TextEntry(BlockInstanceType, "n2-standard-8"),
+	})
 }
 
-func newTestHost(t *testing.T, mode hosttest.Mode) host.Host {
+// newHost returns a host over scripted sky and ssh runners and the fake queue.
+func newHost(t *testing.T, cfg model.HostConfig) (*Host, *fakeQueue, *proctest.Scripted, *proctest.Scripted) {
 	t.Helper()
 
-	f := newFakeHost(mode)
-	config := model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 24 * time.Hour}
+	queue, sky, ssh := &fakeQueue{}, &proctest.Scripted{}, &proctest.Scripted{}
 
-	h, err := New(fakeCluster, config, f.sky(), f.SSH(), fastWaits()...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	h, err := New(clusterName, cfg, sky, ssh, func(_ *link.Link, _ model.HostConfig, slot Slot) Queue {
+		queue.slot = slot
 
-	return h
-}
+		return queue
+	})
+	require.NoError(t, err)
 
-// fastWaits are the options of a test host whose polls are one millisecond apart and whose bank has nothing to do.
-func fastWaits() []slurm.Option {
-	return []slurm.Option{slurm.WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), slurm.WithBank(func(context.Context) error { return nil })}
+	return h, queue, sky, ssh
 }

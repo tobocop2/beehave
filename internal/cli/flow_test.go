@@ -28,7 +28,7 @@ var errFake = errors.New("fake failure")
 const (
 	stateDirVariable = "BEEHAVE_STATE_DIR"
 	validRunners     = "runner(name = \"a\", agent = \"claude\")\n"
-	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
+	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 )
 
 type fakeRunner struct {
@@ -299,7 +299,7 @@ func (rig *flowRig) execute(ctx context.Context, args ...string) (int, string, s
 		args = append(args, "--workflow", rig.file)
 	}
 
-	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Version: "v9", Flow: rig.factory()}, rig.env, &stdout, &stderr)
+	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Version: "v9", Registry: registry(), Flow: rig.factory()}, rig.env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -568,7 +568,7 @@ func TestCommands_RefuseAnUnknownIssueStoreAtStartAndNameTheKnownOnes(t *testing
 			code, _, stderr := rig.execute(t.Context(), command...)
 
 			assert.Equal(t, 2, code)
-			assert.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+			assert.Contains(t, stderr, `unknown tracker "jira": use one of beads, github, local`)
 		})
 	}
 }

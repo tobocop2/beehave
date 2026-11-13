@@ -87,7 +87,7 @@ func realPolicyBackend(t *testing.T) policyBackend {
 
 	require.NoError(t, beads.RequireBd(t.Context(), run))
 
-	beads, err := beads.New(run, realPrefix)
+	beads, err := beads.New(run, prefixBlock(realPrefix))
 	require.NoError(t, err)
 
 	name := beadstest.DatabaseName(t, database)
@@ -241,7 +241,7 @@ func scenarioBeatAfterLateTake(t *testing.T, b policyBackend) {
 		})
 	}}
 
-	beads, err := beads.New(spy, b.prefix)
+	beads, err := beads.New(spy, prefixBlock(b.prefix))
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)
@@ -262,7 +262,7 @@ func scenarioBeatErrorRenewsTheRest(t *testing.T, b policyBackend) {
 
 	before := b.leaseOf(t, "66")
 
-	beads, err := beads.New(heartbeatSpy{inner: b.run, failing: map[string]bool{b.rowOf("65"): true}}, b.prefix)
+	beads, err := beads.New(heartbeatSpy{inner: b.run, failing: map[string]bool{b.rowOf("65"): true}}, prefixBlock(b.prefix))
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)
@@ -403,7 +403,7 @@ func scenarioInspectionWritesNothing(t *testing.T, b policyBackend) {
 	before := b.state(t, rows...)
 
 	spy := &recorder{inner: b.run}
-	beads, err := beads.New(spy, b.prefix)
+	beads, err := beads.New(spy, prefixBlock(b.prefix))
 	require.NoError(t, err)
 
 	claims, _ := b.claimsOver(t, beads)

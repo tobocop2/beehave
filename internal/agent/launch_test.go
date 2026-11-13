@@ -15,7 +15,6 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/exectest"
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 // launchScript records, for one run, what it sees of the launch: the arguments, the run folder, its mode, the content of one file and one variable.
@@ -61,7 +60,7 @@ func stubLaunch(runDir string) agent.Launch {
 func launchFixture(t *testing.T, adapter agent.Adapter) (*fixture, string) {
 	t.Helper()
 
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	require.NoError(t, exectest.Write(filepath.Join(f.records, "claude"), launchScript))
 
 	f.spec.Adapter = adapter
@@ -72,7 +71,7 @@ func launchFixture(t *testing.T, adapter agent.Adapter) (*fixture, string) {
 }
 
 func TestRunner_ALaunchWritesItsFilesInAPrivateFolderThatIsGoneAfterTheRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: stubLaunch})
+	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(nil), launch: stubLaunch})
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -88,7 +87,7 @@ func TestRunner_ALaunchWritesItsFilesInAPrivateFolderThatIsGoneAfterTheRun(t *te
 }
 
 func TestRunner_ALaunchEnvIsAddedButNeverReplacesTheLogin(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: stubLaunch})
+	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(nil), launch: stubLaunch})
 
 	agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -97,7 +96,7 @@ func TestRunner_ALaunchEnvIsAddedButNeverReplacesTheLogin(t *testing.T) { //noli
 }
 
 func TestRunner_AResumeSubcommandComesAfterEveryOtherArgument(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: stubLaunch, resume: true})
+	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(nil), launch: stubLaunch, resume: true})
 	f.spec.Model, f.spec.Resume = "opus", "sess-1"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -114,7 +113,7 @@ func TestRunner_ALaunchFileThatCannotBeWrittenDoesNotStartTheCLI(t *testing.T) {
 	}
 
 	for name, files := range cases {
-		adapter := launchAdapter{Adapter: claude.New(), launch: func(string) agent.Launch { return agent.Launch{Files: files} }}
+		adapter := launchAdapter{Adapter: claude.New(nil), launch: func(string) agent.Launch { return agent.Launch{Files: files} }}
 		f, records := launchFixture(t, adapter)
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -126,7 +125,7 @@ func TestRunner_ALaunchFileThatCannotBeWrittenDoesNotStartTheCLI(t *testing.T) {
 }
 
 func TestRunner_ARunFolderThatCannotBeMadeDoesNotStartTheCLI(t *testing.T) {
-	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: stubLaunch})
+	f, records := launchFixture(t, launchAdapter{Adapter: claude.New(nil), launch: stubLaunch})
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -155,7 +154,7 @@ func TestRunner_TheRunFolderIsGoneAfterARefusalThatCameAfterItWasMade(t *testing
 		"a_file_that_cannot_exist":  {"a": "x", "a/b": "y"},
 	} {
 		launch, folders := foldersOf(files)
-		f, _ := launchFixture(t, launchAdapter{Adapter: claude.New(), launch: launch})
+		f, _ := launchFixture(t, launchAdapter{Adapter: claude.New(nil), launch: launch})
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -167,8 +166,8 @@ func TestRunner_TheRunFolderIsGoneAfterARefusalThatCameAfterItWasMade(t *testing
 
 func TestRunner_TheRunFolderIsGoneAfterACancelledRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	launch, folders := foldersOf(map[string]string{"conf/hooks.json": "x"})
-	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
-	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(), launch: launch}, "beehave check command", &bytes.Buffer{}
+	f := newFixture(t, "claude", claude.Name, "holdgrand")
+	f.spec.Adapter, f.spec.Guard, f.spec.Log = launchAdapter{Adapter: claude.New(nil), launch: launch}, "beehave check command", &bytes.Buffer{}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -189,7 +188,7 @@ func TestRunner_TheRunFolderIsGoneAfterACancelledRun(t *testing.T) { //nolint:pa
 
 func TestRunner_ALaunchFileOutsideTheRunFolderDoesNotStartTheCLI(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	for _, path := range []string{"../escape", "/abs/path", "a/../../b", ""} {
-		adapter := launchAdapter{Adapter: claude.New(), launch: func(string) agent.Launch {
+		adapter := launchAdapter{Adapter: claude.New(nil), launch: func(string) agent.Launch {
 			return agent.Launch{Files: map[string]string{path: "x"}}
 		}}
 		f, records := launchFixture(t, adapter)

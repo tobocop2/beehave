@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/lease"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/store/beads"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
 	"github.com/tobocop2/beehave/internal/store/local"
 )
 
@@ -18,7 +24,7 @@ import (
 // The claims are built by the code that `beehave run` uses.
 func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim.Claims, error) {
 	return func(repo string) (*claim.Claims, error) {
-		project, err := lease.ProjectOf(env, repo)
+		project, err := lease.ProjectOf(env, repo, registry())
 		if err != nil {
 			return nil, err
 		}
@@ -27,18 +33,47 @@ func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim
 	}
 }
 
+// registry is the small adapter table that this binary declares: the config validates the projects that remedy reads.
+func registry() config.Adapters {
+	beadsBlock, skyBlock := beads.Block(), skypilot.Block()
+	sshBlock, slurmBlock := ssh.Block(), slurm.Block()
+
+	return config.Adapters{
+		Trackers: map[model.TrackerName]*config.Entry{
+			local.Tracker:       {},
+			beads.Tracker:       {Block: &beadsBlock, Tools: []string{beads.Tool}},
+			storegithub.Tracker: {Keys: []string{"repo"}, Tools: []string{storegithub.Tool}},
+		},
+		Claims: map[model.ClaimsName]*config.Entry{
+			local.Claims: {},
+			beads.Claims: {Block: &beadsBlock, Tools: []string{beads.Tool}},
+		},
+		Forges: map[model.ForgeName]*config.Entry{
+			forgegithub.Name: {Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}},
+		},
+		Agents: map[model.Agent]*config.Entry{
+			claude.Name: {},
+		},
+		Hosts: map[model.HostProvider]*config.Entry{
+			skypilot.Name: {Block: &skyBlock, Idle: true},
+			ssh.Name:      {Block: &sshBlock},
+			slurm.Name:    {Block: &slurmBlock},
+		},
+	}
+}
+
 // claimsOf builds the claims of a project over the claim store that it names: the beads rows, or local.db in the state folder.
 // The local store stays open until the process ends, which is one command.
 func claimsOf(bd proc.Runner, state func() (string, error), project model.Project) (*claim.Claims, error) {
 	switch project.Claims {
-	case model.ClaimsBeads:
-		rows, err := beads.New(bd, project.BeadsPrefix)
+	case beads.Claims:
+		rows, err := beads.New(bd, project.Block)
 		if err != nil {
 			return nil, err
 		}
 
 		return lease.Open(rows)
-	case model.ClaimsLocal:
+	case local.Claims:
 		return localClaims(state, project)
 	default:
 		return nil, fmt.Errorf("project %s: no claim store named %q", project.Name, project.Claims)

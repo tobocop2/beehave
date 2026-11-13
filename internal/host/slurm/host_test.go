@@ -65,7 +65,10 @@ func (s *spy) total() int {
 }
 
 func hostConfig() model.HostConfig {
-	return model.HostConfig{Provider: model.HostSlurm, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private", SSH: model.SSHConfig{User: "lane"}}
+	return model.HostConfig{
+		Provider: Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
+		Block: model.NewBlock("t", []model.BlockEntry{model.TextEntry(BlockUser, "lane")}),
+	}
 }
 
 func fastClock() Option {
@@ -109,11 +112,16 @@ func TestNewHost_RunsNoSSHAndRefusesWhatCouldChangeTheCommandLine(t *testing.T) 
 	require.NoError(t, err)
 	assert.Zero(t, s.total(), "building the host sends nothing")
 
+	text := func(key, value string) *model.Block {
+		return model.NewBlock("t", []model.BlockEntry{model.TextEntry(key, value)})
+	}
+
 	for name, set := range map[string]func(*model.HostConfig){
-		"a work root":   func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/lane/work" },
+		"a work root":   func(c *model.HostConfig) { c.Block = text(BlockWorkRoot, "/home/lane/work") },
 		"no run limit":  func(c *model.HostConfig) { c.MaxRun = 0 },
-		"a bad address": func(c *model.HostConfig) { c.SSH.Address = "-oProxyCommand=x" },
-		"a bad policy":  func(c *model.HostConfig) { c.SSH.KnownHosts = "no" },
+		"a bad address": func(c *model.HostConfig) { c.Block = text(BlockAddress, "-oProxyCommand=x") },
+		"a bad user":    func(c *model.HostConfig) { c.Block = text(BlockUser, "-oProxyCommand=x") },
+		"a bad policy":  func(c *model.HostConfig) { c.Block = text(BlockKnownHosts, "no") },
 	} {
 		cfg := hostConfig()
 		set(&cfg)
@@ -131,12 +139,12 @@ func TestNewHost_ARefusedWorkRootSaysWhyAndWhatToDo(t *testing.T) {
 	t.Parallel()
 
 	cfg := hostConfig()
-	cfg.SSH.WorkRoot = "/home/lane/work"
+	cfg.Block = model.NewBlock("t", []model.BlockEntry{model.TextEntry(BlockWorkRoot, "/home/lane/work")})
 
 	_, err := NewHost(slurmtest.Target, cfg, &spy{inner: slurmtest.New(hosttest.Working).SSH()})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "host.ssh.work_root")
+	assert.Contains(t, err.Error(), "host.slurm.work_root")
 	assert.Contains(t, err.Error(), "login folder")
 }
 

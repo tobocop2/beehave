@@ -10,7 +10,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 const (
@@ -25,7 +29,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
+		Name: "p", Tracker: local.Tracker, Claims: local.Claims, Source: "/srv/repo", BaseBranch: "main", Gate: "make check", Tools: []string{"git"}, TestReport: "r.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -36,22 +40,23 @@ func TestLoadFolder_AFileWithOnlyTheOldKeysGetsLocalClaims(t *testing.T) {
 
 	require.Empty(t, problems)
 	require.Equal(t, "o/n", project.Repo)
-	require.Equal(t, model.TrackerGithub, project.Tracker)
-	require.Equal(t, model.ForgeGithub, project.Forge)
-	require.Equal(t, "p", project.BeadsPrefix)
+	require.Equal(t, storegithub.Tracker, project.Tracker)
+	require.Equal(t, forgegithub.Name, project.Forge)
+	require.Nil(t, project.Block, "a project that names no beads adapter holds no beads block")
 	require.Empty(t, project.Source)
-	require.Equal(t, model.ClaimsLocal, project.Claims)
+	require.Equal(t, local.Claims, project.Claims)
 }
 
 func TestLoadFolder_ClaimsAndTrackerNameTheirAdapters(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, call(localProject+`, tracker = "beads", claims = "beads", beads_prefix = "p"`))
+	project, problems := loadProjectText(t, call(localProject+`, tracker = "beads", claims = "beads", beads = beads(prefix = "p")`))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.TrackerBeads, project.Tracker)
-	require.Equal(t, model.ClaimsBeads, project.Claims)
-	require.Equal(t, "p", project.BeadsPrefix)
+	require.Equal(t, beads.Tracker, project.Tracker)
+	require.Equal(t, beads.Claims, project.Claims)
+	prefix, _ := project.Block.Text(beads.BlockPrefix)
+	require.Equal(t, "p", prefix)
 }
 
 func TestLoadFolder_AForgeOnlyProjectNeedsNoSource(t *testing.T) {
@@ -60,8 +65,8 @@ func TestLoadFolder_AForgeOnlyProjectNeedsNoSource(t *testing.T) {
 	project, problems := loadProjectText(t, call(`repo = "o/n", forge = "github", `+tail))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.ForgeGithub, project.Forge)
-	require.Equal(t, model.TrackerLocal, project.Tracker)
+	require.Equal(t, forgegithub.Name, project.Forge)
+	require.Equal(t, local.Tracker, project.Tracker)
 }
 
 func TestLoadFolder_ASourceThatIsAUrlOrAPathWithALocalHostIsKept(t *testing.T) {
@@ -141,9 +146,9 @@ func TestLoadFolder_TheSourceRefusals(t *testing.T) {
 		{"tilde_path_source_with_a_remote_build_host", call(`source = "~/repo", ` + tail + `, build_host = "gpu", host = ` + hostCall("")), "p.star:1:8: a path `source` needs `build_host = \"local\"`"},
 		{"github_tracker_without_repo", call(`tracker = "github", ` + src + tail), "p.star:1:8: `repo` must be a non-empty string"},
 		{"github_forge_without_repo", call(`forge = "github", ` + tail), "p.star:1:8: `repo` must be a non-empty string"},
-		{"beads_tracker_without_prefix", call(`tracker = "beads", ` + src + tail), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"beads_claims_without_prefix", call(`claims = "beads", ` + src + tail), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"unknown_claims", call(`claims = "github", ` + src + tail), "p.star:1:8: `claims`: unknown claims \"github\": use one of local, beads"},
+		{"beads_tracker_without_prefix", call(`tracker = "beads", ` + src + tail), "p.star:1:8: the project names an adapter whose `beads` block it must hold. Write beads(...)."},
+		{"beads_claims_without_prefix", call(`claims = "beads", ` + src + tail), "p.star:1:8: the project names an adapter whose `beads` block it must hold. Write beads(...)."},
+		{"unknown_claims", call(`claims = "github", ` + src + tail), "p.star:1:8: `claims`: unknown claims \"github\": use one of beads, local"},
 		{"blank_claims", call(`claims = " ", ` + src + tail), "p.star:1:8: `claims` must be a non-empty string"},
 		{"repo_given_but_malformed_with_no_github", call(`repo = "justname", ` + src + tail), "p.star:1:8: `repo` must be written owner/name"},
 	}

@@ -3,7 +3,7 @@
 
 project(
     repo = "your-org/your-repo",  # owner/name; the same value as the variable REPO of the run
-    tracker = "github",           # "github" or "beads"; the loop reads its open items. For "beads", add beads_prefix.
+    tracker = "github",           # "github" or "beads"; the loop reads its open items. For "beads", add beads = beads(prefix = "...").
     forge = "github",
     base_branch = "main",         # the variable BASE of the run names the integration branch that receives the pull requests
     gate = "make check",

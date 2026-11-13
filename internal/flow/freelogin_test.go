@@ -30,7 +30,7 @@ type poolLogins struct {
 func newPoolLogins(names ...string) *poolLogins {
 	runners := make([]model.Runner, 0, len(names))
 	for _, name := range names {
-		runners = append(runners, model.Runner{Name: name, Agent: model.AgentClaude})
+		runners = append(runners, model.Runner{Name: name, Agent: "claude"})
 	}
 
 	return &poolLogins{runners: runners, busy: map[string][]string{}, picked: map[string]string{}}
@@ -48,7 +48,7 @@ func (p *poolLogins) Pick(ctx context.Context, _, item string, busy []string, _ 
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: 10}, SevenDay: model.Window{Percent: 10}})
 	}
 
-	runner, err := pool.Select(ctx, p.runners, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, model.AgentClaude, read, busy...)
+	runner, err := pool.Select(ctx, p.runners, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, read, busy...)
 	if err != nil {
 		return "", err
 	}

@@ -7,6 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -27,19 +30,26 @@ func TestLoadFolder_SSHAndSlurmHosts(t *testing.T) {
 
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall("")))
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: model.HostSSH, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50, SSH: model.SSHConfig{KnownHosts: model.KnownHostsStrict}}, project.Host)
+	require.Equal(t, &model.HostConfig{Provider: ssh.Name, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50}, project.Host)
 
 	project, problems = loadProjectText(t, call(clusterProject+", host = "+sshCall(`, ssh = ssh(user = "ci")`)))
 	require.Empty(t, problems)
-	require.Equal(t, model.SSHConfig{User: "ci", KnownHosts: model.KnownHostsStrict}, project.Host.SSH)
+
+	user, given := project.Host.Block.Text(ssh.BlockUser)
+	require.True(t, given)
+	require.Equal(t, "ci", user)
 
 	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "slurm", disk_floor_gb = 50,
-  ssh = ssh(address = "10.0.0.5", user = "ci", port = 2222, identity = "~/.ssh/ci", work_root = "/home/ci/work", known_hosts = "accept-new"))`))
+  slurm = slurm(address = "10.0.0.5", user = "ci", port = 2222, identity = "~/.ssh/ci", work_root = "/home/ci/work", known_hosts = "accept-new"))`))
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{
-		Provider: model.HostSlurm, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50,
-		SSH: model.SSHConfig{Address: "10.0.0.5", User: "ci", Port: 2222, Identity: "~/.ssh/ci", WorkRoot: "/home/ci/work", KnownHosts: model.KnownHostsAcceptNew},
-	}, project.Host)
+	require.Equal(t, slurm.Name, project.Host.Provider)
+
+	port, given := project.Host.Block.Whole(slurm.BlockPort)
+	require.True(t, given)
+	require.Equal(t, 2222, port)
+
+	address, _ := project.Host.Block.Text(slurm.BlockAddress)
+	require.Equal(t, "10.0.0.5", address)
 }
 
 func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
@@ -48,17 +58,25 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall("")))
 
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50}, project.Host)
+	require.Equal(t, &model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50}, project.Host)
 
 	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, stale_minutes = 5, max_run = "12h", bank_budget = "45s", disk_floor_gb = 20, disk_wait_minutes = 15,
   private_remote = "git@example.com:org/repo.git",
   skypilot = skypilot(cloud = "gcp", region = "us-central1", instance_type = "n2-standard-8"))`))
 
 	require.Empty(t, problems)
+
+	block := project.Host.Block
+	project.Host.Block = nil
 	require.Equal(t, &model.HostConfig{
-		Provider: model.HostSkyPilot, IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
-		SkyPilot: model.SkyPilotConfig{Cloud: "gcp", Region: "us-central1", InstanceType: "n2-standard-8"},
+		Provider: skypilot.Name, IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
 	}, project.Host)
+
+	for key, want := range map[string]string{skypilot.BlockCloud: "gcp", skypilot.BlockRegion: "us-central1", skypilot.BlockInstanceType: "n2-standard-8"} {
+		got, given := block.Text(key)
+		require.True(t, given, key)
+		require.Equal(t, want, got, key)
+	}
 }
 
 func TestLoadFolder_ALocalProjectHasNoHostTable(t *testing.T) {
@@ -84,21 +102,12 @@ func TestLoadFolder_HostTableRefusals(t *testing.T) {
 		{"cluster_without_table", call(clusterProject), "p.star:1:8: the `host` block is required when `build_host` is a cluster name"},
 		{"missing_provider", call(clusterProject + ", host = host(disk_floor_gb = 50)"), "host: missing argument for provider"},
 		{"blank_provider", call(clusterProject + `, host = host(provider = " ", disk_floor_gb = 50)`), "`host.provider` must be a non-empty string"},
-		{"unknown_provider", call(clusterProject + `, host = host(provider = "nomad", disk_floor_gb = 50)`), "`host.provider`: unknown host provider \"nomad\": use one of skypilot, ssh, slurm"},
-		{"ssh_block_on_skypilot", call(clusterProject + ", host = " + hostCall(`, ssh = ssh(user = "ci")`)), "`host.provider` \"skypilot\" takes the `skypilot` block, not the `ssh` block"},
-		{"skypilot_block_on_ssh", call(clusterProject + `, host = ` + sshCall(`, skypilot = skypilot(cloud = "gcp")`)), "`host.provider` \"ssh\" takes the `ssh` block, not the `skypilot` block"},
-		{"skypilot_block_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, skypilot = skypilot())`), "`host.provider` \"slurm\" takes the `ssh` block, not the `skypilot` block"},
+		{"unknown_provider", call(clusterProject + `, host = host(provider = "nomad", disk_floor_gb = 50)`), "`host.provider`: unknown host provider \"nomad\": use one of skypilot, slurm, ssh"},
+		{"ssh_block_on_skypilot", call(clusterProject + ", host = " + hostCall(`, ssh = ssh(user = "ci")`)), "`host.provider` \"skypilot\" takes no `ssh` block. Remove the `ssh` block."},
+		{"skypilot_block_on_ssh", call(clusterProject + `, host = ` + sshCall(`, skypilot = skypilot(cloud = "gcp")`)), "`host.provider` \"ssh\" takes no `skypilot` block. Remove the `skypilot` block."},
+		{"skypilot_block_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, skypilot = skypilot())`), "`host.provider` \"slurm\" takes no `skypilot` block. Remove the `skypilot` block."},
 		{"idle_on_ssh", call(clusterProject + ", host = " + sshCall(", idle_minutes = 30")), "`host.idle_minutes` is not allowed for provider \"ssh\""},
 		{"idle_on_slurm", call(clusterProject + `, host = host(provider = "slurm", disk_floor_gb = 50, idle_minutes = 30)`), "`host.idle_minutes` is not allowed for provider \"slurm\""},
-		{"ssh_address_with_space", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(address = "a b")`)), "`host.ssh.address` must start with a letter or digit"},
-		{"ssh_address_with_dash", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(address = "-oProxyCommand=x")`)), "`host.ssh.address` must start with a letter or digit"},
-		{"ssh_user_with_dash", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(user = "-x")`)), "`host.ssh.user` must start with a letter or digit"},
-		{"ssh_port_zero", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(port = 0)`)), "`host.ssh.port` must be from 1 to 65535; got 0"},
-		{"ssh_port_high", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(port = 65536)`)), "`host.ssh.port` must be from 1 to 65535; got 65536"},
-		{"ssh_identity_relative", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(identity = "key")`)), "`host.ssh.identity` must be an absolute path or start with ~/"},
-		{"ssh_work_root_relative", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(work_root = "work")`)), "`host.ssh.work_root` must be an absolute path or start with ~/"},
-		{"ssh_work_root_control", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(work_root = "/a\nb")`)), "`host.ssh.work_root` must hold no control character"},
-		{"ssh_known_hosts_no", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(known_hosts = "no")`)), "`host.ssh.known_hosts` must be strict or accept-new. A host key that changes is always refused."},
 		{"unknown_ssh_argument", call(clusterProject + ", host = " + sshCall(`, ssh = ssh(zone = "a")`)), `ssh: unexpected keyword argument "zone"`},
 		{"repeated_ssh_call", "ssh()\nssh()\n" + call(clusterProject), "p.star:2:4: block `ssh` appears twice"},
 		{"missing_disk_floor", call(clusterProject + `, host = host(provider = "skypilot")`), "host: missing argument for disk_floor_gb"},

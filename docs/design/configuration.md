@@ -29,7 +29,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 
 ### `project(...)`
 
-The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `pin_file`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `build_host` and `beads_prefix`.
+The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `pin_file`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write` and `build_host`. It takes `beads = beads(prefix = ...)` when the project uses the beads adapter. The `host(...)` block takes the block of its provider: `skypilot`, `ssh` or `slurm`. The adapter that owns a block declares its keys, and the core passes the block to the adapter unread.
 
 The project also takes facts. All facts are optional and are empty when left out.
 

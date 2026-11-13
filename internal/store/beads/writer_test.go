@@ -167,7 +167,7 @@ func (p bdProbe) Comments(id string) int { return len(p.bd.issues[id].comments) 
 func writerOver(t *testing.T, run *writeBd) *beads.Store {
 	t.Helper()
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	return bd
@@ -253,7 +253,7 @@ func TestAssign_SetsTheAssigneeOfAnItemThatHasNoneOrTheSameOne(t *testing.T) {
 		run.Plan(shown, "show")
 		run.Plan("", "update")
 
-		bd, err := beads.New(run, "p")
+		bd, err := beads.New(run, prefixBlock("p"))
 		require.NoError(t, err)
 		require.NoError(t, bd.Assign(t.Context(), "p-1", "alice"), name)
 		assert.Equal(t, [][]string{{"show", "p-1", "--json"}, {"update", "p-1", "--assignee", "alice"}}, run.Calls, name)
@@ -266,7 +266,7 @@ func TestAssign_RefusesAnItemThatAnotherLoginHoldsAndWritesNothing(t *testing.T)
 	run := &proctest.Scripted{}
 	run.Plan(`[{"id":"p-1","title":"t","status":"open","assignee":"bob"}]`, "show")
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	err = bd.Assign(t.Context(), "p-1", "alice")
@@ -279,7 +279,7 @@ func TestAssign_RefusesAnItemThatAnotherLoginHoldsAndWritesNothing(t *testing.T)
 func TestAssign_RefusesWhenTheItemCannotBeReadOrUpdated(t *testing.T) {
 	t.Parallel()
 
-	down, err := beads.New(proctest.Always(model.CommandResult{ExitCode: 1}), "p")
+	down, err := beads.New(proctest.Always(model.CommandResult{ExitCode: 1}), prefixBlock("p"))
 	require.NoError(t, err)
 	require.Error(t, down.Assign(t.Context(), "p-1", "alice"))
 
@@ -287,7 +287,7 @@ func TestAssign_RefusesWhenTheItemCannotBeReadOrUpdated(t *testing.T) {
 	run.Plan(`[{"id":"p-1","title":"t","status":"open"}]`, "show")
 	run.PlanFail("bd failed", "update")
 
-	failing, err := beads.New(run, "p")
+	failing, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 	require.Error(t, failing.Assign(t.Context(), "p-1", "alice"))
 }
@@ -313,7 +313,7 @@ func TestCreate_RefusesAnAnswerWithNoId(t *testing.T) {
 	run.Plan("[]", "list")
 	run.Plan("\n", "create")
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	_, _, err = bd.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -328,7 +328,7 @@ func TestCreate_StopsWhenTheLookupFailsOrCreateFails(t *testing.T) {
 	run.Plan("[]", "list")
 	run.PlanFail("boom", "create")
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	_, _, err = bd.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -337,7 +337,7 @@ func TestCreate_StopsWhenTheLookupFailsOrCreateFails(t *testing.T) {
 	run = &proctest.Scripted{}
 	run.PlanFail("boom", "list")
 
-	bd, err = beads.New(run, "p")
+	bd, err = beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	_, _, err = bd.Create(t.Context(), "k", store.NewItem{Title: "t"})
@@ -393,7 +393,7 @@ func TestSetStatus_ReportsEachFailedStep(t *testing.T) {
 
 		run.PlanFail("boom", failing)
 
-		bd, err := beads.New(run, "p")
+		bd, err := beads.New(run, prefixBlock("p"))
 		require.NoError(t, err)
 		require.Error(t, bd.SetStatus(t.Context(), "p-1", status), failing)
 	}
@@ -433,7 +433,7 @@ func TestComment_RefusesAnUnreadableListAndStopsOnAFailedAdd(t *testing.T) {
 	run := &proctest.Scripted{}
 	run.Plan("not json", "comments")
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 	require.Error(t, bd.Comment(t.Context(), "p-1", "k", "t"))
 
@@ -441,7 +441,7 @@ func TestComment_RefusesAnUnreadableListAndStopsOnAFailedAdd(t *testing.T) {
 	run.Plan("[]", "comments", "p-1")
 	run.PlanFail("boom", "comments", "add")
 
-	bd, err = beads.New(run, "p")
+	bd, err = beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 	require.Error(t, bd.Comment(t.Context(), "p-1", "k", "t"))
 }

@@ -13,5 +13,5 @@ func TestProject_HasRepositoryIsTrueForASourceOrAForgeOnly(t *testing.T) {
 
 	assert.False(t, model.Project{}.HasRepository())
 	assert.True(t, model.Project{Source: "/srv/repo"}.HasRepository())
-	assert.True(t, model.Project{Forge: model.ForgeGithub}.HasRepository())
+	assert.True(t, model.Project{Forge: model.ForgeName("forge")}.HasRepository())
 }

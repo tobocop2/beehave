@@ -31,7 +31,7 @@ const (
 
 // addItems adds the item command when the build has an item list.
 func (f flowCommands) addItems(root *cobra.Command) {
-	if f.items == nil {
+	if len(f.items) == 0 {
 		return
 	}
 
@@ -181,16 +181,16 @@ func (f flowCommands) localProject(cmd *cobra.Command, flag, name string) (model
 	}
 
 	project := cfg.Projects[name].Project
-	if project.Tracker != model.TrackerLocal {
-		return model.Project{}, fmt.Errorf("project %s has the %s tracker. beehave item works only on a project with tracker = \"local\"", name, project.Tracker)
+	if f.items[project.Tracker] == nil {
+		return model.Project{}, fmt.Errorf("project %s has the %s tracker. beehave item works only on a project with a tracker that holds a local list", name, project.Tracker)
 	}
 
 	return project, nil
 }
 
-// withItems opens the item list of the project, runs fn and closes the list.
+// withItems opens the item list of the project, runs fn and closes the list. The caller has checked that the tracker of the project has an opener.
 func (f flowCommands) withItems(project model.Project, fn func(ItemStore) error) error {
-	items, err := f.items(f.ctx, project)
+	items, err := f.items[project.Tracker](f.ctx, project)
 	if err != nil {
 		return err
 	}
@@ -198,10 +198,10 @@ func (f flowCommands) withItems(project model.Project, fn func(ItemStore) error)
 	return errors.Join(fn(items), items.Close())
 }
 
-// knownItem refuses an item that a project with the local tracker does not have. Another tracker has no list here, so it passes.
+// knownItem refuses an item that a project with a local item list does not have. Another tracker has no list here, so it passes.
 // The run refuses before the engine opens, so a typo in an id takes no claim and starts nothing.
 func (f flowCommands) knownItem(project model.Project, item string) error {
-	if f.items == nil || project.Tracker != model.TrackerLocal {
+	if f.items[project.Tracker] == nil {
 		return nil
 	}
 

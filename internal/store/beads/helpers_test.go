@@ -7,8 +7,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/beads"
 )
+
+// prefixBlock returns the beads block of a project file that gives the id prefix.
+func prefixBlock(prefix string) *model.Block {
+	return model.NewBlock("test", []model.BlockEntry{model.TextEntry(beads.BlockPrefix, prefix)})
+}
 
 func toJSON(t *testing.T, value any) string {
 	t.Helper()

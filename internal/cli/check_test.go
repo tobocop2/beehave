@@ -28,7 +28,7 @@ func runCheckConfig(t *testing.T, env map[string]string, args ...string) (int, s
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), append([]string{"check", "config"}, args...), cli.BuildInfo{Version: "x"}, env, &stdout, &stderr)
+	code := cli.Execute(context.Background(), append([]string{"check", "config"}, args...), cli.BuildInfo{Version: "x", Registry: registry()}, env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -51,7 +51,7 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 	t.Parallel()
 
 	dir := t.TempDir()
-	remote := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+	remote := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
 		"sandbox = \"on\", build_host = \"gpu\", host = host(provider = \"skypilot\", disk_floor_gb = 50))\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/far.star", remote)
@@ -67,7 +67,7 @@ func TestCheckConfig_ALocalProjectWithTheSandboxOnGetsANoteThatNoSandboxCanEnfor
 	t.Parallel()
 
 	dir := t.TempDir()
-	boxed := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+	boxed := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
 		"sandbox = \"on\", gate_network = [\"proxy.golang.org\"])\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/near.star", boxed)
@@ -83,7 +83,7 @@ func runWithAdapters(t *testing.T, adapters func(context.Context, model.Project)
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Version: "x", Adapters: adapters},
+	code := cli.Execute(context.Background(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Version: "x", Registry: registry(), Adapters: adapters},
 		map[string]string{}, &stdout, &stderr)
 
 	return code, stderr.String()
@@ -93,7 +93,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n"
+	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n"
 	writeConfig(t, dir, "projects/a.star", text)
 	writeConfig(t, dir, "projects/b.star", text)
 
@@ -113,7 +113,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	require.Equal(t, filepath.Join(dir, "projects", "b.star")+": no gh on the path\n", stderr)
 }
 
-func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T) {
+func TestCheckConfig_RefusesABeadsClaimsProjectWithoutTheBeadsBlock(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -122,7 +122,7 @@ func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T)
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, "`beads_prefix` must be a non-empty string")
+	require.Contains(t, stderr, "the project names an adapter whose `beads` block it must hold. Write beads(...).")
 }
 
 func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T) {
@@ -134,7 +134,7 @@ func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+	require.Contains(t, stderr, `unknown tracker "jira": use one of beads, github, local`)
 }
 
 func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
@@ -142,7 +142,7 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.star", "agents(bogus = 1)\n")
-	writeConfig(t, dir, "projects/a.star", "project(repo = \"justname\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\")\n")
+	writeConfig(t, dir, "projects/a.star", "project(repo = \"justname\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"g\")\n")
 	writeConfig(t, dir, "projects/b.star", validProject)
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)

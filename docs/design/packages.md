@@ -173,7 +173,7 @@ A project file selects each adapter with a key. Each key is optional.
 `beehave check config` refuses each of these cases at the position of the key:
 
 - `repo` is missing when `tracker` or `forge` is `github`.
-- `beads_prefix` is missing when `tracker` or `claims` is `beads`.
+- The `beads` block is missing when `tracker` or `claims` is `beads`.
 - `source` is set and is not a git URL or an absolute path (a leading `~` expands).
 - A path `source` is set without `build_host = "local"`. A remote host cannot read a path on this machine.
 
@@ -222,7 +222,7 @@ A project with a source or a forge still needs `base_branch`, `gate` and `test_r
 
 `model.ParseTracker` and `model.ParseForge` check a name, as `ParseAgent` does. `beehave check config` refuses an unknown name.
 
-`cmd/beehave/adapters.go` holds the one table from name to constructor. A test fails when the table and the name lists differ. No other package dispatches on an adapter name.
+`cmd/beehave/adapters.go` holds the one adapter table. Each entry has the name of an adapter, its constructor, its config block, the tools it needs on the path and its doctor check. A new adapter is one package and one entry. The config validates a chosen name against the table, and the core passes an adapter block to the adapter unread. No other package dispatches on an adapter name.
 
 `beehave check config` builds only what the project names:
 
@@ -244,7 +244,7 @@ The suite runs against every adapter with a fake command line. It checks the cla
 
 ```mermaid
 flowchart LR
-    project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads_prefix = …"]
+    project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads = beads(prefix = …)"]
     table["cmd/beehave/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]

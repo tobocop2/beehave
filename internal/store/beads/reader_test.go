@@ -16,7 +16,7 @@ var _ store.Reader = (*beads.Store)(nil)
 func readerOver(t *testing.T, run *proctest.Scripted) *beads.Store {
 	t.Helper()
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, prefixBlock("p"))
 	require.NoError(t, err)
 
 	return bd

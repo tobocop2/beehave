@@ -2,11 +2,11 @@ package ssh
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode"
 
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -32,16 +32,11 @@ const (
 	BlockKnownHosts = "known_hosts"
 )
 
-// portUnset is the value of the port key that the call leaves out, so the decode can tell an omitted key from a written one.
-const portUnset = -1
-
 // maxPort is the largest port number.
 const maxPort = 65535
 
-// hostWord is the pattern of a name that can follow ssh options: it cannot start an option or hold a space.
-var hostWord = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]*$`)
-
 // block is the ssh block of the machine, as the project file wrote it: the link to the machine and the folder its repositories live in.
+// A key that the file leaves out stays empty, and the link reads an empty port as the default port and an empty known_hosts as strict.
 type block struct {
 	address    string
 	user       string
@@ -51,69 +46,37 @@ type block struct {
 	knownHosts string
 }
 
-// decodeBlock reads the ssh block. A nil block gives the defaults: every key empty, known_hosts strict.
+// decodeBlock reads the ssh block once. A nil block gives every key empty. The link refuses an address, a user or a known_hosts value that ssh could read as an option.
 func decodeBlock(from *model.Block) (block, error) {
-	settings := block{port: portUnset, knownHosts: model.KnownHostsStrict}
+	var settings block
+
 	if from == nil {
 		return settings, nil
 	}
 
 	at := from.At()
 
-	address, _ := from.Text(BlockAddress)
-	user, _ := from.Text(BlockUser)
-	identity, _ := from.Text(BlockIdentity)
-	workRoot, _ := from.Text(BlockWorkRoot)
-	knownHosts, _ := from.Text(BlockKnownHosts)
+	settings.address, _ = from.Text(BlockAddress)
+	settings.user, _ = from.Text(BlockUser)
+	settings.identity, _ = from.Text(BlockIdentity)
+	settings.workRoot, _ = from.Text(BlockWorkRoot)
+	settings.knownHosts, _ = from.Text(BlockKnownHosts)
 
-	for _, check := range []error{
-		checkKnownHosts(at, knownHosts), checkWord(at, BlockAddress, address), checkWord(at, BlockUser, user),
-		checkPath(at, BlockIdentity, identity), checkPath(at, BlockWorkRoot, workRoot),
-	} {
-		if check != nil {
-			return block{}, check
-		}
-	}
-
-	port, given := from.Whole(BlockPort)
-	if given {
-		if err := checkPort(at, port); err != nil {
-			return block{}, err
+	if port, given := from.Whole(BlockPort); given {
+		if port < 1 || port > maxPort {
+			return block{}, fmt.Errorf("%w: %s: `host.ssh.port` must be from 1 to %d; got %d. Fix the value", link.ErrConfig, at, maxPort, port)
 		}
 
 		settings.port = port
 	}
 
-	settings.address, settings.user, settings.identity, settings.workRoot, settings.knownHosts = address, user, identity, workRoot, knownHosts
+	for _, key := range []struct{ name, value string }{{BlockIdentity, settings.identity}, {BlockWorkRoot, settings.workRoot}} {
+		if err := checkPath(at, key.name, key.value); err != nil {
+			return block{}, err
+		}
+	}
 
 	return settings, nil
-}
-
-// checkKnownHosts refuses a host key policy that beehave does not offer.
-func checkKnownHosts(at, value string) error {
-	if value != model.KnownHostsStrict && value != model.KnownHostsAcceptNew {
-		return fmt.Errorf("%s: `host.ssh.known_hosts` must be %s or %s. A host key that changed is always refused.", at, model.KnownHostsStrict, model.KnownHostsAcceptNew)
-	}
-
-	return nil
-}
-
-// checkPort refuses a port outside the range of the protocol.
-func checkPort(at string, port int) error {
-	if port < 1 || port > maxPort {
-		return fmt.Errorf("%s: `host.ssh.port` must be from 1 to %d; got %d. Fix the value.", at, maxPort, port)
-	}
-
-	return nil
-}
-
-// checkWord refuses a value that could start an ssh option or hold a space.
-func checkWord(at, key, value string) error {
-	if value != "" && !hostWord.MatchString(value) {
-		return fmt.Errorf("%s: `host.ssh.%s` must start with a letter or digit and hold only letters, digits, dots, underscores, at signs and dashes; got `%s`. Fix the value.", at, key, value)
-	}
-
-	return nil
 }
 
 // checkPath checks a path key of the ssh block: empty, or absolute (or under ~/), with no control character.
@@ -122,9 +85,9 @@ func checkPath(at, key, value string) error {
 	case value == "":
 		return nil
 	case strings.ContainsFunc(value, unicode.IsControl):
-		return fmt.Errorf("%s: `host.ssh.%s` must hold no control character. Fix the value.", at, key)
+		return fmt.Errorf("%w: %s: `host.ssh.%s` must hold no control character. Fix the value", link.ErrConfig, at, key)
 	case !strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "~/"):
-		return fmt.Errorf("%s: `host.ssh.%s` must be an absolute path or start with ~/; got `%s`. Fix the value.", at, key, value)
+		return fmt.Errorf("%w: %s: `host.ssh.%s` must be an absolute path or start with ~/; got `%s`. Fix the value", link.ErrConfig, at, key, value)
 	}
 
 	return nil

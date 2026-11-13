@@ -7,14 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/jobwait"
 	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -24,51 +22,72 @@ var ErrConfig = errors.New("invalid SkyPilot host setting")
 
 const runLimitKey = "gcp.managed_instance_group.run_duration="
 
-var wordPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+// Slot is what the queue does to keep the cluster busy while a job holds its work.
+type Slot interface {
+	Hold(ctx context.Context, job jobwait.Job) error
+	Release(ctx context.Context, job jobwait.Job) error
+}
 
-// Host is a SkyPilot cluster with Slurm on its head node. SkyPilot creates and deletes the cluster; the Slurm queue runs the jobs.
+// Queue is the job half of the cluster host: the queue that runs the jobs on the head node.
+type Queue interface {
+	Readings(ctx context.Context) (model.HostStatus, error)
+	Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error)
+	Wait(ctx context.Context, id model.JobID) (model.JobState, error)
+	Cancel(ctx context.Context, id model.JobID) error
+	WorkRoot(ctx context.Context) (string, error)
+	Log(ctx context.Context, id model.JobID) (string, error)
+	Drain(ctx context.Context) error
+	Resume(ctx context.Context) error
+}
+
+// QueueBuilder builds the queue over the link, with the slot that keeps the cluster busy.
+type QueueBuilder func(l *link.Link, config model.HostConfig, slot Slot) Queue
+
+// Host is a SkyPilot cluster with Slurm on its head node. SkyPilot creates and deletes the cluster; the queue runs the jobs.
 type Host struct {
 	cluster string
 	config  model.HostConfig
+	settings block
 	sky     proc.Runner
 	link    *link.Link
-	*slurm.Queue
+	Queue
 }
 
 // New returns a host for the cluster. sky is the sky command line. ssh is the ssh command line: the first argument of a call is a cluster name, as SkyPilot writes one ssh config entry for each cluster.
-// Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
-// A test passes options to replace the clock, the bank and the nonce of the queue.
-func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, opts ...slurm.Option) (*Host, error) {
-	if err := checkConfig(cluster, config); err != nil {
+// queue builds the job queue over the link. Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
+func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue QueueBuilder) (*Host, error) {
+	settings := decodeBlock(config.Block)
+
+	if err := checkConfig(cluster, config, settings); err != nil {
 		return nil, err
 	}
 
-	h := &Host{cluster: cluster, config: config, sky: sky, link: link.New(cluster, ssh)}
-	h.Queue = slurm.New(h.link, config, slot{h}, opts...)
+	h := &Host{cluster: cluster, config: config, settings: settings, sky: sky, link: link.New(cluster, ssh)}
+	h.Queue = queue(h.link, config, slot{h})
 
 	return h, nil
 }
 
-func checkConfig(cluster string, config model.HostConfig) error {
-	settings := map[string]string{
-		"cluster name": cluster, "host.skypilot.cloud": config.SkyPilot.Cloud,
-		"host.skypilot.region": config.SkyPilot.Region, "host.skypilot.instance_type": config.SkyPilot.InstanceType,
+func checkConfig(cluster string, config model.HostConfig, settings block) error {
+	values := map[string]string{
+		"cluster name": cluster, "host.skypilot.cloud": settings.cloud,
+		"host.skypilot.region": settings.region, "host.skypilot.instance_type": settings.instanceType,
 	}
 
-	for name, value := range settings {
+	for name, value := range values {
 		if value != "" && !wordPattern.MatchString(value) {
 			return fmt.Errorf("%w: %s %q must be letters, digits, dots, dashes and underscores", ErrConfig, name, value)
 		}
 	}
 
-	return checkRequired(cluster, config)
+	return checkRequired(cluster, config, settings)
 }
 
-func checkRequired(cluster string, config model.HostConfig) error {
+func checkRequired(cluster string, config model.HostConfig, settings block) error {
 	switch {
 	case cluster == "":
 		return fmt.Errorf("%w: the project names no cluster in `build_host`", ErrConfig)
-	case config.SkyPilot.Region != "" && config.SkyPilot.Cloud == "":
+	case settings.region != "" && settings.cloud == "":
 		return fmt.Errorf("%w: `host.skypilot.region` needs `host.skypilot.cloud`", ErrConfig)
 	case config.IdleMinutes <= 0:
 		return fmt.Errorf("%w: `host.idle_minutes` must be above zero", ErrConfig)
@@ -93,8 +112,8 @@ func (h *Host) Up(ctx context.Context) error {
 		args = append(args, "--infra", infra)
 	}
 
-	if h.config.SkyPilot.InstanceType != "" {
-		args = append(args, "-t", h.config.SkyPilot.InstanceType)
+	if h.settings.instanceType != "" {
+		args = append(args, "-t", h.settings.instanceType)
 	}
 
 	_, err := link.Run(ctx, h.sky, "sky launch", args)
@@ -103,7 +122,7 @@ func (h *Host) Up(ctx context.Context) error {
 }
 
 func (h *Host) infra() string {
-	cloud, region := h.config.SkyPilot.Cloud, h.config.SkyPilot.Region
+	cloud, region := h.settings.cloud, h.settings.region
 	if region == "" {
 		return cloud
 	}

@@ -37,7 +37,7 @@ func useReset(five, seven float64, fiveReset, sevenReset time.Time) model.Readin
 func runners(names ...string) []model.Runner {
 	list := make([]model.Runner, 0, len(names))
 	for _, name := range names {
-		list = append(list, model.Runner{Name: name, Agent: model.AgentClaude})
+		list = append(list, model.Runner{Name: name, Agent: "claude"})
 	}
 
 	return list
@@ -206,9 +206,9 @@ func TestResetTimes_SixDigitsOfFractionOrNoFractionAtAll(t *testing.T) {
 
 	readings := map[string]model.Reading{"a": useReset(95, 10, half, t2)}
 
-	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
+	want := "no runner is under both caps (five-hour 90%, seven-day 95%). " +
 		"The earliest reset is 2026-10-24T05:00:00.500000+00:00. Wait for it."
-	if got := pool.Refusal(runners("a"), readings, caps, model.AgentClaude); got != want {
+	if got := pool.Refusal(runners("a"), readings, caps); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
 }
@@ -218,7 +218,7 @@ func TestRefusal_ListsEachUnknownRunnerWithItsReason(t *testing.T) {
 
 	readings := map[string]model.Reading{"a": model.Unknown("login expired"), "b": model.Unknown("no answer")}
 
-	text := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude)
+	text := pool.Refusal(runners("a", "b"), readings, caps)
 	if !strings.Contains(text, "Unknown usage: a: login expired. Unknown usage: b: no answer.") {
 		t.Fatalf("Refusal = %q", text)
 	}
@@ -229,8 +229,8 @@ func TestRefusal_ARunnerThatNeedsALoginGetsNoAdviceToWait(t *testing.T) {
 
 	readings := map[string]model.Reading{"a": model.UnknownLogin("runner a has no Claude plan limits")}
 
-	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). Unknown usage: a: runner a has no Claude plan limits."
-	if got := pool.Refusal(runners("a"), readings, caps, model.AgentClaude); got != want {
+	want := "no runner is under both caps (five-hour 90%, seven-day 95%). Unknown usage: a: runner a has no Claude plan limits."
+	if got := pool.Refusal(runners("a"), readings, caps); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
 }
@@ -240,9 +240,9 @@ func TestRefusal_ALoginProblemAndAnOverCapRunnerStillSayToWaitForTheReset(t *tes
 
 	readings := map[string]model.Reading{"a": model.UnknownLogin("log in"), "b": useReset(95, 10, t1, t1)}
 
-	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
+	want := "no runner is under both caps (five-hour 90%, seven-day 95%). " +
 		"The earliest reset is 2026-10-24T05:00:00+00:00. Unknown usage: a: log in. Wait for it."
-	if got := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude); got != want {
+	if got := pool.Refusal(runners("a", "b"), readings, caps); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
 }
@@ -250,7 +250,7 @@ func TestRefusal_ALoginProblemAndAnOverCapRunnerStillSayToWaitForTheReset(t *tes
 func TestRefusal_SaysSoWhenNoResetTimeIsKnown(t *testing.T) {
 	t.Parallel()
 
-	text := pool.Refusal(runners("a"), map[string]model.Reading{"a": model.Unknown("x")}, caps, model.AgentClaude)
+	text := pool.Refusal(runners("a"), map[string]model.Reading{"a": model.Unknown("x")}, caps)
 	if !strings.Contains(text, "No reset time is known.") {
 		t.Fatalf("Refusal = %q", text)
 	}
@@ -261,9 +261,9 @@ func TestRefusal_NamesTheCapsAndTheEarliestReset(t *testing.T) {
 
 	readings := map[string]model.Reading{"a": useReset(95, 10, t2, t2), "b": useReset(10, 99, t1, t1)}
 
-	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
+	want := "no runner is under both caps (five-hour 90%, seven-day 95%). " +
 		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it."
-	if got := pool.Refusal(runners("a", "b"), readings, caps, model.AgentClaude); got != want {
+	if got := pool.Refusal(runners("a", "b"), readings, caps); got != want {
 		t.Fatalf("Refusal = %q", got)
 	}
 }
@@ -323,12 +323,10 @@ func TestReadAll_TheRunnersAreReadAtTheSameTime(t *testing.T) {
 	}
 }
 
-func TestSelect_IsErrNoRunnerWithoutRunnersOfTheAgent(t *testing.T) {
+func TestSelect_IsErrNoRunnerWithoutRunners(t *testing.T) {
 	t.Parallel()
 
-	only := []model.Runner{{Name: "o", Agent: model.AgentOpenCode}}
-
-	if _, err := pool.Select(t.Context(), only, caps, model.AgentClaude, readerOf(nil)); !errors.Is(err, pool.ErrNoRunner) {
+	if _, err := pool.Select(t.Context(), nil, caps, readerOf(nil)); !errors.Is(err, pool.ErrNoRunner) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -336,7 +334,7 @@ func TestSelect_IsErrNoRunnerWithoutRunnersOfTheAgent(t *testing.T) {
 func TestSelect_PicksTheRunnerWithRoom(t *testing.T) {
 	t.Parallel()
 
-	got, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+	got, err := pool.Select(t.Context(), runners("a", "b"), caps,
 		readerOf(map[string]model.Reading{"a": use(5, 50), "b": use(5, 10)}))
 	if err != nil || got.Name != "b" {
 		t.Fatalf("Select = %v, %v", got, err)
@@ -346,7 +344,7 @@ func TestSelect_PicksTheRunnerWithRoom(t *testing.T) {
 func TestSelect_NoneQualifiesIsATypedErrorWithTheRefusal(t *testing.T) {
 	t.Parallel()
 
-	_, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+	_, err := pool.Select(t.Context(), runners("a", "b"), caps,
 		readerOf(map[string]model.Reading{"a": model.Unknown("x"), "b": model.Unknown("y")}))
 
 	var none *pool.NoneQualifiesError
@@ -354,17 +352,18 @@ func TestSelect_NoneQualifiesIsATypedErrorWithTheRefusal(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 
-	if !strings.HasPrefix(none.Error(), "no claude runner is under both caps") {
+	if !strings.HasPrefix(none.Error(), "no runner is under both caps") {
 		t.Fatalf("Error = %q", none.Error())
 	}
 }
 
-func TestSelect_LeavesOutRunnersOfOtherAgents(t *testing.T) {
+func TestSelect_NeverChoosesARunnerWhoseAgentCannotReportUsage(t *testing.T) {
 	t.Parallel()
 
-	list := append(runners("a"), model.Runner{Name: "o", Agent: model.AgentOpenCode})
+	list := append(runners("a"), model.Runner{Name: "o", Agent: "opencode"})
+	readings := map[string]model.Reading{"a": use(1, 1), "o": model.Unknown("opencode cannot report usage")}
 
-	got, err := pool.Select(t.Context(), list, caps, model.AgentClaude, readerOf(map[string]model.Reading{"a": use(1, 1)}))
+	got, err := pool.Select(t.Context(), list, caps, readerOf(readings))
 	if err != nil || got.Name != "a" {
 		t.Fatalf("Select = %v, %v", got, err)
 	}
@@ -373,15 +372,15 @@ func TestSelect_LeavesOutRunnersOfOtherAgents(t *testing.T) {
 func TestCommand_PrintsALineForEachRunnerAndThePick(t *testing.T) {
 	t.Parallel()
 
-	list := append(runners("a", "b", "c"), model.Runner{Name: "o", Agent: model.AgentOpenCode})
+	list := append(runners("a", "b", "c"), model.Runner{Name: "o", Agent: "opencode"})
 	readings := map[string]model.Reading{"a": use(95, 10), "b": use(10, 20), "c": model.Unknown("boom")}
 
-	lines, err := pool.Command(t.Context(), list, caps, model.AgentClaude, readerOf(readings))
+	lines, err := pool.Command(t.Context(), list, caps, readerOf(readings))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := []string{"a: " + pool.Describe(readings["a"]), "b: " + pool.Describe(readings["b"]), "c: unknown: boom", "pick: b"}
+	want := []string{"a: " + pool.Describe(readings["a"]), "b: " + pool.Describe(readings["b"]), "c: unknown: boom", "o: " + pool.Describe(readings["o"]), "pick: b"}
 	if !slices.Equal(lines, want) {
 		t.Fatalf("lines = %q", lines)
 	}
@@ -392,7 +391,7 @@ func TestCommand_NoneQualifiesKeepsTheLinesAndReturnsTheRefusal(t *testing.T) {
 
 	readings := map[string]model.Reading{"a": useReset(95, 10, t2, t2), "b": useReset(10, 99, t1, t1)}
 
-	lines, err := pool.Command(t.Context(), runners("a", "b"), caps, model.AgentClaude, readerOf(readings))
+	lines, err := pool.Command(t.Context(), runners("a", "b"), caps, readerOf(readings))
 
 	var none *pool.NoneQualifiesError
 	if !errors.As(err, &none) {
@@ -403,7 +402,7 @@ func TestCommand_NoneQualifiesKeepsTheLinesAndReturnsTheRefusal(t *testing.T) {
 		t.Fatalf("lines = %q", lines)
 	}
 
-	want := "no claude runner is under both caps (five-hour 90%, seven-day 95%). " +
+	want := "no runner is under both caps (five-hour 90%, seven-day 95%). " +
 		"The earliest reset is 2026-10-24T05:00:00+00:00. Wait for it."
 	if none.Error() != want {
 		t.Fatalf("Error = %q", none.Error())
@@ -446,7 +445,7 @@ func TestChoose_AFreeRunnerOverACapStaysOut(t *testing.T) {
 func TestSelect_NoneQualifiesCarriesTheEarliestReset(t *testing.T) {
 	t.Parallel()
 
-	_, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+	_, err := pool.Select(t.Context(), runners("a", "b"), caps,
 		readerOf(map[string]model.Reading{"a": useReset(99, 10, t2, t2), "b": useReset(99, 10, t1, t2)}))
 
 	var none *pool.NoneQualifiesError
@@ -462,7 +461,7 @@ func TestSelect_NoneQualifiesCarriesTheEarliestReset(t *testing.T) {
 func TestSelect_NoneQualifiesWithNoKnownResetSaysSo(t *testing.T) {
 	t.Parallel()
 
-	_, err := pool.Select(t.Context(), runners("a"), caps, model.AgentClaude,
+	_, err := pool.Select(t.Context(), runners("a"), caps,
 		readerOf(map[string]model.Reading{"a": model.Unknown("x")}))
 
 	var none *pool.NoneQualifiesError
@@ -478,7 +477,7 @@ func TestSelect_NoneQualifiesWithNoKnownResetSaysSo(t *testing.T) {
 func TestSelectOverCap_TakesTheLowestUseWhateverTheCaps(t *testing.T) {
 	t.Parallel()
 
-	got, err := pool.SelectOverCap(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+	got, err := pool.SelectOverCap(t.Context(), runners("a", "b"), caps,
 		readerOf(map[string]model.Reading{"a": use(99, 99), "b": use(95, 97)}))
 	if err != nil || got.Name != "b" {
 		t.Fatalf("SelectOverCap = %v, %v", got, err)
@@ -488,7 +487,7 @@ func TestSelectOverCap_TakesTheLowestUseWhateverTheCaps(t *testing.T) {
 func TestSelectOverCap_NeverTakesARunnerWithUnknownUsage(t *testing.T) {
 	t.Parallel()
 
-	_, err := pool.SelectOverCap(t.Context(), runners("a"), caps, model.AgentClaude,
+	_, err := pool.SelectOverCap(t.Context(), runners("a"), caps,
 		readerOf(map[string]model.Reading{"a": model.Unknown("x")}))
 
 	var none *pool.NoneQualifiesError
@@ -497,12 +496,10 @@ func TestSelectOverCap_NeverTakesARunnerWithUnknownUsage(t *testing.T) {
 	}
 }
 
-func TestSelectOverCap_IsErrNoRunnerWithoutRunnersOfTheAgent(t *testing.T) {
+func TestSelectOverCap_IsErrNoRunnerWithoutRunners(t *testing.T) {
 	t.Parallel()
 
-	only := []model.Runner{{Name: "o", Agent: model.AgentOpenCode}}
-
-	if _, err := pool.SelectOverCap(t.Context(), only, caps, model.AgentClaude, readerOf(nil)); !errors.Is(err, pool.ErrNoRunner) {
+	if _, err := pool.SelectOverCap(t.Context(), nil, caps, readerOf(nil)); !errors.Is(err, pool.ErrNoRunner) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -510,7 +507,7 @@ func TestSelectOverCap_IsErrNoRunnerWithoutRunnersOfTheAgent(t *testing.T) {
 func TestSelect_PrefersARunnerThatIsNotBusy(t *testing.T) {
 	t.Parallel()
 
-	got, err := pool.Select(t.Context(), runners("a", "b"), caps, model.AgentClaude,
+	got, err := pool.Select(t.Context(), runners("a", "b"), caps,
 		readerOf(map[string]model.Reading{"a": use(1, 1), "b": use(5, 5)}), "a")
 	if err != nil || got.Name != "b" {
 		t.Fatalf("Select = %v, %v", got, err)

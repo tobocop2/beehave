@@ -9,39 +9,6 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-func TestParseAgent(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		text    string
-		want    model.Agent
-		wantErr string
-	}{
-		{name: "takes_claude", text: "claude", want: model.AgentClaude},
-		{name: "takes_opencode", text: "opencode", want: model.AgentOpenCode},
-		{name: "rejects_unknown", text: "gpt", wantErr: `unknown agent "gpt": use one of claude, opencode`},
-		{name: "rejects_empty", text: "", wantErr: `unknown agent "": use one of claude, opencode`},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := model.ParseAgent(tc.text)
-			if tc.wantErr != "" {
-				require.ErrorIs(t, err, model.ErrUnknownAgent)
-				require.EqualError(t, err, tc.wantErr)
-
-				return
-			}
-
-			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestParseSeverity(t *testing.T) {
 	t.Parallel()
 

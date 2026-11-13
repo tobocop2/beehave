@@ -1,5 +1,11 @@
 package model
 
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
+
 // BlockEntry is one argument of an adapter block: the text of a text key, or the whole number of a whole key.
 type BlockEntry struct {
 	Key string
@@ -39,6 +45,25 @@ func (b *Block) At() string {
 	}
 
 	return b.at
+}
+
+// String returns the entries of the block in key order and leaves out its position, so a value that holds a block prints the same for the same definition.
+func (b *Block) String() string {
+	if b == nil {
+		return "<nil>"
+	}
+
+	entries := slices.SortedFunc(slices.Values(b.entries), func(one, other BlockEntry) int { return strings.Compare(one.Key, other.Key) })
+	parts := make([]string, len(entries))
+
+	for i, entry := range entries {
+		parts[i] = fmt.Sprintf("%s=%q", entry.Key, entry.Text)
+		if entry.Whole {
+			parts[i] = fmt.Sprintf("%s=%d", entry.Key, entry.Number)
+		}
+	}
+
+	return "{" + strings.Join(parts, " ") + "}"
 }
 
 // Text returns the text of a key, and whether the call gave the key.

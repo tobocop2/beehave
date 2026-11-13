@@ -43,7 +43,7 @@ The job id, job state, disk reading and host status types live in `model`, so la
 
 ### The slurm provider
 
-`slurm.Host` is the Slurm provider for a cluster that the owner provides. The `ssh` block names the head node, and `build_host` is its ssh alias.
+`slurm.Host` is the Slurm provider for a cluster that the owner provides. The `slurm` block names the head node, and `build_host` is its ssh alias.
 
 | Method | Behavior |
 |---|---|
@@ -55,7 +55,7 @@ The job id, job state, disk reading and host status types live in `model`, so la
 
 - No slot job holds the cluster, because nothing deletes an idle cluster.
 - `host.max_run` goes to `sbatch` as `--time`. Slurm ends a job at the limit as `timed_out`.
-- Jobs run in the login folder of the head node, so the key `host.ssh.work_root` is refused for this provider.
+- Jobs run in the login folder of the head node, so the key `host.slurm.work_root` is refused for this provider.
 
 ### The ssh provider
 
@@ -181,8 +181,7 @@ A project selects a host with `build_host` and the `host` block.
 
 - The `host` block is required when `build_host` is a cluster name, and refused when it is `"local"`.
 - `provider` is `skypilot`, `ssh` or `slurm`.
-- The `skypilot` provider takes the `skypilot` block. `ssh` and `slurm` take the `ssh` block.
-- A block of another provider is refused.
+- The `skypilot` provider takes the `skypilot` block. `ssh` takes the `ssh` block, and `slurm` takes the `slurm` block. A provider refuses the block of another provider.
 - `idle_minutes` is refused for `ssh` and `slurm`, because beehave does not delete a machine it does not own.
 - An unknown key or block is refused.
 

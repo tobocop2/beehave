@@ -74,7 +74,7 @@ const BlockPrefix = "prefix"
 // New returns a store that runs bd through run. block is the beads block of the project, which holds the id prefix of the database.
 func New(run proc.Runner, block *model.Block) (*Store, error) {
 	prefix, given := block.Text(BlockPrefix)
-	if !given {
+	if !given || strings.TrimSpace(prefix) == "" {
 		return nil, store.Refuse("store: the beads id prefix is required")
 	}
 
