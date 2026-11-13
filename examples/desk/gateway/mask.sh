@@ -13,21 +13,31 @@ token() { # kind value
     printf '%s' "$t"
 }
 
-# Prints "kind<TAB>value" for each personal value on stdin. A phone number has a country code or spaces, so a date is not one.
+scan() { # One grep of $text: $1 the kind, $2 the pattern. Prints "kind<TAB>value" per hit, no line when nothing matches.
+    rc=0
+    found=$(printf '%s\n' "$text" | grep -oE "$2") || rc=$?
+    [ "$rc" -le 1 ] || die "mask.sh: the $1 scan failed"
+    if [ -n "$found" ]; then printf '%s\n' "$found" | sed "s/^/$1	/"; fi
+}
+
+# Prints "kind<TAB>value" for each personal value on stdin. A phone number has a country code or spaces, so a date is not one. A failed scan dies; a missing match is not an error.
 find_values() {
     text=$(cat)
-    printf '%s\n' "$text" | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' | sed 's/^/EMAIL	/' || true
-    printf '%s\n' "$text" | grep -oE '[0-9]{4}([ -]?[0-9]{4}){3}' | sed 's/^/CARD	/' || true
-    printf '%s\n' "$text" | grep -oE '(\+[0-9]{1,3} ?)?(\([0-9]{3}\) ?|[0-9]{3} )[0-9]{3}[ -][0-9]{4}' | sed 's/^/PHONE	/' || true
+    scan EMAIL '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+    scan CARD '[0-9]{4}([ -]?[0-9]{4}){3}'
+    scan PHONE '(\+[0-9]{1,3} ?)?(\([0-9]{3}\) ?|[0-9]{3} )[0-9]{3}[ -][0-9]{4}'
 }
 
 mask_text() { # stdin: the text. $1: one more literal to mask, the sender's name. Prints the masked text.
     MASK_IN=$(cat)
     export MASK_IN
+    values=$(printf '%s\n' "$MASK_IN" | find_values)
     pairs=$(
-        printf '%s\n' "$MASK_IN" | find_values | sort -u | while IFS="$(printf '\t')" read -r kind value; do
-            printf '%s\t%s\n' "$value" "$(token "$kind" "$value")"
-        done
+        if [ -n "$values" ]; then
+            printf '%s\n' "$values" | sort -u | while IFS="$(printf '\t')" read -r kind value; do
+                printf '%s\t%s\n' "$value" "$(token "$kind" "$value")"
+            done
+        fi
         if [ -n "${1:-}" ]; then printf '%s\t%s\n' "$1" "$(token NAME "$1")"; fi
     )
     # A literal replace in awk. The text comes in through the environment, because awk -v refuses a newline.

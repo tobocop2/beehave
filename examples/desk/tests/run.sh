@@ -23,6 +23,24 @@ has() { grep -q -e "$1" "$2"; }
 hasnt() { ! grep -q -e "$1" "$2"; }
 reset() { : > "$FAKE_LOG"; : > "$FAKE_BODY"; : > "$FAKE_MAIL"; }
 
+make_failgrep() {
+    mkdir -p "$T/failgrep"
+    cat > "$T/failgrep/grep" <<'EOF'
+#!/bin/sh
+# Fails only the card scan pattern; every other grep call runs the real grep.
+real=/usr/bin/grep
+[ -x "$real" ] || real=/bin/grep
+case "$*" in
+*'[0-9]{4}([ -]?[0-9]{4}){3}'*)
+    printf 'grep: simulated failure of the mask card scan\n' >&2
+    exit 2
+    ;;
+esac
+exec "$real" "$@"
+EOF
+    chmod 755 "$T/failgrep/grep"
+}
+
 make_curl() {
     cat > "$T/bin/curl" <<'EOF'
 #!/bin/sh
@@ -93,6 +111,14 @@ check "the vault holds the email address" has 'ann@example.com' "$H/vault.tsv"
 token=$(printf 'ann@example.com' | sh "$GATEWAY/mask.sh" text)
 check "the same value gets the same token" has "$token" "$T/intake.out"
 check "the mask refuses a bad mode" sh -c "! sh '$GATEWAY/mask.sh' nope < /dev/null"
+
+echo "--- mask fails closed"
+make_failgrep
+printf 'My card 4111 1111 1111 1111.' | PATH="$T/failgrep:$PATH" sh "$GATEWAY/mask.sh" text > "$T/fail.out" 2> "$T/fail.err"
+rc=$?
+check "a failed card scan stops the mask" test "$rc" -ne 0
+check "a failed card scan prints no card number" hasnt '4111' "$T/fail.out"
+check "a failed card scan names the failure on stderr" has 'the CARD scan failed' "$T/fail.err"
 
 echo "--- unmask"
 printf 'Hello %s.' "$token" | sh "$GATEWAY/unmask.sh" > "$T/unmask.out"
