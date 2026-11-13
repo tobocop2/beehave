@@ -359,6 +359,61 @@ func (n *number) Unpack(v starlark.Value) error {
 	return nil
 }
 
+// whole is an argument of an adapter block that takes a whole number and records whether the call gave it.
+type whole struct {
+	Value int
+	Set   bool
+}
+
+// Unpack stores a whole number. It refuses any other type.
+func (w *whole) Unpack(v starlark.Value) error {
+	number, ok := v.(starlark.Int)
+	if !ok {
+		return fmt.Errorf("got %s, want a whole number", v.Type())
+	}
+
+	value, fits := number.Int64()
+	if !fits {
+		return fmt.Errorf("the number %s does not fit a whole number", number.String())
+	}
+
+	w.Value, w.Set = int(value), true
+
+	return nil
+}
+
+// blockBuilt unpacks the arguments of one adapter block against the schema that the adapter declared, and returns the typed block.
+func blockBuilt(at syntax.Position, declared Block, kwargs []starlark.Tuple) (*model.Block, error) {
+	texts := make([]text, len(declared.Args))
+	wholes := make([]whole, len(declared.Args))
+
+	dests := make([]any, len(declared.Args))
+	for i, arg := range declared.Args {
+		if arg.Kind == WholeArg {
+			dests[i] = &wholes[i]
+		} else {
+			dests[i] = &texts[i]
+		}
+	}
+
+	if err := declared.spec().unpack(at, kwargs, dests...); err != nil {
+		return nil, err
+	}
+
+	entries := make([]model.BlockEntry, 0, len(declared.Args))
+	for i, arg := range declared.Args {
+		switch {
+		case arg.Kind == WholeArg && wholes[i].Set:
+			entries = append(entries, model.WholeEntry(arg.Key, wholes[i].Value))
+		case arg.Kind != WholeArg && texts[i].Set:
+			entries = append(entries, model.TextEntry(arg.Key, texts[i].Value))
+		}
+	}
+
+	return model.NewBlock(at.String(), entries), nil
+}
+
+
 // value carries the block that a constructor made, so another block can hold it as an argument.
 type value[T any] struct {
 	block *T

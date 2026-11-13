@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -30,7 +31,7 @@ type rawProject struct {
 	Tracker     string
 	Claims      string
 	Forge       text
-	BeadsPrefix string
+	Blocks      map[string]*model.Block
 	BaseBranch  string
 	Gate        string
 	GateSteps   gateList
@@ -59,8 +60,8 @@ type rawProject struct {
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
-func loadProject(path string) (Project, error) {
-	raw, err := evalProject(path)
+func loadProject(path string, registry Adapters) (Project, error) {
+	raw, err := evalProject(path, registry)
 	if err != nil {
 		return Project{}, err
 	}
@@ -69,7 +70,7 @@ func loadProject(path string) (Project, error) {
 		return Project{}, refuse("%s: the file does not call `project`. Call project(source = ..., base_branch = ..., gate = ...) once.", path)
 	}
 
-	profile, err := profileOf(path, *raw)
+	profile, err := profileOf(path, *raw, registry)
 	if err != nil {
 		return Project{}, err
 	}
@@ -77,56 +78,121 @@ func loadProject(path string) (Project, error) {
 	return Project{Project: profile, Path: path}, nil
 }
 
-func projectSpec() spec {
-	return spec{"project", []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "beads_prefix?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?", "schedules?"}}
+func projectSpec(blocks []Block) spec {
+	args := append([]string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "people?", "epics?", "gate_files?", "conventions?", "brief_rules?", "stacked_rules?", "limits?", "traps?", "token_rules?", "changelog?", "board?", "schedules?"},
+		blockArgs(blocks)...)
+
+	return spec{"project", args}
 }
 
-func projectSpecs() []spec {
-	return []spec{projectSpec(), hostSpec(), skypilotSpec(), sshSpec(), boardSpec(), scheduleSpec()}
+func projectSpecs(projectBlocks, hostBlocks []Block) []spec {
+	specs := []spec{projectSpec(projectBlocks), hostSpec(hostBlocks), boardSpec(), scheduleSpec()}
+
+	for _, declared := range projectBlocks {
+		specs = append(specs, declared.spec())
+	}
+
+	for _, declared := range hostBlocks {
+		specs = append(specs, declared.spec())
+	}
+
+	return specs
 }
 
 // evalProject evaluates a project file and returns the one project block that it calls.
-func evalProject(path string) (*rawProject, error) {
-	file := newLoader(path, projectSpecs())
+func evalProject(path string, registry Adapters) (*rawProject, error) {
+	projectBlocks, err := registry.projectBlocks()
+	if err != nil {
+		return nil, err
+	}
+
+	hostBlocks, err := registry.hostBlocks()
+	if err != nil {
+		return nil, err
+	}
+
+	file := newLoader(path, projectSpecs(projectBlocks, hostBlocks))
 
 	var raw *rawProject
 
-	err := file.run(
-		file.constructor(projectSpec(), true, func(at syntax.Position, kwargs []starlark.Tuple) error {
-			var err error
+	project := file.constructor(projectSpec(projectBlocks), true, func(at syntax.Position, kwargs []starlark.Tuple) error {
+		var built error
 
-			raw, err = newProject(at, kwargs)
+		raw, built = newProject(at, kwargs, projectBlocks)
 
-			return err
-		}),
-		blocks(file, hostSpec(), true, newHost),
-		blocks(file, skypilotSpec(), true, newSkyPilot),
-		blocks(file, sshSpec(), true, newSSH),
-		blocks(file, boardSpec(), true, newBoard),
-		blocks(file, scheduleSpec(), false, newSchedule),
-	)
+		return built
+	})
+
+	host := blocks(file, hostSpec(hostBlocks), true, newHost(hostBlocks))
+	board := blocks(file, boardSpec(), true, newBoard)
+	schedules := blocks(file, scheduleSpec(), false, newSchedule)
+
+	builtins := append([]*starlark.Builtin{project, host, board, schedules}, blockBuiltins(file, projectBlocks, hostBlocks)...)
+
+	err = file.run(builtins...)
 
 	return raw, err
 }
 
+// blockBuiltins makes the builtin of every adapter block that the registry declares: the project blocks and the host blocks.
+func blockBuiltins(file *loader, blocks, hostBlocks []Block) []*starlark.Builtin {
+	builtins := make([]*starlark.Builtin, 0, len(blocks)+len(hostBlocks))
+
+	for _, declared := range blocks {
+		builtins = append(builtins, blockBuiltin(file, declared))
+	}
+
+	for _, declared := range hostBlocks {
+		builtins = append(builtins, blockBuiltin(file, declared))
+	}
+
+	return builtins
+}
+
+// blockBuiltin makes the builtin of one adapter block: the call gives the typed block, and another block holds it.
+func blockBuiltin(file *loader, declared Block) *starlark.Builtin {
+	return blocks(file, declared.spec(), true, func(at syntax.Position, kwargs []starlark.Tuple) (*model.Block, error) {
+		return blockBuilt(at, declared, kwargs)
+	})
+}
+
 // newProject is the constructor of the project block. The tracker and the claim store default to local, and the build host to this machine.
-func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error) {
-	raw := &rawProject{At: at, Tracker: string(model.TrackerLocal), Claims: string(model.ClaimsLocal), BuildHost: hostNames{LocalHost}}
+func newProject(at syntax.Position, kwargs []starlark.Tuple, blocks []Block) (*rawProject, error) {
+	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}, Blocks: map[string]*model.Block{}}
 
-	host := nested[rawHost]{want: hostSpec().name}
+	host := nested[rawHost]{want: hostSpecName}
 	board := nested[rawBoard]{want: boardSpec().name}
+	blockDests := make([]*nested[model.Block], len(blocks))
+	for i, declared := range blocks {
+		blockDests[i] = &nested[model.Block]{want: declared.Name}
+	}
 
-	err := projectSpec().unpack(at, kwargs, &raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BeadsPrefix, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
-		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board, &raw.Schedules)
+	dests := []any{&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
+		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board, &raw.Schedules}
+	for _, dest := range blockDests {
+		dests = append(dests, dest)
+	}
+
+	err := projectSpec(blocks).unpack(at, kwargs, dests...)
 	raw.Host, raw.Board = host.block, board.block
+
+	for i, declared := range blocks {
+		if blockDests[i].block != nil {
+			raw.Blocks[declared.Name] = blockDests[i].block
+		}
+	}
 
 	return raw, err
 }
 
 // profileOf checks the keys of a project file and returns the profile they describe.
-func profileOf(path string, raw rawProject) (model.Project, error) {
-	names, err := adapterNames(raw)
+func profileOf(path string, raw rawProject, registry Adapters) (model.Project, error) {
+	names, err := adapterNames(raw, registry)
 	if err != nil {
+		return model.Project{}, err
+	}
+
+	if err := blockRules(raw, names); err != nil {
 		return model.Project{}, err
 	}
 
@@ -135,21 +201,26 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	hostTable, visibility, sandbox, err := tables(host, raw)
+	hostTable, err := hostConfig(host, raw, registry)
+	if err != nil {
+		return model.Project{}, err
+	}
+
+	visibility, sandbox, err := tables(raw)
 	if err != nil {
 		return model.Project{}, err
 	}
 
 	return withFacts(path, model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
+		Forge: names.forge, Block: blockOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, raw)
 }
 
 // checkKeys checks the keys that the named adapters need and returns the build host and the source.
 func checkKeys(raw rawProject, names adapters) (string, string, error) {
-	if err := requireAdapterKeys(raw, names); err != nil {
+	if err := requiredKeys(raw, names); err != nil {
 		return "", "", err
 	}
 
@@ -184,21 +255,16 @@ func noRepositoryKeys(raw rawProject) error {
 	return nil
 }
 
-// tables returns the host block, the visibility and the sandbox mode of a project.
-func tables(host string, raw rawProject) (*model.HostConfig, model.Visibility, model.SandboxMode, error) {
-	hostTable, err := hostConfig(host, raw)
-	if err != nil {
-		return nil, "", "", err
-	}
-
+// tables returns the visibility and the sandbox mode of a project.
+func tables(raw rawProject) (model.Visibility, model.SandboxMode, error) {
 	visibility, err := visibilityOf(raw)
 	if err != nil {
-		return nil, "", "", err
+		return "", "", err
 	}
 
 	sandbox, err := sandboxOf(raw)
 
-	return hostTable, visibility, sandbox, err
+	return visibility, sandbox, err
 }
 
 // visibilityOf reads visibility. An unset key gives the empty visibility, which counts as public. A set key that is empty or unknown is refused.
@@ -353,61 +419,148 @@ func buildHost(raw rawProject) (string, error) {
 	return raw.BuildHost[0], nil
 }
 
-// adapters holds the adapters that a project names.
+// adapters holds the adapters that a project names: their names and their registry entries.
 type adapters struct {
 	tracker model.TrackerName
 	claims  model.ClaimsName
 	forge   model.ForgeName
+	// entries are the registry entries of the named adapters, in the order tracker, claims, forge. A nil entry is a kind the project names none of.
+	entries []*Entry
 }
 
-// adapterNames returns the tracker, the claim store and the forge that the project names. A key that the call leaves out
-// gives the local tracker, the local claim store and no forge. A key that the call gives must name an adapter.
-func adapterNames(raw rawProject) (adapters, error) {
-	tracker, err := trackerName(raw)
+// adapterNames returns the tracker, the claim store and the forge that the project names, checked against the registry.
+// A key that the call leaves out gives the local tracker, the local claim store and no forge.
+func adapterNames(raw rawProject, registry Adapters) (adapters, error) {
+	tracker, err := parseKey(raw.At, "tracker", raw.Tracker, registry.parseTracker)
 	if err != nil {
 		return adapters{}, err
 	}
 
-	claims, err := claimsName(raw)
+	claims, err := parseKey(raw.At, "claims", raw.Claims, registry.parseClaims)
 	if err != nil {
 		return adapters{}, err
 	}
 
-	forge, err := forgeName(raw)
+	forge, err := forgeName(raw, registry)
+	if err != nil {
+		return adapters{}, err
+	}
 
-	return adapters{tracker: tracker, claims: claims, forge: forge}, err
+	entries := []*Entry{registry.Trackers[tracker], registry.Claims[claims]}
+	if forge != "" {
+		entries = append(entries, registry.Forges[forge])
+	}
+
+	return adapters{tracker: tracker, claims: claims, forge: forge, entries: entries}, nil
 }
 
-func trackerName(raw rawProject) (model.TrackerName, error) {
-	return parseKey(raw.At, "tracker", raw.Tracker, model.ParseTracker)
-}
-
-func claimsName(raw rawProject) (model.ClaimsName, error) {
-	return parseKey(raw.At, "claims", raw.Claims, model.ParseClaims)
-}
-
-func forgeName(raw rawProject) (model.ForgeName, error) {
+func forgeName(raw rawProject, registry Adapters) (model.ForgeName, error) {
 	if !raw.Forge.Set {
 		return "", nil
 	}
 
-	return parseKey(raw.At, "forge", raw.Forge.Value, model.ParseForge)
+	return parseKey(raw.At, "forge", raw.Forge.Value, registry.parseForge)
 }
 
-// requireAdapterKeys checks the keys that the named adapters need: repo for GitHub, and the beads prefix for beads.
-// A repo that the call gives is checked even when no adapter needs it.
-func requireAdapterKeys(raw rawProject, names adapters) error {
-	if names.tracker == model.TrackerGithub || names.forge == model.ForgeGithub || raw.Repo.Set {
-		if err := requireRepo(raw); err != nil {
-			return err
+// requiredKeys checks the project keys that the named adapters require. A repo that the call gives is checked even when no adapter needs it.
+func requiredKeys(raw rawProject, names adapters) error {
+	needsRepo := false
+
+	for _, entry := range names.entries {
+		for _, key := range entry.Keys {
+			if key == repoKey {
+				needsRepo = true
+
+				continue
+			}
+
+			if err := projectKey(raw, key); err != nil {
+				return err
+			}
 		}
 	}
 
-	if names.tracker == model.TrackerBeads || names.claims == model.ClaimsBeads {
-		return requireText(raw.At, "beads_prefix", raw.BeadsPrefix)
+	if needsRepo || raw.Repo.Set {
+		return requireRepo(raw)
 	}
 
 	return nil
+}
+
+// repoKey is the project key that names the repository of the forge and of the GitHub tracker.
+const repoKey = "repo"
+
+// projectKey refuses a project key that a named adapter needs and the config does not read.
+func projectKey(raw rawProject, key string) error {
+	return refuseAt(raw.At, "an adapter of the project needs the key `%s`, and no check reads it. Report the adapter.", key)
+}
+
+// blockRules checks the adapter blocks of the project: a named adapter whose block has a required argument must hold its block,
+// and a held block must belong to a named adapter.
+func blockRules(raw rawProject, names adapters) error {
+	for _, entry := range names.entries {
+		if entry.Block == nil || !entry.Block.required() {
+			continue
+		}
+
+		if _, held := raw.Blocks[entry.Block.Name]; !held {
+			return refuseAt(raw.At, "the project names an adapter whose `%s` block it must hold. Write %s(...).", entry.Block.Name, entry.Block.Name)
+		}
+	}
+
+	for _, name := range heldBlocks(raw) {
+		if !names.takeBlock(name) {
+			return refuseAt(raw.At, "the project holds the `%s` block, and no adapter it names takes that block. Remove the block, or name the adapter that takes it.", name)
+		}
+	}
+
+	return nil
+}
+
+// heldBlocks returns the names of the blocks the project holds, in name order.
+func heldBlocks(raw rawProject) []string {
+	return slices.Sorted(maps.Keys(raw.Blocks))
+}
+
+// takeBlock says whether one of the named adapters declares the block.
+func (a adapters) takeBlock(name string) bool {
+	for _, entry := range a.entries {
+		if entry.Block != nil && entry.Block.Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// blockOf returns the adapter block that the project holds for a named adapter that declares one.
+func blockOf(raw rawProject, names adapters) *model.Block {
+	for _, entry := range names.entries {
+		if entry.Block == nil {
+			continue
+		}
+
+		if held, ok := raw.Blocks[entry.Block.Name]; ok {
+			return held
+		}
+	}
+
+	return nil
+}
+
+// toolsOf returns the programs that the named adapters need on the path: git first, then each adapter tool once, in name order.
+func toolsOf(names adapters) []string {
+	needed := map[string]bool{}
+
+	for _, entry := range names.entries {
+		for _, tool := range entry.Tools {
+			needed[tool] = true
+		}
+	}
+
+	tools := []string{model.ToolGit}
+
+	return append(tools, slices.Sorted(maps.Keys(needed))...)
 }
 
 func requireRepo(raw rawProject) error {

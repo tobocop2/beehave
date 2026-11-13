@@ -29,6 +29,12 @@ const (
 	stateOpen     = "open"
 )
 
+// The names the local adapter is chosen by: the tracker and the claim store that need no other tool.
+const (
+	Tracker model.TrackerName = "local"
+	Claims  model.ClaimsName  = "local"
+)
+
 // schema creates the tables of schemaVersion. Each statement may run again on a file that has them.
 const schema = `
 CREATE TABLE IF NOT EXISTS items (

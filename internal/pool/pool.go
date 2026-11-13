@@ -1,4 +1,4 @@
-// Package pool picks the runner of an agent that has room under the usage caps. It reads no usage itself: the caller gives a Reader.
+// Package pool picks the runner that has room under the usage caps. It reads no usage itself: the caller gives a Reader.
 package pool
 
 import (
@@ -29,8 +29,8 @@ func formatReset(when time.Time) string {
 	return when.Format(resetLayoutFraction)
 }
 
-// ErrNoRunner is returned when the config has no runner of the agent.
-var ErrNoRunner = errors.New("no runner of that agent")
+// ErrNoRunner is returned when the config has no runner.
+var ErrNoRunner = errors.New("the config has no runner")
 
 // NoneQualifiesError is returned when runners exist and none has room under both caps. The message says why and when to retry.
 // Reset is the earliest time a runner gets room, or the zero time when the pool knows none.
@@ -192,7 +192,7 @@ func guarded(ctx context.Context, runner model.Runner, read Reader) (reading mod
 }
 
 // Refusal says why no runner qualifies, with the earliest reset time when one is known. The runners give the order of the unknown readings.
-func Refusal(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, agent model.Agent) string {
+func Refusal(runners []model.Runner, readings map[string]model.Reading, caps config.Pool) string {
 	when := " No reset time is known."
 	reset, resetKnown := EarliestReset(readings, caps)
 
@@ -208,8 +208,8 @@ func Refusal(runners []model.Runner, readings map[string]model.Reading, caps con
 		when, wait = "", ""
 	}
 
-	return fmt.Sprintf("no %s runner is under both caps (five-hour %g%%, seven-day %g%%).%s%s%s",
-		agent, caps.FiveHourMax, caps.SevenDayMax, when, unknown, wait)
+	return fmt.Sprintf("no runner is under both caps (five-hour %g%%, seven-day %g%%).%s%s%s",
+		caps.FiveHourMax, caps.SevenDayMax, when, unknown, wait)
 }
 
 // unknownUsage returns one sentence for each runner with unknown usage, and whether one of them needs a login.
@@ -231,76 +231,66 @@ func unknownUsage(runners []model.Runner, readings map[string]model.Reading) (st
 	return text.String(), needsLogin
 }
 
-// Select returns the runner of the agent to use. It returns ErrNoRunner when the config has none of that agent.
-// When runners exist and none has room, it returns a NoneQualifiesError: the run stops and never moves to another agent.
+// Select returns the runner to use. It returns ErrNoRunner when the config has none.
+// When runners exist and none has room, it returns a NoneQualifiesError: the run stops and never moves to another runner.
 // busy names the runners that have work now. Select prefers a runner that is not in it, as Choose does.
-func Select(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader, busy ...string) (model.Runner, error) {
-	mine := ofAgent(runners, agent)
-	if len(mine) == 0 {
+// A runner whose agent reports that it cannot read usage is never chosen.
+func Select(ctx context.Context, runners []model.Runner, caps config.Pool, read Reader, busy ...string) (model.Runner, error) {
+	if len(runners) == 0 {
 		return model.Runner{}, ErrNoRunner
 	}
 
-	readings := ReadAll(ctx, mine, read)
+	readings := ReadAll(ctx, runners, read)
 
-	picked, ok := Choose(mine, readings, caps, busy...)
+	picked, ok := Choose(runners, readings, caps, busy...)
 	if !ok {
-		return model.Runner{}, none(mine, readings, caps, agent)
+		return model.Runner{}, none(runners, readings, caps)
 	}
 
 	return picked, nil
 }
 
-// SelectOverCap returns the runner of the agent with the lowest use, whatever the caps say. It is the pick of a run that the owner lets go over a cap.
-// A runner with unknown usage is never picked, so it returns a NoneQualifiesError when no runner of the agent has a known usage.
-func SelectOverCap(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader, busy ...string) (model.Runner, error) {
-	mine := ofAgent(runners, agent)
-	if len(mine) == 0 {
+// SelectOverCap returns the runner with the lowest use, whatever the caps say. It is the pick of a run that the owner lets go over a cap.
+// A runner with unknown usage is never picked, so it returns a NoneQualifiesError when no runner has a known usage.
+func SelectOverCap(ctx context.Context, runners []model.Runner, caps config.Pool, read Reader, busy ...string) (model.Runner, error) {
+	if len(runners) == 0 {
 		return model.Runner{}, ErrNoRunner
 	}
 
-	readings := ReadAll(ctx, mine, read)
+	readings := ReadAll(ctx, runners, read)
 
-	picked, ok := Choose(mine, readings, config.Pool{FiveHourMax: math.Inf(1), SevenDayMax: math.Inf(1)}, busy...)
+	picked, ok := Choose(runners, readings, config.Pool{FiveHourMax: math.Inf(1), SevenDayMax: math.Inf(1)}, busy...)
 	if !ok {
-		return model.Runner{}, none(mine, readings, caps, agent)
+		return model.Runner{}, none(runners, readings, caps)
 	}
 
 	return picked, nil
 }
 
 // none builds the error of a pick that finds no runner with room.
-func none(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, agent model.Agent) *NoneQualifiesError {
+func none(runners []model.Runner, readings map[string]model.Reading, caps config.Pool) *NoneQualifiesError {
 	reset, _ := EarliestReset(readings, caps)
 
-	return &NoneQualifiesError{Message: Refusal(runners, readings, caps, agent), Reset: reset}
+	return &NoneQualifiesError{Message: Refusal(runners, readings, caps), Reset: reset}
 }
 
-// Command returns one line for each runner of the agent, then the pick. When none qualifies, the last line is "pick: none" and the error is a NoneQualifiesError.
-func Command(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader) ([]string, error) {
-	mine := ofAgent(runners, agent)
-	readings := ReadAll(ctx, mine, read)
+// Command returns one line for each runner, then the pick. When none qualifies, the last line is "pick: none" and the error is a NoneQualifiesError.
+func Command(ctx context.Context, runners []model.Runner, caps config.Pool, read Reader) ([]string, error) {
+	if len(runners) == 0 {
+		return nil, ErrNoRunner
+	}
 
-	lines := make([]string, 0, len(mine)+1)
-	for _, runner := range mine {
+	readings := ReadAll(ctx, runners, read)
+
+	lines := make([]string, 0, len(runners)+1)
+	for _, runner := range runners {
 		lines = append(lines, runner.Name+": "+Describe(readings[runner.Name]))
 	}
 
-	picked, ok := Choose(mine, readings, caps)
+	picked, ok := Choose(runners, readings, caps)
 	if !ok {
-		return append(lines, "pick: none"), none(mine, readings, caps, agent)
+		return append(lines, "pick: none"), none(runners, readings, caps)
 	}
 
 	return append(lines, "pick: "+picked.Name), nil
-}
-
-func ofAgent(runners []model.Runner, agent model.Agent) []model.Runner {
-	var mine []model.Runner
-
-	for _, runner := range runners {
-		if runner.Agent == agent {
-			mine = append(mine, runner)
-		}
-	}
-
-	return mine
 }

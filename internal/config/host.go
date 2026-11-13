@@ -1,10 +1,7 @@
 package config
 
 import (
-	"regexp"
-	"strings"
 	"time"
-	"unicode"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -19,9 +16,10 @@ const (
 	defaultMaxRun     = "24h"
 	defaultBankBudget = "20s"
 	hostTableMessage  = "the `host` block %s. %s"
+	hostSpecName      = "host"
 )
 
-// rawHost is a host block as written. At is the position of its call.
+// rawHost is a host block as written. At is the position of its call. Blocks holds the provider blocks that the call holds, by block name.
 type rawHost struct {
 	At            syntax.Position
 	Provider      string
@@ -32,84 +30,50 @@ type rawHost struct {
 	DiskFloorGB   int
 	DiskWaitMins  int
 	PrivateRemote string
-	SkyPilot      *rawSkyPilot
-	SSH           *rawSSH
+	Blocks        map[string]*model.Block
 }
 
-type rawSkyPilot struct {
-	Cloud        string
-	Region       string
-	InstanceType string
+// The schema of the host constructor: the keys every provider shares, and one optional argument for each provider block.
+func hostSpec(blocks []Block) spec {
+	args := append([]string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "private_remote?"},
+		blockArgs(blocks)...)
+
+	return spec{hostSpecName, args}
 }
 
-type rawSSH struct {
-	At         syntax.Position
-	Address    string
-	User       string
-	Port       int
-	Identity   string
-	WorkRoot   string
-	KnownHosts string
-}
-
-// The schemas of the host, skypilot and ssh constructors.
-func hostSpec() spec {
-	return spec{"host", []string{"provider", "disk_floor_gb", "idle_minutes?", "stale_minutes?", "max_run?", "disk_wait_minutes?", "bank_budget?", "private_remote?", "skypilot?", "ssh?"}}
-}
-
-func skypilotSpec() spec { return spec{"skypilot", []string{"cloud?", "region?", "instance_type?"}} }
-
-func sshSpec() spec {
-	return spec{"ssh", []string{"address?", "user?", "port?", "identity?", "work_root?", "known_hosts?"}}
-}
-
-// providerBlock is the block that a provider takes. A provider takes no other block.
-func providerBlock(provider model.HostProvider) string {
-	if provider == model.HostSkyPilot {
-		return skypilotSpec().name
-	}
-
-	return sshSpec().name
-}
-
-// idleUnset and portUnset are the values of a key that the call leaves out, so that the loader can tell an omitted key from a written one.
-const (
-	idleUnset = -1 << 31
-	portUnset = -1
-)
+// idleUnset is the value of a key that the call leaves out, so that the loader can tell an omitted key from a written one.
+const idleUnset = -1 << 31
 
 // newHost is the constructor of the host block. A key that the call leaves out keeps its default.
-func newHost(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
-	raw := &rawHost{At: at, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget}
+func newHost(blocks []Block) func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
+	return func(at syntax.Position, kwargs []starlark.Tuple) (*rawHost, error) {
+		raw := &rawHost{At: at, IdleMinutes: idleUnset, StaleMinutes: defaultStaleMins, MaxRun: defaultMaxRun, BankBudget: defaultBankBudget, Blocks: map[string]*model.Block{}}
 
-	skypilot := nested[rawSkyPilot]{want: skypilotSpec().name}
-	ssh := nested[rawSSH]{want: sshSpec().name}
+		dests := make([]*nested[model.Block], len(blocks))
+		for i, declared := range blocks {
+			dests[i] = &nested[model.Block]{want: declared.Name}
+		}
 
-	err := hostSpec().unpack(at, kwargs, &raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.PrivateRemote, &skypilot, &ssh)
-	raw.SkyPilot, raw.SSH = skypilot.block, ssh.block
+		held := []any{&raw.Provider, &raw.DiskFloorGB, &raw.IdleMinutes, &raw.StaleMinutes, &raw.MaxRun, &raw.DiskWaitMins, &raw.BankBudget, &raw.PrivateRemote}
+		for _, dest := range dests {
+			held = append(held, dest)
+		}
 
-	return raw, err
-}
+		err := hostSpec(blocks).unpack(at, kwargs, held...)
 
-// newSSH is the constructor of the ssh block.
-func newSSH(at syntax.Position, kwargs []starlark.Tuple) (*rawSSH, error) {
-	raw := &rawSSH{At: at, Port: portUnset, KnownHosts: model.KnownHostsStrict}
-	err := sshSpec().unpack(at, kwargs, &raw.Address, &raw.User, &raw.Port, &raw.Identity, &raw.WorkRoot, &raw.KnownHosts)
+		for i, declared := range blocks {
+			if dests[i].block != nil {
+				raw.Blocks[declared.Name] = dests[i].block
+			}
+		}
 
-	return raw, err
-}
-
-// newSkyPilot is the constructor of the skypilot block.
-func newSkyPilot(at syntax.Position, kwargs []starlark.Tuple) (*rawSkyPilot, error) {
-	raw := &rawSkyPilot{}
-	err := skypilotSpec().unpack(at, kwargs, &raw.Cloud, &raw.Region, &raw.InstanceType)
-
-	return raw, err
+		return raw, err
+	}
 }
 
 // hostConfig checks the host block against build_host and returns it. A project that builds locally has none.
 // A block that must go points at itself. A block that is missing points at the project call.
-func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error) {
+func hostConfig(buildHost string, project rawProject, registry Adapters) (*model.HostConfig, error) {
 	raw := project.Host
 
 	switch {
@@ -121,23 +85,35 @@ func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error)
 		return nil, refuseAt(project.At, hostTableMessage, "is required when `build_host` is a cluster name", "Add a `host` block with `provider` and `disk_floor_gb`.")
 	}
 
-	return buildHostConfig(*raw)
+	blocks, err := registry.hostBlocks()
+	if err != nil {
+		return nil, err
+	}
+
+	return buildHostConfig(*raw, registry, blocks)
 }
 
-func buildHostConfig(raw rawHost) (*model.HostConfig, error) {
-	provider, err := parseKey(raw.At, "host.provider", raw.Provider, model.ParseHostProvider)
+func buildHostConfig(raw rawHost, registry Adapters, blocks []Block) (*model.HostConfig, error) {
+	provider, err := parseKey(raw.At, "host.provider", raw.Provider, registry.parseHostProvider)
 	if err != nil {
+		return nil, err
+	}
+
+	entry := registry.Hosts[provider]
+
+	if err = checkBlocks(raw, entry, blocks); err != nil {
 		return nil, err
 	}
 
 	host := model.HostConfig{Provider: provider, PrivateRemote: raw.PrivateRemote}
 
-	if err = checkBlocks(raw, provider); err != nil {
-		return nil, err
+	if entry.Block != nil {
+		host.Block = raw.Blocks[entry.Block.Name]
 	}
 
-	if err = fillProvider(raw, &host); err != nil {
-		return nil, err
+	// Only a provider that beehave deletes gets a default for idle_minutes; fillCounts replaces it with a written value.
+	if entry.Idle {
+		host.IdleMinutes = defaultIdleMins
 	}
 
 	if err = fillKeys(raw, &host); err != nil {
@@ -147,115 +123,20 @@ func buildHostConfig(raw rawHost) (*model.HostConfig, error) {
 	return &host, nil
 }
 
-// fillProvider sets the block of the provider. Only SkyPilot has an idle delete, so only it gets a default for idle_minutes; fillCounts replaces it with a written value.
-func fillProvider(raw rawHost, host *model.HostConfig) error {
-	if host.Provider == model.HostSkyPilot {
-		if raw.SkyPilot != nil {
-			host.SkyPilot = model.SkyPilotConfig(*raw.SkyPilot)
+// checkBlocks refuses a block that the chosen provider does not take, and idle_minutes for a provider that beehave does not delete the machine of.
+func checkBlocks(raw rawHost, entry *Entry, blocks []Block) error {
+	for _, declared := range blocks {
+		if entry.Block != nil && declared.Name == entry.Block.Name {
+			continue
 		}
 
-		host.IdleMinutes = defaultIdleMins
-
-		return nil
-	}
-
-	var err error
-
-	host.SSH, err = sshConfig(raw.SSH)
-
-	return err
-}
-
-// checkBlocks refuses a block of another provider, and idle_minutes for a provider that beehave does not delete the machine of.
-func checkBlocks(raw rawHost, provider model.HostProvider) error {
-	want := providerBlock(provider)
-
-	for _, block := range []struct {
-		name    string
-		written bool
-	}{{skypilotSpec().name, raw.SkyPilot != nil}, {sshSpec().name, raw.SSH != nil}} {
-		if block.written && block.name != want {
-			return refuseAt(raw.At, "`host.provider` %q takes the `%s` block, not the `%s` block. Remove the `%s` block.", provider, want, block.name, block.name)
+		if _, held := raw.Blocks[declared.Name]; held {
+			return refuseAt(raw.At, "`host.provider` %q takes no `%s` block. Remove the `%s` block.", raw.Provider, declared.Name, declared.Name)
 		}
 	}
 
-	if provider != model.HostSkyPilot && raw.IdleMinutes != idleUnset {
-		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", provider)
-	}
-
-	return nil
-}
-
-// hostWord is the pattern of a name that can follow ssh options: it cannot start an option or hold a space.
-var hostWord = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]*$`)
-
-// sshConfig checks the ssh block. A project with no block gets the defaults.
-func sshConfig(raw *rawSSH) (model.SSHConfig, error) {
-	if raw == nil {
-		return model.SSHConfig{KnownHosts: model.KnownHostsStrict}, nil
-	}
-
-	if err := checkSSHText(*raw); err != nil {
-		return model.SSHConfig{}, err
-	}
-
-	port, err := sshPort(*raw)
-	if err != nil {
-		return model.SSHConfig{}, err
-	}
-
-	return model.SSHConfig{Address: raw.Address, User: raw.User, Port: port, Identity: raw.Identity, WorkRoot: raw.WorkRoot, KnownHosts: raw.KnownHosts}, nil
-}
-
-// sshPort returns the port, or zero when the call leaves it to the ssh config.
-func sshPort(raw rawSSH) (int, error) {
-	switch {
-	case raw.Port == portUnset:
-		return 0, nil
-	case raw.Port < 1 || raw.Port > maxPort:
-		return 0, refuseAt(raw.At, "`host.ssh.port` must be from 1 to %d; got %d. Fix the value.", maxPort, raw.Port)
-	}
-
-	return raw.Port, nil
-}
-
-const maxPort = 65535
-
-// checkSSHText checks the name and path keys of the ssh block.
-func checkSSHText(raw rawSSH) error {
-	if raw.KnownHosts != model.KnownHostsStrict && raw.KnownHosts != model.KnownHostsAcceptNew {
-		return refuseAt(raw.At, "`host.ssh.known_hosts` must be %s or %s. A host key that changes is always refused.", model.KnownHostsStrict, model.KnownHostsAcceptNew)
-	}
-
-	for _, check := range []error{
-		checkWord(raw.At, "address", raw.Address), checkWord(raw.At, "user", raw.User),
-		checkPath(raw.At, "identity", raw.Identity), checkPath(raw.At, "work_root", raw.WorkRoot),
-	} {
-		if check != nil {
-			return check
-		}
-	}
-
-	return nil
-}
-
-func checkWord(at syntax.Position, key, value string) error {
-	if value != "" && !hostWord.MatchString(value) {
-		return refuseAt(at, "`host.ssh.%s` must start with a letter or digit and hold only letters, digits, dots, underscores, at signs and dashes; got `%s`. Fix the value.", key, value)
-	}
-
-	return nil
-}
-
-// checkPath checks a path key of the ssh block: empty, or absolute (or under ~/), with no control character.
-func checkPath(at syntax.Position, key, value string) error {
-	switch {
-	case value == "":
-		return nil
-	case strings.ContainsFunc(value, unicode.IsControl):
-		return refuseAt(at, "`host.ssh.%s` must hold no control character. Fix the value.", key)
-	case !strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "~/"):
-		return refuseAt(at, "`host.ssh.%s` must be an absolute path or start with ~/; got `%s`. Fix the value.", key, value)
+	if !entry.Idle && raw.IdleMinutes != idleUnset {
+		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", raw.Provider)
 	}
 
 	return nil

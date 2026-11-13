@@ -46,6 +46,12 @@ type Store struct {
 	run  proc.Runner
 }
 
+// The registration of the GitHub tracker: the name it is chosen by and the program it needs on the path.
+const (
+	Tracker model.TrackerName = "github"
+	Tool    = "gh"
+)
+
 // New returns the store of repo, written owner/name. It reads issues, and it writes them through the store.Writer methods. The claim rows live in beads.
 func New(repo string, run proc.Runner) (*Store, error) {
 	if _, _, ok := model.SplitRepo(repo); !ok {

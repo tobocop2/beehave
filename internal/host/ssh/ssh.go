@@ -50,11 +50,12 @@ const (
 // Up is the first call; it checks the machine and makes the state folder in the work root, and changes nothing else on the machine.
 // Down sends nothing: beehave did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
 type Host struct {
-	config model.HostConfig
-	link   *link.Link
-	nonce  func() string
-	bank   func(ctx context.Context) error
-	engine *jobwait.Engine
+	config   model.HostConfig
+	settings block
+	link     *link.Link
+	nonce    func() string
+	bank     func(ctx context.Context) error
+	engine   *jobwait.Engine
 
 	mu   sync.Mutex
 	root string // the work root, once read

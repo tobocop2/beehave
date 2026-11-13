@@ -1,6 +1,8 @@
 // Package agent starts coding-agent CLIs. An Adapter supplies the profile of one CLI and reads its output stream.
 package agent
 
+import "github.com/tobocop2/beehave/internal/model"
+
 // Profile is the command line and the login variables of one agent CLI. The prompt always goes on stdin.
 // ModelFlag is the flag that takes a model name. An empty flag means the CLI has no such option.
 type Profile struct {
@@ -108,9 +110,12 @@ type Seen struct {
 // Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.
 // Call order for one run: Profile, then Guard or Sandbox, before the CLI starts, then Line and Calls for each output line while it runs, then TranscriptPath after it ends.
 // Line and Calls never see a line of an earlier run, and TranscriptPath needs the session id that Line returned.
+// ReadUsage runs outside a run, when the pool or the doctor asks for the usage of one runner of this agent.
 type Adapter interface {
 	// Profile returns the command line and the login variables of the CLI.
 	Profile() Profile
+	// ReadUsage returns the usage of one runner of this agent, or a reading that says the agent cannot report it.
+	ReadUsage(ctx context.Context, runner model.Runner) model.Reading
 	// Guard returns the launch that makes the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
 	// It returns an empty launch when the CLI has no such option. runDir is the folder of the run: a path in Files is relative to it, and Args or Env can name a file in it.
 	Guard(command, runDir string) Launch
