@@ -2,7 +2,7 @@ module github.com/tobocop2/beehave
 
 go 1.27
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.4
