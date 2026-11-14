@@ -141,6 +141,7 @@ mutation:
 	gremlins unleash $(or $(PKG),.)
 
 # Per-PR run: mutate only the Go lines that differ from BASE, the branch the pull request targets. BASE is required: make mutation-pr BASE=origin/integration/r1
+# Needs gremlins, jq and timeout (or gtimeout) on the path; MUTATION_TIMEOUT sets the limit in seconds (default 1200).
 # Fails when no mutant applies or one lives. A diff with no Go source change is not applicable and passes.
 mutation-pr:
 	sh scripts/mutation-pr.sh "$(BASE)"
