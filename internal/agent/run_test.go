@@ -47,7 +47,7 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 
 	var adapter agent.Adapter
 	if kind == model.AgentClaude {
-		adapter = claude.New()
+		adapter = claude.New(nil)
 	}
 
 	return &fixture{records: records, config: config, work: work, log: log, spec: agent.Spec{

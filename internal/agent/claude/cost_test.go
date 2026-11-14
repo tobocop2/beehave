@@ -27,7 +27,7 @@ func TestCalls_TheResultLineReportsTheTotalCostInDollars(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.InDelta(t, tc.want, claude.New().Calls(tc.line).Cost, 0)
+			assert.InDelta(t, tc.want, claude.New(nil).Calls(tc.line).Cost, 0)
 		})
 	}
 }

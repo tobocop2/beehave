@@ -40,7 +40,7 @@ func stepFixture(t *testing.T, mode string, noTurnFlag bool, maxTurns int) *fixt
 	t.Helper()
 
 	f := newFixture(t, "claude", model.AgentClaude, mode)
-	f.spec.Adapter = stepAdapter{Adapter: claude.New(), noTurnFlag: noTurnFlag}
+	f.spec.Adapter = stepAdapter{Adapter: claude.New(nil), noTurnFlag: noTurnFlag}
 	f.spec.MaxTurns = maxTurns
 
 	return f

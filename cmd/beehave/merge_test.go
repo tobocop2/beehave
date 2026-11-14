@@ -547,7 +547,7 @@ func TestMerge_AnItemWithNoPullRequestAndAProjectWithNoForgeAreErrors(t *testing
 	_, err := p.Merge(t.Context(), "p", "other", gated, settings)
 	require.Error(t, err)
 
-	p = pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil).forge}
+	p = pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil, nil).forge}
 
 	_, err = p.Merge(t.Context(), "p", "item", gated, settings)
 	require.ErrorIs(t, err, forge.ErrNoForge)
@@ -556,7 +556,7 @@ func TestMerge_AnItemWithNoPullRequestAndAProjectWithNoForgeAreErrors(t *testing
 func TestNewLife_TheRunnersOfTheConfigAreTheOwnRunnersOfTheMerger(t *testing.T) {
 	t.Parallel()
 
-	life := newLife(config.Config{Runners: []model.Runner{{Name: "bee-1"}, {Name: "bee-2"}}}, newAdapters(nil, nil))
+	life := newLife(config.Config{Runners: []model.Runner{{Name: "bee-1"}, {Name: "bee-2"}}}, newAdapters(nil, nil, nil))
 
 	assert.Equal(t, []string{"bee-1", "bee-2"}, life.runners)
 }

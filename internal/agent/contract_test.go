@@ -29,7 +29,7 @@ func (editAdapter) Profile() agent.Profile {
 
 func TestRunner_AStepWithNoEditsStartsWithTheNoEditArgumentsAndVariables(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "")
-	f.spec.Adapter = editAdapter{claude.New()}
+	f.spec.Adapter = editAdapter{claude.New(nil)}
 	f.spec.NoEdits = true
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -41,7 +41,7 @@ func TestRunner_AStepWithNoEditsStartsWithTheNoEditArgumentsAndVariables(t *test
 
 func TestRunner_AStepThatMayEditStartsWithNoNoEditArgumentsAndNoNoEditVariables(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", model.AgentClaude, "")
-	f.spec.Adapter = editAdapter{claude.New()}
+	f.spec.Adapter = editAdapter{claude.New(nil)}
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -55,7 +55,7 @@ func TestRunner_ALaunchCannotUndoTheNoEditVariables(t *testing.T) { //nolint:par
 		return agent.Launch{Env: map[string]string{"AGENT_PERMISSION": `{"edit":"allow"}`}}
 	}
 	f := newFixture(t, "claude", model.AgentClaude, "")
-	f.spec.Adapter = launchAdapter{Adapter: editAdapter{claude.New()}, launch: launch}
+	f.spec.Adapter = launchAdapter{Adapter: editAdapter{claude.New(nil)}, launch: launch}
 	f.spec.Guard = "beehave check command"
 	f.spec.NoEdits = true
 
@@ -95,7 +95,7 @@ func (streamAdapter) Calls(line string) agent.Seen {
 type bothAdapter struct{ streamAdapter }
 
 func (a bothAdapter) Profile() agent.Profile {
-	p := claude.New().Profile()
+	p := claude.New(nil).Profile()
 	p.StreamsCost = true
 
 	return p
@@ -143,7 +143,7 @@ func TestRunner_ABudgetRefusalForNoCostKeepsTheNoteOfTheEndOfTheRun(t *testing.T
 func TestRunner_AProfileWithACostFlagAndStreamedCostIsCappedByTheFlagOnly(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := streamFixture(t, true, 1.5)
 	setMode(t, f, "spend2")
-	f.spec.Adapter = bothAdapter{streamAdapter{Adapter: claude.New(), streams: true}}
+	f.spec.Adapter = bothAdapter{streamAdapter{Adapter: claude.New(nil), streams: true}}
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -237,7 +237,7 @@ func TestRunner_ALineWithANegativeOrNaNCostCannotDefeatTheCap(t *testing.T) { //
 func TestRunner_AnAdapterThatKeepsStateIsAskedForTheDollarsOfALineOnce(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := streamFixture(t, true, 0)
 	setMode(t, f, "spendid")
-	f.spec.Adapter = dedupeAdapter{streamAdapter: streamAdapter{Adapter: claude.New(), streams: true}, seen: map[string]bool{}}
+	f.spec.Adapter = dedupeAdapter{streamAdapter: streamAdapter{Adapter: claude.New(nil), streams: true}, seen: map[string]bool{}}
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -248,7 +248,7 @@ func streamFixture(t *testing.T, streams bool, maxBudget float64) *fixture {
 	t.Helper()
 
 	f := newFixture(t, "claude", model.AgentClaude, "spend5")
-	f.spec.Adapter = streamAdapter{Adapter: claude.New(), streams: streams}
+	f.spec.Adapter = streamAdapter{Adapter: claude.New(nil), streams: streams}
 	f.spec.MaxBudget = maxBudget
 
 	return f

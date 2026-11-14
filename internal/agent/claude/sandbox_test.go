@@ -34,7 +34,7 @@ func settingsOf(t *testing.T, args []string) ([]string, map[string]any) {
 func TestSandbox_IsolatesTheSettingSourcesAndTheMCPServersAndRemovesTheWebTools(t *testing.T) {
 	t.Parallel()
 
-	flags, _ := settingsOf(t, claude.New().Sandbox(plan(), "", "/run").Args)
+	flags, _ := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run").Args)
 
 	assert.Equal(t, []string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"}, flags)
 }
@@ -42,7 +42,7 @@ func TestSandbox_IsolatesTheSettingSourcesAndTheMCPServersAndRemovesTheWebTools(
 func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New().Sandbox(plan(), "", "/run")
+	launch := claude.New(nil).Sandbox(plan(), "", "/run")
 
 	assert.Equal(t, map[string]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"}, launch.Env)
 }
@@ -50,7 +50,7 @@ func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses
 func TestSandbox_WritesTheDenyByDefaultBaseTheCredentialLayerAndTheNetworkList(t *testing.T) {
 	t.Parallel()
 
-	_, settings := settingsOf(t, claude.New().Sandbox(plan(), "", "/run").Args)
+	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run").Args)
 
 	want := `{
 	  "sandbox": {
@@ -84,7 +84,7 @@ func TestSandbox_DeniesThePatternsInTheSandboxAndInTheRulesOfTheFileTools(t *tes
 	p := plan()
 	p.DenyPatterns = []string{"/work/tree/.env*", "/work/tree/**/.env*"}
 
-	args := claude.New().Sandbox(p, "", "/run").Args
+	args := claude.New(nil).Sandbox(p, "", "/run").Args
 
 	var parsed struct {
 		Sandbox struct {
@@ -111,7 +111,7 @@ func TestSandbox_DeniesWritesToTheClosedPathsInTheSandboxAndTheEditRules(t *test
 	p := plan()
 	p.DenyWrite = []string{"/work/tree/.husky", "/work/tree/.git"}
 
-	args := claude.New().Sandbox(p, "", "/run").Args
+	args := claude.New(nil).Sandbox(p, "", "/run").Args
 
 	var parsed struct {
 		Sandbox struct {
@@ -133,7 +133,7 @@ func TestSandbox_DeniesWritesToTheClosedPathsInTheSandboxAndTheEditRules(t *test
 func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New().Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run").Args
+	args := claude.New(nil).Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run").Args
 	text := args[len(args)-1]
 
 	assert.Contains(t, text, `"allowedDomains":[]`)
@@ -145,7 +145,7 @@ func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New().Sandbox(plan(), "/bin/beehave check command", "/run").Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run").Args
 	text := args[len(args)-1]
 
 	for _, key := range []string{"excludedCommands", "allowLocalBinding", "allowAllUnixSockets", "allowAppleEvents"} {
@@ -165,7 +165,7 @@ func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New().Sandbox(plan(), "/bin/beehave check command", "/run").Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run").Args
 
 	assert.Equal(t, 1, countOf(args, "--settings"), "one settings object holds the hook and the sandbox")
 
@@ -181,7 +181,7 @@ func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 func TestSandbox_WithoutAGuardWritesNoHook(t *testing.T) {
 	t.Parallel()
 
-	_, settings := settingsOf(t, claude.New().Sandbox(plan(), "", "/run").Args)
+	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run").Args)
 
 	assert.NotContains(t, settings, "hooks")
 }
@@ -189,7 +189,7 @@ func TestSandbox_WithoutAGuardWritesNoHook(t *testing.T) {
 func TestProfile_ClaudeHasTheSandboxCapabilityAndAMinimumVersion(t *testing.T) {
 	t.Parallel()
 
-	profile := claude.New().Profile()
+	profile := claude.New(nil).Profile()
 
 	assert.True(t, profile.Sandbox)
 	assert.Equal(t, "2.1.285", profile.MinVersion, "the oldest version that knows every key of the sandbox settings")

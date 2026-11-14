@@ -20,7 +20,7 @@ func TestPrograms_AnItemWithNoWorktreeRunsTheProgramInAnEmptyFolderThatIsRemoved
 	process, err := os.Getwd()
 	require.NoError(t, err)
 
-	runs := newPrograms(config.Config{}, treeAt(""), newAdapters(nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(""), newAdapters(nil, nil, nil))
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", "pwd -P; ls -A | wc -l; touch marker"}})
 
@@ -41,7 +41,7 @@ func TestPrograms_AnItemWithNoWorktreeRunsTheProgramInAnEmptyFolderThatIsRemoved
 func TestPrograms_AProgramThatCannotGetItsEmptyFolderIsRefused(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 
-	runs := newPrograms(config.Config{}, treeAt(""), newAdapters(nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(""), newAdapters(nil, nil, nil))
 
 	_, err := runs.Run(t.Context(), flow.CommandRequest{Item: "7", Run: []string{"true"}})
 

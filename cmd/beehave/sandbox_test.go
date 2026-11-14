@@ -401,7 +401,7 @@ func TestWithin_ComparesWholeNamesAndNotPrefixes(t *testing.T) {
 func TestNewAgents_FindsTheHomeFolderOfTheOwner(t *testing.T) {
 	t.Parallel()
 
-	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil))
+	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
 
 	home, err := a.home()
 
