@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/store/beads"
 )
 
 type versionRunner struct{ stdout string }
@@ -33,8 +34,8 @@ func TestSecurityRunner_StopsACallThatWaitsOnALockedKeychainAfterTenSeconds(t *t
 func TestDoctor_TheBdVersionCheckAcceptsANewBdAndRefusesAnOldOne(t *testing.T) {
 	t.Parallel()
 
-	newBd := newDoctor(newAdapters(versionRunner{stdout: "bd version 1.3.2 (abc)\n"}, nil, nil), nil).ToolVersions[model.ToolBd]
-	oldBd := newDoctor(newAdapters(versionRunner{stdout: "bd version 0.56.1 (abc)\n"}, nil, nil), nil).ToolVersions[model.ToolBd]
+	newBd := newDoctor(newAdapters(versionRunner{stdout: "bd version 1.3.2 (abc)\n"}, nil, nil), nil).ToolVersions[beads.Tool]
+	oldBd := newDoctor(newAdapters(versionRunner{stdout: "bd version 0.56.1 (abc)\n"}, nil, nil), nil).ToolVersions[beads.Tool]
 
 	require.NoError(t, newBd(context.Background()))
 	require.ErrorContains(t, oldBd(context.Background()), "found 0.56.1")
@@ -46,7 +47,7 @@ func TestDoctor_OnlyBdHasAVersionCheck(t *testing.T) {
 	versions := newDoctor(newAdapters(nil, nil, nil), nil).ToolVersions
 
 	require.Len(t, versions, 1)
-	require.Contains(t, versions, model.ToolBd)
+	require.Contains(t, versions, beads.Tool)
 }
 
 func TestDoctor_ATableWithNoAgentDeclaresEveryReaderEmptyNotMissing(t *testing.T) {

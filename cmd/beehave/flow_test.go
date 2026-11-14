@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +13,18 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store/local"
 )
+
+func TestDepsOn_TheSentinelsOfTheHostEntriesReachTheEngineAsKeptErrors(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("a host sentinel")
+	table := newAdapters(nil, nil, nil)
+	table.hosts = map[model.HostProvider]hostAdapter{model.HostSSH: {sentinels: []error{sentinel}}}
+
+	deps := depsOn(config.Config{}, flow.Options{}, logins{}, table)
+
+	require.Equal(t, []error{sentinel}, deps.Kept, "a gate or a merge keeps the sentinels that the host entries declare, so errors.Is finds them")
+}
 
 func TestFactsOf_TheFactsOfTheProjectInTheConfigReachTheEngineAndAnUnknownProjectHasNone(t *testing.T) {
 	t.Parallel()

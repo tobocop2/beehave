@@ -43,6 +43,7 @@ func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildIn
 	return cli.BuildInfo{
 		Version:  version,
 		Adapters: table.check,
+		Registry: table.registry(),
 		Items:    table.itemOpener(),
 		Doctor:   newDoctor(table, newSecurityRunner()),
 		Flow:     flow,

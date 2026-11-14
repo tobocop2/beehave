@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -59,7 +60,7 @@ type rawProject struct {
 }
 
 // loadProject reads one project file. The project name is the file name without ".star".
-func loadProject(path string) (Project, error) {
+func loadProject(path string, registry Adapters) (Project, error) {
 	raw, err := evalProject(path)
 	if err != nil {
 		return Project{}, err
@@ -69,7 +70,7 @@ func loadProject(path string) (Project, error) {
 		return Project{}, refuse("%s: the file does not call `project`. Call project(source = ..., base_branch = ..., gate = ...) once.", path)
 	}
 
-	profile, err := profileOf(path, *raw)
+	profile, err := profileOf(path, *raw, registry)
 	if err != nil {
 		return Project{}, err
 	}
@@ -111,7 +112,7 @@ func evalProject(path string) (*rawProject, error) {
 
 // newProject is the constructor of the project block. The tracker and the claim store default to local, and the build host to this machine.
 func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error) {
-	raw := &rawProject{At: at, Tracker: string(model.TrackerLocal), Claims: string(model.ClaimsLocal), BuildHost: hostNames{LocalHost}}
+	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}}
 
 	host := nested[rawHost]{want: hostSpec().name}
 	board := nested[rawBoard]{want: boardSpec().name}
@@ -124,8 +125,8 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple) (*rawProject, error
 }
 
 // profileOf checks the keys of a project file and returns the profile they describe.
-func profileOf(path string, raw rawProject) (model.Project, error) {
-	names, err := adapterNames(raw)
+func profileOf(path string, raw rawProject, registry Adapters) (model.Project, error) {
+	names, err := adapterNames(raw, registry)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -135,21 +136,21 @@ func profileOf(path string, raw rawProject) (model.Project, error) {
 		return model.Project{}, err
 	}
 
-	hostTable, visibility, sandbox, err := tables(host, raw)
+	hostTable, visibility, sandbox, err := tables(host, raw, registry)
 	if err != nil {
 		return model.Project{}, err
 	}
 
 	return withFacts(path, model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
+		Forge: names.forge, BeadsPrefix: raw.BeadsPrefix, Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, raw)
 }
 
 // checkKeys checks the keys that the named adapters need and returns the build host and the source.
 func checkKeys(raw rawProject, names adapters) (string, string, error) {
-	if err := requireAdapterKeys(raw, names); err != nil {
+	if err := requiredKeys(raw, names); err != nil {
 		return "", "", err
 	}
 
@@ -185,8 +186,8 @@ func noRepositoryKeys(raw rawProject) error {
 }
 
 // tables returns the host block, the visibility and the sandbox mode of a project.
-func tables(host string, raw rawProject) (*model.HostConfig, model.Visibility, model.SandboxMode, error) {
-	hostTable, err := hostConfig(host, raw)
+func tables(host string, raw rawProject, registry Adapters) (*model.HostConfig, model.Visibility, model.SandboxMode, error) {
+	hostTable, err := hostConfig(host, raw, registry)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -353,61 +354,101 @@ func buildHost(raw rawProject) (string, error) {
 	return raw.BuildHost[0], nil
 }
 
-// adapters holds the adapters that a project names.
+// adapters holds the adapters that a project names: their names and their registry entries.
 type adapters struct {
 	tracker model.TrackerName
 	claims  model.ClaimsName
 	forge   model.ForgeName
+	// entries are the registry entries of the named adapters, in the order tracker, claims, forge. A kind that the project names none of has no entry.
+	entries []*Entry
 }
 
-// adapterNames returns the tracker, the claim store and the forge that the project names. A key that the call leaves out
-// gives the local tracker, the local claim store and no forge. A key that the call gives must name an adapter.
-func adapterNames(raw rawProject) (adapters, error) {
-	tracker, err := trackerName(raw)
+// adapterNames returns the tracker, the claim store and the forge that the project names, checked against the registry.
+// A key that the call leaves out gives the local tracker, the local claim store and no forge.
+func adapterNames(raw rawProject, registry Adapters) (adapters, error) {
+	tracker, err := parseKey(raw.At, "tracker", raw.Tracker, registry.parseTracker)
 	if err != nil {
 		return adapters{}, err
 	}
 
-	claims, err := claimsName(raw)
+	claims, err := parseKey(raw.At, "claims", raw.Claims, registry.parseClaims)
 	if err != nil {
 		return adapters{}, err
 	}
 
-	forge, err := forgeName(raw)
+	forge, err := forgeName(raw, registry)
+	if err != nil {
+		return adapters{}, err
+	}
 
-	return adapters{tracker: tracker, claims: claims, forge: forge}, err
+	return adapters{tracker: tracker, claims: claims, forge: forge, entries: registry.entriesOf(tracker, claims, forge)}, nil
 }
 
-func trackerName(raw rawProject) (model.TrackerName, error) {
-	return parseKey(raw.At, "tracker", raw.Tracker, model.ParseTracker)
-}
-
-func claimsName(raw rawProject) (model.ClaimsName, error) {
-	return parseKey(raw.At, "claims", raw.Claims, model.ParseClaims)
-}
-
-func forgeName(raw rawProject) (model.ForgeName, error) {
+func forgeName(raw rawProject, registry Adapters) (model.ForgeName, error) {
 	if !raw.Forge.Set {
 		return "", nil
 	}
 
-	return parseKey(raw.At, "forge", raw.Forge.Value, model.ParseForge)
+	return parseKey(raw.At, "forge", raw.Forge.Value, registry.parseForge)
 }
 
-// requireAdapterKeys checks the keys that the named adapters need: repo for GitHub, and the beads prefix for beads.
-// A repo that the call gives is checked even when no adapter needs it.
-func requireAdapterKeys(raw rawProject, names adapters) error {
-	if names.tracker == model.TrackerGithub || names.forge == model.ForgeGithub || raw.Repo.Set {
+// The project keys that an adapter entry can require.
+const (
+	repoKey        = "repo"
+	beadsPrefixKey = "beads_prefix"
+)
+
+// requiredKeys checks the project keys that the named adapters require, repo first. A repo that the call gives is checked even when no adapter needs it.
+// A key that an entry requires and no check reads is refused, so that a registration cannot name a key that nothing enforces.
+func requiredKeys(raw rawProject, names adapters) error {
+	required := names.union(func(entry *Entry) []string { return entry.Keys })
+
+	if required[repoKey] || raw.Repo.Set {
 		if err := requireRepo(raw); err != nil {
 			return err
 		}
 	}
 
-	if names.tracker == model.TrackerBeads || names.claims == model.ClaimsBeads {
-		return requireText(raw.At, "beads_prefix", raw.BeadsPrefix)
+	delete(required, repoKey)
+
+	return requireOtherKeys(raw, required)
+}
+
+// requireOtherKeys checks the required keys besides repo. The beads prefix is the only one that a check reads.
+func requireOtherKeys(raw rawProject, required map[string]bool) error {
+	for _, key := range slices.Sorted(maps.Keys(required)) {
+		if key != beadsPrefixKey {
+			return refuseAt(raw.At, "an adapter of the project needs the key `%s`, and no check reads it. Report the adapter.", key)
+		}
+
+		if err := requireText(raw.At, beadsPrefixKey, raw.BeadsPrefix); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// union returns the set of the values that the entries of the named adapters give.
+func (a adapters) union(values func(*Entry) []string) map[string]bool {
+	set := map[string]bool{}
+
+	for _, entry := range a.entries {
+		for _, value := range values(entry) {
+			set[value] = true
+		}
+	}
+
+	return set
+}
+
+// toolsOf returns the programs that the named adapters need on the path: git first, then each adapter tool once, in name order.
+func toolsOf(names adapters) []string {
+	needed := names.union(func(entry *Entry) []string { return entry.Tools })
+
+	delete(needed, model.ToolGit)
+
+	return append([]string{model.ToolGit}, slices.Sorted(maps.Keys(needed))...)
 }
 
 func requireRepo(raw rawProject) error {

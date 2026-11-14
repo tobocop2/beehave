@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -63,7 +65,7 @@ type check struct {
 	run  func() error
 }
 
-func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor) *cobra.Command {
+func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor, registry config.Adapters) *cobra.Command {
 	var flag string
 
 	command := &cobra.Command{
@@ -72,7 +74,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 		Long:  "Check the config folder, the login folder and the token of each runner, and the programs that the projects need: git always, bd for a project with beads, gh for a project with GitHub. Exit 0 when every check passes, 1 when one fails.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, flag)
+			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, registry, flag)
 		},
 	}
 	addConfigFlag(command, &flag)
@@ -80,7 +82,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 	return command
 }
 
-func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doctor Doctor, flag string) error {
+func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doctor Doctor, registry config.Adapters, flag string) error {
 	if err := doctor.complete(); err != nil {
 		return err
 	}
@@ -92,7 +94,7 @@ func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doc
 
 	failed := false
 
-	for _, item := range doctorChecks(ctx, env, doctor, dir) {
+	for _, item := range doctorChecks(ctx, env, doctor, registry, dir) {
 		failed = report(stdout, item) || failed
 	}
 
@@ -121,8 +123,8 @@ func report(stdout io.Writer, item check) bool {
 
 // doctorChecks returns the checks in the order of the report: the config, the programs, then the runners.
 // The runners come from the config folder, so a folder that does not load has none.
-func doctorChecks(ctx context.Context, env map[string]string, doctor Doctor, dir string) []check {
-	cfg, problems := config.LoadFolder(dir, env)
+func doctorChecks(ctx context.Context, env map[string]string, doctor Doctor, registry config.Adapters, dir string) []check {
+	cfg, problems := config.LoadFolder(dir, env, registry)
 
 	checks := []check{{"config readable", func() error {
 		if len(problems) == 0 {
@@ -200,25 +202,19 @@ func tokenCheck(ctx context.Context, readable func(context.Context, string) bool
 	}}
 }
 
-// requiredTools returns the programs that the projects of the config need, in the order of the report: git always, then bd and gh when a project names them.
+// requiredTools returns the programs that the projects of the config need, in the order of the report: git always, then each adapter tool once in name order.
 func requiredTools(cfg config.Config) []string {
-	needed := map[string]bool{model.ToolGit: true}
+	needed := map[string]bool{}
 
 	for _, project := range cfg.Projects {
-		for _, tool := range project.Tools() {
+		for _, tool := range project.Tools {
 			needed[tool] = true
 		}
 	}
 
-	var tools []string
+	delete(needed, model.ToolGit)
 
-	for _, tool := range []string{model.ToolGit, model.ToolBd, model.ToolGh} {
-		if needed[tool] {
-			tools = append(tools, tool)
-		}
-	}
-
-	return tools
+	return append([]string{model.ToolGit}, slices.Sorted(maps.Keys(needed))...)
 }
 
 // toolChecks returns the checks of the programs on the path, and of the version of each program that has a version check and is there.

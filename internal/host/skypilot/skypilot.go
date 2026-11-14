@@ -131,7 +131,7 @@ func (h *Host) infra() string {
 	return cloud + "/" + region
 }
 
-// Status reports whether the cluster exists, whether Slurm drains its nodes, and its free disk space.
+// Status reports whether the cluster exists, whether the queue drains its nodes, and its free disk space.
 // A cluster that is in the list but not up, and any answer that beehave does not recognize, is an error.
 func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	out, err := link.Run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
@@ -164,7 +164,7 @@ func (h *Host) Teardown(ctx context.Context) error {
 	return host.Teardown(ctx, h, h.link.Runner("git"), h.link.Runner("find"), h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
-// slot is the part of SkyPilot that the Slurm queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
+// slot is the part of SkyPilot that the queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
 // (`sky exec -d`) that holds the cluster until Release writes the bank marker, for at most max_run.
 type slot struct{ h *Host }
 
@@ -184,7 +184,7 @@ func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 }
 
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
-// so a job id that Slurm uses again never matches the marker of an earlier job.
+// so a job id that the queue uses again never matches the marker of an earlier job.
 func (s slot) markerName(job jobwait.Job) string {
 	return ".beehave-banked-" + s.h.cluster + "-" + job.String()
 }

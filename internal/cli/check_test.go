@@ -15,6 +15,24 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// registry is the adapter registry of the cli tests: the names of the model, with the keys and tools that the real adapters register. It imports no adapter package.
+func registry() config.Adapters {
+	beads := func() *config.Entry { return &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{"bd"}} }
+	github := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
+
+	return config.Adapters{
+		Trackers: map[model.TrackerName]*config.Entry{model.TrackerLocal: {}, model.TrackerBeads: beads(), model.TrackerGithub: github()},
+		Claims:   map[model.ClaimsName]*config.Entry{model.ClaimsLocal: {}, model.ClaimsBeads: beads()},
+		Forges:   map[model.ForgeName]*config.Entry{model.ForgeGithub: github()},
+		Hosts: map[model.HostProvider]*config.Entry{
+			model.HostSkyPilot: {Idle: true, HostBlock: "skypilot"},
+			model.HostSSH:      {HostBlock: "ssh"},
+			model.HostSlurm:    {HostBlock: "ssh"},
+		},
+		Agents: map[model.Agent]*config.Entry{model.AgentClaude: {}, model.AgentOpenCode: {}},
+	}
+}
+
 func writeConfig(t *testing.T, dir, name, content string) {
 	t.Helper()
 
@@ -28,7 +46,7 @@ func runCheckConfig(t *testing.T, env map[string]string, args ...string) (int, s
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), append([]string{"check", "config"}, args...), cli.BuildInfo{Version: "x"}, env, &stdout, &stderr)
+	code := cli.Execute(context.Background(), append([]string{"check", "config"}, args...), cli.BuildInfo{Registry: registry(), Version: "x"}, env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -83,7 +101,7 @@ func runWithAdapters(t *testing.T, adapters func(context.Context, model.Project)
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Version: "x", Adapters: adapters},
+	code := cli.Execute(context.Background(), []string{"check", "config", "--config", dir}, cli.BuildInfo{Registry: registry(), Version: "x", Adapters: adapters},
 		map[string]string{}, &stdout, &stderr)
 
 	return code, stderr.String()
@@ -134,7 +152,7 @@ func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+	require.Contains(t, stderr, `unknown tracker "jira": use one of beads, github, local`)
 }
 
 func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {

@@ -26,9 +26,11 @@ type BuildInfo struct {
 	Version string
 	// Adapters builds the tracker, the forge and the claim store of a project and returns why it cannot. A nil value skips the check.
 	Adapters func(context.Context, model.Project) error
-	// Items opens the item list of a project with the local tracker, for the item commands and the check of the run. A nil value leaves both out.
-	Items ItemOpener
-	// Doctor reads what the doctor command checks outside the process: the Keychain and the bd version.
+	// Registry is the names, blocks and tools of the adapters that the build registered. The config validates a project against it.
+	Registry config.Adapters
+	// Items opens the item list of a project, by the tracker that owns the list. A nil value leaves the item commands out.
+	Items map[model.TrackerName]ItemOpener
+	// Doctor reads what the doctor command checks outside the process: the Keychain, the tools and the logins.
 	Doctor Doctor
 	// Flow opens the engine and the client of the run, status, answer, resume and cancel commands.
 	Flow Flow
@@ -49,8 +51,8 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetErr(stderr)
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
-	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.GateRefusal), newDoctorCommand(ctx, env, info.Doctor))
-	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items}
+	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal), newDoctorCommand(ctx, env, info.Doctor, info.Registry))
+	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items, registry: info.Registry}
 	commands.add(root)
 	commands.addItems(root)
 

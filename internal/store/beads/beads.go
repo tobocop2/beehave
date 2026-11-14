@@ -55,6 +55,9 @@ type Store struct {
 	guarded bool
 }
 
+// Tool is the program that the beads adapter needs on the path.
+const Tool = "bd"
+
 // New returns a store that runs bd through run. prefix is the id prefix of the beads database; claim rows are named from it.
 func New(run proc.Runner, prefix string) (*Store, error) {
 	if prefix == "" {

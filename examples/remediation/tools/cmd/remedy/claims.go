@@ -7,6 +7,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/lease"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -18,12 +19,30 @@ import (
 // The claims are built by the code that `beehave run` uses.
 func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim.Claims, error) {
 	return func(repo string) (*claim.Claims, error) {
-		project, err := lease.ProjectOf(env, repo)
+		project, err := lease.ProjectOf(env, repo, registry())
 		if err != nil {
 			return nil, err
 		}
 
 		return claimsOf(bd, func() (string, error) { return config.StateDir(env) }, project)
+	}
+}
+
+// registry is the small adapter table that this binary declares: the config validates the projects that remedy reads against it.
+func registry() config.Adapters {
+	beadsEntry := &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{beads.Tool}}
+	issues := &config.Entry{Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}}
+
+	return config.Adapters{
+		Trackers: map[model.TrackerName]*config.Entry{model.TrackerLocal: {}, model.TrackerBeads: beadsEntry, model.TrackerGithub: issues},
+		Claims:   map[model.ClaimsName]*config.Entry{model.ClaimsLocal: {}, model.ClaimsBeads: beadsEntry},
+		Forges:   map[model.ForgeName]*config.Entry{model.ForgeGithub: {Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}}},
+		Agents:   map[model.Agent]*config.Entry{model.AgentClaude: {}, model.AgentOpenCode: {}},
+		Hosts: map[model.HostProvider]*config.Entry{
+			model.HostSkyPilot: {Idle: true, HostBlock: "skypilot"},
+			model.HostSSH:      {HostBlock: "ssh"},
+			model.HostSlurm:    {HostBlock: "ssh"},
+		},
 	}
 }
 

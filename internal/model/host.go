@@ -43,25 +43,6 @@ const (
 	HostSlurm HostProvider = "slurm"
 )
 
-// ErrUnknownHostProvider is returned when text names no build host adapter.
-var ErrUnknownHostProvider = errors.New("unknown host provider")
-
-// HostProviders lists every build host adapter.
-func HostProviders() []HostProvider {
-	return []HostProvider{HostSkyPilot, HostSSH, HostSlurm}
-}
-
-// ParseHostProvider returns the build host adapter that text names.
-func ParseHostProvider(text string) (HostProvider, error) {
-	for _, name := range HostProviders() {
-		if string(name) == text {
-			return name, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w %q: use one of %s", ErrUnknownHostProvider, text, joinNames(HostProviders()))
-}
-
 // MaxDiskFloorGB is the largest disk_floor_gb. It keeps the floor in bytes inside a 64-bit integer.
 const MaxDiskFloorGB = 1 << 20
 

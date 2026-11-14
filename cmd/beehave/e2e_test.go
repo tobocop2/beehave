@@ -54,7 +54,7 @@ func e2eBeehave() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	env := config.ProcessEnv()
-	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: e2eVersion, Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
+	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: e2eVersion, Registry: newAdapters(nil, nil, nil).registry(), Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }

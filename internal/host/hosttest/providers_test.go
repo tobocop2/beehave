@@ -117,7 +117,7 @@ func callsSuite(fn *ast.FuncDecl) bool {
 func TestEveryHostProviderRunsTheConformanceSuite(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range model.HostProviders() {
+	for _, provider := range []model.HostProvider{model.HostSkyPilot, model.HostSSH, model.HostSlurm} {
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
 

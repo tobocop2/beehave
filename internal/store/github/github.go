@@ -46,6 +46,9 @@ type Store struct {
 	run  proc.Runner
 }
 
+// Tool is the program that the GitHub tracker needs on the path.
+const Tool = "gh"
+
 // New returns the store of repo, written owner/name. It reads issues, and it writes them through the store.Writer methods. The claim rows live in beads.
 func New(repo string, run proc.Runner) (*Store, error) {
 	if _, _, ok := model.SplitRepo(repo); !ok {
