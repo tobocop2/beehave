@@ -26,7 +26,11 @@ import (
 
 // registry is the adapter registry of the cli tests: the names that the adapters declare, with the keys and tools that the real adapters register.
 func registry() config.Adapters {
-	beadsEntry := func() *config.Entry { return &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{"bd"}} }
+	beadsEntry := func() *config.Entry {
+		block := beads.Block()
+
+		return &config.Entry{Block: &block, Tools: []string{"bd"}}
+	}
 	githubEntry := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
 
 	return config.Adapters{
@@ -78,7 +82,7 @@ func TestCheckConfig_AProjectOnABuildHostGetsANoteThatItsGateRunsWithNoSandbox(t
 	t.Parallel()
 
 	dir := t.TempDir()
-	remote := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+	remote := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
 		"sandbox = \"on\", build_host = \"gpu\", host = host(provider = \"skypilot\", disk_floor_gb = 50))\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/far.star", remote)
@@ -94,7 +98,7 @@ func TestCheckConfig_ALocalProjectWithTheSandboxOnGetsANoteThatNoSandboxCanEnfor
 	t.Parallel()
 
 	dir := t.TempDir()
-	boxed := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
+	boxed := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", " +
 		"sandbox = \"on\", gate_network = [\"proxy.golang.org\"])\n"
 	writeConfig(t, dir, "runners.star", validRunners)
 	writeConfig(t, dir, "projects/near.star", boxed)
@@ -120,7 +124,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n"
+	text := "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n"
 	writeConfig(t, dir, "projects/a.star", text)
 	writeConfig(t, dir, "projects/b.star", text)
 
@@ -140,7 +144,7 @@ func TestCheckConfig_ReportsAProjectWhoseAdaptersCannotBeBuilt(t *testing.T) {
 	require.Equal(t, filepath.Join(dir, "projects", "b.star")+": no gh on the path\n", stderr)
 }
 
-func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T) {
+func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsBlock(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -149,7 +153,7 @@ func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsPrefix(t *testing.T)
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, "`beads_prefix` must be a non-empty string")
+	require.Contains(t, stderr, "the project names an adapter whose `beads` block it must hold. Write beads(...).")
 }
 
 func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T) {
@@ -169,7 +173,7 @@ func TestCheckConfig_PrintsOneLineForEachProblemAndExitsTwo(t *testing.T) {
 
 	dir := t.TempDir()
 	writeConfig(t, dir, "runners.star", "agents(bogus = 1)\n")
-	writeConfig(t, dir, "projects/a.star", "project(repo = \"justname\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"g\")\n")
+	writeConfig(t, dir, "projects/a.star", "project(repo = \"justname\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"g\")\n")
 	writeConfig(t, dir, "projects/b.star", validProject)
 
 	code, stdout, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/store"
@@ -64,9 +65,18 @@ const (
 // Tool is the program that the beads adapter needs on the path.
 const Tool = "bd"
 
-// New returns a store that runs bd through run. prefix is the id prefix of the beads database; claim rows are named from it.
-func New(run proc.Runner, prefix string) (*Store, error) {
-	if prefix == "" {
+// BlockPrefix is the key of the id prefix in the beads block.
+const BlockPrefix = "prefix"
+
+// Block returns the schema of the beads block: the id prefix of the database, which the project must give.
+func Block() config.Block {
+	return config.Block{Name: "beads", Args: []config.Arg{{Key: BlockPrefix}}}
+}
+
+// New returns a store that runs bd through run. block is the beads block of the project: the id prefix of the beads database, from which claim rows are named.
+func New(run proc.Runner, block *model.Block) (*Store, error) {
+	prefix, given := block.Text(BlockPrefix)
+	if !given || strings.TrimSpace(prefix) == "" {
 		return nil, store.Refuse("store: the beads id prefix is required")
 	}
 

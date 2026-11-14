@@ -1,15 +1,60 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// Entry is one adapter of the registry: the project keys it requires, the programs it needs on the path and, for a host provider, how the config treats it.
+// ArgKind is the kind of one argument of an adapter block.
+type ArgKind int
+
+const (
+	// TextArg is a string argument.
+	TextArg ArgKind = iota
+	// WholeArg is a whole-number argument.
+	WholeArg
+)
+
+// Arg is one argument of an adapter block: its key, its kind and whether the call may leave it out.
+type Arg struct {
+	Key      string
+	Kind     ArgKind
+	Optional bool
+}
+
+// Block is the schema of an adapter block, as the adapter package declares it: the name of the call and its arguments.
+type Block struct {
+	Name string
+	Args []Arg
+}
+
+// spec returns the loader schema of the block: the argument names with the optional mark.
+func (b Block) spec() spec {
+	args := make([]string, len(b.Args))
+	for i, arg := range b.Args {
+		args[i] = arg.Key
+		if arg.Optional {
+			args[i] += "?"
+		}
+	}
+
+	return spec{b.Name, args}
+}
+
+// required says whether the block has an argument that the call must give.
+func (b Block) required() bool {
+	return slices.ContainsFunc(b.Args, func(arg Arg) bool { return !arg.Optional })
+}
+
+// Entry is one adapter of the registry: the block it declares, the project keys it requires, the programs it needs on the path and, for a host provider, how the config treats it.
 type Entry struct {
+	// Block is the config block of the adapter. A nil Block declares none.
+	Block *Block
 	// Keys are the project keys that a project must set when it names the adapter, such as repo.
 	Keys []string
 	// Tools are the programs that the adapter needs on the path.
@@ -99,4 +144,40 @@ func (a Adapters) parseAgent(text string) (model.Agent, error) {
 	name, err := parseName(registeredNames(a.Agents), "agent", text)
 
 	return model.Agent(name), err
+}
+
+// projectBlocks returns the blocks that a project call holds, by name order: the blocks that the tracker, claim store and forge entries declare.
+// Two entries that declare one name must declare one schema.
+func (a Adapters) projectBlocks() ([]Block, error) {
+	byName := map[string]Block{}
+
+	err := errors.Join(gatherBlocks(a.Trackers, byName), gatherBlocks(a.Claims, byName), gatherBlocks(a.Forges, byName))
+	if err != nil {
+		return nil, err
+	}
+
+	blocks := make([]Block, 0, len(byName))
+	for _, name := range slices.Sorted(maps.Keys(byName)) {
+		blocks = append(blocks, byName[name])
+	}
+
+	return blocks, nil
+}
+
+// gatherBlocks adds the blocks that the entries declare to byName. Two entries that declare one name must declare the same arguments.
+func gatherBlocks[T ~string](entries map[T]*Entry, byName map[string]Block) error {
+	for _, entry := range entries {
+		if entry.Block == nil {
+			continue
+		}
+
+		declared := *entry.Block
+		if known, seen := byName[declared.Name]; seen && !slices.Equal(known.Args, declared.Args) {
+			return refuse("two adapters declare the `%s` block with different arguments. Fix the adapter table.", declared.Name)
+		}
+
+		byName[declared.Name] = declared
+	}
+
+	return nil
 }

@@ -17,6 +17,15 @@ func run(runner proc.Runner, args ...string) model.CommandResult {
 	return runner.Run(context.Background(), args)
 }
 
+func TestBlock_HoldsTheIDPrefixUnderTheKeyOfTheBeadsBlock(t *testing.T) {
+	t.Parallel()
+
+	prefix, given := beadstest.Block("p").Text("prefix")
+
+	assert.True(t, given)
+	assert.Equal(t, "p", prefix)
+}
+
 func TestBd_ListFiltersByStatusAndType(t *testing.T) {
 	t.Parallel()
 

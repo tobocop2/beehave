@@ -17,13 +17,14 @@ type Runner struct {
 // Project is one project profile, from projects/<name>.star. Forge is empty for a project with no forge.
 // Source is a git URL or an absolute path, and is empty for a project that gets its clone URL from its forge.
 type Project struct {
-	Name        string
-	Repo        string
-	Source      string
-	Tracker     TrackerName
-	Claims      ClaimsName
-	Forge       ForgeName
-	BeadsPrefix string
+	Name    string
+	Repo    string
+	Source  string
+	Tracker TrackerName
+	Claims  ClaimsName
+	Forge   ForgeName
+	// Block is the config block of the tracker or the claim store that the project names, when its adapter declares one.
+	Block *Block
 	// Tools is the programs that the project needs on the path, git first: the registry computes it from the adapters the project names.
 	Tools      []string
 	BaseBranch string

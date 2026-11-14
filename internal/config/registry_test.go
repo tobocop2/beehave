@@ -17,10 +17,10 @@ func invented() config.Adapters {
 		Trackers: map[model.TrackerName]*config.Entry{
 			"local":  {},
 			"ticket": {Keys: []string{"repo"}, Tools: []string{"tk", "git"}},
-			"shelf":  {Keys: []string{"beads_prefix"}, Tools: []string{"shelf"}},
+			"shelf":  {Block: &config.Block{Name: "ledger", Args: []config.Arg{{Key: "id"}}}, Tools: []string{"shelf"}},
 			"odd":    {Keys: []string{"no_such_key"}},
 		},
-		Claims: map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Keys: []string{"beads_prefix"}, Tools: []string{"led"}}},
+		Claims: map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Block: &config.Block{Name: "ledger", Args: []config.Arg{{Key: "id"}}}, Tools: []string{"led"}}},
 		Forges: map[model.ForgeName]*config.Entry{"hub": {Keys: []string{"repo"}, Tools: []string{"hubcli"}}},
 		Hosts: map[model.HostProvider]*config.Entry{
 			"cloud": {Idle: true, HostBlock: "skypilot"},
@@ -82,23 +82,23 @@ func TestLoadFolder_AnAgentOfTheRegistryIsARunnerAgentAndTheRefusalListsTheRegis
 	assert.Equal(t, model.Agent("robot"), cfg.Runners[0].Agent)
 }
 
-func TestLoadFolder_TheKeysOfAnEntryAreRequiredWhenAProjectNamesTheAdapter(t *testing.T) {
+func TestLoadFolder_TheKeysAndTheBlockOfAnEntryAreRequiredWhenAProjectNamesTheAdapter(t *testing.T) {
 	t.Parallel()
 
 	_, problems := loadInvented(t, call(`source = "/srv/repo", tracker = "shelf", `+inventedTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), "`beads_prefix` must be a non-empty string")
+	assert.Contains(t, problems[0].Error(), "the project names an adapter whose `ledger` block it must hold. Write ledger(...).")
 
 	_, problems = loadInvented(t, call(`source = "/srv/repo", claims = "ledger", `+inventedTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), "`beads_prefix` must be a non-empty string")
+	assert.Contains(t, problems[0].Error(), "the project names an adapter whose `ledger` block it must hold. Write ledger(...).")
 
-	project, problems := loadInvented(t, call(`source = "/srv/repo", claims = "ledger", beads_prefix = "p", `+inventedTail))
+	project, problems := loadInvented(t, call(`source = "/srv/repo", claims = "ledger", ledger = ledger(id = "p"), `+inventedTail))
 
 	require.Empty(t, problems)
-	assert.Equal(t, "p", project.BeadsPrefix)
+	assert.Equal(t, `{id="p"}`, project.Block.String())
 
 	_, problems = loadInvented(t, call(`source = "/srv/repo", forge = "hub", `+inventedTail))
 
@@ -117,7 +117,7 @@ func TestLoadFolder_AKeyThatAnEntryRequiresAndNoCheckReadsIsRefused(t *testing.T
 func TestLoadFolder_TheToolsOfAProjectAreGitThenTheToolsOfItsAdaptersOnceInNameOrder(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadInvented(t, call(`repo = "o/n", tracker = "ticket", forge = "hub", claims = "ledger", beads_prefix = "p", `+inventedTail))
+	project, problems := loadInvented(t, call(`repo = "o/n", tracker = "ticket", forge = "hub", claims = "ledger", ledger = ledger(id = "p"), `+inventedTail))
 
 	require.Empty(t, problems)
 	assert.Equal(t, []string{model.ToolGit, "hubcli", "led", "tk"}, project.Tools)
