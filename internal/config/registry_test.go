@@ -21,7 +21,7 @@ func invented() config.Adapters {
 			"odd":    {Keys: []string{"no_such_key"}},
 		},
 		Claims: map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Block: &config.Block{Name: "ledger", Args: []config.Arg{{Key: "id"}}}, Tools: []string{"led"}}},
-		Forges: map[model.ForgeName]*config.Entry{"hub": {Keys: []string{"repo"}, Tools: []string{"hubcli"}}},
+		Forges: map[model.ForgeName]*config.Entry{"hub": {Keys: []string{"repo"}, Tools: []string{"hubcli"}}, "vault": {Block: &config.Block{Name: "vault", Args: []config.Arg{{Key: "id"}}}}},
 		Hosts: map[model.HostProvider]*config.Entry{
 			"cloud": {Idle: true, HostBlock: "skypilot"},
 			"box":   {HostBlock: "ssh"},
@@ -59,7 +59,7 @@ func TestLoadFolder_ANameOfTheRegistryLoadsAndAnUnregisteredNameListsTheRegister
 	_, problems = loadInvented(t, call(`repo = "o/n", forge = "ticket", `+inventedTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), `unknown forge "ticket": use one of hub`)
+	assert.Contains(t, problems[0].Error(), `unknown forge "ticket": use one of hub, vault`)
 }
 
 func TestLoadFolder_AnAgentOfTheRegistryIsARunnerAgentAndTheRefusalListsTheRegisteredAgents(t *testing.T) {
@@ -103,6 +103,16 @@ func TestLoadFolder_TheKeysAndTheBlockOfAnEntryAreRequiredWhenAProjectNamesTheAd
 	_, problems = loadInvented(t, call(`source = "/srv/repo", forge = "hub", `+inventedTail))
 
 	require.NotEmpty(t, problems, "the forge hub requires repo")
+
+	_, problems = loadInvented(t, call(`source = "/srv/repo", forge = "vault", `+inventedTail))
+
+	require.Len(t, problems, 1)
+	assert.Contains(t, problems[0].Error(), "the forge `vault` needs the `vault` block. Write vault(id = ...).")
+
+	project, problems = loadInvented(t, call(`source = "/srv/repo", forge = "vault", vault = vault(id = "v"), `+inventedTail))
+
+	require.Empty(t, problems)
+	assert.Equal(t, `{id="v"}`, project.Block.String())
 }
 
 func TestLoadFolder_AKeyThatAnEntryRequiresAndNoCheckReadsIsRefused(t *testing.T) {
