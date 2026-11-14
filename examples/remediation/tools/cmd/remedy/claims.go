@@ -34,7 +34,8 @@ const sshBlock = "ssh"
 
 // registry is the small adapter table that this binary declares: the config validates the projects that remedy reads against it.
 func registry() config.Adapters {
-	beadsEntry := &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{beads.Tool}}
+	beadsBlock := beads.Block()
+	beadsEntry := &config.Entry{Block: &beadsBlock, Tools: []string{beads.Tool}}
 	issues := &config.Entry{Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}}
 
 	return config.Adapters{
@@ -55,7 +56,7 @@ func registry() config.Adapters {
 func claimsOf(bd proc.Runner, state func() (string, error), project model.Project) (*claim.Claims, error) {
 	switch project.Claims {
 	case beads.Claims:
-		rows, err := beads.New(bd, project.BeadsPrefix)
+		rows, err := beads.New(bd, project.Block)
 		if err != nil {
 			return nil, err
 		}

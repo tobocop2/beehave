@@ -345,7 +345,7 @@ const e2eProject = `project(
     tracker = "github",
     forge = "github",
     claims = "beads",
-    beads_prefix = "shop",
+    beads = beads(prefix = "shop"),
     base_branch = "main",
     gate = "true",
     test_report = "r.xml",

@@ -17,7 +17,7 @@ import (
 func registry() config.Adapters {
 	return config.Adapters{
 		Trackers: map[model.TrackerName]*config.Entry{"local": {}, "ticket": {Keys: []string{"repo"}}},
-		Claims:   map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Keys: []string{"beads_prefix"}}},
+		Claims:   map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Block: &config.Block{Name: "beads", Args: []config.Arg{{Key: "prefix"}}}}},
 		Forges:   map[model.ForgeName]*config.Entry{"hub": {Keys: []string{"repo"}}},
 	}
 }
@@ -27,7 +27,7 @@ func projectOf(env map[string]string, repo string) (model.Project, error) {
 	return lease.ProjectOf(env, repo, registry())
 }
 
-const project = "project(repo = \"owner/name\", tracker = \"ticket\", forge = \"hub\", claims = \"ledger\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
+const project = "project(repo = \"owner/name\", tracker = \"ticket\", forge = \"hub\", claims = \"ledger\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
 // configFolder writes a config folder with one project file and gives the environment that names it.
 func configFolder(t *testing.T, text string) map[string]string {
@@ -56,7 +56,9 @@ func TestProjectOf_FindsTheProjectThatOwnsTheRepository(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "p", found.Name)
-	assert.Equal(t, "p", found.BeadsPrefix)
+	prefix, given := found.Block.Text("prefix")
+	assert.True(t, given)
+	assert.Equal(t, "p", prefix)
 }
 
 func TestProjectOf_FindsTheProjectThatOwnsTheSource(t *testing.T) {

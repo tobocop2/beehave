@@ -114,9 +114,6 @@ const skyTimeout = 30 * time.Minute
 // stepAgent is the agent kind of every agent step. A step names no agent yet, so the pool pick takes runners of this kind only.
 const stepAgent = claude.Name
 
-// beadsPrefixKey is the project key that the beads tracker and the beads claim store require.
-const beadsPrefixKey = "beads_prefix"
-
 // agentEntries returns the agent entries. env is the environment of the caller, which the usage read of an agent passes to its CLI.
 // The opencode agent has no adapter yet, so its entry has no constructor.
 func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
@@ -130,10 +127,12 @@ func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
 	}
 }
 
-// beadsRegistration is what the beads tracker and the beads claim store share: the key they require, the program they need and its version check.
+// beadsRegistration is what the beads tracker and the beads claim store share: the block they declare, the program they need and its version check.
 func beadsRegistration(bd proc.Runner) registration {
+	block := beads.Block()
+
 	return registration{
-		Entry:    config.Entry{Keys: []string{beadsPrefixKey}, Tools: []string{beads.Tool}},
+		Entry:    config.Entry{Block: &block, Tools: []string{beads.Tool}},
 		versions: map[string]func(context.Context) error{beads.Tool: func(ctx context.Context) error { return beads.RequireBd(ctx, bd) }},
 	}
 }
@@ -217,7 +216,11 @@ func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.Claim
 		beads.Claims: {
 			registration: beadsRegistration(bd),
 			open:         func(_ context.Context, project model.Project) (claimStore, error) { return newBeadsClaims(bd, project) },
-			check:        func(project model.Project) error { return checkBeadsClaims(bd, project) },
+			check: func(project model.Project) error {
+				_, err := newBeadsClaims(bd, project)
+
+				return err
+			},
 		},
 	}
 }
@@ -287,20 +290,14 @@ func openLocalClaims(ctx context.Context, state func() (string, error), project 
 	return claimStore{Rows: rows, closer: rows}, nil
 }
 
+// newBeadsClaims builds the beads claim store of the project. It holds no file, so the store has no closer. A check builds the store and drops it.
 func newBeadsClaims(bd proc.Runner, project model.Project) (claimStore, error) {
-	rows, err := beads.New(bd, project.BeadsPrefix)
+	rows, err := beads.New(bd, project.Block)
 	if err != nil {
 		return claimStore{}, err
 	}
 
 	return claimStore{Rows: rows}, nil
-}
-
-// checkBeadsClaims says why the beads claim store of the project cannot be built. It opens no file.
-func checkBeadsClaims(bd proc.Runner, project model.Project) error {
-	_, err := beads.New(bd, project.BeadsPrefix)
-
-	return err
 }
 
 // openLocal opens local.db in the state folder for the project.
@@ -350,7 +347,7 @@ func newSlurmHost(project model.Project) (host.Host, error) { //nolint:ireturn /
 }
 
 func newBeads(bd proc.Runner, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
-	tracker, err := beads.New(bd, project.BeadsPrefix)
+	tracker, err := beads.New(bd, project.Block)
 	if err != nil {
 		return nil, err
 	}

@@ -47,7 +47,7 @@ func TestServeDocs_TheReviewPollKeyAndTheValueOfTheSentenceLoad(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "projects"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "runners.star"), []byte("agents(review_poll_minutes = 60)\nrunner(name = \"a\", agent = \"claude\")\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte("project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "projects", "p.star"), []byte("project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"), 0o600))
 
 	cfg, problems := config.LoadFolder(dir, map[string]string{}, newAdapters(nil, nil, nil).registry())
 

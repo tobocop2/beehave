@@ -62,7 +62,7 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p"}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
 
 	tracker, err := table.tracker(t.Context(), project)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testi
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p"}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
 
 	require.NoError(t, table.checkTrackerAndForge(t.Context(), good))
 }
@@ -138,13 +138,13 @@ func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *tes
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p"}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
 	require.NoError(t, table.check(t.Context(), good))
 
 	badTracker := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name}
 	require.ErrorContains(t, table.check(t.Context(), badTracker), "the beads id prefix is required")
 
-	badForge := model.Project{Name: "p", Repo: "bad", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p"}
+	badForge := model.Project{Name: "p", Repo: "bad", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
 	require.Error(t, table.check(t.Context(), badForge))
 
 	noPrefix := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims}
@@ -267,7 +267,7 @@ func TestAdapters_CheckRefusesABeadsClaimStoreWithNoPrefixEvenWhenTheTrackerIsLo
 
 	require.ErrorContains(t, newAdapters(beadstest.NewBd(t), nil, nil).check(t.Context(), project), "the beads id prefix is required")
 
-	project.BeadsPrefix = "p"
+	project.Block = beadstest.Block("p")
 	project.Tools = []string{model.ToolGit, beads.Tool}
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
@@ -278,7 +278,7 @@ func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testin
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: beads.Tracker, Claims: beads.Claims, BeadsPrefix: "p"}
+	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: beads.Tracker, Claims: beads.Claims, Block: beadstest.Block("p")}
 
 	built, err := table.forge(noForge)
 	require.EqualError(t, err, `project p: no forge; set forge = "github" in the project file`)
@@ -322,7 +322,7 @@ func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p", Tools: []string{model.ToolGit, beads.Tool, "gh"}}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p"), Tools: []string{model.ToolGit, beads.Tool, "gh"}}
 
 	require.EqualError(t, newAdapters(bd, nil, nil).check(t.Context(), project), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 
@@ -339,7 +339,9 @@ func TestAdapters_RegistryHoldsTheNamesTheKeysAndTheToolsOfTheEntries(t *testing
 
 	registered := newAdapters(beadstest.NewBd(t), nil, nil).registry()
 
-	assert.Equal(t, []string{"beads_prefix"}, registered.Trackers[beads.Tracker].Keys)
+	assert.Equal(t, beads.Block(), *registered.Trackers[beads.Tracker].Block)
+	assert.Equal(t, beads.Block(), *registered.Claims[beads.Claims].Block)
+	assert.Empty(t, registered.Trackers[beads.Tracker].Keys)
 	assert.Equal(t, []string{beads.Tool}, registered.Claims[beads.Claims].Tools)
 	assert.Equal(t, []string{"repo"}, registered.Forges[forgegithub.Name].Keys)
 	assert.True(t, registered.Hosts[skypilot.Name].Idle)
@@ -422,7 +424,7 @@ func TestAdapters_EveryProviderBuildsAHostThatBanksItsWorkOnTeardown(t *testing.
 
 func hostProject(provider model.HostProvider, buildHost string) model.Project {
 	return model.Project{
-		Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p", BuildHost: buildHost,
+		Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p"), BuildHost: buildHost,
 		Host: &model.HostConfig{Provider: provider, IdleMinutes: 60, MaxRun: time.Hour, DiskFloorGB: 50},
 	}
 }

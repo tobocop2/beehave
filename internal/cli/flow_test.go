@@ -28,7 +28,7 @@ var errFake = errors.New("fake failure")
 const (
 	stateDirVariable = "BEEHAVE_STATE_DIR"
 	validRunners     = "runner(name = \"a\", agent = \"claude\")\n"
-	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
+	validProject     = "project(repo = \"o/n\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 )
 
 type fakeRunner struct {

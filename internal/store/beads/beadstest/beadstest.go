@@ -36,6 +36,12 @@ const (
 // Fields is one row of the fake bd.
 type Fields = map[string]any
 
+// Block returns the beads block of a project whose database has the id prefix. The key is the one of beads.BlockPrefix; a backend
+// package cannot be imported here, and every store test that builds a store from this block fails if the two drift apart.
+func Block(prefix string) *model.Block {
+	return model.NewBlock("test", []model.BlockEntry{model.TextEntry("prefix", prefix)})
+}
+
 // Bd keeps rows in memory and answers the bd commands the claim code uses. It follows bd 1.3.2: --claim takes only an open row
 // without an assignee, grants the lease to the actor and sets the actor as the assignee (a claim that also sets --assignee, or any update of
 // the status or the assignee, ends the lease); a refused --claim exits 1 with the text of a lost take; bd heartbeat renews the lease of the

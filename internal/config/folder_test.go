@@ -15,7 +15,7 @@ import (
 
 // goodProject is the argument list of a project call that loads. A test adds arguments after it.
 // unreportedProject has no test_report, which the loader refuses for a gate on this machine and for a gate on a build host.
-const unreportedProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "make check"`
+const unreportedProject = `repo = "o/n", tracker = "github", forge = "github", base_branch = "main", gate = "make check"`
 
 const hostProject = unreportedProject + `, test_report = "reports/*.xml"`
 
@@ -73,7 +73,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", BeadsPrefix: "proj", Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Block: model.NewBlock(filepath.Join(exampleConfig, "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")}), Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
 		cfg.Projects["example"].Project)
 }
 
@@ -142,7 +142,7 @@ func TestLoadFolder_ProjectsAreNamedByTheirFileInOrder(t *testing.T) {
 
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "projects", "b.star"), call(goodProject))
-	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", gate = "g", test_report = "r.xml"`))
+	writeFile(t, filepath.Join(dir, "projects", "a.star"), call(`repo = "o/a", tracker = "github", forge = "github", base_branch = "main", gate = "g", test_report = "r.xml"`))
 	writeFile(t, filepath.Join(dir, "projects", "notes.md"), "not a project")
 
 	cfg, problems := loadFolder(dir, nil)
@@ -218,21 +218,20 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 		{"unknown_argument_gives_the_position", call(goodProject + `, shade = "red"`), "p.star:1:8: project: unexpected keyword argument"},
 		{"positional_argument", call(`"o/n"`), "p.star:1:8: `project` takes keyword arguments only"},
 		{"missing_repo", call(`tracker = "github", base_branch = "main", gate = "g", source = "/s"`), "p.star:1:8: `repo` must be a non-empty string"},
-		{"blank_repo", call(`repo = " ", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be a non-empty string"},
+		{"blank_repo", call(`repo = " ", ` + github), "p.star:1:8: `repo` must be a non-empty string"},
 		{"repo_of_the_wrong_type", call(`repo = ["o/n"], base_branch = "main", gate = "g"`), `for parameter "repo": got list, want string`},
-		{"repo_without_owner", call(`repo = "justname", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_with_three_parts", call(`repo = "a/b/c", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_without_owner_text", call(`repo = "/n", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
-		{"repo_without_name", call(`repo = "o/", beads_prefix = "p", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_owner", call(`repo = "justname", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_with_three_parts", call(`repo = "a/b/c", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_owner_text", call(`repo = "/n", ` + github), "p.star:1:8: `repo` must be written owner/name"},
+		{"repo_without_name", call(`repo = "o/", ` + github), "p.star:1:8: `repo` must be written owner/name"},
 		{"unknown_tracker", call(`repo = "o/n", tracker = "jira", forge = "github", ` + local), "p.star:1:8: `tracker`: unknown tracker \"jira\": use one of beads, github, local"},
 		{"unknown_forge", call(`repo = "o/n", tracker = "github", forge = "gitlab", ` + local), "p.star:1:8: `forge`: unknown forge \"gitlab\": use one of github"},
-		{"beads_without_a_prefix", call(`repo = "o/n", tracker = "beads", forge = "github", ` + local), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"beads_claims_without_a_prefix", call(`repo = "o/n", claims = "beads", ` + github), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"missing_gate", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main"`), "`gate` must be a non-empty string"},
-		{"missing_base_branch", call(`repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", gate = "g"`), "`base_branch` must be a non-empty string"},
+		{"beads_without_a_block", call(`repo = "o/n", tracker = "beads", forge = "github", ` + local), "p.star:1:8: the tracker `beads` needs the `beads` block. Write beads(prefix = ...)."},
+		{"beads_claims_without_a_block", call(`repo = "o/n", claims = "beads", ` + github), "p.star:1:8: the claims `beads` needs the `beads` block. Write beads(prefix = ...)."},
+		{"missing_gate", call(`repo = "o/n", tracker = "github", forge = "github", base_branch = "main"`), "`gate` must be a non-empty string"},
+		{"missing_base_branch", call(`repo = "o/n", tracker = "github", forge = "github", gate = "g"`), "`base_branch` must be a non-empty string"},
 		{"blank_tracker", call(strings.Replace(goodProject, `tracker = "github"`, `tracker = " "`, 1)), "p.star:1:8: `tracker` must be a non-empty string"},
 		{"blank_forge", call(strings.Replace(goodProject, `forge = "github"`, `forge = " "`, 1)), "p.star:1:8: `forge` must be a non-empty string"},
-		{"blank_beads_prefix", call(strings.Replace(goodProject, `beads_prefix = "p"`, `beads_prefix = " "`, 1) + `, claims = "beads"`), "p.star:1:8: `beads_prefix` must be a non-empty string"},
 		{"blank_base_branch", call(strings.Replace(goodProject, `base_branch = "main"`, `base_branch = " "`, 1)), "p.star:1:8: `base_branch` must be a non-empty string"},
 		{"blank_gate", call(strings.Replace(goodProject, `gate = "make check"`, `gate = " "`, 1)), "p.star:1:8: `gate` must be a non-empty string"},
 		{"empty_build_host", call(hostProject + `, build_host = ""`), "p.star:1:8: `build_host` must be"},
@@ -265,20 +264,23 @@ func TestLoadFolder_ABadProjectFileIsRefused(t *testing.T) {
 	}
 }
 
-func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
+func TestLoadFolder_ABeadsProjectNeedsItsBlockAndKeepsIt(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g", test_report = "r.xml"`))
+	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads = beads(prefix = "proj"), base_branch = "main", gate = "g", test_report = "r.xml"`))
 
 	require.Empty(t, problems)
 	require.Equal(t, model.TrackerName("beads"), project.Tracker)
-	require.Equal(t, "proj", project.BeadsPrefix)
+
+	prefix, given := project.Block.Text("prefix")
+	require.True(t, given)
+	require.Equal(t, "proj", prefix)
 }
 
 func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 	t.Parallel()
 
-	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\", beads_prefix = \"p\",\r\n  base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\",\r\n)\r\n")
+	project, problems := loadProjectText(t, "project(\r\n  repo = \"o/n\",\r\n  tracker = \"github\", forge = \"github\",\r\n  base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\",\r\n)\r\n")
 
 	require.Empty(t, problems)
 	require.Equal(t, "make check", project.Gate)
@@ -287,7 +289,7 @@ func TestLoadFolder_AProjectFileWithWindowsLineEndingsLoads(t *testing.T) {
 func TestLoadFolder_TheTestReportKeyIsReadAndAnEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()
 
-	base := `repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g"`
+	base := `repo = "o/n", tracker = "beads", forge = "github", beads = beads(prefix = "proj"), base_branch = "main", gate = "g"`
 
 	project, problems := loadProjectText(t, "project("+base+", test_report = \"out/*.xml\")\n")
 	require.Empty(t, problems)

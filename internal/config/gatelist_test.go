@@ -8,7 +8,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-const listProject = `repo = "o/n", tracker = "github", forge = "github", beads_prefix = "p", base_branch = "main", test_report = "reports/*.xml"`
+const listProject = `repo = "o/n", tracker = "github", forge = "github", base_branch = "main", test_report = "reports/*.xml"`
 
 func TestLoadFolder_AGateListKeepsTheOrderOfTheDictAndGateSetsNone(t *testing.T) {
 	t.Parallel()

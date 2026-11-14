@@ -9,7 +9,7 @@ project(
     tracker = "github",        # "local" (default), "beads" or "github" (GitHub Issues); this chooses where work items live
     claims = "beads",          # "local" (default) or "beads"; this chooses where the claim leases live
     forge = "github",          # "github", or leave the argument out for a project with no forge
-    beads_prefix = "proj",     # the id prefix of the beads database; required when tracker or claims is "beads"
+    beads = beads(prefix = "proj"),  # the beads block: the id prefix of the beads database; required when tracker or claims is "beads", and refused otherwise
     base_branch = "main",
     gate = "make check",       # the same command that your CI runs
     # gate_steps = {"fmt": "make fmt", "lint": "make lint", "test": "make test"},  # instead of `gate`: one named step for each command, in order. The gate gives a result for each name, and a merge needs a pass for every one. The loader refuses `gate` and `gate_steps` together, and the name `tests`

@@ -15,7 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/store/local"
 )
 
-const claimProject = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
+const claimProject = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads = beads(prefix = \"p\"), base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
 
 // configEnv writes a config folder with one project file and gives the environment that names it.
 func configEnv(t *testing.T) map[string]string {
@@ -47,7 +47,7 @@ func TestOpenClaims_RepositoryThatNoProjectOwnsIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "owner/other")
 }
 
-func TestClaimsOf_ProjectWithNoBeadsPrefixIsRefused(t *testing.T) {
+func TestClaimsOf_ProjectWithNoBeadsBlockIsRefused(t *testing.T) {
 	t.Parallel()
 
 	claims, err := claimsOf(proctest.Always(model.CommandResult{}), nil, model.Project{Claims: beads.Claims})

@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
 
 func task(id, title string, priority any, fields map[string]any) map[string]any {
@@ -31,7 +32,7 @@ func newBeads(t *testing.T) (*beads.Store, *proctest.Scripted) {
 		run.Plan("[]", words...)
 	}
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, beadstest.Block("p"))
 	require.NoError(t, err)
 
 	return bd, run

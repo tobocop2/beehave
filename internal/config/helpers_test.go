@@ -13,7 +13,9 @@ import (
 
 // registry is the adapter registry of the config tests: the names of the model, with the keys and tools that the real adapters register. It imports no adapter package.
 func registry() config.Adapters {
-	beads := func() *config.Entry { return &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{"bd"}} }
+	beads := func() *config.Entry {
+		return &config.Entry{Block: &config.Block{Name: "beads", Args: []config.Arg{{Key: "prefix"}}}, Tools: []string{"bd"}}
+	}
 	github := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
 
 	return config.Adapters{

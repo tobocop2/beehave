@@ -29,7 +29,9 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 
 ### `project(...)`
 
-The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `pin_file`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write`, `build_host` and `beads_prefix`.
+The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_branch`, `gate`, `gate_steps`, `test_report`, `pin_file`, `visibility`, `sandbox`, `sandbox_read`, `sandbox_deny`, `sandbox_enforcer`, `gate_network`, `gate_allow_write` and `build_host`.
+
+The project also takes the config block of the adapter that it chooses. The adapter declares the keys of its block, and the config passes the block to the adapter unread. The beads adapter declares the `beads` block with one key: `beads = beads(prefix = "proj")`. A project that chooses the beads tracker or the beads claim store must give the block. The config refuses a block of an adapter that the project does not choose, and the refusal names the adapters that the project does choose.
 
 The project also takes facts. All facts are optional and are empty when left out.
 

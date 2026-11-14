@@ -151,7 +151,7 @@ func TestDoctor_OnlyTheBeadsProjectNeedsBdAndOnlyTheGithubProjectNeedsGh(t *test
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", claims = \"beads\", beads_prefix = \"p\")\n")
+	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", claims = \"beads\", beads = beads(prefix = \"p\"))\n")
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
