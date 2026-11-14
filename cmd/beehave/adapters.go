@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/host/ssh"
@@ -33,7 +35,7 @@ type adapters struct {
 	trackers map[model.TrackerName]trackerBuilder
 	forges   map[model.ForgeName]func(model.Project) (forge.Forge, error)
 	agents   map[model.Agent]agentAdapter
-	hosts    map[model.HostProvider]func(model.Project) (host.Host, error)
+	hosts    map[model.HostProvider]hostAdapter
 	bd       proc.Runner
 	state    func() (string, error)
 	// diskPoll is how often a job that waits for disk space reads the disk again.
@@ -45,6 +47,12 @@ type agentAdapter struct {
 	build     func() agent.Adapter
 	configFix func(string) string
 	tokenFix  func(string) string
+}
+
+// hostAdapter is the registration of a host provider: the constructor and the sentinel errors of a failed run.
+type hostAdapter struct {
+	build     func(model.Project) (host.Host, error)
+	sentinels []error
 }
 
 // defaultDiskPoll is the gap between two disk readings of a job that waits for space.
@@ -89,10 +97,10 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 			model.ForgeGithub: newGithubForge,
 		},
 		agents: agentEntries(env),
-		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
-			model.HostSkyPilot: newSkyPilotHost,
-			model.HostSSH:      newSSHHost,
-			model.HostSlurm:    newSlurmHost,
+		hosts: map[model.HostProvider]hostAdapter{
+			model.HostSkyPilot: {build: newSkyPilotHost, sentinels: []error{skypilot.ErrConfig, link.ErrConfig}},
+			model.HostSSH:      {build: newSSHHost, sentinels: []error{link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining}},
+			model.HostSlurm:    {build: newSlurmHost, sentinels: []error{link.ErrConfig}},
 		},
 		bd:       bd,
 		state:    state,
@@ -134,12 +142,17 @@ func openLocal(ctx context.Context, state func() (string, error), project model.
 func newSkyPilotHost(project model.Project) (host.Host, error) { //nolint:ireturn // the table stores constructors of the contract
 	sky := proc.ExecRunner{Binary: "sky", Timeout: skyTimeout}
 
-	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""))
+	h, err := skypilot.New(project.BuildHost, *project.Host, sky, proc.NewExecRunner("ssh", ""), slurmQueue)
 	if err != nil {
 		return nil, err
 	}
 
 	return h, nil
+}
+
+// slurmQueue builds the Slurm queue that SkyPilot runs its jobs on.
+func slurmQueue(l *link.Link, config model.HostConfig, slot skypilot.Slot) skypilot.Queue { //nolint:ireturn // SkyPilot takes the queue as a builder that returns the interface it owns
+	return slurm.New(l, config, slot)
 }
 
 // newSSHHost builds the host of a machine that the owner provides. It runs no ssh: the first call to the machine is Up.
@@ -219,12 +232,12 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 		return nil, fmt.Errorf("project %s: no host block, so no build host", project.Name)
 	}
 
-	build, found := a.hosts[project.Host.Provider]
+	entry, found := a.hosts[project.Host.Provider]
 	if !found {
 		return nil, fmt.Errorf("project %s: no host adapter named %q", project.Name, project.Host.Provider)
 	}
 
-	built, err := build(project)
+	built, err := entry.build(project)
 	if err != nil {
 		return nil, err
 	}
@@ -298,6 +311,21 @@ func readUsage(entries map[model.Agent]agentAdapter) pool.Reader {
 
 		return entry.build().ReadUsage(ctx, runner)
 	}
+}
+
+// hostErrors lists the sentinel errors that the host entries declare, each once, in the order of the provider names.
+func (a adapters) hostErrors() []error {
+	var sentinels []error
+
+	for _, name := range slices.Sorted(maps.Keys(a.hosts)) {
+		for _, sentinel := range a.hosts[name].sentinels {
+			if !slices.Contains(sentinels, sentinel) {
+				sentinels = append(sentinels, sentinel)
+			}
+		}
+	}
+
+	return sentinels
 }
 
 // leases opens the claim store the project names: the beads rows, or the claim rows of local.db. The caller closes it.

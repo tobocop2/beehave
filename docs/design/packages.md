@@ -66,7 +66,6 @@ flowchart TD
     host --> model
     main --> skypilot
     skypilot --> host
-    skypilot --> slurm
     slurm --> host
     main --> slurm
     main --> sshhost

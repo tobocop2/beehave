@@ -12,9 +12,6 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/host"
-	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/skypilot"
-	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/pool"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -146,7 +143,7 @@ func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) 
 		Hosts:  hostStop{programs: commands},
 		Queue:  queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
 		Poll:   pollReads{projects: cfg.Projects, pulls: life.pulls},
-		Kept:   backendErrors(),
+		Kept:   table.hostErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
 		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
@@ -167,11 +164,6 @@ func repositoryOf(projects map[string]config.Project) func(string) bool {
 
 		return !ok || found.HasRepository()
 	}
-}
-
-// backendErrors lists the sentinel errors of the backends. A gate or a merge on a host returns them, and the engine cannot import a backend.
-func backendErrors() []error {
-	return []error{skypilot.ErrConfig, link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining}
 }
 
 // releaseDeps builds what the client needs: the claim to take and give back, the lease reader of a move to this build, and the worktrees.
