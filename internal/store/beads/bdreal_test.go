@@ -71,7 +71,7 @@ func realBackend(t *testing.T) leaseBackend {
 	require.Contains(t, run.Run(t.Context(), []string{"--version"}).Stdout, "bd version 1.3.2")
 	require.NoError(t, beads.RequireBd(t.Context(), run))
 
-	beads, err := beads.New(run, realPrefix)
+	beads, err := beads.New(run, beadstest.Block(realPrefix))
 	require.NoError(t, err)
 
 	name := beadstest.DatabaseName(t, database)
@@ -276,7 +276,7 @@ func scenarioOldBd(t *testing.T, b leaseBackend) {
 	t.Helper()
 
 	old := &oldBd{inner: b.run}
-	beads, err := beads.New(old, b.prefix)
+	beads, err := beads.New(old, beadstest.Block(b.prefix))
 	require.NoError(t, err)
 
 	require.ErrorContains(t, beads.TryHold(t.Context(), hold("20", "session-a")), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")

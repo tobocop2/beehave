@@ -23,6 +23,9 @@ type platformHooks struct {
 
 	// executable returns the path of the running program, which the cap helper re-executes. Nil means os.Executable.
 	executable func() (string, error)
+
+	// pipe makes the setup pipe of the cap helper. Nil means os.Pipe.
+	pipe func() (*os.File, *os.File, error)
 }
 
 // cappedCommand returns the helper of the cap for a binary that is found.
@@ -38,12 +41,7 @@ func (r ExecRunner) cappedCommand(ctx context.Context, args, env []string) (*exe
 		return nil, nil //nolint:nilerr // a binary that is not found is reported by the plain command
 	}
 
-	limit, err := r.limit()
-	if err != nil {
-		return nil, err
-	}
-
-	cmd, err := r.helperCommand(ctx, limit, found, args)
+	cmd, err := r.capHelper(ctx, found, args)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +51,16 @@ func (r ExecRunner) cappedCommand(ctx context.Context, args, env []string) (*exe
 	return cmd, nil
 }
 
+// capHelper returns the helper command that sets the process limit, then runs found with args.
+func (r ExecRunner) capHelper(ctx context.Context, found string, args []string) (*exec.Cmd, error) {
+	limit, err := r.limit()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.helperCommand(ctx, limit, found, args)
+}
+
 // run runs cmd to its end and returns its result. The helper of a cap gets the write end of a pipe as file descriptor 3.
 // Text on that pipe means the helper did not set the limit: the result then holds it in SetupErr, and nothing else.
 func (r ExecRunner) run(ctx context.Context, cmd *exec.Cmd, stdout, stderr *bytes.Buffer) model.CommandResult {
@@ -60,7 +68,7 @@ func (r ExecRunner) run(ctx context.Context, cmd *exec.Cmd, stdout, stderr *byte
 		return r.result(ctx, cmd.Run(), stdout, stderr)
 	}
 
-	read, write, err := os.Pipe()
+	read, write, err := r.setupPipe()
 	if err != nil {
 		return model.CommandResult{ExitCode: ExitCapFailed, SetupErr: fmt.Errorf("could not make the setup pipe of the cap: %w", err)}
 	}
@@ -74,6 +82,15 @@ func (r ExecRunner) run(ctx context.Context, cmd *exec.Cmd, stdout, stderr *byte
 	}
 
 	return r.result(ctx, runErr, stdout, stderr)
+}
+
+// setupPipe makes the setup pipe of the cap helper.
+func (r ExecRunner) setupPipe() (*os.File, *os.File, error) {
+	if r.hooks.pipe != nil {
+		return r.hooks.pipe()
+	}
+
+	return os.Pipe()
 }
 
 // setupFailure reads read to its end and closes it. It returns the text as an error, or nil for an empty pipe.

@@ -455,6 +455,7 @@ func TestClient_PollNotScheduledSaysWhenTheIntervalIsZero(t *testing.T) {
 	cause, err := client.PollNotScheduled()
 	require.NoError(t, err)
 	assert.Equal(t, pollOff, cause, "no launch ran")
+	assert.Contains(t, cause, "Under beehave serve, set 60.")
 
 	launchedWith(t, harness, func(*Deps) {})
 

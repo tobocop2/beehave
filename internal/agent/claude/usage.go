@@ -67,7 +67,7 @@ func (u UsageReader) Read(ctx context.Context, runner model.Runner) model.Readin
 	ctx, cancel := context.WithTimeoutCause(ctx, timeout, errReadTimeout)
 	defer cancel()
 
-	reading := ask(ctx, found, agent.LoginEnv(u.Base, New().Profile(), runner.ConfigDir), timeout)
+	reading := ask(ctx, found, agent.LoginEnv(u.Base, New(u.Base).Profile(), runner.ConfigDir), timeout)
 	if reading.NeedsLogin() {
 		return model.UnknownLogin(fmt.Sprintf("runner %s has no Claude plan limits, so it is not logged in or it uses an API key. Log in with `CLAUDE_CONFIG_DIR=%s claude` and run /login",
 			runner.Name, runner.ConfigDir))
@@ -78,7 +78,7 @@ func (u UsageReader) Read(ctx context.Context, runner model.Runner) model.Readin
 
 // locate returns the path of the CLI, or the reason the runner cannot be read.
 func (u UsageReader) locate(runner model.Runner) (string, string) {
-	if runner.Agent != model.AgentClaude {
+	if runner.Agent != Name {
 		return "", fmt.Sprintf("usage is read for claude runners only, not %s", runner.Agent)
 	}
 

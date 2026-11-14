@@ -38,13 +38,14 @@ func main() {
 // buildInfo wires the adapters, the doctor and the item list to the command line, with the flow given.
 func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildInfo {
 	bd := proc.NewExecRunner("bd", "")
-	table := newAdapters(bd, func() (string, error) { return config.StateDir(env) })
+	table := newAdapters(bd, func() (string, error) { return config.StateDir(env) }, env)
 
 	return cli.BuildInfo{
 		Version:  version,
 		Adapters: table.check,
+		Registry: table.registry(),
 		Items:    table.itemOpener(),
-		Doctor:   newDoctor(bd, newSecurityRunner(), env),
+		Doctor:   newDoctor(table, newSecurityRunner()),
 		Flow:     flow,
 
 		GateRefusal: enforcers.Refusal,

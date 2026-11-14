@@ -31,36 +31,8 @@ func (p Project) HostFor(cluster string) (string, error) {
 	return "", fmt.Errorf("%w %q for project %s: use one of %s", ErrUndeclaredHost, cluster, p.Name, strings.Join(declared, ", "))
 }
 
-// HostProvider names a build host adapter that a project selects.
+// HostProvider names a build host adapter that a project selects. The package of each host exports its name.
 type HostProvider string
-
-// The build host adapters.
-const (
-	HostSkyPilot HostProvider = "skypilot"
-	// HostSSH is a machine the owner provides and beehave reaches over ssh. beehave never creates or deletes it.
-	HostSSH HostProvider = "ssh"
-	// HostSlurm is a Slurm cluster whose head node beehave reaches over ssh.
-	HostSlurm HostProvider = "slurm"
-)
-
-// ErrUnknownHostProvider is returned when text names no build host adapter.
-var ErrUnknownHostProvider = errors.New("unknown host provider")
-
-// HostProviders lists every build host adapter.
-func HostProviders() []HostProvider {
-	return []HostProvider{HostSkyPilot, HostSSH, HostSlurm}
-}
-
-// ParseHostProvider returns the build host adapter that text names.
-func ParseHostProvider(text string) (HostProvider, error) {
-	for _, name := range HostProviders() {
-		if string(name) == text {
-			return name, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w %q: use one of %s", ErrUnknownHostProvider, text, joinNames(HostProviders()))
-}
 
 // MaxDiskFloorGB is the largest disk_floor_gb. It keeps the floor in bytes inside a 64-bit integer.
 const MaxDiskFloorGB = 1 << 20

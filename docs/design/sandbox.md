@@ -6,6 +6,8 @@ The `forbid_commands` hook reads the text of a command. It is not a sandbox (see
 
 The default is off. A project opts in with `sandbox = "on"` in its project file.
 
+[The trust boundary](trust.md#the-sandbox-is-on-by-default) describes the planned change: the default becomes on, and a step with `sandbox = None` in such a project is refused.
+
 ## The setting
 
 `sandbox = sandbox(network = ["api.example.org"], allow_write = ["out"])` turns the sandbox on for the step.

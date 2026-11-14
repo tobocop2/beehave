@@ -13,6 +13,8 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 // issueForge is the forge of the tests of the read after a batch.
@@ -62,7 +64,7 @@ func issueHost(tracker model.TrackerName, f issueForge, forgeErr error) batchHos
 func TestBatchHostIssues_ABaseThatIsTheDefaultBranchReadsTheIssueOfEachLandedItem(t *testing.T) {
 	t.Parallel()
 
-	host := issueHost(model.TrackerGithub, issueForge{defaultBranch: "main", states: map[int]string{4: "CLOSED", 9: "OPEN"}}, nil)
+	host := issueHost(storegithub.Tracker, issueForge{defaultBranch: "main", states: map[int]string{4: "CLOSED", 9: "OPEN"}}, nil)
 
 	got, err := host.Issues(t.Context(), "p", "main", 0, []string{"4", "9"})
 
@@ -74,7 +76,7 @@ func TestBatchHostIssues_ABaseThatIsTheDefaultBranchReadsTheIssueOfEachLandedIte
 func TestBatchHostIssues_AnIntegrationBranchBaseIsNotReadAndTheNoteSaysWhy(t *testing.T) {
 	t.Parallel()
 
-	host := issueHost(model.TrackerGithub, issueForge{defaultBranch: "main", states: map[int]string{4: "OPEN"}}, nil)
+	host := issueHost(storegithub.Tracker, issueForge{defaultBranch: "main", states: map[int]string{4: "OPEN"}}, nil)
 
 	got, err := host.Issues(t.Context(), "p", "integration/r7", 0, []string{"4"})
 
@@ -86,7 +88,7 @@ func TestBatchHostIssues_AnIntegrationBranchBaseIsNotReadAndTheNoteSaysWhy(t *te
 func TestBatchHostIssues_AMergedIntegrationPullRequestIsReadAgainstTheLandedItems(t *testing.T) {
 	t.Parallel()
 
-	host := issueHost(model.TrackerGithub, issueForge{pullState: "merged", states: map[int]string{4: "CLOSED"}, refs: []int{4, 12}}, nil)
+	host := issueHost(storegithub.Tracker, issueForge{pullState: "merged", states: map[int]string{4: "CLOSED"}, refs: []int{4, 12}}, nil)
 
 	got, err := host.Issues(t.Context(), "p", "integration/r7", 70, []string{"4"})
 
@@ -97,7 +99,7 @@ func TestBatchHostIssues_AMergedIntegrationPullRequestIsReadAgainstTheLandedItem
 func TestBatchHostIssues_AnIntegrationPullRequestThatIsNotMergedIsNotReadYet(t *testing.T) {
 	t.Parallel()
 
-	host := issueHost(model.TrackerGithub, issueForge{pullState: "OPEN"}, nil)
+	host := issueHost(storegithub.Tracker, issueForge{pullState: "OPEN"}, nil)
 
 	got, err := host.Issues(t.Context(), "p", "integration/r7", 70, []string{"4"})
 
@@ -109,7 +111,7 @@ func TestBatchHostIssues_AnIntegrationPullRequestThatIsNotMergedIsNotReadYet(t *
 func TestBatchHostIssues_AClosedIntegrationPullRequestIsANoteAndAnUnknownStateIsAFinding(t *testing.T) {
 	t.Parallel()
 
-	closed := issueHost(model.TrackerGithub, issueForge{pullState: "closed"}, nil)
+	closed := issueHost(storegithub.Tracker, issueForge{pullState: "closed"}, nil)
 
 	got, err := closed.Issues(t.Context(), "p", "integration/r7", 70, []string{"4"})
 	require.NoError(t, err)
@@ -117,7 +119,7 @@ func TestBatchHostIssues_AClosedIntegrationPullRequestIsANoteAndAnUnknownStateIs
 	assert.Equal(t, "issue states: the integration pull request 70 is CLOSED, not MERGED, so the issues are not read yet.", got.Note)
 
 	for _, state := range []string{"", "DRAFTY"} {
-		host := issueHost(model.TrackerGithub, issueForge{pullState: state}, nil)
+		host := issueHost(storegithub.Tracker, issueForge{pullState: state}, nil)
 
 		got, err = host.Issues(t.Context(), "p", "integration/r7", 70, []string{"4"})
 		require.NoError(t, err)
@@ -134,9 +136,9 @@ func TestBatchHostIssues_AReadThatFailsIsAFindingAndNeverAPass(t *testing.T) {
 		integration int
 		want        string
 	}{
-		"the pull request":   {issueHost(model.TrackerGithub, issueForge{pullErr: errors.New("down")}, nil), 70, "cannot read pull request #70: down"},
-		"the default branch": {issueHost(model.TrackerGithub, issueForge{defaultErr: errors.New("down")}, nil), 0, "cannot read the default branch: down"},
-		"the forge":          {issueHost(model.TrackerGithub, issueForge{}, errors.New("no token")), 0, "cannot read the issues: no token"},
+		"the pull request":   {issueHost(storegithub.Tracker, issueForge{pullErr: errors.New("down")}, nil), 70, "cannot read pull request #70: down"},
+		"the default branch": {issueHost(storegithub.Tracker, issueForge{defaultErr: errors.New("down")}, nil), 0, "cannot read the default branch: down"},
+		"the forge":          {issueHost(storegithub.Tracker, issueForge{}, errors.New("no token")), 0, "cannot read the issues: no token"},
 	}
 
 	for name, c := range cases {
@@ -154,7 +156,7 @@ func TestBatchHostIssues_AReadThatFailsIsAFindingAndNeverAPass(t *testing.T) {
 func TestBatchHostIssues_ATrackerWithNoIssueNumbersReadsNothingAndSaysSo(t *testing.T) {
 	t.Parallel()
 
-	host := issueHost(model.TrackerLocal, issueForge{}, nil)
+	host := issueHost(local.Tracker, issueForge{}, nil)
 
 	got, err := host.Issues(t.Context(), "p", "main", 0, []string{"4"})
 
@@ -166,7 +168,7 @@ func TestBatchHostIssues_ATrackerWithNoIssueNumbersReadsNothingAndSaysSo(t *test
 func TestBatchHostIssues_AProjectThatTheConfigLacksIsAnError(t *testing.T) {
 	t.Parallel()
 
-	_, err := issueHost(model.TrackerGithub, issueForge{}, nil).Issues(t.Context(), "other", "main", 0, []string{"4"})
+	_, err := issueHost(storegithub.Tracker, issueForge{}, nil).Issues(t.Context(), "other", "main", 0, []string{"4"})
 
 	require.ErrorIs(t, err, errUnknownProject)
 }

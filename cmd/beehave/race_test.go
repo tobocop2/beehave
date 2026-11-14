@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/claim"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/store/beads"
@@ -49,7 +50,7 @@ func claimCode(t *testing.T, err error) int {
 func beadsOver(t *testing.T, run proc.Runner) *beads.Store {
 	t.Helper()
 
-	bd, err := beads.New(run, "p")
+	bd, err := beads.New(run, beadstest.Block("p"))
 	require.NoError(t, err)
 
 	return bd
@@ -246,10 +247,10 @@ func TestClaimOverBeads_AnyTrackerGetsBeadsClaims(t *testing.T) {
 	t.Parallel()
 
 	bd := beadstest.NewBd(t)
-	table := newAdapters(bd, nil)
+	table := newAdapters(bd, nil, nil)
 
 	for _, tracker := range slices.Sorted(maps.Keys(table.trackers)) {
-		rows, err := table.leases(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"})
+		rows, err := table.leases(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")})
 		require.NoError(t, err, string(tracker))
 
 		c, _ := claimsOn(t, rows, beadstest.Now)

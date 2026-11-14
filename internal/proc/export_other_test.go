@@ -31,6 +31,13 @@ func RunCapHelper(argv []string, fail *os.File, setrlimit func(int, *unix.Rlimit
 	return nil
 }
 
+// WithPipe returns r with a maker of the setup pipe that tests supply.
+func WithPipe(r ExecRunner, pipe func() (*os.File, *os.File, error)) ExecRunner {
+	r.hooks.pipe = pipe
+
+	return r
+}
+
 // WithExecutable returns r with a lookup of the running program that tests supply.
 func WithExecutable(r ExecRunner, executable func() (string, error)) ExecRunner {
 	r.hooks.executable = executable

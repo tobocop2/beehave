@@ -36,6 +36,8 @@ const (
 	inAdapter  = "the adapter or the consumer has its own failure tests, and this test does not prove them"
 	noEngine   = "a read for display or for a command line, which this test does not prove"
 	doesWork   = "the method starts, creates or records something; its error is the result of the action"
+
+	queueReadProof = "TestQueueReads_AFailedReadOfTheQueueReachesTheCallerOfTheHost"
 )
 
 // rules maps "directory.Interface.Method" to its rule.
@@ -93,6 +95,12 @@ var rules = map[string]rule{
 	"internal/flow.reader.Parent":         {Proof: "TestItemRead_AFailedReadFailsTheStep", Needle: "err"},
 	"internal/flow.orchestrators.Others":  {Proof: "TestRun_FailsWhenTheOtherOrchestratorsCannotBeListed", Needle: "fakeOthers"},
 
+	"internal/host/skypilot.Queue.Readings": {Proof: "TestStatus_ReportsTheFailureOfSkyStatusAndOfTheQueue", Needle: "err"},
+	"internal/host/skypilot.Queue.Submit":   {Proof: queueReadProof, Needle: "Submit"},
+	"internal/host/skypilot.Queue.Wait":     {Proof: queueReadProof, Needle: "Wait"},
+	"internal/host/skypilot.Queue.WorkRoot": {Proof: queueReadProof, Needle: "WorkRoot"},
+	"internal/host/skypilot.Queue.Log":      {Proof: queueReadProof, Needle: "Log"},
+
 	// Methods that start, create or record something. The error is the result of the action, not a read that a guard depends on.
 	"internal/batch.Recorder.Step":   {Exempt: doesWork},
 	"internal/cli.Runner.RunFile":    {Exempt: doesWork},
@@ -121,6 +129,7 @@ var rules = map[string]rule{
 	"internal/batch.IssueReads.IssueState":        {NotHeld: inAdapter},
 	"internal/batch.IssueReads.ClosingRefs":       {NotHeld: inAdapter},
 	"internal/cli.Steering.EngineRuns":            {Proof: "TestRun_AFailureToTellWhetherAnEngineRunsStopsTheCommand", Needle: "runningErr"},
+	"internal/cli.Steering.Engine":                {Proof: "TestStatus_AnEngineThatCannotBeReadFailsTheListInTextAndJSON", Needle: "engineErr"},
 	"internal/cli.Reading.Status":                 {NotHeld: noEngine},
 	"internal/cli.Reading.Steps":                  {NotHeld: noEngine},
 	"internal/cli.Reading.Lanes":                  {NotHeld: noEngine},

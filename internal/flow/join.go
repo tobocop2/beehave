@@ -68,6 +68,14 @@ func (c *Client) EngineRuns() (bool, error) {
 	return engineRuns(c.dir)
 }
 
+// Engine reports whether an engine holds the state folder, and what that engine says about itself: its mode, its pid and its start time.
+// The lock decides whether an engine runs. The description of an engine that stopped is never returned.
+func (c *Client) Engine() (EngineInfo, bool, error) {
+	running, live, err := engineState(c.dir)
+
+	return live.EngineInfo, running, err
+}
+
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
 // The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays queued.
@@ -130,8 +138,8 @@ func (c *Client) liveVersion() (string, error) {
 		return "", err
 	}
 
-	if running && live != "" {
-		return live, nil
+	if running && live.Version != "" {
+		return live.Version, nil
 	}
 
 	latest, err := dbos.GetLatestApplicationVersion(c.flow)

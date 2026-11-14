@@ -20,6 +20,12 @@ import (
 	"github.com/tobocop2/beehave/internal/store"
 )
 
+// The names the local adapter is chosen by: the tracker and the claim store that need no other tool.
+const (
+	Tracker model.TrackerName = "local"
+	Claims  model.ClaimsName  = "local"
+)
+
 const (
 	databaseFile  = "local.db"
 	fileMode      = 0o600

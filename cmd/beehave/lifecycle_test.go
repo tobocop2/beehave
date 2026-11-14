@@ -391,7 +391,7 @@ func leasesOver(t *testing.T, owner string) (leases, *beads.Store) {
 func TestLeases_OthersNamesEachOtherOwnerWithItsItems(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 	project := localProjectNamed("p")
 	first := leases{projects: map[string]config.Project{"p": {Project: project}}, rows: table.leases, owner: func() string { return "ownerone" }}
 	second := leases{projects: first.projects, rows: table.leases, owner: func() string { return "ownertwo" }}
@@ -414,7 +414,7 @@ func TestLeases_OthersNamesEachOtherOwnerWithItsItems(t *testing.T) {
 func TestLeases_TheLocalClaimStoreTakesRenewsAndReleasesAnItemAndEveryCallClosesTheStore(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 	project := localProjectNamed("p")
 	l := leases{projects: map[string]config.Project{"p": {Project: project}}, rows: table.leases, owner: func() string { return "ownerone" }}
 
@@ -480,7 +480,7 @@ func TestLeases_ACallClosesTheStoreAndReportsAFailedClose(t *testing.T) {
 func TestPulls_AProjectWithNoForgeGetsTheTypedNoForgeErrorFromEveryCall(t *testing.T) {
 	t.Parallel()
 
-	p := pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil).forge}
+	p := pulls{projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}}, forge: newAdapters(nil, nil, nil).forge}
 	ctx := t.Context()
 
 	_, pullErr := p.Pull(ctx, "p", "bb-1")
@@ -569,7 +569,7 @@ func TestOwnerToken_IsAValidOwnerAndDiffersEachTime(t *testing.T) {
 func TestNewLife_BuildsTheLifecycleOverTheTableOfTheConfig(t *testing.T) {
 	t.Parallel()
 
-	life := newLife(config.Config{Projects: map[string]config.Project{"p": {}}}, newAdapters(nil, nil))
+	life := newLife(config.Config{Projects: map[string]config.Project{"p": {}}}, newAdapters(nil, nil, nil))
 
 	_, err := life.Pull(t.Context(), "zzz", "bb-1")
 	require.ErrorIs(t, err, errUnknownProject)

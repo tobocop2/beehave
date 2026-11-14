@@ -43,6 +43,27 @@ func readableTokens(context.Context, string) bool { return true }
 
 func currentBd(context.Context) error { return nil }
 
+// bdVersion is the version check of the tool bd, as the doctor reads it.
+func bdVersion(check func(context.Context) error) map[string]func(context.Context) error {
+	return map[string]func(context.Context) error{"bd": check}
+}
+
+// claudeLogin is the login reader of the agent claude, as the doctor reads it.
+func claudeLogin(read func(context.Context, model.Runner) model.Reading) map[model.Agent]func(context.Context, model.Runner) model.Reading {
+	return map[model.Agent]func(context.Context, model.Runner) model.Reading{"claude": read}
+}
+
+// declaresNone is a complete Doctor whose adapter table declares no tool version, no login read and no fix text: its maps are empty, not nil.
+func declaresNone(token func(context.Context, string) bool) cli.Doctor {
+	return cli.Doctor{
+		TokenReadable:  token,
+		ToolVersions:   map[string]func(context.Context) error{},
+		Logins:         map[model.Agent]func(context.Context, model.Runner) model.Reading{},
+		ConfigDirFixes: map[model.Agent]func(string) string{},
+		TokenFixes:     map[model.Agent]func(string) string{},
+	}
+}
+
 // runDoctor runs the command with a complete Doctor: a reader that the test leaves nil is a passing reader.
 func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string) (int, string) {
 	t.Helper()
@@ -51,12 +72,24 @@ func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string
 		doctor.TokenReadable = readableTokens
 	}
 
-	if doctor.BdVersion == nil {
-		doctor.BdVersion = currentBd
+	if doctor.ToolVersions == nil {
+		doctor.ToolVersions = bdVersion(currentBd)
 	}
 
-	if doctor.ReadUsage == nil {
-		doctor.ReadUsage = func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+	if doctor.ConfigDirFixes == nil {
+		doctor.ConfigDirFixes = map[model.Agent]func(string) string{"claude": func(dir string) string { return "Log in to it: CLAUDE_CONFIG_DIR=" + dir + " claude" }}
+	}
+
+	if doctor.TokenFixes == nil {
+		doctor.TokenFixes = map[model.Agent]func(string) string{
+			"claude": func(entry string) string {
+				return "Run `claude setup-token`, then: security add-generic-password -s " + entry + " -a $USER -w"
+			},
+		}
+	}
+
+	if doctor.Logins == nil {
+		doctor.Logins = claudeLogin(func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) })
 	}
 
 	code, stdout, stderr := execDoctor(m, doctor, env)
@@ -68,7 +101,7 @@ func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string
 func execDoctor(m machine, doctor cli.Doctor, env map[string]string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor", "--config", m.config}, cli.BuildInfo{Version: "x", Doctor: doctor}, env, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor", "--config", m.config}, cli.BuildInfo{Registry: registry(), Version: "x", Doctor: doctor}, env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -78,7 +111,7 @@ func TestDoctor_EveryCheckPassesOnAGoodMachine(t *testing.T) {
 
 	m := newMachine(t)
 
-	code, out := runDoctor(t, m, cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{TokenReadable: readableTokens, ToolVersions: bdVersion(currentBd)}, m.env())
 
 	require.Equal(t, 0, code)
 	require.Equal(t, "ok   config readable\nok   git on the path\nok   bd on the path\nok   gh on the path\nok   bd version\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
@@ -94,7 +127,7 @@ func TestDoctor_AProjectWithNoBeadsAndNoGithubNeedsOnlyGit(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "bd")))
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
-	code, out := runDoctor(t, m, cli.Doctor{BdVersion: func(context.Context) error { return errors.New("never asked") }}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{ToolVersions: bdVersion(func(context.Context) error { return errors.New("never asked") })}, m.env())
 
 	require.Equal(t, 0, code)
 	require.Equal(t, "ok   config readable\nok   git on the path\nok   config_dir of a exists\nok   login of a has plan limits\nok   token of a readable\n", out)
@@ -118,7 +151,7 @@ func TestDoctor_OnlyTheBeadsProjectNeedsBdAndOnlyTheGithubProjectNeedsGh(t *test
 	t.Parallel()
 
 	m := newMachine(t)
-	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", claims = \"beads\", beads_prefix = \"p\")\n")
+	writeConfig(t, m.config, "projects/p.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\", claims = \"beads\", beads = beads(prefix = \"p\"))\n")
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "gh")))
 
 	code, out := runDoctor(t, m, cli.Doctor{}, m.env())
@@ -167,7 +200,7 @@ func TestDoctor_ARunnerWithNoPlanLimitsFailsWithTheLoginFix(t *testing.T) {
 		return model.UnknownLogin("runner a has no Claude plan limits. Log in with `CLAUDE_CONFIG_DIR=" + runner.ConfigDir + " claude` and run /login")
 	}
 
-	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{Logins: claudeLogin(read)}, m.env())
 
 	require.Equal(t, 1, code)
 	require.Equal(t, []string{"a " + m.login}, asked)
@@ -180,7 +213,7 @@ func TestDoctor_AUsageThatCannotBeReadFailsWithTheReason(t *testing.T) {
 	m := newMachine(t)
 	read := func(context.Context, model.Runner) model.Reading { return model.Unknown("claude is not installed") }
 
-	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{Logins: claudeLogin(read)}, m.env())
 
 	require.Equal(t, 1, code)
 	require.Contains(t, out, "FAIL login of a has plan limits\n     fix: claude is not installed\n")
@@ -194,7 +227,7 @@ func TestDoctor_ARunnerWithoutAConfigDirIsNotReadForUsage(t *testing.T) {
 
 	read := func(context.Context, model.Runner) model.Reading { return model.Unknown("never asked") }
 
-	code, out := runDoctor(t, m, cli.Doctor{ReadUsage: read}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{Logins: claudeLogin(read)}, m.env())
 
 	require.Equal(t, 0, code)
 	require.NotContains(t, out, "login of")
@@ -255,7 +288,7 @@ func TestDoctor_AMissingToolFailsWithTheInstallFix(t *testing.T) {
 			m := newMachine(t)
 			require.NoError(t, os.Remove(filepath.Join(m.bin, tool)))
 
-			code, out := runDoctor(t, m, cli.Doctor{BdVersion: currentBd}, m.env())
+			code, out := runDoctor(t, m, cli.Doctor{ToolVersions: bdVersion(currentBd)}, m.env())
 
 			require.Equal(t, 1, code)
 			require.Contains(t, out, "FAIL "+tool+" on the path\n     fix: Install "+tool+".\n")
@@ -269,7 +302,7 @@ func TestDoctor_AMissingBdSkipsTheVersionCheck(t *testing.T) {
 	m := newMachine(t)
 	require.NoError(t, os.Remove(filepath.Join(m.bin, "bd")))
 
-	_, out := runDoctor(t, m, cli.Doctor{BdVersion: func(context.Context) error { return errors.New("never asked") }}, m.env())
+	_, out := runDoctor(t, m, cli.Doctor{ToolVersions: bdVersion(func(context.Context) error { return errors.New("never asked") })}, m.env())
 
 	require.NotContains(t, out, "bd version")
 }
@@ -282,42 +315,71 @@ func TestDoctor_AnOldBdFailsWithTheMessageOfTheVersionCheck(t *testing.T) {
 		return errors.New("beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 	}
 
-	code, out := runDoctor(t, m, cli.Doctor{BdVersion: old}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{ToolVersions: bdVersion(old)}, m.env())
 
 	require.Equal(t, 1, code)
 	require.Contains(t, out, "FAIL bd version\n     fix: beehave needs bd 1.3.2 or newer for claims; found 0.56.1\n")
 }
 
-func TestDoctor_ADoctorWithoutAReaderIsRefusedAndNoCheckRuns(t *testing.T) {
+func TestDoctor_ADoctorWithoutAReaderIsRefusedByNameAndNoCheckRuns(t *testing.T) {
 	t.Parallel()
 
-	usage := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+	whole := func() cli.Doctor {
+		return cli.Doctor{
+			TokenReadable:  readableTokens,
+			ToolVersions:   bdVersion(currentBd),
+			Logins:         claudeLogin(func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }),
+			ConfigDirFixes: map[model.Agent]func(string) string{},
+			TokenFixes:     map[model.Agent]func(string) string{},
+		}
+	}
 
 	cases := map[string]struct {
-		doctor cli.Doctor
-		fields []string
+		strip func(*cli.Doctor)
+		field string
 	}{
-		"all":   {cli.Doctor{}, []string{"TokenReadable", "BdVersion", "ReadUsage"}},
-		"token": {cli.Doctor{BdVersion: currentBd, ReadUsage: usage}, []string{"TokenReadable"}},
-		"bd":    {cli.Doctor{TokenReadable: readableTokens, ReadUsage: usage}, []string{"BdVersion"}},
-		"usage": {cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd}, []string{"ReadUsage"}},
+		"token":         {func(d *cli.Doctor) { d.TokenReadable = nil }, "TokenReadable"},
+		"tool versions": {func(d *cli.Doctor) { d.ToolVersions = nil }, "ToolVersions"},
+		"logins":        {func(d *cli.Doctor) { d.Logins = nil }, "Logins"},
+		"config fixes":  {func(d *cli.Doctor) { d.ConfigDirFixes = nil }, "ConfigDirFixes"},
+		"token fixes":   {func(d *cli.Doctor) { d.TokenFixes = nil }, "TokenFixes"},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
+			doctor := whole()
+			tc.strip(&doctor)
+
 			m := newMachine(t)
-			code, out, errText := execDoctor(m, tc.doctor, m.env())
+			code, out, errText := execDoctor(m, doctor, m.env())
 
 			require.Equal(t, 1, code)
 			require.Empty(t, out)
-
-			for _, field := range tc.fields {
-				require.Contains(t, errText, field)
-			}
+			require.Contains(t, errText, tc.field)
 		})
 	}
+
+	m := newMachine(t)
+	code, out, errText := execDoctor(m, cli.Doctor{}, m.env())
+
+	require.Equal(t, 1, code)
+	require.Empty(t, out)
+	require.Contains(t, errText, "TokenReadable, ToolVersions, Logins, ConfigDirFixes, TokenFixes")
+}
+
+func TestDoctor_AToolWithNoVersionCheckAndAnAgentWithNoLoginReaderNeedOnlyTheirPresence(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+
+	code, out, errText := execDoctor(m, declaresNone(readableTokens), m.env())
+
+	require.Equal(t, 0, code)
+	require.Empty(t, errText)
+	require.NotContains(t, out, "bd version")
+	require.NotContains(t, out, "login of")
 }
 
 func TestDoctor_AVersionErrorWithNoTextIsStillAFailure(t *testing.T) {
@@ -326,7 +388,7 @@ func TestDoctor_AVersionErrorWithNoTextIsStillAFailure(t *testing.T) {
 	m := newMachine(t)
 	silent := func(context.Context) error { return errors.New("") }
 
-	code, out := runDoctor(t, m, cli.Doctor{BdVersion: silent}, m.env())
+	code, out := runDoctor(t, m, cli.Doctor{ToolVersions: bdVersion(silent)}, m.env())
 
 	require.Equal(t, 1, code)
 	require.Contains(t, out, "FAIL bd version\n")
@@ -337,7 +399,7 @@ func TestDoctor_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: cli.Doctor{TokenReadable: readableTokens, BdVersion: currentBd, ReadUsage: func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }}}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Registry: registry(), Version: "x", Doctor: declaresNone(readableTokens)}, map[string]string{}, &stdout, &stderr)
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr.String(), "beehave: cannot find the home folder")
@@ -353,4 +415,19 @@ func TestDoctor_AMissingConfigFolderFailsTheConfigCheck(t *testing.T) {
 
 	require.Equal(t, 1, code)
 	require.Contains(t, out, "FAIL config readable")
+}
+
+func TestDoctor_AnAgentWithNoFixTextGetsTheGenericFix(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	require.NoError(t, os.Remove(m.login))
+
+	denied := func(context.Context, string) bool { return false }
+	code, out, errText := execDoctor(m, declaresNone(denied), m.env())
+
+	require.Equal(t, 1, code)
+	require.Empty(t, errText)
+	require.Contains(t, out, "FAIL config_dir of a exists\n     fix: Log in to the claude CLI in "+m.login+".\n")
+	require.Contains(t, out, "FAIL token of a readable\n     fix: Store the token of the claude CLI in the Keychain entry beehave-a.\n")
 }

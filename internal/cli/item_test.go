@@ -15,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
@@ -74,9 +75,10 @@ func (rig *itemRig) run(ctx context.Context, args ...string) (int, string, strin
 	var stdout, stderr bytes.Buffer
 
 	info := cli.BuildInfo{
-		Version: "v9",
-		Flow:    rig.factory(),
-		Items: func(_ context.Context, project model.Project) (cli.ItemStore, error) {
+		Version:  "v9",
+		Registry: registry(),
+		Flow:     rig.factory(),
+		Items: map[model.TrackerName]cli.ItemOpener{local.Tracker: func(_ context.Context, project model.Project) (cli.ItemStore, error) {
 			rig.opened++
 			rig.items.projects = append(rig.items.projects, project.Name)
 
@@ -85,7 +87,7 @@ func (rig *itemRig) run(ctx context.Context, args ...string) (int, string, strin
 			}
 
 			return rig.items, nil
-		},
+		}},
 	}
 	code := cli.Execute(ctx, append(args, "--config", rig.dir), info, rig.env, &stdout, &stderr)
 
@@ -115,7 +117,7 @@ func TestItemAdd_RefusesAProjectWhoseTrackerIsNotLocalAndOpensNoStore(t *testing
 	code, _, stderr := rig.run(t.Context(), "item", "add", "q", "fix-login", "--title", "t", "--body-file", rig.bodyFile)
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "project q has the github tracker. beehave item works only on a project with tracker = \"local\"")
+	assert.Contains(t, stderr, "project q has the github tracker. beehave item works only on a project with a tracker that holds a local list")
 	assert.Zero(t, rig.opened)
 
 	code, _, stderr = rig.run(t.Context(), "item", "list", "q")

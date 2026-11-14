@@ -68,6 +68,8 @@ type Steering interface {
 	Resume(item string) error
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
+	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
+	Engine() (flow.EngineInfo, bool, error)
 	// JoinRun gives the item to the engine that holds the state folder and waits for its result.
 	JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error)
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
@@ -86,11 +88,12 @@ type Flow struct {
 
 // flowCommands holds what the five commands share: the process environment, the build version and the factories.
 type flowCommands struct {
-	ctx     context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
-	env     map[string]string
-	version string
-	factory Flow
-	items   ItemOpener
+	ctx      context.Context //nolint:containedctx // cobra gives a command no context of its own before it runs; the root passes it in
+	env      map[string]string
+	version  string
+	factory  Flow
+	items    map[model.TrackerName]ItemOpener
+	registry config.Adapters
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -101,7 +104,7 @@ func (f flowCommands) add(root *cobra.Command) {
 	root.AddCommand(f.statusCommand(), f.answerCommand(), f.resumeCommand(), f.cancelCommand())
 
 	if f.factory.Engine != nil {
-		root.AddCommand(f.runCommand())
+		root.AddCommand(f.runCommand(), f.serveCommand())
 	}
 }
 
@@ -113,7 +116,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 		return config.Config{}, flow.Options{}, err
 	}
 
-	cfg, problems := config.LoadFolder(dir, f.env)
+	cfg, problems := config.LoadFolder(dir, f.env, f.registry)
 	if len(problems) > 0 {
 		printLines(stderr, problems)
 
@@ -607,11 +610,27 @@ func printRuns(out io.Writer, client Steering, clock func() time.Time, days int,
 	}
 
 	printStatus(out, list.Runs, now)
+	printEngine(out, list.Engine)
 	printSchedules(out, list.Schedules)
 	printDays(out, list.Days)
 	printPollSection(out, list)
 
 	return nil
+}
+
+// printEngine says what holds the state folder: the serve engine with its pid and start time, the engine of a run with its pid, or no engine.
+func printEngine(stdout io.Writer, engine *flow.EngineInfo) {
+	// A failed write to stdout has no recovery.
+	switch {
+	case engine == nil:
+		_, _ = fmt.Fprintln(stdout, "\nno engine runs")
+	case engine.Mode == flow.ModeServe:
+		_, _ = fmt.Fprintf(stdout, "\nengine: serve, pid %d, since %s\n", engine.PID, engine.Since.Format(time.RFC3339))
+	case engine.Mode == flow.ModeRun:
+		_, _ = fmt.Fprintf(stdout, "\nengine: run, pid %d\n", engine.PID)
+	default:
+		_, _ = fmt.Fprintln(stdout, "\nengine: running")
+	}
 }
 
 // printDays writes the per-day figures, one line for each day. It writes nothing when the window has no run.

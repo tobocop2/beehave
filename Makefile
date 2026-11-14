@@ -20,7 +20,7 @@ ifneq ($(shell printf '%s' '$(GO_TEST_PROCS)' | grep -Ec '^[1-9][0-9]*$$'),1)
 $(error GO_TEST_PROCS must be a whole number of at least 1, not "$(GO_TEST_PROCS)")
 endif
 # The CPU work of a run does not change with its share, so a smaller share takes longer. The Go default timeout of 10 minutes is too short for
-# the run of the other packages at a share of 2 (a 2-core CI runner). Each run gets GO_TEST_TIMEOUT, which stays under the 20 minute CI job limit.
+# the run of the other packages at a share of 2 (a 2-core CI runner). Each run gets GO_TEST_TIMEOUT, which stays under the 30 minute limit of the CI test job.
 GO_TEST_TIMEOUT ?= 18m
 GO_TEST_FLAGS := -race -gcflags='modernc.org/...=-d=checkptr=0' -count=1 -timeout $(GO_TEST_TIMEOUT) $(if $(GO_TEST_P),-p $(GO_TEST_P))
 # The flow package has over 1000 tests, and under the race detector one run of it takes about 300 s on an idle host. A test binary has its own
@@ -37,13 +37,17 @@ FLOW_SHARDS := A-D E F-L M-Q
 FLOW_LETTERS := $(subst $(space),,$(FLOW_SHARDS))
 FLOW_PROFILES := $(subst $(space),,coverage.out$(foreach s,$(FLOW_SHARDS),$(comma)coverage-flow-$(s).out)$(comma)coverage-flow-rest.out)
 GOLANGCI_LINT_VERSION := v2.15.0
+GOTESTSUM_VERSION := v1.13.0
+# Each run of "test" goes through gotestsum, which writes one JUnit file in REPORT_DIR (the glob reports/*.xml matches them all).
+REPORT_DIR := reports
+GOTESTSUM = gotestsum --format standard-quiet --junitfile $(REPORT_DIR)
 AI_RULEZ_VERSION := v5.9.2
 BIN := bin/beehave
 REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
 	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files
@@ -51,6 +55,7 @@ setup:  ## Install the Go tools and generate the agent files
 	$(MAKE) ai-rulez-install
 	command -v go-test-coverage >/dev/null 2>&1 || go install github.com/vladopajic/go-test-coverage/v2@v2.20.1
 	command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+	command -v gotestsum >/dev/null 2>&1 || go install gotest.tools/gotestsum@$(GOTESTSUM_VERSION)
 	command -v deadcode >/dev/null 2>&1 || go install $(DEADCODE_VERSION)
 	$(MAKE) governance-generate
 
@@ -93,15 +98,16 @@ deadcode:  ## Fail if a function is unreachable from main and from the tests
 vuln:  ## Fail on a known vulnerability the code can reach
 	GOTELEMETRY=off govulncheck ./...
 
-test:  ## Run the Go tests with the race detector and write coverage.out and the flow profiles
-	@logs=test-other.log; \
-	GOMAXPROCS=$(GO_TEST_PROCS_HEAVY) go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $$(go list ./... | grep -v '/internal/flow$$') > test-other.log 2>&1 & pids=$$!; \
+test:  ## Run the Go tests with the race detector and write coverage.out, the flow profiles and the JUnit reports in reports/
+	@mkdir -p $(REPORT_DIR); rm -f $(REPORT_DIR)/junit-*.xml; \
+	logs=test-other.log; \
+	GOMAXPROCS=$(GO_TEST_PROCS_HEAVY) $(GOTESTSUM)/junit-other.xml -- $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $$(go list ./... | grep -v '/internal/flow$$') > test-other.log 2>&1 & pids=$$!; \
 	for s in $(FLOW_SHARDS); do \
 		procs=$(GO_TEST_PROCS); [ "$$s" != "$(FLOW_HEAVY_SHARD)" ] || procs=$(GO_TEST_PROCS_HEAVY); \
-		GOMAXPROCS=$$procs go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$$s.out -run "^Test[$$s]" $(FLOW_PKG) > test-flow-$$s.log 2>&1 & pids="$$pids $$!"; \
+		GOMAXPROCS=$$procs $(GOTESTSUM)/junit-flow-$$s.xml -- $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-$$s.out -run "^Test[$$s]" $(FLOW_PKG) > test-flow-$$s.log 2>&1 & pids="$$pids $$!"; \
 		logs="$$logs test-flow-$$s.log"; \
 	done; \
-	GOMAXPROCS=$(GO_TEST_PROCS) go test $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-rest.out -skip "^Test[$(FLOW_LETTERS)]" $(FLOW_PKG) > test-flow-rest.log 2>&1 & pids="$$pids $$!"; \
+	GOMAXPROCS=$(GO_TEST_PROCS) $(GOTESTSUM)/junit-flow-rest.xml -- $(GO_TEST_FLAGS) -covermode=atomic -coverprofile=coverage-flow-rest.out -skip "^Test[$(FLOW_LETTERS)]" $(FLOW_PKG) > test-flow-rest.log 2>&1 & pids="$$pids $$!"; \
 	logs="$$logs test-flow-rest.log"; \
 	rc=0; for p in $$pids; do wait $$p || rc=1; done; \
 	for l in $$logs; do echo "== $$l"; cat $$l; done; \
@@ -129,9 +135,16 @@ check-darwin:  ## On a Mac: run the Seatbelt enforcer tests and the contract sui
 	go test -count=1 -v -run 'TestEnforcer_PassesTheContractSuite' ./internal/sandbox/seatbelt | grep -v '^=== ' | grep -q -e '--- PASS: TestEnforcer_PassesTheContractSuite' || { echo "the contract suite did not pass under the real enforcer (skipped or failed)"; exit 1; }
 	go test -count=1 ./internal/sandbox/...
 
-# Run on one package: make mutation PKG=./internal/cli/...
+# Run on one package: make mutation PKG=./internal/cli
+# PKG is a folder, never a "..." pattern: gremlins walks the folder, so "./internal/..." finds no file and reports nothing.
 mutation:
-	gremlins unleash $(or $(PKG),./internal/...)
+	gremlins unleash $(or $(PKG),.)
+
+# Per-PR run: mutate only the Go lines that differ from BASE, the branch the pull request targets. BASE is required: make mutation-pr BASE=origin/integration/r1
+# Needs gremlins, jq and timeout (or gtimeout) on the path; MUTATION_TIMEOUT sets the limit in seconds (default 1200).
+# Fails when no mutant applies or one lives. A diff with no Go source change is not applicable and passes.
+mutation-pr:
+	sh scripts/mutation-pr.sh "$(BASE)"
 
 governance-generate: ai-rulez-version  ## Generate the agent files from .ai-rulez/
 	ai-rulez generate --no-self-mcp

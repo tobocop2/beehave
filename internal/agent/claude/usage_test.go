@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -171,7 +172,7 @@ func (f fakeCLI) environment(t *testing.T) map[string]string {
 func login(t *testing.T) model.Runner {
 	t.Helper()
 
-	return model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: t.TempDir()}
+	return model.Runner{Name: "a", Agent: claude.Name, ConfigDir: t.TempDir()}
 }
 
 func (f fakeCLI) read(t *testing.T, runner model.Runner) model.Reading {
@@ -652,10 +653,10 @@ func TestUsageReader_ARunnerThatCannotBeReadIsUnknownAndClaudeIsNotStarted(t *te
 		runner model.Runner
 		reason string
 	}{
-		{"another agent", model.Runner{Name: "o", Agent: model.AgentOpenCode, ConfigDir: t.TempDir()}, "usage is read for claude runners only, not opencode"},
-		{"no config_dir", model.Runner{Name: "a", Agent: model.AgentClaude}, "no config_dir"},
-		{"a missing config_dir", model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: filepath.Join(t.TempDir(), "none")}, "does not exist, so claude is not started"},
-		{"a config_dir that is a file", model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: file}, "does not exist, so claude is not started"},
+		{"another agent", model.Runner{Name: "o", Agent: opencode.Name, ConfigDir: t.TempDir()}, "usage is read for claude runners only, not opencode"},
+		{"no config_dir", model.Runner{Name: "a", Agent: claude.Name}, "no config_dir"},
+		{"a missing config_dir", model.Runner{Name: "a", Agent: claude.Name, ConfigDir: filepath.Join(t.TempDir(), "none")}, "does not exist, so claude is not started"},
+		{"a config_dir that is a file", model.Runner{Name: "a", Agent: claude.Name, ConfigDir: file}, "does not exist, so claude is not started"},
 	}
 
 	for _, tc := range cases {
@@ -749,4 +750,33 @@ func TestUsageReader_ACLIThatCannotStartIsUnknown(t *testing.T) {
 	write(t, filepath.Join(dir, "claude"), "#!/nonexistent/interpreter\n", scriptMode)
 
 	wantUnknown(t, claude.UsageReader{Base: map[string]string{"PATH": dir}}.Read(t.Context(), login(t)), "cannot start claude")
+}
+
+func TestAdapter_ReadUsageReadsTheRunnerThroughTheCLIOnThePathOfItsEnvironment(t *testing.T) {
+	t.Parallel()
+
+	cli := fake(t, answer)
+
+	usage := usageOf(t, claude.New(cli.base).ReadUsage(t.Context(), login(t)))
+	if usage.FiveHour.Percent != 12.5 || usage.SevenDay.Percent != 40 {
+		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestAdapter_ReadUsageWithNoCLIOnThePathIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	wantUnknown(t, claude.New(map[string]string{"PATH": t.TempDir()}).ReadUsage(t.Context(), login(t)), "claude")
+}
+
+func TestFixTexts_NameTheFolderAndTheEntryOfTheRunner(t *testing.T) {
+	t.Parallel()
+
+	if got := claude.ConfigFix("/login"); got != "Log in to it: CLAUDE_CONFIG_DIR=/login claude" {
+		t.Fatalf("config fix = %q", got)
+	}
+
+	if got := claude.TokenFix("beehave-a"); got != "Run `claude setup-token`, then: security add-generic-password -s beehave-a -a $USER -w" {
+		t.Fatalf("token fix = %q", got)
+	}
 }

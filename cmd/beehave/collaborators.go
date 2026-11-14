@@ -26,6 +26,7 @@ import (
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/review"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 var (
@@ -950,7 +951,7 @@ func audited(project string, tracker model.TrackerName, item string) ([]int, str
 	named, err := strconv.Atoi(item)
 
 	switch {
-	case tracker != model.TrackerGithub:
+	case tracker != storegithub.Tracker:
 		return nil, fmt.Sprintf("closing references: the tracker %s of project %s has no issue numbers, so no audit ran.", tracker, project)
 	case err != nil || named <= 0 || strconv.Itoa(named) != item:
 		return nil, fmt.Sprintf("closing references: the item id %q of project %s is not a plain issue number, so no audit ran.", item, project)

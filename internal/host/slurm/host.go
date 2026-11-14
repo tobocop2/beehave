@@ -12,6 +12,9 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
+// Name is the name the Slurm host provider is chosen by. The host is a Slurm cluster whose head node beehave reaches over ssh.
+const Name model.HostProvider = "slurm"
+
 // Host is a Slurm cluster that the owner provides and beehave reaches over ssh, at the head node. It creates and deletes nothing.
 //
 // Up checks that the head node answers and runs Slurm, and changes nothing. Down sends nothing. A caller releases the host with Teardown,

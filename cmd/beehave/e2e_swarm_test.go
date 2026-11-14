@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -51,10 +52,12 @@ func e2eSwarm() {
 	env := config.ProcessEnv()
 	idle := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
 	factory := flowFactoryFrom(func(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-		table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
-		table.forges[model.ForgeGithub] = func(model.Project) (forge.Forge, error) {
+		table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
+		swarmForge := table.forges[forgegithub.Name]
+		swarmForge.build = func(model.Project) (forge.Forge, error) {
 			return swarmForgeAt{remote: env[swarmRemote], dir: env[swarmFolder]}, nil
 		}
+		table.forges[forgegithub.Name] = swarmForge
 
 		return newEngineOn(ctx, cfg, opts, idle, table)
 	})

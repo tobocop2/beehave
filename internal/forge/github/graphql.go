@@ -22,6 +22,8 @@ const (
 		"comments(first:1){nodes{author{login} body}}}}}}}"
 	stackQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(" +
 		"number:$p){stack{id}}}}"
+	stackNumberQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(" +
+		"number:$p){stack{number}}}}"
 	closingQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){defaultBranchRef{name} pullRequest(" +
 		"number:$p){baseRefName baseRepository{nameWithOwner} " +
 		"closingIssuesReferences(first:100){totalCount nodes{number repository{nameWithOwner}}}}}}"

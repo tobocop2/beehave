@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
 // batchGitTimeout is the time that one git call of batch_merge may run.
@@ -150,7 +151,7 @@ func (h batchHost) Issues(ctx context.Context, project, base string, integration
 		return batch.Report{}, err
 	}
 
-	if found.Tracker != model.TrackerGithub {
+	if found.Tracker != storegithub.Tracker {
 		return batch.Report{Note: fmt.Sprintf("issue states: the tracker %s of project %s has no issue numbers, so no read ran.", found.Tracker, project)}, nil
 	}
 

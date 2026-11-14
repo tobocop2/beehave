@@ -65,7 +65,7 @@ func (s *spy) total() int {
 }
 
 func hostConfig() model.HostConfig {
-	return model.HostConfig{Provider: model.HostSlurm, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private", SSH: model.SSHConfig{User: "lane"}}
+	return model.HostConfig{Provider: Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private", SSH: model.SSHConfig{User: "lane"}}
 }
 
 func fastClock() Option {

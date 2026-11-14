@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -19,29 +21,30 @@ import (
 var ErrDoctorIncomplete = errors.New("the doctor is missing a reader")
 
 // Doctor holds the checks that need a program outside the process. Every field is required: a check that is left out would read as a pass.
+// A map that is not nil is the declaration of the adapter table. An empty map says that no tool or agent has a check of that kind. A nil map is a reader that was never given.
 type Doctor struct {
 	// TokenReadable says whether the Keychain entry holds a token. It never returns the token.
 	TokenReadable func(ctx context.Context, entry string) bool
-	// BdVersion returns why the installed bd is too old to use for claims.
-	BdVersion func(ctx context.Context) error
-	// ReadUsage reads the usage of a runner. Its reading says whether the login of the runner has plan limits.
-	ReadUsage func(ctx context.Context, runner model.Runner) model.Reading
+	// ToolVersions returns why an installed tool is too old to use, by tool name.
+	ToolVersions map[string]func(ctx context.Context) error
+	// Logins reads the usage of a runner, by agent. Its reading says whether the login of the runner has plan limits.
+	Logins map[model.Agent]func(ctx context.Context, runner model.Runner) model.Reading
+	// ConfigDirFixes gives the text that tells a person to log in, for an agent whose config folder is missing, by agent.
+	ConfigDirFixes map[model.Agent]func(dir string) string
+	// TokenFixes gives the text that tells a person to store the token, for an agent whose Keychain entry is missing, by agent.
+	TokenFixes map[model.Agent]func(entry string) string
 }
 
 // complete returns an error that names each field that has no value.
 func (d Doctor) complete() error {
+	given := []bool{d.TokenReadable != nil, d.ToolVersions != nil, d.Logins != nil, d.ConfigDirFixes != nil, d.TokenFixes != nil}
+
 	var missing []string
 
-	if d.TokenReadable == nil {
-		missing = append(missing, "TokenReadable")
-	}
-
-	if d.BdVersion == nil {
-		missing = append(missing, "BdVersion")
-	}
-
-	if d.ReadUsage == nil {
-		missing = append(missing, "ReadUsage")
+	for i, name := range []string{"TokenReadable", "ToolVersions", "Logins", "ConfigDirFixes", "TokenFixes"} {
+		if !given[i] {
+			missing = append(missing, name)
+		}
 	}
 
 	if len(missing) == 0 {
@@ -62,7 +65,7 @@ type check struct {
 	run  func() error
 }
 
-func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor) *cobra.Command {
+func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor, registry config.Adapters) *cobra.Command {
 	var flag string
 
 	command := &cobra.Command{
@@ -71,7 +74,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 		Long:  "Check the config folder, the login folder and the token of each runner, and the programs that the projects need: git always, bd for a project with beads, gh for a project with GitHub. Exit 0 when every check passes, 1 when one fails.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, flag)
+			return runDoctor(ctx, cmd.OutOrStdout(), env, doctor, registry, flag)
 		},
 	}
 	addConfigFlag(command, &flag)
@@ -79,7 +82,7 @@ func newDoctorCommand(ctx context.Context, env map[string]string, doctor Doctor)
 	return command
 }
 
-func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doctor Doctor, flag string) error {
+func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doctor Doctor, registry config.Adapters, flag string) error {
 	if err := doctor.complete(); err != nil {
 		return err
 	}
@@ -91,7 +94,7 @@ func runDoctor(ctx context.Context, stdout io.Writer, env map[string]string, doc
 
 	failed := false
 
-	for _, item := range doctorChecks(ctx, env, doctor, dir) {
+	for _, item := range doctorChecks(ctx, env, doctor, registry, dir) {
 		failed = report(stdout, item) || failed
 	}
 
@@ -120,8 +123,8 @@ func report(stdout io.Writer, item check) bool {
 
 // doctorChecks returns the checks in the order of the report: the config, the programs, then the runners.
 // The runners come from the config folder, so a folder that does not load has none.
-func doctorChecks(ctx context.Context, env map[string]string, doctor Doctor, dir string) []check {
-	cfg, problems := config.LoadFolder(dir, env)
+func doctorChecks(ctx context.Context, env map[string]string, doctor Doctor, registry config.Adapters, dir string) []check {
+	cfg, problems := config.LoadFolder(dir, env, registry)
 
 	checks := []check{{"config readable", func() error {
 		if len(problems) == 0 {
@@ -145,27 +148,31 @@ func runnerChecks(ctx context.Context, doctor Doctor, runner model.Runner) []che
 	var checks []check
 
 	if runner.ConfigDir != "" {
-		checks = append(checks, configDirCheck(runner))
+		checks = append(checks, configDirCheck(runner, doctor.ConfigDirFixes[runner.Agent]))
 
-		if runner.Agent == model.AgentClaude {
-			checks = append(checks, loginCheck(ctx, doctor.ReadUsage, runner))
+		if read := doctor.Logins[runner.Agent]; read != nil {
+			checks = append(checks, loginCheck(ctx, read, runner))
 		}
 	}
 
 	if runner.Keychain != "" {
-		checks = append(checks, tokenCheck(ctx, doctor.TokenReadable, runner))
+		checks = append(checks, tokenCheck(ctx, doctor.TokenReadable, runner, doctor.TokenFixes[runner.Agent]))
 	}
 
 	return checks
 }
 
-func configDirCheck(runner model.Runner) check {
+func configDirCheck(runner model.Runner, fixText func(string) string) check {
 	return check{"config_dir of " + runner.Name + " exists", func() error {
 		if info, err := os.Stat(runner.ConfigDir); err == nil && info.IsDir() {
 			return nil
 		}
 
-		return fix("Log in to it: CLAUDE_CONFIG_DIR=" + runner.ConfigDir + " claude")
+		if fixText == nil {
+			return fix("Log in to the " + string(runner.Agent) + " CLI in " + runner.ConfigDir + ".")
+		}
+
+		return fix(fixText(runner.ConfigDir))
 	}}
 }
 
@@ -181,38 +188,36 @@ func loginCheck(ctx context.Context, read func(context.Context, model.Runner) mo
 	}}
 }
 
-func tokenCheck(ctx context.Context, readable func(context.Context, string) bool, runner model.Runner) check {
+func tokenCheck(ctx context.Context, readable func(context.Context, string) bool, runner model.Runner, fixText func(string) string) check {
 	return check{"token of " + runner.Name + " readable", func() error {
 		if readable(ctx, runner.Keychain) {
 			return nil
 		}
 
-		return fix("Run `claude setup-token`, then: security add-generic-password -s " + runner.Keychain + " -a $USER -w")
+		if fixText == nil {
+			return fix("Store the token of the " + string(runner.Agent) + " CLI in the Keychain entry " + runner.Keychain + ".")
+		}
+
+		return fix(fixText(runner.Keychain))
 	}}
 }
 
-// requiredTools returns the programs that the projects of the config need, in the order of the report: git always, then bd and gh when a project names them.
+// requiredTools returns the programs that the projects of the config need, in the order of the report: git always, then each adapter tool once in name order.
 func requiredTools(cfg config.Config) []string {
-	needed := map[string]bool{model.ToolGit: true}
+	needed := map[string]bool{}
 
 	for _, project := range cfg.Projects {
-		for _, tool := range project.Tools() {
+		for _, tool := range project.Tools {
 			needed[tool] = true
 		}
 	}
 
-	var tools []string
+	delete(needed, model.ToolGit)
 
-	for _, tool := range []string{model.ToolGit, model.ToolBd, model.ToolGh} {
-		if needed[tool] {
-			tools = append(tools, tool)
-		}
-	}
-
-	return tools
+	return append([]string{model.ToolGit}, slices.Sorted(maps.Keys(needed))...)
 }
 
-// toolChecks returns the checks of the programs on the path, and of the bd version when bd is needed and there.
+// toolChecks returns the checks of the programs on the path, and of the version of each program that has a version check and is there.
 func toolChecks(ctx context.Context, env map[string]string, doctor Doctor, tools []string) []check {
 	var checks []check
 
@@ -224,8 +229,10 @@ func toolChecks(ctx context.Context, env map[string]string, doctor Doctor, tools
 		checks = append(checks, pathCheck(tool, found[tool]))
 	}
 
-	if found[model.ToolBd] {
-		checks = append(checks, check{"bd version", func() error { return doctor.BdVersion(ctx) }})
+	for _, tool := range tools {
+		if versionCheck := doctor.ToolVersions[tool]; found[tool] && versionCheck != nil {
+			checks = append(checks, check{tool + " version", func() error { return versionCheck(ctx) }})
+		}
 	}
 
 	return checks

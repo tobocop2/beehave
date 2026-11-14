@@ -9,7 +9,7 @@ project(
     tracker = "github",        # "local" (default), "beads" or "github" (GitHub Issues); this chooses where work items live
     claims = "beads",          # "local" (default) or "beads"; this chooses where the claim leases live
     forge = "github",          # "github", or leave the argument out for a project with no forge
-    beads_prefix = "proj",     # the id prefix of the beads database; required when tracker or claims is "beads"
+    beads = beads(prefix = "proj"),  # the beads block: the id prefix of the beads database; required when tracker or claims is "beads", and refused otherwise
     base_branch = "main",
     gate = "make check",       # the same command that your CI runs
     # gate_steps = {"fmt": "make fmt", "lint": "make lint", "test": "make test"},  # instead of `gate`: one named step for each command, in order. The gate gives a result for each name, and a merge needs a pass for every one. The loader refuses `gate` and `gate_steps` together, and the name `tests`
@@ -49,7 +49,7 @@ project(
     #         catch_up = False,              # True asks for the ticks that no engine ran; the default is False
     #     ),
     # ],                               # optional. This key only declares the schedules and `beehave check config` validates them
-    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster), or a list of names such as ["gpu", "gpu-b"]
+    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster; a letter, then letters, digits, dots and hyphens), or a list of names such as ["gpu", "gpu-b"]
     # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
@@ -709,7 +712,7 @@ func TestNewAgents_WiresTheRealRunnerAndTheAdapterTable(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Runners: []model.Runner{{Name: "x", Agent: model.Agent("none"), ConfigDir: "/login"}}}
-	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil))
+	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
 
 	got, err := a.Run(t.Context(), flow.AgentRequest{Item: "1", Project: "p", Login: "x", Prompt: "go"})
 
@@ -753,7 +756,7 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
-		Runners: []model.Runner{{Name: "a", Agent: model.AgentClaude}, {Name: "b", Agent: model.AgentClaude}},
+		Runners: []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
 		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
 	}
 	read := func(_ context.Context, runner model.Runner) model.Reading {
@@ -765,13 +768,75 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read, pool.Select)(t.Context(), []string{"a"})
+	got, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), []string{"a"})
 	require.NoError(t, err)
 	assert.Equal(t, "b", got, "b has more use than a, and a is busy")
 
-	got, err = poolPick(cfg, read, pool.Select)(t.Context(), nil)
+	got, err = poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "a", got)
+}
+
+func TestPoolPick_AStepOfOneAgentKindNeverGetsARunnerOfAnotherKind(t *testing.T) {
+	t.Parallel()
+
+	other := model.Agent("other")
+	cfg := config.Config{
+		Runners: []model.Runner{{Name: "claude-1", Agent: claude.Name}, {Name: "other-1", Agent: other}},
+		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+	}
+	// Both kinds report usage, and the runner of the other kind has the lower use, so an unfiltered pick would take it.
+	read := func(_ context.Context, runner model.Runner) model.Reading {
+		percent := 80.0
+		if runner.Agent == other {
+			percent = 10
+		}
+
+		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+	}
+
+	for _, selectRunner := range []selector{pool.Select, pool.SelectOverCap} {
+		got, err := poolPick(cfg, claude.Name, read, selectRunner)(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "claude-1", got)
+
+		got, err = poolPick(cfg, other, read, selectRunner)(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "other-1", got)
+	}
+}
+
+func TestPoolPick_AKindWithNoRunnerIsAnError(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{Runners: []model.Runner{{Name: "other-1", Agent: model.Agent("other")}}}
+	read := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+
+	_, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), nil)
+
+	require.ErrorIs(t, err, pool.ErrNoRunner)
+}
+
+func TestReadUsage_ARunnerOfAnAgentWithNoEntryIsUnknownSoThePoolNeverPicksIt(t *testing.T) {
+	t.Parallel()
+
+	reading := readUsage(agentEntries(nil))(t.Context(), model.Runner{Name: "o", Agent: model.Agent("none")})
+
+	_, known := reading.Usage()
+
+	assert.False(t, known)
+	assert.Equal(t, "the none agent cannot report usage", reading.Reason())
+}
+
+func TestReadUsage_ARunnerOfARegisteredAgentIsReadThroughItsAdapter(t *testing.T) {
+	t.Parallel()
+
+	reading := readUsage(agentEntries(nil))(t.Context(), model.Runner{Name: "c", Agent: claude.Name})
+
+	_, known := reading.Usage()
+
+	assert.False(t, known)
+	assert.Equal(t, "the runner has no config_dir, so its login is not known", reading.Reason())
 }
 
 func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
@@ -779,7 +844,7 @@ func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
 
 	cfg := config.Config{
 		Projects: map[string]config.Project{"p": {}},
-		Runners:  []model.Runner{{Name: "a", Agent: model.AgentClaude}, {Name: "b", Agent: model.AgentClaude}},
+		Runners:  []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "b", Agent: claude.Name}},
 		Pool:     config.Pool{FiveHourMax: 90, SevenDayMax: 95},
 	}
 	read := func(_ context.Context, runner model.Runner) model.Reading {
@@ -820,8 +885,8 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 	cfg := config.Config{
 		Pool: config.Pool{FiveHourMax: 90, SevenDayMax: 95},
 		Runners: []model.Runner{
-			{Name: "busy", Agent: model.AgentClaude},
-			{Name: "free", Agent: model.AgentClaude},
+			{Name: "busy", Agent: claude.Name},
+			{Name: "free", Agent: claude.Name},
 		},
 	}
 	read := func(_ context.Context, runner model.Runner) model.Reading {
@@ -833,21 +898,61 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read, pool.Select)(t.Context(), nil)
+	got, err := poolPick(cfg, claude.Name, read, pool.Select)(t.Context(), nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "free", got)
 
-	_, err = poolPick(config.Config{}, read, pool.Select)(t.Context(), nil)
+	_, err = poolPick(config.Config{}, claude.Name, read, pool.Select)(t.Context(), nil)
 	require.ErrorIs(t, err, pool.ErrNoRunner)
 }
 
-func TestNewLogins_ReadsTheUsageOfTheClaudeRunners(t *testing.T) {
+func TestNewLogins_AConfigWithNoRunnerHasNoPick(t *testing.T) {
 	t.Parallel()
 
 	_, err := newLogins(config.Config{}, flow.Options{}).pool(t.Context(), nil)
 
 	require.ErrorIs(t, err, pool.ErrNoRunner)
+}
+
+// usageFixture is a config of one claude runner and options whose PATH holds a fake claude that exits 7 and says so. The reading of the runner
+// then carries the words of the fake, so a pick that fails shows that the usage came from the claude adapter.
+func usageFixture(t *testing.T) (config.Config, flow.Options) {
+	t.Helper()
+
+	tools := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "claude"), []byte("#!/bin/sh\necho fake-claude-ran >&2\nexit 7\n"), e2eToolMode))
+
+	cfg := config.Config{
+		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Runners: []model.Runner{{Name: "a", Agent: claude.Name, ConfigDir: t.TempDir()}},
+	}
+
+	return cfg, flow.Options{Env: map[string]string{"PATH": tools, "HOME": t.TempDir()}}
+}
+
+func TestNewLogins_ThePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfTheOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := usageFixture(t)
+	picks := newLogins(cfg, opts)
+
+	_, err := picks.pool(t.Context(), nil)
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
+
+	_, err = picks.overCap(t.Context(), nil)
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
+}
+
+func TestNewDeps_TheEnginePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfTheOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := usageFixture(t)
+	cfg.Projects = map[string]config.Project{"p": {}}
+
+	_, err := newDeps(cfg, opts).Logins.Pick(t.Context(), "p", "1", nil, false)
+
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }
 
 func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {

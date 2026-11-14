@@ -63,15 +63,6 @@ func sshSpec() spec {
 	return spec{"ssh", []string{"address?", "user?", "port?", "identity?", "work_root?", "known_hosts?"}}
 }
 
-// providerBlock is the block that a provider takes. A provider takes no other block.
-func providerBlock(provider model.HostProvider) string {
-	if provider == model.HostSkyPilot {
-		return skypilotSpec().name
-	}
-
-	return sshSpec().name
-}
-
 // idleUnset and portUnset are the values of a key that the call leaves out, so that the loader can tell an omitted key from a written one.
 const (
 	idleUnset = -1 << 31
@@ -109,7 +100,7 @@ func newSkyPilot(at syntax.Position, kwargs []starlark.Tuple) (*rawSkyPilot, err
 
 // hostConfig checks the host block against build_host and returns it. A project that builds locally has none.
 // A block that must go points at itself. A block that is missing points at the project call.
-func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error) {
+func hostConfig(buildHost string, project rawProject, registry Adapters) (*model.HostConfig, error) {
 	raw := project.Host
 
 	switch {
@@ -121,54 +112,62 @@ func hostConfig(buildHost string, project rawProject) (*model.HostConfig, error)
 		return nil, refuseAt(project.At, hostTableMessage, "is required when `build_host` is a cluster name", "Add a `host` block with `provider` and `disk_floor_gb`.")
 	}
 
-	return buildHostConfig(*raw)
+	return buildHostConfig(*raw, registry)
 }
 
-func buildHostConfig(raw rawHost) (*model.HostConfig, error) {
-	provider, err := parseKey(raw.At, "host.provider", raw.Provider, model.ParseHostProvider)
+func buildHostConfig(raw rawHost, registry Adapters) (*model.HostConfig, error) {
+	provider, err := parseKey(raw.At, "host.provider", raw.Provider, registry.parseHostProvider)
 	if err != nil {
 		return nil, err
 	}
 
 	host := model.HostConfig{Provider: provider, PrivateRemote: raw.PrivateRemote}
 
-	if err = checkBlocks(raw, provider); err != nil {
-		return nil, err
-	}
-
-	if err = fillProvider(raw, &host); err != nil {
-		return nil, err
-	}
-
-	if err = fillKeys(raw, &host); err != nil {
+	if err = fillHost(raw, &host, *registry.Hosts[provider]); err != nil {
 		return nil, err
 	}
 
 	return &host, nil
 }
 
-// fillProvider sets the block of the provider. Only SkyPilot has an idle delete, so only it gets a default for idle_minutes; fillCounts replaces it with a written value.
-func fillProvider(raw rawHost, host *model.HostConfig) error {
-	if host.Provider == model.HostSkyPilot {
+// fillHost checks the blocks of the host block against the entry of its provider, then sets the block of the provider and the keys.
+func fillHost(raw rawHost, host *model.HostConfig, entry Entry) error {
+	if err := checkBlocks(raw, host.Provider, entry); err != nil {
+		return err
+	}
+
+	if err := fillProvider(raw, host, entry); err != nil {
+		return err
+	}
+
+	return fillKeys(raw, host)
+}
+
+// fillProvider sets the block of the provider. Only a provider that beehave deletes after idle_minutes gets a default for that key; fillCounts replaces it with a written value.
+func fillProvider(raw rawHost, host *model.HostConfig, entry Entry) error {
+	if entry.HostBlock == skypilotSpec().name {
 		if raw.SkyPilot != nil {
 			host.SkyPilot = model.SkyPilotConfig(*raw.SkyPilot)
 		}
+	} else {
+		var err error
 
-		host.IdleMinutes = defaultIdleMins
-
-		return nil
+		host.SSH, err = sshConfig(raw.SSH)
+		if err != nil {
+			return err
+		}
 	}
 
-	var err error
+	if entry.Idle {
+		host.IdleMinutes = defaultIdleMins
+	}
 
-	host.SSH, err = sshConfig(raw.SSH)
-
-	return err
+	return nil
 }
 
 // checkBlocks refuses a block of another provider, and idle_minutes for a provider that beehave does not delete the machine of.
-func checkBlocks(raw rawHost, provider model.HostProvider) error {
-	want := providerBlock(provider)
+func checkBlocks(raw rawHost, provider model.HostProvider, entry Entry) error {
+	want := entry.HostBlock
 
 	for _, block := range []struct {
 		name    string
@@ -179,7 +178,7 @@ func checkBlocks(raw rawHost, provider model.HostProvider) error {
 		}
 	}
 
-	if provider != model.HostSkyPilot && raw.IdleMinutes != idleUnset {
+	if !entry.Idle && raw.IdleMinutes != idleUnset {
 		return refuseAt(raw.At, "`host.idle_minutes` is not allowed for provider %q: beehave does not delete the machine. Remove the key.", provider)
 	}
 

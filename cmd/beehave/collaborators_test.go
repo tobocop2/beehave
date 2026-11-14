@@ -15,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
@@ -257,7 +258,7 @@ func TestPrograms_ACapThatCannotBeCountedOrSetFailsTheStepWithItsCause(t *testin
 }
 
 func TestNewPrograms_ACappedProgramThatExits125WithCouldNotKeepsItsResult(t *testing.T) { //nolint:paralleltest // the cap counts every process of the user
-	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", `echo out; echo "could not open the thing" >&2; exit 125`}, MaxNewProcesses: 1000})
 
@@ -269,7 +270,7 @@ func TestNewPrograms_ACappedProgramThatExits125WithCouldNotKeepsItsResult(t *tes
 func TestNewPrograms_ACommandStepGetsOnlyTheEnvironmentOfItsRequestAndItsStdin(t *testing.T) {
 	t.Setenv("BEEHAVE_TEST_SECRET", "secret")
 
-	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", "env; cat"}, Stdin: "from stdin\n", Env: []string{"A=1"}})
 
@@ -392,7 +393,7 @@ func TestNewPrograms_BuildTheHostOfTheProjectOnlyWhenItHasOne(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Projects: map[string]config.Project{"bare": {}}}
-	runs := newPrograms(cfg, treeAt("/tree"), newAdapters(nil, nil))
+	runs := newPrograms(cfg, treeAt("/tree"), newAdapters(nil, nil, nil))
 
 	_, err := runs.hosts("zzz", "")
 	require.ErrorIs(t, err, errUnknownProject)
@@ -408,12 +409,12 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	t.Parallel()
 
 	hosted := &fakeHost{}
-	table := newAdapters(nil, nil)
-	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
-		model.HostSkyPilot: func(model.Project) (host.Host, error) { return hosted, nil },
+	table := newAdapters(nil, nil, nil)
+	table.hosts = map[model.HostProvider]hostAdapter{
+		skypilot.Name: {build: func(model.Project) (host.Host, error) { return hosted, nil }},
 	}
 
-	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
+	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: skypilot.Name}}}
 	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
 
 	got, err := runs.hosts("h", "")
@@ -430,16 +431,16 @@ func TestNewPrograms_BuildTheHostOfTheClusterThatTheRunChose(t *testing.T) {
 
 	var built []string
 
-	table := newAdapters(nil, nil)
-	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
-		model.HostSkyPilot: func(project model.Project) (host.Host, error) {
+	table := newAdapters(nil, nil, nil)
+	table.hosts = map[model.HostProvider]hostAdapter{
+		skypilot.Name: {build: func(project model.Project) (host.Host, error) {
 			built = append(built, project.BuildHost)
 
 			return &fakeHost{}, nil
-		},
+		}},
 	}
 
-	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
+	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: skypilot.Name}}}
 	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
 
 	_, err := runs.hosts("h", "gpu-b")
@@ -548,7 +549,7 @@ func TestTrackerItems_ClosesTheTrackerAfterEveryReadAndReportsAFailedClose(t *te
 func TestTrackerItems_ALocalProjectRefusesAnItemThatWasNeverAdded(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 	items := trackerItems{projects: map[string]config.Project{"p": {Project: localProjectNamed("p")}}, tracker: table.tracker}
 
 	_, err := items.Fields(t.Context(), "p", "fix-login")

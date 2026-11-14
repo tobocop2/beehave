@@ -1,4 +1,4 @@
-// Package skypilot is the host provider that creates a machine with the sky command and queues jobs on it with Slurm, through the slurm package.
+// Package skypilot is the host provider that creates a machine with the sky command and queues jobs on it with the queue that its caller passes to New.
 // It runs the sky and ssh command lines through proc.Runner. It links no cloud library and opens no listener of its own.
 // The SkyPilot CLI starts its own local API server; only a project that selects this provider gets it.
 package skypilot
@@ -14,10 +14,12 @@ import (
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/jobwait"
 	"github.com/tobocop2/beehave/internal/host/link"
-	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
+
+// Name is the name the SkyPilot host provider is chosen by.
+const Name model.HostProvider = "skypilot"
 
 // ErrConfig is returned by New for a cluster name or a setting that the sky command line cannot take.
 var ErrConfig = errors.New("invalid SkyPilot host setting")
@@ -26,25 +28,46 @@ const runLimitKey = "gcp.managed_instance_group.run_duration="
 
 var wordPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// Host is a SkyPilot cluster with Slurm on its head node. SkyPilot creates and deletes the cluster; the Slurm queue runs the jobs.
+// Slot is what the queue does to keep the cluster busy while a job holds its work.
+// Hold runs after the job is queued. Release runs when the work of the job is banked.
+type Slot interface {
+	Hold(ctx context.Context, job jobwait.Job) error
+	Release(ctx context.Context, job jobwait.Job) error
+}
+
+// Queue is the job half of the cluster host: the queue that runs the jobs on the head node.
+type Queue interface {
+	Readings(ctx context.Context) (model.HostStatus, error)
+	Submit(ctx context.Context, spec model.JobSpec) (model.JobID, error)
+	Wait(ctx context.Context, id model.JobID) (model.JobState, error)
+	Cancel(ctx context.Context, id model.JobID) error
+	WorkRoot(ctx context.Context) (string, error)
+	Log(ctx context.Context, id model.JobID) (string, error)
+	Drain(ctx context.Context) error
+	Resume(ctx context.Context) error
+}
+
+// QueueBuilder builds the queue over the link, with the slot that keeps the cluster busy.
+type QueueBuilder func(l *link.Link, config model.HostConfig, slot Slot) Queue
+
+// Host is a SkyPilot cluster with a job queue on its head node. SkyPilot creates and deletes the cluster; the queue runs the jobs.
 type Host struct {
 	cluster string
 	config  model.HostConfig
 	sky     proc.Runner
 	link    *link.Link
-	*slurm.Queue
+	Queue
 }
 
 // New returns a host for the cluster. sky is the sky command line. ssh is the ssh command line: the first argument of a call is a cluster name, as SkyPilot writes one ssh config entry for each cluster.
-// Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
-// A test passes options to replace the clock, the bank and the nonce of the queue.
-func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, opts ...slurm.Option) (*Host, error) {
+// queue builds the job queue over the link. Up is the first call and Down the last. A setting that cannot reach the sky command line safely is refused.
+func New(cluster string, config model.HostConfig, sky, ssh proc.Runner, queue QueueBuilder) (*Host, error) {
 	if err := checkConfig(cluster, config); err != nil {
 		return nil, err
 	}
 
 	h := &Host{cluster: cluster, config: config, sky: sky, link: link.New(cluster, ssh)}
-	h.Queue = slurm.New(h.link, config, slot{h}, opts...)
+	h.Queue = queue(h.link, config, slot{h})
 
 	return h, nil
 }
@@ -111,7 +134,7 @@ func (h *Host) infra() string {
 	return cloud + "/" + region
 }
 
-// Status reports whether the cluster exists, whether Slurm drains its nodes, and its free disk space.
+// Status reports whether the cluster exists, whether the queue drains its nodes, and its free disk space.
 // A cluster that is in the list but not up, and any answer that beehave does not recognize, is an error.
 func (h *Host) Status(ctx context.Context) (model.HostStatus, error) {
 	out, err := link.Run(ctx, h.sky, "sky status", []string{"status", "-r", "-o", "json"})
@@ -144,7 +167,7 @@ func (h *Host) Teardown(ctx context.Context) error {
 	return host.Teardown(ctx, h, h.link.Runner("git"), h.link.Runner("find"), h.config.PrivateRemote, host.WithRepoBudget(h.config.BankBudget))
 }
 
-// slot is the part of SkyPilot that the Slurm queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
+// slot is the part of SkyPilot that the queue calls. SkyPilot counts only its own job queue as work, so Hold starts a SkyPilot job
 // (`sky exec -d`) that holds the cluster until Release writes the bank marker, for at most max_run.
 type slot struct{ h *Host }
 
@@ -164,7 +187,7 @@ func (s slot) Release(ctx context.Context, job jobwait.Job) error {
 }
 
 // markerName is the name of the file in the login folder that ends the slot job of a job. It holds the nonce made for the Submit,
-// so a job id that Slurm uses again never matches the marker of an earlier job.
+// so a job id that the queue uses again never matches the marker of an earlier job.
 func (s slot) markerName(job jobwait.Job) string {
 	return ".beehave-banked-" + s.h.cluster + "-" + job.String()
 }

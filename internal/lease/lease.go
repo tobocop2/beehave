@@ -26,13 +26,14 @@ func Open(rows claim.Rows) (*claim.Claims, error) {
 }
 
 // ProjectOf reads the beehave config folder that env names, with the same rules as `beehave run`, and returns the project that owns the repository (owner/name, or the `source` of the project).
-func ProjectOf(env map[string]string, repo string) (model.Project, error) {
+// adapters is the registry that the binary declares: the lease package may not import an adapter package.
+func ProjectOf(env map[string]string, repo string, adapters config.Adapters) (model.Project, error) {
 	dir, err := config.FolderPath(env, "")
 	if err != nil {
 		return model.Project{}, err
 	}
 
-	cfg, problems := config.LoadFolder(dir, env)
+	cfg, problems := config.LoadFolder(dir, env, adapters)
 	if len(problems) > 0 {
 		return model.Project{}, problems
 	}

@@ -21,9 +21,12 @@ type Forge interface {
 // Opener is the optional write side of a forge that opens pull requests and links them into native stacks. A forge that lacks it cannot be used by pr_open.
 // CreatePR opens a draft pull request and returns its number. The caller finds an open pull request on the branch first, so a repeat opens no second one.
 // LinkStack puts child on top of parent in a native stack, and starts the stack when parent is in none. Linking pull requests that are already linked changes nothing.
+// A non-empty base is the branch that the bottom of the stack targets. An empty base leaves the choice to the forge, which can move the bottom to the default branch.
+// Unstack removes the whole stack that the pull request is in.
 type Opener interface {
 	CreatePR(ctx context.Context, req model.NewPull) (int, error)
-	LinkStack(ctx context.Context, parent, child int) error
+	LinkStack(ctx context.Context, parent, child int, base string) error
+	Unstack(ctx context.Context, pr int) error
 }
 
 // Boarder is the optional side of a forge that keeps project boards. A forge that lacks it cannot be used by board_sync.

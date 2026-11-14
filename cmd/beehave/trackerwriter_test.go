@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/beads"
 )
 
 // recordingWriter is a tracker that can be written. It counts the calls and the closes.
@@ -53,7 +54,7 @@ func (r *recordingWriter) Close() error {
 
 func writerOf(tracker store.Tracker, err error) trackerWriter {
 	return trackerWriter{
-		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Tracker: model.TrackerBeads}}},
+		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Tracker: beads.Tracker}}},
 		tracker:  func(context.Context, model.Project) (store.Tracker, error) { return tracker, err },
 	}
 }
@@ -117,7 +118,7 @@ func TestTrackerWriter_AnUnknownProjectAndABuilderErrorFail(t *testing.T) {
 func TestTrackerWriter_ALocalProjectCreatesAnItemThatTheTrackerReads(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 	w := trackerWriter{projects: map[string]config.Project{"p": {Project: localProjectNamed("p")}}, tracker: table.tracker}
 
 	id, created, err := w.Create(t.Context(), "p", "run:k", store.NewItem{Title: "child", Body: "b"})

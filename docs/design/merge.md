@@ -47,6 +47,8 @@ The round cut and the merge audit are not part of the engine. They live in `exam
 
 ### Own work merges only after another step approved it
 
+[The trust boundary](trust.md#the-merge-checks-no-flag) describes the planned change: the forge requires the statuses `beehave/review` and `beehave/gate` at the head, and the `Approved` flag is deleted.
+
 Nobody merges their own work. Guard 0 runs before any other read or refusal. It reads the pull request once.
 
 The stop is `OwnWork`, unless the request has `Approved`, when one of these has a login or address equal to an owner login, an owner address or the login of a runner in `runners.star`:

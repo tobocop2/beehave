@@ -199,7 +199,7 @@ The `parent` argument:
 
 | Case | Result |
 | --- | --- |
-| The pull request of `parent` is open. | The new pull request is based on the branch of the parent and linked into its native stack with `gh stack link` (the pull requests go by address, on github.com). The call then reads the stack id of both pull requests, and fails unless they show one non-empty id. `stack` holds the id. |
+| The pull request of `parent` is open. | The new pull request is based on the branch of the parent and linked into its native stack with `gh stack link` (the pull requests go by address, on github.com). The first link of a stack passes `--base` with the base of the call. The call reads the base of the parent pull request before and after every link. If the base moved on a new stack, the call unstacks, checks that the stack is gone, sets the base back and links again with that base. A second move, a stack that stays after the unstack, or a move on a stack that already held other pull requests fails the step. The call then reads the stack id of both pull requests, and fails unless they show one non-empty id. `stack` holds the id. |
 | The pull request of `parent` merged. | The base stays as given, and the call links nothing. |
 | `parent` has no pull request. | An error. |
 

@@ -4,24 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
 )
-
-func TestParseHostProvider(t *testing.T) {
-	t.Parallel()
-
-	for _, name := range model.HostProviders() {
-		got, err := model.ParseHostProvider(string(name))
-		require.NoError(t, err)
-		assert.Equal(t, name, got)
-	}
-
-	_, err := model.ParseHostProvider("nomad")
-	require.ErrorIs(t, err, model.ErrUnknownHostProvider)
-	require.ErrorContains(t, err, "use one of skypilot, ssh, slurm")
-}
 
 func TestJobState_Terminal(t *testing.T) {
 	t.Parallel()

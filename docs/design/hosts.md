@@ -24,7 +24,7 @@ The config names three providers, and each one runs:
 - The wait states are in `host/jobwait`.
 - No adapter copies them.
 
-The adapters never import each other. Only `skypilot` imports `slurm`, for its queue, and `depguard` denies every other pair.
+The adapters never import each other, and `depguard` denies every pair. `skypilot` takes its job queue as a parameter, and `cmd/beehave` passes the Slurm queue. The tests of that pair live in `host/skyslurm`.
 
 The job id, job state, disk reading and host status types live in `model`, so layer 2 declares its own interfaces without importing `host`. Nothing outside a provider names SkyPilot or Slurm.
 
@@ -191,7 +191,7 @@ A project selects a host with `build_host` and the `host` block.
 | Block | Keys |
 |---|---|
 | `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`. The cluster name is `build_host`. |
-| `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. |
+| `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
 
 #### The build_host key
 

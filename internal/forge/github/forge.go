@@ -41,6 +41,12 @@ type Forge struct {
 	run   proc.Runner
 }
 
+// Name is the name the GitHub forge is chosen by.
+const Name model.ForgeName = "github"
+
+// Tool is the program that the GitHub forge needs on the path.
+const Tool = "gh"
+
 // New returns the forge of repo, written owner/name. Any other spelling is refused.
 func New(repo string, run proc.Runner) (*Forge, error) {
 	owner, name, ok := model.SplitRepo(repo)

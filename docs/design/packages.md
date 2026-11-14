@@ -66,7 +66,6 @@ flowchart TD
     host --> model
     main --> skypilot
     skypilot --> host
-    skypilot --> slurm
     slurm --> host
     main --> slurm
     main --> sshhost
@@ -85,6 +84,7 @@ flowchart TD
     main --> ghissues
     main --> ghforge
     beads --> store
+    beads --> config
     ghissues --> store
     ghforge --> forge
     config --> model
@@ -173,7 +173,8 @@ A project file selects each adapter with a key. Each key is optional.
 `beehave check config` refuses each of these cases at the position of the key:
 
 - `repo` is missing when `tracker` or `forge` is `github`.
-- `beads_prefix` is missing when `tracker` or `claims` is `beads`.
+- The `beads` block is missing when `tracker` or `claims` is `beads`.
+- A block is set for an adapter that the project does not choose.
 - `source` is set and is not a git URL or an absolute path (a leading `~` expands).
 - A path `source` is set without `build_host = "local"`. A remote host cannot read a path on this machine.
 
@@ -244,7 +245,7 @@ The suite runs against every adapter with a fake command line. It checks the cla
 
 ```mermaid
 flowchart LR
-    project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads_prefix = …"]
+    project["projects/&lt;name&gt;.star<br/>tracker = …<br/>claims = …<br/>forge = …<br/>source = …<br/>beads = beads(prefix = …)"]
     table["cmd/beehave/adapters.go<br/>name → constructor"]
 
     subgraph contracts["Contracts in store and forge"]

@@ -22,6 +22,9 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
+// Name is the name the ssh host provider is chosen by. The host is a machine the owner provides and beehave reaches over ssh. beehave never creates or deletes it.
+const Name model.HostProvider = "ssh"
+
 var (
 	// ErrLinger is returned by Up for a user whose linger is off. A user manager that stops at logout takes every unit with it.
 	ErrLinger = errors.New("linger is off for the login user, so the user manager and every job stop at logout")
