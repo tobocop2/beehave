@@ -30,7 +30,7 @@ func deadline(t *testing.T) context.Context {
 	return ctx
 }
 
-func config() model.HostConfig {
+func queueConfig() model.HostConfig {
 	return model.HostConfig{IdleMinutes: 45, MaxRun: 12 * time.Hour}
 }
 
@@ -42,7 +42,7 @@ func newScripted(t *testing.T, opts ...Option) (*Queue, *proctest.Scripted) {
 	ssh := &proctest.Scripted{}
 	opts = append([]Option{WithClock(jobwait.Clock{Poll: time.Millisecond, Now: time.Now, Sleep: proc.Sleep}), WithBank(noBank), WithNonce(fixedNonce)}, opts...)
 
-	return New(link.New("lane-host", ssh), config(), stubSlot{}, opts...), ssh
+	return New(link.New("lane-host", ssh), queueConfig(), stubSlot{}, opts...), ssh
 }
 
 func noBank(context.Context) error { return nil }

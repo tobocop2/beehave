@@ -23,8 +23,8 @@ func invented() config.Adapters {
 		Claims: map[model.ClaimsName]*config.Entry{"local": {}, "ledger": {Block: &config.Block{Name: "ledger", Args: []config.Arg{{Key: "id"}}}, Tools: []string{"led"}}},
 		Forges: map[model.ForgeName]*config.Entry{"hub": {Keys: []string{"repo"}, Tools: []string{"hubcli"}}, "vault": {Block: &config.Block{Name: "vault", Args: []config.Arg{{Key: "id"}}}}},
 		Hosts: map[model.HostProvider]*config.Entry{
-			"cloud": {Idle: true, HostBlock: "skypilot"},
-			"box":   {HostBlock: "ssh"},
+			"cloud": {Idle: true, Block: &config.Block{Name: "region", Args: []config.Arg{{Key: "zone", Optional: true}}}},
+			"box":   {Block: machineBlock("lan")},
 		},
 		Agents: map[model.Agent]*config.Entry{"robot": {}, "droid": {}},
 	}
@@ -98,7 +98,7 @@ func TestLoadFolder_TheKeysAndTheBlockOfAnEntryAreRequiredWhenAProjectNamesTheAd
 	project, problems := loadInvented(t, call(`source = "/srv/repo", claims = "ledger", ledger = ledger(id = "p"), `+inventedTail))
 
 	require.Empty(t, problems)
-	assert.Equal(t, `{id="p"}`, project.Block.String())
+	assert.Equal(t, `{id="p"}`, project.Blocks["ledger"].String())
 
 	_, problems = loadInvented(t, call(`source = "/srv/repo", forge = "hub", `+inventedTail))
 
@@ -112,7 +112,20 @@ func TestLoadFolder_TheKeysAndTheBlockOfAnEntryAreRequiredWhenAProjectNamesTheAd
 	project, problems = loadInvented(t, call(`source = "/srv/repo", forge = "vault", vault = vault(id = "v"), `+inventedTail))
 
 	require.Empty(t, problems)
-	assert.Equal(t, `{id="v"}`, project.Block.String())
+	assert.Equal(t, `{id="v"}`, project.Blocks["vault"].String())
+}
+
+func TestLoadFolder_AProjectHoldsOneBlockForEachAdapterThatDeclaresOneAndTheHostHoldsItsOwn(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadInvented(t, call(`repo = "o/n", tracker = "shelf", forge = "vault", build_host = "lane", ledger = ledger(id = "l"), vault = vault(id = "v"),
+  host = host(provider = "box", disk_floor_gb = 50, lan = lan(user = "ci")), `+inventedTail))
+
+	require.Empty(t, problems)
+	assert.Equal(t, `{id="l"}`, project.Blocks["ledger"].String(), "the tracker block")
+	assert.Equal(t, `{id="v"}`, project.Blocks["vault"].String(), "the forge block, held beside the tracker block")
+	assert.Len(t, project.Blocks, 2)
+	assert.Equal(t, `{user="ci"}`, project.Host.Block.String(), "the host block, beside both")
 }
 
 func TestLoadFolder_AKeyThatAnEntryRequiresAndNoCheckReadsIsRefused(t *testing.T) {
@@ -159,9 +172,18 @@ func TestLoadFolder_OnlyAHostEntryWithIdleGetsIdleMinutesAndTheHostBlockComesFro
 	require.Len(t, problems, 1)
 	assert.Contains(t, problems[0].Error(), "`host.idle_minutes` is not allowed for provider \"box\"")
 
-	_, problems = loadInvented(t, call(cluster+`, host = host(provider = "box", disk_floor_gb = 50, skypilot = skypilot())`))
+	project, problems = loadInvented(t, call(cluster+`, host = host(provider = "box", disk_floor_gb = 50, lan = lan(user = "ci", port = 22))`))
 
-	require.NotEmpty(t, problems, "the box entry takes the ssh block and no other")
+	require.Empty(t, problems)
+	user, _ := project.Host.Block.Text("user")
+	port, _ := project.Host.Block.Whole("port")
+	assert.Equal(t, "ci", user, "the block of the chosen entry reaches the host config unread")
+	assert.Equal(t, 22, port)
+
+	_, problems = loadInvented(t, call(cluster+`, host = host(provider = "box", disk_floor_gb = 50, region = region())`))
+
+	require.Len(t, problems, 1)
+	assert.Contains(t, problems[0].Error(), "the `host` block holds the `region` block, and `host.provider` \"box\" does not take it")
 
 	_, problems = loadInvented(t, call(cluster+`, host = host(provider = "nomad", disk_floor_gb = 50)`))
 

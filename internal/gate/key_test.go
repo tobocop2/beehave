@@ -152,16 +152,34 @@ func TestKey_ADifferentProjectNameRepoOrHostDefinitionGivesAnotherKey(t *testing
 	t.Parallel()
 
 	base := project("cluster")
-	base.Host = &model.HostConfig{Provider: "skypilot", SkyPilot: model.SkyPilotConfig{Cloud: "gcp", InstanceType: "n2"}}
+	base.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("p.star:5:9", "n2")}
 	want := keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, base).ID
 
 	name, repo, host, none := base, base, base, base
 	name.Name = "other"
 	repo.Repo = "owner/other"
-	host.Host = &model.HostConfig{Provider: "skypilot", SkyPilot: model.SkyPilotConfig{Cloud: "gcp", InstanceType: "n4"}}
+	host.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("p.star:5:9", "n4")}
 	none.Host = nil
 
 	for _, other := range []model.Project{name, repo, host, none} {
 		assert.NotEqual(t, want, keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, other).ID)
 	}
+}
+
+func TestKey_TheHostBlockIsPartOfTheKeyByItsKeysAndNotByItsPosition(t *testing.T) {
+	t.Parallel()
+
+	base := project("cluster")
+	base.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("p.star:5:9", "n2")}
+	want := keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, base).ID
+
+	moved := base
+	moved.Host = &model.HostConfig{Provider: "skypilot", Block: skyBlock("p.star:40:2", "n2")}
+
+	assert.Equal(t, want, keyOf(t, gate.State{Head: headA, Tree: "t1", Clean: true}, &fakeShell{}, moved).ID, "the same block at another line is the same host")
+}
+
+// skyBlock returns a skypilot block as the loader holds it, with the position of its call.
+func skyBlock(at, instanceType string) *model.Block {
+	return model.NewBlock(at, []model.BlockEntry{model.TextEntry("cloud", "gcp"), model.TextEntry("instance_type", instanceType)})
 }

@@ -41,10 +41,10 @@ func TestUp_LeavesOutThePlacementThatTheProjectDoesNotSet(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		placed *model.SkyPilotConfig
+		placed *placed
 		infra  []string
 	}{
-		"cloud_without_region": {placed: &model.SkyPilotConfig{Cloud: "gcp"}, infra: []string{"--infra", "gcp"}},
+		"cloud_without_region": {placed: &placed{cloud: "gcp"}, infra: []string{"--infra", "gcp"}},
 		"no_placement":         {placed: nil},
 	}
 
@@ -83,10 +83,10 @@ func TestNew_RefusesWhatTheSkyCommandLineCannotTakeSafely(t *testing.T) {
 		"no_cluster":          {cluster: ""},
 		"cluster_with_a_dash": {cluster: "-oProxyCommand=x"},
 		"cluster_with_space":  {cluster: "a b"},
-		"cloud_with_a_slash":  {cluster: "c", mutate: func(c *model.HostConfig) { c.SkyPilot = model.SkyPilotConfig{Cloud: "gcp/x"} }},
-		"instance_type_flag":  {cluster: "c", mutate: func(c *model.HostConfig) { c.SkyPilot = model.SkyPilotConfig{InstanceType: "--x"} }},
+		"cloud_with_a_slash":  {cluster: "c", mutate: func(c *model.HostConfig) { c.Block = placed{cloud: "gcp/x"}.block() }},
+		"instance_type_flag":  {cluster: "c", mutate: func(c *model.HostConfig) { c.Block = placed{instanceType: "--x"}.block() }},
 		"region_without_cloud": {cluster: "c", mutate: func(c *model.HostConfig) {
-			c.SkyPilot = model.SkyPilotConfig{Region: "us-central1"}
+			c.Block = placed{region: "us-central1"}.block()
 		}},
 		"no_idle_minutes": {cluster: "c", mutate: func(c *model.HostConfig) { c.IdleMinutes = 0 }},
 		"no_run_limit":    {cluster: "c", mutate: func(c *model.HostConfig) { c.MaxRun = time.Millisecond }},

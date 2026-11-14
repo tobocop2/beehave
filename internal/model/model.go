@@ -23,8 +23,9 @@ type Project struct {
 	Tracker TrackerName
 	Claims  ClaimsName
 	Forge   ForgeName
-	// Block is the config block of the tracker or the claim store that the project names, when its adapter declares one.
-	Block *Block
+	// Blocks are the config blocks of the tracker, the claim store and the forge that the project names, by block name. An adapter that declares a block reads its own by that name.
+	// The block of the build host adapter is in Host.Block.
+	Blocks map[string]*Block
 	// Tools is the programs that the project needs on the path, git first: the registry computes it from the adapters the project names.
 	Tools      []string
 	BaseBranch string

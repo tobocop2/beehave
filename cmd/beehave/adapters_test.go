@@ -62,7 +62,7 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p")}
 
 	tracker, err := table.tracker(t.Context(), project)
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testi
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p")}
 
 	require.NoError(t, table.checkTrackerAndForge(t.Context(), good))
 }
@@ -138,13 +138,13 @@ func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *tes
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
+	good := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p")}
 	require.NoError(t, table.check(t.Context(), good))
 
 	badTracker := model.Project{Name: "p", Repo: "o/n", Tracker: beads.Tracker, Forge: forgegithub.Name}
 	require.ErrorContains(t, table.check(t.Context(), badTracker), "the beads id prefix is required")
 
-	badForge := model.Project{Name: "p", Repo: "bad", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p")}
+	badForge := model.Project{Name: "p", Repo: "bad", Tracker: beads.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p")}
 	require.Error(t, table.check(t.Context(), badForge))
 
 	noPrefix := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims}
@@ -267,7 +267,7 @@ func TestAdapters_CheckRefusesABeadsClaimStoreWithNoPrefixEvenWhenTheTrackerIsLo
 
 	require.ErrorContains(t, newAdapters(beadstest.NewBd(t), nil, nil).check(t.Context(), project), "the beads id prefix is required")
 
-	project.Block = beadstest.Block("p")
+	project.Blocks = beadstest.Blocks("p")
 	project.Tools = []string{model.ToolGit, beads.Tool}
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
@@ -278,7 +278,7 @@ func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testin
 	t.Parallel()
 
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: beads.Tracker, Claims: beads.Claims, Block: beadstest.Block("p")}
+	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: beads.Tracker, Claims: beads.Claims, Blocks: beadstest.Blocks("p")}
 
 	built, err := table.forge(noForge)
 	require.EqualError(t, err, `project p: no forge; set forge = "github" in the project file`)
@@ -322,7 +322,7 @@ func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
-	project := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p"), Tools: []string{model.ToolGit, beads.Tool, "gh"}}
+	project := model.Project{Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p"), Tools: []string{model.ToolGit, beads.Tool, "gh"}}
 
 	require.EqualError(t, newAdapters(bd, nil, nil).check(t.Context(), project), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 
@@ -424,7 +424,7 @@ func TestAdapters_EveryProviderBuildsAHostThatBanksItsWorkOnTeardown(t *testing.
 
 func hostProject(provider model.HostProvider, buildHost string) model.Project {
 	return model.Project{
-		Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Block: beadstest.Block("p"), BuildHost: buildHost,
+		Name: "p", Repo: "o/n", Tracker: storegithub.Tracker, Forge: forgegithub.Name, Claims: beads.Claims, Blocks: beadstest.Blocks("p"), BuildHost: buildHost,
 		Host: &model.HostConfig{Provider: provider, IdleMinutes: 60, MaxRun: time.Hour, DiskFloorGB: 50},
 	}
 }

@@ -61,13 +61,13 @@ func TestBlock_EveryKeyTheBlockDeclaresRoundTripsToTheStore(t *testing.T) {
 	require.Empty(t, problems)
 
 	for _, arg := range beads.Block().Args {
-		got, given := project.Block.Text(arg.Key)
+		got, given := project.Blocks[beads.BlockName].Text(arg.Key)
 
 		assert.True(t, given, arg.Key)
 		assert.Equal(t, "value-of-"+arg.Key, got)
 	}
 
-	_, err := beads.New(nil, project.Block)
+	_, err := beads.New(nil, project.Blocks[beads.BlockName])
 
 	require.NoError(t, err)
 }

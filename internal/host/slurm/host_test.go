@@ -65,7 +65,12 @@ func (s *spy) total() int {
 }
 
 func hostConfig() model.HostConfig {
-	return model.HostConfig{Provider: Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private", SSH: model.SSHConfig{User: "lane"}}
+	return hostConfigWith(model.TextEntry(BlockUser, "lane"))
+}
+
+// hostConfigWith returns the config of the tests with a slurm block that holds the entries.
+func hostConfigWith(entries ...model.BlockEntry) model.HostConfig {
+	return model.HostConfig{Provider: Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private", Block: model.NewBlock("test", entries)}
 }
 
 func fastClock() Option {
@@ -109,15 +114,14 @@ func TestNewHost_RunsNoSSHAndRefusesWhatCouldChangeTheCommandLine(t *testing.T) 
 	require.NoError(t, err)
 	assert.Zero(t, s.total(), "building the host sends nothing")
 
-	for name, set := range map[string]func(*model.HostConfig){
-		"a work root":   func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/lane/work" },
-		"no run limit":  func(c *model.HostConfig) { c.MaxRun = 0 },
-		"a bad address": func(c *model.HostConfig) { c.SSH.Address = "-oProxyCommand=x" },
-		"a bad policy":  func(c *model.HostConfig) { c.SSH.KnownHosts = "no" },
+	for name, cfg := range map[string]model.HostConfig{
+		"a work root":   hostConfigWith(model.TextEntry(BlockWorkRoot, "/home/lane/work")),
+		"no run limit":  func() model.HostConfig { c := hostConfig(); c.MaxRun = 0; return c }(),
+		"a bad address": hostConfigWith(model.TextEntry(BlockAddress, "-oProxyCommand=x")),
+		"a bad user":    hostConfigWith(model.TextEntry(BlockUser, "-x")),
+		"a bad port":    hostConfigWith(model.WholeEntry(BlockPort, 0)),
+		"a bad policy":  hostConfigWith(model.TextEntry(BlockKnownHosts, "no")),
 	} {
-		cfg := hostConfig()
-		set(&cfg)
-
 		_, err = NewHost(slurmtest.Target, cfg, s)
 
 		require.ErrorIs(t, err, link.ErrConfig, name)
@@ -130,13 +134,12 @@ func TestNewHost_RunsNoSSHAndRefusesWhatCouldChangeTheCommandLine(t *testing.T) 
 func TestNewHost_ARefusedWorkRootSaysWhyAndWhatToDo(t *testing.T) {
 	t.Parallel()
 
-	cfg := hostConfig()
-	cfg.SSH.WorkRoot = "/home/lane/work"
+	cfg := hostConfigWith(model.TextEntry(BlockWorkRoot, "/home/lane/work"))
 
 	_, err := NewHost(slurmtest.Target, cfg, &spy{inner: slurmtest.New(hosttest.Working).SSH()})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "host.ssh.work_root")
+	assert.Contains(t, err.Error(), "host.slurm.work_root")
 	assert.Contains(t, err.Error(), "login folder")
 }
 

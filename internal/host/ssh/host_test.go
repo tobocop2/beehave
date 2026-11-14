@@ -170,9 +170,7 @@ func TestWorkRoot_IsTheConfiguredFolderOrTheLoginFolder(t *testing.T) {
 		"home relative": {"~/work", sshtest.Root + "/work"},
 		"login folder":  {"", sshtest.Root},
 	} {
-		cfg := config()
-		cfg.SSH.WorkRoot = tc.root
-		h, _, _ := newHost(t, sshtest.New(hosttest.Working), cfg)
+		h, _, _ := newHost(t, sshtest.New(hosttest.Working), configRoot(tc.root))
 
 		got, err := h.WorkRoot(t.Context())
 
@@ -184,11 +182,9 @@ func TestWorkRoot_IsTheConfiguredFolderOrTheLoginFolder(t *testing.T) {
 func TestWorkRoot_ALoginFolderThatIsNotOneAbsolutePathIsAnError(t *testing.T) {
 	t.Parallel()
 
-	cfg := config()
-	cfg.SSH.WorkRoot = ""
 	runner := proctest.Always(model.CommandResult{Stdout: "relative\n"})
 
-	h, err := ssh.New("gates", cfg, runner)
+	h, err := ssh.New("gates", configRoot(""), runner)
 	require.NoError(t, err)
 
 	_, err = h.WorkRoot(t.Context())
@@ -199,16 +195,16 @@ func TestWorkRoot_ALoginFolderThatIsNotOneAbsolutePathIsAnError(t *testing.T) {
 func TestNew_RefusesASettingThatCouldChangeACommandLine(t *testing.T) {
 	t.Parallel()
 
-	for name, edit := range map[string]func(*model.HostConfig){
-		"a percent in the work root": func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/a%h" },
-		"a dollar in the work root":  func(c *model.HostConfig) { c.SSH.WorkRoot = "/home/$HOME" },
-		"a relative work root":       func(c *model.HostConfig) { c.SSH.WorkRoot = "work" },
-		"a max run under a second":   func(c *model.HostConfig) { c.MaxRun = 0 },
-		"a bad address":              func(c *model.HostConfig) { c.SSH.Address = "-x" },
+	for name, cfg := range map[string]model.HostConfig{
+		"a percent in the work root": configRoot("/home/a%h"),
+		"a dollar in the work root":  configRoot("/home/$HOME"),
+		"a relative work root":       configRoot("work"),
+		"a max run under a second":   func() model.HostConfig { c := config(); c.MaxRun = 0; return c }(),
+		"a bad address":              configWith(model.TextEntry(ssh.BlockAddress, "-x")),
+		"an address with a space":    configWith(model.TextEntry(ssh.BlockAddress, "a b")),
+		"a user that is an option":   configWith(model.TextEntry(ssh.BlockUser, "-x")),
+		"a known_hosts that is off":  configWith(model.TextEntry(ssh.BlockKnownHosts, "no")),
 	} {
-		cfg := config()
-		edit(&cfg)
-
 		_, err := ssh.New("gates", cfg, proctest.Always(model.CommandResult{}))
 
 		require.ErrorIs(t, err, link.ErrConfig, name)

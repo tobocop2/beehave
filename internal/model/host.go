@@ -37,7 +37,7 @@ type HostProvider string
 // MaxDiskFloorGB is the largest disk_floor_gb. It keeps the floor in bytes inside a 64-bit integer.
 const MaxDiskFloorGB = 1 << 20
 
-// HostConfig is the [host] table of a project: the keys every provider shares, and the table of the chosen provider.
+// HostConfig is the [host] table of a project: the keys every provider shares, and the block of the chosen provider.
 type HostConfig struct {
 	Provider     HostProvider
 	IdleMinutes  int
@@ -49,8 +49,8 @@ type HostConfig struct {
 	// BankBudget is the time that the bank scan gives to each repository on the host. Zero means the default of the host package.
 	BankBudget    time.Duration
 	PrivateRemote string
-	SkyPilot      SkyPilotConfig
-	SSH           SSHConfig
+	// Block is the config block of the chosen provider, when the provider declares one and the project gave it. The provider reads its keys once, in its constructor.
+	Block *Block
 }
 
 // The host key policies of the ssh link. Neither one accepts a host key that changed.
@@ -58,24 +58,6 @@ const (
 	KnownHostsStrict    = "strict"
 	KnownHostsAcceptNew = "accept-new"
 )
-
-// SSHConfig is the [host.ssh] table, the link to a machine or to the head node of a cluster. An empty field leaves the choice to the ssh config of the user.
-// KnownHosts is never empty after the loader ran.
-type SSHConfig struct {
-	Address    string
-	User       string
-	Port       int
-	Identity   string
-	WorkRoot   string
-	KnownHosts string
-}
-
-// SkyPilotConfig is the [host.skypilot] table. An empty field leaves the choice to SkyPilot.
-type SkyPilotConfig struct {
-	Cloud        string
-	Region       string
-	InstanceType string
-}
 
 // HostState is whether a build host exists and takes jobs.
 type HostState string

@@ -52,14 +52,14 @@ func TestLoadFolder_TheBlockOfTheChosenAdapterLoadsOnTheProject(t *testing.T) {
 
 	require.Empty(t, problems)
 
-	prefix, given := project.Block.Text("prefix")
+	prefix, given := project.Blocks["beads"].Text("prefix")
 	assert.True(t, given)
 	assert.Equal(t, "p", prefix)
 
 	project, problems = loadProjectText(t, call(`source = "/srv/repo", `+blockTail))
 
 	require.Empty(t, problems)
-	assert.Nil(t, project.Block, "a project of adapters that declare no block holds none")
+	assert.Nil(t, project.Blocks, "a project of adapters that declare no block holds none")
 }
 
 func TestLoadFolder_ABlockWhoseArgumentsAllHaveDefaultsMayBeLeftOut(t *testing.T) {
@@ -71,14 +71,14 @@ func TestLoadFolder_ABlockWhoseArgumentsAllHaveDefaultsMayBeLeftOut(t *testing.T
 	project, problems := loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", `+blockTail))
 
 	require.Empty(t, problems)
-	assert.Nil(t, project.Block)
+	assert.Nil(t, project.Blocks)
 
 	project, problems = loadWith(t, registered, call(`source = "/srv/repo", tracker = "shelf", shelf = shelf(zone = "a", slots = 3), `+blockTail))
 
 	require.Empty(t, problems)
 
-	zone, _ := project.Block.Text("zone")
-	slots, given := project.Block.Whole("slots")
+	zone, _ := project.Blocks["shelf"].Text("zone")
+	slots, given := project.Blocks["shelf"].Whole("slots")
 
 	assert.Equal(t, "a", zone)
 	assert.True(t, given)
@@ -105,7 +105,7 @@ func TestLoadFolder_TwoAdaptersThatDeclareOneBlockNameLoadWhenTheSchemasAgreeAnd
 
 	require.Empty(t, problems)
 
-	id, _ := project.Block.Text("id")
+	id, _ := project.Blocks["shared"].Text("id")
 	assert.Equal(t, "x", id)
 
 	other := &config.Block{Name: "shared", Args: []config.Arg{{Key: "id", Kind: config.WholeArg}}}
@@ -121,6 +121,19 @@ func TestLoadFolder_TwoAdaptersThatDeclareOneBlockNameLoadWhenTheSchemasAgreeAnd
 
 	require.Len(t, problems, 1)
 	assert.Contains(t, problems[0].Error(), "different arguments")
+}
+
+func TestLoadFolder_TwoHostAdaptersThatDeclareOneNameMustDeclareOneSchema(t *testing.T) {
+	t.Parallel()
+
+	registered := registry()
+	registered.Hosts["ssh"] = &config.Entry{Block: &config.Block{Name: "shared", Args: []config.Arg{{Key: "id"}}}}
+	registered.Hosts["slurm"] = &config.Entry{Block: &config.Block{Name: "shared", Args: []config.Arg{{Key: "id", Kind: config.WholeArg}}}}
+
+	_, problems := loadWith(t, registered, call(`source = "/srv/repo", `+blockTail))
+
+	require.Len(t, problems, 1)
+	assert.Contains(t, problems[0].Error(), "two adapters declare the `shared` block with different arguments")
 }
 
 func TestLoadFolder_ABlockNoAdapterDeclaresIsRefused(t *testing.T) {
@@ -178,6 +191,6 @@ func TestLoadFolder_AProjectValueHoldsTheBlockOfItsChosenAdapter(t *testing.T) {
 	project, problems := loadProjectText(t, call(`source = "/srv/repo", tracker = "beads", beads = beads(prefix = "p"), `+blockTail))
 
 	require.Empty(t, problems)
-	assert.Equal(t, `{prefix="p"}`, project.Block.String())
-	assert.Contains(t, project.Block.At(), "p.star:1:", "the block keeps the position of its call")
+	assert.Equal(t, `{prefix="p"}`, project.Blocks["beads"].String())
+	assert.Contains(t, project.Blocks["beads"].At(), "p.star:1:", "the block keeps the position of its call")
 }

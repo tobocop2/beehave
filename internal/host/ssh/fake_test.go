@@ -45,10 +45,20 @@ func (b *bankLog) bank(context.Context) error {
 }
 
 func config() model.HostConfig {
+	return configWith(model.TextEntry(ssh.BlockUser, "lane"), model.TextEntry(ssh.BlockWorkRoot, sshtest.Root+"/work"), model.TextEntry(ssh.BlockKnownHosts, model.KnownHostsStrict))
+}
+
+// configWith returns the config of the tests with an ssh block that holds the entries.
+func configWith(entries ...model.BlockEntry) model.HostConfig {
 	return model.HostConfig{
 		Provider: ssh.Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
-		SSH: model.SSHConfig{User: "lane", WorkRoot: sshtest.Root + "/work", KnownHosts: model.KnownHostsStrict},
+		Block: model.NewBlock("test", entries),
 	}
+}
+
+// configRoot returns the config of the tests with the work root that the argument names.
+func configRoot(root string) model.HostConfig {
+	return configWith(model.TextEntry(ssh.BlockUser, "lane"), model.TextEntry(ssh.BlockWorkRoot, root))
 }
 
 // newHost returns the host over a machine, with a fake clock and a bank that only counts.

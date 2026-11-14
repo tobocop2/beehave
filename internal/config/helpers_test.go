@@ -23,12 +23,24 @@ func registry() config.Adapters {
 		Claims:   map[model.ClaimsName]*config.Entry{"local": {}, "beads": beads()},
 		Forges:   map[model.ForgeName]*config.Entry{"github": github()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			"skypilot": {Idle: true, HostBlock: "skypilot"},
-			"ssh":      {HostBlock: "ssh"},
-			"slurm":    {HostBlock: "ssh"},
+			"skypilot": {Idle: true, Block: &config.Block{Name: "skypilot", Args: []config.Arg{{Key: "cloud", Optional: true}, {Key: "region", Optional: true}, {Key: "instance_type", Optional: true}}}},
+			"ssh":      {Block: machineBlock("ssh")},
+			"slurm":    {Block: machineBlock("slurm")},
 		},
 		Agents: map[model.Agent]*config.Entry{"claude": {}, "opencode": {}},
 	}
+}
+
+// machineBlock declares the block of a host that is a machine, as the ssh and slurm adapters do: the link keys, all optional.
+func machineBlock(name string) *config.Block {
+	return &config.Block{Name: name, Args: []config.Arg{
+		{Key: "address", Optional: true},
+		{Key: "user", Optional: true},
+		{Key: "port", Kind: config.WholeArg, Optional: true},
+		{Key: "identity", Optional: true},
+		{Key: "work_root", Optional: true},
+		{Key: "known_hosts", Optional: true},
+	}}
 }
 
 // loadFolder loads a config folder against the registry of the tests.
