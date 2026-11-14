@@ -27,7 +27,7 @@ func TestLoadFolder_SSHAndSlurmHosts(t *testing.T) {
 
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+sshCall("")))
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: model.HostSSH, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50, SSH: model.SSHConfig{KnownHosts: model.KnownHostsStrict}}, project.Host)
+	require.Equal(t, &model.HostConfig{Provider: "ssh", StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50, SSH: model.SSHConfig{KnownHosts: model.KnownHostsStrict}}, project.Host)
 
 	project, problems = loadProjectText(t, call(clusterProject+", host = "+sshCall(`, ssh = ssh(user = "ci")`)))
 	require.Empty(t, problems)
@@ -37,7 +37,7 @@ func TestLoadFolder_SSHAndSlurmHosts(t *testing.T) {
   ssh = ssh(address = "10.0.0.5", user = "ci", port = 2222, identity = "~/.ssh/ci", work_root = "/home/ci/work", known_hosts = "accept-new"))`))
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{
-		Provider: model.HostSlurm, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50,
+		Provider: "slurm", StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50,
 		SSH: model.SSHConfig{Address: "10.0.0.5", User: "ci", Port: 2222, Identity: "~/.ssh/ci", WorkRoot: "/home/ci/work", KnownHosts: model.KnownHostsAcceptNew},
 	}, project.Host)
 }
@@ -48,7 +48,7 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 	project, problems := loadProjectText(t, call(clusterProject+", host = "+hostCall("")))
 
 	require.Empty(t, problems)
-	require.Equal(t, &model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50}, project.Host)
+	require.Equal(t, &model.HostConfig{Provider: "skypilot", IdleMinutes: 60, StaleMinutes: 20, MaxRun: 24 * time.Hour, BankBudget: 20 * time.Second, DiskFloorGB: 50}, project.Host)
 
 	project, problems = loadProjectText(t, call(clusterProject+`, host = host(provider = "skypilot", idle_minutes = 30, stale_minutes = 5, max_run = "12h", bank_budget = "45s", disk_floor_gb = 20, disk_wait_minutes = 15,
   private_remote = "git@example.com:org/repo.git",
@@ -56,7 +56,7 @@ func TestLoadFolder_HostTableDefaultsAndKeys(t *testing.T) {
 
 	require.Empty(t, problems)
 	require.Equal(t, &model.HostConfig{
-		Provider: model.HostSkyPilot, IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
+		Provider: "skypilot", IdleMinutes: 30, StaleMinutes: 5, MaxRun: 12 * time.Hour, BankBudget: 45 * time.Second, DiskFloorGB: 20, DiskWaitMinutes: 15, PrivateRemote: "git@example.com:org/repo.git",
 		SkyPilot: model.SkyPilotConfig{Cloud: "gcp", Region: "us-central1", InstanceType: "n2-standard-8"},
 	}, project.Host)
 }

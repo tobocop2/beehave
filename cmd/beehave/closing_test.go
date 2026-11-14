@@ -10,6 +10,9 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/merge"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 func trackerProject(tracker model.TrackerName) config.Project {
@@ -23,7 +26,7 @@ func requestFor(tracker model.TrackerName, id string) merge.Request {
 func TestPullsRequest_AGithubItemIdThatIsAPlainPositiveNumberNamesThatIssue(t *testing.T) {
 	t.Parallel()
 
-	req := requestFor(model.TrackerGithub, "12")
+	req := requestFor(storegithub.Tracker, "12")
 
 	assert.True(t, req.AuditClosing)
 	assert.Equal(t, []int{12}, req.Names)
@@ -33,7 +36,7 @@ func TestPullsRequest_AGithubItemIdThatIsAPlainPositiveNumberNamesThatIssue(t *t
 func TestPullsRequest_TheIssuesTheOwnerKeptReachTheMergeRequest(t *testing.T) {
 	t.Parallel()
 
-	req := pulls{}.request("p", trackerProject(model.TrackerGithub), "12", 5, gated, flow.MergeSettings{Kept: []int{13}}, nil)
+	req := pulls{}.request("p", trackerProject(storegithub.Tracker), "12", 5, gated, flow.MergeSettings{Kept: []int{13}}, nil)
 
 	assert.Equal(t, []int{13}, req.Kept)
 }
@@ -42,7 +45,7 @@ func TestPullsMerge_AGithubItemOnAForgeThatCannotReadClosingReferencesIsRefusedA
 	t.Parallel()
 
 	p, f, settings := shipping(t, nil)
-	p.projects = map[string]config.Project{"p": {Project: model.Project{Repo: "o/r", Tracker: model.TrackerGithub}}}
+	p.projects = map[string]config.Project{"p": {Project: model.Project{Repo: "o/r", Tracker: storegithub.Tracker}}}
 
 	result, err := p.Merge(t.Context(), "p", "12", gated, settings)
 
@@ -57,7 +60,7 @@ func TestPullsRequest_AnIdThatIsNotAPlainPositiveNumberAuditsNothingAndSaysSo(t 
 	t.Parallel()
 
 	for _, id := range []string{"012", "bb-1", "0", "-3", "1a", ""} {
-		req := requestFor(model.TrackerGithub, id)
+		req := requestFor(storegithub.Tracker, id)
 
 		assert.False(t, req.AuditClosing, id)
 		assert.Empty(t, req.Names, id)
@@ -69,7 +72,7 @@ func TestPullsRequest_AnIdThatIsNotAPlainPositiveNumberAuditsNothingAndSaysSo(t 
 func TestPullsRequest_ANumericIdOfATrackerThatIsNotGithubAuditsNothingAndSaysSo(t *testing.T) {
 	t.Parallel()
 
-	for _, tracker := range []model.TrackerName{model.TrackerLocal, model.TrackerBeads} {
+	for _, tracker := range []model.TrackerName{local.Tracker, beads.Tracker} {
 		req := requestFor(tracker, "12")
 
 		assert.False(t, req.AuditClosing, tracker)

@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/beads"
 )
 
 // recordingReader is a tracker that can be read beyond its item fields. It counts the calls and the closes.
@@ -42,7 +43,7 @@ func (r *recordingReader) Close() error {
 
 func readerOf(tracker store.Tracker, err error) trackerReader {
 	return trackerReader{
-		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Tracker: model.TrackerBeads}}},
+		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Tracker: beads.Tracker}}},
 		tracker:  func(context.Context, model.Project) (store.Tracker, error) { return tracker, err },
 	}
 }

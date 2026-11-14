@@ -11,6 +11,8 @@ import (
 
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 const claimProject = "project(repo = \"owner/name\", tracker = \"github\", forge = \"github\", claims = \"beads\", beads_prefix = \"p\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
@@ -48,7 +50,7 @@ func TestOpenClaims_RepositoryThatNoProjectOwnsIsRefused(t *testing.T) {
 func TestClaimsOf_ProjectWithNoBeadsPrefixIsRefused(t *testing.T) {
 	t.Parallel()
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), nil, model.Project{Claims: model.ClaimsBeads})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), nil, model.Project{Claims: beads.Claims})
 
 	require.Error(t, err)
 	assert.Nil(t, claims)
@@ -64,7 +66,7 @@ func TestClaimsOf_LocalClaimsAreTheLocalDbOfTheStateFolder(t *testing.T) {
 
 	state := t.TempDir()
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(state), model.Project{Name: "p", Claims: model.ClaimsLocal})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(state), model.Project{Name: "p", Claims: local.Claims})
 
 	require.NoError(t, err)
 	require.NoError(t, claims.Take(t.Context(), "ownerone", "fix-login"))
@@ -76,7 +78,7 @@ func TestClaimsOf_LocalClaimsInAStateFolderThatCannotBeResolvedAreRefused(t *tes
 
 	failing := func() (string, error) { return "", errors.New("no home folder") }
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), failing, model.Project{Name: "p", Claims: model.ClaimsLocal})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), failing, model.Project{Name: "p", Claims: local.Claims})
 
 	require.ErrorContains(t, err, "no home folder")
 	assert.Nil(t, claims)
@@ -88,7 +90,7 @@ func TestClaimsOf_LocalClaimsInAStateFolderThatCannotBeOpenedAreRefused(t *testi
 	file := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))
 
-	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(filepath.Join(file, "state")), model.Project{Name: "p", Claims: model.ClaimsLocal})
+	claims, err := claimsOf(proctest.Always(model.CommandResult{}), stateAt(filepath.Join(file, "state")), model.Project{Name: "p", Claims: local.Claims})
 
 	require.Error(t, err)
 	assert.Nil(t, claims)

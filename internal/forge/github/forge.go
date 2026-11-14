@@ -41,6 +41,9 @@ type Forge struct {
 	run   proc.Runner
 }
 
+// Name is the name the GitHub forge is chosen by.
+const Name model.ForgeName = "github"
+
 // Tool is the program that the GitHub forge needs on the path.
 const Tool = "gh"
 

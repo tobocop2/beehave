@@ -62,7 +62,7 @@ func newFakeSlots(t *testing.T) (*skypilot.Host, *fakeHost) {
 
 	f := newFakeHost(hosttest.Working)
 
-	h, err := newHost(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
+	h, err := newHost(fakeCluster, model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
 
 	require.NoError(t, h.Up(t.Context()))
@@ -89,7 +89,7 @@ func TestCancel_EndsTheSlotJob(t *testing.T) {
 func newSecondHandle(t *testing.T, f *fakeHost) *skypilot.Host {
 	t.Helper()
 
-	h, err := newHost(fakeCluster, model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
+	h, err := newHost(fakeCluster, model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, MaxRun: 12 * time.Hour}, f.sky(), f.SSH(), fastWaits()...)
 	require.NoError(t, err)
 
 	return h

@@ -28,7 +28,7 @@ func TestHost_ConformsToHost(t *testing.T) {
 // hostConfig is the host of a project that asks SkyPilot for a placement.
 func hostConfig() model.HostConfig {
 	return model.HostConfig{
-		Provider: model.HostSkyPilot, IdleMinutes: 45, MaxRun: 12 * time.Hour,
+		Provider: skypilot.Name, IdleMinutes: 45, MaxRun: 12 * time.Hour,
 		SkyPilot: model.SkyPilotConfig{Cloud: "gcp", Region: "us-central1", InstanceType: "n2-standard-8"},
 	}
 }

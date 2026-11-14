@@ -21,15 +21,15 @@ func registry() config.Adapters {
 	github := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
 
 	return config.Adapters{
-		Trackers: map[model.TrackerName]*config.Entry{model.TrackerLocal: {}, model.TrackerBeads: beads(), model.TrackerGithub: github()},
-		Claims:   map[model.ClaimsName]*config.Entry{model.ClaimsLocal: {}, model.ClaimsBeads: beads()},
-		Forges:   map[model.ForgeName]*config.Entry{model.ForgeGithub: github()},
+		Trackers: map[model.TrackerName]*config.Entry{"local": {}, "beads": beads(), "github": github()},
+		Claims:   map[model.ClaimsName]*config.Entry{"local": {}, "beads": beads()},
+		Forges:   map[model.ForgeName]*config.Entry{"github": github()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			model.HostSkyPilot: {Idle: true, HostBlock: "skypilot"},
-			model.HostSSH:      {HostBlock: "ssh"},
-			model.HostSlurm:    {HostBlock: "ssh"},
+			"skypilot": {Idle: true, HostBlock: "skypilot"},
+			"ssh":      {HostBlock: "ssh"},
+			"slurm":    {HostBlock: "ssh"},
 		},
-		Agents: map[model.Agent]*config.Entry{model.AgentClaude: {}, model.AgentOpenCode: {}},
+		Agents: map[model.Agent]*config.Entry{"claude": {}, "opencode": {}},
 	}
 }
 

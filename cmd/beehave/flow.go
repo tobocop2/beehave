@@ -30,9 +30,6 @@ type logins struct {
 	overCap  func(ctx context.Context, busy []string) (string, error)
 }
 
-// stepAgent is the agent kind of every agent step. A step names no agent yet, so the pool pick takes runners of this kind only.
-const stepAgent = model.AgentClaude
-
 // newLogins reads the projects of the config. The pool pick reads the usage of each runner through the agent entries.
 func newLogins(cfg config.Config, opts flow.Options) logins {
 	return loginsReading(cfg, readUsage(agentEntries(opts.Env)))

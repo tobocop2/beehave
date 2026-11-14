@@ -55,6 +55,12 @@ type Store struct {
 	guarded bool
 }
 
+// The names the beads adapter is chosen by: the tracker and the claim store.
+const (
+	Tracker model.TrackerName = "beads"
+	Claims  model.ClaimsName  = "beads"
+)
+
 // Tool is the program that the beads adapter needs on the path.
 const Tool = "bd"
 

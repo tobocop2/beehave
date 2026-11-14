@@ -25,7 +25,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
+		Name: "p", Tracker: "local", Claims: "local", Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -36,11 +36,11 @@ func TestLoadFolder_AFileWithOnlyTheOldKeysGetsLocalClaims(t *testing.T) {
 
 	require.Empty(t, problems)
 	require.Equal(t, "o/n", project.Repo)
-	require.Equal(t, model.TrackerGithub, project.Tracker)
-	require.Equal(t, model.ForgeGithub, project.Forge)
+	require.Equal(t, model.TrackerName("github"), project.Tracker)
+	require.Equal(t, model.ForgeName("github"), project.Forge)
 	require.Equal(t, "p", project.BeadsPrefix)
 	require.Empty(t, project.Source)
-	require.Equal(t, model.ClaimsLocal, project.Claims)
+	require.Equal(t, model.ClaimsName("local"), project.Claims)
 }
 
 func TestLoadFolder_ClaimsAndTrackerNameTheirAdapters(t *testing.T) {
@@ -49,8 +49,8 @@ func TestLoadFolder_ClaimsAndTrackerNameTheirAdapters(t *testing.T) {
 	project, problems := loadProjectText(t, call(localProject+`, tracker = "beads", claims = "beads", beads_prefix = "p"`))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.TrackerBeads, project.Tracker)
-	require.Equal(t, model.ClaimsBeads, project.Claims)
+	require.Equal(t, model.TrackerName("beads"), project.Tracker)
+	require.Equal(t, model.ClaimsName("beads"), project.Claims)
 	require.Equal(t, "p", project.BeadsPrefix)
 }
 
@@ -60,8 +60,8 @@ func TestLoadFolder_AForgeOnlyProjectNeedsNoSource(t *testing.T) {
 	project, problems := loadProjectText(t, call(`repo = "o/n", forge = "github", `+tail))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.ForgeGithub, project.Forge)
-	require.Equal(t, model.TrackerLocal, project.Tracker)
+	require.Equal(t, model.ForgeName("github"), project.Forge)
+	require.Equal(t, model.TrackerName("local"), project.Tracker)
 }
 
 func TestLoadFolder_ASourceThatIsAUrlOrAPathWithALocalHostIsKept(t *testing.T) {

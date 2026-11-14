@@ -46,6 +46,9 @@ type Store struct {
 	run  proc.Runner
 }
 
+// Tracker is the name the GitHub tracker is chosen by.
+const Tracker model.TrackerName = "github"
+
 // Tool is the program that the GitHub tracker needs on the path.
 const Tool = "gh"
 

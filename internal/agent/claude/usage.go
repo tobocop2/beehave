@@ -78,7 +78,7 @@ func (u UsageReader) Read(ctx context.Context, runner model.Runner) model.Readin
 
 // locate returns the path of the CLI, or the reason the runner cannot be read.
 func (u UsageReader) locate(runner model.Runner) (string, string) {
-	if runner.Agent != model.AgentClaude {
+	if runner.Agent != Name {
 		return "", fmt.Sprintf("usage is read for claude runners only, not %s", runner.Agent)
 	}
 

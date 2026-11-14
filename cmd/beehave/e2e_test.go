@@ -15,6 +15,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
@@ -215,8 +216,8 @@ type e2eAgents struct{ dir, path string }
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
 	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
-	adapter := newAdapters(nil, nil, nil).agent(model.AgentClaude)
-	runner := model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir}
+	adapter := newAdapters(nil, nil, nil).agent(claude.Name)
+	runner := model.Runner{Name: request.Login, Agent: claude.Name, ConfigDir: a.dir}
 	tap := newSessionTap(adapter, agent.DefaultPrices())
 	protect := protectionOf(request.Protect, a.dir)
 

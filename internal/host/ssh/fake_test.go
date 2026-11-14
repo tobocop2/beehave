@@ -46,7 +46,7 @@ func (b *bankLog) bank(context.Context) error {
 
 func config() model.HostConfig {
 	return model.HostConfig{
-		Provider: model.HostSSH, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
+		Provider: ssh.Name, MaxRun: 2 * time.Hour, StaleMinutes: 20, PrivateRemote: "private",
 		SSH: model.SSHConfig{User: "lane", WorkRoot: sshtest.Root + "/work", KnownHosts: model.KnownHostsStrict},
 	}
 }

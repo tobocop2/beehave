@@ -1,10 +1,4 @@
 package model
 
-// ClaimsName names the claim store that a project selects.
+// ClaimsName names the claim store that a project selects. The package of each claim store exports its name.
 type ClaimsName string
-
-// The claim stores.
-const (
-	ClaimsLocal ClaimsName = "local"
-	ClaimsBeads ClaimsName = "beads"
-)

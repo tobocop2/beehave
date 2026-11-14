@@ -65,7 +65,7 @@ type scripts struct{ sky, ssh *proctest.Scripted }
 
 // hostConfig is a valid host with the given placement. A nil placement leaves the choice to SkyPilot.
 func hostConfig(placed *model.SkyPilotConfig) model.HostConfig {
-	cfg := model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 45, MaxRun: 12 * time.Hour}
+	cfg := model.HostConfig{Provider: Name, IdleMinutes: 45, MaxRun: 12 * time.Hour}
 	if placed != nil {
 		cfg.SkyPilot = *placed
 	}
