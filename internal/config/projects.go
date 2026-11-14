@@ -90,10 +90,10 @@ func projectSpec(declared []Block) spec {
 	return spec{"project", args}
 }
 
-func projectSpecs(declared []Block) []spec {
-	specs := []spec{projectSpec(declared), hostSpec(), skypilotSpec(), sshSpec(), boardSpec(), scheduleSpec()}
+func projectSpecs(declared, hostDeclared []Block) []spec {
+	specs := []spec{projectSpec(declared), hostSpec(hostDeclared), boardSpec(), scheduleSpec()}
 
-	for _, block := range declared {
+	for _, block := range append(slices.Clone(declared), hostDeclared...) {
 		specs = append(specs, block.spec())
 	}
 
@@ -102,12 +102,12 @@ func projectSpecs(declared []Block) []spec {
 
 // evalProject evaluates a project file and returns the one project block that it calls. The blocks that the registry declares are calls of the file.
 func evalProject(path string, registry Adapters) (*rawProject, error) {
-	declared, err := registry.projectBlocks()
+	declared, hostDeclared, err := registry.declaredBlocks()
 	if err != nil {
 		return nil, err
 	}
 
-	file := newLoader(path, projectSpecs(declared))
+	file := newLoader(path, projectSpecs(declared, hostDeclared))
 
 	var raw *rawProject
 
@@ -119,20 +119,18 @@ func evalProject(path string, registry Adapters) (*rawProject, error) {
 		return built
 	})
 
-	return raw, file.run(append([]*starlark.Builtin{project}, nestedBuiltins(file, declared)...)...)
+	return raw, file.run(append([]*starlark.Builtin{project}, nestedBuiltins(file, declared, hostDeclared)...)...)
 }
 
-// nestedBuiltins returns the calls of the blocks that a project call holds: the fixed blocks and the adapter blocks that the registry declares.
-func nestedBuiltins(file *loader, declared []Block) []*starlark.Builtin {
+// nestedBuiltins returns the calls of the blocks that a project call holds: the fixed blocks and the adapter blocks that the registry declares, for the project and for the host.
+func nestedBuiltins(file *loader, declared, hostDeclared []Block) []*starlark.Builtin {
 	builtins := []*starlark.Builtin{
-		blocks(file, hostSpec(), true, newHost),
-		blocks(file, skypilotSpec(), true, newSkyPilot),
-		blocks(file, sshSpec(), true, newSSH),
+		blocks(file, hostSpec(hostDeclared), true, newHost(hostDeclared)),
 		blocks(file, boardSpec(), true, newBoard),
 		blocks(file, scheduleSpec(), false, newSchedule),
 	}
 
-	for _, block := range declared {
+	for _, block := range append(slices.Clone(declared), hostDeclared...) {
 		builtins = append(builtins, blocks(file, block.spec(), true, func(at syntax.Position, kwargs []starlark.Tuple) (*model.Block, error) {
 			return blockBuilt(at, block, kwargs)
 		}))
@@ -143,33 +141,19 @@ func nestedBuiltins(file *loader, declared []Block) []*starlark.Builtin {
 
 // newProject is the constructor of the project block. The tracker and the claim store default to local, and the build host to this machine.
 func newProject(at syntax.Position, kwargs []starlark.Tuple, declared []Block) (*rawProject, error) {
-	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}, Blocks: map[string]*model.Block{}}
+	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}}
 
-	host, board, held := nested[rawHost]{want: hostSpec().name}, nested[rawBoard]{want: boardSpec().name}, make([]nested[model.Block], len(declared))
+	host, board, held := nested[rawHost]{want: hostSpecName}, nested[rawBoard]{want: boardSpec().name}, holders(declared)
 	dests := []any{
 		&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer,
 		&raw.People, &raw.Epics, &raw.GateFiles, &raw.Conventions, &raw.BriefRules, &raw.StackedRules, &raw.Limits, &raw.Traps, &raw.TokenRules, &raw.Changelog, &board, &raw.Schedules,
 	}
 
-	for i, block := range declared {
-		held[i].want = block.Name
-		dests = append(dests, &held[i])
-	}
-
-	err := projectSpec(declared).unpack(at, kwargs, dests...)
+	err := projectSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
 	raw.Host, raw.Board = host.block, board.block
-	holdBlocks(raw, declared, held)
+	raw.Blocks = heldBlocks(declared, held)
 
 	return raw, err
-}
-
-// holdBlocks records the adapter blocks that the call gave, by block name.
-func holdBlocks(raw *rawProject, declared []Block, held []nested[model.Block]) {
-	for i, block := range declared {
-		if held[i].block != nil {
-			raw.Blocks[block.Name] = held[i].block
-		}
-	}
 }
 
 // profileOf checks the keys of a project file and returns the profile they describe.
@@ -191,7 +175,7 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 
 	return withFacts(path, model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
-		Forge: names.forge, Block: blockOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
+		Forge: names.forge, Blocks: blocksOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value,
 		PinFile: raw.PinFile.Value, Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value,
 	}, raw)
 }
@@ -526,19 +510,24 @@ func (a adapters) String() string {
 	return strings.Join(parts, ", ")
 }
 
-// blockOf returns the block that the project holds for a named adapter that declares one. The tracker and the claim store of one project share a block name.
-func blockOf(raw rawProject, names adapters) *model.Block {
+// blocksOf returns the blocks that the project holds for the named adapters, by block name: one for each adapter that declares a block and that the call gave.
+// The tracker and the claim store that declare one block name share the one block. A project that holds none gets nil.
+func blocksOf(raw rawProject, names adapters) map[string]*model.Block {
+	var held map[string]*model.Block
+
 	for _, entry := range names.entries {
-		if entry.Block == nil {
+		if entry.Block == nil || raw.Blocks[entry.Block.Name] == nil {
 			continue
 		}
 
-		if held, ok := raw.Blocks[entry.Block.Name]; ok {
-			return held
+		if held == nil {
+			held = map[string]*model.Block{}
 		}
+
+		held[entry.Block.Name] = raw.Blocks[entry.Block.Name]
 	}
 
-	return nil
+	return held
 }
 
 // union returns the set of the values that the entries of the named adapters give.

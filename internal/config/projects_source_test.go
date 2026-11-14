@@ -38,7 +38,7 @@ func TestLoadFolder_AFileWithOnlyTheOldKeysGetsLocalClaims(t *testing.T) {
 	require.Equal(t, "o/n", project.Repo)
 	require.Equal(t, model.TrackerName("github"), project.Tracker)
 	require.Equal(t, model.ForgeName("github"), project.Forge)
-	require.Nil(t, project.Block)
+	require.Nil(t, project.Blocks)
 	require.Empty(t, project.Source)
 	require.Equal(t, model.ClaimsName("local"), project.Claims)
 }
@@ -51,7 +51,7 @@ func TestLoadFolder_ClaimsAndTrackerNameTheirAdapters(t *testing.T) {
 	require.Empty(t, problems)
 	require.Equal(t, model.TrackerName("beads"), project.Tracker)
 	require.Equal(t, model.ClaimsName("beads"), project.Claims)
-	require.Equal(t, `{prefix="p"}`, project.Block.String())
+	require.Equal(t, `{prefix="p"}`, project.Blocks["beads"].String())
 }
 
 func TestLoadFolder_AForgeOnlyProjectNeedsNoSource(t *testing.T) {

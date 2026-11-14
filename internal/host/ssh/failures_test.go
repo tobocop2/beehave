@@ -78,8 +78,7 @@ func TestStatus_ACommandThatFailsIsAnErrorAndADropIsAbsent(t *testing.T) {
 		"df":               {command: "df", root: sshtest.Root + "/work", status: failed},
 		"the drain marker": {command: "test -e", root: sshtest.Root + "/work", status: 2},
 	} {
-		cfg := config()
-		cfg.SSH.WorkRoot = tc.root
+		cfg := configRoot(tc.root)
 
 		h, _, _ := newHost(t, machineWith(map[string]int{tc.command: tc.status}, nil), cfg)
 		_, err := h.Status(t.Context())

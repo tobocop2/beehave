@@ -42,6 +42,11 @@ func Block(prefix string) *model.Block {
 	return model.NewBlock("test", []model.BlockEntry{model.TextEntry("prefix", prefix)})
 }
 
+// Blocks returns the blocks of a project whose database has the id prefix, as model.Project holds them: the beads block under its name.
+func Blocks(prefix string) map[string]*model.Block {
+	return map[string]*model.Block{"beads": Block(prefix)}
+}
+
 // Bd keeps rows in memory and answers the bd commands the claim code uses. It follows bd 1.3.2: --claim takes only an open row
 // without an assignee, grants the lease to the actor and sets the actor as the assignee (a claim that also sets --assignee, or any update of
 // the status or the assignee, ends the lease); a refused --claim exits 1 with the text of a lost take; bd heartbeat renews the lease of the

@@ -29,7 +29,9 @@ func TestHost_ConformsToHost(t *testing.T) {
 func hostConfig() model.HostConfig {
 	return model.HostConfig{
 		Provider: skypilot.Name, IdleMinutes: 45, MaxRun: 12 * time.Hour,
-		SkyPilot: model.SkyPilotConfig{Cloud: "gcp", Region: "us-central1", InstanceType: "n2-standard-8"},
+		Block: model.NewBlock("test", []model.BlockEntry{
+			model.TextEntry(skypilot.BlockCloud, "gcp"), model.TextEntry(skypilot.BlockRegion, "us-central1"), model.TextEntry(skypilot.BlockInstanceType, "n2-standard-8"),
+		}),
 	}
 }
 

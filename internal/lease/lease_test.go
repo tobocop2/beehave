@@ -56,7 +56,7 @@ func TestProjectOf_FindsTheProjectThatOwnsTheRepository(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "p", found.Name)
-	prefix, given := found.Block.Text("prefix")
+	prefix, given := found.Blocks["beads"].Text("prefix")
 	assert.True(t, given)
 	assert.Equal(t, "p", prefix)
 }

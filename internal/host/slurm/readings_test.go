@@ -99,7 +99,7 @@ func newSlotted(t *testing.T, slot Slot, opts ...Option) (*Queue, *proctest.Scri
 	ssh := &proctest.Scripted{}
 	opts = append([]Option{WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}), WithNonce(fixedNonce)}, opts...)
 
-	return New(link.New("lane-host", ssh), config(), slot, opts...), ssh
+	return New(link.New("lane-host", ssh), queueConfig(), slot, opts...), ssh
 }
 
 func TestSubmit_CancelsTheSlurmJobWhenTheSlotCannotBeHeld(t *testing.T) {
@@ -182,7 +182,7 @@ func TestWait_BanksTheWorkOfTheHeadNodeThroughSSHFromTheLoginFolder(t *testing.T
 	t.Parallel()
 
 	ssh := &proctest.Scripted{}
-	cfg := config()
+	cfg := queueConfig()
 	cfg.PrivateRemote = "git@private.test:org/bank.git"
 	h := New(link.New("lane-host", ssh), cfg, stubSlot{}, WithClock(jobwait.Clock{Poll: 1, Now: time.Now, Sleep: proc.Sleep}))
 

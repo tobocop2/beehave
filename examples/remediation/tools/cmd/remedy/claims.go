@@ -29,8 +29,18 @@ func openClaims(env map[string]string, bd proc.Runner) func(repo string) (*claim
 	}
 }
 
-// sshBlock is the host block of the ssh and slurm hosts. This binary may not import those host packages, so it names the hosts and the block here.
-const sshBlock = "ssh"
+// machineBlock returns the block of a host that is a machine or a cluster head node: the link keys, all optional. This binary may not import the host packages,
+// so it names the hosts and their blocks here. The loader accepts the keys so that remedy reads the project files of the owner; the host adapters read the values.
+func machineBlock(name string) *config.Block {
+	return &config.Block{Name: name, Args: []config.Arg{
+		{Key: "address", Optional: true},
+		{Key: "user", Optional: true},
+		{Key: "port", Kind: config.WholeArg, Optional: true},
+		{Key: "identity", Optional: true},
+		{Key: "work_root", Optional: true},
+		{Key: "known_hosts", Optional: true},
+	}}
+}
 
 // registry is the small adapter table that this binary declares: the config validates the projects that remedy reads against it.
 func registry() config.Adapters {
@@ -44,9 +54,9 @@ func registry() config.Adapters {
 		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: {Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}}},
 		Agents:   map[model.Agent]*config.Entry{"claude": {}, opencode.Name: {}},
 		Hosts: map[model.HostProvider]*config.Entry{
-			"skypilot": {Idle: true, HostBlock: "skypilot"},
-			sshBlock:   {HostBlock: sshBlock},
-			"slurm":    {HostBlock: sshBlock},
+			"skypilot": {Idle: true, Block: &config.Block{Name: "skypilot", Args: []config.Arg{{Key: "cloud", Optional: true}, {Key: "region", Optional: true}, {Key: "instance_type", Optional: true}}}},
+			"ssh":      {Block: machineBlock("ssh")},
+			"slurm":    {Block: machineBlock("slurm")},
 		},
 	}
 }
@@ -56,7 +66,7 @@ func registry() config.Adapters {
 func claimsOf(bd proc.Runner, state func() (string, error), project model.Project) (*claim.Claims, error) {
 	switch project.Claims {
 	case beads.Claims:
-		rows, err := beads.New(bd, project.Block)
+		rows, err := beads.New(bd, project.Blocks[beads.BlockName])
 		if err != nil {
 			return nil, err
 		}

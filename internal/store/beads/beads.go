@@ -65,12 +65,15 @@ const (
 // Tool is the program that the beads adapter needs on the path.
 const Tool = "bd"
 
-// BlockPrefix is the key of the id prefix in the beads block.
-const BlockPrefix = "prefix"
+// BlockName is the name of the beads block, and BlockPrefix is the key of the id prefix in it.
+const (
+	BlockName   = "beads"
+	BlockPrefix = "prefix"
+)
 
 // Block returns the schema of the beads block: the id prefix of the database, which the project must give.
 func Block() config.Block {
-	return config.Block{Name: "beads", Args: []config.Arg{{Key: BlockPrefix}}}
+	return config.Block{Name: BlockName, Args: []config.Arg{{Key: BlockPrefix}}}
 }
 
 // New returns a store that runs bd through run. block is the beads block of the project: the id prefix of the beads database, from which claim rows are named.

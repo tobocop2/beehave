@@ -129,10 +129,8 @@ func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
 
 // beadsRegistration is what the beads tracker and the beads claim store share: the block they declare, the program they need and its version check.
 func beadsRegistration(bd proc.Runner) registration {
-	block := beads.Block()
-
 	return registration{
-		Entry:    config.Entry{Block: &block, Tools: []string{beads.Tool}},
+		Entry:    config.Entry{Block: blockOf(beads.Block()), Tools: []string{beads.Tool}},
 		versions: map[string]func(context.Context) error{beads.Tool: func(ctx context.Context) error { return beads.RequireBd(ctx, bd) }},
 	}
 }
@@ -229,28 +227,25 @@ func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.Claim
 func hostEntries() map[model.HostProvider]hostAdapter {
 	return map[model.HostProvider]hostAdapter{
 		skypilot.Name: {
-			registration: registration{Entry: config.Entry{Idle: true, HostBlock: skypilotBlock}},
+			registration: registration{Entry: config.Entry{Block: blockOf(skypilot.Block()), Idle: true}},
 			build:        newSkyPilotHost,
 			sentinels:    []error{skypilot.ErrConfig, link.ErrConfig},
 		},
 		ssh.Name: {
-			registration: registration{Entry: config.Entry{HostBlock: sshBlock}},
+			registration: registration{Entry: config.Entry{Block: blockOf(ssh.Block())}},
 			build:        newSSHHost,
 			sentinels:    []error{link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining},
 		},
 		slurm.Name: {
-			registration: registration{Entry: config.Entry{HostBlock: sshBlock}},
+			registration: registration{Entry: config.Entry{Block: blockOf(slurm.Block())}},
 			build:        newSlurmHost,
 			sentinels:    []error{link.ErrConfig},
 		},
 	}
 }
 
-// The nested blocks of the host block that a provider takes. The ssh and the slurm providers share the ssh block.
-const (
-	skypilotBlock = "skypilot"
-	sshBlock      = "ssh"
-)
+// blockOf returns the address of a declared block, for the registry entry that holds it.
+func blockOf(declared config.Block) *config.Block { return &declared }
 
 // registry returns the names, keys and tools of the table as the config reads them.
 func (a adapters) registry() config.Adapters {
@@ -292,7 +287,7 @@ func openLocalClaims(ctx context.Context, state func() (string, error), project 
 
 // newBeadsClaims builds the beads claim store of the project. It holds no file, so the store has no closer. A check builds the store and drops it.
 func newBeadsClaims(bd proc.Runner, project model.Project) (claimStore, error) {
-	rows, err := beads.New(bd, project.Block)
+	rows, err := beads.New(bd, project.Blocks[beads.BlockName])
 	if err != nil {
 		return claimStore{}, err
 	}
@@ -347,7 +342,7 @@ func newSlurmHost(project model.Project) (host.Host, error) { //nolint:ireturn /
 }
 
 func newBeads(bd proc.Runner, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
-	tracker, err := beads.New(bd, project.Block)
+	tracker, err := beads.New(bd, project.Blocks[beads.BlockName])
 	if err != nil {
 		return nil, err
 	}

@@ -67,8 +67,8 @@ project(
     #         instance_type = "n2-standard-8",
     #     ),
     # ),
-    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the skypilot block. beehave never deletes the machine: host_teardown banks the work and leaves it up.
-    # A Slurm cluster you own: provider = "slurm" takes the same ssh block, which names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
+    # A machine you own: provider = "ssh" takes the ssh block and refuses idle_minutes and the block of any other provider. beehave never deletes the machine: host_teardown banks the work and leaves it up.
+    # A Slurm cluster you own: provider = "slurm" takes the slurm block, with the same keys as the ssh block. It names the head node (build_host is its ssh alias). Jobs run in the login folder, so slurm refuses work_root.
     # max_run goes to sbatch as --time. The cluster is yours, so no slot job holds it and host_teardown banks the work and leaves it up.
     # host = host(
     #     provider = "ssh",

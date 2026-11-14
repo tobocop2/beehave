@@ -64,7 +64,7 @@ func (b Block) required() bool {
 	return slices.ContainsFunc(b.Args, func(arg Arg) bool { return !arg.Optional })
 }
 
-// Entry is one adapter of the registry: the block it declares, the project keys it requires, the programs it needs on the path and, for a host provider, how the config treats it.
+// Entry is one adapter of the registry: the block it declares, the project keys it requires, the programs it needs on the path and, for a host provider, whether beehave deletes its machine.
 type Entry struct {
 	// Block is the config block of the adapter. A nil Block declares none.
 	Block *Block
@@ -74,8 +74,6 @@ type Entry struct {
 	Tools []string
 	// Idle is true for a host provider that beehave deletes after idle_minutes.
 	Idle bool
-	// HostBlock is the name of the nested block that a host provider takes in the host block, or empty for a provider that takes none.
-	HostBlock string
 }
 
 // Adapters is the registry of every adapter of a build: the names that the config accepts, by kind, with the entry of each name.
@@ -169,12 +167,50 @@ func (a Adapters) projectBlocks() ([]Block, error) {
 		return nil, err
 	}
 
+	return sortedBlocks(byName), nil
+}
+
+// hostBlocks returns the blocks that a host call holds, by name order: the blocks that the host entries declare.
+// Two entries that declare one name must declare one schema.
+func (a Adapters) hostBlocks() ([]Block, error) {
+	byName := map[string]Block{}
+
+	if err := gatherBlocks(a.Hosts, byName); err != nil {
+		return nil, err
+	}
+
+	return sortedBlocks(byName), nil
+}
+
+// declaredBlocks returns the blocks of the project call and the blocks of the host call.
+func (a Adapters) declaredBlocks() (project, host []Block, err error) {
+	if project, err = a.projectBlocks(); err != nil {
+		return nil, nil, err
+	}
+
+	host, err = a.hostBlocks()
+
+	return project, host, err
+}
+
+// sortedBlocks returns the blocks in name order.
+func sortedBlocks(byName map[string]Block) []Block {
 	blocks := make([]Block, 0, len(byName))
 	for _, name := range slices.Sorted(maps.Keys(byName)) {
 		blocks = append(blocks, byName[name])
 	}
 
-	return blocks, nil
+	return blocks
+}
+
+// blockArgs returns the optional argument of each block, in the order of the blocks.
+func blockArgs(declared []Block) []string {
+	args := make([]string, len(declared))
+	for i, block := range declared {
+		args[i] = block.Name + "?"
+	}
+
+	return args
 }
 
 // gatherBlocks adds the blocks that the entries declare to byName. Two entries that declare one name must declare the same arguments.

@@ -54,6 +54,7 @@ const (
 // Down sends nothing: beehave did not create the machine and never deletes it. A caller releases the host with Teardown, which banks the work.
 type Host struct {
 	config model.HostConfig
+	values block
 	link   *link.Link
 	nonce  func() string
 	bank   func(ctx context.Context) error
@@ -81,21 +82,18 @@ func WithNonce(nonce func() string) Option { return func(s *settings) { s.nonce 
 // New returns the host for the machine. target is the ssh alias, or a label when `host.ssh.address` names the machine. runner is the ssh command line.
 // It runs nothing, so a check of the config needs no network. A setting that could change a command line is refused.
 func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option) (*Host, error) {
-	if err := checkConfig(config); err != nil {
-		return nil, err
-	}
-
-	l, err := link.ForMachine(target, linkOptions(config.SSH), ssh)
+	values, err := checkConfig(config)
 	if err != nil {
 		return nil, err
 	}
 
-	h := &Host{config: config, link: l}
-	set := settings{clock: jobwait.Clock{Poll: defaultPoll, Now: time.Now, Sleep: proc.Sleep}, bank: h.bankWork, nonce: rand.Text}
-
-	for _, opt := range opts {
-		opt(&set)
+	l, err := link.ForMachine(target, linkOptions(values), ssh)
+	if err != nil {
+		return nil, err
 	}
+
+	h := &Host{config: config, values: values, link: l}
+	set := h.settingsOf(opts)
 
 	h.nonce, h.bank = set.nonce, set.bank
 	h.engine = jobwait.New(scheduler{h}, h.release, set.clock, set.bank, time.Duration(config.StaleMinutes)*time.Minute)
@@ -103,24 +101,37 @@ func New(target string, config model.HostConfig, ssh proc.Runner, opts ...Option
 	return h, nil
 }
 
-func linkOptions(s model.SSHConfig) link.Options {
-	return link.Options{Address: s.Address, User: s.User, Identity: s.Identity, KnownHosts: s.KnownHosts, Port: s.Port}
+// settingsOf returns the defaults of the host with the options applied.
+func (h *Host) settingsOf(opts []Option) settings {
+	set := settings{clock: jobwait.Clock{Poll: defaultPoll, Now: time.Now, Sleep: proc.Sleep}, bank: h.bankWork, nonce: rand.Text}
+
+	for _, opt := range opts {
+		opt(&set)
+	}
+
+	return set
 }
 
-// checkConfig refuses a work root that systemd or the shell would change: systemd expands a percent sign in a path, and a dollar sign is no path.
-func checkConfig(config model.HostConfig) error {
-	root := config.SSH.WorkRoot
+func linkOptions(s block) link.Options {
+	return link.Options{Address: s.address, User: s.user, Identity: s.identity, KnownHosts: s.knownHosts, Port: s.port}
+}
+
+// checkConfig reads the block of the config and returns it. It refuses a work root that systemd or the shell would change: systemd expands a percent sign in a path, and a dollar sign is no path.
+// The block decode has already refused a work root that is not absolute.
+func checkConfig(config model.HostConfig) (block, error) {
+	values, err := decodeBlock(config.Block)
+	if err != nil {
+		return block{}, err
+	}
 
 	switch {
 	case config.MaxRun < time.Second:
-		return fmt.Errorf("%w: `host.max_run` must be at least one second", link.ErrConfig)
-	case root != "" && !path.IsAbs(root) && !strings.HasPrefix(root, "~/"):
-		return fmt.Errorf("%w: `host.ssh.work_root` %q must be an absolute path or start with ~/", link.ErrConfig, root)
-	case strings.ContainsAny(root, "%$"):
-		return fmt.Errorf("%w: `host.ssh.work_root` %q must not hold a percent or dollar sign, which systemd and the shell would expand", link.ErrConfig, root)
+		return block{}, fmt.Errorf("%w: `host.max_run` must be at least one second", link.ErrConfig)
+	case strings.ContainsAny(values.workRoot, "%$"):
+		return block{}, fmt.Errorf("%w: `host.ssh.work_root` %q must not hold a percent or dollar sign, which systemd and the shell would expand", link.ErrConfig, values.workRoot)
 	}
 
-	return nil
+	return values, nil
 }
 
 // run runs one command on the machine and returns what it printed. A dropped link wraps link.ErrDropped. Any other failure wraps link.ErrCommand.
@@ -329,7 +340,7 @@ func (h *Host) WorkRoot(ctx context.Context) (string, error) {
 }
 
 func (h *Host) resolveRoot(ctx context.Context) (string, error) {
-	configured := h.config.SSH.WorkRoot
+	configured := h.values.workRoot
 
 	if path.IsAbs(configured) {
 		return h.existing(ctx, configured)

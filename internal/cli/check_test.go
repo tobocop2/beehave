@@ -38,13 +38,16 @@ func registry() config.Adapters {
 		Claims:   map[model.ClaimsName]*config.Entry{local.Claims: {}, beads.Claims: beadsEntry()},
 		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: githubEntry()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			skypilot.Name: {Idle: true, HostBlock: "skypilot"},
-			ssh.Name:      {HostBlock: "ssh"},
-			slurm.Name:    {HostBlock: "ssh"},
+			skypilot.Name: {Idle: true, Block: hostBlock(skypilot.Block())},
+			ssh.Name:      {Block: hostBlock(ssh.Block())},
+			slurm.Name:    {Block: hostBlock(slurm.Block())},
 		},
 		Agents: map[model.Agent]*config.Entry{claude.Name: {}, opencode.Name: {}},
 	}
 }
+
+// hostBlock returns the address of a declared host block, for the registry entry that holds it.
+func hostBlock(declared config.Block) *config.Block { return &declared }
 
 func writeConfig(t *testing.T, dir, name, content string) {
 	t.Helper()
