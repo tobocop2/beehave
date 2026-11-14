@@ -38,12 +38,7 @@ func (r ExecRunner) cappedCommand(ctx context.Context, args, env []string) (*exe
 		return nil, nil //nolint:nilerr // a binary that is not found is reported by the plain command
 	}
 
-	limit, err := r.limit()
-	if err != nil {
-		return nil, err
-	}
-
-	cmd, err := r.helperCommand(ctx, limit, found, args)
+	cmd, err := r.capHelper(ctx, found, args)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +46,16 @@ func (r ExecRunner) cappedCommand(ctx context.Context, args, env []string) (*exe
 	cmd.Env = env
 
 	return cmd, nil
+}
+
+// capHelper returns the helper command that sets the process limit, then runs found with args.
+func (r ExecRunner) capHelper(ctx context.Context, found string, args []string) (*exec.Cmd, error) {
+	limit, err := r.limit()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.helperCommand(ctx, limit, found, args)
 }
 
 // run runs cmd to its end and returns its result. The helper of a cap gets the write end of a pipe as file descriptor 3.
