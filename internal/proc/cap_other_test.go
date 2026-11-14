@@ -86,6 +86,17 @@ func TestExecRunner_ACapWithAProgramThatCannotStartFailsTheStepNamingThePath(t *
 	require.ErrorContains(t, done.SetupErr, gone)
 }
 
+func TestExecRunner_ACapWithoutASetupPipeFailsTheStepAndTheCommandDoesNotRun(t *testing.T) { //nolint:paralleltest // see above
+	marker := filepath.Join(t.TempDir(), "ran")
+	pipe := func() (*os.File, *os.File, error) { return nil, nil, errors.New("no descriptors left") }
+	done := proc.WithPipe(proc.ExecRunner{Binary: "sh", Dir: t.TempDir(), MaxNewProcesses: 50}, pipe).Run(context.Background(), []string{"-c", "touch " + marker})
+
+	assert.Equal(t, proc.ExitCapFailed, done.ExitCode)
+	require.ErrorContains(t, done.SetupErr, "could not make the setup pipe of the cap")
+	require.ErrorContains(t, done.SetupErr, "no descriptors left")
+	assert.NoFileExists(t, marker)
+}
+
 func TestCapHelper_AnotherProgramNameDoesNothing(t *testing.T) {
 	t.Parallel()
 

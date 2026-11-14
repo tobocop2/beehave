@@ -376,6 +376,13 @@ func unixSocket(r reporter, e sandbox.Enforcer) {
 func socketNames(r reporter) (addresses, flags map[string]string) {
 	r.Helper()
 
+	return socketNamesFor(r, runtime.GOOS)
+}
+
+// socketNamesFor is socketNames for the system named goos.
+func socketNamesFor(r reporter, goos string) (addresses, flags map[string]string) {
+	r.Helper()
+
 	folder, err := os.MkdirTemp("", "beehave-sock-")
 	must(r, err)
 	r.Cleanup(func() { must(r, os.RemoveAll(folder)) })
@@ -383,7 +390,7 @@ func socketNames(r reporter) (addresses, flags map[string]string) {
 	path := filepath.Join(folder, "s")
 	addresses, flags = map[string]string{"pathname": path}, map[string]string{"pathname": "--unix-socket " + path}
 
-	if runtime.GOOS == "linux" {
+	if goos == "linux" {
 		name := fmt.Sprintf("beehave-contract-%d-%d", os.Getpid(), time.Now().UnixNano())
 		addresses["abstract"], flags["abstract"] = "@"+name, "--abstract-unix-socket "+name
 	}
