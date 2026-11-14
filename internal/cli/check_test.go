@@ -153,7 +153,7 @@ func TestCheckConfig_RefusesABeadsClaimsProjectWithoutABeadsBlock(t *testing.T) 
 	code, _, stderr := runCheckConfig(t, map[string]string{}, "--config", dir)
 
 	require.Equal(t, 2, code)
-	require.Contains(t, stderr, "the project names an adapter whose `beads` block it must hold. Write beads(...).")
+	require.Contains(t, stderr, "the claims `beads` needs the `beads` block. Write beads(prefix = ...).")
 }
 
 func TestCheckConfig_RefusesAnUnknownIssueStoreAndNamesTheKnownOnes(t *testing.T) {

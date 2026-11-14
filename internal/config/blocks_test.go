@@ -131,8 +131,8 @@ func TestLoadFolder_ABlockNoAdapterDeclaresIsRefused(t *testing.T) {
 
 	_, problems := loadWith(t, bare, call(`source = "/srv/repo", claims = "beads", beads = beads(prefix = "p"), `+blockTail))
 
-	require.NotEmpty(t, problems)
-	assert.Contains(t, problems[0].Error(), "beads")
+	require.Len(t, problems, 1)
+	assert.Contains(t, problems[0].Error(), "p.star:1:57: undefined: beads. Fix the syntax of the file.")
 }
 
 func TestLoadFolder_AnAdapterWithARequiredBlockArgumentRefusesAProjectThatLeavesTheBlockOut(t *testing.T) {
@@ -141,7 +141,7 @@ func TestLoadFolder_AnAdapterWithARequiredBlockArgumentRefusesAProjectThatLeaves
 	_, problems := loadProjectText(t, call(`source = "/srv/repo", tracker = "beads", `+blockTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), "p.star:1:8: the project names an adapter whose `beads` block it must hold. Write beads(...).")
+	assert.Contains(t, problems[0].Error(), "p.star:1:8: the tracker `beads` needs the `beads` block. Write beads(prefix = ...).")
 }
 
 func TestLoadFolder_ABlockCallRefusesAnArgumentItsAdapterDoesNotDeclare(t *testing.T) {

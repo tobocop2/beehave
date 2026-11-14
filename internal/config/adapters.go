@@ -46,6 +46,19 @@ func (b Block) spec() spec {
 	return spec{b.Name, args}
 }
 
+// call returns the call that a project writes for the block, with its required arguments as placeholders: prefix = ...
+func (b Block) call() string {
+	var args []string
+
+	for _, arg := range b.Args {
+		if !arg.Optional {
+			args = append(args, arg.Key+" = ...")
+		}
+	}
+
+	return fmt.Sprintf("%s(%s)", b.Name, strings.Join(args, ", "))
+}
+
 // required says whether the block has an argument that the call must give.
 func (b Block) required() bool {
 	return slices.ContainsFunc(b.Args, func(arg Arg) bool { return !arg.Optional })
@@ -173,7 +186,7 @@ func gatherBlocks[T ~string](entries map[T]*Entry, byName map[string]Block) erro
 
 		declared := *entry.Block
 		if known, seen := byName[declared.Name]; seen && !slices.Equal(known.Args, declared.Args) {
-			return refuse("two adapters declare the `%s` block with different arguments. Fix the adapter table.", declared.Name)
+			return refuse("two adapters declare the `%s` block with different arguments. Report the adapters.", declared.Name)
 		}
 
 		byName[declared.Name] = declared

@@ -472,16 +472,33 @@ func requireOtherKeys(raw rawProject, required map[string]bool) error {
 	return refuseAt(raw.At, "an adapter of the project needs the key `%s`, and no check reads it. Report the adapter.", slices.Sorted(maps.Keys(required))[0])
 }
 
+// chosenAdapter is one adapter of a project: the key that chose it, its name and its registry entry.
+type chosenAdapter struct {
+	key, name string
+	entry     *Entry
+}
+
+// chosen returns the adapters that the project names, in the order tracker, claims, forge.
+func (a adapters) chosen() []chosenAdapter {
+	list := []chosenAdapter{{"tracker", string(a.tracker), a.entries[0]}, {"claims", string(a.claims), a.entries[1]}}
+	if a.forge != "" {
+		list = append(list, chosenAdapter{"forge", string(a.forge), a.entries[len(a.entries)-1]})
+	}
+
+	return list
+}
+
 // blockRules checks the adapter blocks of the project. An adapter that the project names and whose block has a required argument needs the block.
 // A block that the project holds must be the block of an adapter that it names.
 func blockRules(raw rawProject, names adapters) error {
-	for _, entry := range names.entries {
-		if entry.Block == nil || !entry.Block.required() {
+	for _, adapter := range names.chosen() {
+		block := adapter.entry.Block
+		if block == nil || !block.required() {
 			continue
 		}
 
-		if _, held := raw.Blocks[entry.Block.Name]; !held {
-			return refuseAt(raw.At, "the project names an adapter whose `%s` block it must hold. Write %s(...).", entry.Block.Name, entry.Block.Name)
+		if _, held := raw.Blocks[block.Name]; !held {
+			return refuseAt(raw.At, "the %s `%s` needs the `%s` block. Write %s.", adapter.key, adapter.name, block.Name, block.call())
 		}
 	}
 

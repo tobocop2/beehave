@@ -88,12 +88,12 @@ func TestLoadFolder_TheKeysAndTheBlockOfAnEntryAreRequiredWhenAProjectNamesTheAd
 	_, problems := loadInvented(t, call(`source = "/srv/repo", tracker = "shelf", `+inventedTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), "the project names an adapter whose `ledger` block it must hold. Write ledger(...).")
+	assert.Contains(t, problems[0].Error(), "the tracker `shelf` needs the `ledger` block. Write ledger(id = ...).")
 
 	_, problems = loadInvented(t, call(`source = "/srv/repo", claims = "ledger", `+inventedTail))
 
 	require.Len(t, problems, 1)
-	assert.Contains(t, problems[0].Error(), "the project names an adapter whose `ledger` block it must hold. Write ledger(...).")
+	assert.Contains(t, problems[0].Error(), "the claims `ledger` needs the `ledger` block. Write ledger(id = ...).")
 
 	project, problems := loadInvented(t, call(`source = "/srv/repo", claims = "ledger", ledger = ledger(id = "p"), `+inventedTail))
 
