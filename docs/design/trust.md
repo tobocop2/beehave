@@ -8,7 +8,7 @@ The rule for every decision here: a rule that the forge or the operating system 
 
 This page is the design. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
 
-Not built yet: the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `CODEOWNERS` file, and the ruleset files. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
+Not built yet: the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the new environment of an agent step and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
 
 ## The threat model
 
@@ -73,9 +73,9 @@ The recommended `writer` token on GitHub is a fine-grained token of the owner's 
 
 ### An agent step holds no forge credential
 
-1. The tokens live in the forge adapter. No agent spec has a field for one. Each forge call runs as one role, with that token and an empty `GH_CONFIG_DIR`. No step uses the `gh` login of the owner.
+1. The tokens live in the forge adapter. No agent spec has a field for one. Each forge call runs as one role, with that token and an empty `GH_CONFIG_DIR` and `GH_PROMPT_DISABLED=1`. A call with no credential for its role fails closed. No step uses the `gh` login of the owner.
 2. The environment allow-list of an agent drops `SSH_AUTH_SOCK`.
-3. Every agent step gets `HOME` and `GH_CONFIG_DIR` set to empty folders of the step. It also gets `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`.
+3. Every agent step gets `HOME` and `GH_CONFIG_DIR` set to empty folders of the step. It also gets `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`. It sets `GIT_AUTHOR_*` and `GIT_COMMITTER_*` to the login of the `writer` and its no-reply address, so the work of the engine is auditable as the `writer`.
 4. The sandbox denies `~/` and the credential list. No network list names `github.com`, so `git push` over HTTPS has no host.
 5. The engine pushes, not the agent. A `push` step runs with `--force-with-lease=refs/heads/<branch>:<expect>`. It is a recorded step, so a replay does not push again. The prompts contain no push line.
 6. A `command` step gets no forge token. A workflow cannot ask for one.
@@ -89,7 +89,11 @@ The CI of a head runs with the workflow files of that head. A workflow that an a
 
 A lane that must change a workflow file is held for the owner. The owner lands that change by hand.
 
-For a fine-grained token, the engine cannot read the permissions. So the start check answers `unknown`. The engine then starts only when the `writer` entry sets `ci_locked = True`. That setting is the statement of the owner that the token has no Workflows permission.
+The start check asks the forge adapter whether an agent can write CI. It has three answers.
+
+- `no`: the engine starts.
+- `yes`: the engine refuses to start, whatever `ci_locked` says. On GitHub, a classic token whose scopes hold `workflow` gives `yes`.
+- `unknown`: the engine starts only when the `writer` entry sets `ci_locked = True`. A fine-grained token gives `unknown`, because the engine cannot read its permissions. `ci_locked` is the statement of the owner that the token has no Workflows permission.
 
 ## The forge enforces the merge
 
@@ -104,7 +108,7 @@ gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integra
 It protects `integration/**`. It requires a pull request, resolved review threads, the checks `check` and `test` from GitHub Actions, and the statuses `beehave/review` and `beehave/gate`. It requires 0 approvals and has no bypass actor.
 
 - `beehave/review` and `beehave/gate` name no source. A status that a user token posts has no App to name. GitHub shows the author of each status in the merge box. Without an App, the ruleset cannot restrict the source of these two statuses. The CI lock and the empty credential list of agents take its place.
-- Who can post a status: users with push access, and an Actions token with `statuses: write`. Here that is the owner, the engine with the token of the owner, and nobody else. The CI lock rules out the Actions token.
+- Who can post a status: users with push access, and an Actions token with `statuses: write`. Here that is the owner, the engine with the token of the owner, and an installed App with Commit statuses write (owner step 4). The CI lock rules out the Actions token.
 - A status belongs to one commit. A new push makes a head with no `beehave/review`, so a stale verdict cannot pass.
 - `required_approving_review_count` is 0 because the owner is the author and cannot approve.
 - `bypass_actors` is empty, so the admin role of the owner does not bypass the ruleset. The owner can still edit it. No agent can.
@@ -133,7 +137,7 @@ The merge request carries no `Approved` flag. The forge refuses a merge without 
 
 ### The forge capability methods
 
-Each adapter maps these methods to its forge. A forge that cannot do one returns an error with the reason, and the engine refuses.
+Each adapter maps these methods to its forge. A forge that cannot do one returns `forge.ErrNoCapability` with the reason, and the engine refuses.
 
 | Method | GitHub | GitLab | Forgejo |
 |---|---|---|---|
@@ -142,7 +146,7 @@ Each adapter maps these methods to its forge. A forge that cannot do one returns
 | Post a status | `POST repos/{repo}/statuses/{sha}` | external status check response | `POST repos/{repo}/statuses/{sha}` |
 | Post a review | `POST pulls/{n}/reviews` with `commit_id` | approve at the head SHA | `POST pulls/{n}/reviews` with `commit_id` |
 | Read the protection | rules for the branch | approval rules and status checks | branch protection |
-| Can an agent write CI | `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
+| Can an agent write CI | `yes` for a classic token with the `workflow` scope, `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
 
 The default mode on GitLab needs external status checks, which is an Ultimate feature. On a lower tier the adapter reports the capability missing and the engine refuses. On Forgejo, branch protection takes a status context pattern and refuses a merge until it succeeds.
 
@@ -173,16 +177,24 @@ A foreign pull request refuses to start when the project has the sandbox off, or
 | Agent sandbox | Seatbelt through Claude Code. `make smoke-sandbox` proves it. | bubblewrap through Claude Code. Not proven (#199). Until it is, a step ends `not-started` if the CLI reports no sandbox. |
 | Gate sandbox | `sandbox-exec` (deprecated by Apple, present) | Landlock ABI 4 (Linux 6.7 and later). ABI 9 socket scope is not verified (#252). |
 | Unsandboxed step | Can read the login keychain. | Can read the Secret Service keyring if a session bus is reachable. |
-| Same-user process reads | `ps eww` shows the environment of processes of the owner. | `/proc/<pid>/environ` is readable by the same user. |
+| Same-user process reads | `ps eww` shows the environment of processes of the owner, so a token in the child `gh` of the engine is visible to an unsandboxed agent. | `/proc/<pid>/environ` is readable by the same user. |
 | Windows | Refused. | Not applicable. |
 
 ## The gate result comes from the forge
 
-After the candidate gate passes on head `H`, the engine posts `POST repos/<repo>/statuses/H` with `state = success`, `context = beehave/gate` and a description that names the gate key. A red gate posts `failure`. A void gate posts nothing.
+After the candidate gate passes on head `H`, the engine posts `POST repos/<repo>/statuses/H` with `state = success`, `context = beehave/gate` and a description that names the gate key and the run id. A red gate posts `failure`. A void gate posts nothing.
 
 The review step posts `beehave/review` the same way, with the run id in the description.
 
-`.github/CODEOWNERS` gives these paths to the owner: `/Makefile`, `/.github/`, `/.ai-rulez/`, `/.golangci.yml`, `/go.mod`, `/go.sum` and `/scripts/`. The owner is the author of the pull requests, so the default ruleset cannot require a code-owner review. The file still shows the owner the sensitive paths. The CI lock stops a head from rewriting the workflow. In the optional mode, the bot reviews but is not a code owner.
+### The gate program comes from the base
+
+A head can weaken the program behind the gate: `make check` and its scripts. The owner is the author of the pull requests and cannot approve them. So a code-owner rule would block every change to those files, and beehave adds no `CODEOWNERS` file.
+
+Instead, the project key `gate_program` lists repository paths. For beehave they are `Makefile`, `scripts/` and `.golangci.yml`. The host gate checks out the head, then runs `git checkout <base> -- <paths>`. The gate runs the program of the base, so a head that weakens `make check` is gated by the `make check` of the base.
+
+A head whose code needs a new gate program fails the base gate. The owner then lands it by hand. The CI lock stops a head from rewriting the workflow.
+
+With a `writer` bot, `CODEOWNERS` works again as an extra rule, because the owner is then not the author. That is not part of the default design.
 
 Required workflows from another repository are an organization feature, and not available here.
 
