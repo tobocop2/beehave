@@ -140,9 +140,10 @@ check-darwin:  ## On a Mac: run the Seatbelt enforcer tests and the contract sui
 mutation:
 	gremlins unleash $(or $(PKG),.)
 
-# Per-PR run: mutate only the Go lines that differ from BASE (default origin/main). Fails when no mutant applies or one lives.
+# Per-PR run: mutate only the Go lines that differ from BASE, the branch the pull request targets. BASE is required: make mutation-pr BASE=origin/integration/r1
+# Fails when no mutant applies or one lives. A diff with no Go source change is not applicable and passes.
 mutation-pr:
-	sh scripts/mutation-pr.sh $(BASE)
+	sh scripts/mutation-pr.sh "$(BASE)"
 
 governance-generate: ai-rulez-version  ## Generate the agent files from .ai-rulez/
 	ai-rulez generate --no-self-mcp
