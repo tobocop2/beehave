@@ -15,11 +15,11 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
-// ErrDoctorIncomplete is the cause when the Doctor has no value for a required field. Only TokenReadable is required.
+// ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Every field is required.
 var ErrDoctorIncomplete = errors.New("the doctor is missing a reader")
 
-// Doctor holds the checks that need a program outside the process. TokenReadable is required: a check that is left out would read as a pass.
-// The maps hold what the adapter table declares per tool or per agent. An entry that is left out has no check of its kind.
+// Doctor holds the checks that need a program outside the process. Every field is required: a check that is left out would read as a pass.
+// A map that is not nil is the declaration of the adapter table. An empty map says that no tool or agent has a check of that kind. A nil map is a reader that was never given.
 type Doctor struct {
 	// TokenReadable says whether the Keychain entry holds a token. It never returns the token.
 	TokenReadable func(ctx context.Context, entry string) bool
@@ -33,13 +33,23 @@ type Doctor struct {
 	TokenFixes map[model.Agent]func(entry string) string
 }
 
-// complete returns an error when TokenReadable has no value.
+// complete returns an error that names each field that has no value.
 func (d Doctor) complete() error {
-	if d.TokenReadable == nil {
-		return fmt.Errorf("%w: TokenReadable", ErrDoctorIncomplete)
+	given := []bool{d.TokenReadable != nil, d.ToolVersions != nil, d.Logins != nil, d.ConfigDirFixes != nil, d.TokenFixes != nil}
+
+	var missing []string
+
+	for i, name := range []string{"TokenReadable", "ToolVersions", "Logins", "ConfigDirFixes", "TokenFixes"} {
+		if !given[i] {
+			missing = append(missing, name)
+		}
 	}
 
-	return nil
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s", ErrDoctorIncomplete, strings.Join(missing, ", "))
 }
 
 // fix is the text that tells the user how to make a failed check pass. It is the error of the check.

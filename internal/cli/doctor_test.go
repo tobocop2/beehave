@@ -53,6 +53,17 @@ func claudeLogin(read func(context.Context, model.Runner) model.Reading) map[mod
 	return map[model.Agent]func(context.Context, model.Runner) model.Reading{"claude": read}
 }
 
+// declaresNone is a complete Doctor whose adapter table declares no tool version, no login read and no fix text: its maps are empty, not nil.
+func declaresNone(token func(context.Context, string) bool) cli.Doctor {
+	return cli.Doctor{
+		TokenReadable:  token,
+		ToolVersions:   map[string]func(context.Context) error{},
+		Logins:         map[model.Agent]func(context.Context, model.Runner) model.Reading{},
+		ConfigDirFixes: map[model.Agent]func(string) string{},
+		TokenFixes:     map[model.Agent]func(string) string{},
+	}
+}
+
 // runDoctor runs the command with a complete Doctor: a reader that the test leaves nil is a passing reader.
 func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string) (int, string) {
 	t.Helper()
@@ -310,15 +321,52 @@ func TestDoctor_AnOldBdFailsWithTheMessageOfTheVersionCheck(t *testing.T) {
 	require.Contains(t, out, "FAIL bd version\n     fix: beehave needs bd 1.3.2 or newer for claims; found 0.56.1\n")
 }
 
-func TestDoctor_ADoctorWithoutATokenReaderIsRefusedAndNoCheckRuns(t *testing.T) {
+func TestDoctor_ADoctorWithoutAReaderIsRefusedByNameAndNoCheckRuns(t *testing.T) {
 	t.Parallel()
 
+	whole := func() cli.Doctor {
+		return cli.Doctor{
+			TokenReadable:  readableTokens,
+			ToolVersions:   bdVersion(currentBd),
+			Logins:         claudeLogin(func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }),
+			ConfigDirFixes: map[model.Agent]func(string) string{},
+			TokenFixes:     map[model.Agent]func(string) string{},
+		}
+	}
+
+	cases := map[string]struct {
+		strip func(*cli.Doctor)
+		field string
+	}{
+		"token":         {func(d *cli.Doctor) { d.TokenReadable = nil }, "TokenReadable"},
+		"tool versions": {func(d *cli.Doctor) { d.ToolVersions = nil }, "ToolVersions"},
+		"logins":        {func(d *cli.Doctor) { d.Logins = nil }, "Logins"},
+		"config fixes":  {func(d *cli.Doctor) { d.ConfigDirFixes = nil }, "ConfigDirFixes"},
+		"token fixes":   {func(d *cli.Doctor) { d.TokenFixes = nil }, "TokenFixes"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			doctor := whole()
+			tc.strip(&doctor)
+
+			m := newMachine(t)
+			code, out, errText := execDoctor(m, doctor, m.env())
+
+			require.Equal(t, 1, code)
+			require.Empty(t, out)
+			require.Contains(t, errText, tc.field)
+		})
+	}
+
 	m := newMachine(t)
-	code, out, errText := execDoctor(m, cli.Doctor{ToolVersions: bdVersion(currentBd)}, m.env())
+	code, out, errText := execDoctor(m, cli.Doctor{}, m.env())
 
 	require.Equal(t, 1, code)
 	require.Empty(t, out)
-	require.Contains(t, errText, "TokenReadable")
+	require.Contains(t, errText, "TokenReadable, ToolVersions, Logins, ConfigDirFixes, TokenFixes")
 }
 
 func TestDoctor_AToolWithNoVersionCheckAndAnAgentWithNoLoginReaderNeedOnlyTheirPresence(t *testing.T) {
@@ -326,7 +374,7 @@ func TestDoctor_AToolWithNoVersionCheckAndAnAgentWithNoLoginReaderNeedOnlyTheirP
 
 	m := newMachine(t)
 
-	code, out, errText := execDoctor(m, cli.Doctor{TokenReadable: readableTokens}, m.env())
+	code, out, errText := execDoctor(m, declaresNone(readableTokens), m.env())
 
 	require.Equal(t, 0, code)
 	require.Empty(t, errText)
@@ -351,7 +399,7 @@ func TestDoctor_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: cli.Doctor{TokenReadable: readableTokens}}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: declaresNone(readableTokens)}, map[string]string{}, &stdout, &stderr)
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr.String(), "beehave: cannot find the home folder")
@@ -376,7 +424,7 @@ func TestDoctor_AnAgentWithNoFixTextGetsTheGenericFix(t *testing.T) {
 	require.NoError(t, os.Remove(m.login))
 
 	denied := func(context.Context, string) bool { return false }
-	code, out, errText := execDoctor(m, cli.Doctor{TokenReadable: denied}, m.env())
+	code, out, errText := execDoctor(m, declaresNone(denied), m.env())
 
 	require.Equal(t, 1, code)
 	require.Empty(t, errText)

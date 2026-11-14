@@ -43,7 +43,23 @@ func TestDoctor_TheBdVersionCheckAcceptsANewBdAndRefusesAnOldOne(t *testing.T) {
 func TestDoctor_OnlyBdHasAVersionCheck(t *testing.T) {
 	t.Parallel()
 
-	require.Len(t, newDoctor(newAdapters(nil, nil, nil), nil).ToolVersions, 1)
+	versions := newDoctor(newAdapters(nil, nil, nil), nil).ToolVersions
+
+	require.Len(t, versions, 1)
+	require.Contains(t, versions, model.ToolBd)
+}
+
+func TestDoctor_ATableWithNoAgentDeclaresEveryReaderEmptyNotMissing(t *testing.T) {
+	t.Parallel()
+
+	doctor := newDoctor(adapters{}, nil)
+
+	require.NotNil(t, doctor.Logins)
+	require.NotNil(t, doctor.ConfigDirFixes)
+	require.NotNil(t, doctor.TokenFixes)
+	require.Empty(t, doctor.Logins)
+	require.Empty(t, doctor.ConfigDirFixes)
+	require.Empty(t, doctor.TokenFixes)
 }
 
 func TestDoctor_TheLoginOfAClaudeRunnerIsReadThroughTheAdapter(t *testing.T) {
