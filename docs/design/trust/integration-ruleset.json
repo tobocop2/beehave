@@ -21,7 +21,7 @@
       "required_status_checks": [
         {"context": "check", "integration_id": 15368},
         {"context": "test", "integration_id": 15368},
-        {"context": "beehave/gate", "integration_id": "<writer app id>"}
+        {"context": "beehave/gate", "integration_id": 0}
       ]
     }}
   ]

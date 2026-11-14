@@ -69,7 +69,7 @@ gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integra
 ```
 
 - `bypass_actors` is empty, so the admin role of the owner does not bypass the ruleset. The owner can still edit it. No agent can, because no agent holds a credential.
-- `15368` is the GitHub Actions app. `beehave/gate` must come from the writer app, so a status with the same name from another source does not count. Fill in the writer app id before the owner posts the ruleset.
+- `15368` is the GitHub Actions app. `beehave/gate` must come from the writer app, so a status with the same name from another source does not count. The `0` for `beehave/gate` in the file is a placeholder for the writer app id. Replace it before the owner posts the ruleset (owner step 10).
 - `strict_required_status_checks_policy` is false. `batch_merge` merges members one after another into a moving base. A strict policy would make each later member out of date, push a new head and dismiss its approval. The union gate of the batch holds the up-to-date property instead.
 - `require_last_push_approval` holds by construction: the writer pushes and the reviewer approves. A push by anyone else after the approval needs a new approval.
 - A ruleset of a user-owned repository cannot name a reviewer identity. The rule asks for one approval from an identity with write access. Only the owner and the reviewer app are such identities. Guard 0 adds the check that the approval is from one of them.
@@ -143,7 +143,7 @@ beehave keeps the host gate for the candidate and posts its verdict as `beehave/
 
 ## Durable round state
 
-Retention deletes finished runs after 7 days, so a count that reads run records resets. The ledger holds the counts that must last.
+Retention deletes successful runs after 7 days, so a count that reads run records resets. The ledger holds the counts that must last.
 
 The package `internal/ledger` owns `<state folder>/ledger.db`, a SQLite file with mode 0600. Retention never touches it. Only `beehave round close <base>` deletes rows. It has three tables:
 
@@ -190,7 +190,7 @@ Run these as the owner, in order. Steps 1 to 8 need no change in beehave.
 7. In the repository settings, under Actions, General, keep "Allow GitHub Actions to create and approve pull requests" cleared.
 8. Make a probe repository `tobocop2/beehave-trust-probe` with one commit on `integration/probe`. Install both apps on it. Add a ruleset on `integration/**` with one required approval, `require_last_push_approval` and no bypass.
 9. Open a pull request on the probe repository as the writer and approve it as the reviewer. Run `gh pr view <n> -R tobocop2/beehave-trust-probe --json reviewDecision,mergeStateStatus`. If `reviewDecision` is `APPROVED` and `mergeStateStatus` is not `BLOCKED`, the approval counts: record that in this page. If not, give the reviewer app `Contents: write`, add the `lanes` ruleset, and run this step again.
-10. After the pull request that posts `beehave/gate` merges, fill in the writer App ID in `trust/integration-ruleset.json`. Then post the ruleset with the command in "The ruleset".
+10. After the pull request that posts `beehave/gate` merges, replace the `0` after `beehave/gate` in `trust/integration-ruleset.json` with the writer App ID. Then post the ruleset with the command in "The ruleset".
 11. Add the `forge_apps(...)` block to `projects/beehave.star` with both App IDs, installation ids, key paths and bot logins.
 12. Optional, for a merge queue: make an organization, transfer the repository to it, install both apps on the organization, and post the ruleset again with a `merge_queue` rule.
 
