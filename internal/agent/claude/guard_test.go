@@ -61,7 +61,7 @@ func guardOutcome(t *testing.T, bashCommand string) string {
 	var out bytes.Buffer
 
 	result := agent.Runner{}.Run(context.Background(), agent.Spec{
-		Adapter: claude.New(nil), Runner: model.Runner{Name: "r", Agent: model.AgentClaude, ConfigDir: dir},
+		Adapter: claude.New(nil), Runner: model.Runner{Name: "r", Agent: claude.Name, ConfigDir: dir},
 		Dir: dir, Prompt: bashCommand + "\n", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Log: &out, Guard: guard,
 	})
 	require.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)

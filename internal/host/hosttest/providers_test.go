@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -117,7 +120,7 @@ func callsSuite(fn *ast.FuncDecl) bool {
 func TestEveryHostProviderRunsTheConformanceSuite(t *testing.T) {
 	t.Parallel()
 
-	for _, provider := range []model.HostProvider{model.HostSkyPilot, model.HostSSH, model.HostSlurm} {
+	for _, provider := range []model.HostProvider{skypilot.Name, ssh.Name, slurm.Name} {
 		t.Run(string(provider), func(t *testing.T) {
 			t.Parallel()
 

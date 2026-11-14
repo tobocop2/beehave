@@ -2,25 +2,15 @@ package model
 
 import "time"
 
-// TrackerName names a tracker adapter that a project selects.
+// TrackerName names a tracker adapter that a project selects. The package of each tracker exports its name.
 type TrackerName string
-
-// The tracker adapters.
-const (
-	TrackerLocal  TrackerName = "local"
-	TrackerBeads  TrackerName = "beads"
-	TrackerGithub TrackerName = "github"
-)
 
 // ItemFields lists the fields that every tracker declares for an item: id, title, body and severity. Each tracker returns this list from its ItemFields,
 // and the check of a workflow file reads it to refuse an item field that no tracker has. The severity is P0 to P3, or P? when the tracker keeps none.
 func ItemFields() []string { return []string{"id", "title", "body", "severity"} }
 
-// ForgeName names a forge adapter that a project selects.
+// ForgeName names a forge adapter that a project selects. The package of each forge exports its name.
 type ForgeName string
-
-// The forge adapters.
-const ForgeGithub ForgeName = "github"
 
 // OverlapRequest names what Forge.Overlap compares. Set PR, or set Files to a list of file names and optionally Since.
 type OverlapRequest struct {

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
-	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 )
 
 // noSandbox is an adapter whose profile has no sandbox.
@@ -40,7 +40,7 @@ func seen(version string) func(context.Context, string, []string) (string, error
 func boxed(t *testing.T) *fixture {
 	t.Helper()
 
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work, Network: []string{"api.example.org"}}
 
 	return f
@@ -62,7 +62,7 @@ func TestRunner_ASandboxedRunGetsTheSandboxArgumentsInOneSettingsObject(t *testi
 }
 
 func TestRunner_ARunWithNoSandboxGetsNoSandboxArguments(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -185,7 +185,7 @@ func TestRunner_ASandboxedRunGetsNoProxyVariableNoAgentSocketAndNoGitConfig(t *t
 }
 
 func TestRunner_ARunWithNoSandboxKeepsTheProxyVariablesAndSetsNoGitVariable(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Env["HTTPS_PROXY"] = "http://owner:3128"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)

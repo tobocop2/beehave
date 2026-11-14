@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/forge"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -93,7 +94,7 @@ func ensureFixture(t *testing.T) (worktrees, *fakeGit, string) {
 	git := &fakeGit{}
 	trees := worktrees{
 		root: filepath.Join(state, "trees"), repos: filepath.Join(state, "repos"),
-		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: model.ForgeGithub, BaseBranch: "main"}}},
+		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: forgegithub.Name, BaseBranch: "main"}}},
 		git:      git.runner, forge: fakeForges,
 	}
 

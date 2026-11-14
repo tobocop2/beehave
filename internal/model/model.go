@@ -3,14 +3,8 @@ package model
 
 import "strings"
 
-// Agent names an agent CLI that beehave can start.
+// Agent names an agent CLI that beehave can start. The agent package of each CLI exports its name.
 type Agent string
-
-// The agents beehave can start.
-const (
-	AgentClaude   Agent = "claude"
-	AgentOpenCode Agent = "opencode"
-)
 
 // Runner is one agent login. It holds no token: Keychain names the entry that does.
 type Runner struct {

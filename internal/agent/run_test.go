@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -46,7 +47,7 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 	log := &bytes.Buffer{}
 
 	var adapter agent.Adapter
-	if kind == model.AgentClaude {
+	if kind == claude.Name {
 		adapter = claude.New(nil)
 	}
 
@@ -65,7 +66,7 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 }
 
 func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -85,7 +86,7 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 }
 
 func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Model, f.spec.Resume = "opus", "sess-1"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -95,7 +96,7 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 }
 
 func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Guard = "beehave check command"
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -110,7 +111,7 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 }
 
 func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}
 
 	f.spec.Model = "opus"
@@ -127,7 +128,7 @@ func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //n
 }
 
 func TestRunner_PassesTheTurnAndBudgetCapsAsFlagsAndNoCapAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.MaxTurns, f.spec.MaxBudget = 40, 2.5
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -142,7 +143,7 @@ func TestRunner_PassesTheTurnAndBudgetCapsAsFlagsAndNoCapAddsNone(t *testing.T) 
 }
 
 func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.NoEdits = true
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -153,7 +154,7 @@ func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { /
 }
 
 func TestRunner_RefusesACapThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}
 
 	f.spec.MaxBudget = 1
@@ -174,7 +175,7 @@ func (n noFlags) Profile() agent.Profile {
 }
 
 func TestRunner_FindsTheBinaryOnTheSpecPathNotTheParentPath(t *testing.T) {
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	t.Setenv("PATH", "/bin:/usr/bin")
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -184,7 +185,7 @@ func TestRunner_FindsTheBinaryOnTheSpecPathNotTheParentPath(t *testing.T) {
 }
 
 func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "secret")
+	f := newFixture(t, "claude", claude.Name, "secret")
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -195,7 +196,7 @@ func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:
 }
 
 func TestRunner_ReportsThePidOfTheAgentToOnStartBeforeItEnds(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "fail")
+	f := newFixture(t, "claude", claude.Name, "fail")
 
 	var pids []int
 
@@ -209,7 +210,7 @@ func TestRunner_ReportsThePidOfTheAgentToOnStartBeforeItEnds(t *testing.T) { //n
 }
 
 func TestRunner_ReportsTheExitCodeAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "fail")
+	f := newFixture(t, "claude", claude.Name, "fail")
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -217,7 +218,7 @@ func TestRunner_ReportsTheExitCodeAndTheStderrTail(t *testing.T) { //nolint:para
 }
 
 func TestRunner_WritesTheLastLineThatHasNoNewline(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "partial")
+	f := newFixture(t, "claude", claude.Name, "partial")
 
 	agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -225,7 +226,7 @@ func TestRunner_WritesTheLastLineThatHasNoNewline(t *testing.T) { //nolint:paral
 }
 
 func TestRunner_AFailingLogEndsTheRunWithTheCause(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "partial")
+	f := newFixture(t, "claude", claude.Name, "partial")
 	f.spec.Log = failingWriter{}
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -239,7 +240,7 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
 
 func TestRunner_StopsOnTheTotalTimeout(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f := newFixture(t, "claude", claude.Name, "silent")
 	f.spec.Timeout = 300 * time.Millisecond
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -248,7 +249,7 @@ func TestRunner_StopsOnTheTotalTimeout(t *testing.T) { //nolint:paralleltest // 
 }
 
 func TestRunner_TheTotalTimeoutKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	f := newFixture(t, "claude", claude.Name, "holdgrand")
 	f.spec.Timeout = time.Hour
 	clock := &fakeClock{}
 
@@ -319,7 +320,7 @@ func (c *fakeClock) resetCount() int {
 }
 
 func TestRunner_StopsWhenTheIdleTimerFires(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f := newFixture(t, "claude", claude.Name, "silent")
 	f.spec.IdleTimeout = 7 * time.Second
 	clock := &fakeClock{}
 
@@ -339,7 +340,7 @@ func TestRunner_StopsWhenTheIdleTimerFires(t *testing.T) { //nolint:paralleltest
 }
 
 func TestRunner_OutputResetsTheIdleTimer(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "chatter")
+	f := newFixture(t, "claude", claude.Name, "chatter")
 	f.spec.IdleTimeout = time.Minute
 	clock := &fakeClock{}
 
@@ -351,7 +352,7 @@ func TestRunner_OutputResetsTheIdleTimer(t *testing.T) { //nolint:paralleltest /
 }
 
 func TestRunner_WithoutAnIdleLimitNoTimerStarts(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "chatter")
+	f := newFixture(t, "claude", claude.Name, "chatter")
 	clock := &fakeClock{}
 
 	got := agent.Runner{AfterFunc: clock.AfterFunc}.Run(context.Background(), f.spec)
@@ -362,7 +363,7 @@ func TestRunner_WithoutAnIdleLimitNoTimerStarts(t *testing.T) { //nolint:paralle
 }
 
 func TestRunner_TheRealIdleTimerStopsASilentAgent(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f := newFixture(t, "claude", claude.Name, "silent")
 	f.spec.IdleTimeout = 100 * time.Millisecond
 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -371,7 +372,7 @@ func TestRunner_TheRealIdleTimerStopsASilentAgent(t *testing.T) { //nolint:paral
 }
 
 func TestRunner_ACancelKillsTheAgentAndItsChildren(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	f := newFixture(t, "claude", claude.Name, "holdgrand")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
@@ -389,7 +390,7 @@ func TestRunner_ACancelKillsTheAgentAndItsChildren(t *testing.T) { //nolint:para
 }
 
 func TestRunner_ACancelBeforeTheStartReadsAsCancelled(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "")
+	f := newFixture(t, "claude", claude.Name, "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -404,7 +405,7 @@ const runnerWaitDelay = time.Second
 // The cancel kills the group at once, through the cancel function of the command. The wait delay of the command (one second) and the sweep after the wait
 // would also end the group, but later: the child must be gone well before the wait delay.
 func TestRunner_ACancelInsideOnStartKillsTheGroupBeforeTheWaitDelay(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "holdgrand")
+	f := newFixture(t, "claude", claude.Name, "holdgrand")
 	ctx, cancel := context.WithCancel(context.Background())
 
 	started := 0
@@ -441,7 +442,7 @@ func TestRunner_ACancelInsideOnStartKillsTheGroupBeforeTheWaitDelay(t *testing.T
 }
 
 func TestRunner_ADeadlineOnTheCallerContextReadsAsTimedOut(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "silent")
+	f := newFixture(t, "claude", claude.Name, "silent")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -451,7 +452,7 @@ func TestRunner_ADeadlineOnTheCallerContextReadsAsTimedOut(t *testing.T) { //nol
 }
 
 func TestRunner_ChildrenThatOutliveTheAgentAreKilled(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	f := newFixture(t, "claude", model.AgentClaude, "grand")
+	f := newFixture(t, "claude", claude.Name, "grand")
 
 	f.spec.Log = nil
 
@@ -472,7 +473,7 @@ func assertGone(t *testing.T, records string) {
 
 func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	t.Run("unknown_agent", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "claude", model.AgentClaude, "")
+		f := newFixture(t, "claude", claude.Name, "")
 		f.spec.Runner.Agent = model.Agent("pi")
 		f.spec.Adapter = nil
 
@@ -483,7 +484,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	})
 
 	t.Run("opencode_is_not_supported_yet", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "opencode", model.AgentOpenCode, "")
+		f := newFixture(t, "opencode", opencode.Name, "")
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -493,7 +494,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	})
 
 	t.Run("missing_login_folder_is_not_created", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "claude", model.AgentClaude, "")
+		f := newFixture(t, "claude", claude.Name, "")
 		gone := filepath.Join(t.TempDir(), "no-login")
 		f.spec.Runner.ConfigDir = gone
 
@@ -506,14 +507,14 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	})
 
 	t.Run("login_path_is_a_file", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "claude", model.AgentClaude, "")
+		f := newFixture(t, "claude", claude.Name, "")
 		f.spec.Runner.ConfigDir = filepath.Join(f.records, "mode")
 
 		assert.Equal(t, agent.OutcomeNotStarted, agent.Runner{}.Run(context.Background(), f.spec).Outcome)
 	})
 
 	t.Run("binary_not_on_path", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "other", model.AgentClaude, "")
+		f := newFixture(t, "other", claude.Name, "")
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -522,7 +523,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	})
 
 	t.Run("binary_only_on_the_parent_path", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "claude", model.AgentClaude, "")
+		f := newFixture(t, "claude", claude.Name, "")
 		f.spec.Env["PATH"] = "/bin:/usr/bin"
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
@@ -533,7 +534,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	})
 
 	t.Run("binary_cannot_start", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
-		f := newFixture(t, "claude", model.AgentClaude, "")
+		f := newFixture(t, "claude", claude.Name, "")
 		require.NoError(t, exectest.Write(filepath.Join(f.records, "claude"), "#!/nonexistent/interpreter\n"))
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)

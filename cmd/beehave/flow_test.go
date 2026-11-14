@@ -10,6 +10,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store/local"
 )
@@ -19,7 +20,7 @@ func TestDepsOn_TheSentinelsOfTheHostEntriesReachTheEngineAsKeptErrors(t *testin
 
 	sentinel := errors.New("a host sentinel")
 	table := newAdapters(nil, nil, nil)
-	table.hosts = map[model.HostProvider]hostAdapter{model.HostSSH: {sentinels: []error{sentinel}}}
+	table.hosts = map[model.HostProvider]hostAdapter{ssh.Name: {sentinels: []error{sentinel}}}
 
 	deps := depsOn(config.Config{}, flow.Options{}, logins{}, table)
 
@@ -92,7 +93,7 @@ func TestFlowFactory_TheEngineOfTheRunCommandPicksTheRunnerFromTheUsageTheClaude
 	t.Parallel()
 
 	cfg, opts := usageFixture(t)
-	cfg.Projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Claims: model.ClaimsLocal, Tracker: model.TrackerLocal}}}
+	cfg.Projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Claims: local.Claims, Tracker: local.Tracker}}}
 	opts.StateDir = t.TempDir() + "/state"
 	opts.Version = "v1"
 	opts.MaxConcurrent = 1

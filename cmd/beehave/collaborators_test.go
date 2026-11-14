@@ -15,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
@@ -410,10 +411,10 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	hosted := &fakeHost{}
 	table := newAdapters(nil, nil, nil)
 	table.hosts = map[model.HostProvider]hostAdapter{
-		model.HostSkyPilot: {build: func(model.Project) (host.Host, error) { return hosted, nil }},
+		skypilot.Name: {build: func(model.Project) (host.Host, error) { return hosted, nil }},
 	}
 
-	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
+	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: skypilot.Name}}}
 	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
 
 	got, err := runs.hosts("h", "")
@@ -432,14 +433,14 @@ func TestNewPrograms_BuildTheHostOfTheClusterThatTheRunChose(t *testing.T) {
 
 	table := newAdapters(nil, nil, nil)
 	table.hosts = map[model.HostProvider]hostAdapter{
-		model.HostSkyPilot: {build: func(project model.Project) (host.Host, error) {
+		skypilot.Name: {build: func(project model.Project) (host.Host, error) {
 			built = append(built, project.BuildHost)
 
 			return &fakeHost{}, nil
 		}},
 	}
 
-	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
+	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: skypilot.Name}}}
 	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), table)
 
 	_, err := runs.hosts("h", "gpu-b")

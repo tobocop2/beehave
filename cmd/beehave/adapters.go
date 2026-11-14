@@ -10,6 +10,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
@@ -110,6 +111,9 @@ func (c claimStore) Close() error {
 // skyTimeout is the longest one sky call may run. A launch creates a machine, which takes minutes.
 const skyTimeout = 30 * time.Minute
 
+// stepAgent is the agent kind of every agent step. A step names no agent yet, so the pool pick takes runners of this kind only.
+const stepAgent = claude.Name
+
 // beadsPrefixKey is the project key that the beads tracker and the beads claim store require.
 const beadsPrefixKey = "beads_prefix"
 
@@ -117,12 +121,12 @@ const beadsPrefixKey = "beads_prefix"
 // The opencode agent has no adapter yet, so its entry has no constructor.
 func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
 	return map[model.Agent]agentAdapter{
-		model.AgentClaude: {
+		claude.Name: {
 			build:     func() agent.Adapter { return claude.New(env) },
 			configFix: claude.ConfigFix,
 			tokenFix:  claude.TokenFix,
 		},
-		model.AgentOpenCode: {},
+		opencode.Name: {},
 	}
 }
 
@@ -149,7 +153,7 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 		trackers: trackerEntries(bd, state),
 		claims:   claimsEntries(bd, state),
 		forges: map[model.ForgeName]forgeAdapter{
-			model.ForgeGithub: {registration: githubRegistration(forgegithub.Tool), build: newGithubForge},
+			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: newGithubForge},
 		},
 		agents:   agentEntries(env),
 		hosts:    hostEntries(),
@@ -162,9 +166,9 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 // trackerEntries returns the tracker entries.
 func trackerEntries(bd proc.Runner, state func() (string, error)) map[model.TrackerName]trackerAdapter {
 	return map[model.TrackerName]trackerAdapter{
-		model.TrackerLocal:  localTracker(state),
-		model.TrackerBeads:  {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
-		model.TrackerGithub: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(project) }},
+		local.Tracker:       localTracker(state),
+		beads.Tracker:       {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
+		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(project) }},
 	}
 }
 
@@ -204,13 +208,13 @@ func openLocalItems(ctx context.Context, state func() (string, error), project m
 // claimsEntries returns the claim store entries.
 func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.ClaimsName]claimsAdapter {
 	return map[model.ClaimsName]claimsAdapter{
-		model.ClaimsLocal: {
+		local.Claims: {
 			open: func(ctx context.Context, project model.Project) (claimStore, error) {
 				return openLocalClaims(ctx, state, project)
 			},
 			check: func(model.Project) error { return nil },
 		},
-		model.ClaimsBeads: {
+		beads.Claims: {
 			registration: beadsRegistration(bd),
 			open:         func(_ context.Context, project model.Project) (claimStore, error) { return newBeadsClaims(bd, project) },
 			check:        func(project model.Project) error { return checkBeadsClaims(bd, project) },
@@ -221,17 +225,17 @@ func claimsEntries(bd proc.Runner, state func() (string, error)) map[model.Claim
 // hostEntries returns the host provider entries.
 func hostEntries() map[model.HostProvider]hostAdapter {
 	return map[model.HostProvider]hostAdapter{
-		model.HostSkyPilot: {
+		skypilot.Name: {
 			registration: registration{Entry: config.Entry{Idle: true, HostBlock: skypilotBlock}},
 			build:        newSkyPilotHost,
 			sentinels:    []error{skypilot.ErrConfig, link.ErrConfig},
 		},
-		model.HostSSH: {
+		ssh.Name: {
 			registration: registration{Entry: config.Entry{HostBlock: sshBlock}},
 			build:        newSSHHost,
 			sentinels:    []error{link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining},
 		},
-		model.HostSlurm: {
+		slurm.Name: {
 			registration: registration{Entry: config.Entry{HostBlock: sshBlock}},
 			build:        newSlurmHost,
 			sentinels:    []error{link.ErrConfig},

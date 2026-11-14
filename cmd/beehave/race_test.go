@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/claim"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/store/beads"
@@ -249,7 +250,7 @@ func TestClaimOverBeads_AnyTrackerGetsBeadsClaims(t *testing.T) {
 	table := newAdapters(bd, nil, nil)
 
 	for _, tracker := range slices.Sorted(maps.Keys(table.trackers)) {
-		rows, err := table.leases(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"})
+		rows, err := table.leases(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: forgegithub.Name, Claims: beads.Claims, BeadsPrefix: "p"})
 		require.NoError(t, err, string(tracker))
 
 		c, _ := claimsOn(t, rows, beadstest.Now)

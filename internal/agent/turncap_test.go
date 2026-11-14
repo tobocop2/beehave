@@ -10,7 +10,6 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 // stepAdapter reads each output line "tool <n>" as a shell call with the id of the line. A CLI with noTurnFlag has no turn cap of its own.
@@ -39,7 +38,7 @@ func (stepAdapter) Calls(line string) agent.Seen {
 func stepFixture(t *testing.T, mode string, noTurnFlag bool, maxTurns int) *fixture {
 	t.Helper()
 
-	f := newFixture(t, "claude", model.AgentClaude, mode)
+	f := newFixture(t, "claude", claude.Name, mode)
 	f.spec.Adapter = stepAdapter{Adapter: claude.New(nil), noTurnFlag: noTurnFlag}
 	f.spec.MaxTurns = maxTurns
 

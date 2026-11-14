@@ -15,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
 const localProjectConfig = "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"make check\", test_report = \"r.xml\")\n"
@@ -77,7 +78,7 @@ func (rig *itemRig) run(ctx context.Context, args ...string) (int, string, strin
 		Version:  "v9",
 		Registry: registry(),
 		Flow:     rig.factory(),
-		Items: map[model.TrackerName]cli.ItemOpener{model.TrackerLocal: func(_ context.Context, project model.Project) (cli.ItemStore, error) {
+		Items: map[model.TrackerName]cli.ItemOpener{local.Tracker: func(_ context.Context, project model.Project) (cli.ItemStore, error) {
 			rig.opened++
 			rig.items.projects = append(rig.items.projects, project.Name)
 

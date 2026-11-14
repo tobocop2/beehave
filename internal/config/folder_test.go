@@ -67,13 +67,13 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 
 	require.Empty(t, problems)
 	require.Equal(t, []model.Runner{
-		{Name: "claude-a", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, ".claude-profiles/a")},
-		{Name: "claude-b", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, ".claude-profiles/b")},
+		{Name: "claude-a", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/a")},
+		{Name: "claude-b", Agent: "claude", ConfigDir: filepath.Join(home, ".claude-profiles/b")},
 	}, cfg.Runners)
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: model.TrackerGithub, Claims: model.ClaimsBeads, Forge: model.ForgeGithub, BeadsPrefix: "proj", Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", BeadsPrefix: "proj", Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local"},
 		cfg.Projects["example"].Project)
 }
 
@@ -87,7 +87,7 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralle
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local",
+		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -271,7 +271,7 @@ func TestLoadFolder_ABeadsProjectNeedsItsPrefixAndKeepsIt(t *testing.T) {
 	project, problems := loadProjectText(t, call(`repo = "o/n", tracker = "beads", forge = "github", beads_prefix = "proj", base_branch = "main", gate = "g", test_report = "r.xml"`))
 
 	require.Empty(t, problems)
-	require.Equal(t, model.TrackerBeads, project.Tracker)
+	require.Equal(t, model.TrackerName("beads"), project.Tracker)
 	require.Equal(t, "proj", project.BeadsPrefix)
 }
 
@@ -426,8 +426,8 @@ func TestLoadFolder_Runners(t *testing.T) { //nolint:paralleltest // sets HOME
 
 	require.Empty(t, problems)
 	require.Equal(t, []model.Runner{
-		{Name: "a", Agent: model.AgentClaude, ConfigDir: filepath.Join(home, "c")},
-		{Name: "b", Agent: model.AgentOpenCode, Keychain: "svc"},
+		{Name: "a", Agent: "claude", ConfigDir: filepath.Join(home, "c")},
+		{Name: "b", Agent: "opencode", Keychain: "svc"},
 	}, cfg.Runners)
 }
 

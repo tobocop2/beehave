@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
@@ -67,8 +69,8 @@ func TestDoctor_TheLoginOfAClaudeRunnerIsReadThroughTheAdapter(t *testing.T) {
 	t.Parallel()
 
 	missing := filepath.Join(t.TempDir(), "absent")
-	read := newDoctor(newAdapters(nil, nil, nil), nil).Logins[model.AgentClaude]
-	reading := read(context.Background(), model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: missing})
+	read := newDoctor(newAdapters(nil, nil, nil), nil).Logins[claude.Name]
+	reading := read(context.Background(), model.Runner{Name: "a", Agent: claude.Name, ConfigDir: missing})
 
 	_, known := reading.Usage()
 	require.False(t, known)
@@ -81,22 +83,22 @@ func TestDoctor_TheLoginsAndTheFixesComeFromTheAgentsOfTheTable(t *testing.T) {
 	doctor := newDoctor(newAdapters(nil, nil, nil), nil)
 
 	require.Len(t, doctor.Logins, 1)
-	require.Equal(t, "Log in to it: CLAUDE_CONFIG_DIR=/login claude", doctor.ConfigDirFixes[model.AgentClaude]("/login"))
-	require.Equal(t, "Run `claude setup-token`, then: security add-generic-password -s entry -a $USER -w", doctor.TokenFixes[model.AgentClaude]("entry"))
-	require.Nil(t, doctor.ConfigDirFixes[model.AgentOpenCode])
-	require.Nil(t, doctor.TokenFixes[model.AgentOpenCode])
+	require.Equal(t, "Log in to it: CLAUDE_CONFIG_DIR=/login claude", doctor.ConfigDirFixes[claude.Name]("/login"))
+	require.Equal(t, "Run `claude setup-token`, then: security add-generic-password -s entry -a $USER -w", doctor.TokenFixes[claude.Name]("entry"))
+	require.Nil(t, doctor.ConfigDirFixes[opencode.Name])
+	require.Nil(t, doctor.TokenFixes[opencode.Name])
 }
 
 func TestDoctor_AnAgentEntryWithNoFixTextAddsNoFix(t *testing.T) {
 	t.Parallel()
 
 	table := newAdapters(nil, nil, nil)
-	table.agents = map[model.Agent]agentAdapter{model.AgentOpenCode: {build: table.agents[model.AgentClaude].build}}
+	table.agents = map[model.Agent]agentAdapter{opencode.Name: {build: table.agents[claude.Name].build}}
 	doctor := newDoctor(table, nil)
 
 	require.Empty(t, doctor.ConfigDirFixes)
 	require.Empty(t, doctor.TokenFixes)
-	require.Contains(t, doctor.Logins, model.AgentOpenCode)
+	require.Contains(t, doctor.Logins, opencode.Name)
 }
 
 // fakeSecurity puts a `security` script that prints the value for its entry on a PATH of its own.
@@ -134,7 +136,7 @@ func TestBuildInfo_TheDoctorReadsALoginThroughTheClaudeCLIOnThePathOfTheCallerEn
 	require.NoError(t, os.WriteFile(filepath.Join(tools, "claude"), []byte("#!/bin/sh\necho fake-claude-ran >&2\nexit 7\n"), e2eToolMode))
 
 	info := buildInfo(map[string]string{"PATH": tools, "HOME": t.TempDir()}, "dev", cli.Flow{})
-	reading := info.Doctor.Logins[model.AgentClaude](t.Context(), model.Runner{Name: "a", Agent: model.AgentClaude, ConfigDir: t.TempDir()})
+	reading := info.Doctor.Logins[claude.Name](t.Context(), model.Runner{Name: "a", Agent: claude.Name, ConfigDir: t.TempDir()})
 
 	require.Equal(t, "claude exited 7: fake-claude-ran", reading.Reason())
 }

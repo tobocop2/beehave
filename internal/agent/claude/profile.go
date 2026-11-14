@@ -11,6 +11,9 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// Name is the name the Claude Code agent is chosen by.
+const Name model.Agent = "claude"
+
 // Adapter is the Claude Code CLI.
 type Adapter struct {
 	// env is the environment of the caller, which the usage read passes to the CLI.

@@ -10,26 +10,35 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehave/internal/host/slurm"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/store/beads"
+	storegithub "github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/local"
 )
 
-// registry is the adapter registry of the cli tests: the names of the model, with the keys and tools that the real adapters register. It imports no adapter package.
+// registry is the adapter registry of the cli tests: the names that the adapters declare, with the keys and tools that the real adapters register.
 func registry() config.Adapters {
-	beads := func() *config.Entry { return &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{"bd"}} }
-	github := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
+	beadsEntry := func() *config.Entry { return &config.Entry{Keys: []string{"beads_prefix"}, Tools: []string{"bd"}} }
+	githubEntry := func() *config.Entry { return &config.Entry{Keys: []string{"repo"}, Tools: []string{"gh"}} }
 
 	return config.Adapters{
-		Trackers: map[model.TrackerName]*config.Entry{model.TrackerLocal: {}, model.TrackerBeads: beads(), model.TrackerGithub: github()},
-		Claims:   map[model.ClaimsName]*config.Entry{model.ClaimsLocal: {}, model.ClaimsBeads: beads()},
-		Forges:   map[model.ForgeName]*config.Entry{model.ForgeGithub: github()},
+		Trackers: map[model.TrackerName]*config.Entry{local.Tracker: {}, beads.Tracker: beadsEntry(), storegithub.Tracker: githubEntry()},
+		Claims:   map[model.ClaimsName]*config.Entry{local.Claims: {}, beads.Claims: beadsEntry()},
+		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: githubEntry()},
 		Hosts: map[model.HostProvider]*config.Entry{
-			model.HostSkyPilot: {Idle: true, HostBlock: "skypilot"},
-			model.HostSSH:      {HostBlock: "ssh"},
-			model.HostSlurm:    {HostBlock: "ssh"},
+			skypilot.Name: {Idle: true, HostBlock: "skypilot"},
+			ssh.Name:      {HostBlock: "ssh"},
+			slurm.Name:    {HostBlock: "ssh"},
 		},
-		Agents: map[model.Agent]*config.Entry{model.AgentClaude: {}, model.AgentOpenCode: {}},
+		Agents: map[model.Agent]*config.Entry{claude.Name: {}, opencode.Name: {}},
 	}
 }
 

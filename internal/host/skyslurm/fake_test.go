@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/hosttest"
 	"github.com/tobocop2/beehave/internal/host/jobwait"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/host/slurmtest"
 	"github.com/tobocop2/beehave/internal/model"
@@ -85,7 +86,7 @@ func newTestHost(t *testing.T, mode hosttest.Mode) host.Host {
 	t.Helper()
 
 	f := newFakeHost(mode)
-	config := model.HostConfig{Provider: model.HostSkyPilot, IdleMinutes: 60, MaxRun: 24 * time.Hour}
+	config := model.HostConfig{Provider: skypilot.Name, IdleMinutes: 60, MaxRun: 24 * time.Hour}
 
 	h, err := newHost(fakeCluster, config, f.sky(), f.SSH(), fastWaits()...)
 	if err != nil {

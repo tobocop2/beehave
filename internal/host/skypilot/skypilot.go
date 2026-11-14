@@ -18,6 +18,9 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
+// Name is the name the SkyPilot host provider is chosen by.
+const Name model.HostProvider = "skypilot"
+
 // ErrConfig is returned by New for a cluster name or a setting that the sky command line cannot take.
 var ErrConfig = errors.New("invalid SkyPilot host setting")
 

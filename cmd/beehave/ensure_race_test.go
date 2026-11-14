@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/config"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/lockfile"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -139,7 +140,7 @@ func TestWorktrees_EnsureForTwoItemsOfOneProjectAtOnceClonesOnceAndAddsBoth(t *t
 	git := newStrictGit()
 	trees := worktrees{
 		root: filepath.Join(state, "trees"), repos: filepath.Join(state, "repos"),
-		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: model.ForgeGithub, BaseBranch: "main"}}},
+		projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: forgegithub.Name, BaseBranch: "main"}}},
 		git:      git.runner, forge: fakeForges,
 	}
 
@@ -177,8 +178,8 @@ func TestWorktrees_EnsureForTwoProjectsAtOnceDoesNotMakeOneWaitForTheOther(t *te
 	trees := worktrees{
 		root: filepath.Join(state, "trees"), repos: filepath.Join(state, "repos"),
 		projects: map[string]config.Project{
-			"a": {Project: model.Project{Name: "a", Repo: "owner/a", Forge: model.ForgeGithub, BaseBranch: "main"}},
-			"b": {Project: model.Project{Name: "b", Repo: "owner/b", Forge: model.ForgeGithub, BaseBranch: "main"}},
+			"a": {Project: model.Project{Name: "a", Repo: "owner/a", Forge: forgegithub.Name, BaseBranch: "main"}},
+			"b": {Project: model.Project{Name: "b", Repo: "owner/b", Forge: forgegithub.Name, BaseBranch: "main"}},
 		},
 		git: git.runner, forge: fakeForges,
 	}
@@ -231,7 +232,7 @@ func TestWorktrees_EnsureForTwoEnginesOnOneRepoFolderClonesOnce(t *testing.T) {
 
 	state := t.TempDir()
 	git := newStrictGit()
-	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: model.ForgeGithub, BaseBranch: "main"}}}
+	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: forgegithub.Name, BaseBranch: "main"}}}
 	// Each value is the worktrees of one engine. Only the folders are shared.
 	engine := func() worktrees {
 		return worktrees{root: filepath.Join(state, "trees"), repos: filepath.Join(state, "repos"), projects: projects, git: git.runner, forge: fakeForges}
