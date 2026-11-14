@@ -47,7 +47,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install deps deadcode build release-snapshot format format-check lint vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
 	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files
@@ -135,9 +135,14 @@ check-darwin:  ## On a Mac: run the Seatbelt enforcer tests and the contract sui
 	go test -count=1 -v -run 'TestEnforcer_PassesTheContractSuite' ./internal/sandbox/seatbelt | grep -v '^=== ' | grep -q -e '--- PASS: TestEnforcer_PassesTheContractSuite' || { echo "the contract suite did not pass under the real enforcer (skipped or failed)"; exit 1; }
 	go test -count=1 ./internal/sandbox/...
 
-# Run on one package: make mutation PKG=./internal/cli/...
+# Run on one package: make mutation PKG=./internal/cli
+# PKG is a folder, never a "..." pattern: gremlins walks the folder, so "./internal/..." finds no file and reports nothing.
 mutation:
-	gremlins unleash $(or $(PKG),./internal/...)
+	gremlins unleash $(or $(PKG),.)
+
+# Per-PR run: mutate only the Go lines that differ from BASE (default origin/main). Fails when no mutant applies or one lives.
+mutation-pr:
+	sh scripts/mutation-pr.sh $(BASE)
 
 governance-generate: ai-rulez-version  ## Generate the agent files from .ai-rulez/
 	ai-rulez generate --no-self-mcp
