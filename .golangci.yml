@@ -172,11 +172,10 @@ linters:
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: the remedy binary imports the forge backend and the claim rows, and no other backend
-        # The skypilot adapter queues its jobs through the slurm adapter, so it is the one backend that imports another. no-backend-to-backend-host-skypilot
-        # keeps it from importing any other backend. The three host adapters (ssh, slurm, skypilot) never import each other otherwise: a blank-import probe in
-        # each of ssh, slurm, skypilot and flow shows a denial. The slurm to skypilot import is a Go import cycle, so the compiler also refuses it.
+        # The skypilot adapter takes its job queue as a parameter, so no backend imports another. The three host adapters (ssh, slurm, skypilot) never
+        # import each other: a blank-import probe in each of ssh, slurm, skypilot and flow shows a denial.
         backends-only-in-main:
-          files: ["!$test", "!**/cmd/beehave/**", "!**/examples/remediation/tools/cmd/remedy/**", "!**/internal/host/skypilot/**"]
+          files: ["!$test", "!**/cmd/beehave/**", "!**/examples/remediation/tools/cmd/remedy/**"]
           deny:
             - pkg: github.com/tobocop2/beehave/internal/store/beads
               desc: only cmd/beehave and the remedy binary import a backend
@@ -191,7 +190,7 @@ linters:
             - pkg: github.com/tobocop2/beehave/internal/host/skypilot
               desc: only cmd/beehave and the remedy binary import a backend
             - pkg: github.com/tobocop2/beehave/internal/host/slurm
-              desc: only cmd/beehave, the skypilot adapter and the remedy binary import a backend
+              desc: only cmd/beehave and the remedy binary import a backend
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: only cmd/beehave and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
@@ -245,6 +244,8 @@ linters:
           files: ["**/internal/host/skypilot/**"]
           deny:
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
+              desc: a backend never imports another backend
+            - pkg: github.com/tobocop2/beehave/internal/host/slurm
               desc: a backend never imports another backend
             - pkg: github.com/tobocop2/beehave/internal/store/local
               desc: a backend never imports another backend

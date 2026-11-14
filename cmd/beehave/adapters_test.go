@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/host/skypilot"
+	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
 )
@@ -136,12 +138,12 @@ func TestAdapters_AProjectWithNoHostBlockBuildsNoHostSoItNeedsNeitherSkyNorSlurm
 	t.Parallel()
 
 	table := newAdapters(nil, nil, nil)
-	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
-		model.HostSkyPilot: func(model.Project) (host.Host, error) {
+	table.hosts = map[model.HostProvider]hostAdapter{
+		model.HostSkyPilot: {build: func(model.Project) (host.Host, error) {
 			t.Error("a local project built a host adapter")
 
 			return nil, nil //nolint:nilnil // the test fails above
-		},
+		}},
 	}
 
 	_, err := table.host(localProjectNamed("p"))
@@ -396,7 +398,7 @@ func TestAdapters_HostWaitsForDiskSpaceForTheMinutesTheProjectAllows(t *testing.
 	freeing := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}, grow: 30 * gigabyte}
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	table.diskPoll = time.Millisecond
-	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return freeing, nil }
+	table.hosts[model.HostSkyPilot] = hostAdapter{build: func(model.Project) (host.Host, error) { return freeing, nil }}
 
 	project := hostProject(model.HostSkyPilot, "lane-host")
 	project.Host.DiskWaitMinutes = 1
@@ -422,7 +424,7 @@ func TestAdapters_HostRefusesAJobWhenTheDiskIsUnderTheFloor(t *testing.T) {
 
 	low := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}}
 	table := newAdapters(beadstest.NewBd(t), nil, nil)
-	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return low, nil }
+	table.hosts[model.HostSkyPilot] = hostAdapter{build: func(model.Project) (host.Host, error) { return low, nil }}
 
 	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
 	require.NoError(t, err)
@@ -432,7 +434,7 @@ func TestAdapters_HostRefusesAJobWhenTheDiskIsUnderTheFloor(t *testing.T) {
 	assert.Zero(t, low.submits)
 
 	enough := &statusHost{disk: model.DiskReading{FreeBytes: 60 * gigabyte, Readable: true}}
-	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return enough, nil }
+	table.hosts[model.HostSkyPilot] = hostAdapter{build: func(model.Project) (host.Host, error) { return enough, nil }}
 
 	built, err = table.host(hostProject(model.HostSkyPilot, "lane-host"))
 	require.NoError(t, err)
@@ -453,4 +455,29 @@ func TestAdapters_CheckRefusesAHostProviderItDoesNotKnowAndAHostItCannotBuild(t 
 	require.ErrorIs(t, table.check(t.Context(), hostProject(model.HostSlurm, "-bad")), link.ErrConfig)
 	require.ErrorContains(t, table.check(t.Context(), hostProject("", "lane-host")), "no host adapter named")
 	require.ErrorIs(t, table.check(t.Context(), hostProject(model.HostSkyPilot, "")), skypilot.ErrConfig)
+}
+
+func TestHostErrors_ListsEachSentinelOfTheHostEntriesOnce(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(nil, nil, nil)
+
+	assert.Equal(t, []error{skypilot.ErrConfig, link.ErrConfig, ssh.ErrLinger, ssh.ErrSystemd, ssh.ErrDraining}, table.hostErrors())
+}
+
+func TestHostErrors_FollowsTheEntriesOfTheTable(t *testing.T) {
+	t.Parallel()
+
+	errOne, errTwo := errors.New("one"), errors.New("two")
+	table := newAdapters(nil, nil, nil)
+	table.hosts = map[model.HostProvider]hostAdapter{
+		model.HostSSH:      {sentinels: []error{errTwo, errOne}},
+		model.HostSkyPilot: {sentinels: []error{errOne}},
+	}
+
+	assert.Equal(t, []error{errOne, errTwo}, table.hostErrors())
+
+	table.hosts = nil
+
+	assert.Empty(t, table.hostErrors())
 }

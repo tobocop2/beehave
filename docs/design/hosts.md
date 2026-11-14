@@ -24,7 +24,7 @@ The config names three providers, and each one runs:
 - The wait states are in `host/jobwait`.
 - No adapter copies them.
 
-The adapters never import each other. Only `skypilot` imports `slurm`, for its queue, and `depguard` denies every other pair.
+The adapters never import each other, and `depguard` denies every pair. `skypilot` takes its job queue as a parameter, and `cmd/beehave` passes the Slurm queue. The tests of that pair live in `host/skyslurm`.
 
 The job id, job state, disk reading and host status types live in `model`, so layer 2 declares its own interfaces without importing `host`. Nothing outside a provider names SkyPilot or Slurm.
 

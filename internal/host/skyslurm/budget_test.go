@@ -1,4 +1,4 @@
-package skypilot
+package skyslurm
 
 import (
 	"context"
@@ -16,13 +16,13 @@ import (
 func TestTeardown_TheBankScanHonoursTheConfiguredBudget(t *testing.T) {
 	t.Parallel()
 
-	cfg := config()
+	cfg := hostConfig()
 	cfg.BankBudget = 50 * time.Millisecond
 
 	ssh := &proctest.Scripted{}
 	planHome(ssh)
 
-	h, err := New("lane-host", cfg, &proctest.Scripted{}, hosttest.HangingGit(ssh, "/home/lane/repo"))
+	h, err := newHost("lane-host", cfg, &proctest.Scripted{}, hosttest.HangingGit(ssh, "/home/lane/repo"))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

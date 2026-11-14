@@ -409,8 +409,8 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 
 	hosted := &fakeHost{}
 	table := newAdapters(nil, nil, nil)
-	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
-		model.HostSkyPilot: func(model.Project) (host.Host, error) { return hosted, nil },
+	table.hosts = map[model.HostProvider]hostAdapter{
+		model.HostSkyPilot: {build: func(model.Project) (host.Host, error) { return hosted, nil }},
 	}
 
 	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: model.HostSkyPilot}}}
@@ -431,12 +431,12 @@ func TestNewPrograms_BuildTheHostOfTheClusterThatTheRunChose(t *testing.T) {
 	var built []string
 
 	table := newAdapters(nil, nil, nil)
-	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
-		model.HostSkyPilot: func(project model.Project) (host.Host, error) {
+	table.hosts = map[model.HostProvider]hostAdapter{
+		model.HostSkyPilot: {build: func(project model.Project) (host.Host, error) {
 			built = append(built, project.BuildHost)
 
 			return &fakeHost{}, nil
-		},
+		}},
 	}
 
 	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: model.HostSkyPilot}}}

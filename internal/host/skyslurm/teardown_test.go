@@ -1,4 +1,4 @@
-package skypilot
+package skyslurm
 
 import (
 	"testing"
@@ -7,16 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/host/skypilot"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
-func newTeardown(t *testing.T, private string) (*Host, *proctest.Scripted, *proctest.Scripted) {
+func newTeardown(t *testing.T, private string) (*skypilot.Host, *proctest.Scripted, *proctest.Scripted) {
 	t.Helper()
 
-	h, ssh := newBanking(t, private)
-	sky := &proctest.Scripted{}
-	h.sky = sky
+	h, sky, ssh := newBankingWithSky(t, private)
 
 	ssh.Plan("/home/lane/repo/.git\x00", "find")
 	ssh.Plan("", "for-each-ref")
