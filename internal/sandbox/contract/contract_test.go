@@ -185,3 +185,25 @@ func TestFetch_BuildsTheCurlLineWithTheExtraFlags(t *testing.T) {
 		t.Errorf("fetch = %q", line)
 	}
 }
+
+func TestSocketNamesFor_OnlyLinuxHasAnAbstractSocket(t *testing.T) {
+	t.Parallel()
+
+	for goos, wantAbstract := range map[string]bool{"linux": true, "darwin": false} {
+		r := &recorder{t: t}
+		addresses, flags := socketNamesFor(r, goos)
+
+		_, abstract := addresses["abstract"]
+		if abstract != wantAbstract {
+			t.Errorf("%s: abstract socket = %t, want %t", goos, abstract, wantAbstract)
+		}
+
+		if !strings.HasPrefix(flags["pathname"], "--unix-socket ") || addresses["pathname"] == "" {
+			t.Errorf("%s: no pathname socket: %v %v", goos, addresses, flags)
+		}
+
+		if abstract && !strings.HasPrefix(addresses["abstract"], "@beehave-contract-") {
+			t.Errorf("%s: abstract address = %q", goos, addresses["abstract"])
+		}
+	}
+}
