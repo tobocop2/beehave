@@ -2,9 +2,13 @@
 
 Part of the [beehave architecture](../architecture.md).
 
-The rule for every decision here: a rule that the forge or the operating system can enforce is not a rule of beehave. beehave verifies what the forge enforces. beehave holds no credential where an agent can reach it.
+The rule for every decision here: a rule that the forge or the operating system can enforce is not a rule of beehave. beehave asks the forge adapter for a capability and verifies what the forge enforces. beehave holds no credential where an agent can reach it. If a forge lacks a capability, the engine refuses with a clear error. It never falls back to custom code.
 
-This page is the design. The pull requests of the trust work build it in steps. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
+## Status
+
+This page is the design. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
+
+Not built yet: the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `CODEOWNERS` file, and the ruleset files. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
 
 ## The threat model
 
@@ -12,51 +16,80 @@ There are three trust levels. Each decision below names the level that it protec
 
 | Level | Who | Holds | May do |
 |---|---|---|---|
-| Owner | The owner and the engine process that the owner starts | The app private keys, the `gh` login of the owner, the SSH agent | Everything. The engine mints app tokens and holds them in memory only. |
+| Owner | The owner and the engine process that the owner starts | The `writer` credential (by default a token of the owner's own account), the optional `reviewer` credential, the `gh` login of the owner, the SSH agent | Everything. The engine reads each credential once at start and holds it in memory only. |
 | Agent | Every agent step, ours or a model's | A worktree, a network allow-list, the model token of its CLI | Edit files and commit in its worktree. Nothing on the forge. |
 | Outside | Issue text, a foreign pull request, the code of its head | Nothing | Reach an agent prompt as data, and a sandboxed review step on a host with no credential. |
 
-The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can merge. No identity can merge without an approval at the head.
+The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can merge. No merge happens without the required statuses at the head.
 
 An agent step that runs without the sandbox runs as the user id of the owner. It can read any file and the login keychain of that user. No scrub of the environment changes that. So an unsandboxed agent step is never a trust boundary, and no part of this design relies on one.
 
-## Two GitHub Apps
+## Identities
 
-| App | Repository permissions | Used for |
+beehave needs no second account. The engine holds one credential, `writer`, and uses it for every push, status, comment and merge.
+
+| Mode | Credentials | What the forge requires |
 |---|---|---|
-| `beehave-writer-<owner>` | Contents: write. Pull requests: write. Issues: write. Commit statuses: write. Workflows: write. Metadata: read. | Push lane branches, open and edit pull requests, comment, label and assign items, post `beehave/gate`, merge. |
-| `beehave-reviewer-<owner>` | Pull requests: write. Contents: read. Metadata: read. | Post reviews: `APPROVE`, `REQUEST_CHANGES`, `COMMENT`. |
+| Default | `writer` only: a fine-grained token of the owner's own account | `beehave/review` and `beehave/gate` at the head, plus CI. No approval. |
+| Optional | `writer` and `reviewer`: one bot account | The same, plus one native approval from a non-author. |
 
-Each app has no webhook and no account permission. Each app installs on the account of the owner only, on selected repositories only.
+In the default mode the independent review verdict is the commit status `beehave/review`. The engine posts it at the reviewed head. The owner is the author of the pull request, so the owner cannot approve it. The owner posts `beehave/review` by hand when needed.
 
-The writer has `Workflows: write` because a lane can change `.github/workflows`. `CODEOWNERS` gives such a change to the owner.
+In the optional mode the engine also submits a native approval as the `reviewer` bot. The bot is a collaborator with write access, because only an approval from write access counts. Only the engine holds its token.
 
-If an approval needs write access (owner step 9 decides), the reviewer gets `Contents: write`. A second ruleset, `lanes`, on `refs/heads/beehave/**` then adds the rule `update` with the writer app as the only bypass actor. The reviewer cannot then push to a lane branch. Only the engine holds the reviewer token.
+No mode needs a GitHub App. An App token source for the `reviewer` role can come later as an option in the GitHub adapter. It is not the default.
 
-### Minting the tokens
+### Credential config
 
-The library `github.com/bradleyfalzon/ghinstallation/v2` signs the App JWT and exchanges it for an installation token. `Transport.Token` returns the cached token and renews it before it expires. beehave writes no JWT code.
+The project file gets one key:
 
-The file `internal/forge/github/apps.go` is the one place that makes this exchange over `net/http`. The `no-http-client` rule of `depguard` has one named exception for that file. Every other forge call stays a `gh` call.
+```python
+project(
+    ...,
+    credentials = {
+        "writer": credential(command = ["security", "find-generic-password", "-s", "beehave-writer", "-w"], ci_locked = True),
+        "reviewer": credential(file = "~/.config/beehave/credentials/reviewer.token", login = "<bot login>"),  # optional
+    },
+)
+```
 
-Each forge call carries an identity, writer or reviewer. The `gh` process of a call gets `GH_TOKEN` for that identity and an empty `GH_CONFIG_DIR`, so `gh` reads no file of the owner. Reads use the writer. No step uses the `gh` login of the owner.
+- `credential(file?, env?, command?, login?, ci_locked?)` takes exactly one of `file`, `env` and `command`.
+- `file`: a path inside `~/.config/beehave/credentials/`, mode 0600, in a folder of mode 0700. The loader refuses any other mode and path.
+- `env`: the name of a variable that the engine reads once and then removes from its own environment, so no child process inherits it.
+- `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`.
+- `login`: optional. The engine reads the login of the token at start and refuses when it differs.
+- A workflow that pushes, posts or merges needs `writer`. Without it, `beehave check workflow` refuses.
 
-A token never enters a workflow input, a step output, an event, an error text or a record. The redactor knows the `ghs_` prefix.
+The recommended `writer` token on GitHub is a fine-grained token of the owner's account. It covers the project repository only. It has Contents, Pull requests, Issues and Commit statuses at read and write, Metadata at read, and no Workflows permission.
 
-### The private keys
+### The engine proves that agents cannot read the credentials
 
-A key lives at `~/.config/beehave/apps/<app slug>.pem`, mode 0600, in a folder of mode 0700. The loader refuses any other mode and any path outside that folder.
-
-`~/.config/beehave` is on the credential list of the engine, so a sandboxed step cannot read the keys. An unsandboxed step can read them. So the sandbox is on by default (see below), and foreign input never meets an unsandboxed step.
+1. Every source is read in the engine process. No agent spec, workflow input, step output, event, error text or record holds a token.
+2. A `file` source must lie under `~/.config/beehave`, which is on the sandbox credential list.
+3. A `command` source keeps the token in the keychain or keyring. Both are on the credential list.
+4. The engine builds the environment of a probe agent step. It refuses to start when that environment holds a token value or any of `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `CI_JOB_TOKEN` or `SSH_AUTH_SOCK`.
+5. A project with the sandbox on refuses an unsandboxed agent step.
+6. The redactor knows the prefixes `ghp_`, `gho_`, `ghs_`, `github_pat_` and `glpat-`.
 
 ### An agent step holds no forge credential
 
-1. The token lives in the forge adapter. No agent spec has a field for it.
-2. The environment allow-list of an agent drops `SSH_AUTH_SOCK` for every step.
-3. Every agent step gets `HOME` and `GH_CONFIG_DIR` set to empty folders of the step. It also gets `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_TERMINAL_PROMPT=0`, and the writer bot as git author and committer. The login folder of the CLI stays on its own variable.
-4. The sandbox denies `~/` and the credential list. The network list of a step drops `github.com`, so `git push` over HTTPS has no host. `api.github.com` stays, for reads of public data with no token.
-5. The engine pushes, not the agent. A `push` step runs as the writer with `--force-with-lease=refs/heads/<branch>:<expect>`. It is a recorded step, so a replay does not push again. The prompts contain no push line.
+1. The tokens live in the forge adapter. No agent spec has a field for one. Each forge call runs as one role, with that token and an empty `GH_CONFIG_DIR`. No step uses the `gh` login of the owner.
+2. The environment allow-list of an agent drops `SSH_AUTH_SOCK`.
+3. Every agent step gets `HOME` and `GH_CONFIG_DIR` set to empty folders of the step. It also gets `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`.
+4. The sandbox denies `~/` and the credential list. No network list names `github.com`, so `git push` over HTTPS has no host.
+5. The engine pushes, not the agent. A `push` step runs with `--force-with-lease=refs/heads/<branch>:<expect>`. It is a recorded step, so a replay does not push again. The prompts contain no push line.
 6. A `command` step gets no forge token. A workflow cannot ask for one.
+
+### The CI lock
+
+The CI of a head runs with the workflow files of that head. A workflow that an agent wrote could ask for `statuses: write` and post `beehave/review` itself. Two rules stop that.
+
+- The `writer` token has no Workflows permission. GitHub refuses a push that creates or updates a workflow file with such a token. The forge enforces this, not beehave.
+- `ci.yaml` has `permissions: contents: read`, so the code that `check` and `test` run cannot post a status.
+
+A lane that must change a workflow file is held for the owner. The owner lands that change by hand.
+
+For a fine-grained token, the engine cannot read the permissions. So the start check answers `unknown`. The engine then starts only when the `writer` entry sets `ci_locked = True`. That setting is the statement of the owner that the token has no Workflows permission.
 
 ## The forge enforces the merge
 
@@ -68,33 +101,58 @@ The owner posts the ruleset in [`trust/integration-ruleset.json`](trust/integrat
 gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integration-ruleset.json
 ```
 
-- `bypass_actors` is empty, so the admin role of the owner does not bypass the ruleset. The owner can still edit it. No agent can, because no agent holds a credential.
-- `15368` is the GitHub Actions app. `beehave/gate` must come from the writer app, so a status with the same name from another source does not count. The `0` for `beehave/gate` in the file is a placeholder for the writer app id. Replace it before the owner posts the ruleset (owner step 10).
-- `strict_required_status_checks_policy` is false. `batch_merge` merges members one after another into a moving base. A strict policy would make each later member out of date, push a new head and dismiss its approval. The union gate of the batch holds the up-to-date property instead.
-- `require_last_push_approval` holds by construction: the writer pushes and the reviewer approves. A push by anyone else after the approval needs a new approval.
-- A ruleset of a user-owned repository cannot name a reviewer identity. The rule asks for one approval from an identity with write access. Only the owner and the reviewer app are such identities. Guard 0 adds the check that the approval is from one of them.
+It protects `integration/**`. It requires a pull request, resolved review threads, the checks `check` and `test` from GitHub Actions, and the statuses `beehave/review` and `beehave/gate`. It requires 0 approvals and has no bypass actor.
 
-### Guard 0 reads the forge
+- `beehave/review` and `beehave/gate` name no source. A status that a user token posts has no App to name. GitHub shows the author of each status in the merge box. Without an App, the ruleset cannot restrict the source of these two statuses. The CI lock and the empty credential list of agents take its place.
+- Who can post a status: users with push access, and an Actions token with `statuses: write`. Here that is the owner, the engine with the token of the owner, and nobody else. The CI lock rules out the Actions token.
+- A status belongs to one commit. A new push makes a head with no `beehave/review`, so a stale verdict cannot pass.
+- `required_approving_review_count` is 0 because the owner is the author and cannot approve.
+- `bypass_actors` is empty, so the admin role of the owner does not bypass the ruleset. The owner can still edit it. No agent can.
+- `strict_required_status_checks_policy` is false. `batch_merge` merges members one after another into a moving base. A strict policy would make each later member out of date. The union gate of the batch holds the up-to-date property instead.
 
-Today the request to `merge` carries an `Approved` flag that a workflow sets. After the trust work, the flag does not exist. Guard 0 reads the reviews of the pull request once. The pull request passes when the latest review of a reviewer login is `APPROVED` and its `commit_id` equals the gated head. A later `CHANGES_REQUESTED` or `DISMISSED` review of that login cancels the approval.
+### The optional mode
 
-The reviewer logins are the `reviewer_login` fact and the login of the owner. `batch_merge` gets the same lift with no new keyword, because the guard reads the forge.
+With a `reviewer` credential, the owner posts [`trust/integration-ruleset.reviewer.json`](trust/integration-ruleset.reviewer.json). It sets one required approval and `require_last_push_approval`. The approval of the bot must come from write access. No document proves that the approval of a bot counts, so the owner checks it on a probe repository first (owner step O4).
 
-The own logins gain the writer bot. A commit of the writer bot is our work and needs the reviewer approval.
+### What each mode stops
 
-The workflow-scope guard reads the permissions of the writer installation token. It passes when they hold `workflows: write`.
+| Threat | Default | Optional |
+|---|---|---|
+| An agent merges, approves, pushes to integration or posts a status | Stopped: the agent holds no credential | Stopped |
+| The CI of a head posts `beehave/review` | Stopped by the CI lock | Stopped by the CI lock |
+| A stale verdict on a new head | Stopped: statuses are per commit | Stopped: per commit, plus `require_last_push_approval` |
+| An App that the owner installed with Commit statuses write posts `beehave/review` | Not stopped. Owner step 4 lists the installed Apps. | Not stopped for the status. Stopped for the approval. |
+| The owner posts a status or merges by hand | Allowed: it is the authority of the owner | Allowed |
+| A bug in the engine posts `success` for a red review | Not stopped: the engine is trusted code | Not stopped |
+| A stolen `writer` token | The full power of that token on the repository | The same. The attacker still lacks the approval. |
+| Telling the work of the engine from the work of the owner in the history of the forge | Not possible: both are the owner. The status description names the run and the gate key. | The reviewer bot is visible. |
 
-### Does the approval of the reviewer app count?
+### The merge checks no flag
 
-No document proves it. GitHub says that required approvals come from "reviewers with write permissions". Owner step 9 decides on a probe repository, before the ruleset is relied on. The result goes in this page.
+The merge request carries no `Approved` flag. The forge refuses a merge without the required statuses at the head. The engine merges pinned with `--match-head-commit`. The engine still reads the protection of the branch at the start of a round, and reports which required context is missing when the forge refuses.
+
+### The forge capability methods
+
+Each adapter maps these methods to its forge. A forge that cannot do one returns an error with the reason, and the engine refuses.
+
+| Method | GitHub | GitLab | Forgejo |
+|---|---|---|---|
+| Call as a role | `GH_TOKEN` per call | `GITLAB_TOKEN` per call | token per call |
+| Push at an expected head | `git push --force-with-lease` | the same | the same |
+| Post a status | `POST repos/{repo}/statuses/{sha}` | external status check response | `POST repos/{repo}/statuses/{sha}` |
+| Post a review | `POST pulls/{n}/reviews` with `commit_id` | approve at the head SHA | `POST pulls/{n}/reviews` with `commit_id` |
+| Read the protection | rules for the branch | approval rules and status checks | branch protection |
+| Can an agent write CI | `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
+
+The default mode on GitLab needs external status checks, which is an Ultimate feature. On a lower tier the adapter reports the capability missing and the engine refuses. On Forgejo, branch protection takes a status context pattern and refuses a merge until it succeeds.
 
 ## Merge queue
 
 `tobocop2/beehave` is a public repository of a user account on the free plan. GitHub offers a merge queue for public repositories of an organization, or for private repositories on Enterprise Cloud. So this repository cannot use one.
 
-`batch_merge` stays as the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: approval at the head, the required checks and resolved threads. `batch_merge` merges as the writer app.
+`batch_merge` is the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: the required statuses, the checks and the resolved threads.
 
-A project of an organization can use a merge queue instead. That variant is not built. To get one, the owner moves the repository to an organization. That changes the URLs and the app installations, so it is a decision of the owner.
+A project of an organization can use a merge queue instead. That variant is not built. To get one, the owner moves the repository to an organization. That changes the URLs and the repository access of the token, so it is a decision of the owner.
 
 ## The sandbox is on by default
 
@@ -102,11 +160,11 @@ An unset `sandbox` in a project gives `on`. `sandbox = "off"` stays, as an expli
 
 A step with `sandbox = None` in a project with the sandbox on is refused by `beehave check workflow` and does not start. A step that needs `docker` runs as a `command` step.
 
-The step fails closed as today: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
+The step fails closed: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
 
-A project with `sandbox = "off"` still gets the environment of an agent step described above, and no `SSH_AUTH_SOCK`, no `gh` config, no global or system git config and no token name. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
+A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no SSH agent forwarding and no app key. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
+A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
 
 ### Platform gaps
 
@@ -115,18 +173,18 @@ A foreign pull request refuses to start when the project has the sandbox off, or
 | Agent sandbox | Seatbelt through Claude Code. `make smoke-sandbox` proves it. | bubblewrap through Claude Code. Not proven (#199). Until it is, a step ends `not-started` if the CLI reports no sandbox. |
 | Gate sandbox | `sandbox-exec` (deprecated by Apple, present) | Landlock ABI 4 (Linux 6.7 and later). ABI 9 socket scope is not verified (#252). |
 | Unsandboxed step | Can read the login keychain. | Can read the Secret Service keyring if a session bus is reachable. |
-| Same-user process reads | `ps eww` shows the environment of processes of the owner, so a token in a child `gh` of the engine is visible to an unsandboxed agent. | `/proc/<pid>/environ` is readable by the same user. |
+| Same-user process reads | `ps eww` shows the environment of processes of the owner. | `/proc/<pid>/environ` is readable by the same user. |
 | Windows | Refused. | Not applicable. |
 
 ## The gate result comes from the forge
 
-After the candidate gate passes on head `H`, the engine posts `POST repos/<repo>/statuses/H` with `state = success`, `context = beehave/gate` and a description that names the gate key. It posts as the writer app. A red gate posts `failure`. A void gate posts nothing.
+After the candidate gate passes on head `H`, the engine posts `POST repos/<repo>/statuses/H` with `state = success`, `context = beehave/gate` and a description that names the gate key. A red gate posts `failure`. A void gate posts nothing.
 
-The ruleset requires `beehave/gate` from the writer app, and `check` and `test` from GitHub Actions.
+The review step posts `beehave/review` the same way, with the run id in the description.
 
-`.github/CODEOWNERS` gives these paths to the owner: `/Makefile`, `/.github/`, `/.ai-rulez/`, `/.golangci.yml`, `/go.mod`, `/go.sum` and `/scripts/`. With `require_code_owner_review`, a change to the program behind the gate needs the approval of the owner. A GitHub App cannot be a code owner, so the reviewer app cannot give it.
+`.github/CODEOWNERS` gives these paths to the owner: `/Makefile`, `/.github/`, `/.ai-rulez/`, `/.golangci.yml`, `/go.mod`, `/go.sum` and `/scripts/`. The owner is the author of the pull requests, so the default ruleset cannot require a code-owner review. The file still shows the owner the sensitive paths. The CI lock stops a head from rewriting the workflow. In the optional mode, the bot reviews but is not a code owner.
 
-The CI workflow file of a `pull_request` run comes from the head. `CODEOWNERS` on `/.github/` stops a head from rewriting the `check` job to pass. Required workflows from another repository are an organization feature, and not available here.
+Required workflows from another repository are an organization feature, and not available here.
 
 ### Self-hosted runners against the host gate
 
@@ -151,7 +209,7 @@ The package `internal/ledger` owns `<state folder>/ledger.db`, a SQLite file wit
 - `round_items`: one row per item with its attempt, run id, branch, pull request, the head that the engine last pushed (the fence) and its state.
 - `spend`: one row per agent execution with its tree, run, step, session, item, pull request, call name and cost. A `NULL` cost means unknown.
 
-An agent step writes its `spend` row with `INSERT OR IGNORE` after the agent exits and before the step returns. A replay of a finished step does not run the body. The fix cap, `fix_count(pr = n)`, counts the `fix` rows of a pull request. The tree budget sums `cost_usd` by tree, and any unknown cost fails the check.
+An agent step writes its `spend` row with `INSERT OR IGNORE` after the agent exits and before the step returns. A replay of a finished step does not run the body. The fix cap counts the `fix` rows of a pull request. The tree budget sums the cost by tree, and any unknown cost fails the check.
 
 ### The round is a chain of short workflows
 
@@ -175,27 +233,34 @@ The `bd` lease stays for hand-run lanes as the `claims = "beads"` adapter. It is
 
 ## The block list is hygiene
 
-The shell scanner has no kind for `gh pr merge`, `gh pr review --approve`, `gh api` merge calls or `gh auth token`. The trust work adds none. A kind would be a second, weaker copy of the identity split. After the trust work, an agent that runs `gh pr merge` has no credential, and the forge refuses a merge without the reviewer approval.
+The shell scanner has no kind for `gh pr merge`, `gh pr review --approve`, `gh api` merge calls or `gh auth token`. A kind would be a second, weaker copy of the identity split. An agent that runs `gh pr merge` has no credential, and the forge refuses a merge without the required statuses.
 
 ## Owner steps
 
-Run these as the owner, in order. Steps 1 to 8 need no change in beehave.
+Run these as the owner, in order. No step creates an account.
 
-1. On github.com, open Settings, Developer settings, GitHub Apps, New GitHub App. Name it `beehave-writer-tobocop2`. Set the homepage URL to `https://github.com/tobocop2/beehave`. Clear "Active" under Webhook.
-2. Set the repository permissions: Contents read and write, Pull requests read and write, Issues read and write, Commit statuses read and write, Workflows read and write, Metadata read. Set no account permission. Under "Where can this GitHub App be installed?", select "Only on this account". Create the app. Write down the App ID.
-3. On the app page, select "Generate a private key". Move the file to `~/.config/beehave/apps/beehave-writer-tobocop2.pem`. Run `chmod 700 ~/.config/beehave/apps`, then `chmod 600` on the file.
-4. Select "Install App", then your account, then "Only select repositories", then `tobocop2/beehave`. Write down the installation id from the URL (`settings/installations/<id>`).
-5. Do steps 1 to 4 again for `beehave-reviewer-tobocop2` with these permissions only: Pull requests read and write, Contents read, Metadata read.
-6. Run `gh api users/beehave-writer-tobocop2%5Bbot%5D --jq .id`, and the same for the reviewer. Write down each id. The commit address of the writer is `<id>+beehave-writer-tobocop2[bot]@users.noreply.github.com`.
-7. In the repository settings, under Actions, General, keep "Allow GitHub Actions to create and approve pull requests" cleared.
-8. Make a probe repository `tobocop2/beehave-trust-probe` with one commit on `integration/probe`. Install both apps on it. Add a ruleset on `integration/**` with one required approval, `require_last_push_approval` and no bypass.
-9. Open a pull request on the probe repository as the writer and approve it as the reviewer. Run `gh pr view <n> -R tobocop2/beehave-trust-probe --json reviewDecision,mergeStateStatus`. If `reviewDecision` is `APPROVED` and `mergeStateStatus` is not `BLOCKED`, the approval counts: record that in this page. If not, give the reviewer app `Contents: write`, add the `lanes` ruleset, and run this step again.
-10. After the pull request that posts `beehave/gate` merges, replace the `0` after `beehave/gate` in `trust/integration-ruleset.json` with the writer App ID. Then post the ruleset with the command in "The ruleset".
-11. Add the `forge_apps(...)` block to `projects/beehave.star` with both App IDs, installation ids, key paths and bot logins.
-12. Optional, for a merge queue: make an organization, transfer the repository to it, install both apps on the organization, and post the ruleset again with a `merge_queue` rule.
+### Default mode
+
+1. On github.com, open Settings, Developer settings, Personal access tokens, Fine-grained tokens, Generate new token. Set the resource owner to your account and the expiry to one year or less. Under Repository access, select "Only select repositories" and `tobocop2/beehave`. Set Contents, Pull requests, Issues and Commit statuses to "Read and write". Leave Workflows at "No access". Generate the token.
+2. Run `security add-generic-password -a "$USER" -s beehave-writer -w`. Paste the token at the prompt. The token is not on the command line.
+3. In the repository settings, under Actions, General, set "Workflow permissions" to "Read repository contents and packages permissions". Keep "Allow GitHub Actions to create and approve pull requests" cleared.
+4. In Settings, Applications, check each integration installed on `tobocop2/beehave`. If one has Commit statuses write and does not need it, remove it from the repository.
+5. When the push step exists, push a throwaway branch that changes `.github/workflows/ci.yaml` with the token. If GitHub refuses the push, record the result in this page. If GitHub accepts it, the token has Workflows access. Fix step 1 and run this step again.
+6. When the credential config exists, add `credentials = {"writer": credential(command = ["security", "find-generic-password", "-s", "beehave-writer", "-w"], ci_locked = True)}` to `~/.config/beehave/projects/beehave.star`.
+7. When the engine posts both statuses, run `gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integration-ruleset.json`.
+8. Optional, for a merge queue: make an organization, transfer the repository to it, and post the ruleset again with a `merge_queue` rule.
+
+### Optional mode
+
+- O1. Make one machine account for the reviewer and turn on two-factor authentication for it.
+- O2. Invite it to `tobocop2/beehave` as a collaborator, and accept the invitation as the bot. A collaborator on a personal repository has write access, which an approval needs.
+- O3. As the bot, make a classic token with the `public_repo` scope only. A fine-grained token cannot reach a repository where its account is a collaborator of another user. Run `security add-generic-password -a "$USER" -s beehave-reviewer -w` and paste it.
+- O4. Make a probe repository `tobocop2/beehave-trust-probe` with one commit on `integration/probe` and the bot as a collaborator. Add a ruleset on `integration/**` with one required approval and no bypass. Open a pull request as the writer and approve it as the bot. Run `gh pr view <n> -R tobocop2/beehave-trust-probe --json reviewDecision,mergeStateStatus`. If `reviewDecision` is `APPROVED` and `mergeStateStatus` is not `BLOCKED`, the approval counts. Record that in this page.
+- O5. Add `"reviewer": credential(command = ["security", "find-generic-password", "-s", "beehave-reviewer", "-w"], login = "<bot login>")` to `credentials`. Post `docs/design/trust/integration-ruleset.reviewer.json`.
 
 ## Open decisions
 
-- The ruleset `main` keeps the role bypass `always` and requires signed commits. The writer does not sign its commits. So `integration/*` lands in `main` by a squash on github.com, where GitHub signs the commit. The trust work does not change `main`.
-- The ruleset accepts the approval of the owner as well as the approval of the reviewer app, and guard 0 accepts both. The approval of the owner also lifts the own-work guard.
+- The ruleset `main` keeps the role bypass `always` and requires signed commits. The engine does not sign its commits. So `integration/*` lands in `main` by a squash on github.com, where GitHub signs the commit. The trust work does not change `main`.
+- A lane cannot change `.github/workflows/`. The owner lands such a change by hand. To let lanes change CI, the forge must pin the source of a status, and that needs an App token source.
 - The agent sandbox on Linux waits on #199. Until it passes, an agent step on Linux can refuse to start. That is fail-closed.
+- On GitLab, whether a commit status from the API counts under "Pipelines must succeed" on lower tiers is not documented. No GitLab adapter exists yet.
