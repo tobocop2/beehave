@@ -15,7 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 )
 
-// ErrDoctorIncomplete is the cause when the Doctor has no value for a field. Every field is required.
+// ErrDoctorIncomplete is the cause when the Doctor has no value for a required field. Only TokenReadable is required.
 var ErrDoctorIncomplete = errors.New("the doctor is missing a reader")
 
 // Doctor holds the checks that need a program outside the process. TokenReadable is required: a check that is left out would read as a pass.

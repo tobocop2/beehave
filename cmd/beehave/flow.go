@@ -93,7 +93,8 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 			return engine, nil
 		},
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
-			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)
+			// The client never reads usage, so the table needs no environment.
+			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
 
 			client, err := flow.OpenClient(ctx, opts, releaseDeps(newLife(cfg, table), cfg.Projects, opts))
 			if err != nil {
@@ -112,7 +113,12 @@ func stateFolder(dir string) func() (string, error) {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	return newEngineReading(ctx, cfg, opts, readUsage(agentEntries(opts.Env)))
+	return flow.NewEngine(ctx, opts, newDeps(cfg, opts))
+}
+
+// newDeps builds what the engine of the run command needs. The pool pick reads the usage through the agent entries.
+func newDeps(cfg config.Config, opts flow.Options) flow.Deps {
+	return depsOn(cfg, opts, newLogins(cfg, opts), newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env))
 }
 
 // newEngineReading builds the engine with the reader of the usage that the pool pick uses.
@@ -122,12 +128,17 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 
 // newEngineOn builds the engine over a table of adapters. A test passes a table with one adapter replaced.
 func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader, table adapters) (*flow.Engine, error) {
+	return flow.NewEngine(ctx, opts, depsOn(cfg, opts, loginsReading(cfg, read), table))
+}
+
+// depsOn builds the deps of the engine over a pool pick and a table of adapters.
+func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table)
 	commands := newPrograms(cfg, trees, table)
 
-	return flow.NewEngine(ctx, opts, flow.Deps{
-		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: loginsReading(cfg, read), Lifecycle: life, Forge: life, Watch: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
+	return flow.Deps{
+		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: picks, Lifecycle: life, Forge: life, Watch: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
 		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker},
 		Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
@@ -141,7 +152,7 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
 		Repository:     repositoryOf(cfg.Projects),
 		Facts:          factsOf(cfg.Projects),
-	})
+	}
 }
 
 // factsOf returns the project as the config holds it. A project that the config does not hold has no facts.

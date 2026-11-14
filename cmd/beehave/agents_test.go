@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -904,12 +906,52 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 	require.ErrorIs(t, err, pool.ErrNoRunner)
 }
 
-func TestNewLogins_ReadsTheUsageOfTheClaudeRunners(t *testing.T) {
+func TestNewLogins_AConfigWithNoRunnerHasNoPick(t *testing.T) {
 	t.Parallel()
 
 	_, err := newLogins(config.Config{}, flow.Options{}).pool(t.Context(), nil)
 
 	require.ErrorIs(t, err, pool.ErrNoRunner)
+}
+
+// usageFixture is a config of one claude runner and options whose PATH holds a fake claude that exits 7 and says so. The reading of the runner
+// then carries the words of the fake, so a pick that fails shows that the usage came from the claude adapter.
+func usageFixture(t *testing.T) (config.Config, flow.Options) {
+	t.Helper()
+
+	tools := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tools, "claude"), []byte("#!/bin/sh\necho fake-claude-ran >&2\nexit 7\n"), e2eToolMode))
+
+	cfg := config.Config{
+		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+		Runners: []model.Runner{{Name: "a", Agent: model.AgentClaude, ConfigDir: t.TempDir()}},
+	}
+
+	return cfg, flow.Options{Env: map[string]string{"PATH": tools, "HOME": t.TempDir()}}
+}
+
+func TestNewLogins_ThePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfTheOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := usageFixture(t)
+	picks := newLogins(cfg, opts)
+
+	_, err := picks.pool(t.Context(), nil)
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
+
+	_, err = picks.overCap(t.Context(), nil)
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
+}
+
+func TestNewDeps_TheEnginePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfTheOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg, opts := usageFixture(t)
+	cfg.Projects = map[string]config.Project{"p": {}}
+
+	_, err := newDeps(cfg, opts).Logins.Pick(t.Context(), "p", "1", nil, false)
+
+	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }
 
 func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {
