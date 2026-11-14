@@ -101,7 +101,7 @@ func runDoctor(t *testing.T, m machine, doctor cli.Doctor, env map[string]string
 func execDoctor(m machine, doctor cli.Doctor, env map[string]string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor", "--config", m.config}, cli.BuildInfo{Version: "x", Doctor: doctor}, env, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor", "--config", m.config}, cli.BuildInfo{Registry: registry(), Version: "x", Doctor: doctor}, env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -399,7 +399,7 @@ func TestDoctor_FailsWithExitOneWhenThereIsNoHomeFolder(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Version: "x", Doctor: declaresNone(readableTokens)}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(context.Background(), []string{"doctor"}, cli.BuildInfo{Registry: registry(), Version: "x", Doctor: declaresNone(readableTokens)}, map[string]string{}, &stdout, &stderr)
 
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr.String(), "beehave: cannot find the home folder")

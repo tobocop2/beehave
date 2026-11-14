@@ -23,7 +23,7 @@ func runCheckWorkflow(t *testing.T, args ...string) (int, string, string) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), append([]string{"check", "workflow"}, args...), cli.BuildInfo{Version: "x"}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(context.Background(), append([]string{"check", "workflow"}, args...), cli.BuildInfo{Registry: registry(), Version: "x"}, map[string]string{}, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }

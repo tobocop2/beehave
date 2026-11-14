@@ -18,7 +18,7 @@ func runDry(t *testing.T, env map[string]string, args ...string) (int, string, s
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(context.Background(), append([]string{"check", "workflow", "--dry-run"}, args...), cli.BuildInfo{Version: "x"}, env, &stdout, &stderr)
+	code := cli.Execute(context.Background(), append([]string{"check", "workflow", "--dry-run"}, args...), cli.BuildInfo{Registry: registry(), Version: "x"}, env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -106,7 +106,7 @@ func TestCheckWorkflowDryRun_TheHelpTextNamesTheThreeExitCodes(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	cli.Execute(context.Background(), []string{"check", "workflow", "--help"}, cli.BuildInfo{Version: "x"}, map[string]string{}, &stdout, &stderr)
+	cli.Execute(context.Background(), []string{"check", "workflow", "--help"}, cli.BuildInfo{Registry: registry(), Version: "x"}, map[string]string{}, &stdout, &stderr)
 
 	assert.Contains(t, stdout.String(), "Exit 0")
 	assert.Contains(t, stdout.String(), "Exit 1")

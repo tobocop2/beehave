@@ -1,11 +1,7 @@
 // Package model holds the domain types and enums every other package shares.
 package model
 
-import (
-	"errors"
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // Agent names an agent CLI that beehave can start.
 type Agent string
@@ -15,25 +11,6 @@ const (
 	AgentClaude   Agent = "claude"
 	AgentOpenCode Agent = "opencode"
 )
-
-// ErrUnknownAgent is returned when text names no known agent.
-var ErrUnknownAgent = errors.New("unknown agent")
-
-// agents lists every agent in the order the messages show them.
-func agents() []Agent {
-	return []Agent{AgentClaude, AgentOpenCode}
-}
-
-// ParseAgent returns the agent that text names.
-func ParseAgent(text string) (Agent, error) {
-	for _, agent := range agents() {
-		if string(agent) == text {
-			return agent, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w %q: use one of %s", ErrUnknownAgent, text, joinNames(agents()))
-}
 
 // Runner is one agent login. It holds no token: Keychain names the entry that does.
 type Runner struct {
@@ -53,8 +30,10 @@ type Project struct {
 	Claims      ClaimsName
 	Forge       ForgeName
 	BeadsPrefix string
-	BaseBranch  string
-	Gate        string
+	// Tools is the programs that the project needs on the path, git first: the registry computes it from the adapters the project names.
+	Tools      []string
+	BaseBranch string
+	Gate       string
 	// GateSteps is the ordered gate list: one named command for each step. A project sets Gate or GateSteps, never both.
 	GateSteps  []GateSpec
 	TestReport string
@@ -121,27 +100,8 @@ type Board struct {
 // A project with no repository runs its items in plain folders, and it cannot call gate, merge, batch_merge or preflight.
 func (p Project) HasRepository() bool { return p.Source != "" || p.Forge != "" }
 
-// The programs that the adapters of a project start.
-const (
-	ToolGit = "git"
-	ToolBd  = "bd"
-	ToolGh  = "gh"
-)
-
-// Tools returns the programs that the project needs on the path: git always, bd for a beads tracker or beads claims, and gh for a GitHub tracker or forge.
-func (p Project) Tools() []string {
-	tools := []string{ToolGit}
-
-	if p.Tracker == TrackerBeads || p.Claims == ClaimsBeads {
-		tools = append(tools, ToolBd)
-	}
-
-	if p.Tracker == TrackerGithub || p.Forge == ForgeGithub {
-		tools = append(tools, ToolGh)
-	}
-
-	return tools
-}
+// ToolGit is the program that every project needs on the path. The tools of an adapter arrive with its registration.
+const ToolGit = "git"
 
 func joinNames[T ~string](items []T) string {
 	names := make([]string, len(items))

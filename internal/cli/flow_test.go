@@ -299,7 +299,7 @@ func (rig *flowRig) execute(ctx context.Context, args ...string) (int, string, s
 		args = append(args, "--workflow", rig.file)
 	}
 
-	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Version: "v9", Flow: rig.factory()}, rig.env, &stdout, &stderr)
+	code := cli.Execute(ctx, append(args, "--config", rig.dir), cli.BuildInfo{Registry: registry(), Version: "v9", Flow: rig.factory()}, rig.env, &stdout, &stderr)
 
 	return code, stdout.String(), stderr.String()
 }
@@ -568,7 +568,7 @@ func TestCommands_RefuseAnUnknownIssueStoreAtStartAndNameTheKnownOnes(t *testing
 			code, _, stderr := rig.execute(t.Context(), command...)
 
 			assert.Equal(t, 2, code)
-			assert.Contains(t, stderr, `unknown tracker "jira": use one of local, beads, github`)
+			assert.Contains(t, stderr, `unknown tracker "jira": use one of beads, github, local`)
 		})
 	}
 }
@@ -832,7 +832,7 @@ func TestFlowCommands_AreAbsentWithoutTheirFactories(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(t.Context(), []string{"status"}, cli.BuildInfo{Version: "x"}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(t.Context(), []string{"status"}, cli.BuildInfo{Registry: registry(), Version: "x"}, map[string]string{}, &stdout, &stderr)
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "unknown command")
@@ -843,7 +843,7 @@ func TestFlowCommands_FailWhenThereIsNoConfigFolderToFind(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(t.Context(), []string{"status"}, cli.BuildInfo{Version: "x", Flow: newRig(t).factory()}, map[string]string{}, &stdout, &stderr)
+	code := cli.Execute(t.Context(), []string{"status"}, cli.BuildInfo{Registry: registry(), Version: "x", Flow: newRig(t).factory()}, map[string]string{}, &stdout, &stderr)
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "cannot find the home folder")

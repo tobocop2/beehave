@@ -193,7 +193,7 @@ func TestStatus_ReadsTheSystemClockWhenTheBuildSetsNone(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 
-	code := cli.Execute(t.Context(), []string{"status", "--config", rig.dir}, cli.BuildInfo{Version: "v9", Flow: factory}, rig.env, &stdout, &stderr)
+	code := cli.Execute(t.Context(), []string{"status", "--config", rig.dir}, cli.BuildInfo{Registry: registry(), Version: "v9", Flow: factory}, rig.env, &stdout, &stderr)
 
 	require.Equal(t, 0, code, stderr.String())
 	assert.Regexp(t, `, 1d2[23]h left`, stdout.String())

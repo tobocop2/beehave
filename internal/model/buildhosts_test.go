@@ -46,13 +46,3 @@ func TestProject_HostForChoosesADeclaredCluster(t *testing.T) {
 	require.NoError(t, err, "a workflow that names its host local works on a project that builds here")
 	assert.Equal(t, "local", got)
 }
-
-func TestClaims_NoForgeNameIsAClaimStore(t *testing.T) {
-	t.Parallel()
-
-	for _, forge := range model.Forges() {
-		_, err := model.ParseClaims(string(forge))
-
-		require.ErrorIs(t, err, model.ErrUnknownClaims, "claims = %q must be refused: the lock coordinates our own sessions and keeps its state off the forge", forge)
-	}
-}

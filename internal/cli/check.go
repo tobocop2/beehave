@@ -53,12 +53,12 @@ func (f GateRefusal) reason(project config.Project, program bool) string {
 	return ""
 }
 
-func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal) *cobra.Command {
+func newCheckCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters, refusal GateRefusal) *cobra.Command {
 	check := &cobra.Command{
 		Use:   "check",
 		Short: "Check files and settings before a round uses them",
 	}
-	check.AddCommand(newCheckConfigCommand(ctx, env, adapters, refusal), newCheckWorkflowCommand(ctx, env, refusal), newCheckCommandCommand())
+	check.AddCommand(newCheckConfigCommand(ctx, env, adapters, registry, refusal), newCheckWorkflowCommand(ctx, env, registry, refusal), newCheckCommandCommand())
 
 	return check
 }
@@ -133,12 +133,12 @@ func dryExit(err error) error {
 	}
 }
 
-func newCheckWorkflowCommand(ctx context.Context, env map[string]string, refusal GateRefusal) *cobra.Command {
+func newCheckWorkflowCommand(ctx context.Context, env map[string]string, registry config.Adapters, refusal GateRefusal) *cobra.Command {
 	var dry dryFlags
 
 	var item string
 
-	named := projectCheck{refusal: refusal}
+	named := projectCheck{refusal: refusal, registry: registry}
 
 	command := &cobra.Command{
 		Use:   "workflow [file]",
@@ -163,9 +163,10 @@ func (p *projectCheck) flags(command *cobra.Command) *cobra.Command {
 
 // projectCheck is the project that `check workflow` judges the calls against, and the config folder that holds it. The project is empty when none is named.
 type projectCheck struct {
-	project string
-	folder  string
-	refusal GateRefusal
+	project  string
+	folder   string
+	refusal  GateRefusal
+	registry config.Adapters
 }
 
 // find loads the config folder and returns the named project. An unreadable config or an unknown name prints its problems and exits with code 2.
@@ -175,7 +176,7 @@ func (p projectCheck) find(stderr io.Writer, env map[string]string) (config.Proj
 		return config.Project{}, err
 	}
 
-	cfg, problems := config.LoadFolder(dir, env)
+	cfg, problems := config.LoadFolder(dir, env, p.registry)
 	if found, ok := cfg.Projects[p.project]; len(problems) == 0 && ok {
 		return found, nil
 	}
@@ -265,7 +266,7 @@ func runCheckWorkflow(stderr io.Writer, file string) error {
 	return &ExitError{Code: exitWorkflowProblems}
 }
 
-func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal) *cobra.Command {
+func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters, refusal GateRefusal) *cobra.Command {
 	var flag string
 
 	command := &cobra.Command{
@@ -274,7 +275,7 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 		Long:  "Check runners.star and projects/*.star. Exit 0 when the folder is valid, 2 when it has problems.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, refusal, flag)
+			return runCheckConfig(ctx, cmd.ErrOrStderr(), env, adapters, registry, refusal, flag)
 		},
 	}
 	addConfigFlag(command, &flag)
@@ -282,13 +283,13 @@ func newCheckConfigCommand(ctx context.Context, env map[string]string, adapters 
 	return command
 }
 
-func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string, adapters func(context.Context, model.Project) error, refusal GateRefusal, flag string) error {
+func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters, refusal GateRefusal, flag string) error {
 	dir, err := config.FolderPath(env, flag)
 	if err != nil {
 		return err
 	}
 
-	cfg, problems := configProblems(ctx, dir, env, adapters)
+	cfg, problems := configProblems(ctx, dir, env, adapters, registry)
 	if len(problems) == 0 {
 		printHostNotes(stderr, cfg, refusal)
 
@@ -301,8 +302,8 @@ func runCheckConfig(ctx context.Context, stderr io.Writer, env map[string]string
 }
 
 // configProblems loads the config folder. If the load reports a problem, it stops there. Otherwise it reports the problems of the adapters and the problems of the schedule workflow files together, because the two checks do not depend on each other.
-func configProblems(ctx context.Context, dir string, env map[string]string, adapters func(context.Context, model.Project) error) (config.Config, config.Problems) {
-	cfg, problems := config.LoadFolder(dir, env)
+func configProblems(ctx context.Context, dir string, env map[string]string, adapters func(context.Context, model.Project) error, registry config.Adapters) (config.Config, config.Problems) {
+	cfg, problems := config.LoadFolder(dir, env, registry)
 	if len(problems) != 0 {
 		return cfg, problems
 	}

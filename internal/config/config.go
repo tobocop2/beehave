@@ -70,8 +70,8 @@ func DefaultConfig() Config {
 }
 
 // LoadFolder loads runners.star and every projects/*.star of a config folder, applies the BEEHAVE_*
-// variables of env, and validates the result. It reports every problem it finds, one for each file.
-func LoadFolder(dir string, env map[string]string) (Config, Problems) {
+// variables of env, and validates the result against the adapters that the build registered. It reports every problem it finds, one for each file.
+func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, Problems) {
 	cfg := DefaultConfig()
 	cfg.Dir = dir
 
@@ -79,7 +79,7 @@ func LoadFolder(dir string, env map[string]string) (Config, Problems) {
 		return cfg, Problems{refuse("the config folder %s does not exist. Create it, or point --config or %s at a folder.", dir, ConfigDirVariable)}
 	}
 
-	problems := cfg.loadFiles()
+	problems := cfg.loadFiles(adapters)
 	if err := cfg.applyEnv(env); err != nil {
 		problems = append(problems, err)
 	}
@@ -91,17 +91,17 @@ func LoadFolder(dir string, env map[string]string) (Config, Problems) {
 	return cfg, problems
 }
 
-func (c *Config) loadFiles() Problems {
+func (c *Config) loadFiles(adapters Adapters) Problems {
 	var problems Problems
 
-	if err := c.loadRunners(); err != nil {
+	if err := c.loadRunners(adapters); err != nil {
 		problems = append(problems, err)
 	}
 
-	return append(problems, c.loadProjects()...)
+	return append(problems, c.loadProjects(adapters)...)
 }
 
-func (c *Config) loadRunners() error {
+func (c *Config) loadRunners(adapters Adapters) error {
 	if old := filepath.Join(c.Dir, oldRunnersFileName); isFile(old) {
 		return refuseOld(old, runnersFileName)
 	}
@@ -112,13 +112,13 @@ func (c *Config) loadRunners() error {
 	}
 
 	var err error
-	c.Agents, c.Pool, c.Runners, err = loadRunnersFile(path)
+	c.Agents, c.Pool, c.Runners, err = loadRunnersFile(path, adapters)
 
 	return err
 }
 
 // loadProjects reads projects/*.star in name order, and refuses a projects/*.hcl file. A missing projects folder holds no project.
-func (c *Config) loadProjects() Problems {
+func (c *Config) loadProjects(adapters Adapters) Problems {
 	dir := filepath.Join(c.Dir, projectsDirName)
 
 	entries, err := os.ReadDir(dir)
@@ -129,14 +129,14 @@ func (c *Config) loadProjects() Problems {
 	var problems Problems
 
 	for _, entry := range entries {
-		problems = c.addProject(problems, filepath.Join(dir, entry.Name()))
+		problems = c.addProject(problems, filepath.Join(dir, entry.Name()), adapters)
 	}
 
 	return problems
 }
 
 // addProject loads one file of the projects folder. A file of another kind is not a project.
-func (c *Config) addProject(problems Problems, path string) Problems {
+func (c *Config) addProject(problems Problems, path string, adapters Adapters) Problems {
 	switch filepath.Ext(path) {
 	case oldProjectExt:
 		return append(problems, refuseOld(path, strings.TrimSuffix(filepath.Base(path), oldProjectExt)+projectExt))
@@ -145,7 +145,7 @@ func (c *Config) addProject(problems Problems, path string) Problems {
 		return problems
 	}
 
-	project, err := loadProject(path)
+	project, err := loadProject(path, adapters)
 	if err != nil {
 		return append(problems, err)
 	}

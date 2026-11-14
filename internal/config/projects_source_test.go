@@ -25,7 +25,7 @@ func TestLoadFolder_AProjectWithOnlySourceBaseBranchAndGateLoadsWithLocalAdapter
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
+		Name: "p", Tracker: model.TrackerLocal, Claims: model.ClaimsLocal, Source: "/srv/repo", Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "r.xml", BuildHost: "local",
 	}, project.Project)
 }
 
@@ -143,7 +143,7 @@ func TestLoadFolder_TheSourceRefusals(t *testing.T) {
 		{"github_forge_without_repo", call(`forge = "github", ` + tail), "p.star:1:8: `repo` must be a non-empty string"},
 		{"beads_tracker_without_prefix", call(`tracker = "beads", ` + src + tail), "p.star:1:8: `beads_prefix` must be a non-empty string"},
 		{"beads_claims_without_prefix", call(`claims = "beads", ` + src + tail), "p.star:1:8: `beads_prefix` must be a non-empty string"},
-		{"unknown_claims", call(`claims = "github", ` + src + tail), "p.star:1:8: `claims`: unknown claims \"github\": use one of local, beads"},
+		{"unknown_claims", call(`claims = "github", ` + src + tail), "p.star:1:8: `claims`: unknown claims \"github\": use one of beads, local"},
 		{"blank_claims", call(`claims = " ", ` + src + tail), "p.star:1:8: `claims` must be a non-empty string"},
 		{"repo_given_but_malformed_with_no_github", call(`repo = "justname", ` + src + tail), "p.star:1:8: `repo` must be written owner/name"},
 	}

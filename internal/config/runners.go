@@ -48,9 +48,10 @@ type agents struct {
 type runnersFile struct {
 	*loader
 
-	agents  agents
-	pool    Pool
-	runners []model.Runner
+	agents   agents
+	pool     Pool
+	runners  []model.Runner
+	adapters Adapters
 }
 
 // The schemas of the constructors of the runners file.
@@ -64,8 +65,8 @@ func runnerSpec() spec { return spec{"runner", []string{"name", "agent", "config
 
 func runnersSpecs() []spec { return []spec{agentsSpec(), poolSpec(), runnerSpec()} }
 
-func loadRunnersFile(path string) (agents, Pool, []model.Runner, error) {
-	file := &runnersFile{loader: newLoader(path, runnersSpecs()), agents: DefaultConfig().Agents, pool: DefaultConfig().Pool}
+func loadRunnersFile(path string, adapters Adapters) (agents, Pool, []model.Runner, error) {
+	file := &runnersFile{loader: newLoader(path, runnersSpecs()), agents: DefaultConfig().Agents, pool: DefaultConfig().Pool, adapters: adapters}
 
 	err := file.run(
 		file.constructor(agentsSpec(), true, file.addAgents),
@@ -104,7 +105,7 @@ func (f *runnersFile) addPool(at syntax.Position, kwargs []starlark.Tuple) error
 }
 
 func (f *runnersFile) addRunner(at syntax.Position, kwargs []starlark.Tuple) error {
-	runner, err := readRunner(at, kwargs)
+	runner, err := f.readRunner(at, kwargs)
 	if err != nil {
 		return err
 	}
@@ -118,7 +119,7 @@ func (f *runnersFile) addRunner(at syntax.Position, kwargs []starlark.Tuple) err
 	return nil
 }
 
-func readRunner(at syntax.Position, kwargs []starlark.Tuple) (model.Runner, error) {
+func (f *runnersFile) readRunner(at syntax.Position, kwargs []starlark.Tuple) (model.Runner, error) {
 	var (
 		name, agent         string
 		configDir, keychain text
@@ -128,15 +129,15 @@ func readRunner(at syntax.Position, kwargs []starlark.Tuple) (model.Runner, erro
 		return model.Runner{}, err
 	}
 
-	return buildRunner(at, name, agent, configDir, keychain)
+	return f.buildRunner(at, name, agent, configDir, keychain)
 }
 
-func buildRunner(at syntax.Position, name, agent string, configDir, keychain text) (model.Runner, error) {
+func (f *runnersFile) buildRunner(at syntax.Position, name, agent string, configDir, keychain text) (model.Runner, error) {
 	if err := errors.Join(requireText(at, "name", name), requireText(at, "agent", agent)); err != nil {
 		return model.Runner{}, err
 	}
 
-	parsed, err := model.ParseAgent(agent)
+	parsed, err := f.adapters.parseAgent(agent)
 	if err != nil {
 		return model.Runner{}, refuseAt(at, "runner `%s`: %w.", name, err)
 	}
