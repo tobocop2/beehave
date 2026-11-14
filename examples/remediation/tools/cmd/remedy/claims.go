@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/agent/opencode"
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/config"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
@@ -40,7 +41,7 @@ func registry() config.Adapters {
 		Trackers: map[model.TrackerName]*config.Entry{local.Tracker: {}, beads.Tracker: beadsEntry, "github": issues},
 		Claims:   map[model.ClaimsName]*config.Entry{local.Claims: {}, beads.Claims: beadsEntry},
 		Forges:   map[model.ForgeName]*config.Entry{forgegithub.Name: {Keys: []string{"repo"}, Tools: []string{forgegithub.Tool}}},
-		Agents:   map[model.Agent]*config.Entry{"claude": {}, "opencode": {}},
+		Agents:   map[model.Agent]*config.Entry{"claude": {}, opencode.Name: {}},
 		Hosts: map[model.HostProvider]*config.Entry{
 			"skypilot": {Idle: true, HostBlock: "skypilot"},
 			sshBlock:   {HostBlock: sshBlock},

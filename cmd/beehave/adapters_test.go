@@ -567,3 +567,34 @@ func TestHostErrors_FollowsTheEntriesOfTheTable(t *testing.T) {
 
 	assert.Empty(t, table.hostErrors())
 }
+
+// The names are the values that the user writes in the config files, so a name keeps its value.
+func TestAdapters_EveryNameKeepsTheValueThatTheConfigWrites(t *testing.T) {
+	t.Parallel()
+
+	names := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"local tracker", string(local.Tracker), "local"},
+		{"local claims", string(local.Claims), "local"},
+		{"beads tracker", string(beads.Tracker), "beads"},
+		{"beads claims", string(beads.Claims), "beads"},
+		{"github tracker", string(storegithub.Tracker), "github"},
+		{"github forge", string(forgegithub.Name), "github"},
+		{"skypilot host", string(skypilot.Name), "skypilot"},
+		{"ssh host", string(ssh.Name), "ssh"},
+		{"slurm host", string(slurm.Name), "slurm"},
+		{"claude agent", string(claude.Name), "claude"},
+		{"opencode agent", string(opencode.Name), "opencode"},
+	}
+
+	for _, tc := range names {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, tc.got)
+		})
+	}
+}
