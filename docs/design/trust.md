@@ -43,7 +43,7 @@ No mode needs a GitHub App. An App token source for the `reviewer` role can come
 
 The project file gets one key:
 
-```python
+```
 project(
     ...,
     credentials = {
