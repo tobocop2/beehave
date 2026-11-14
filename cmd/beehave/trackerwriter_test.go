@@ -117,7 +117,7 @@ func TestTrackerWriter_AnUnknownProjectAndABuilderErrorFail(t *testing.T) {
 func TestTrackerWriter_ALocalProjectCreatesAnItemThatTheTrackerReads(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 	w := trackerWriter{projects: map[string]config.Project{"p": {Project: localProjectNamed("p")}}, tracker: table.tracker}
 
 	id, created, err := w.Create(t.Context(), "p", "run:k", store.NewItem{Title: "child", Body: "b"})

@@ -61,13 +61,13 @@ func guardOutcome(t *testing.T, bashCommand string) string {
 	var out bytes.Buffer
 
 	result := agent.Runner{}.Run(context.Background(), agent.Spec{
-		Adapter: claude.New(), Runner: model.Runner{Name: "r", Agent: model.AgentClaude, ConfigDir: dir},
+		Adapter: claude.New(nil), Runner: model.Runner{Name: "r", Agent: model.AgentClaude, ConfigDir: dir},
 		Dir: dir, Prompt: bashCommand + "\n", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Log: &out, Guard: guard,
 	})
 	require.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
 	require.Zero(t, result.ExitCode, result.Stderr)
 
-	_, text := claude.New().Line(strings.TrimSpace(out.String()))
+	_, text := claude.New(nil).Line(strings.TrimSpace(out.String()))
 
 	return text
 }
@@ -87,7 +87,7 @@ func TestGuard_TheHookLetsACleanCommandThrough(t *testing.T) {
 func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New().Guard("/bin/beehave check command", "/run")
+	launch := claude.New(nil).Guard("/bin/beehave check command", "/run")
 	got := launch.Args
 
 	assert.Empty(t, launch.Env)

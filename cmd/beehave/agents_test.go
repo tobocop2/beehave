@@ -709,7 +709,7 @@ func TestNewAgents_WiresTheRealRunnerAndTheAdapterTable(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Runners: []model.Runner{{Name: "x", Agent: model.Agent("none"), ConfigDir: "/login"}}}
-	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil))
+	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
 
 	got, err := a.Run(t.Context(), flow.AgentRequest{Item: "1", Project: "p", Login: "x", Prompt: "go"})
 
@@ -765,13 +765,75 @@ func TestPoolPick_PrefersAFreeClaudeRunner(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read, pool.Select)(t.Context(), []string{"a"})
+	got, err := poolPick(cfg, model.AgentClaude, read, pool.Select)(t.Context(), []string{"a"})
 	require.NoError(t, err)
 	assert.Equal(t, "b", got, "b has more use than a, and a is busy")
 
-	got, err = poolPick(cfg, read, pool.Select)(t.Context(), nil)
+	got, err = poolPick(cfg, model.AgentClaude, read, pool.Select)(t.Context(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "a", got)
+}
+
+func TestPoolPick_AStepOfOneAgentKindNeverGetsARunnerOfAnotherKind(t *testing.T) {
+	t.Parallel()
+
+	other := model.Agent("other")
+	cfg := config.Config{
+		Runners: []model.Runner{{Name: "claude-1", Agent: model.AgentClaude}, {Name: "other-1", Agent: other}},
+		Pool:    config.Pool{FiveHourMax: 90, SevenDayMax: 95},
+	}
+	// Both kinds report usage, and the runner of the other kind has the lower use, so an unfiltered pick would take it.
+	read := func(_ context.Context, runner model.Runner) model.Reading {
+		percent := 80.0
+		if runner.Agent == other {
+			percent = 10
+		}
+
+		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
+	}
+
+	for _, selectRunner := range []selector{pool.Select, pool.SelectOverCap} {
+		got, err := poolPick(cfg, model.AgentClaude, read, selectRunner)(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "claude-1", got)
+
+		got, err = poolPick(cfg, other, read, selectRunner)(t.Context(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "other-1", got)
+	}
+}
+
+func TestPoolPick_AKindWithNoRunnerIsAnError(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{Runners: []model.Runner{{Name: "other-1", Agent: model.Agent("other")}}}
+	read := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
+
+	_, err := poolPick(cfg, model.AgentClaude, read, pool.Select)(t.Context(), nil)
+
+	require.ErrorIs(t, err, pool.ErrNoRunner)
+}
+
+func TestReadUsage_ARunnerOfAnAgentWithNoEntryIsUnknownSoThePoolNeverPicksIt(t *testing.T) {
+	t.Parallel()
+
+	reading := readUsage(agentEntries(nil))(t.Context(), model.Runner{Name: "o", Agent: model.Agent("none")})
+
+	_, known := reading.Usage()
+
+	assert.False(t, known)
+	assert.Equal(t, "the none agent cannot report usage", reading.Reason())
+}
+
+func TestReadUsage_ARunnerOfARegisteredAgentIsReadThroughItsAdapter(t *testing.T) {
+	t.Parallel()
+
+	reading := readUsage(agentEntries(nil))(t.Context(), model.Runner{Name: "c", Agent: model.AgentClaude})
+
+	_, known := reading.Usage()
+
+	assert.False(t, known)
+	assert.Equal(t, "the runner has no config_dir, so its login is not known", reading.Reason())
 }
 
 func TestLogins_AnOverCapPickTakesTheLowestUseWhateverTheCaps(t *testing.T) {
@@ -833,12 +895,12 @@ func TestPoolPick_ChoosesTheClaudeRunnerUnderTheCaps(t *testing.T) {
 		return model.Known(model.Usage{FiveHour: model.Window{Percent: percent}, SevenDay: model.Window{Percent: percent}})
 	}
 
-	got, err := poolPick(cfg, read, pool.Select)(t.Context(), nil)
+	got, err := poolPick(cfg, model.AgentClaude, read, pool.Select)(t.Context(), nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "free", got)
 
-	_, err = poolPick(config.Config{}, read, pool.Select)(t.Context(), nil)
+	_, err = poolPick(config.Config{}, model.AgentClaude, read, pool.Select)(t.Context(), nil)
 	require.ErrorIs(t, err, pool.ErrNoRunner)
 }
 

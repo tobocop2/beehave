@@ -23,7 +23,7 @@ const (
 func TestLine_ReadsTheSessionFromInitAndTheMessageFromResult(t *testing.T) {
 	t.Parallel()
 
-	adapter := claude.New()
+	adapter := claude.New(nil)
 
 	session, text := adapter.Line(`{"type":"system","subtype":"init","session_id":"s1","result":"ignored"}`)
 	assert.Equal(t, "s1", session)
@@ -43,7 +43,7 @@ func TestLine_ReadsTheSessionFromInitAndTheMessageFromResult(t *testing.T) {
 func TestTranscriptPath_TurnsEachOtherCharacterOfTheFolderIntoADash(t *testing.T) {
 	t.Parallel()
 
-	got := claude.New().TranscriptPath("/login", "/work/My.Tree_1", "abc")
+	got := claude.New(nil).TranscriptPath("/login", "/work/My.Tree_1", "abc")
 
 	assert.Equal(t, "/login/projects/-work-My-Tree-1/abc.jsonl", got)
 }
@@ -51,7 +51,7 @@ func TestTranscriptPath_TurnsEachOtherCharacterOfTheFolderIntoADash(t *testing.T
 func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	t.Parallel()
 
-	p := claude.New().Profile()
+	p := claude.New(nil).Profile()
 
 	assert.Equal(t, "--model", p.ModelFlag)
 	assert.Equal(t, []string{"--resume", "sess-1"}, p.Resume("sess-1"))
@@ -61,7 +61,7 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {
 	t.Parallel()
 
-	p := claude.New().Profile()
+	p := claude.New(nil).Profile()
 
 	assert.Equal(t, "--permission-mode acceptEdits", strings.Join(p.EditArgs, " "))
 	assert.Contains(t, strings.Join(p.Args, " "), "--allowedTools Bash")
@@ -71,7 +71,7 @@ func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {
 func TestProfile_NamesTheTurnAndBudgetFlags(t *testing.T) {
 	t.Parallel()
 
-	p := claude.New().Profile()
+	p := claude.New(nil).Profile()
 
 	assert.Equal(t, "--max-turns", p.TurnsFlag)
 	assert.Equal(t, "--max-budget-usd", p.BudgetFlag)
@@ -96,7 +96,7 @@ func TestCalls_AnErrorResultThatIsNoCapNamesItsSubtype(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.want, claude.New().Calls(tc.line).Failed)
+			assert.Equal(t, tc.want, claude.New(nil).Calls(tc.line).Failed)
 		})
 	}
 }
@@ -119,7 +119,7 @@ func TestCalls_TheSubtypeOfTheResultLineNamesTheCapThatStoppedTheRun(t *testing.
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.want, claude.New().Calls(tc.line).Stop)
+			assert.Equal(t, tc.want, claude.New(nil).Calls(tc.line).Stop)
 		})
 	}
 }
@@ -127,7 +127,7 @@ func TestCalls_TheSubtypeOfTheResultLineNamesTheCapThatStoppedTheRun(t *testing.
 func TestAdapter(t *testing.T) {
 	t.Parallel()
 
-	agenttest.TestAdapter(t, func() agent.Adapter { return claude.New() })
+	agenttest.TestAdapter(t, func() agent.Adapter { return claude.New(nil) })
 }
 
 func toJSON(t *testing.T, value any) string {
@@ -163,7 +163,7 @@ func TestCalls_ReadTheStreamOfOneRun(t *testing.T) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		seen := claude.New().Calls(scanner.Text())
+		seen := claude.New(nil).Calls(scanner.Text())
 		shell, skills = append(shell, texts(seen.Shell)...), append(skills, seen.Skills...)
 
 		assert.False(t, seen.Invalid, scanner.Text())
@@ -198,11 +198,11 @@ const (
 func TestCalls_ACallCarriesItsIdAndAHookRefusalNamesTheSameId(t *testing.T) {
 	t.Parallel()
 
-	call := claude.New().Calls(refusedCall)
+	call := claude.New(nil).Calls(refusedCall)
 	assert.Equal(t, []agent.Call{{ID: "toolu_9", Text: "git add -A"}}, call.Shell)
 	assert.Empty(t, call.Refused)
 
-	refusal := claude.New().Calls(refusedResult)
+	refusal := claude.New(nil).Calls(refusedResult)
 	assert.Equal(t, []string{"toolu_9"}, refusal.Refused)
 	assert.Empty(t, refusal.Shell)
 }
@@ -217,7 +217,7 @@ func TestCalls_OnlyAnErrorResultOfAHookIsARefusal(t *testing.T) {
 	}
 	listed := []any{map[string]any{"type": "text", "text": "PreToolUse:Bash hook error: no"}}
 
-	assert.Equal(t, []string{"t1"}, claude.New().Calls(block(true, listed)).Refused, "a list of text blocks")
+	assert.Equal(t, []string{"t1"}, claude.New(nil).Calls(block(true, listed)).Refused, "a list of text blocks")
 
 	for name, line := range map[string]string{
 		"no error":        block(false, "PreToolUse:Bash hook error"),
@@ -231,27 +231,27 @@ func TestCalls_OnlyAnErrorResultOfAHookIsARefusal(t *testing.T) {
 		"content a plain": `{"type":"user","message":{"content":"PreToolUse:x"}}`,
 		"block a string":  `{"type":"user","message":{"content":["PreToolUse:x"]}}`,
 	} {
-		assert.Empty(t, claude.New().Calls(line).Refused, name)
+		assert.Empty(t, claude.New(nil).Calls(line).Refused, name)
 	}
 }
 
 func TestCalls_OnlyTheResultLineEndsTheRun(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, claude.New().Calls(`{"type":"result","subtype":"success","session_id":"s1"}`).Result)
-	assert.False(t, claude.New().Calls(`{"type":"assistant"}`).Result)
-	assert.False(t, claude.New().Calls(`[1]`).Result)
+	assert.True(t, claude.New(nil).Calls(`{"type":"result","subtype":"success","session_id":"s1"}`).Result)
+	assert.False(t, claude.New(nil).Calls(`{"type":"assistant"}`).Result)
+	assert.False(t, claude.New(nil).Calls(`[1]`).Result)
 }
 
 func TestCalls_ALineThatIsNotJSONIsInvalidAndAnEmptyLineIsNot(t *testing.T) {
 	t.Parallel()
 
 	for _, line := range []string{"plain text", "{broken", `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git ad`} {
-		assert.True(t, claude.New().Calls(line).Invalid, line)
+		assert.True(t, claude.New(nil).Calls(line).Invalid, line)
 	}
 
 	for _, line := range []string{"", "  ", "[1]", `"text"`, `{}`} {
-		assert.False(t, claude.New().Calls(line).Invalid, line)
+		assert.False(t, claude.New(nil).Calls(line).Invalid, line)
 	}
 }
 
@@ -264,12 +264,12 @@ func TestCalls_ABashCallCountsOnEveryLineShapeAndKeepsItsOrder(t *testing.T) {
 	other := toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Read", "command", "git add -A")}}})
 	noString := toJSON(t, map[string]any{"message": map[string]any{"content": []any{toolUse("Bash", "command", nil)}}})
 
-	seen := claude.New().Calls(bare)
+	seen := claude.New(nil).Calls(bare)
 	assert.Equal(t, []string{"first", "second"}, texts(seen.Shell))
 	assert.Empty(t, seen.Skills)
 
 	for _, line := range []string{other, noString} {
-		assert.Empty(t, claude.New().Calls(line).Shell, line)
+		assert.Empty(t, claude.New(nil).Calls(line).Shell, line)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestCalls_ALineThatIsNotAJSONObjectHoldsNoCall(t *testing.T) {
 	t.Parallel()
 
 	for _, line := range []string{"", "plain text", "{broken", "[1]", `"text"`, `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"git ad`} {
-		seen := claude.New().Calls(line)
+		seen := claude.New(nil).Calls(line)
 
 		assert.Empty(t, seen.Shell, line)
 		assert.Empty(t, seen.Skills, line)
@@ -299,8 +299,8 @@ func TestCalls_ASkillCountsOnlyAsAToolUseBlockOfAnAssistantLine(t *testing.T) {
 	notString := assistant(t, toolUse("Skill", "skill", 5))
 
 	for _, line := range []string{result, extra, text, noContent, noMessage, notBlock, wrongTool, notToolUse, notString} {
-		assert.Empty(t, claude.New().Calls(line).Skills, line)
+		assert.Empty(t, claude.New(nil).Calls(line).Skills, line)
 	}
 
-	assert.Equal(t, []string{oracle}, claude.New().Calls(assistant(t, toolUse("Skill", "skill", oracle))).Skills)
+	assert.Equal(t, []string{oracle}, claude.New(nil).Calls(assistant(t, toolUse("Skill", "skill", oracle))).Skills)
 }

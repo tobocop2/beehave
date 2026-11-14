@@ -1,6 +1,7 @@
 package agenttest_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/agenttest"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // recorder is a Reporter that keeps the failures instead of failing the test.
@@ -44,6 +46,10 @@ func (a fakeAdapter) Sandbox(agent.SandboxPlan, string, string) agent.Launch {
 }
 
 func (fakeAdapter) Line(string) (string, string) { return "", "" }
+
+func (fakeAdapter) ReadUsage(context.Context, model.Runner) model.Reading {
+	return model.Unknown("the fake agent cannot report usage")
+}
 
 func (fakeAdapter) TranscriptPath(configDir, _, session string) string {
 	return filepath.Join(configDir, session)

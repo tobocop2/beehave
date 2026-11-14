@@ -51,7 +51,7 @@ func e2eSwarm() {
 	env := config.ProcessEnv()
 	idle := func(context.Context, model.Runner) model.Reading { return model.Known(model.Usage{}) }
 	factory := flowFactoryFrom(func(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-		table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
+		table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
 		table.forges[model.ForgeGithub] = func(model.Project) (forge.Forge, error) {
 			return swarmForgeAt{remote: env[swarmRemote], dir: env[swarmFolder]}, nil
 		}

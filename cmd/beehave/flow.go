@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
@@ -34,20 +33,24 @@ type logins struct {
 	overCap  func(ctx context.Context, busy []string) (string, error)
 }
 
-// newLogins reads the projects of the config. The pool pick reads the usage of each claude runner.
+// stepAgent is the agent kind of every agent step. A step names no agent yet, so the pool pick takes runners of this kind only.
+const stepAgent = model.AgentClaude
+
+// newLogins reads the projects of the config. The pool pick reads the usage of each runner through the agent entries.
 func newLogins(cfg config.Config, opts flow.Options) logins {
-	return loginsReading(cfg, claude.UsageReader{Base: opts.Env}.Read)
+	return loginsReading(cfg, readUsage(agentEntries(opts.Env)))
 }
 
 // loginsReading is newLogins with the reader of the usage given. A test of the whole command gives a reader that needs no login.
 func loginsReading(cfg config.Config, read pool.Reader) logins {
-	return logins{projects: cfg.Projects, pool: poolPick(cfg, read, pool.Select), overCap: poolPick(cfg, read, pool.SelectOverCap)}
+	return logins{projects: cfg.Projects, pool: poolPick(cfg, stepAgent, read, pool.Select), overCap: poolPick(cfg, stepAgent, read, pool.SelectOverCap)}
 }
 
-// poolPick returns the name of the claude runner that read finds with the select function: under both usage caps for pool.Select, the lowest use for pool.SelectOverCap.
-func poolPick(cfg config.Config, read pool.Reader, selectRunner selector) func(ctx context.Context, busy []string) (string, error) {
+// poolPick returns the name of the runner of the agent kind that read finds with the select function: under both usage caps for pool.Select, the lowest use for pool.SelectOverCap.
+// A runner of another agent kind is never returned, whatever its usage.
+func poolPick(cfg config.Config, kind model.Agent, read pool.Reader, selectRunner selector) func(ctx context.Context, busy []string) (string, error) {
 	return func(ctx context.Context, busy []string) (string, error) {
-		runner, err := selectRunner(ctx, cfg.Runners, cfg.Pool, model.AgentClaude, read, busy...)
+		runner, err := selectRunner(ctx, cfg.Runners, cfg.Pool, kind, read, busy...)
 		if err != nil {
 			return "", fmt.Errorf("pick a runner from the pool: %w", err)
 		}
@@ -90,7 +93,7 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 			return engine, nil
 		},
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
-			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir))
+			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)
 
 			client, err := flow.OpenClient(ctx, opts, releaseDeps(newLife(cfg, table), cfg.Projects, opts))
 			if err != nil {
@@ -109,12 +112,12 @@ func stateFolder(dir string) func() (string, error) {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	return newEngineReading(ctx, cfg, opts, claude.UsageReader{Base: opts.Env}.Read)
+	return newEngineReading(ctx, cfg, opts, readUsage(agentEntries(opts.Env)))
 }
 
 // newEngineReading builds the engine with the reader of the usage that the pool pick uses.
 func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader) (*flow.Engine, error) {
-	return newEngineOn(ctx, cfg, opts, read, newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir)))
+	return newEngineOn(ctx, cfg, opts, read, newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env))
 }
 
 // newEngineOn builds the engine over a table of adapters. A test passes a table with one adapter replaced.

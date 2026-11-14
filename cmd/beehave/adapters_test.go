@@ -23,7 +23,7 @@ import (
 func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	for _, name := range model.Trackers() {
 		assert.Contains(t, table.trackers, name)
@@ -40,16 +40,16 @@ func TestAdapters_TheTableHasAConstructorForEveryNameAndNothingElse(t *testing.T
 func TestAdapters_AgentBuildsTheClaudeAdapterAndNothingForAnAgentWithoutOne(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
-	assert.Equal(t, claude.New(), table.agent(model.AgentClaude))
+	assert.Equal(t, claude.New(nil), table.agent(model.AgentClaude))
 	assert.Nil(t, table.agent(model.AgentOpenCode))
 }
 
 func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerBeads, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	tracker, err := table.tracker(t.Context(), project)
@@ -69,7 +69,7 @@ func TestAdapters_BuildTheAdapterTheProjectNames(t *testing.T) {
 func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	_, err := table.tracker(t.Context(), model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
@@ -93,7 +93,7 @@ func TestAdapters_RefuseWhatTheyCannotBuild(t *testing.T) {
 func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	require.NoError(t, table.checkTrackerAndForge(t.Context(), good))
@@ -102,7 +102,7 @@ func TestAdapters_CheckTrackerAndForgeAcceptsAProjectWhoseAdaptersBuild(t *testi
 func TestAdapters_CheckTrackerAndForgeRefusesAProjectWhoseAdapterCannotBeBuilt(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	err := table.checkTrackerAndForge(t.Context(), model.Project{Name: "p", Tracker: "jira"})
 	require.EqualError(t, err, `project p: no tracker adapter named "jira"`)
@@ -114,7 +114,7 @@ func TestAdapters_CheckTrackerAndForgeRefusesAProjectWhoseAdapterCannotBeBuilt(t
 func TestAdapters_CheckBuildsTheTrackerTheForgeAndTheLeaseStoreOfAProject(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	good := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 	require.NoError(t, table.check(t.Context(), good))
 
@@ -135,7 +135,7 @@ func stateAt(dir string) func() (string, error) {
 func TestAdapters_AProjectWithNoHostBlockBuildsNoHostSoItNeedsNeitherSkyNorSlurm(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, nil)
+	table := newAdapters(nil, nil, nil)
 	table.hosts = map[model.HostProvider]func(model.Project) (host.Host, error){
 		model.HostSkyPilot: func(model.Project) (host.Host, error) {
 			t.Error("a local project built a host adapter")
@@ -157,7 +157,7 @@ func TestAdapters_TheLocalTrackerOpensLocalDbInTheStateFolderAndRefusesAnUnknown
 	t.Parallel()
 
 	state := t.TempDir()
-	table := newAdapters(nil, stateAt(state))
+	table := newAdapters(nil, stateAt(state), nil)
 
 	tracker, err := table.tracker(t.Context(), localProjectNamed("p"))
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestAdapters_TheLocalTrackerOpensLocalDbInTheStateFolderAndRefusesAnUnknown
 func TestAdapters_TheLocalClaimStoreHoldsAndFreesARowInTheStateFolder(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(nil, stateAt(t.TempDir()))
+	table := newAdapters(nil, stateAt(t.TempDir()), nil)
 
 	rows, err := table.leases(t.Context(), localProjectNamed("p"))
 	require.NoError(t, err)
@@ -194,12 +194,12 @@ func TestAdapters_TheLocalClaimStoreHoldsAndFreesARowInTheStateFolder(t *testing
 func TestAdapters_ItemOpenerOpensTheItemListOfALocalProjectAndReportsAStateFolderThatFails(t *testing.T) {
 	t.Parallel()
 
-	opened, err := newAdapters(nil, stateAt(t.TempDir())).itemOpener()(t.Context(), localProjectNamed("p"))
+	opened, err := newAdapters(nil, stateAt(t.TempDir()), nil).itemOpener()(t.Context(), localProjectNamed("p"))
 	require.NoError(t, err)
 	require.NoError(t, opened.Add(t.Context(), "fix-login", "Fix login", "body"))
 	require.NoError(t, opened.Close())
 
-	opened, err = newAdapters(nil, func() (string, error) { return "", errFake }).itemOpener()(t.Context(), localProjectNamed("p"))
+	opened, err = newAdapters(nil, func() (string, error) { return "", errFake }, nil).itemOpener()(t.Context(), localProjectNamed("p"))
 	require.ErrorIs(t, err, errFake)
 	assert.Nil(t, opened)
 }
@@ -208,7 +208,7 @@ func TestAdapters_ALocalStoreThatCannotOpenIsAnError(t *testing.T) {
 	t.Parallel()
 
 	failing := func() (string, error) { return "", errFake }
-	table := newAdapters(nil, failing)
+	table := newAdapters(nil, failing, nil)
 
 	tracker, err := table.tracker(t.Context(), localProjectNamed("p"))
 	require.ErrorIs(t, err, errFake)
@@ -220,7 +220,7 @@ func TestAdapters_ALocalStoreThatCannotOpenIsAnError(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "file")
 	require.NoError(t, os.WriteFile(file, nil, 0o600))
 
-	_, err = newAdapters(nil, stateAt(filepath.Join(file, "state"))).tracker(t.Context(), localProjectNamed("p"))
+	_, err = newAdapters(nil, stateAt(filepath.Join(file, "state")), nil).tracker(t.Context(), localProjectNamed("p"))
 	require.Error(t, err)
 }
 
@@ -228,7 +228,7 @@ func TestAdapters_ALocalProjectNeedsNoBdAndCheckBuildsNothingOnDisk(t *testing.T
 	t.Parallel()
 
 	state := filepath.Join(t.TempDir(), "state")
-	table := newAdapters(nil, stateAt(state))
+	table := newAdapters(nil, stateAt(state), nil)
 	project := localProjectNamed("p")
 
 	require.NoError(t, table.check(t.Context(), project))
@@ -242,18 +242,18 @@ func TestAdapters_CheckRefusesABeadsClaimStoreWithNoPrefixEvenWhenTheTrackerIsLo
 
 	project := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerLocal, Claims: model.ClaimsBeads}
 
-	require.ErrorContains(t, newAdapters(beadstest.NewBd(t), nil).check(t.Context(), project), "the beads id prefix is required")
+	require.ErrorContains(t, newAdapters(beadstest.NewBd(t), nil, nil).check(t.Context(), project), "the beads id prefix is required")
 
 	project.BeadsPrefix = "p"
 	bd := beadstest.NewBd(t)
 	bd.Version = "0.56.1"
-	require.ErrorContains(t, newAdapters(bd, nil).check(t.Context(), project), "found 0.56.1")
+	require.ErrorContains(t, newAdapters(bd, nil, nil).check(t.Context(), project), "found 0.56.1")
 }
 
 func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	noForge := model.Project{Name: "p", Source: "/srv/repo", Tracker: model.TrackerBeads, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
 	built, err := table.forge(noForge)
@@ -267,7 +267,7 @@ func TestAdapters_AProjectWithNoForgeHasNoForgeToBuildAndNoForgeFields(t *testin
 func TestAdapters_ABeadsClaimStoreWithNoPrefixAndAnUnknownClaimsNameAreRefusedByLeasesAndCheck(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	rows, err := table.leases(t.Context(), model.Project{Name: "p", Claims: model.ClaimsBeads})
 	require.ErrorContains(t, err, "the beads id prefix is required")
@@ -288,7 +288,7 @@ func TestStateFolder_AnswersWithTheFolderOfTheOptions(t *testing.T) {
 func TestAdapters_AClaimsNameThatIsNeitherLocalNorBeadsIsRefused(t *testing.T) {
 	t.Parallel()
 
-	_, err := newAdapters(beadstest.NewBd(t), nil).leases(t.Context(), model.Project{Name: "p", Claims: "zk"})
+	_, err := newAdapters(beadstest.NewBd(t), nil, nil).leases(t.Context(), model.Project{Name: "p", Claims: "zk"})
 
 	require.EqualError(t, err, `project p: no claim store named "zk"`)
 }
@@ -300,16 +300,16 @@ func TestAdapters_CheckRefusesABdThatIsTooOld(t *testing.T) {
 	bd.Version = "0.56.1"
 	project := model.Project{Name: "p", Repo: "o/n", Tracker: model.TrackerGithub, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"}
 
-	require.EqualError(t, newAdapters(bd, nil).check(t.Context(), project), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
+	require.EqualError(t, newAdapters(bd, nil, nil).check(t.Context(), project), "beehave needs bd 1.3.2 or newer for claims; found 0.56.1")
 
 	bd.Version = "1.3.2"
-	require.NoError(t, newAdapters(bd, nil).check(t.Context(), project))
+	require.NoError(t, newAdapters(bd, nil, nil).check(t.Context(), project))
 }
 
 func TestAdapters_TheHostTableHasAConstructorForEveryProviderAndNothingElse(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	for _, name := range model.HostProviders() {
 		assert.Contains(t, table.hosts, name)
@@ -321,7 +321,7 @@ func TestAdapters_TheHostTableHasAConstructorForEveryProviderAndNothingElse(t *t
 func TestAdapters_EveryProviderBuildsAHostThatBanksItsWorkOnTeardown(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	for _, name := range model.HostProviders() {
 		built, err := table.host(hostProject(name, "lane-host"))
@@ -342,7 +342,7 @@ func hostProject(provider model.HostProvider, buildHost string) model.Project {
 func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
 	require.NoError(t, err)
@@ -394,7 +394,7 @@ func TestAdapters_HostWaitsForDiskSpaceForTheMinutesTheProjectAllows(t *testing.
 	const gigabyte = 1 << 30
 
 	freeing := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}, grow: 30 * gigabyte}
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	table.diskPoll = time.Millisecond
 	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return freeing, nil }
 
@@ -421,7 +421,7 @@ func TestAdapters_HostRefusesAJobWhenTheDiskIsUnderTheFloor(t *testing.T) {
 	const gigabyte = 1 << 30
 
 	low := &statusHost{disk: model.DiskReading{FreeBytes: 10 * gigabyte, Readable: true}}
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 	table.hosts[model.HostSkyPilot] = func(model.Project) (host.Host, error) { return low, nil }
 
 	built, err := table.host(hostProject(model.HostSkyPilot, "lane-host"))
@@ -445,7 +445,7 @@ func TestAdapters_HostRefusesAJobWhenTheDiskIsUnderTheFloor(t *testing.T) {
 func TestAdapters_CheckRefusesAHostProviderItDoesNotKnowAndAHostItCannotBuild(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(beadstest.NewBd(t), nil)
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
 
 	require.NoError(t, table.check(t.Context(), hostProject(model.HostSkyPilot, "lane-host")))
 	require.NoError(t, table.check(t.Context(), hostProject(model.HostSSH, "lane-host")), "building the ssh host runs no ssh")

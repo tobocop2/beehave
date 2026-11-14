@@ -2,6 +2,7 @@
 package claude
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,28 @@ import (
 )
 
 // Adapter is the Claude Code CLI.
-type Adapter struct{}
+type Adapter struct {
+	// env is the environment of the caller, which the usage read passes to the CLI.
+	env map[string]string
+}
 
-// New returns the Claude Code adapter.
-func New() Adapter { return Adapter{} }
+// New returns the Claude Code adapter. env is the environment of the caller, which the usage read passes to the CLI.
+func New(env map[string]string) Adapter { return Adapter{env: env} }
+
+// ReadUsage returns the usage of one runner, read through the CLI.
+func (a Adapter) ReadUsage(ctx context.Context, runner model.Runner) model.Reading {
+	return UsageReader{Base: a.env}.Read(ctx, runner)
+}
+
+// ConfigFix is the fix of the doctor check of the config folder: how a person logs in to the CLI in dir.
+func ConfigFix(dir string) string {
+	return "Log in to it: CLAUDE_CONFIG_DIR=" + dir + " claude"
+}
+
+// TokenFix is the fix of the doctor check of the Keychain: how a person stores the token of the CLI in the entry.
+func TokenFix(entry string) string {
+	return "Run `claude setup-token`, then: security add-generic-password -s " + entry + " -a $USER -w"
+}
 
 // Profile returns the command line and the login variables of Claude Code.
 // Print mode cannot ask for permission, so a call that needs it is refused. "--allowedTools Bash" runs shell commands; the PreToolUse hook of Guard

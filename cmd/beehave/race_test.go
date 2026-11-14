@@ -246,7 +246,7 @@ func TestClaimOverBeads_AnyTrackerGetsBeadsClaims(t *testing.T) {
 	t.Parallel()
 
 	bd := beadstest.NewBd(t)
-	table := newAdapters(bd, nil)
+	table := newAdapters(bd, nil, nil)
 
 	for _, tracker := range slices.Sorted(maps.Keys(table.trackers)) {
 		rows, err := table.leases(t.Context(), model.Project{Name: "p", Repo: "o/n", Tracker: tracker, Forge: model.ForgeGithub, Claims: model.ClaimsBeads, BeadsPrefix: "p"})

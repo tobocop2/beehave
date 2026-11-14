@@ -18,6 +18,7 @@ import (
 	"github.com/tobocop2/beehave/internal/host/slurm"
 	"github.com/tobocop2/beehave/internal/host/ssh"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/pool"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/beads"
@@ -31,12 +32,19 @@ import (
 type adapters struct {
 	trackers map[model.TrackerName]trackerBuilder
 	forges   map[model.ForgeName]func(model.Project) (forge.Forge, error)
-	agents   map[model.Agent]func() agent.Adapter
+	agents   map[model.Agent]agentAdapter
 	hosts    map[model.HostProvider]func(model.Project) (host.Host, error)
 	bd       proc.Runner
 	state    func() (string, error)
 	// diskPoll is how often a job that waits for disk space reads the disk again.
 	diskPoll time.Duration
+}
+
+// agentAdapter is the registration of an agent: its constructor and its doctor fix texts. The usage read is a method of the adapter that build returns.
+type agentAdapter struct {
+	build     func() agent.Adapter
+	configFix func(string) string
+	tokenFix  func(string) string
 }
 
 // defaultDiskPoll is the gap between two disk readings of a job that waits for space.
@@ -61,17 +69,26 @@ func (c claimStore) Close() error {
 // skyTimeout is the longest one sky call may run. A launch creates a machine, which takes minutes.
 const skyTimeout = 30 * time.Minute
 
+// agentEntries returns the agent entries. env is the environment of the caller, which the usage read of an agent passes to its CLI.
+func agentEntries(env map[string]string) map[model.Agent]agentAdapter {
+	return map[model.Agent]agentAdapter{
+		model.AgentClaude: {
+			build:     func() agent.Adapter { return claude.New(env) },
+			configFix: claude.ConfigFix,
+			tokenFix:  claude.TokenFix,
+		},
+	}
+}
+
 // newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
-// state returns the state folder, for the local tracker and the local claim store.
-func newAdapters(bd proc.Runner, state func() (string, error)) adapters {
+// state returns the state folder, for the local tracker and the local claim store. env is the environment of the caller, for the usage read of the agents.
+func newAdapters(bd proc.Runner, state func() (string, error), env map[string]string) adapters {
 	return adapters{
 		trackers: newTrackers(bd, state),
 		forges: map[model.ForgeName]func(model.Project) (forge.Forge, error){
 			model.ForgeGithub: newGithubForge,
 		},
-		agents: map[model.Agent]func() agent.Adapter{
-			model.AgentClaude: func() agent.Adapter { return claude.New() },
-		},
+		agents: agentEntries(env),
 		hosts: map[model.HostProvider]func(model.Project) (host.Host, error){
 			model.HostSkyPilot: newSkyPilotHost,
 			model.HostSSH:      newSSHHost,
@@ -219,12 +236,68 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 
 // agent builds the adapter of the agent. It returns nil for an agent that has no adapter yet, and a run with no adapter does not start.
 func (a adapters) agent(name model.Agent) agent.Adapter { //nolint:ireturn // the table builds whichever adapter the runner names
-	build, found := a.agents[name]
+	entry, found := a.agents[name]
 	if !found {
 		return nil
 	}
 
-	return build()
+	return entry.build()
+}
+
+// toolVersions returns the version check of each tool that has one, by tool name.
+func (a adapters) toolVersions() map[string]func(context.Context) error {
+	return map[string]func(context.Context) error{
+		model.ToolBd: func(ctx context.Context) error { return beads.RequireBd(ctx, a.bd) },
+	}
+}
+
+// logins returns the usage read of each agent, by agent.
+func (a adapters) logins() map[model.Agent]func(context.Context, model.Runner) model.Reading {
+	logins := map[model.Agent]func(context.Context, model.Runner) model.Reading{}
+
+	for name, entry := range a.agents {
+		logins[name] = entry.build().ReadUsage
+	}
+
+	return logins
+}
+
+// configFixes returns the fix of the config folder of each agent that declares one, by agent.
+func (a adapters) configFixes() map[model.Agent]func(string) string {
+	fixes := map[model.Agent]func(string) string{}
+
+	for name, entry := range a.agents {
+		if entry.configFix != nil {
+			fixes[name] = entry.configFix
+		}
+	}
+
+	return fixes
+}
+
+// tokenFixes returns the fix of the Keychain entry of each agent that declares one, by agent.
+func (a adapters) tokenFixes() map[model.Agent]func(string) string {
+	fixes := map[model.Agent]func(string) string{}
+
+	for name, entry := range a.agents {
+		if entry.tokenFix != nil {
+			fixes[name] = entry.tokenFix
+		}
+	}
+
+	return fixes
+}
+
+// readUsage reads the usage of one runner through the adapter of its agent. A runner of an agent with no entry is unknown, so the pool pick never chooses it.
+func readUsage(entries map[model.Agent]agentAdapter) pool.Reader {
+	return func(ctx context.Context, runner model.Runner) model.Reading {
+		entry, found := entries[runner.Agent]
+		if !found {
+			return model.Unknown(fmt.Sprintf("the %s agent cannot report usage", runner.Agent))
+		}
+
+		return entry.build().ReadUsage(ctx, runner)
+	}
 }
 
 // leases opens the claim store the project names: the beads rows, or the claim rows of local.db. The caller closes it.

@@ -215,7 +215,7 @@ type e2eAgents struct{ dir, path string }
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
 	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
-	adapter := newAdapters(nil, nil).agent(model.AgentClaude)
+	adapter := newAdapters(nil, nil, nil).agent(model.AgentClaude)
 	runner := model.Runner{Name: request.Login, Agent: model.AgentClaude, ConfigDir: a.dir}
 	tap := newSessionTap(adapter, agent.DefaultPrices())
 	protect := protectionOf(request.Protect, a.dir)

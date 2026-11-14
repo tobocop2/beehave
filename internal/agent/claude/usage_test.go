@@ -750,3 +750,32 @@ func TestUsageReader_ACLIThatCannotStartIsUnknown(t *testing.T) {
 
 	wantUnknown(t, claude.UsageReader{Base: map[string]string{"PATH": dir}}.Read(t.Context(), login(t)), "cannot start claude")
 }
+
+func TestAdapter_ReadUsageReadsTheRunnerThroughTheCLIOnThePathOfItsEnvironment(t *testing.T) {
+	t.Parallel()
+
+	cli := fake(t, answer)
+
+	usage := usageOf(t, claude.New(cli.base).ReadUsage(t.Context(), login(t)))
+	if usage.FiveHour.Percent != 12.5 || usage.SevenDay.Percent != 40 {
+		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestAdapter_ReadUsageWithNoCLIOnThePathIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	wantUnknown(t, claude.New(map[string]string{"PATH": t.TempDir()}).ReadUsage(t.Context(), login(t)), "claude")
+}
+
+func TestFixTexts_NameTheFolderAndTheEntryOfTheRunner(t *testing.T) {
+	t.Parallel()
+
+	if got := claude.ConfigFix("/login"); got != "Log in to it: CLAUDE_CONFIG_DIR=/login claude" {
+		t.Fatalf("config fix = %q", got)
+	}
+
+	if got := claude.TokenFix("beehave-a"); got != "Run `claude setup-token`, then: security add-generic-password -s beehave-a -a $USER -w" {
+		t.Fatalf("token fix = %q", got)
+	}
+}
