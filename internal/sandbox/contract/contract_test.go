@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -183,6 +184,16 @@ func TestFetch_BuildsTheCurlLineWithTheExtraFlags(t *testing.T) {
 	line := fetch("http://127.0.0.1:1", "--insecure")
 	if !strings.Contains(line, "--insecure") || !strings.HasSuffix(line, "http://127.0.0.1:1") {
 		t.Errorf("fetch = %q", line)
+	}
+}
+
+func TestSocketNames_HaveAnAbstractSocketExactlyWhenThisSystemIsLinux(t *testing.T) {
+	t.Parallel()
+
+	addresses, _ := socketNames(&recorder{t: t})
+
+	if _, abstract := addresses["abstract"]; abstract != (runtime.GOOS == "linux") {
+		t.Errorf("on %s the abstract socket = %t", runtime.GOOS, abstract)
 	}
 }
 
