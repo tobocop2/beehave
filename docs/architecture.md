@@ -43,6 +43,7 @@ A package imports its own layer and lower layers. `depguard` in `.golangci.yml` 
 | [Gate](design/gate.md) | The gate command, its steps and their three states. |
 | [Runtime checks](design/runtime-checks.md) | The ledger, the runner pool, `beehave doctor`, preflight, the review poll and the scope check. |
 | [Merge](design/merge.md) | The merge guards, the batch merge and the remediation tools. |
+| [The trust boundary](design/trust.md) | The threat model, the two GitHub Apps, the ruleset, the sandbox default, the ledger and the claim fence. |
 
 ### Adapters
 
