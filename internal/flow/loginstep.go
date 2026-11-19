@@ -15,6 +15,8 @@ const (
 	loginStepName = "login"
 	// capWaitFloor is the least time of the sleep that waits for a usage cap: a reset time in the past still waits this long before the next read.
 	capWaitFloor = time.Minute
+	// capHoldCeiling is the longest wait between two looks at a cap that stopped a step.
+	capHoldCeiling = time.Hour
 )
 
 // loginChoice is the record of one pick of a login. A pick that found a runner holds its Login.

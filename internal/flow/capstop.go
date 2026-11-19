@@ -68,12 +68,27 @@ func (s *script) holdAtCap(name string, try, look int, stop *CapStop) error {
 		return err
 	}
 
-	return s.waitForCap()
+	return s.waitForCap(look)
 }
 
-// waitForCap is the durable sleep between two looks at a cap that stopped a step.
-func (s *script) waitForCap() error {
-	if _, err := dbos.Sleep(s.ctx, cmp.Or(s.e.deps.Clock.CapWait, capWaitFloor)); err != nil {
+// capHoldWait is the wait after look number look of a held step, counted from 0: the first wait, doubled for each look, up to the ceiling.
+func (c clock) capHoldWait(look int) time.Duration {
+	wait := cmp.Or(c.CapWait, capWaitFloor)
+
+	for range look {
+		if wait >= capHoldCeiling {
+			break
+		}
+
+		wait *= 2
+	}
+
+	return min(wait, capHoldCeiling)
+}
+
+// waitForCap is the durable sleep after look number look at a cap that stopped a step. A cap changes only across a restart, which starts the looks again.
+func (s *script) waitForCap(look int) error {
+	if _, err := dbos.Sleep(s.ctx, s.e.deps.Clock.capHoldWait(look)); err != nil {
 		return fmt.Errorf("wait for a cap of item %s to be raised: %w", s.in.Item, err)
 	}
 

@@ -306,3 +306,62 @@ func TestCapStop_AReadThatFailsReachesTheCallerWithItsWords(t *testing.T) {
 	_, err = rootRun(engine.ctx, runID("3", 1))
 	require.ErrorContains(t, err, "list the item runs")
 }
+
+func TestCapStop_TheFourthLookOfAHeldStepSleepsTheCeilingNotTheFirstWait(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.h.opts.MaxRunBudget = 5
+	// The first wait is 30 minutes, so look 3 doubles to 4 hours and the ceiling of an hour cuts it.
+	rig.h.capWait = 30 * time.Minute
+	engine := rig.h.opened(t)
+
+	ends := make(chan context.CancelFunc, 1)
+	hold := func(ctx dbos.Context, in ItemInput) (string, error) {
+		own, cancel := dbos.WithCancel(ctx)
+		defer cancel()
+
+		ends <- cancel
+
+		s := &script{e: engine, ctx: own, in: in}
+
+		err := s.holdAtCap("q", 1, 3, &CapStop{Scope: scopeRun, Cap: 5, Spent: 6})
+		if err == nil {
+			return "", errors.New("the hold did not fail")
+		}
+
+		return err.Error(), nil
+	}
+
+	dbos.RegisterWorkflow(engine.ctx, hold, dbos.WithWorkflowName(itemName))
+	require.NoError(t, dbos.Launch(engine.ctx))
+
+	before := time.Now()
+	handle, err := dbos.RunWorkflow(engine.ctx, hold, ItemInput{Item: "1", Project: testProject}, dbos.WithWorkflowID(testRun))
+	require.NoError(t, err)
+
+	cancel := receive(t, ends)
+
+	waitOn(t, inASleep(t, engine))
+
+	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun, dbos.WithStepsLoadOutput(true))
+	require.NoError(t, err)
+
+	var wake time.Time
+
+	for _, step := range steps {
+		if step.StepName == "DBOS.sleep" {
+			var ok bool
+
+			wake, ok = windowEnd(step.Output)
+			require.True(t, ok, "the sleep step records its wake time in milliseconds")
+		}
+	}
+
+	cancel()
+	words, err := handle.GetResult()
+	require.NoError(t, err)
+	assert.Contains(t, words, "context canceled")
+
+	assert.WithinDuration(t, before.Add(time.Hour), wake, time.Minute, "look 3 of a first wait of 30 minutes sleeps the ceiling of an hour")
+}
