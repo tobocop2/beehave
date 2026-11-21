@@ -384,7 +384,9 @@ mode=
 resume=
 resumed=
 while [ $# -gt 0 ]; do
-  if [ "$1" = --settings ]; then hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/'); fi
+  if [ "$1" = --settings ]; then
+    case "$2" in *'"command":"'*) hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/') ;; esac
+  fi
   if [ "$1" = --permission-mode ]; then mode=$2; fi
   if [ "$1" = --resume ]; then resume=$2; resumed="$1 $2"; fi
   shift

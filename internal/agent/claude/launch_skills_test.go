@@ -15,7 +15,7 @@ func TestLaunch_AStepWithNoSandboxGetsThePluginFolderOfItsSkills(t *testing.T) {
 
 	launch := claude.New(nil).Guard("", "/run", nil, []string{reviewSkillFolder})
 
-	assert.Equal(t, []string{"--add-dir", "/run/skills-plugin", "--plugin-dir", "/run/skills-plugin"}, launch.Args, "the plugin folder is a working directory, so the Read tool reads the files of a skill")
+	assert.Equal(t, []string{"--add-dir", "/run/skills-plugin", "--plugin-dir", "/run/skills-plugin", "--settings", attributionSettings}, launch.Args, "the plugin folder is a working directory, so the Read tool reads the files of a skill")
 	assert.Equal(t, map[string]string{"skills-plugin/skills/review": reviewSkillFolder}, launch.Copies)
 	assert.Contains(t, launch.Files["skills-plugin/.claude-plugin/plugin.json"], `"name":"beehave-skills"`)
 }

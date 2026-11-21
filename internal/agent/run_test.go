@@ -24,6 +24,9 @@ import (
 
 const token = "tok-secret-value"
 
+// attributionArgs is the settings argument that every Claude Code launch ends with.
+const attributionArgs = ` --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`
+
 type fixture struct {
 	records string
 	config  string
@@ -71,7 +74,7 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.Result{Outcome: agent.OutcomeExited}, got)
-	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits"+attributionArgs, record(t, f.records, "args"))
 	assert.Equal(t, "do the step", record(t, f.records, "stdin"))
 	assert.Equal(t, f.work, record(t, f.records, "cwd"))
 
@@ -92,7 +95,7 @@ func TestRunner_PassesTheModelAndTheSessionToResumeAsFlags(t *testing.T) { //nol
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --model opus --resume sess-1", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --model opus --resume sess-1"+attributionArgs, record(t, f.records, "args"))
 }
 
 func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -102,12 +105,14 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Contains(t, record(t, f.records, "args"), `--settings {"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`)
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --settings `+
+		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`,
+		record(t, f.records, "args"))
 
 	f.spec.Guard = ""
 	agent.Runner{}.Run(context.Background(), f.spec)
 
-	assert.NotContains(t, record(t, f.records, "args"), "--settings")
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits"+attributionArgs, record(t, f.records, "args"))
 }
 
 func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -147,12 +152,12 @@ func TestRunner_PassesTheTurnAndBudgetCapsAsFlagsAndNoCapAddsNone(t *testing.T) 
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --max-turns 40 --max-budget-usd 2.5", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --max-turns 40 --max-budget-usd 2.5"+attributionArgs, record(t, f.records, "args"))
 
 	f.spec.MaxTurns, f.spec.MaxBudget = 0, 0
 	agent.Runner{}.Run(context.Background(), f.spec)
 
-	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits", record(t, f.records, "args"))
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits"+attributionArgs, record(t, f.records, "args"))
 }
 
 func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -162,7 +167,7 @@ func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { /
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash", record(t, f.records, "args"))
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
 	assert.NotContains(t, record(t, f.records, "args"), "--permission-mode")
 }
 

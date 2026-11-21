@@ -8,16 +8,6 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 )
 
-func TestLaunch_IsEmptyOnlyWhenItAddsNothing(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, agent.Launch{}.Empty())
-	assert.False(t, agent.Launch{Args: []string{"-x"}}.Empty())
-	assert.False(t, agent.Launch{Env: map[string]string{"A": "b"}}.Empty())
-	assert.False(t, agent.Launch{Files: map[string]string{"f": "c"}}.Empty())
-	assert.False(t, agent.Launch{Loaded: "loaded"}.Empty())
-}
-
 func TestNoUsage_IsAnUnknownReadingThatNamesTheAgent(t *testing.T) {
 	t.Parallel()
 
