@@ -363,6 +363,15 @@ func TestCheckLaunch_DoesNotAskAProfileWithoutASandboxForOne(t *testing.T) {
 	assert.Equal(t, []string{`the launch file "../x" is outside the run folder (guard)`}, r.failures)
 }
 
+func TestTestAdapter_PassesAnAdapterWhoseLaunchAddsTheArgumentsItDeclares(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.extra = []string{"--settings", "{}"}
+
+	agenttest.TestAdapter(t, func() agent.Adapter { return a }, agenttest.WithLaunchArgs("--settings", "{}"))
+}
+
 func TestTestAdapter_PassesAnAdapterThatStreamsItsCostWhenGivenACostLine(t *testing.T) {
 	t.Parallel()
 
