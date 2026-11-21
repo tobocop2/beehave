@@ -2,7 +2,7 @@ package flow
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/host"
 )
 
 // These tests run the sweep step of the example: after a lane ends, the build host runs the clean command of the project and prunes the Docker volumes.
@@ -115,7 +116,7 @@ func TestExample_ASweepStepThatCannotRunShowsItsErrorAndDoesNotFailTheLane(t *te
 
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
 		if len(request.Run) > 0 && request.Run[0] == "clean-lane" {
-			return CommandOutput{}, errors.New("the build host is gone")
+			return CommandOutput{}, fmt.Errorf("the build host is gone: %w", host.ErrLost)
 		}
 
 		return CommandOutput{}, nil
