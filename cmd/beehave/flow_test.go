@@ -39,7 +39,7 @@ func TestFactsOf_TheFactsOfTheProjectInTheConfigReachTheEngineAndAnUnknownProjec
 	require.Equal(t, model.Project{}, facts("other"))
 }
 
-func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigReportsSkillCalls(t *testing.T) {
+func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigHasALineThatLoadsASkill(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{
@@ -49,7 +49,23 @@ func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigReportsSkillCalls(t *te
 
 	deps := depsOn(cfg, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
 
-	require.Equal(t, map[string]bool{"a": true, "o": false}, deps.Facts("p").RunnerSkills, "the Claude runner reports skill calls, the OpenCode runner does not, and a runner with no adapter is left out")
+	require.Equal(t, map[string]bool{"a": true, "o": false}, deps.Facts("p").RunnerSkillLoads, "the Claude runner has the line, the OpenCode runner has none, and a runner with no adapter is left out")
+}
+
+func TestDepsOn_TheEngineGetsTheSkillLineOfTheAgentOfEachRunner(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Runners:  []model.Runner{{Name: "a", Agent: claude.Name}, {Name: "o", Agent: opencode.Name}, {Name: "x", Agent: "no-such-agent"}},
+		Projects: map[string]config.Project{"p": {Project: model.Project{Name: "p"}}},
+	}
+
+	deps := depsOn(cfg, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
+
+	require.Equal(t, "/beehave-skills:review", deps.SkillLine("a", "review"), "the Claude runner loads a skill from the plugin of the skills")
+	require.Empty(t, deps.SkillLine("o", "review"), "OpenCode has no skill line")
+	require.Empty(t, deps.SkillLine("x", "review"), "a runner whose agent has no adapter has none")
+	require.Empty(t, deps.SkillLine("missing", "review"), "a runner that the config lacks has none")
 }
 
 func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing.T) {
@@ -137,4 +153,13 @@ func TestFlowFactory_TheEngineOfTheRunCommandPicksTheRunnerFromTheUsageTheClaude
 	_, err = engine.RunFile("12", "p", file)
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
+}
+
+func TestRegistry_TheAgentEntryHoldsWhetherTheCLIHasALineThatLoadsASkill(t *testing.T) {
+	t.Parallel()
+
+	agents := newAdapters(nil, nil, nil).registry().Agents
+
+	require.True(t, agents[claude.Name].LoadsSkills, "Claude Code loads a skill from the first line of the prompt")
+	require.False(t, agents[opencode.Name].LoadsSkills, "OpenCode has no such line")
 }

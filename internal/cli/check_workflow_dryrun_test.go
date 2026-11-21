@@ -10,7 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/config"
 )
 
 func runDry(t *testing.T, env map[string]string, args ...string) (int, string, string) {
@@ -202,4 +204,52 @@ func TestCheckWorkflowDryRun_TheSendBackFlagWalksAFixRoundAfterTheFirstReview(t 
 	code, stdout, _ = runDry(t, map[string]string{}, "--item", "12", "--send-back", file)
 	require.Equal(t, 0, code, stdout)
 	assert.Contains(t, stdout, "agent:fix")
+}
+
+func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldTheRunnersOfTheConfigWithTheirSkillLoads(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    fail(\"R=%r\" % facts().runners)\n")
+	writeConfig(t, dir, "runners.star", "runner(name = \"a\", agent = \"claude\")\nrunner(name = \"o\", agent = \"opencode\")\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n")
+
+	adapters := registry()
+	adapters.Agents[claude.Name] = &config.Entry{LoadsSkills: true}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"check", "workflow", "--dry-run", "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star")}
+	code := cli.Execute(context.Background(), args, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stdout.String(), `R={"a": {"loads_skills": True}, "o": {"loads_skills": False}}`)
+}
+
+func TestCheckWorkflowDryRun_AWorkflowThatRefusesARunnerWithNoSkillLineEndsWithExitOneAndTheRefusal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    for name, runner in facts().runners.items():\n        if not runner[\"loads_skills\"]:\n            fail(\"REFUSE: runner %s has no line that loads a skill before the first turn\" % name)\n")
+	writeConfig(t, dir, "runners.star", "runner(name = \"a\", agent = \"claude\")\nrunner(name = \"o\", agent = \"opencode\")\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n")
+
+	adapters := registry()
+	adapters.Agents[claude.Name] = &config.Entry{LoadsSkills: true}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"check", "workflow", "--dry-run", "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star")}
+	code := cli.Execute(context.Background(), args, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stdout.String(), "REFUSE: runner o has no line that loads a skill before the first turn")
+	assert.NotContains(t, stdout.String(), "runner a has no line")
+
+	withoutRunner := dir + "/without"
+	writeConfig(t, withoutRunner, "workflow.star", "def main(item):\n    pass\n")
+
+	code = cli.Execute(context.Background(), []string{"check", "workflow", "--dry-run", filepath.Join(withoutRunner, "workflow.star")}, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 0, code, stdout.String())
 }

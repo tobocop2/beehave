@@ -122,7 +122,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 | --- | --- |
 | `repo`, `source`, `forge`, `tracker`, `base_branch`, `gate`, `gate_steps`, `build_host` | The project value of that name. |
 | `vars` | Dict. The `vars` of the project file, as written, and frozen. Every setting of a workflow is a key of it. |
-| `runners` | Dict. One entry for each runner of the config, by its name, with the field `reports_skills`: true when the agent CLI of the runner reports skill calls, false for OpenCode. The project file does not set it. A workflow reads it to refuse a step before any agent starts, for example a step that needs a skill. |
+| `runners` | Dict. One entry for each runner of the config, by its name, with the field `loads_skills`: true when the agent CLI has a line that loads a skill before the first turn, false for OpenCode. The project file does not set it. A workflow reads it to refuse a step before any agent starts, for example a step with the `skill` keyword. |
 
 - A fact that the project file leaves out is empty text, an empty list or an empty dict, never a missing field. A key that `vars` leaves out is missing: read it with `facts().vars.get("key", default)`.
 - The call is a recorded step named `facts#<n>`, so a replay returns the facts the run started with and never reads the config again.
@@ -789,10 +789,11 @@ No undo runs:
 
 - An `agent` call must name a `model`. A call without it fails at its line.
 - `resume` of an `agent` call is the session of an earlier agent, such as `impl.session`.
+- `skill` of an `agent` call is the name of a skill folder, such as `"lint-pass"`. The agent CLI loads the skill before the first turn of the model, so the step does not rest on a choice of the model. The adapter puts its own skill-load line first in the prompt: for Claude Code the line is `/beehave-skills:<name>`. The step gets the skill like a skill that its prompt declares. An empty text is no skill. `beehave check workflow` refuses a name that is no folder name. A step with `skill` on a runner whose agent has no skill-load line (OpenCode) does not start: the message names the runner. The dry run gives every runner a line.
 - The call takes a `pin`, a commit id such as `check.head`, and starts only when the head of the worktree equals it.
 - The call takes one free `label`, a text that shows in `beehave status`. A label never changes what the step does. `edits = False` makes the step read-only and puts it on the review queue.
 - The call takes no `kind`, `lane`, `rounds`, `follow_ups` or `require_skills`. `beehave check workflow` refuses each one by name, for example "agent takes no argument kind".
-- The result of the call has the field `skills`: the list of the skills that the agent called, in the order of the calls. A workflow that needs a skill tests it, for example `"lint-pass" not in implement.skills`, and stops the item itself.
+- The result of the call has the field `skills`: the list of the skills that the agent called, in the order of the calls. The list is a record of what the agent did. To make a step use a skill, use the `skill` keyword, which loads the skill before the first turn. A test of the list does not make the agent call the skill.
 - In a dry run, the fake agent reports each skill that the workflow requires. The dry run reads the syntax tree of the workflow file and of the files it loads, and runs no code. It parses these files again for this: it does not reuse the parse of `beehave check workflow`.
 - A skill is required when an `if` tests a text literal with `in` or `not in` against `<expression>.skills`, and the branch that runs when the skill is missing has a call of `fail(...)` as one of its own statements. Either quote style, `not`, `not not` and parentheses around the test count. The two usual forms are `"x" not in r.skills` with `fail` in the `if` branch, and `"x" in r.skills` with `fail` in the `else` branch. A name that the same function binds only from `<expression>.skills` (`called = r.skills`) counts in place of `<expression>.skills`. Each function is its own scope: a name from another function, a parameter, a loop variable and a name that the function binds again to something else do not count. A test inside a helper function counts.
 - The tested name can also be `<expression>.vars["key"]` with a text literal as the key. The dry run then reports the text that the key holds in the vars of the dry run, and no skill when the key is missing or holds no text.
@@ -844,14 +845,17 @@ One workflow written in this form, with five prompt files. The method lives in t
 5. A settle step.
 6. A merge step.
 
-#### The review skill of the implement step of `examples/remediation/`
+#### The review skill of the sweep step of `examples/remediation/`
 
 The workflow names no skill. The project names it.
 
 - The project file sets `vars.review_skill`: the name of a skill, such as `"your-review-skill"`. A run with no such key, or a value that is not a text that is not blank, is refused before the first agent starts. The message names the key.
 - The prompts name the skill with `{{ skill .facts.vars.review_skill }}`, so the agent of the step can load it from the config folder of the runner (see [the skills of a step](sandbox.md#the-skills-of-a-step)).
-- After the implement step, the example refuses the item when the agent did not call that skill, or the CLI answered the call with an error such as `Unknown skill`. The message names the skill and the key.
-- The test is `if project.vars["review_skill"] not in implement.skills:` with a `fail` call in its branch, so a dry run reads the key from the vars of the project and reports that skill from its fake agent.
+- The engine starts the review sweep as the step `implement-sweep`, right after the implement step. The step has `skill = project.vars["review_skill"]`, so the agent CLI loads the skill first. No check rests on an agent that chooses to call a skill.
+- The sweep has the runner and the sandbox of the implement step, and it resumes the session of that step. It may edit, and its prompt `prompts/sweep.md` orders it to commit each fix and to write the report again.
+- The engine pushes the head of the sweep, not the head of the implement step. The review loop starts from the sweep.
+- A sweep on a runner with no skill-load line does not start. The message names the runner.
+- The example refuses at the start of the lane, before the plan agent, when the runner that vars.round.steps.implement names has no skill-load line. It reads the fact `runners.<name>.loads_skills`. A step on the pool, with no runner name, is refused at the sweep step, because the pool picks the runner at run time. The dry run with `--project` reads the runners of the config and refuses the same way. `beehave check workflow` without `--dry-run` runs no facts step, so it cannot check a runner. Neither can resolve a runner that the pool picks at run time.
 
 #### The sweep step of `examples/remediation/`
 
@@ -859,7 +863,7 @@ The engine has no cleanup builtin. The project owns the clean command and the wo
 
 - The project file can set `vars.clean_command`: a list of words, such as `["sh", "scripts/clean-lane.sh"]`. A value that is not a list of words that are not blank is refused before the first agent starts. The message names the key.
 - When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`, then `docker volume prune -f` as the step `sweep-prune`. Both run with `host`, so they run on the build host.
-- The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before each of the two `fail` calls of the lane (the skipped review skill and the missing changelog entry).
+- The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before the `fail` call of the lane for a missing changelog entry.
 - Both sweep steps use `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane. The prune still runs after such a clean.
 - A workflow file cannot catch an error. A lane that the error of an earlier builtin ends, such as a host that is gone at the mutation run, gets no sweep. Issue #753 tracks it.
 - With no `vars.clean_command`, the sweep runs the prune only.

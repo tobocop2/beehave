@@ -43,7 +43,7 @@ func TestExample_AnImplementThatRewroteHistoryStopsTheItemBeforeTheGate(t *testi
 func TestExample_AFixThatRewroteHistoryStopsTheItemBeforeTheNextReviewAndAnyGate(t *testing.T) {
 	t.Parallel()
 
-	rig, file := amendRig(t, func(int) string { return "changes" }, func(r AgentRequest) bool { return r.Resume != "" })
+	rig, file := amendRig(t, func(int) string { return "changes" }, func(r AgentRequest) bool { return r.Resume != "" && !isSweep(r) })
 
 	_, err := runPipeline(rig.h.engine(t), file)
 

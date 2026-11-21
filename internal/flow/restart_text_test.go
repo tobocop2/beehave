@@ -72,7 +72,7 @@ func TestRestartText_ACappedImplementOfTheRemediationExampleNamesResumeThenCance
 func TestRestartText_ACappedReviewOfTheReviewLoopNamesResumeThenCancelThenRun(t *testing.T) {
 	t.Parallel()
 
-	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(3), agent.OutcomeBudgetCap)
+	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(4), agent.OutcomeBudgetCap)
 
 	_, err := runPipeline(rig.h.engine(t), file)
 
@@ -83,7 +83,7 @@ func TestRestartText_ACappedSettleOfTheRemediationExampleNamesResumeThenCancelTh
 	t.Parallel()
 
 	settle := 2 + len(capModels(2)) + 1
-	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(settle), agent.OutcomeTurnCap)
+	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(settle+1), agent.OutcomeTurnCap) // the sweep is one more call than capModels lists
 	rig.setRound("fix_rounds", oneFixRound)
 	engine := rig.h.engine(t)
 	done := pipelineInBackground(engine, file)

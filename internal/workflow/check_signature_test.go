@@ -25,6 +25,8 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for the protected paths", `agent(prompt = "p", model = "m", protect_paths = "/own/checkout")`, "protect_paths must be a list, not a text."},
 		{"agent text for the edits switch", `agent(prompt = "p", model = "m", edits = "no")`, "edits must be a bool, not a text."},
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
+		{"agent skill that is a path", `agent(prompt = "p", model = "m", skill = "a/b")`, `"a/b" is not the name of a skill`},
+		{"agent number for the skill", `agent(prompt = "p", model = "m", skill = 3)`, "skill must be a text, not an int."},
 		{"merge unknown keyword", `merge(prs = item.id, base = "b", repo = "r", name = "n", limit = 2)`, "merge takes no argument limit"},
 		{"merge missing base", `merge(prs = item.id, repo = "r", name = "n")`, "merge needs the `base` keyword"},
 		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, slots, name, retries, backoff, failure."},
@@ -95,6 +97,8 @@ func TestCheck_AcceptsACallThatKeepsItsSignature(t *testing.T) {
 	calls := []string{
 		`agent("p", "m", label = "fix 1/3", outputs = ["verdict"], output_tries = 2, inputs = {"a": 1}, allow_paths = ["papers/**"])`,
 		`agent("p", "m", forbid_commands = ["protected-path"], protect_paths = ["/own/checkout"])`,
+		`agent("p", "m", skill = "lint-pass")`,
+		`agent("p", "m", skill = "")`,
 		`merge(item.id, "b", "r", name = "n", gate_run = ["make"])`,
 		`command(["a"], env = {"A": "b"}, stop_on_rc = [1], name = "n")`,
 		`command(["a"], max_new_processes = 50)`,

@@ -377,6 +377,9 @@ type Deps struct {
 	Repository func(project string) bool
 	// Facts returns the project as the config holds it. The `facts` builtin reads it in a recorded step. A nil Facts means every project has no facts.
 	Facts func(project string) model.Project
+	// SkillLine returns the line that makes the agent CLI of a runner load a skill before its first turn, as the first line of the prompt, or an empty text when the CLI has none.
+	// A step with the skill keyword puts the line first in its prompt, and does not start when the line is empty. A nil SkillLine means no runner has a line.
+	SkillLine func(runner, skill string) string
 	// Slots resolves the slot class of a command call to the build host that runs it and the number of jobs of the class that the host runs at once.
 	// An empty cluster means the build host of the project. It refuses a class that the host does not name. A nil Slots means the build has no slot classes: a call with `slots` fails.
 	Slots func(project, cluster, class string) (SlotGrant, error)

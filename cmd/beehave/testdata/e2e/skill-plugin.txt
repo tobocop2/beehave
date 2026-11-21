@@ -66,8 +66,10 @@ stdout 'finished'
 grep -count=1 '^sync_review$' calls.log
 grep -count=1 '^plan$' calls.log
 grep -count=1 '^implement$' calls.log
-# Only the prompt of the implement step declares the skill, so only its call loaded the copy.
+# The prompt of the implement step declares the skill, and the sweep step names it with the skill keyword, so only those two calls loaded the copy.
 grep -count=1 '^implement$' loaded.log
+grep -count=1 '^sweep$' loaded.log
+! grep '^review$' loaded.log
 grep -count=2 '^review$' calls.log
 grep -count=1 '^sync land ' remedy.log
 grep -count=1 '^MergePR ' forge/calls.log
@@ -126,6 +128,9 @@ step=implement
 write={{ .output_file }}
 item={{ .item.id }}
 skill={{ skill .facts.vars.review_skill }}
+-- flow/prompts/sweep.md --
+step=sweep
+write={{ .output_file }}
 -- flow/prompts/review.md --
 step=review
 write={{ .output_file }}
@@ -175,6 +180,7 @@ case $step in
   plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
   review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
+  sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)
     id=$(basename "$(pwd)")
     echo "$id" > "$id.txt"

@@ -357,6 +357,11 @@ func TestProfile_PinsTheRecordedVersionAndRefusesWhatItCannotProve(t *testing.T)
 	assert.Equal(t, "3.0.0", p.SupportedBefore)
 	assert.Equal(t, "2.0.0", p.GuardBefore)
 	assert.True(t, p.GuardPosixOnly)
-	assert.True(t, p.NoSkillCalls)
 	assert.Equal(t, time.Hour, p.DefaultTimeout)
+}
+
+func TestProfile_OpenCodeHasNoSkillLine(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, opencode.New().Profile().SkillLine, "OpenCode has no line that loads a skill before the first turn, so a step with the skill keyword does not start on it")
 }

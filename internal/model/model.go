@@ -64,8 +64,8 @@ type Project struct {
 	// Vars are the free settings of the workflow of the project, as the file wrote them. The engine reads no key and no value. The values are JSON values:
 	// nil, bool, string, json.Number, []any and map[string]any. A project that sets none has nil.
 	Vars map[string]any
-	// RunnerSkills maps the name of each runner of the config to whether its agent CLI reports skill calls. The engine fills it from the runner profiles; a project file does not set it.
-	RunnerSkills map[string]bool
+	// RunnerSkillLoads maps the name of each runner of the config to whether its agent CLI has a line that loads a skill before the first turn. The engine fills it from the runner profiles.
+	RunnerSkillLoads map[string]bool
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.

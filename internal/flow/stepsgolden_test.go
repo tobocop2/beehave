@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -205,4 +206,23 @@ func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGolden
 	}
 
 	assert.Equal(t, goldenLostBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+}
+
+// goldenRunnerFacts holds the fields of each entry of the runners field of the facts result. The shape above lists top-level fields only, so a nested field of a recorded result is pinned here.
+var goldenRunnerFacts = []string{"loads_skills"}
+
+func TestStepsVersion_TheEntryOfARunnerInTheRecordedFactsHoldsTheGoldenFields(t *testing.T) {
+	t.Parallel()
+
+	runners := runnerFacts(map[string]bool{"a": true})
+	entry, ok := runners["a"].(map[string]any)
+	require.True(t, ok, "the runners field holds a dict for each runner")
+
+	var fields []string
+	for name := range entry {
+		fields = append(fields, name)
+	}
+
+	slices.Sort(fields)
+	assert.Equal(t, goldenRunnerFacts, fields, "a field of the runners entry changed: bump the core module in stepmodules.go and update the golden fields")
 }

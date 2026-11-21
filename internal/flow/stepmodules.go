@@ -46,7 +46,8 @@ const (
 // Version 10 adds the recv and send steps of the inbox.
 // Version 11 adds the attempts and error fields to the result of command, the attempts field to write, and the retries of a spawned run to gather.
 // Version 12 adds the cancel step, the deadline step of a gather, the deadline that each wait of a gather records and the open field of a gather result.
-const coreVersion = 12
+// Version 13 replaces the reports_skills field of each entry of the runners field of facts with the loads_skills field.
+const coreVersion = 13
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields

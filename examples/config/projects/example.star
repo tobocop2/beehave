@@ -39,7 +39,7 @@ project(
     #     "token_rules": ["Read a log by its summary lines"],  # token discipline, the dashboard, cross-repository steps and release steps
     #     "changelog": "CHANGELOG.md",                  # the changelog file; the example workflow refuses a merge that leaves it untouched
     #     "mutation_command": ["sh", "scripts/mutation-pr.sh"],  # required by the example: the command of your mutation tool, a list of words. It runs on the build host in the slot class "mutation" (see the host block below), with the base ref as its last word
-    #     "review_skill": "your-review-skill",  # required by the example: the name of the skill that the implement step must call before it reports. The example refuses an implement step whose agent did not call it
+    #     "review_skill": "your-review-skill",  # required by the example: the name of the skill that the sweep step loads after the implement step. The engine starts the sweep with this skill loaded
     #     "board": {
     #         "number": 3,                  # the number of the GitHub Project (v2) board; required
     #         "started": "In Progress",     # the Status column that the remediation example sets when the draft pull request opens; required
