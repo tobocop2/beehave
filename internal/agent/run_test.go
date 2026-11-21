@@ -110,6 +110,19 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 	assert.NotContains(t, record(t, f.records, "args"), "--settings")
 }
 
+func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", claude.Name, "")
+	f.spec.Write = []string{"/state/outputs/7.review/output.json"}
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Contains(t, record(t, f.records, "args"), "--add-dir /state/outputs/7.review --settings ")
+	assert.Contains(t, record(t, f.records, "args"), "Edit(//state/outputs/7.review/output.json)")
+	assert.Nil(t, f.spec.Sandbox)
+	assert.Empty(t, f.spec.Guard)
+}
+
 func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}

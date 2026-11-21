@@ -32,6 +32,7 @@ func (p pulls) Open(ctx context.Context, project, item string, req flow.OpenRequ
 		return flow.OpenResult{}, err
 	}
 
+	want.Label = p.projects[project].PRLabel
 	number, created, err := openedPull(ctx, built, opener, want, req.Issue, line)
 	if err != nil {
 		return flow.OpenResult{}, err

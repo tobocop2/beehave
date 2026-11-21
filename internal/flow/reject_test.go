@@ -50,8 +50,8 @@ func TestExample_TheReviewIsReadOnlyAndTheFixIsNot(t *testing.T) {
 	}
 
 	assert.Equal(t, 3, reviews, "two scoped reviews and the full review")
-	assert.Equal(t, 3, others, "plan, implement and one fix")
-	assert.Equal(t, 5, guarded, "implement, three reviews and one fix hold the protected checkout; the plan does not")
+	assert.Equal(t, 4, others, "plan, implement, the sweep and one fix")
+	assert.Equal(t, 6, guarded, "implement, the sweep, three reviews and one fix hold the protected checkout; the plan does not")
 }
 
 func TestExample_AFailingGateRunsNoFullReviewAndARejectAfterItsFixEndsTheLoop(t *testing.T) {

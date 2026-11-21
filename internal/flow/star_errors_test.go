@@ -367,7 +367,7 @@ func TestToGo_ANumberOfAPromptWorksWithEqGtAndPrintf(t *testing.T) {
 			data, err := workflow.ToGo[map[string]any](dictOfOne(t, "n", c.value))
 			require.NoError(t, err)
 
-			got, err := fill(c.text, data)
+			got, _, err := fill(c.text, data)
 			require.NoError(t, err)
 			assert.Equal(t, c.want, got)
 		})
@@ -380,7 +380,7 @@ func TestToGo_ANumberOfAPromptKeepsAnIntegerBeyondInt64AsDigits(t *testing.T) {
 	data, err := workflow.ToGo[map[string]any](dictOfOne(t, "n", starlark.MakeInt64(1).Lsh(70)))
 	require.NoError(t, err)
 
-	got, err := fill(`{{ .n }}`, data)
+	got, _, err := fill(`{{ .n }}`, data)
 	require.NoError(t, err)
 	assert.Equal(t, "1180591620717411303424", got)
 }

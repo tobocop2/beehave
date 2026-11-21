@@ -135,9 +135,16 @@ func (Adapter) Calls(line string) agent.Seen {
 		return agent.Seen{Invalid: true}
 	}
 
+	return seenOf(parsed)
+}
+
+// seenOf returns what one decoded line holds, by its type.
+func seenOf(parsed streamLine) agent.Seen {
 	switch parsed.Type {
+	case textType:
+		return agent.Seen{Said: textSaid(parsed.Part.Text)}
 	case toolUseType:
-		return toolSeen(parsed.Part)
+		return toolSaid(parsed.Part)
 	case stepFinish:
 		return stepSeen(parsed.Part)
 	case errorType:
@@ -145,6 +152,32 @@ func (Adapter) Calls(line string) agent.Seen {
 	}
 
 	return agent.Seen{}
+}
+
+// textSaid returns the message of a text line, and nothing for an empty one.
+func textSaid(text string) []agent.Said {
+	if text == "" {
+		return nil
+	}
+
+	return []agent.Said{{Text: text}}
+}
+
+// toolSaid is the Seen of a tool_use line: its shell call, and the call it says.
+func toolSaid(p part) agent.Seen {
+	seen := toolSeen(p)
+	seen.Said = []agent.Said{{Call: true, Text: callText(p)}}
+
+	return seen
+}
+
+// callText reads "<tool>: <command>" for a tool call, and the tool alone when it has no command.
+func callText(p part) string {
+	if p.State.Input.Command == nil {
+		return p.Tool
+	}
+
+	return p.Tool + ": " + *p.State.Input.Command
 }
 
 // toolSeen returns the shell call of a tool_use line, and its id in Refused when the guard plugin refused it.

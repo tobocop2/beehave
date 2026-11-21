@@ -116,6 +116,9 @@ func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateR
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "round-land-2.union#", "the pass 2 lands items 1 and 3 in one batch")
 	assert.NotContains(t, joined, "round-land-3.union#", "no third batch")
+	landedAt, bodyAt := strings.Index(joined, "round-land-2.union#"), strings.Index(joined, "command:round-integration-land-2#")
+	require.GreaterOrEqual(t, bodyAt, 0, "the round makes the body of the integration pull request again after a landing")
+	assert.Greater(t, bodyAt, landedAt, "and it does so after the batch that landed")
 
 	for _, given := range rig.merger.given {
 		assert.Equal(t, "hold", given.Hold, "the guards of the merge of one item apply")

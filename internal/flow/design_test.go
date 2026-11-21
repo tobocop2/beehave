@@ -54,7 +54,7 @@ func TestExample_TheLanesOfTheItemCarryTheLabelsOfTheLoop(t *testing.T) {
 		kinds = append(kinds, lane.Label)
 	}
 
-	assert.Equal(t, []string{"", "implement", "review 1/24", "fix 1/18", "review 2/24", "fix 2/18", "review 3/24", "review 4/24", "design"}, kinds,
+	assert.Equal(t, []string{"", "implement", "implement-sweep", "review 1/24", "fix 1/18", "review 2/24", "fix 2/18", "review 3/24", "review 4/24", "design"}, kinds,
 		"the plan has no label, the other agent steps carry the label of the loop, and the design step is labeled design")
 }
 
@@ -88,8 +88,8 @@ func TestExample_AKeepDecisionRunsTheFixWithTheReasonAndDoesNotAskAgainForThatMe
 		"candidate 1 has two fixes on the mechanism; the design step runs once before the first fix of candidate 2, and the scoped review after that fix gets a plain fix")
 
 	requests := rig.h.agents.requests
-	assert.Contains(t, requests[9].Prompt, "the retry is the smallest part", "the fix after the design step gets the reason")
-	assert.NotContains(t, requests[11].Prompt, "the retry is the smallest part", "a later fix on the same mechanism is a plain fix")
+	assert.Contains(t, requests[10].Prompt, "the retry is the smallest part", "the fix after the design step gets the reason")
+	assert.NotContains(t, requests[12].Prompt, "the retry is the smallest part", "a later fix on the same mechanism is a plain fix")
 }
 
 func TestExample_FindingsOnDifferentMechanismsKeepTheNormalFixRounds(t *testing.T) {

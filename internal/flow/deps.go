@@ -37,6 +37,8 @@ type AgentRequest struct {
 	NoEdits bool
 	// Sandbox is the sandbox the shell of the step runs in, or nil for none.
 	Sandbox *model.Sandbox
+	// Skills are the skills that the prompt of the step declares, each by the name of its folder in the config folder of the runner. The agent gets these, with or without a sandbox. Only a sandboxed step is limited to them: an unsandboxed run also loads the skills of the settings of its runner.
+	Skills []string
 	// OutputFile is the file where the agent writes its declared outputs as a JSON object. Outputs names them. Outputs is empty for a call that declares none.
 	OutputFile string
 	Outputs    []string
@@ -46,6 +48,8 @@ type AgentRequest struct {
 	// Named receives each new session id of the agent at the output line that holds it, before the run ends. The engine saves the id at once,
 	// so a replay of a lost step can resume the session.
 	Named func(session string)
+	// Said receives each message text and tool call of the agent at the output line that holds it, in order, while the run goes on. It may be nil.
+	Said func(agent.Said)
 	// Lost is set for a start that follows an earlier run that named a session: a lost start, or a run that a provider limit stopped. It is nil for any other start.
 	Lost *LostRun
 }
@@ -373,6 +377,9 @@ type Deps struct {
 	Repository func(project string) bool
 	// Facts returns the project as the config holds it. The `facts` builtin reads it in a recorded step. A nil Facts means every project has no facts.
 	Facts func(project string) model.Project
+	// SkillLine returns the line that makes the agent CLI of a runner load a skill before its first turn, as the first line of the prompt, or an empty text when the CLI has none.
+	// A step with the skill keyword puts the line first in its prompt, and does not start when the line is empty. A nil SkillLine means no runner has a line.
+	SkillLine func(runner, skill string) string
 	// Slots resolves the slot class of a command call to the build host that runs it and the number of jobs of the class that the host runs at once.
 	// An empty cluster means the build host of the project. It refuses a class that the host does not name. A nil Slots means the build has no slot classes: a call with `slots` fails.
 	Slots func(project, cluster, class string) (SlotGrant, error)

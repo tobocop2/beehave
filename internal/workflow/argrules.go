@@ -104,19 +104,3 @@ func networkRule(v starlark.Value) error {
 
 	return err
 }
-
-// SkillNames reads the skills list of a sandbox call: the folder name of each skill.
-func SkillNames(v starlark.Value) ([]string, error) {
-	names, err := Words("skills", v)
-	if err != nil {
-		return nil, err
-	}
-
-	return names, model.CheckSkills(names)
-}
-
-func skillsRule(v starlark.Value) error {
-	_, err := SkillNames(v)
-
-	return err
-}

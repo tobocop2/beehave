@@ -36,6 +36,8 @@ type RunProgress struct {
 	Now string `json:"now,omitempty"`
 	// Deadline is the time that the wait of an open run ends. It is the zero time for a run that waits with no timeout, or does not wait.
 	Deadline time.Time `json:"deadline,omitzero"`
+	// Sleeping is true when the deadline is the wake time of a sleep call and not the end of a wait.
+	Sleeping bool `json:"sleeping,omitempty"`
 	// Gate is the last gate result. It is nil for a run that ran no gate.
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Label is the label of the latest agent step that has one, as the workflow wrote it. It is empty for a run with no labeled agent step.
@@ -89,6 +91,10 @@ func (p RunProgress) stopNotes() []string {
 // deadlineNote is the note of the deadline of a wait, with the time left when now is set.
 func (p RunProgress) deadlineNote(now time.Time) string {
 	note := "answer by " + p.Deadline.Format(time.RFC3339)
+	if p.Sleeping {
+		note = "sleeps until " + p.Deadline.Format(time.RFC3339)
+	}
+
 	if now.IsZero() {
 		return note
 	}
@@ -210,7 +216,7 @@ func (p *RunProgress) takeHolds(line StepLine) {
 	}
 }
 
-// sleepStep is the name of the step in which the workflow library records the deadline of a receive, as epoch milliseconds, before the receive waits.
+// sleepStep is the name of the step in which the workflow library records the deadline of a receive or of a sleep, as epoch milliseconds, before the call waits.
 // A wait with no timeout receives again in windows of receiveWindow, so a window of that length is no deadline.
 const sleepStep = "DBOS.sleep"
 
@@ -244,4 +250,14 @@ func deadlineFor(row dbos.WorkflowStatus, records []dbos.StepInfo, question stri
 	}
 
 	return waitDeadline(records, question)
+}
+
+// takeDeadline sets the deadline of an open run: the end of its wait, else the wake time of its sleep. A finished run has none.
+func (p *RunProgress) takeDeadline(row dbos.WorkflowStatus, records []dbos.StepInfo, question string) {
+	p.Deadline = deadlineFor(row, records, question)
+
+	if p.Deadline.IsZero() && !(run{Status: row}).terminal() {
+		p.Deadline = sleepDeadline(records)
+		p.Sleeping = !p.Deadline.IsZero()
+	}
 }

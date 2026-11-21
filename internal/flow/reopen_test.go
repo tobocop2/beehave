@@ -104,7 +104,7 @@ func TestReopen_ReportsACanceledItemWhoseStepsCannotBeRead(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	require.ErrorContains(t, client.reopenCanceledPhases("item-1-r1"), "read the steps of item-1-r1")
-	require.ErrorContains(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-1-r1", Status: dbos.WorkflowStatusCancelled}), "read the steps of item-1-r1")
+	require.ErrorContains(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-1-r1", Status: dbos.WorkflowStatusCancelled}, itemsQueueName), "read the steps of item-1-r1")
 }
 
 func TestReopen_ReportsACanceledItemWhoseCanceledPhaseIsGone(t *testing.T) {
@@ -133,7 +133,7 @@ func TestReopen_ReportsACanceledItemWhoseCanceledPhaseIsGone(t *testing.T) {
 	require.NoError(t, dbos.DeleteWorkflows(client.flow, children))
 
 	require.ErrorIs(t, client.reopenCanceledPhases("item-12-r1"), errNoRow)
-	require.ErrorIs(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-12-r1", Status: dbos.WorkflowStatusCancelled}), errNoRow)
+	require.ErrorIs(t, client.reopenAgain(dbos.WorkflowStatus{ID: "item-12-r1", Status: dbos.WorkflowStatusCancelled}, itemsQueueName), errNoRow)
 }
 
 func TestReopen_ReportsAPhaseWhoseInputIsNotReadable(t *testing.T) {

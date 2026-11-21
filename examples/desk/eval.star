@@ -76,7 +76,8 @@ def grade_all(cases):
 # The runs go one after the other. Two runs that start together both make a work folder from the clone of the desk repository, and the engine does not yet
 # lock that step: the second one can fail on the lock of the git config (issue #241). When the engine locks it, start the cases with one spawn call and one gather call.
 def run_alone(case_id, entry):
-    runs = spawn([case_id], entry = entry, name = "spawn-" + case_id)
+    # A case that fails starts once more as the next attempt of its item, so a run that a lock of the shared clone stopped gets a second chance.
+    runs = spawn([case_id], entry = entry, retries = 1, name = "spawn-" + case_id)
     gather(runs.runs, fail = "return", name = "wait-" + case_id)
 
 def last_line(text):

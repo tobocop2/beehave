@@ -251,7 +251,7 @@ func TestFreeLogin_ALoginThatOnlyAQueuedRunHoldsIsBusy(t *testing.T) {
 
 	enqueue := func(item, login string) {
 		in := ItemInput{Item: item, Project: testProject, File: r.file, Files: pinned, Login: login, Entry: "work"}
-		_, runErr := dbos.RunWorkflow(engine.ctx, engine.item, in, dbos.WithQueue(engine.itemQueue), dbos.WithWorkflowID(runID(item, 1)))
+		_, runErr := dbos.RunWorkflow(engine.ctx, engine.item, in, dbos.WithQueue(engine.itemQueues[1]), dbos.WithWorkflowID(runID(item, 1)))
 		require.NoError(t, runErr)
 	}
 
@@ -294,7 +294,7 @@ func TestFreeLogin_PerLoginTwoKeepsALoginFreeWhileItHoldsOneRun(t *testing.T) {
 	require.NoError(t, err)
 
 	in := ItemInput{Item: "21", Project: testProject, File: r.file, Files: pinned, Login: "alice", Entry: "work"}
-	_, err = dbos.RunWorkflow(engine.ctx, engine.item, in, dbos.WithQueue(engine.itemQueue), dbos.WithWorkflowID(runID("21", 1)))
+	_, err = dbos.RunWorkflow(engine.ctx, engine.item, in, dbos.WithQueue(engine.itemQueues[1]), dbos.WithWorkflowID(runID("21", 1)))
 	require.NoError(t, err)
 	receive(t, started)
 

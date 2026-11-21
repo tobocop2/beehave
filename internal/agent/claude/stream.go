@@ -62,7 +62,7 @@ func (Adapter) Calls(line string) agent.Seen {
 	return agent.Seen{
 		Cost: costOf(value), Stop: stopOf(value), Failed: failedOf(value), Result: lineType(value) == resultType,
 		Shell: toolCalls(value, bashTool, bashKey, false), Skills: skillCalls(value), Succeeded: succeededIDs(value), Refused: refusedIDs(value), Denials: denialsOf(value),
-		Limit: limit, Denied: denied,
+		Limit: limit, Denied: denied, Said: saidOf(value),
 	}
 }
 
@@ -423,4 +423,44 @@ func resultText(content any) string {
 	}
 
 	return ""
+}
+
+// targetKeys are the input fields that name what a tool call acts on, in the order that saidOf tries them.
+func targetKeys() []string {
+	return []string{bashKey, "file_path", "notebook_path", "path", "pattern", "url", skillKey}
+}
+
+// saidOf returns the text blocks and the tool calls of an assistant line, in the order of the message.
+func saidOf(value any) []agent.Said {
+	var said []agent.Said
+
+	for _, block := range contentOf(value, assistantType) {
+		item, isBlock := block.(map[string]any) // each block is an object or not content
+		if !isBlock {
+			continue
+		}
+
+		switch item["type"] {
+		case "text":
+			if text, _ := item["text"].(string); text != "" { //nolint:errcheck // a missing text reads as ""
+				said = append(said, agent.Said{Text: text})
+			}
+		case toolUseType:
+			name, _ := item["name"].(string) //nolint:errcheck // a missing name reads as ""
+			said = append(said, agent.Said{Call: true, Text: callText(name, object(item, "input"))})
+		}
+	}
+
+	return said
+}
+
+// callText reads "<tool>: <target>" for a tool call, and the tool alone when the input names no target.
+func callText(name string, input map[string]any) string {
+	for _, key := range targetKeys() {
+		if target, _ := input[key].(string); target != "" { //nolint:errcheck // a missing target reads as ""
+			return name + ": " + target
+		}
+	}
+
+	return name
 }

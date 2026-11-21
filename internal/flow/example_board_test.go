@@ -93,7 +93,7 @@ func TestExampleBoard_ABoardCommandThatExitsWithTwoStopsTheRunAtTheLaneStart(t *
 	require.NotNil(t, result.Stopped, "a stop_on_rc code ends the item")
 	assert.Equal(t, "command:board-started#1", result.Stopped.Step)
 	assert.Equal(t, 2, result.Stopped.RC)
-	assert.Len(t, rig.h.agents.requests, 2, "only the plan and the implement agents ran: the run stops before the review loop")
+	assert.Len(t, rig.h.agents.requests, 3, "only the plan, the implement and the sweep agents ran: the run stops before the review loop")
 }
 
 func TestExampleBoard_ABoardInTheVarsThatLacksAColumnStopsTheRunAtTheLaneStartAndNamesTheKey(t *testing.T) {

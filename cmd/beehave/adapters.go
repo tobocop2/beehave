@@ -252,12 +252,22 @@ func blockOf(declared config.Block) *config.Block { return &declared }
 
 // registry returns the names, keys and tools of the table as the config reads them.
 func (a adapters) registry() config.Adapters {
+	agents := configEntries(a.agents, agentAdapter.entryOf)
+
+	for name, entry := range agents {
+		if built := a.agent(name); built != nil {
+			loading := *entry
+			loading.LoadsSkills = built.Profile().SkillLine != nil
+			agents[name] = &loading
+		}
+	}
+
 	return config.Adapters{
 		Trackers: configEntries(a.trackers, trackerAdapter.entryOf),
 		Claims:   configEntries(a.claims, claimsAdapter.entryOf),
 		Forges:   configEntries(a.forges, forgeAdapter.entryOf),
 		Hosts:    configEntries(a.hosts, hostAdapter.entryOf),
-		Agents:   configEntries(a.agents, agentAdapter.entryOf),
+		Agents:   agents,
 	}
 }
 

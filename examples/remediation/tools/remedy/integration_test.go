@@ -11,6 +11,7 @@ import (
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/recount"
 	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -116,7 +117,7 @@ func TestIntegration_CreatesThePullRequestWhenNoneExistsWithTheMergedRowsInItsBo
 	require.Equal(t, remedy.ExitPass, code, errOut)
 	assert.Equal(t, "pr=21 state=OPEN\n", out)
 	require.Len(t, world.created, 1)
-	assert.Equal(t, model.NewPull{Head: roundBranch, Base: trunk, Title: world.created[0].Title, Body: world.created[0].Body}, world.created[0])
+	assert.Equal(t, model.NewPull{Head: roundBranch, Base: trunk, Title: world.created[0].Title, Body: world.created[0].Body, Label: config.DefaultPRLabel}, world.created[0])
 	assert.Equal(t, recount.Tally{Rows: 2}, recount.Count(world.created[0].Body))
 	assert.Empty(t, recount.Check(world.created[0].Title, world.created[0].Body))
 	assert.Contains(t, world.created[0].Body, "| #12 | fix the queue |")
@@ -134,60 +135,6 @@ func TestIntegration_TheOpenPullRequestWinsOverAMergedOneThatTheLookupListsFirst
 	assert.Equal(t, "pr=7 state=OPEN\n", out)
 }
 
-func TestIntegration_OneRowGoesAtTheEndOfTheTableAndTheHeadingCountsOnePullRequest(t *testing.T) {
-	t.Parallel()
-
-	body := "intro\n\n## Pull requests merged into this branch (0 pull requests)\n\n| PR | Change |\n|---|---|\n\n## Notes\n\ntext"
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{mergedPull(12, "fix the queue")},
-	}
-
-	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	require.Len(t, world.bodies, 1)
-	assert.Equal(t, "intro\n\n## Pull requests merged into this branch (1 pull request)\n\n| PR | Change |\n|---|---|\n| #12 | fix the queue |\n\n## Notes\n\ntext", world.bodies[0],
-		"the table keeps one header, the row follows it, and a body with no issue to close gets no closes heading")
-}
-
-func TestIntegration_AnIssueGoesIntoAClosesSectionAtTheTopAndAddsNoTable(t *testing.T) {
-	t.Parallel()
-
-	body := "## Issues this batch closes\n\n- Closes #5\n\n## Changes\n\n| #12 | fix the queue |"
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{branchPull(12, "fix the queue", "101")},
-	}
-
-	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	require.Len(t, world.bodies, 1)
-	assert.Equal(t, "## Issues this batch closes\n\n- Closes #5\n- Closes #101\n\n## Changes\n\n| #12 | fix the queue |", world.bodies[0],
-		"the body has a row for each merged pull request, so only the closes line is new")
-}
-
-func TestIntegration_AddsOneRowForEachMergedPullRequestThatTheTableLacks(t *testing.T) {
-	t.Parallel()
-
-	body := "intro\n\n## Pull requests merged into this branch (1 pull request)\n\n| PR | Change |\n|---|---|\n| #12 | fix the queue |\n\n- Closes #5\n"
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{mergedPull(12, "fix the queue"), mergedPull(13, "add the wait")},
-	}
-
-	code, out, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	assert.Equal(t, "pr=7 state=OPEN\n", out)
-	require.Len(t, world.bodies, 1)
-	assert.Equal(t, recount.Tally{Rows: 2, Issues: 1}, recount.Count(world.bodies[0]))
-	assert.Empty(t, recount.Check("a person's title", world.bodies[0]))
-	assert.Contains(t, world.bodies[0], "intro")
-	assert.Contains(t, world.bodies[0], "| #13 | add the wait |")
-}
-
 func branchPull(number int, title, branch string) model.PullRequest {
 	pull := mergedPull(number, title)
 	pull.HeadRefName = &branch
@@ -195,63 +142,109 @@ func branchPull(number int, title, branch string) model.PullRequest {
 	return pull
 }
 
-func TestIntegration_TwoMergedRowsThatResolveTwoIssuesGiveTwoClosesLinesAndASecondRunAddsNone(t *testing.T) {
+func syncPull(number int, trunkName string) model.PullRequest {
+	return branchPull(number, "Merge "+trunkName+" into "+roundBranch, "sync/"+roundBranch+"/abcd1234")
+}
+
+func writtenBody(t *testing.T, world *roundWorld) string {
+	t.Helper()
+
+	require.Len(t, world.bodies, 1)
+
+	return world.bodies[0]
+}
+
+func TestIntegration_ARoundWithSyncsOnlyNamesTheRoundAndListsTheSyncsApartFromTheWork(t *testing.T) {
 	t.Parallel()
 
-	body := "## Pull requests merged into this branch (0 pull requests)\n\n| PR | Change |\n|---|---|\n"
 	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{branchPull(12, "fix the queue", "101"), branchPull(13, "add the wait", "102"), branchPull(14, "a loose change", "fix-queue")},
+		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "\n\n"}},
+		merged: []model.PullRequest{syncPull(734, trunk), syncPull(748, trunk)},
 	}
 
-	code, out, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
 
 	require.Equal(t, remedy.ExitPass, code, errOut)
-	assert.Equal(t, "pr=7 state=OPEN\n", out)
-	require.Len(t, world.bodies, 1)
-	assert.Equal(t, recount.Tally{Rows: 3, Issues: 2}, recount.Count(world.bodies[0]))
-	assert.Contains(t, world.bodies[0], "## Issues this batch closes\n\n- Closes #101\n- Closes #102")
-	assert.Contains(t, strings.Join(world.listed[1], " "), "headRefName")
 
-	world.found[0].Body = world.bodies[0]
+	want := "Round s1 collects the item pull requests merged into integration/s1. The engine merges this pull request into integration/r1 when the round lands.\n\n" +
+		"No item pull request has merged into this branch yet.\n\n" +
+		"## Syncs with the trunk (2 pull requests)\n\n" +
+		"#734, #748\n"
+	assert.Equal(t, want, writtenBody(t, world))
+	assert.Equal(t, recount.Tally{}, recount.Count(want), "a sync is no row of work")
+}
+
+func TestIntegration_ARoundWithItemsListsTheItemsAndTheirIssuesAndTheSyncsApart(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{
+		found: []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "old"}},
+		merged: []model.PullRequest{
+			branchPull(13, "add the | wait", "102"),
+			syncPull(734, trunk),
+			branchPull(12, "fix the queue", "101"),
+			branchPull(14, "fix the queue again", "101"),
+			branchPull(15, "a loose change", "fix-queue"),
+		},
+	}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	want := "Round s1 collects the item pull requests merged into integration/s1. The engine merges this pull request into integration/r1 when the round lands.\n\n" +
+		"## Pull requests merged into this branch (4 pull requests)\n\n" +
+		"| PR | Change |\n|---|---|\n" +
+		"| #12 | fix the queue |\n| #13 | add the \\| wait |\n| #14 | fix the queue again |\n| #15 | a loose change |\n\n" +
+		"## Syncs with the trunk (1 pull request)\n\n" +
+		"#734\n\n" +
+		"## Issues this batch closes\n\n" +
+		"- Closes #101\n- Closes #102\n"
+	body := writtenBody(t, world)
+	assert.Equal(t, want, body)
+	assert.Equal(t, recount.Tally{Rows: 4, Issues: 2}, recount.Count(body))
+	assert.Empty(t, recount.Check("a person's title", body))
+}
+
+func TestIntegration_ASyncAfterABaseChangeIsListedAndTheStaleBodyIsRewrittenFromTheMergedPullRequests(t *testing.T) {
+	t.Parallel()
+
+	stale := "\n\n## Pull requests merged into this branch (5 pull requests)\n\n| PR | Change |\n|---|---|\n| #734 | Merge integration/r1 into integration/s1 |\n\nA note by hand.\n"
+	world := &roundWorld{
+		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: stale}},
+		merged: []model.PullRequest{syncPull(734, "integration/r1"), syncPull(779, trunk)},
+	}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	body := writtenBody(t, world)
+	assert.Contains(t, body, "into integration/r1 when the round lands")
+	assert.Contains(t, body, "#734, #779")
+	assert.NotContains(t, body, "Merge integration", "a sync is a number, never a row titled with a trunk")
+	assert.NotContains(t, body, "A note by hand", "the body is made again from the merged pull requests")
+	assert.Equal(t, recount.Tally{}, recount.Count(body))
+}
+
+func TestIntegration_WritesNothingWhenTheBodyIsAlreadyTheOneTheMergedPullRequestsGive(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{
+		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "old"}},
+		merged: []model.PullRequest{branchPull(12, "fix the queue", "101"), syncPull(734, trunk)},
+	}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	world.found[0].Body = writtenBody(t, world)
 
 	code, _, errOut = run(t, roundDeps(world), integrationArgs("0")...)
 
 	require.Equal(t, remedy.ExitPass, code, errOut)
-	assert.Len(t, world.bodies, 1)
-}
-
-func TestIntegration_AnIssueTheBodyAlreadyListsIsNotListedAgain(t *testing.T) {
-	t.Parallel()
-
-	body := "## Pull requests merged into this branch (1 pull request)\n\n| PR | Change |\n|---|---|\n| #12 | fix the queue |\n\n## Issues this batch closes\n\n- Closes #101\n\n## Notes\n\ntext\n"
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{branchPull(12, "fix the queue", "101"), branchPull(13, "add the wait", "102")},
-	}
-
-	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	require.Len(t, world.bodies, 1)
-	assert.Contains(t, world.bodies[0], "- Closes #101\n- Closes #102\n\n## Notes")
-	assert.Equal(t, 1, strings.Count(world.bodies[0], "Closes #101"))
-}
-
-func TestIntegration_TwoMergedPullRequestsOfOneIssueGiveOneClosesLine(t *testing.T) {
-	t.Parallel()
-
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "## Pull requests merged into this branch (0 pull requests)\n\n| PR | Change |\n|---|---|\n"}},
-		merged: []model.PullRequest{branchPull(12, "fix the queue", "101"), branchPull(13, "fix the queue again", "101")},
-	}
-
-	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	require.Len(t, world.bodies, 1)
-	assert.Equal(t, recount.Tally{Rows: 2, Issues: 1}, recount.Count(world.bodies[0]))
-	assert.Equal(t, 1, strings.Count(world.bodies[0], "Closes #101"))
+	assert.Len(t, world.bodies, 1, "a second run with no new merge writes nothing")
 }
 
 func TestIntegration_AFullListOfMergedPullRequestsIsARefusalAndWritesNothing(t *testing.T) {
@@ -269,21 +262,6 @@ func TestIntegration_AFullListOfMergedPullRequestsIsARefusalAndWritesNothing(t *
 	assert.Contains(t, errOut, "remedy integration: the list of merged pull requests is full: "+roundBranch+" has 100 or more merged pull requests")
 	assert.Empty(t, world.bodies, "a body from a part of the list is not written")
 	assert.Empty(t, world.created)
-}
-
-func TestIntegration_WritesNothingWhenTheTableHoldsEveryMergedRow(t *testing.T) {
-	t.Parallel()
-
-	body := "## Pull requests merged into this branch (1 pull request)\n\n| PR | Change |\n|---|---|\n| #12 | fix the queue |\n"
-	world := &roundWorld{
-		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: body}},
-		merged: []model.PullRequest{mergedPull(12, "fix the queue")},
-	}
-
-	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
-
-	require.Equal(t, remedy.ExitPass, code, errOut)
-	assert.Empty(t, world.bodies)
 }
 
 func TestIntegration_ALandedPullRequestIsReportedAndItsBodyIsLeftAlone(t *testing.T) {
@@ -371,4 +349,86 @@ func TestIntegration_AForgeThatCannotWriteIsARefusal(t *testing.T) {
 	assert.Equal(t, remedy.ExitRefused, code)
 	assert.Empty(t, out)
 	assert.Contains(t, errOut, "remedy integration:")
+}
+
+func TestIntegration_TheLabelFlagIsTheLabelOfTheOpenedPullRequest(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{nextPR: 21}
+
+	code, _, errOut := run(t, roundDeps(world), append(integrationArgs("0"), "--label", "made-by-beehave")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+	require.Len(t, world.created, 1)
+	assert.Equal(t, "made-by-beehave", world.created[0].Label)
+}
+
+func TestIntegration_NoLabelFlagGivesTheDefaultLabel(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{nextPR: 21}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+	require.Len(t, world.created, 1)
+	assert.Equal(t, config.DefaultPRLabel, world.created[0].Label)
+}
+
+func TestIntegration_ABranchOfAnotherRoundWhoseNameStartsLikeThisOneIsARowAndNotASync(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{
+		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "old"}},
+		merged: []model.PullRequest{branchPull(20, "a sync of round s10", "sync/integration/s10/abcd1234"), syncPull(734, trunk)},
+	}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	body := writtenBody(t, world)
+	assert.Contains(t, body, "| #20 | a sync of round s10 |", "the prefix of a round ends with a slash, so s10 is no sync of s1")
+	assert.Contains(t, body, "## Syncs with the trunk (1 pull request)\n\n#734\n")
+}
+
+func TestIntegration_TheListOfMergedPullRequestsIsAskedForTheRoundBranch(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{found: []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "old"}}}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	var asked []string
+
+	for _, args := range world.listed {
+		if slices.Contains(args, "merged") {
+			asked = args
+		}
+	}
+
+	require.NotEmpty(t, asked, "the merged list was read")
+	at := slices.Index(asked, "--base")
+	require.GreaterOrEqual(t, at, 0, "the merged list is filtered by a base")
+	assert.Equal(t, roundBranch, asked[at+1], "the base is the round branch, so no other pull request of the repository is listed")
+}
+
+func TestIntegration_AHeadBranchThatOnlyEndsInDigitsIsARowAndNamesNoIssue(t *testing.T) {
+	t.Parallel()
+
+	world := &roundWorld{
+		found:  []model.PullRequest{{Number: 7, State: state("OPEN"), Body: "old"}},
+		merged: []model.PullRequest{branchPull(12, "fix the queue", "fix-101"), branchPull(13, "add the wait", "101-fix")},
+	}
+
+	code, _, errOut := run(t, roundDeps(world), integrationArgs("0")...)
+
+	require.Equal(t, remedy.ExitPass, code, errOut)
+
+	body := writtenBody(t, world)
+	assert.Contains(t, body, "| #12 | fix the queue |")
+	assert.Contains(t, body, "| #13 | add the wait |")
+	assert.NotContains(t, body, "Closes", "only a branch of digits is the id of an issue")
 }

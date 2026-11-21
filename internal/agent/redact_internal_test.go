@@ -79,6 +79,15 @@ func TestLoginEnv_HoldsTheAllowlistAndTheLoginButNoToken(t *testing.T) {
 	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR=/login", "PATH=/bin"}, LoginEnv(base, p, "/login"))
 }
 
+func TestLoginEnv_ALoginWithNoFolderLeavesTheConfigVariablesUnset(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/owner"}
+	p := Profile{ConfigVars: []string{"CLAUDE_CONFIG_DIR"}}
+
+	assert.Equal(t, []string{"PATH=/bin"}, LoginEnv(base, p, ""), "the CLI then reads its default folder, and the variable of the owner never passes")
+}
+
 func TestLoginEnv_KeepsTheSocketOfTheSSHAgentAndNoGitOrTokenVariable(t *testing.T) {
 	t.Parallel()
 

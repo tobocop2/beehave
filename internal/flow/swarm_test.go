@@ -162,8 +162,8 @@ func TestSpawnGather_FailRaiseCancelsTheOpenChildrenAndRaisesAfterTheStep(t *tes
 	assert.Equal(t, dbos.WorkflowStatusCancelled, childStatus(t, engine, "23"))
 	ended := `"error":"the run ended as ` + string(dbos.WorkflowStatusCancelled) + `"`
 
-	assert.JSONEq(t, `{"outcomes":[{"item":"21","ok":false,`+ended+`},{"item":"22","ok":false,"error":"workflow.star:2:12: fake failure"},`+
-		`{"item":"23","ok":false,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehave resume 12 to reopen item 22 and run the spawn again"}`,
+	assert.JSONEq(t, `{"outcomes":[{"item":"21","ok":false,"cost_usd":0,`+ended+`},{"item":"22","ok":false,"cost_usd":0,"error":"workflow.star:2:12: fake failure"},`+
+		`{"item":"23","ok":false,"cost_usd":0,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehave resume 12 to reopen item 22 and run the spawn again"}`,
 		gatherJSON(t, engine))
 
 	h.tick(t)
@@ -250,9 +250,9 @@ func TestSpawnGather_ResumeOfAFailedParentReopensTheMidListChildAndEachOutputIsI
 	}})
 
 	assert.JSONEq(t, `{"outcomes":[`+
-		`{"item":"21","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
-		`{"item":"22","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
-		`{"item":"23","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, gatherJSON(t, engine), "each output is its own")
+		`{"item":"21","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
+		`{"item":"22","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
+		`{"item":"23","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, gatherJSON(t, engine), "each output is its own")
 	assert.Equal(t, []string{"after 21:out-21 22:out-22 23:out-23"}, h.commands.ranBy(testItem))
 	h.life.mu.Lock()
 	assert.Equal(t, 2, h.life.takes["22"], "the reopened child holds a fresh claim")
@@ -518,8 +518,6 @@ func TestSpawnGather_SpawnReusesAChildThatFinishedAndStartsNoSecondAttempt(t *te
 func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 	t.Parallel()
 
-	worker := "def worker(item):\n    spawn(items = [\"31\"], entry = \"worker\")\n\n"
-
 	cases := map[string]struct{ file, want string }{
 		"bad id":          {bodyFlow(`spawn(items = ["!!"])`), "invalid item"},
 		"itself":          {bodyFlow(`spawn(items = ["12"])`), "item 12 cannot spawn itself. Leave it out of items"},
@@ -544,30 +542,18 @@ func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 			require.ErrorContains(t, err, c.want)
 		})
 	}
-
-	t.Run("a child cannot spawn", func(t *testing.T) {
-		t.Parallel()
-
-		h := newHarness(t)
-		flow := worker + "def main(item):\n    done = gather(spawn(items = [\"21\"], entry = \"worker\"))\n    command(name = \"after\", run = [\"after\", done.results[0].error])\n"
-		_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
-
-		require.NoError(t, err)
-		require.Len(t, h.commands.ranBy(testItem), 1)
-		assert.Contains(t, h.commands.ranBy(testItem)[0], "item 21 was started by spawn and cannot start items. Call spawn from the item that a user started")
-	})
 }
 
-func TestSpawnGather_ARunThatIsNotInTheStoreIsAFailedOutcomeAndAnEmptyCallReturnsAtOnce(t *testing.T) {
+func TestSpawnGather_AnEmptyCallReturnsAtOnce(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	flow := bodyFlow("none = gather(spawn(items = []))\ndone = gather([struct(item = \"9\", run = \"item-9-r1\")])\ncommand(name = \"after\", run = [\"after\", str(len(none.results)), done.results[0].error])")
+	flow := bodyFlow("none = gather(spawn(items = []))\ncommand(name = \"after\", run = [\"after\", str(len(none.results))])")
 
 	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"after 0 run item-9-r1 is not in the store"}, h.commands.ranBy(testItem))
+	assert.Equal(t, []string{"after 0"}, h.commands.ranBy(testItem))
 }
 
 func TestSpawnGather_FiveChildrenRunAtMostMaxConcurrentAtOnce(t *testing.T) {
@@ -754,7 +740,7 @@ func TestSpawnGather_AChildWhoseInputCannotBeReadTakesNoClaim(t *testing.T) {
 
 	client := newHarness(t).client(t, testVersion)
 
-	_, _, _, err := client.childClaim(dbos.WorkflowStatus{ID: "item-21-r1", Name: itemName, Input: "not json"})
+	_, _, err := client.childClaim(dbos.WorkflowStatus{ID: "item-21-r1", Name: itemName, Input: "not json"})
 
 	require.ErrorContains(t, err, "read the input of run item-21-r1")
 }
@@ -777,7 +763,8 @@ func TestSpawnGather_TheItemsQueueReportsAStoreThatIsClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
-	require.ErrorContains(t, engine.registerItemQueue(2), "register the items queue")
+	require.ErrorContains(t, engine.registerItemQueues(2, 3), "read the item runs that can run again")
+	require.ErrorContains(t, engine.registerDepths(2, 3), "register the items queue of depth 0")
 }
 
 // pickFails picks a login for every item but one.
@@ -823,7 +810,7 @@ func TestSpawnGather_SpawnReportsAChildTheQueueCannotStart(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	engine := h.engineWith(t, func(e *Engine) { e.itemQueue = nil })
+	engine := h.engineWith(t, func(e *Engine) { e.itemQueues[1] = nil })
 
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
 
@@ -844,7 +831,7 @@ func TestSpawnGather_TheReadsOfAStoppedEngineReportTheError(t *testing.T) {
 	_, err = engine.readRuns([]spawnedRun{{Item: "21", Run: "item-21-r1"}})
 	require.ErrorContains(t, err, "read the runs of the spawned items")
 
-	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, false, false)
+	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, gatherRule{})
 	require.ErrorContains(t, err, "read the runs of the spawned items")
 }
 
@@ -877,7 +864,7 @@ func TestSpawnGather_AWaitEndsWhenItsContextEnds(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := engine.gather(ctx, ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, false, false)
+	_, err := engine.gather(ctx, ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, gatherRule{})
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -905,7 +892,7 @@ func TestSpawnGather_AFailedCancelOfAnOpenChildIsReportedWithItsRun(t *testing.T
 	require.NoError(t, os.WriteFile(filepath.Join(engine.dir, cancelsDir), nil, 0o600))
 
 	refs := []spawnedRun{{Item: "21", Run: "item-21-r1"}, {Item: "22", Run: "item-22-r1"}}
-	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, refs, true, false)
+	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, refs, gatherRule{raise: true})
 
 	require.ErrorContains(t, err, "mark the cancel of run item-21-r1")
 	require.ErrorContains(t, err, "cancel run item-21-r1")
