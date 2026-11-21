@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dbos-inc/dbos-transact-golang/dbos"
-
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -90,8 +88,8 @@ func (s *script) restart(name string, refs []spawnedRun, places []int, restarts 
 
 	for k, place := range places {
 		one := plans[k]
-		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, one.Input, dbos.WithQueue(s.e.itemQueues[one.Input.Depth]), dbos.WithWorkflowID(one.Run.Run), dbos.WithPriority(one.Run.Priority)); err != nil {
-			return nil, fmt.Errorf("start the run of item %s again: %w", one.Run.Item, err)
+		if err := s.startRun(one.Run, one.Input); err != nil {
+			return nil, err
 		}
 
 		next[place] = one.Run

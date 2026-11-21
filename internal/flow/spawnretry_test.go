@@ -69,6 +69,47 @@ func TestSpawnRetries_AChildThatFailsEachAttemptIsAFailedOutcomeAfterItsRetries(
 	assert.Equal(t, int32(2), tries.Load(), "one retry, then no more")
 }
 
+// secondPickFails picks a login for each item, and fails the second pick of its item: the pick of the start again.
+type secondPickFails struct {
+	noReset
+
+	item  string
+	picks *atomic.Int32
+}
+
+func (p secondPickFails) Pick(_ context.Context, _, item string, _ []string, _ bool) (string, error) {
+	if item == p.item && p.picks.Add(1) == 2 {
+		return "", errFake
+	}
+
+	return testLogin, nil
+}
+
+func TestSpawnRetries_AStartAgainWhoseLoginCannotBePickedFailsTheParent(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.picker = secondPickFails{item: "22", picks: &atomic.Int32{}}
+	tries := failTimes(h, "22", 5)
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)))
+
+	require.ErrorContains(t, err, errFake.Error())
+	assert.Equal(t, int32(1), tries.Load(), "no second attempt started")
+	assert.Empty(t, h.commands.ranBy(testItem))
+}
+
+func TestSpawnRetries_ThePlanOfAStartAgainReportsAStoppedEngine(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).engine(t)
+	require.NoError(t, engine.Shutdown())
+
+	_, err := engine.planRestarts(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1", Retries: 1}}, []int{0})
+
+	require.Error(t, err, "the plan reads the latest run of the item")
+}
+
 func TestSpawnRetries_ARaiseFiresWhenTheRetriesAreSpent(t *testing.T) {
 	t.Parallel()
 

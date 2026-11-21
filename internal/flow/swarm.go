@@ -338,9 +338,18 @@ func (s *script) startRuns(plan []spawnedRun, entry, base string) error {
 
 		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent}
 
-		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueues[s.in.Depth+1]), dbos.WithWorkflowID(one.Run), dbos.WithPriority(one.Priority)); err != nil {
-			return fmt.Errorf("start the run of item %s: %w", one.Item, err)
+		if err := s.startRun(one, in); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// startRun starts one planned run with its input, as a child of this run on the items queue of the depth of its input.
+func (s *script) startRun(one spawnedRun, in ItemInput) error {
+	if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueues[in.Depth]), dbos.WithWorkflowID(one.Run), dbos.WithPriority(one.Priority)); err != nil {
+		return fmt.Errorf("start the run of item %s: %w", one.Item, err)
 	}
 
 	return nil
