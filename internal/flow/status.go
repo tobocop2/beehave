@@ -526,30 +526,20 @@ func (c *Client) Cancel(item string) error {
 	}
 
 	if !last.cancelable() {
-		return nothingToCancel(last, item)
+		return nothingToCancel(last)
 	}
 
 	return c.cancelRun(item, last)
 }
 
-// itemOf is the item that the input of a run names. A run with no readable input names none, and the error that asks for it only misses the item.
-func itemOf(r run) string {
-	in, err := r.input()
-	if err != nil {
-		return ""
-	}
-
-	return in.Item
-}
-
 // nothingToCancel is the error for a run that a cancel does not reach. A run that ended with a stop is shown as stopped, as status shows it,
 // and the error names beehave run, which starts a new attempt after a stop.
-func nothingToCancel(r run, item string) error {
+func nothingToCancel(r run) error {
 	state := stateOf(r.Status.Status)
 
 	if state == runDone {
-		if settled, _, err := settledOf(r.Status); err == nil && settled == runStopped {
-			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", errWrongState, r.Status.ID, settled, item)
+		if settled, result, err := settledOf(r.Status); err == nil && settled == runStopped {
+			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", errWrongState, r.Status.ID, settled, result.Item)
 		}
 	}
 
@@ -567,7 +557,7 @@ func (c *Client) CancelRun(id string) error {
 	case target.Status.ApplicationVersion != c.version && !target.terminal():
 		return strandedError(target, c.version)
 	case !target.cancelable():
-		return nothingToCancel(target, itemOf(target))
+		return nothingToCancel(target)
 	}
 
 	in, err := target.input()
