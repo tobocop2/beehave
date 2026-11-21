@@ -63,10 +63,22 @@ func (Adapter) Profile() agent.Profile {
 	}
 }
 
-// guardSettings is the settings of one run with no sandbox: a PreToolUse hook on the Bash tool, and the allow rules of the output files.
+// attribution is the attribution setting of Claude Code. An empty commit and pr and a false sessionUrl omit the Co-Authored-By trailer of commits, the
+// attribution text of pull requests and the session link. Every Claude Code version reads this form; the value false needs v2.1.281.
+type attribution struct {
+	Commit     string `json:"commit"`
+	PR         string `json:"pr"`
+	SessionURL bool   `json:"sessionUrl"`
+}
+
+// noAttribution is the attribution setting that every launch carries: the commits of an agent have no trailer that names the CLI.
+func noAttribution() *attribution { return &attribution{Commit: "", PR: "", SessionURL: false} }
+
+// guardSettings is the settings of one run with no sandbox: the attribution, a PreToolUse hook on the Bash tool, and the allow rules of the output files.
 type guardSettings struct {
-	Hooks       *hookEvents `json:"hooks,omitempty"`
-	Permissions *allowOnly  `json:"permissions,omitempty"`
+	Attribution *attribution `json:"attribution,omitempty"`
+	Hooks       *hookEvents  `json:"hooks,omitempty"`
+	Permissions *allowOnly   `json:"permissions,omitempty"`
 }
 
 // allowOnly is the permission rules of a run with no sandbox: allow rules only.
@@ -94,9 +106,9 @@ type hookHandler struct {
 // The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
 // "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
 // Each file of write is opened to the file tools by the same rules and working directory as in the sandbox.
-// The skills reach the CLI as the plugin folder of the sandbox does, so a run with no sandbox loads them too. The launch is empty when it has no hook, no file and no skill.
+// The skills reach the CLI as the plugin folder of the sandbox does, so a run with no sandbox loads them too. Every launch carries noAttribution in the same settings.
 func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launch {
-	var settings guardSettings
+	settings := guardSettings{Attribution: noAttribution()}
 
 	if command != "" {
 		hooks := guardHooks(command)
@@ -110,11 +122,8 @@ func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launc
 	plugin := skillsPlugin(skills, runDir)
 	args := slices.Concat(addDirs(slices.Concat(outputDirs(write), plugin.readDirs())), plugin.args)
 
-	if settings.Hooks != nil || settings.Permissions != nil {
-		raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
-
-		args = append(args, "--settings", string(raw))
-	}
+	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
+	args = append(args, "--settings", string(raw))
 
 	return agent.Launch{Args: args, Files: plugin.files, Copies: plugin.copies}
 }

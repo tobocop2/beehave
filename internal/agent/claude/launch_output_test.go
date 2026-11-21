@@ -46,10 +46,14 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFileToTheFileTool
 	assert.NotContains(t, args[len(args)-1], "hooks", "no guard, so no hook")
 }
 
-func TestLaunch_AStepWithNoOutputFileAndNoGuardAddsNothing(t *testing.T) {
+func TestLaunch_AStepWithNoOutputFileAndNoGuardAddsOnlyTheAttributionSetting(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, claude.New(nil).Guard("", "/run", nil, nil).Empty())
+	launch := claude.New(nil).Guard("", "/run", nil, nil)
+
+	assert.Equal(t, []string{"--settings", `{"attribution":{"commit":"","pr":"","sessionUrl":false}}`}, launch.Args)
+	assert.Empty(t, launch.Env)
+	assert.Empty(t, launch.Files)
 }
 
 func TestLaunch_TheGuardAndTheSandboxOpenTheOutputFileByTheSameRules(t *testing.T) {

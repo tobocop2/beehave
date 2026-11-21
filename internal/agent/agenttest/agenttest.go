@@ -217,7 +217,7 @@ func checkNoEditSeen(r Reporter, profile agent.Profile, seen, mayEdit []string) 
 	r.Helper()
 
 	args := append(slices.Clone(profile.Args), profile.NoEditArgs...)
-	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI of a step with no edits did not get the arguments %q", args)
+	expect(r, startsWithArgs(seen, args), "the CLI of a step with no edits did not get the arguments %q", args)
 
 	for name, value := range profile.NoEditEnv {
 		expect(r, name != profile.TokenVar && !slices.Contains(profile.ConfigVars, name), "the no-edit variable %s is a login variable of the profile", name)
@@ -299,7 +299,7 @@ func checkSeen(r Reporter, profile agent.Profile, dir string, seen []string) {
 	r.Helper()
 
 	args := append(slices.Clone(profile.Args), profile.EditArgs...)
-	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI did not get the arguments of the profile %q", args)
+	expect(r, startsWithArgs(seen, args), "the CLI did not get the arguments of the profile %q", args)
 	expect(r, slices.Contains(seen, "stdin="+prompt), "the CLI did not get the prompt on stdin")
 
 	for _, name := range profile.ConfigVars {
@@ -369,6 +369,13 @@ func CheckCalls(r Reporter, adapter agent.Adapter) {
 	expect(r, len(seen.Shell) == 0, "a line with no call holds the shell calls %v", seen.Shell)
 	expect(r, len(seen.Skills) == 0, "a line with no call holds the skill calls %q", seen.Skills)
 	expect(r, len(seen.Refused) == 0 && len(seen.Denials) == 0 && !seen.Result && seen.Limit == nil && seen.Denied == "", "a line with no call holds a refusal, a result, a limit or a denial: %+v", seen)
+}
+
+// startsWithArgs reports whether the fake CLI printed an args line that starts with args, as whole words. The launch of the adapter follows the arguments of the profile.
+func startsWithArgs(lines []string, args []string) bool {
+	line := "args=" + strings.Join(args, " ")
+
+	return slices.ContainsFunc(lines, func(seen string) bool { return seen == line || strings.HasPrefix(seen, line+" ") })
 }
 
 func hasPrefix(lines []string, prefix string) bool {

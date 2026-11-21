@@ -34,6 +34,7 @@ func webTools() []string { return []string{"WebFetch", "WebSearch"} }
 
 // sandboxSettings is the settings of one sandboxed run: the sandbox, the permission rules, and the hook of the guard when the run has one.
 type sandboxSettings struct {
+	Attribution *attribution `json:"attribution,omitempty"`
 	Hooks       *hookEvents  `json:"hooks,omitempty"`
 	Sandbox     sandboxBlock `json:"sandbox"`
 	Permissions permissions  `json:"permissions"`
@@ -139,6 +140,7 @@ func exports(env map[string]string) string {
 // run folder, so a run folder under the home folder stays denied except for that file.
 func settingsOf(plan agent.SandboxPlan, envPath string, write []string) sandboxSettings {
 	return sandboxSettings{
+		Attribution: noAttribution(),
 		Sandbox: sandboxBlock{
 			Enabled:           true,
 			FailIfUnavailable: true,
