@@ -108,6 +108,22 @@ func TestClient_ResumeOnThisBuildRefusesARunRecordedUnderCoreModule3(t *testing.
 	require.ErrorContains(t, err, fmt.Sprintf("core module at version 3 and this build has version %d", coreVersion))
 }
 
+func TestClient_ResumeOnThisBuildRefusesARunRecordedUnderCoreModule7(t *testing.T) {
+	t.Parallel()
+
+	// Core module 7 recorded the result of command and write with no attempts field. The run stays with the build that recorded it.
+	harness, _, other := strandedHarness(t)
+	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?",
+		versionWithModule(testVersion, moduleCore, 7), testRun)
+	require.NoError(t, err)
+	expireLease(harness)
+
+	err = other.ResumeOnThisBuild(testItem)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, fmt.Sprintf("core module at version 7 and this build has version %d", coreVersion))
+}
+
 func TestClient_ResumeOnThisBuildRefusesARunThatRecordedAGateStepWhenTheGateModuleChanged(t *testing.T) {
 	t.Parallel()
 

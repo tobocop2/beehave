@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 
 	got := map[string][]string{
 		"agent":         keysOf(agentOutputs("", "", "", "", "", "", agent.Spend{}, false, false, nil)),
-		"command":       keysOf(commandOutputs("", "", 0)),
+		"command":       keysOf(commandOutputs(CommandOutput{}, 1)),
 		"earlier_calls": keysOf(earlierOutputs(0)),
 		"gate":          keysOf(gateOutputs(true, "", "", "", nil, nil, nil)),
 		"facts":         keysOf(factsOutputs(model.Project{})),
@@ -61,12 +62,15 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"send":          keysOf(sendOutputs("")),
 		"sleep":         keysOf(sleepOutputs(0)),
 		"wait":          keysOf(answerOutputs("", nil, false)),
-		"write":         keysOf(writeOutputs("", "", 0, "", false)),
+		"write":         keysOf(writeOutputs(CommandOutput{}, 1, "", false)),
 	}
 
 	for builtin, keys := range got {
 		assert.Equal(t, tableOf(t, builtin), keys, builtin)
 	}
+
+	e := &Engine{redact: func(text string) string { return text }}
+	assert.Equal(t, tableOf(t, "command"), keysOf(e.failedOutputs(errors.New("lost"), 1)), "a command whose failure is returned has the fields of any other command")
 }
 
 func batchStruct(t *testing.T, value starlark.Value) *starlarkstruct.Struct {

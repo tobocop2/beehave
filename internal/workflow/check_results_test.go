@@ -15,7 +15,7 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 	cases := []struct{ name, call, want string }{
 		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills."},
 		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
-		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc."},
+		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc, attempts, error."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
 		{"item_comment", `item_comment("1", "t", "k")`, "3:11 haed is not a field of the result of item_comment. It has: id."},
@@ -202,5 +202,5 @@ func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {
 	fields[0] = "changed"
 
 	again, _ := workflow.ResultFields("command")
-	assert.Equal(t, []string{"stdout", "stderr", "rc"}, again)
+	assert.Equal(t, []string{"stdout", "stderr", "rc", "attempts", "error"}, again)
 }

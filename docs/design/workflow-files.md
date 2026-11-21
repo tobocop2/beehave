@@ -514,7 +514,10 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+
+- With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
+- The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
 
 - Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the items queue of its depth. The queue holds at most `agents.max_concurrent` runs.
 - A run that `spawn` started may call `spawn`. A run that a user started is at depth 0, and each child is one level deeper than its parent. The project key `max_spawn_depth` caps the depth, 3 by default.
@@ -543,8 +546,10 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
 - If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
 - A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
-- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd` and `value`.
+- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value` and `attempts`. `attempts` counts the runs of the item that this call waited for.
 - `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
+- A run of `spawn` with retries left that failed does not end the wait and does not trigger `fail="raise"`. The call records the plan of the next attempts as one step, starts them, and waits again. A replay starts nothing twice.
+- `beehave resume` of a parent reopens only the last attempt of each item. An earlier attempt that a retry replaced stays failed, and the parent goes back to the start of the last attempt.
 - The wait is one recorded step that reads the rows of all the runs, so the record does not depend on the order in which the children end.
 - With `fail="raise"`, the step cancels the runs that are still open when it sees a run that failed, and records all the outcomes. The call then fails with the error of that run.
 - A restart replays `spawn` and `gather` from the records, and each child keeps its own output.
@@ -558,6 +563,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - `publish` sets a DBOS event of the run, named `u.<key>`, and the event `beehave.keys`, which lists the keys of the run in the order of their first use. DBOS has no call that lists the events of a run.
 - `progress` does not wait. A run that published nothing under the key reads `set = False` and `value = None`. A published None reads `set = True` and `value = None`.
 - `progress` accepts only the runs that a `spawn` call of this run returned, as `gather` does, and refuses any other run with `run <id> is not a child of this run`.
+- For a child that `gather` started again, `progress` reads the latest attempt, and `run` is the id of that attempt.
 - `progress` reads all the runs in one recorded step, so a replay of the parent returns the values of the first read, even if a child published again since.
 - `beehave status <run id> --events` prints the keys of a run and their last values, one line each, while the run goes on and after it ended. Add `--json` for one JSON list.
 
@@ -607,6 +613,8 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 - The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. It is the idempotency key of the send, so a resumed run inserts the message once.
 
 `send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
+
+A send to a child goes to its latest attempt: the run that `gather` started again last, or the run that `spawn` returned. If that attempt ended, the send is refused with `item <id> has no open run`, as no attempt reads the message. The check is part of the recorded send step, so a replay gives the same answer.
 
 #### `recv`
 
@@ -687,6 +695,23 @@ The returned struct also holds `stderr`, the second output stream of the program
 - The engine records `stderr` in the run database like `stdout`, so a program must not print a secret to either stream.
 - A run recorded before the field existed has no `stderr`. A workflow that reads it fails on a replay of that run.
 
+#### `retries`, `backoff` and `failure`
+
+| Setting | Meaning |
+| --- | --- |
+| `retries` | A whole number from 0 to 10. The default is 0. |
+| `backoff` | The wait before the first retry, a duration above zero such as `"2s"`. The wait doubles before each later retry, and stops at 10 minutes. A `backoff` above 10 minutes is refused. It needs `retries` of 1 or more. With no `backoff`, the first wait is 100 ms and no wait is longer than 5 s. |
+| `failure` | `"raise"` (the default) or `"return"`. |
+
+- A try that exits with a code that is not zero, and not in `stop_on_rc`, starts again until the retries are spent. A code in `stop_on_rc` is never retried.
+- An error of the step, such as a program that cannot start, also starts again. A cancel and a lost host are never retried.
+- The result has the field `attempts`, the number of tries. After the last try, `rc` is the code of that try.
+- The step is one record. A replay reads it and does not retry again. A crash during the retries starts the count again: the resume runs the step from the first try.
+- With `failure = "return"`, an error of the step that is left after the retries becomes the field `error` of the result, with `rc` -1 and empty `stdout` and `stderr`, and the run goes on. The default ends the run with the error. A cancel of the run always ends it.
+- A step with `slots` takes no `retries`, because it runs as a queued host job.
+- `agent` takes no `retries`.
+- `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero or is above 10 minutes, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
+
 #### The environment of the program
 
 The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
@@ -698,7 +723,8 @@ A `gate` step keeps the environment of the process.
 `write(run, read_back, undo, stdin, env, timeout, name)` is a `command` step for a program that changes a system outside the run.
 
 - It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc` or `max_new_processes`.
-- The result has the fields `stdout`, `stderr`, `rc`, `key` and `skipped`.
+- The result has the fields `stdout`, `stderr`, `rc`, `attempts`, `key` and `skipped`.
+- It takes `retries` and `backoff` with the rules of `command`, and no `failure`. Each try runs the read-back first, so a try after a write that landed is skipped. All the tries have the same key.
 - A write runs on this machine only.
 - The program of `run`, `read_back` and `undo` is pinned like the program of a `command`. A script that changes between the first run and a resume is refused. A `read_back` or `undo` list that is not a literal is counted as a dynamic command.
 
@@ -811,7 +837,8 @@ The engine has no cleanup builtin. The project owns the clean command and the wo
 - The project file can set `vars.clean_command`: a list of words, such as `["sh", "scripts/clean-lane.sh"]`. A value that is not a list of words that are not blank is refused before the first agent starts. The message names the key.
 - When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`, then `docker volume prune -f` as the step `sweep-prune`. Both run with `host`, so they run on the build host.
 - The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before each of the two `fail` calls of the lane (the skipped review skill and the missing changelog entry).
-- A workflow file cannot catch an error. A lane that a builtin error ends, such as a host that is gone, gets no sweep. A sweep that raises, such as a host lost at the sweep, fails the lane, and the round does not land its head. At a refusal site, a raising sweep replaces the refusal reason with the host error, so the operator reads the host error. A fix needs an engine setting for `command` that returns such a failure as a result. Issue #753 tracks it.
+- Both sweep steps use `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane. The prune still runs after such a clean.
+- A workflow file cannot catch an error. A lane that the error of an earlier builtin ends, such as a host that is gone at the mutation run, gets no sweep. Issue #753 tracks it.
 - With no `vars.clean_command`, the sweep runs the prune only.
 - The sweep does not fail the lane. A failed clean does not skip the prune.
 - The value that the lane returns holds the field `sweep`: one line for each step, `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`, then `prune: rc=<n>`.

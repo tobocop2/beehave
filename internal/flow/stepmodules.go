@@ -44,7 +44,8 @@ const (
 // Version 8 adds the sleep step, with its marker record sleep:<name>#<n>/start.
 // Version 9 adds the publish and progress steps, and the cost_usd field to each outcome that the gather step records.
 // Version 10 adds the recv and send steps of the inbox.
-const coreVersion = 10
+// Version 11 adds the attempts and error fields to the result of command, the attempts field to write, and the retries of a spawned run to gather.
+const coreVersion = 11
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields

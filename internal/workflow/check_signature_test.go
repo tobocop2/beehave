@@ -27,7 +27,7 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"agent text for a number", `agent(prompt = "p", model = "m", output_tries = "2")`, "output_tries must be an int, not a text."},
 		{"merge unknown keyword", `merge(prs = item.id, base = "b", repo = "r", name = "n", limit = 2)`, "merge takes no argument limit"},
 		{"merge missing base", `merge(prs = item.id, repo = "r", name = "n")`, "merge needs the `base` keyword"},
-		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, slots, name."},
+		{"command unknown keyword", `command(run = ["a"], stop_on_code = [1])`, "command takes no argument stop_on_code. Use one of: run, host, stdin, env, timeout, stop_on_rc, max_new_processes, slots, name, retries, backoff, failure."},
 		{"command cap as text", `command(run = ["a"], max_new_processes = "5")`, "max_new_processes must be an int, not a text."},
 		{"command cap of zero", `command(run = ["a"], max_new_processes = 0)`, "command: max_new_processes must be a whole number from 1 to 100000."},
 		{"command cap below zero", `command(run = ["a"], max_new_processes = -3)`, "command: max_new_processes must be a whole number from 1 to 100000."},
@@ -182,9 +182,14 @@ func TestUnpack_ReadsTheKeywordsOfTheSignature(t *testing.T) {
 		run, env, codes, processes  starlark.Value
 		timeout, host, stdin, label string
 		slots                       starlark.Value
+		retries                     int
+		backoff, failure            string
 	)
 
-	into := map[string]any{"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "max_new_processes": &processes, "slots": &slots, "name": &label}
+	into := map[string]any{
+		"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "max_new_processes": &processes, "slots": &slots, "name": &label,
+		"retries": &retries, "backoff": &backoff, "failure": &failure,
+	}
 
 	kwargs := []starlark.Tuple{{starlark.String("name"), starlark.String("n")}}
 	err := workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, into)

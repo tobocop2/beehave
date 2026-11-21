@@ -143,7 +143,7 @@ func (s *script) progress(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	return progressValue(read)
 }
 
-// childrenOf checks the key and the runs of a progress call, and returns the runs. Each run must be a child that this run spawned.
+// childrenOf checks the key and the runs of a progress call, and returns the latest attempt of each run. Each run must be a child that this run spawned.
 func (s *script) childrenOf(runs starlark.Value, key string) ([]spawnedRun, error) {
 	if err := workflow.CheckEventKey(key); err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (s *script) childrenOf(runs starlark.Value, key string) ([]spawnedRun, erro
 		return nil, err
 	}
 
-	return refs, s.checkChildren(refs)
+	return s.liveRuns(refs)
 }
 
 // readProgress reads the event of the key from each run. The reads go through the context of the engine and record nothing, as the reads of the status do.

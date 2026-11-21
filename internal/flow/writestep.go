@@ -36,6 +36,7 @@ type undoStep struct {
 type writePlan struct {
 	run, readBack, undo CommandRequest
 	key                 string
+	tries               *tries
 }
 
 // writeRaw are the arguments of a write call as the file wrote them.
@@ -50,7 +51,9 @@ func writeCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		runKeyword: &w.run, "read_back": &w.readBack, "undo": &w.undo, "stdin": &w.stdin, envKeyword: &w.own, timeoutKeyword: &w.timeout, nameKeyword: &w.label,
+		retriesKeyword: &w.retries, backoffKeyword: &w.backoff,
 	})
+	w.failure = string(workflow.FailureRaise)
 
 	return w, err
 }
@@ -69,15 +72,25 @@ func (s *script) writePlan(w writeRaw) (string, writePlan, error) {
 	}
 
 	plan := writePlan{run: request, key: writeKey(workflowID(s.ctx), step)}
+	if plan.tries, err = triesOf(w.commandRaw); err != nil {
+		return step, plan, err
+	}
+
 	plan.run.Env = append(plan.run.Env, writeKeyEnv+"="+plan.key)
 
+	return step, plan, plan.siblings(w)
+}
+
+// siblings makes the requests of the read-back and the undo of the write.
+func (plan *writePlan) siblings(w writeRaw) error {
+	var err error
 	if plan.readBack, err = sibling(plan.run, "read_back", w.readBack); err != nil {
-		return step, plan, err
+		return err
 	}
 
 	plan.undo, err = sibling(plan.run, "undo", w.undo)
 
-	return step, plan, err
+	return err
 }
 
 // sibling makes the request of the read-back or the undo of a write: its own program, and the project, item, environment and timeout of the write.
@@ -112,7 +125,7 @@ func (s *script) writeOutside(b *starlark.Builtin, args starlark.Tuple, kwargs [
 		return nil, err
 	}
 
-	done, err := runStep(s.e, s.ctx, step, func(ctx context.Context) (stepResult, error) { return s.runWrite(ctx, plan) })
+	done, err := runStep(s.e, s.ctx, step, func(ctx context.Context) (stepResult, error) { return s.runWrite(ctx, plan) }, s.e.retryOptions(plan.tries.policy)...)
 	if err != nil {
 		return nil, err
 	}
@@ -131,17 +144,13 @@ func (s *script) remember(step string, plan writePlan, outputs map[string]any) {
 	}
 }
 
-// runWrite runs the read-back, then the write when the read-back did not report it done, and records the output with the key.
+// runWrite runs one try: the read-back, then the write when the read-back did not report it done, and records the output with the key.
+// A try whose write exits with a code other than zero returns retriedRC while a try is left, so each new try reads back first.
 func (s *script) runWrite(ctx context.Context, plan writePlan) (stepResult, error) {
-	if len(plan.readBack.Run) > 0 {
-		found, err := s.writes().Run(ctx, plan.readBack)
-		if err != nil {
-			return stepResult{}, err
-		}
+	plan.tries.start()
 
-		if found.RC == 0 {
-			return stepResult{Outputs: writeOutputs(found.Stdout, found.Stderr, 0, plan.key, true)}, nil
-		}
+	if done, found, err := s.readBack(ctx, plan); err != nil || found {
+		return done, err
 	}
 
 	out, err := s.writes().Run(ctx, plan.run)
@@ -149,7 +158,25 @@ func (s *script) runWrite(ctx context.Context, plan writePlan) (stepResult, erro
 		return stepResult{}, err
 	}
 
-	return stepResult{Outputs: writeOutputs(out.Stdout, out.Stderr, out.RC, plan.key, false)}, nil
+	if plan.tries.retry(out.RC, nil) {
+		return stepResult{}, &retriedRC{rc: out.RC}
+	}
+
+	return stepResult{Outputs: writeOutputs(out, plan.tries.n, plan.key, false)}, nil
+}
+
+// readBack runs the read-back of a write when the call names one. found is true when it exits with zero: the write is done, and the result is skipped.
+func (s *script) readBack(ctx context.Context, plan writePlan) (done stepResult, found bool, err error) {
+	if len(plan.readBack.Run) == 0 {
+		return stepResult{}, false, nil
+	}
+
+	out, err := s.writes().Run(ctx, plan.readBack)
+	if err != nil || out.RC != 0 {
+		return stepResult{}, false, err
+	}
+
+	return stepResult{Outputs: writeOutputs(out, plan.tries.n, plan.key, true)}, true, nil
 }
 
 // undoAll runs the undo of each finished write, last write first. Each undo is a recorded step named after its write, so a replay after a
@@ -181,7 +208,7 @@ func (s *script) undoOne(undo undoStep) error {
 			return nil, fmt.Errorf("exited with code %d. %s", out.RC, out.Stderr)
 		}
 
-		return commandOutputs(out.Stdout, out.Stderr, 0), nil
+		return programOutputs(out, 1), nil
 	})
 
 	return err

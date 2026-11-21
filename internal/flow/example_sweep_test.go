@@ -2,6 +2,7 @@ package flow
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/host"
 )
 
 // These tests run the sweep step of the example: after a lane ends, the build host runs the clean command of the project and prunes the Docker volumes.
@@ -104,6 +106,49 @@ func TestExample_AFailedCleanShowsItsExitCodeAndDoesNotFailTheLaneOrSkipThePrune
 	assert.Len(t, sweepRequests(rig), 2, "the prune runs after the failed clean")
 	assert.Contains(t, sweepOf(t, result), "clean: rc=3")
 	assert.Contains(t, sweepOf(t, result), "prune: rc=0")
+}
+
+func TestExample_ASweepStepThatCannotRunShowsItsErrorAndDoesNotFailTheLane(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.project.Vars["clean_command"] = []any{"clean-lane"}
+
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if len(request.Run) > 0 && request.Run[0] == "clean-lane" {
+			return CommandOutput{}, fmt.Errorf("the build host is gone: %w", host.ErrLost)
+		}
+
+		return CommandOutput{}, nil
+	}
+
+	result, err := runPipeline(rig.h.engine(t), file)
+
+	require.NoError(t, err)
+	assert.True(t, childOf(t, result).Approved, "an error of the sweep does not fail the lane")
+	assert.Len(t, sweepRequests(rig), 2, "the prune runs after the clean that could not run")
+	assert.Contains(t, sweepOf(t, result), "clean: rc=-1 error: the build host is gone")
+	assert.Contains(t, sweepOf(t, result), "prune: rc=0")
+}
+
+func TestExample_APruneThatLosesTheHostShowsItsErrorAndDoesNotFailTheLane(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if len(request.Run) > 0 && request.Run[0] == "docker" {
+			return CommandOutput{}, fmt.Errorf("the build host is gone: %w", host.ErrLost)
+		}
+
+		return CommandOutput{}, nil
+	}
+
+	result, err := runPipeline(rig.h.engine(t), file)
+
+	require.NoError(t, err)
+	assert.True(t, childOf(t, result).Approved, "a host lost at the prune does not fail the lane")
+	assert.Contains(t, sweepOf(t, result), "prune: rc=-1 error: the build host is gone")
 }
 
 func TestExample_AFailedPruneShowsItsExitCode(t *testing.T) {

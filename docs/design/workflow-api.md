@@ -65,10 +65,13 @@ The Change column says how the pair differs from the contract that the five piec
 | `closing_references` | `-` | #586: new, reads the issues that the pull request of the item closes | 1: `internal/workflow/lib/review_fix.star` |
 | `closing_references` | `text` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `command` | `-` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
+| `command` | `backoff` | #594: new, the wait before the first retry, which doubles before each later retry | 1: `examples/research-desk/workflow.star` |
 | `command` | `env` | unchanged | 4: `examples/research-desk/workflow.star`, `examples/research/workflow.star` and 2 more |
+| `command` | `failure` | #753: new, `"return"` gives an error of the step as the field `error` of the result, with `rc` -1 | 1: `examples/remediation/workflow.star` |
 | `command` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `max_new_processes` | unchanged | 1: `examples/maintenance/bump.star` |
 | `command` | `name` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
+| `command` | `retries` | #594: new, a try that fails starts again, up to 10 times; the result has `attempts` | 1: `examples/research-desk/workflow.star` |
 | `command` | `run` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
 | `command` | `slots` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `stdin` | unchanged | 9: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 7 more |
@@ -204,6 +207,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `spawn` | `entry` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `spawn` | `items` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `spawn` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `retries` | #594: new, `gather` starts a child that failed again as its next attempt; the result of `gather` has `attempts` | 1: `examples/desk/eval.star` |
 | `struct` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `wait` | `-` | unchanged | 10: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 8 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
@@ -214,9 +218,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `wait` | `timeout` | unchanged | 7: `examples/approvals/workflow.star`, `examples/incident/workflow.star` and 5 more |
 | `wait` | `to` | unchanged | 2: `examples/approvals/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `-` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
+| `write` | `backoff` | #594: new, as on `command` | 1: `examples/desk/workflow.star` |
 | `write` | `env` | unchanged | 1: `examples/remediation/workflow.star` |
 | `write` | `name` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `read_back` | unchanged | 1: `examples/desk/workflow.star` |
+| `write` | `retries` | #594: new, as on `command`; each try runs the read-back first | 1: `examples/desk/workflow.star` |
 | `write` | `run` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `stdin` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `timeout` | unchanged | 1: `examples/remediation/workflow.star` |

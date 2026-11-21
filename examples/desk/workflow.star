@@ -202,12 +202,13 @@ def approve(item, answer, case_plan):
 
 # The engine owns the key, the read-back and the undo. The key is in BEEHAVE_WRITE_KEY for the write, the read-back and the undo, and it is the same
 # on a replay, so a second run of the case cannot write twice. A read-back that exits 0 means the write is done, and the engine skips it.
+# A write that fails tries once more after a second; the try runs the read-back first, so a write that landed is not repeated.
 def apply_step(step, payload):
     program = ["sh", SCRIPT.WRITE, step.write]
     back = ["sh", SCRIPT.READ_BACK, step.write]
     if step.undo == NO_UNDO:
-        return write(name = step.write, run = program, read_back = back, stdin = payload)
-    return write(name = step.write, run = program, read_back = back, undo = ["sh", SCRIPT.WRITE, step.undo], stdin = payload)
+        return write(name = step.write, run = program, read_back = back, stdin = payload, retries = 1, backoff = "1s")
+    return write(name = step.write, run = program, read_back = back, undo = ["sh", SCRIPT.WRITE, step.undo], stdin = payload, retries = 1, backoff = "1s")
 
 # The writes run in order. When a step fails, the case routes the failure and then fails, and the engine runs the undos of the earlier writes in reverse order.
 def run_saga(row, payload):

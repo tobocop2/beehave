@@ -33,13 +33,16 @@ READ_ONLY_FORBIDDEN = ["git-write", "local-delete", "remote-delete", "opaque-com
 ITEM_CLOSED = "closed"
 NOT_SHOWN = "Not shown: %s"
 
-def tool(label, script, args, stdin = ""):
-    """Runs one script of tools/ with the store and the addresses in its environment."""
+def tool(label, script, args, stdin = "", retries = 0):
+    """Runs one script of tools/ with the store and the addresses in its environment. A script that reaches the network takes retries: a try that fails starts again after a wait."""
+    wait = {"backoff": "2s"} if retries > 0 else {}
     return command(
         name = label,
         run = ["sh", DESK + "/tools/" + script] + args,
         stdin = stdin,
         env = {"RESEARCH_HOME": STORE, "SEARCH_API": SEARCH_API, "WIKI_API": WIKI_API, "RESEARCH_HEADER_FILE": CREDENTIAL},
+        retries = retries,
+        **wait
     )
 
 def program_gate(label, script, args):
@@ -171,7 +174,7 @@ def section(item):
     pages = []
     for url in found.splitlines():
         if url.strip() != "":
-            pages.append(ok("fetch", tool("fetch", "fetch.sh", [run, url.strip()])).strip())
+            pages.append(ok("fetch", tool("fetch", "fetch.sh", [run, url.strip()], retries = 2)).strip())
     read = call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": "\n".join(pages)}, ["claims"])
     ok("add-claims", tool("add-claims", "claims.sh", ["add", run, n, gen], stdin = read.claims))
     if int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, n, gen, "quote"])).strip()) == 0:

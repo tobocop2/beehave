@@ -153,14 +153,40 @@ func (s *script) send(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 		return nil, fmt.Errorf("send: %w", err)
 	}
 
-	sent, err := s.durable(sendKind, label, func(context.Context, string) (stepResult, error) {
-		return stepResult{Outputs: sendOutputs(env.ID)}, nil
-	})
+	sent, err := s.durable(sendKind, label, func(context.Context, string) (stepResult, error) { return s.e.sendStep(env, dest) })
 	if err == nil {
-		err = s.deliver(dest, env)
+		err = s.deliver(dest.Run, env)
 	}
 
 	return sent, err
+}
+
+// sendStep is the recorded step of a send: it refuses a child with no open attempt, and records the id of the message.
+func (e *Engine) sendStep(env envelope, dest spawnedRun) (stepResult, error) {
+	if err := e.checkOpen(dest); err != nil {
+		return stepResult{}, fmt.Errorf("send: %w", err)
+	}
+
+	return stepResult{Outputs: sendOutputs(env.ID)}, nil
+}
+
+// checkOpen refuses a send to a child whose latest attempt ended, since no attempt reads the message. The parent is not checked: it waits for this run.
+// It runs inside the send step, so a replay gives the answer that the first run recorded.
+func (e *Engine) checkOpen(dest spawnedRun) error {
+	if dest.Item == "" {
+		return nil
+	}
+
+	byID, err := e.rowsOf([]spawnedRun{dest})
+	if err != nil {
+		return err
+	}
+
+	if row, found := byID[dest.Run]; found && (run{Status: row}).terminal() {
+		return fmt.Errorf("item %s has no open run: its last attempt %s ended. Send to a child before it ends", dest.Item, dest.Run)
+	}
+
+	return nil
 }
 
 // sendOutputs are the fields of the result of send.
@@ -179,19 +205,19 @@ func (s *script) deliver(dest string, env envelope) error {
 
 // outgoing checks the arguments of a send call and returns the envelope and the run it goes to. The value passes the redactor.
 // The id is the run and the name of the send step that comes next.
-func (s *script) outgoing(to starlark.Value, topic string, value starlark.Value, label string) (envelope, string, error) {
+func (s *script) outgoing(to starlark.Value, topic string, value starlark.Value, label string) (envelope, spawnedRun, error) {
 	if err := workflow.MessageName(topicKeyword, topic); err != nil {
-		return envelope{}, "", err
+		return envelope{}, spawnedRun{}, err
 	}
 
 	raw, err := workflow.MessageValue(value)
 	if err != nil {
-		return envelope{}, "", err
+		return envelope{}, spawnedRun{}, err
 	}
 
 	dest, err := s.destination(to)
 	if err != nil {
-		return envelope{}, "", err
+		return envelope{}, spawnedRun{}, err
 	}
 
 	sender := workflowID(s.ctx)
@@ -199,12 +225,19 @@ func (s *script) outgoing(to starlark.Value, topic string, value starlark.Value,
 	return envelope{Topic: topic, Sender: sender, ID: sender + ":" + s.nextName(sendKind, label), Value: json.RawMessage(s.e.redact(string(raw)))}, dest, nil
 }
 
-// destination is the run id that the to keyword of send names: the parent of this run, or a run that a spawn call of this run returned.
-func (s *script) destination(to starlark.Value) (string, error) {
+// destination is the run that the to keyword of send names: the parent of this run, with no item, or the latest attempt of a run that a spawn call of this run returned.
+func (s *script) destination(to starlark.Value) (spawnedRun, error) {
 	if text, isText := starlark.AsString(to); isText {
-		return s.parentRun(text)
+		parent, err := s.parentRun(text)
+
+		return spawnedRun{Run: parent}, err
 	}
 
+	return s.childDestination(to)
+}
+
+// childDestination is the latest attempt of the run that spawn returned, which the to keyword of send names.
+func (s *script) childDestination(to starlark.Value) (spawnedRun, error) {
 	var ref spawnedRun
 
 	if holder, isStruct := to.(starlark.HasAttrs); isStruct {
@@ -212,10 +245,15 @@ func (s *script) destination(to starlark.Value) (string, error) {
 	}
 
 	if ref.Run == "" {
-		return "", fmt.Errorf("to is %s. Give \"parent\", or a run that spawn returned", to)
+		return spawnedRun{}, fmt.Errorf("to is %s. Give \"parent\", or a run that spawn returned", to)
 	}
 
-	return ref.Run, s.checkChildren([]spawnedRun{ref})
+	live, err := s.liveRuns([]spawnedRun{ref})
+	if err != nil {
+		return spawnedRun{}, err
+	}
+
+	return live[0], nil
 }
 
 // parentRun is the run id of the parent when the to keyword of send is "parent".
