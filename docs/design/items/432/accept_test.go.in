@@ -1,0 +1,77 @@
+package config_test
+
+// The full mode of the acceptance script of item 432. acceptance.sh maps this file into internal/config with
+// `go test -overlay`. It loads each input through config.LoadFolder, the loader that `beehave check` uses.
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+// form is a way to write the input into build_host.
+type form struct {
+	name string
+	text func(s string) string
+}
+
+var forms = []form{
+	{"string", func(s string) string { return `"` + s + `"` }},
+	{"list-first", func(s string) string { return `["` + s + `", "gpu-z"]` }},
+	{"list-later", func(s string) string { return `["gpu-z", "` + s + `"]` }},
+}
+
+// hostContexts are the host blocks of each provider. Each one must not change the verdict on a name.
+var hostContexts = []struct{ name, call string }{
+	{"skypilot", `host(provider = "skypilot", disk_floor_gb = 50)`},
+	{"ssh", `host(provider = "ssh", disk_floor_gb = 50, ssh = ssh(user = "ci"))`},
+	{"slurm", `host(provider = "slurm", disk_floor_gb = 50, slurm = slurm(address = "10.0.0.5", user = "ci"))`},
+}
+
+// expected returns the value of a cell under a rule of names. A list that holds "local" is refused at base and head.
+func expected(nameOK bool, s string, f string) bool {
+	if f != "string" && s == "local" {
+		return false
+	}
+	return nameOK
+}
+
+func TestAccept432(t *testing.T) {
+	out, err := os.Create(os.Getenv("ACCEPT432_OUT"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+
+	named := map[string]bool{}
+	for _, s := range namedInputs {
+		named[s] = true
+	}
+
+	for _, s := range genInputs(3) {
+		for _, f := range forms {
+			for _, h := range hostContexts {
+				if !named[s] && h.name != "skypilot" {
+					continue
+				}
+				text := goodProject + `, build_host = ` + f.text(s)
+				if !(s == "local" && f.name == "string") {
+					text += `, host = ` + h.call
+				}
+				_, problems := loadProjectText(t, call(text))
+				accepted := len(problems) == 0
+				msg := ""
+				if !accepted {
+					msg = strings.ReplaceAll(problems[0].Error(), "\n", " ")
+					if len(msg) > 90 {
+						msg = msg[:90]
+					}
+				}
+				fmt.Fprintf(out, "ROW\t%s\t%s\t%q\t%s\tbase=%s\thead=%s\tactual=%s\t%s\n",
+					f.name, h.name, s, classOf(s), word(expected(oracleBase(s), s, f.name)),
+					word(expected(oracleHead(s), s, f.name)), word(accepted), msg)
+			}
+		}
+	}
+}

@@ -1,0 +1,19 @@
+package main
+
+// The regex mode of the acceptance script of item 432. It is for a host with no module cache. It applies the pattern
+// that acceptance.sh reads out of internal/config/files.go to each input. It reads the pattern only, not the loader:
+// it cannot see a fix that is not in the pattern, and it has no forms and no host contexts.
+
+import (
+	"fmt"
+	"os"
+	"regexp"
+)
+
+func main() {
+	pattern := regexp.MustCompile(os.Args[1])
+	for _, s := range genInputs(5) {
+		fmt.Printf("ROW\tname-only\tregex\t%q\t%s\tbase=%s\thead=%s\tactual=%s\t\n",
+			s, classOf(s), word(oracleBase(s)), word(oracleHead(s)), word(pattern.MatchString(s)))
+	}
+}
