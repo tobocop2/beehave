@@ -15,6 +15,9 @@ import (
 // Claude Code version reads.
 const attributionOff = `{"commit":"","pr":"","sessionUrl":false}`
 
+// attributionSettings is the whole --settings value of a launch that has no hook, no output file and no skill.
+const attributionSettings = `{"attribution":` + attributionOff + `}`
+
 func TestAttribution_EveryLaunchTurnsOffTheCommitTrailerInItsSettings(t *testing.T) {
 	t.Parallel()
 

@@ -131,7 +131,8 @@ type Launch struct {
 	Loaded string
 }
 
-// Empty is true when the launch adds nothing to the run.
+// Empty is true when the launch has no argument, variable, file, copy or loaded skill. A launch that is not empty can hold settings only (the Claude Code
+// guard always carries the attribution setting), so Empty does not tell whether a launch holds a hook.
 func (l Launch) Empty() bool {
 	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0 && len(l.Copies) == 0 && l.Loaded == ""
 }

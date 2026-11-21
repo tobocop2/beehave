@@ -105,12 +105,14 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Contains(t, record(t, f.records, "args"), `"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`)
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --settings `+
+		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`,
+		record(t, f.records, "args"))
 
 	f.spec.Guard = ""
 	agent.Runner{}.Run(context.Background(), f.spec)
 
-	assert.NotContains(t, record(t, f.records, "args"), `"hooks"`)
+	assert.Equal(t, "-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits"+attributionArgs, record(t, f.records, "args"))
 }
 
 func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process

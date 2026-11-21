@@ -133,7 +133,7 @@ func TestCalls_TheSubtypeOfTheResultLineNamesTheCapThatStoppedTheRun(t *testing.
 func TestAdapter(t *testing.T) {
 	t.Parallel()
 
-	agenttest.TestAdapter(t, func() agent.Adapter { return claude.New(nil) })
+	agenttest.TestAdapter(t, func() agent.Adapter { return claude.New(nil) }, agenttest.WithLaunchArgs("--settings", attributionSettings))
 }
 
 func toJSON(t *testing.T, value any) string {

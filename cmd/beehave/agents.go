@@ -159,7 +159,8 @@ func lowerCap(global, step float64) float64 {
 }
 
 // noGuardNote returns the reason why a step that lists forbid_commands cannot start, or "" when the step can start.
-// A step that asks for forbidden commands to be refused does not start without its guard.
+// A step that asks for forbidden commands to be refused does not start without its guard. An adapter that has no hook returns an empty launch for a
+// guard command, so the empty launch is the sign of no hook; an adapter that adds settings with no hook would break this check.
 func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind) string {
 	switch {
 	case len(forbid) == 0:
