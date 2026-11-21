@@ -116,6 +116,34 @@ func TestCommandRetries_TheDoubledWaitStopsAtTheLongestWait(t *testing.T) {
 	assert.False(t, set, "a call with no backoff keeps the waits of the workflow library")
 }
 
+func TestCommandRetries_TheWorkflowLibraryWaitsPastItsOwnLongestWaitOfFiveSeconds(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu     sync.Mutex
+		starts []time.Time
+	)
+
+	h := newHarness(t)
+	next := codes(1, 1, 1, 0)
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[0] == "fetch" {
+			mu.Lock()
+			starts = append(starts, time.Now())
+			mu.Unlock()
+		}
+
+		return next(request)
+	}
+
+	// The waits are 1.5 s, 3 s and 6 s, each within 5% of the jitter of the library. With its own longest wait, the third would be 5 s.
+	_, err := walkBody(t, h, "command(run = [\"fetch\"], retries = 3, backoff = \"1500ms\", name = \"fetch\")\n")
+
+	require.NoError(t, err)
+	require.Len(t, starts, 4)
+	assert.GreaterOrEqual(t, starts[3].Sub(starts[2]), 5500*time.Millisecond, "the third wait doubles past five seconds")
+}
+
 func TestCommandRetries_ACodeInStopOnRCIsNeverRetried(t *testing.T) {
 	t.Parallel()
 
