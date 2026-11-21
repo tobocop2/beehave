@@ -32,7 +32,7 @@ func nodeRun(t *testing.T, node, guard, tool string) (outcome string, marker boo
 
 	dir := t.TempDir()
 	loaded := filepath.Join(dir, "loaded")
-	text := strings.Replace(opencode.New().Guard(guard, dir, nil).Files[pluginPath], `"`+filepath.Join(dir, "config/beehave-guard-loaded")+`"`, `"`+loaded+`"`, 1)
+	text := strings.Replace(opencode.New().Guard(guard, dir, nil, nil).Files[pluginPath], `"`+filepath.Join(dir, "config/beehave-guard-loaded")+`"`, `"`+loaded+`"`, 1)
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.mjs"), []byte(text), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "driver.mjs"), []byte(driver), 0o600))

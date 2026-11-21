@@ -49,6 +49,9 @@ type PhaseInput struct {
 	// so a stored phase keeps its form and a replay never reads the current default of the project.
 	Sandbox *model.Sandbox `json:"sandbox,omitempty"`
 
+	// Skills are the skills that the prompt of the step declares. It is left out of a recorded phase for a step that declares none.
+	Skills []string `json:"skills,omitempty"`
+
 	// OutputFile is the file where the agent writes its declared outputs. Outputs names them. Outputs is left out for a call that declares none.
 	OutputFile string   `json:"output_file,omitempty"`
 	Outputs    []string `json:"outputs,omitempty"`
@@ -191,7 +194,7 @@ func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInpu
 	return AgentRequest{
 		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Lost: lost,
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, OutputFile: in.OutputFile, Outputs: in.Outputs,
+		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
 		DataFile: data,
 	}
 }

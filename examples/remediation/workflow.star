@@ -1272,8 +1272,7 @@ def _lane(item, project, round_settings):
         outputs = ["report", "uncaused"],
         forbid_commands = FORBID,
         protect_paths = protected(round_settings),
-        # The empty setting sources of the sandbox load no skill of the runner, so the step names the review skill, and the engine copies it from the config folder of the runner.
-        sandbox = sandbox(network = ["github.com", "api.github.com"], skills = [project.vars["review_skill"]]),
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = {"item": item, "plan": plan.text, "facts": project, "base": base, "acceptance": round_settings["acceptance"], "base_result": round_settings["base_result"]},
         data = dict(lane_data, pulls = history.pulls),
         **scope

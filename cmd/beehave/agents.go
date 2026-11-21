@@ -135,9 +135,9 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 	return strings.Join(words, " ")
 }
 
-func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan) agent.Spec {
+func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan, skills []string) agent.Spec {
 	return agent.Spec{
-		Sandbox: box,
+		Sandbox: box, Skills: skills,
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
@@ -166,7 +166,7 @@ func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind
 		return ""
 	case guard == "":
 		return "The step lists forbid_commands, but beehave cannot find the path of its own program to start the check of the commands. The step did not start."
-	case adapter.Guard(guard, "", nil).Empty():
+	case adapter.Guard(guard, "", nil, nil).Empty():
 		return "The step lists forbid_commands, but the agent CLI of the runner has no hook to refuse a command before it runs. The step did not start."
 	}
 
@@ -180,18 +180,25 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 		return agent.Result{}, err
 	}
 
+	return a.runIn(ctx, request, runner, dir)
+}
+
+// runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
+func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(request.Forbid, protect)
 
 	box, note := a.boxOf(ctx, request, runner, dir, adapter, guard)
-	if note != "" {
+	skills, missing := a.skillsOf(request, runner)
+
+	if note = cmp.Or(note, missing); note != "" {
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
 	request, resumed := replayOf(request, runner, dir, adapter)
 	tap := a.tapOf(adapter, request)
 
-	result, err := endOf(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box), request.Model), request.Forbid, protect)
+	result, err := endOf(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box, skills), request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, box)
 
 	return result, err
@@ -280,6 +287,35 @@ func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner mod
 	}
 
 	return &plan, ""
+}
+
+// skillsOf returns the folder of each skill that the prompt of the step declares, in the config folder of the runner, or the reason why the step cannot start.
+// A step that declares no skill needs no folder.
+func (a agents) skillsOf(request flow.AgentRequest, runner model.Runner) ([]string, string) {
+	if len(request.Skills) == 0 {
+		return nil, ""
+	}
+
+	home, err := a.home()
+	if err != nil {
+		return nil, "the prompt names skills, and beehave cannot find the home folder to look for them in. The step did not start."
+	}
+
+	return skillFolders(request.Skills, a.configFolder(runner), home)
+}
+
+// configFolder returns the config folder of the runner. A runner with none gets the default folder of its CLI under the home folder, because the launch
+// sets the config variable to the empty text and the CLI then reads its default folder. The result is empty when the CLI has no such folder.
+func (a agents) configFolder(runner model.Runner) string {
+	if runner.ConfigDir != "" {
+		return runner.ConfigDir
+	}
+
+	if home := a.adapter(runner.Agent).Profile().ConfigHome; home != "" {
+		return filepath.Join("~", home)
+	}
+
+	return ""
 }
 
 // target returns the runner of the login and the worktree of the item. A request with no prompt, an unknown login or no worktree is refused.

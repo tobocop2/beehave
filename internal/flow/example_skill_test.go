@@ -71,7 +71,7 @@ func TestExample_AProjectThatNamesAnotherSkillPassesWhenItsAgentCallsIt(t *testi
 	assert.Positive(t, rig.h.gate.calls, "the item reached the gate")
 }
 
-func TestExample_TheSandboxOfTheImplementStepNamesTheReviewSkillOfTheProject(t *testing.T) {
+func TestExample_TheStepsGetTheSkillsThatTheirPromptsDeclareAndTheReviewSkillComesFromTheProject(t *testing.T) {
 	t.Parallel()
 
 	rig, file := exampleRig(t, func(int) string { return "approve" })
@@ -81,10 +81,10 @@ func TestExample_TheSandboxOfTheImplementStepNamesTheReviewSkillOfTheProject(t *
 	require.Error(t, err, "the agent called only the old skill")
 
 	require.Len(t, rig.h.agents.requests, 2, "the plan step and the implement step")
-	require.NotNil(t, rig.h.agents.requests[1].Sandbox)
-	assert.Equal(t, []string{ownSkill}, rig.h.agents.requests[1].Sandbox.Skills, "the implement step can load the skill that its check requires")
-	require.NotNil(t, rig.h.agents.requests[0].Sandbox)
-	assert.Empty(t, rig.h.agents.requests[0].Sandbox.Skills, "the plan step names no skill")
+	assert.Equal(t, []string{ownSkill}, rig.h.agents.requests[0].Skills, "the plan step orders the review skill, so it gets it")
+	require.Len(t, rig.h.agents.requests[1].Skills, 3, "the implement step gets the three skills that its prompt orders")
+	assert.Equal(t, ownSkill, rig.h.agents.requests[1].Skills[2], "the review skill of the project comes last")
+	assert.Contains(t, rig.h.agents.requests[1].Prompt, "`"+ownSkill+"` iterated to zero", "the prompt renders the plain name of the review skill")
 }
 
 func TestExample_AProjectWithNoUsableReviewSkillIsRefusedBeforeAnyAgentStarts(t *testing.T) {

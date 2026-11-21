@@ -10,11 +10,9 @@ import (
 )
 
 // Sandbox is the sandbox setting of one agent step as the run records it. A step with no sandbox records no value (nil), and a record
-// without the value replays as a step with no sandbox. Network lists the domains that the shell may reach. Skills names the skills of the runner
-// that the agent may load, by the name of the folder of each skill.
+// without the value replays as a step with no sandbox. Network lists the domains that the shell may reach.
 type Sandbox struct {
 	Network []string `json:"network,omitempty"`
-	Skills  []string `json:"skills,omitempty"`
 }
 
 // SandboxMode is the sandbox default of a project: whether a step that sets no sandbox runs in the sandbox.
@@ -49,12 +47,10 @@ var domainName = regexp.MustCompile(`^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9
 // skillName is the name of the folder of one skill: letters, digits, dots, underscores and hyphens, starting with a letter or a digit.
 var skillName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// CheckSkills refuses a skill name that is no folder name, such as a path, "..", or an empty name, because the engine finds the skill in a folder of that name.
-func CheckSkills(names []string) error {
-	for _, name := range names {
-		if !skillName.MatchString(name) {
-			return fmt.Errorf("sandbox skills lists %q, which is not the name of a skill. Write the name of the folder of the skill, such as review, with no path", name)
-		}
+// CheckSkill refuses a skill name that is no folder name, such as a path, "..", or an empty name, because the engine finds the skill in a folder of that name.
+func CheckSkill(name string) error {
+	if !skillName.MatchString(name) {
+		return fmt.Errorf("the prompt names the skill %q, which is not the name of a skill. Write the name of the folder of the skill, such as review, with no path", name)
 	}
 
 	return nil

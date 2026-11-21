@@ -193,7 +193,6 @@ The Change column says how the pair differs from the contract that the five piec
 | `recv` | `topic` | #588: new | 1: `examples/review-loop/workflow.star` |
 | `sandbox` | `-` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
-| `sandbox` | `skills` | #775: new, the skills of the runner that a sandboxed step loads from a plugin folder | 1: `examples/remediation/workflow.star` |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run or of a child run | 1: `examples/review-loop/workflow.star` |
 | `send` | `name` | #588: new | 1: `examples/review-loop/workflow.star` |
 | `send` | `to` | #588: new, `"parent"` or a run that `spawn` returned | 1: `examples/review-loop/workflow.star` |

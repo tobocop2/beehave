@@ -9,7 +9,7 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 )
 
-// pluginName is the name of the plugin that holds the skills of a sandboxed run. The CLI names each of its skills <pluginName>:<skill>.
+// pluginName is the name of the plugin that holds the skills of a run. The CLI names each of its skills <pluginName>:<skill>.
 const pluginName = "beehave-skills"
 
 // pluginFolder is the plugin folder in the run folder, and pluginManifest its manifest, relative to it.
@@ -18,7 +18,7 @@ const (
 	pluginManifest = ".claude-plugin/plugin.json"
 )
 
-// plugin is what the skills of a plan add to a sandboxed launch: the manifest, the copy of each skill folder, the flag that loads the plugin, and its folder.
+// plugin is what the skills of a run add to a launch: the manifest, the copy of each skill folder, the flag that loads the plugin, and its folder.
 type plugin struct {
 	files  map[string]string
 	copies map[string]string
@@ -47,6 +47,15 @@ func skillsPlugin(skills []string, runDir string) plugin {
 	}
 }
 
+// readDirs is the plugin folder as a working directory, so the Read tool and the shell read the files of a skill, or no folder for an empty plugin.
+func (p plugin) readDirs() []string {
+	if p.dir == "" {
+		return nil
+	}
+
+	return []string{p.dir}
+}
+
 // confine returns the plan with the plugin folder readable and closed to writes, so the agent reads the skills and cannot change them.
 // The folder is a working directory, as the folder of the data file is: the CLI blocks the reads outside the working directories, for the Read tool
 // and the shell, and an allow rule does not lift that block. The write deny of the sandbox and the Edit deny rule keep it read only.
@@ -55,9 +64,9 @@ func (p plugin) confine(plan agent.SandboxPlan) agent.SandboxPlan {
 		return plan
 	}
 
-	plan.ReadDirs = slices.Concat(plan.ReadDirs, []string{p.dir})
-	plan.Read = slices.Concat(plan.Read, []string{p.dir})
-	plan.DenyWrite = slices.Concat(plan.DenyWrite, []string{p.dir})
+	plan.ReadDirs = slices.Concat(plan.ReadDirs, p.readDirs())
+	plan.Read = slices.Concat(plan.Read, p.readDirs())
+	plan.DenyWrite = slices.Concat(plan.DenyWrite, p.readDirs())
 
 	return plan
 }

@@ -105,6 +105,31 @@ func TestRunner_ARunWithNoSandboxGetsNoSandboxArguments(t *testing.T) { //nolint
 	assert.NotContains(t, record(t, f.records, "args"), "--strict-mcp-config")
 }
 
+func TestRunner_ARunWithNoSandboxLoadsTheSkillsOfItsSpec(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", claude.Name, "")
+	f.spec.Skills = []string{filepath.Join(f.config, "skills", "review")}
+	require.NoError(t, os.MkdirAll(f.spec.Skills[0], 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(f.spec.Skills[0], "SKILL.md"), []byte("review\n"), 0o600))
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Contains(t, record(t, f.records, "args"), "--plugin-dir ")
+	assert.NotContains(t, record(t, f.records, "args"), "--setting-sources", "the run has no sandbox")
+}
+
+func TestRunner_ASandboxedRunLoadsTheSkillsOfItsSpec(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := boxed(t)
+	f.spec.Skills = []string{filepath.Join(f.config, "skills", "review")}
+	require.NoError(t, os.MkdirAll(f.spec.Skills[0], 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(f.spec.Skills[0], "SKILL.md"), []byte("review\n"), 0o600))
+
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n")}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Contains(t, record(t, f.records, "args"), "--plugin-dir ")
+}
+
 func TestRunner_RefusesASandboxOnAnAdapterWithoutOne(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := boxed(t)
 	f.spec.Adapter = noSandbox{f.spec.Adapter}

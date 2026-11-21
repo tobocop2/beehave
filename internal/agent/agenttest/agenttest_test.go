@@ -49,9 +49,9 @@ type fakeAdapter struct {
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
 
-func (a fakeAdapter) Guard(_, _ string, write []string) agent.Launch { return a.launch(write) }
+func (a fakeAdapter) Guard(_, _ string, write, _ []string) agent.Launch { return a.launch(write) }
 
-func (a fakeAdapter) Sandbox(_ agent.SandboxPlan, _, _ string, write []string) agent.Launch {
+func (a fakeAdapter) Sandbox(_ agent.SandboxPlan, _, _ string, write, _ []string) agent.Launch {
 	return a.launch(write)
 }
 

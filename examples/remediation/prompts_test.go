@@ -255,9 +255,9 @@ func laneBoundaryRules() []rule {
 func skillOrderRules() []rule {
 	return []rule{
 		{"skill_rules", "Invoke each skill that the rules name with the Skill tool, by name", everyLane()},
-		{"skill_rules", "is never permission to skip the step", everyLane()},
-		{"skill_rules", "`plan-vs-conventions` for a change past one file, `cross-cutting-api-change` for a new variant, field or entry point", workLanes()},
-		{"skill_rules", "then `blast-radius-review` iterated to zero before the gate", workLanes()},
+		{"skill_rules", "a report with no Skill call goes back unread", everyLane()},
+		{"skill_rules", "{{ skill \"plan-vs-conventions\" }}` for a change past one file, `{{ skill \"cross-cutting-api-change\" }}` for a new variant, field or entry point", workLanes()},
+		{"skill_rules", "then `{{ skill .facts.vars.review_skill }}` iterated to zero before the gate", workLanes()},
 	}
 }
 

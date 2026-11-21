@@ -81,11 +81,11 @@ type permissions struct {
 // rule, of the work folder with a /** tail; the deny rules still win over it.
 // The git variables of the plan reach the shell through the env file, the only file in the run folder. Its allowRead entry keeps it readable when the
 // run folder is under the home folder.
-// The skills of the plan reach the CLI as one plugin folder in the run folder (--plugin-dir), since the empty setting sources load no skill of the runner.
+// The skills of the run reach the CLI as one plugin folder in the run folder (--plugin-dir), since the empty setting sources load no skill of the runner.
 // The plugin folder is also a working directory (--add-dir), so the agent reads the files of a skill; the settings deny its write.
-func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write []string) agent.Launch {
+func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skillFolders []string) agent.Launch {
 	envPath := filepath.Join(runDir, envFile)
-	skills := skillsPlugin(plan.Skills, runDir)
+	skills := skillsPlugin(skillFolders, runDir)
 	plan = skills.confine(readOutput(plan, write))
 	settings := settingsOf(plan, envPath, write)
 
