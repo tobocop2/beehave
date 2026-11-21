@@ -292,6 +292,32 @@ func TestCheck_EachStopHasItsCodeAndRecovery(t *testing.T) {
 	}
 }
 
+func TestCheck_ADraftIsNoStopOnlyWhenItIsTheDraftTheCallerOpened(t *testing.T) {
+	t.Parallel()
+
+	draft := pull{state: "OPEN", draft: true, base: "main"}
+	held := pull{state: "OPEN", draft: true, labels: []string{"hold"}, base: "main"}
+	tests := []struct {
+		name string
+		p    pull
+		req  preflight.Request
+		want preflight.Stop
+	}{
+		{"own_number", draft, preflight.Request{PR: 1, OwnDraft: 1}, preflight.Unchanged},
+		{"other_number", draft, preflight.Request{PR: 1, OwnDraft: 2}, preflight.Draft},
+		{"no_number", draft, preflight.Request{PR: 1}, preflight.Draft},
+		{"own_number_under_hold", held, preflight.Request{PR: 1, OwnDraft: 1}, preflight.Held},
+		{"own_number_with_moved_head", draft, preflight.Request{PR: 1, OwnDraft: 1, ExpectHead: other}, preflight.HeadMoved},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, check(t, tt.p.fake(t), tt.req).Stop)
+		})
+	}
+}
+
 func TestCheck_TheStopOrderReportsTheConditionThatMakesTheRestMoot(t *testing.T) {
 	t.Parallel()
 

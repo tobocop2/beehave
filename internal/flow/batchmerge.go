@@ -291,7 +291,7 @@ func members(v starlark.Value) ([]batch.Member, error) {
 
 	list := make([]batch.Member, len(prs))
 	for i, pr := range prs {
-		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved}
+		list[i] = batch.Member{Item: pr.Item, Head: pr.Head, Approved: pr.Approved, OwnDraft: pr.OwnDraft}
 	}
 
 	return list, nil
@@ -623,6 +623,7 @@ func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
 func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent) MergeSettings {
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept = prefixTree, intent, m.Approved, b.s.owned[m.Item]
+	settings.OwnDraft = m.OwnDraft
 
 	return settings
 }
