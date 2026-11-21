@@ -322,6 +322,16 @@ const LabelKeyword = "label"
 // dataKeyword is the keyword of the agent builtin whose dict the engine writes to the data file that the prompt names as data_file.
 const dataKeyword = "data"
 
+// commandParams holds the keywords of the command builtin: the program and where it runs, its stops and caps, and its retry policy.
+func commandParams() []Param {
+	return []Param{
+		runParam(),
+		opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
+		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(nameKeyword, KindText),
+		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
+	}
+}
+
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
 func writeParams() []Param {
 	return []Param{
@@ -367,13 +377,8 @@ func stepSignatures() map[string][]Param {
 	return map[string][]Param{
 		agentName:   agentParams(),
 		sandboxName: {ruled("network", KindList, networkRule), ruled("skills", KindList, skillsRule)},
-		commandName: {
-			runParam(),
-			opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
-			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), label,
-			ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
-		},
-		writeName: writeParams(),
+		commandName: commandParams(),
+		writeName:   writeParams(),
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), opt("base", KindText), opt("pin_base", KindText), label,
 		},

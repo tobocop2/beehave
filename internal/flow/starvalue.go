@@ -85,6 +85,10 @@ type script struct {
 	// inbox holds the messages that a recv received for another topic, oldest first. The receives are recorded steps, so a replay builds the same buffer.
 	inbox []envelope
 
+	// retried maps the id of a run that spawn returned to the latest attempt that gather started for it. The plan of each start again is a recorded step,
+	// so a replay builds the same map, and a later gather of the same run waits on that attempt with the retries it has left.
+	retried map[string]lastAttempt
+
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 

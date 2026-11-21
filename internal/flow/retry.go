@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"time"
 
@@ -48,18 +47,27 @@ func (t *tries) returned(ctx context.Context, err error, retryable func(error) b
 }
 
 // retryOptions are the step options of a retry policy: the step retries of the workflow library, with the wait doubling before each retry.
-// The maximum wait has no cap, so the doubling holds for every retry.
 func (e *Engine) retryOptions(policy workflow.RetryPolicy) []dbos.StepOption {
 	if policy.Retries == 0 {
 		return nil
 	}
 
 	opts := []dbos.StepOption{dbos.WithStepMaxRetries(policy.Retries), dbos.WithStepBackoffFactor(backoffFactor), dbos.WithStepRetryPredicate(e.retryable)}
-	if policy.Backoff > 0 {
-		opts = append(opts, dbos.WithStepBaseInterval(policy.Backoff), dbos.WithStepMaxInterval(time.Duration(math.MaxInt64)))
+	if first, most, set := retryWaits(policy); set {
+		opts = append(opts, dbos.WithStepBaseInterval(first), dbos.WithStepMaxInterval(most))
 	}
 
 	return opts
+}
+
+// retryWaits are the first and the longest wait of a policy with a backoff: the backoff, and workflow.MaxBackoff, where the doubling stops.
+// set is false for a policy with no backoff, which keeps the waits of the workflow library.
+func retryWaits(policy workflow.RetryPolicy) (first, most time.Duration, set bool) {
+	if policy.Backoff <= 0 {
+		return 0, 0, false
+	}
+
+	return policy.Backoff, workflow.MaxBackoff, true
 }
 
 // retryable reports whether a retry may cure the error of a try: an exit code that asks for one, or an error that is none of the known errors.

@@ -66,7 +66,8 @@ type spawnedRun struct {
 	Start bool   `json:"start,omitempty"`
 	// Priority is the place of the run in the items queue. The plan records it, so a replay queues the run with the same place. A plan with none gives 0.
 	Priority uint `json:"priority,omitempty"`
-	// Retries is how many more times gather starts the run of the item again after a failure. The call of spawn sets it, and the run struct carries it to gather.
+	// Retries is how many more times gather starts the run of the item again after a failure. The plan of spawn records it, and gather reads it from that plan,
+	// never from the value that the workflow holds.
 	Retries int `json:"retries,omitempty"`
 }
 
@@ -121,25 +122,33 @@ func (s *script) spawn(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	return runsValue(plan), nil
 }
 
-// childRuns reads the arguments of a gather call and refuses a run that this run did not spawn.
+// childRuns reads the arguments of a gather call, refuses a run that this run did not spawn, and returns the runs as the plan of spawn recorded them.
 func (s *script) childRuns(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (gatherCall, []spawnedRun, error) {
 	call, refs, err := unpackGather(b, args, kwargs)
 	if err != nil {
 		return call, nil, err
 	}
 
-	return call, refs, s.checkChildren(refs)
+	recorded, err := s.checkChildren(refs)
+
+	return call, recorded, err
 }
 
-// checkChildren refuses a run that no spawn call of this run returned. It reads no store: the plan of each spawn is a recorded step, so a replay of this run lists the same runs.
-func (s *script) checkChildren(refs []spawnedRun) error {
-	for _, ref := range refs {
-		if !slices.ContainsFunc(s.spawned, func(one spawnedRun) bool { return one.Item == ref.Item && one.Run == ref.Run }) {
-			return fmt.Errorf("run %s is not a child of this run. Pass the runs that spawn returned", ref.Run)
+// checkChildren refuses a run that no spawn call of this run returned, and returns each run as the plan of spawn recorded it, with its retries.
+// It reads no store: the plan of each spawn is a recorded step, so a replay of this run lists the same runs.
+func (s *script) checkChildren(refs []spawnedRun) ([]spawnedRun, error) {
+	recorded := make([]spawnedRun, len(refs))
+
+	for i, ref := range refs {
+		at := slices.IndexFunc(s.spawned, func(one spawnedRun) bool { return one.Item == ref.Item && one.Run == ref.Run })
+		if at < 0 {
+			return nil, fmt.Errorf("run %s is not a child of this run. Pass the runs that spawn returned", ref.Run)
 		}
+
+		recorded[i] = s.spawned[at]
 	}
 
-	return nil
+	return recorded, nil
 }
 
 // spawnCall is the arguments of a spawn call.
@@ -355,14 +364,12 @@ func (s *script) startRun(one spawnedRun, in ItemInput) error {
 	return nil
 }
 
-// runsValue makes the struct that spawn returns: runs, a list of structs with the fields item, run and retries.
+// runsValue makes the struct that spawn returns: runs, a list of structs with the fields item and run.
 func runsValue(plan []spawnedRun) *starlarkstruct.Struct {
 	runs := make([]starlark.Value, len(plan))
 
 	for i, one := range plan {
-		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-			itemName: starlark.String(one.Item), runField: starlark.String(one.Run), retriesKeyword: starlark.MakeInt(one.Retries),
-		})
+		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(one.Item), runField: starlark.String(one.Run)})
 	}
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{runsField: starlark.NewList(runs)})
@@ -446,19 +453,7 @@ func oneRef(v starlark.Value) (spawnedRun, error) {
 		return spawnedRun{}, fmt.Errorf("runs must hold the runs that spawn returned, and %s has no item and run", v)
 	}
 
-	return spawnedRun{Item: item, Run: run, Retries: intAttr(holder, retriesKeyword)}, nil
-}
-
-// intAttr reads a field of a struct as a whole number. A missing field and a field that is not a small int give 0.
-func intAttr(holder starlark.HasAttrs, name string) int {
-	value, err := holder.Attr(name)
-	if err != nil || value == nil {
-		return 0
-	}
-
-	n, _ := starlark.AsInt32(value) //nolint:errcheck // a value that is not a small int reads as 0, as a missing field does
-
-	return n
+	return spawnedRun{Item: item, Run: run}, nil
 }
 
 // textAttr reads a field of a struct as text. A missing field and a field that is not text give "".

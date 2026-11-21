@@ -131,6 +131,26 @@ func TestExample_ASweepStepThatCannotRunShowsItsErrorAndDoesNotFailTheLane(t *te
 	assert.Contains(t, sweepOf(t, result), "prune: rc=0")
 }
 
+func TestExample_APruneThatLosesTheHostShowsItsErrorAndDoesNotFailTheLane(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if len(request.Run) > 0 && request.Run[0] == "docker" {
+			return CommandOutput{}, fmt.Errorf("the build host is gone: %w", host.ErrLost)
+		}
+
+		return CommandOutput{}, nil
+	}
+
+	result, err := runPipeline(rig.h.engine(t), file)
+
+	require.NoError(t, err)
+	assert.True(t, childOf(t, result).Approved, "a host lost at the prune does not fail the lane")
+	assert.Contains(t, sweepOf(t, result), "prune: rc=-1 error: the build host is gone")
+}
+
 func TestExample_AFailedPruneShowsItsExitCode(t *testing.T) {
 	t.Parallel()
 

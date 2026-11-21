@@ -93,6 +93,60 @@ def main(item):
 	assert.Equal(t, []string{"after 21:ok:1 22:ok:2"}, h.commands.ranBy(testItem))
 }
 
+func TestSpawnRetries_ASecondGatherAfterTheRetriesAreSpentStartsNoNewAttempt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	tries := failTimes(h, "22", 50)
+	engine := h.engine(t)
+
+	body := `
+def worker(item):
+    command(name = "work", run = ["work", item.id])
+
+def main(item):
+    runs = spawn(items = ["22"], entry = "worker", retries = 1, name = "fan")
+    first = gather(runs, name = "first")
+    again = gather(runs, name = "again")
+    command(name = "after", run = ["after"] + [r.item + ":" + str(r.attempts) for r in first.results + again.results])
+`
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after 22:2 22:2"}, h.commands.ranBy(testItem), "both calls see the two attempts that ran")
+	assert.Equal(t, int32(2), tries.Load(), "retries = 1 allows two attempts in all, over every gather of the runs")
+
+	last, _, err := latestRun(engine.ctx, "22")
+	require.NoError(t, err)
+	assert.Equal(t, 2, last.Attempt)
+}
+
+func TestSpawnRetries_GatherTakesTheRetriesThatSpawnRecordedAndNotAFieldOfTheValue(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	tries := failTimes(h, "22", 50)
+	engine := h.engine(t)
+
+	body := `
+def worker(item):
+    command(name = "work", run = ["work", item.id])
+
+def main(item):
+    runs = spawn(items = ["22"], entry = "worker", name = "fan")
+    made = [struct(item = r.item, run = r.run, retries = 4) for r in runs.runs]
+    done = gather(made, name = "all")
+    command(name = "after", run = ["after"] + [r.item + ":" + str(r.attempts) for r in done.results])
+`
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after 22:1"}, h.commands.ranBy(testItem))
+	assert.Equal(t, int32(1), tries.Load(), "the spawn call took no retries")
+}
+
 func TestSpawnRetries_AChildThatFailsEachAttemptIsAFailedOutcomeAfterItsRetries(t *testing.T) {
 	t.Parallel()
 

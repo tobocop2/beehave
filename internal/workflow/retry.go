@@ -24,6 +24,9 @@ func FailureModes() []string { return []string{string(FailureRaise), string(Fail
 // MaxRetries is the most retries that one call takes.
 const MaxRetries = 10
 
+// MaxBackoff is the longest wait before a retry. A backoff above it is refused, and the doubled wait stops at it.
+const MaxBackoff = 10 * time.Minute
+
 // The keywords of the retry policy of a call.
 const (
 	retriesKeyword = "retries"
@@ -61,11 +64,16 @@ func Retry(retries int, backoff string) (RetryPolicy, error) {
 	return RetryPolicy{Retries: retries, Backoff: wait}, err
 }
 
-// backoffOf reads the backoff of a call: a duration above zero.
+// backoffOf reads the backoff of a call: a duration above zero and not above MaxBackoff.
 func backoffOf(text string) (time.Duration, error) {
 	wait, err := Duration(backoffKeyword, text)
-	if err == nil && wait <= 0 {
+
+	switch {
+	case err != nil:
+	case wait <= 0:
 		err = fmt.Errorf("backoff is %q, which must be above zero. Write a duration such as \"2s\"", text)
+	case wait > MaxBackoff:
+		err = fmt.Errorf("backoff is %q, which is above the longest wait of %s. Write a shorter duration", text, MaxBackoff)
 	}
 
 	return wait, err

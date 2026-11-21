@@ -514,9 +514,10 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item`, `run` and `retries`.
+`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
 
 - With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
+- The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
 
 - Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the items queue of its depth. The queue holds at most `agents.max_concurrent` runs.
 - A run that `spawn` started may call `spawn`. A run that a user started is at depth 0, and each child is one level deeper than its parent. The project key `max_spawn_depth` caps the depth, 3 by default.
@@ -562,6 +563,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - `publish` sets a DBOS event of the run, named `u.<key>`, and the event `beehave.keys`, which lists the keys of the run in the order of their first use. DBOS has no call that lists the events of a run.
 - `progress` does not wait. A run that published nothing under the key reads `set = False` and `value = None`. A published None reads `set = True` and `value = None`.
 - `progress` accepts only the runs that a `spawn` call of this run returned, as `gather` does, and refuses any other run with `run <id> is not a child of this run`.
+- For a child that `gather` started again, `progress` reads the latest attempt, and `run` is the id of that attempt.
 - `progress` reads all the runs in one recorded step, so a replay of the parent returns the values of the first read, even if a child published again since.
 - `beehave status <run id> --events` prints the keys of a run and their last values, one line each, while the run goes on and after it ended. Add `--json` for one JSON list.
 
@@ -611,6 +613,8 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 - The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. It is the idempotency key of the send, so a resumed run inserts the message once.
 
 `send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
+
+A send to a child goes to its latest attempt: the run that `gather` started again last, or the run that `spawn` returned. If that attempt ended, the send is refused with `item <id> has no open run`, as no attempt reads the message. The check is part of the recorded send step, so a replay gives the same answer.
 
 #### `recv`
 
@@ -696,7 +700,7 @@ The returned struct also holds `stderr`, the second output stream of the program
 | Setting | Meaning |
 | --- | --- |
 | `retries` | A whole number from 0 to 10. The default is 0. |
-| `backoff` | The wait before the first retry, a duration above zero such as `"2s"`. The wait doubles before each later retry. It needs `retries` of 1 or more. With no `backoff`, the first wait is 100 ms and no wait is longer than 5 s. |
+| `backoff` | The wait before the first retry, a duration above zero such as `"2s"`. The wait doubles before each later retry, and stops at 10 minutes. A `backoff` above 10 minutes is refused. It needs `retries` of 1 or more. With no `backoff`, the first wait is 100 ms and no wait is longer than 5 s. |
 | `failure` | `"raise"` (the default) or `"return"`. |
 
 - A try that exits with a code that is not zero, and not in `stop_on_rc`, starts again until the retries are spent. A code in `stop_on_rc` is never retried.
@@ -706,7 +710,7 @@ The returned struct also holds `stderr`, the second output stream of the program
 - With `failure = "return"`, an error of the step that is left after the retries becomes the field `error` of the result, with `rc` -1 and empty `stdout` and `stderr`, and the run goes on. The default ends the run with the error. A cancel of the run always ends it.
 - A step with `slots` takes no `retries`, because it runs as a queued host job.
 - `agent` takes no `retries`.
-- `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
+- `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero or is above 10 minutes, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
 
 #### The environment of the program
 

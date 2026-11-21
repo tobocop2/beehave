@@ -22,6 +22,7 @@ func TestRetry_ReadsTheRetriesAndTheBackoffOfACall(t *testing.T) {
 		{name: "retries_with_no_backoff", retries: 3, want: workflow.RetryPolicy{Retries: 3}},
 		{name: "retries_with_a_backoff", retries: 2, backoff: "2s", want: workflow.RetryPolicy{Retries: 2, Backoff: 2 * time.Second}},
 		{name: "most_retries", retries: workflow.MaxRetries, want: workflow.RetryPolicy{Retries: workflow.MaxRetries}},
+		{name: "the_longest_backoff", retries: 1, backoff: "10m", want: workflow.RetryPolicy{Retries: 1, Backoff: workflow.MaxBackoff}},
 	}
 
 	for _, tc := range cases {
@@ -48,6 +49,7 @@ func TestRetry_RefusesAPolicyThatTheRunCannotApply(t *testing.T) {
 		{name: "backoff_with_no_retries", backoff: "1s", want: "backoff is set, but the call has no retries"},
 		{name: "backoff_of_zero", retries: 1, backoff: "0s", want: `backoff is "0s", which must be above zero`},
 		{name: "backoff_that_is_not_a_duration", retries: 1, backoff: "soon", want: `backoff is "soon", which is not a duration`},
+		{name: "backoff_above_the_longest_wait", retries: 1, backoff: "10m1s", want: `backoff is "10m1s", which is above the longest wait of 10m0s`},
 	}
 
 	for _, tc := range cases {

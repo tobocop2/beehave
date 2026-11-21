@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,6 +101,19 @@ func TestCommandRetries_TheSpentRetriesLeaveOneRecordOfTheLastTry(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, 3, timesRun(h, "fetch"))
 	assert.Equal(t, []string{"command:fetch#1"}, stepNames(t, engine), "the step holds the last try, so a replay reads one record")
+}
+
+func TestCommandRetries_TheDoubledWaitStopsAtTheLongestWait(t *testing.T) {
+	t.Parallel()
+
+	first, most, set := retryWaits(workflow.RetryPolicy{Retries: workflow.MaxRetries, Backoff: time.Minute})
+
+	require.True(t, set)
+	assert.Equal(t, time.Minute, first)
+	assert.Equal(t, 10*time.Minute, most, "ten retries from a minute would wait 512 minutes before the last one with no cap")
+
+	_, _, set = retryWaits(workflow.RetryPolicy{Retries: 2})
+	assert.False(t, set, "a call with no backoff keeps the waits of the workflow library")
 }
 
 func TestCommandRetries_ACodeInStopOnRCIsNeverRetried(t *testing.T) {
