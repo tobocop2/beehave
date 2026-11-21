@@ -55,21 +55,24 @@ func resultFields() map[string][]string {
 		mergeName:        {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"},
 		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
 		earlierCallsName: {"count"},
-		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
 		hostUpName:       {"started", "host"},
 		preflightName:    {"ok", "stop", "code", reasonField},
 		queueName:        {"rows", "free", "pulls"},
 		sleepName:        {"slept"},
-		spawnName:        {"runs"},
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
-	for _, group := range []map[string][]string{gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields()} {
+	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields()} {
 		maps.Copy(fields, group)
 	}
 
 	return fields
+}
+
+// swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
+func swarmResultFields() map[string][]string {
+	return map[string][]string{spawnName: {"runs"}, gatherName: {"results"}, cancelName: {CancelledField}}
 }
 
 // gateResultFields holds the fields of the gate builtin.

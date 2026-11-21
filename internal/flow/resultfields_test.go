@@ -92,6 +92,7 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	require.NoError(t, err)
 
 	got := map[string][]string{
+		"cancel": cancelValue(cancelOutcome{}).AttrNames(),
 		"merge":  batchStruct(t, landed).AttrNames(),
 		"gather": gathered.AttrNames(),
 		"queue":  queuedValue(queued{}).AttrNames(),

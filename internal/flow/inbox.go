@@ -28,7 +28,7 @@ const (
 	topicKeyword = "topic"
 	// parentTarget is the value of the to keyword of send that names the run that spawned this run.
 	parentTarget = "parent"
-	// deadlineSuffix ends the name of the step that records the deadline of one recv call.
+	// deadlineSuffix ends the name of the step that records the deadline of one recv call or one gather call, after the name of its step.
 	deadlineSuffix = ".deadline"
 	// shortestReceive is the least time that one receive of a recv waits, so a recv whose deadline passed still takes a message that is there.
 	shortestReceive = time.Millisecond

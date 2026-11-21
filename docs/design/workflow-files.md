@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -541,13 +541,13 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `gather`
 
-`gather(runs, fail="return", until="all", name="")` waits for the runs and returns `results`, a list in the order of the call.
+`gather(runs, fail="return", until="all", timeout="", on_timeout="", name="")` waits for the runs and returns `results`, a list in the order of the call.
 
 - With `until="any"`, the wait ends when at least one run is no longer open, and `results` holds only the runs that ended, in the order of the call. Any other `until` value is refused.
 - A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
 - If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
 - A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
-- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value` and `attempts`. `attempts` counts the runs of the item that this call waited for.
+- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value`, `attempts` and `open`. `attempts` counts the runs of the item that this call waited for.
 - `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
 - A run of `spawn` with retries left that failed does not end the wait and does not trigger `fail="raise"`. The call records the plan of the next attempts as one step, starts them, and waits again. A replay starts nothing twice.
 - `beehave resume` of a parent reopens only the last attempt of each item. An earlier attempt that a retry replaced stays failed, and the parent goes back to the start of the last attempt.
@@ -567,6 +567,28 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - For a child that `gather` started again, `progress` reads the latest attempt, and `run` is the id of that attempt.
 - `progress` reads all the runs in one recorded step, so a replay of the parent returns the values of the first read, even if a child published again since.
 - `beehave status <run id> --events` prints the keys of a run and their last values, one line each, while the run goes on and after it ended. Add `--json` for one JSON list.
+
+#### The deadline of a group
+
+`timeout` is a duration above zero, such as `"10m"`. It sets a deadline on the wait. At the deadline, each run that is still open gets `ok = False` and `error = "deadline"`, and `on_timeout` says what happens to it:
+
+- `"cancel"` (the default when `timeout` is set) cancels the run and its children, as `beehave cancel` does. Its `open` is False.
+- `"return"` leaves the run running. Its `open` is True, and the workflow can wait for it again or cancel it.
+
+A run that ended before the deadline keeps its own outcome. `on_timeout` with no `timeout` is refused, and so is any other value of `on_timeout`.
+
+The deadline is a recorded step, `gather:<name>#<n>.deadline`, before the step of the wait. A parent that restarts during the wait reads the first deadline and does not start a new one. With `"cancel"`, the step of the wait records the outcomes and cancels nothing, and the step `gather:<name>#<n>.cancel` after it cancels the runs that were open. So a crash between a cancel and a record cannot change a `"deadline"` outcome. A deadline is not a failure: `fail="raise"` does not raise for it.
+
+#### `cancel`
+
+`cancel(run, name="")` cancels one run that a `spawn` call of this run returned, with its children, and returns `cancelled`.
+
+- `cancelled` is True when the call ended a run that was open. It is False when the run had already ended, with success or not. The store leaves an ended run as it is.
+- A run that `spawn` reused because it had finished is ended, so `cancel` returns False for it and stops nothing.
+- For a child that `gather` started again, `cancel` ends the latest attempt and its children, and `cancelled` is True only when that attempt was open. A deadline cancels the latest attempts too.
+- A run that this run did not spawn is refused with `run <id> is not a child of this run`.
+- The call is two recorded steps. `cancel:<name>#<n>.open` records whether the run is open. `cancel:<name>#<n>` then cancels it, writing the cancel marker first as `beehave cancel` does, so an engine that stops gives the claim of the run back at its next start. The read is recorded before any cancel, so a cancel step that runs again after a crash still returns True for a run that it ended.
+- `beehave resume` of the parent does not reopen a run that `cancel` or a deadline canceled.
 
 #### The value of a child run
 

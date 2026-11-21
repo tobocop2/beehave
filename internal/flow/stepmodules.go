@@ -45,7 +45,8 @@ const (
 // Version 9 adds the publish and progress steps, and the cost_usd field to each outcome that the gather step records.
 // Version 10 adds the recv and send steps of the inbox.
 // Version 11 adds the attempts and error fields to the result of command, the attempts field to write, and the retries of a spawned run to gather.
-const coreVersion = 11
+// Version 12 adds the cancel step, the deadline step of a gather, the deadline that each wait of a gather records and the open field of a gather result.
+const coreVersion = 12
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -111,7 +112,7 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{"command", "earlier_calls", envKeyword, "facts", "gather", "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", "wait", "write"},
+			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},

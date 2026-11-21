@@ -69,6 +69,33 @@ type fakeAgents struct {
 	said []agent.Said
 	// hangAt is the number (from 1) of the one agent start that holds until its context ends, so a test stops the engine while that agent runs. 0 holds none.
 	hangAt int
+	// stall is the item whose first stallStarts agent starts each hold for stallFor, or until the context ends, so a test sees that run stalled.
+	// A canceled phase of a fake has no process for the tick to end, so the hold ends on its own and gives the slot of the login back.
+	stall       string
+	stallStarts int
+	stallFor    time.Duration
+}
+
+// sayAll gives each entry of said to the request, as the agent says it.
+func sayAll(request AgentRequest, said []agent.Said) {
+	for _, one := range said {
+		request.Said(one)
+	}
+}
+
+// holdOf is what the start of an agent for item waits on, besides the end of its context. The start at hangAt waits on a nil channel, so only the
+// context ends it. The first stallStarts starts of the stalled item wait for stallFor. Any other start goes on at once. The caller holds mu.
+func (a *fakeAgents) holdOf(item string) <-chan time.Time {
+	switch {
+	case len(a.requests) == a.hangAt:
+		return nil
+	case item == a.stall && a.stallStarts > 0:
+		a.stallStarts--
+
+		return time.After(a.stallFor)
+	default:
+		return time.After(0)
+	}
 }
 
 // Run holds each agent in flight until the test closes gate, when gate is set. It reports pid as the process of the agent, when pid is set.
@@ -98,16 +125,15 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	a.perLogin[request.Login]++
 	a.maxTotal = max(a.maxTotal, a.inFlight)
 	a.maxLogin = max(a.maxLogin, a.perLogin[request.Login])
-	hang := len(a.requests) == a.hangAt
+	hold := a.holdOf(request.Item)
 	said := a.said
 	a.mu.Unlock()
 
-	for _, one := range said {
-		request.Said(one)
-	}
+	sayAll(request, said)
 
-	if hang {
-		<-ctx.Done()
+	select {
+	case <-hold:
+	case <-ctx.Done():
 	}
 
 	if a.gate != nil {

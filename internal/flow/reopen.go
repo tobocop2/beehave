@@ -48,13 +48,14 @@ func firstOpenStart(steps []dbos.StepInfo, limit int) int {
 }
 
 // raised returns the ids of the runs that a gather step of the run canceled when its raise fired. It reads the record before the rewind drops the step.
-// The store keeps the output of a step as JSON text; a step that failed or that holds no record adds nothing.
+// The store keeps the output of a step as JSON text; a step that failed or that holds no record adds nothing, and so do the deadline step and the
+// deadline cancel step of a gather.
 func raised(steps []dbos.StepInfo) map[string]bool {
 	ids := map[string]bool{}
 
 	for _, step := range steps {
 		text, ok := step.Output.(string)
-		if !ok || step.Error != nil || !strings.HasPrefix(step.StepName, "gather") {
+		if !ok || step.Error != nil || !isGatherStep(step.StepName) {
 			continue
 		}
 
@@ -69,6 +70,14 @@ func raised(steps []dbos.StepInfo) map[string]bool {
 	}
 
 	return ids
+}
+
+// isGatherStep reports whether a step is a wait step of a gather call: gather:<label>#<n>, or the wait gather:<label>#<n>.<k> after a retry. The deadline step
+// and the deadline cancel step recorded beside it are no wait.
+func isGatherStep(name string) bool {
+	kind, _ := kindOfStep(name)
+
+	return kind == gatherKind && !strings.HasSuffix(name, deadlineSuffix) && !strings.HasSuffix(name, cancelSuffix)
 }
 
 // failedStep returns the first step that failed or that started a child that ended without success. A run with no such step replays from the end of its history.

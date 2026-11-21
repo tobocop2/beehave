@@ -831,7 +831,7 @@ func TestSpawnGather_TheReadsOfAStoppedEngineReportTheError(t *testing.T) {
 	_, err = engine.readRuns([]spawnedRun{{Item: "21", Run: "item-21-r1"}})
 	require.ErrorContains(t, err, "read the runs of the spawned items")
 
-	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, false, false)
+	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, gatherRule{})
 	require.ErrorContains(t, err, "read the runs of the spawned items")
 }
 
@@ -864,7 +864,7 @@ func TestSpawnGather_AWaitEndsWhenItsContextEnds(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := engine.gather(ctx, ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, false, false)
+	_, err := engine.gather(ctx, ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: "item-21-r1"}}, gatherRule{})
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -892,7 +892,7 @@ func TestSpawnGather_AFailedCancelOfAnOpenChildIsReportedWithItsRun(t *testing.T
 	require.NoError(t, os.WriteFile(filepath.Join(engine.dir, cancelsDir), nil, 0o600))
 
 	refs := []spawnedRun{{Item: "21", Run: "item-21-r1"}, {Item: "22", Run: "item-22-r1"}}
-	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, refs, true, false)
+	_, err = engine.gather(t.Context(), ItemInput{Item: testItem, Project: testProject}, refs, gatherRule{raise: true})
 
 	require.ErrorContains(t, err, "mark the cancel of run item-21-r1")
 	require.ErrorContains(t, err, "cancel run item-21-r1")

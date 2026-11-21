@@ -43,6 +43,7 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
+		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
@@ -84,7 +85,7 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "command", "earlier_calls", "env", "facts", "gate", "gather", "host_teardown", "host_up",
+		"agent", "cancel", "command", "earlier_calls", "env", "facts", "gate", "gather", "host_teardown", "host_up",
 		"item_comment", "item_create", "item_read", "item_status", "login", "now",
 		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "wait", "write",
 	},

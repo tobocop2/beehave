@@ -82,14 +82,15 @@ func (s *script) liveRuns(refs []spawnedRun) ([]spawnedRun, error) {
 
 // gatherRetried runs the gather step name over the latest attempt of each spawned run. While a run failed with retries left, it starts that run again as the
 // next attempt of its item, outside a step, and waits once more in the step `<name>.<k>`. The plan of each start again is the recorded step `<name>.retry<k>`,
-// so a replay starts nothing twice. A later gather of the same runs waits on the last attempts, with the retries they have left.
-func (s *script) gatherRetried(name string, spawned []spawnedRun, call gatherCall) (gathered, error) {
+// so a replay starts nothing twice. A later gather of the same runs waits on the last attempts, with the retries they have left. Each wait keeps the deadline
+// of the rule.
+func (s *script) gatherRetried(name string, spawned []spawnedRun, rule gatherRule) (gathered, error) {
 	refs, restarts := s.lastAttempts(spawned)
 	step := name
 
 	for round := 1; ; round++ {
 		done, err := runStep(s.e, s.ctx, step, func(c context.Context) (gathered, error) {
-			return s.e.gather(c, s.in, refs, call.fail == failRaise, call.until == untilAny)
+			return s.e.gather(c, s.in, refs, rule)
 		})
 		if err != nil || len(done.Retry) == 0 {
 			countAttempts(done.Outcomes, restarts)
