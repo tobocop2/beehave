@@ -46,6 +46,8 @@ type AgentRequest struct {
 	// Named receives each new session id of the agent at the output line that holds it, before the run ends. The engine saves the id at once,
 	// so a replay of a lost step can resume the session.
 	Named func(session string)
+	// Said receives each message text and tool call of the agent at the output line that holds it, in order, while the run goes on. It may be nil.
+	Said func(agent.Said)
 	// Lost is set for a start that follows an earlier run that named a session: a lost start, or a run that a provider limit stopped. It is nil for any other start.
 	Lost *LostRun
 }

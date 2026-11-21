@@ -65,6 +65,8 @@ type fakeAgents struct {
 	err      error
 	// named is the session id that the agent names before it counts as in flight, when it is set.
 	named string
+	// said is what the agent says at each start, before it counts as running.
+	said []agent.Said
 	// hangAt is the number (from 1) of the one agent start that holds until its context ends, so a test stops the engine while that agent runs. 0 holds none.
 	hangAt int
 }
@@ -97,7 +99,12 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	a.maxTotal = max(a.maxTotal, a.inFlight)
 	a.maxLogin = max(a.maxLogin, a.perLogin[request.Login])
 	hang := len(a.requests) == a.hangAt
+	said := a.said
 	a.mu.Unlock()
+
+	for _, one := range said {
+		request.Said(one)
+	}
 
 	if hang {
 		<-ctx.Done()
