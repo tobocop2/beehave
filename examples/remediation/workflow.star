@@ -1043,6 +1043,7 @@ def ready_items(q, round_settings):
 ITEM_CLAUSES = {
     "failed": "Listed item {item} is failed: run beehave resume {item}. If the resume refuses the run, run beehave cancel {item}, and the next pass starts a new attempt.",
     "hold": "Listed item {item} is on hold: take the hold off the item or its pull request.",
+    "stopped": "Listed item {item} stopped at {step}: {reason}. Fix the cause, run beehave cancel {item}, and the next pass starts a new attempt.",
     "done": "Listed item {item} is done.",
     "running": "Listed item {item} has an open run outside this round: beehave status shows it.",
     "ready": "Listed item {item} is ready, and the items queue has no free slot.",
@@ -1060,12 +1061,15 @@ def idle_reason(q, round_settings):
         head = "The queue has no ready row." if counts.get("ready", 0) == 0 else "The items queue has no free slot."
         failed = [r.item for r in q.rows if r.state == "failed"]
         steps = " Failed: %s. Run beehave resume for each, or beehave cancel when the resume refuses the run." % ", ".join(failed) if len(failed) > 0 else ""
+        stopped = ["%s at %s: %s" % (r.item, r.stop_step, r.stop_reason) for r in q.rows if r.state == "stopped"]
+        steps += " Stopped: %s. Fix each cause, then run beehave cancel for each." % "; ".join(stopped) if len(stopped) > 0 else ""
         return "%s Rows: %d ready, %d failed, %d on hold, %d done, %d running.%s" % (head, counts.get("ready", 0), counts.get("failed", 0), counts.get("hold", 0), counts.get("done", 0), counts.get("running", 0), steps)
 
-    rows = {r.item: r.state for r in q.rows}
+    rows = {r.item: r for r in q.rows}
     clauses = []
     for item in listed:
-        clauses.append(ITEM_CLAUSES[rows.get(item, "missing")].format(item = item))
+        row = rows.get(item)
+        clauses.append(ITEM_CLAUSES["missing" if row == None else row.state].format(item = item, step = "" if row == None else row.stop_step, reason = "" if row == None else row.stop_reason))
 
     return " ".join(clauses)
 

@@ -23,8 +23,12 @@ const (
 	queueRunning = "running"
 	queueDone    = "done"
 	queueFailed  = "failed"
+	queueStopped = "stopped"
 	queueHold    = "hold"
 )
+
+// stopReasonLimit is the most characters of the output of a stopping step that a row keeps as its reason.
+const stopReasonLimit = 120
 
 // foreignReason is the reason that the run of a foreign review ends with, and pullMerged is the state of a merged pull request.
 const (
@@ -47,7 +51,7 @@ type queueReader interface {
 
 // queueRow is one open item of the queue, as the queue step records it. PR is 0 when the item has no open pull request.
 // Parent is the container of the item, empty for loose work. Author and ChangesRequested come from the open pull request of the item's branch with the lowest number; Author is empty when there is none.
-// Labels are the tracker labels of the item.
+// Labels are the tracker labels of the item. StopStep and StopReason name the step that ended a stopped row and the start of what it printed; both are empty for any other row.
 type queueRow struct {
 	Item             string   `json:"item"`
 	State            string   `json:"state"`
@@ -57,6 +61,8 @@ type queueRow struct {
 	Author           string   `json:"author"`
 	ChangesRequested bool     `json:"changes_requested"`
 	Labels           []string `json:"labels"`
+	StopStep         string   `json:"stop_step"`
+	StopReason       string   `json:"stop_reason"`
 }
 
 // openPull is one open pull request of the forge, as the queue step records it. Item is the open item that its head branch names, or empty when it names none.
@@ -226,33 +232,56 @@ func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull) (q
 		return queueRow{}, err
 	}
 
-	state, err := e.stateOf(ctx, last, found, item.Hold || pull.held)
+	settled, err := e.stateOf(ctx, last, found, item.Hold || pull.held)
 	if err != nil {
 		return queueRow{}, err
 	}
 
-	return rowWith(item, pull, state), nil
+	return rowWith(item, pull, settled), nil
 }
 
-// stateOf is the state of an item from its last run, if it has one. A run that succeeded is done, unless it is owed another visit. held is the hold of the item.
-func (e *Engine) stateOf(ctx context.Context, last run, found, held bool) (string, error) {
+// rowState is the state of a row and, for a stopped row, the stop that its run ended with.
+type rowState struct {
+	state   string
+	stopped *Stopped
+}
+
+// stateOf is the state of an item from its last run, if it has one. A run that succeeded is done, or stopped when its result records a stop, unless it is owed another visit.
+// The result is read as status reads it (settledOf). held is the hold of the item.
+func (e *Engine) stateOf(ctx context.Context, last run, found, held bool) (rowState, error) {
 	switch {
 	case found && !last.terminal():
-		return queueRunning, nil
+		return rowState{state: queueRunning}, nil
 	case found && last.failed():
-		return queueFailed, nil
+		return rowState{state: queueFailed}, nil
 	case found && last.Status.Status == dbos.WorkflowStatusSuccess:
-		revisit, err := e.owesVisit(ctx, last)
-		if err != nil {
-			return "", err
-		}
-
-		if !revisit {
-			return queueDone, nil
-		}
+		return e.succeededState(ctx, last, held)
 	}
 
-	return idleState(held), nil
+	return rowState{state: idleState(held)}, nil
+}
+
+// succeededState is the state of an item whose last run ended with success: stopped when the result records a stop, done, or idle when the run is owed another visit.
+func (e *Engine) succeededState(ctx context.Context, last run, held bool) (rowState, error) {
+	state, result, err := settledOf(last.Status)
+	if err != nil {
+		return rowState{}, err
+	}
+
+	if state == runStopped {
+		return rowState{state: queueStopped, stopped: result.Stopped}, nil
+	}
+
+	revisit, err := e.owesVisit(ctx, last)
+	if err != nil {
+		return rowState{}, err
+	}
+
+	if revisit {
+		return rowState{state: idleState(held)}, nil
+	}
+
+	return rowState{state: queueDone}, nil
 }
 
 // idleState is the state of an item with no run to settle: hold, or ready.
@@ -311,11 +340,17 @@ func foreignRecordOf(last run) (foreignRecord, bool) {
 }
 
 // rowWith joins the item, its pull request and its state into a row.
-func rowWith(item model.Item, pull joinedPull, state string) queueRow {
-	return queueRow{
-		Item: item.ID, State: state, Severity: string(item.Severity), PR: pull.number,
+func rowWith(item model.Item, pull joinedPull, settled rowState) queueRow {
+	row := queueRow{
+		Item: item.ID, State: settled.state, Severity: string(item.Severity), PR: pull.number,
 		Parent: item.Parent, Author: pull.author, ChangesRequested: pull.changesRequested, Labels: append([]string{}, item.Labels...),
 	}
+
+	if settled.stopped != nil {
+		row.StopStep, row.StopReason = settled.stopped.Step, model.Clip(settled.stopped.Output, stopReasonLimit, "…")
+	}
+
+	return row
 }
 
 // freeSlots is the cap of the items queue less the runs that the library holds on it as open. The library keeps the count: the engine keeps none.
@@ -328,7 +363,7 @@ func (e *Engine) freeSlots() (int, error) {
 	return max(0, e.maxConcurrent-len(open)), nil
 }
 
-// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity, pr, parent, author, changes_requested and labels;
+// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity, pr, parent, author, changes_requested, labels, stop_step and stop_reason;
 // free; and pulls, a list of structs with the fields number, branch, base, author, draft, title and item.
 func queuedValue(got queued) *starlarkstruct.Struct {
 	rows := make([]starlark.Value, len(got.Rows))
@@ -337,7 +372,7 @@ func queuedValue(got queued) *starlarkstruct.Struct {
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(row.Item), stateField: starlark.String(row.State), severityField: starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
 			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
-			"labels": textList(row.Labels),
+			"labels": textList(row.Labels), "stop_step": starlark.String(row.StopStep), "stop_reason": starlark.String(row.StopReason),
 		})
 	}
 

@@ -53,6 +53,7 @@ func idlePrior(t *testing.T, engine *Engine, item string, how string) {
 		"done": "def main(item):\n    return None\n",
 		"fail": "def main(item):\n    fail(\"the agent wrote no output file\")\n",
 		"wait": "def main(item):\n    wait(\"go?\", name = \"ask\")\n",
+		"stop": "def main(item):\n    command(name = \"preflight\", run = [\"preflight\"], stop_on_rc = [2])\n",
 	}[how]
 
 	file := filepath.Join(t.TempDir(), "prior.star")
@@ -248,6 +249,49 @@ func TestRoundIdle_AListedItemWithAnOpenRunOutsideTheRoundIsNamedAndAReadyOneWit
 	assert.Contains(t, rig.questions[0], "item 7 has an open run outside this round: beehave status shows it")
 	assert.Contains(t, rig.questions[0], "item 432 is ready, and the items queue has no free slot")
 	assert.Empty(t, startedChildren(rig), "the one slot is taken, so the ready item waits")
+}
+
+// stopAtPreflight makes the command preflight of the rig end with the stop code and print the reason.
+func stopAtPreflight(rig *roundRig) {
+	other := rig.h.commands.reply
+
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Run[0] == "preflight" {
+			return CommandOutput{Stdout: "the pull request is a draft that this run did not open", RC: 2}, nil
+		}
+
+		return other(request)
+	}
+}
+
+func TestRoundIdle_AListedItemWhoseRunEndedWithAStopNamesTheStepAndTheReasonAndIsNotDone(t *testing.T) {
+	t.Parallel()
+
+	rig := idleRig(t, idleItem, queueItem(idleItem, model.SeverityP1))
+	stopAtPreflight(rig)
+	engine := rig.engine(t)
+	idlePrior(t, engine, idleItem, "stop")
+
+	idleRun(t, rig, engine, nil)
+
+	require.Len(t, rig.questions, 1)
+	assert.Contains(t, rig.questions[0], "item 432 stopped at command:preflight#1: the pull request is a draft that this run did not open. Fix the cause, run beehave cancel 432, and the next pass starts a new attempt.")
+	assert.NotContains(t, rig.questions[0], "is done", "a stopped item is not offered as done")
+}
+
+func TestRoundIdle_ARoundWithNoItemListNamesTheStopOfEachStoppedRow(t *testing.T) {
+	t.Parallel()
+
+	rig := idleRig(t, "", queueItem(idleItem, model.SeverityP1))
+	stopAtPreflight(rig)
+	engine := rig.engine(t)
+	idlePrior(t, engine, idleItem, "stop")
+
+	idleRun(t, rig, engine, nil)
+
+	require.Len(t, rig.questions, 1)
+	assert.Contains(t, rig.questions[0], "Rows: 0 ready, 0 failed, 0 on hold, 0 done, 0 running.")
+	assert.Contains(t, rig.questions[0], "Stopped: 432 at command:preflight#1: the pull request is a draft that this run did not open. Fix each cause, then run beehave cancel for each.")
 }
 
 func TestRoundIdle_ARoundWithNoItemListOverAnEmptyQueueSaysNoRowIsReady(t *testing.T) {

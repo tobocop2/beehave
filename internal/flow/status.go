@@ -266,16 +266,22 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 	case info.State == runDone:
 		var result ItemResult
 
-		result, err = resultOf(row)
+		info.State, result, err = settledOf(row)
 		info.SentBack, info.Closed, info.Merge, info.Stopped = result.SentBack, result.Closed, result.Merge, result.Stopped
-
-		// The workflow returns a stop as a result, so the store records success. The result tells the two apart.
-		if info.Stopped != nil {
-			info.State = runStopped
-		}
 	}
 
 	return err
+}
+
+// settledOf reads the state and the result of a run that the store records as success. The workflow returns a stop as a result, so the result tells a stop from a finish:
+// a result with a stop gives the state stopped, any other gives done. The status and the queue both read a finished run here.
+func settledOf(row dbos.WorkflowStatus) (RunState, ItemResult, error) {
+	result, err := resultOf(row)
+	if result.Stopped != nil {
+		return runStopped, result, err
+	}
+
+	return runDone, result, err
 }
 
 // openDetails reads what an open run shows: its question, the other orchestrators it found, its merge state and the lost gate job it asks about.
