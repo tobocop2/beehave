@@ -62,8 +62,9 @@ type Profile struct {
 	GuardBefore string
 	// GuardPosixOnly is true when the hook of Guard needs a POSIX shell, so a run with a guard does not start on Windows.
 	GuardPosixOnly bool
-	// NoSkillCalls is true when the CLI reports no skill calls on its output, so a step that needs a skill cannot be proved and does not start.
-	NoSkillCalls bool
+	// SkillLine returns the line that makes the CLI load the skill of the given name before the first turn of the model, when it is the first line of the prompt.
+	// A nil SkillLine means the CLI has no such line, so a step with the skill keyword does not start on it.
+	SkillLine func(name string) string
 	// DefaultTimeout is the total limit of a run whose spec sets no Timeout. Zero means no limit. StallNote is added to the Note of a run that a total or idle
 	// limit ended, for a CLI that prints nothing and retries when it cannot work (for example a model over its quota). It names the likely cause.
 	DefaultTimeout time.Duration

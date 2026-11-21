@@ -1,5 +1,5 @@
 # The real composition root. The implement step is on a runner whose agent CLI reports no skill calls (OpenCode).
-# The run of the example is refused at its start, with the runner and the step named, and no agent starts.
+# The run of the example is refused at its start, with the runner and the step named, and no agent starts: the plan step has not spent a call.
 isolate
 
 exec git init -q -b main origin
@@ -11,13 +11,13 @@ subst fake/claude
 cp runners.star config/runners.star
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
-replace config/projects/local.star 'base_branch = "main",' 'base_branch = "main", repo = "example/local", forge = "github", vars = {"round": {"base": "main", "owner": "owner", "lane_cap": 1, "fix_rounds": 1, "label": "round", "steps": {"implement": {"runner": "oc"}}}, "mutation_command": ["sh", "mutation.sh"]},'
+replace config/projects/local.star 'base_branch = "main",' 'base_branch = "main", repo = "example/local", forge = "github", vars = {"round": {"base": "main", "owner": "owner", "lane_cap": 1, "fix_rounds": 1, "label": "round", "steps": {"implement": {"runner": "oc"}}}, "mutation_command": ["sh", "mutation.sh"], "review_skill": "the-review-skill"},'
 chmod 755 fake/claude
 chmod 755 fake/gh
 
 exec beehavereal item add local 7 --title 'An item' --body-file body.txt
 ! exec beehavereal run 7 local --workflow flow/workflow.star
-stderr 'REFUSE: runner oc of step implement does not report skill calls'
+stderr 'REFUSE: runner oc of step implement has no line that loads a skill before the first turn'
 stderr 'The step did not start'
 stderr 'step preflight:intake done'
 ! stderr 'step agent:'

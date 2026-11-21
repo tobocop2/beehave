@@ -127,6 +127,16 @@ func wordsRule(name string) func(starlark.Value) error {
 	}
 }
 
+// skillRule is the rule of the skill keyword of agent: the name of a skill folder. An empty text names no skill.
+func skillRule(v starlark.Value) error {
+	name, _ := starlark.AsString(v) // the unpack check has refused a value that is not text
+	if name == "" {
+		return nil
+	}
+
+	return model.CheckSkill(name)
+}
+
 // durationRule is the rule of a timeout keyword.
 func durationRule(name string) func(starlark.Value) error {
 	return timeoutRule(name, Duration)
@@ -312,7 +322,7 @@ func agentParams() []Param {
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), opt(LabelKeyword, KindText), ruled("timeout", KindText, durationRule("timeout")),
 		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
-		ruled(dataKeyword, KindDict, dataRule),
+		ruled(dataKeyword, KindDict, dataRule), ruled("skill", KindText, skillRule),
 	}
 }
 

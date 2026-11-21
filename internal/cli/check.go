@@ -85,7 +85,8 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"Exit 1: a Starlark error, a REFUSE or a failed faked step; the output shows the error and the last step that ran. " +
 	"Exit 3: the run ended early at a step the dry run does not fake, and the steps after it were not checked. " +
 	"The last line says what that step does. " +
-	"With --" + projectFlag + ", the dry run reads the vars and the max_spawn_depth of the project."
+	"With --" + projectFlag + ", the dry run reads the vars and the max_spawn_depth of the project, and the runners of the config: " +
+	"a step on a runner whose agent has no skill-load line is refused, as in a real run."
 
 // runCheckedWorkflow refuses the calls that the named project cannot make, then checks the file and runs it as runDryWorkflow does.
 func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, named projectCheck, args []string, item string, dry dryFlags) error {
@@ -111,7 +112,7 @@ func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]stri
 		return err
 	}
 
-	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth)}
+	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth), flow.WithRunnerSkillLoads(project.RunnerSkillLoads)}
 	if dry.redGate {
 		options = append(options, flow.WithRedGate())
 	}
@@ -180,6 +181,8 @@ func (p projectCheck) find(stderr io.Writer, env map[string]string) (config.Proj
 
 	cfg, problems := config.LoadFolder(dir, env, p.registry)
 	if found, ok := cfg.Projects[p.project]; len(problems) == 0 && ok {
+		found.RunnerSkillLoads = p.runnerSkillLoads(cfg.Runners)
+
 		return found, nil
 	}
 
@@ -190,6 +193,18 @@ func (p projectCheck) find(stderr io.Writer, env map[string]string) (config.Proj
 	printLines(stderr, problems)
 
 	return config.Project{}, &ExitError{Code: exitProblems}
+}
+
+// runnerSkillLoads says for each runner of the config whether its agent CLI has a line that loads a skill before the first turn, as the facts of a real run say.
+// The loader of the config refuses a runner whose agent the registry lacks, so each runner here has an entry.
+func (p projectCheck) runnerSkillLoads(runners []model.Runner) map[string]bool {
+	loads := make(map[string]bool, len(runners))
+
+	for _, runner := range runners {
+		loads[runner.Name] = p.registry.Agents[runner.Agent].LoadsSkills
+	}
+
+	return loads
 }
 
 // fileOf returns the workflow file that the arguments name, or the default file. It first refuses the calls that the named project cannot make.

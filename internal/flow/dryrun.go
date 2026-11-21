@@ -70,6 +70,7 @@ func dryReading() func() time.Time {
 type dryChoice struct {
 	redGate, sendBack bool
 	vars              map[string]any
+	runnerSkillLoads  map[string]bool
 	entry             string
 	skills            []string
 	// spawnDepth is the max_spawn_depth of the project. 0 means config.DefaultMaxSpawnDepth.
@@ -87,6 +88,12 @@ func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } 
 
 // WithVars gives the facts of the dry run the vars of a project. The vars are static config, so the dry run reads them as a real run does. Every other fact stays empty.
 func WithVars(vars map[string]any) DryOption { return func(c *dryChoice) { c.vars = vars } }
+
+// WithRunnerSkillLoads gives the facts of the dry run the runners of the config, as a real run has them: the fact loads_skills of each runner by name.
+// The dry run then refuses a step on a runner that has no skill line, as a real run does.
+func WithRunnerSkillLoads(loads map[string]bool) DryOption {
+	return func(c *dryChoice) { c.runnerSkillLoads = loads }
+}
 
 // WithSpawnDepth gives the dry run the max_spawn_depth of a project, so that a spawn past the cap of the project fails as it does in a real run.
 func WithSpawnDepth(depth int) DryOption { return func(c *dryChoice) { c.spawnDepth = depth } }
@@ -218,9 +225,9 @@ func dryDeps(tree, head, item string, chosen dryChoice) Deps {
 	return Deps{
 		Agents: agents, Gate: newDryGate(tree, head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
-		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots,
+		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots, SkillLine: drySkillLine,
 		Facts: func(string) model.Project {
-			return model.Project{Source: tree, Vars: chosen.vars, MaxSpawnDepth: chosen.spawnDepth}
+			return model.Project{Source: tree, Vars: chosen.vars, MaxSpawnDepth: chosen.spawnDepth, RunnerSkillLoads: chosen.runnerSkillLoads}
 		},
 		Clock: clock{Poll: dryPoll, Settle: dryWait, Reading: dryReading()},
 	}
@@ -523,6 +530,11 @@ func (dryCommands) Run(context.Context, CommandRequest) (CommandOutput, error) {
 // drySlots gives every slot class one slot on a fake host, so a command call with `slots` runs its fake program like any other call of a dry run.
 func drySlots(_, cluster, _ string) (SlotGrant, error) {
 	return SlotGrant{Host: cluster, Count: 1}, nil
+}
+
+// drySkillLine gives every runner a line that loads a skill, so a step with the skill keyword runs its fake agent like any other call of a dry run.
+func drySkillLine(_, skill string) string {
+	return "/dry-skills:" + skill
 }
 
 type dryItems struct{ item string }

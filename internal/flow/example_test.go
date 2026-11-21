@@ -286,11 +286,15 @@ func openOf(findings string) string {
 	return "an open finding"
 }
 
+// models returns the model of each agent call of the run in order, except the sweep step, which runs on the model of the implement step right after it.
+// The tests of the sweep read its request from requests.
 func (r *agentRig) models() []string {
 	var models []string
 
 	for _, request := range r.h.agents.requests {
-		models = append(models, request.Model)
+		if !isSweep(request) {
+			models = append(models, request.Model)
+		}
 	}
 
 	return models
@@ -337,7 +341,7 @@ func TestExample_ACappedFixStopsTheItemWithARefuseThatNamesTheCap(t *testing.T) 
 		}
 
 		return "approve"
-	}, func(r AgentRequest) bool { return r.Resume != "" }, agent.OutcomeBudgetCap)
+	}, func(r AgentRequest) bool { return r.Resume != "" && !isSweep(r) }, agent.OutcomeBudgetCap)
 
 	_, err := runPipeline(rig.h.engine(t), file)
 
@@ -754,7 +758,7 @@ func TestExample_AGateThatExitsZeroWithZeroTestsDoesNotPassAndTheFixGetsTheReaso
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"opus", "sonnet", "opus", "sonnet", "opus", "opus"}, rig.models(), "the gate of candidate 1 did not pass: a fix and a scoped review make candidate 2, and only it gets the full review")
-	assert.Contains(t, rig.h.agents.requests[3].Prompt, "hold 0 tests", "the reason reaches the fix")
+	assert.Contains(t, rig.h.agents.requests[4].Prompt, "hold 0 tests", "the reason reaches the fix")
 	assert.Equal(t, 2, runs)
 }
 
@@ -926,7 +930,7 @@ func TestExample_AFailedGateSkipsTheReviewAndSendsItsReportToTheFix(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, []string{"opus", "sonnet", "opus", "sonnet", "opus", "opus"}, rig.models(), "candidate 1 is red and gets no full review; the fix and a scoped review make candidate 2, which gets it")
 
-	fix := rig.h.agents.requests[3].Prompt
+	fix := rig.h.agents.requests[4].Prompt
 	assert.Contains(t, fix, "lint: unused variable x", "the gate report is the findings of the fix")
 }
 

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/host"
 )
 
@@ -206,26 +205,6 @@ func TestExample_ACleanCommandThatIsNotAListOfWordsIsRefusedBeforeAnyAgentStarts
 			assert.Empty(t, rig.h.agents.requests, "no agent started")
 		})
 	}
-}
-
-func TestExample_ALaneThatEndsWithTheRefusalOfASkippedSkillIsSweptBeforeTheErrorGoesUp(t *testing.T) {
-	t.Parallel()
-
-	rig, file := exampleRig(t, func(int) string { return "approve" })
-	rig.project.Vars["clean_command"] = []any{"clean-lane"}
-
-	reporting := rig.h.agents.result
-	rig.h.agents.result = func(request AgentRequest) agent.Result {
-		result := reporting(request)
-		result.Skills = nil
-
-		return result
-	}
-
-	_, err := runPipeline(rig.h.engine(t), file)
-
-	require.ErrorContains(t, err, "did not call the skill "+exampleSkill, "the lane still fails with its own error")
-	assert.Len(t, sweepRequests(rig), 2, "the sweep ran before the error went up")
 }
 
 func TestExample_ALaneThatEndsWithAMissingChangelogEntryIsSweptBeforeTheErrorGoesUp(t *testing.T) {

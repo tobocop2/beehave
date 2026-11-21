@@ -3,6 +3,7 @@ package flow
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -131,4 +132,85 @@ func TestRecallLimits_ARecordThatHoldsASandboxOrSkillsThatCannotBeReadStopsTheRe
 
 	require.NoError(t, a.recallLimits(map[string]any{recordedSandbox: `{"network":["x.org"]}`, recordedSkills: `["review"]`}))
 	assert.Equal(t, []string{"x.org"}, a.box.Network)
+}
+
+func TestAgentStep_ASkillStepStartsItsPromptWithTheSkillLineOfTheAdapter(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.h.skillLine = func(login, skill string) string { return "/line-of-" + login + ":" + skill }
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`skill = "sweep-skill", `), skillPrompt)
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+
+	request := rig.h.agents.seen()[0]
+
+	assert.True(t, strings.HasPrefix(request.Prompt, "/line-of-"+testLogin+":sweep-skill\n"), "the line of the adapter is the first line of the prompt: %q", request.Prompt)
+	assert.Contains(t, request.Prompt, "Run review, then oracle", "the prompt follows the line")
+	assert.Equal(t, []string{"review", "oracle", "sweep-skill"}, request.Skills, "the skills of the step are the declared ones and then the skill keyword")
+}
+
+func TestAgentStep_ASkillStepOnAnAdapterWithNoSkillLineDoesNotStart(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.h.skillLine = func(string, string) string { return "" }
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`skill = "sweep-skill", `), skillPrompt)
+
+	require.ErrorContains(t, err, "runner "+testLogin, "the refusal names the runner")
+	require.ErrorContains(t, err, "sweep-skill")
+	assert.Empty(t, rig.h.agents.seen(), "no agent started")
+}
+
+func TestAgentStep_ASkillKeywordThatIsNoFolderNameStopsTheStepAndAnEmptyOneIsNoSkill(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`skill = "a/b", `), skillPrompt)
+
+	require.ErrorContains(t, err, "is not the name of a skill")
+	assert.Empty(t, rig.h.agents.seen())
+
+	rig = newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err = rig.run(t, agentFlow(`skill = "", `), skillPrompt)
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.False(t, strings.HasPrefix(rig.h.agents.seen()[0].Prompt, "/"), "an empty skill puts no line in the prompt")
+	assert.Equal(t, []string{"review", "oracle"}, rig.h.agents.seen()[0].Skills)
+}
+
+func TestAgentStep_ASkillThatThePromptAlreadyDeclaresIsGivenOnce(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`skill = "oracle", `), skillPrompt)
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.Equal(t, []string{"review", "oracle"}, rig.h.agents.seen()[0].Skills)
+}
+
+func TestAgentStep_ASkillStepOnAnEngineWithNoSkillLineDoesNotStart(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.h.noSkillLine = true
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(`skill = "sweep-skill", `), skillPrompt)
+
+	require.ErrorContains(t, err, "has no line that loads a skill before the first turn")
+	assert.Empty(t, rig.h.agents.seen(), "no agent started")
 }

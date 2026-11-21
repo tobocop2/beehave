@@ -619,6 +619,10 @@ type harness struct {
 	bare bool
 	// mutation is the command that the facts of the run hold as vars.mutation_command. It is nil, and so the vars hold none, unless a test sets it.
 	mutation []string
+	// skillLine is the skill-load line of the adapter of each login. It is nil, and so every login has the line "/fake-skills:<skill>", unless a test sets it.
+	skillLine func(login, skill string) string
+	// noSkillLine leaves Deps.SkillLine nil, as an engine built with no adapter table has it.
+	noSkillLine bool
 	// refuseGate is the refusal of a gate on this machine. It is nil, and so no gate is refused, unless a test sets it.
 	refuseGate func(project string, program bool) error
 	// slots resolves the slot class of a command call. It is nil, and so the build has no slot classes, unless a test sets it.
@@ -724,6 +728,11 @@ func (h *harness) deps() Deps {
 	deps.Facts = h.factsWithMutation()
 	deps.RefuseGate = h.refuseGate
 	deps.Slots = h.slots
+	deps.SkillLine = h.skillLine
+
+	if deps.SkillLine == nil && !h.noSkillLine {
+		deps.SkillLine = func(_, skill string) string { return "/fake-skills:" + skill }
+	}
 
 	if h.picker != nil {
 		deps.Logins = h.picker

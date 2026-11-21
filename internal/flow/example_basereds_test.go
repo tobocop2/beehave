@@ -21,13 +21,15 @@ type laneData struct {
 	texts []string
 }
 
-// kindOf names the agent call of the example that a request is: plan, review, implement or fix.
+// kindOf names the agent call of the example that a request is: plan, review, sweep, implement or fix.
 func kindOf(request AgentRequest) string {
 	switch {
 	case strings.Contains(request.Prompt, reviewMarker):
 		return "review"
 	case request.NoEdits:
 		return "plan"
+	case isSweep(request):
+		return "sweep"
 	case request.Resume != "":
 		return "fix"
 	}
@@ -89,8 +91,8 @@ func TestExample_TheImplementerTheFixAndTheReviewsGetTheBaseRedsInTheDataFile(t 
 	record := `{"base":"integration","base_reds":["lint-a","test-b"]}`
 	withHistory := `{"base":"integration","base_reds":["lint-a","test-b"],"pulls":[]}`
 
-	assert.Equal(t, []string{"plan", "implement", "review", "fix", "review", "review"}, seen.kinds)
-	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, record, record, record, record}, seen.texts,
+	assert.Equal(t, []string{"plan", "implement", "sweep", "review", "fix", "review", "review"}, seen.kinds)
+	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, "", record, record, record, record}, seen.texts,
 		"the plan gets the pull requests of the item and no base reds, the implementer gets both, and each other lane finds the base reds of the round")
 }
 

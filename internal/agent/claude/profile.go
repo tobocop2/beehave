@@ -55,6 +55,7 @@ func (Adapter) Profile() agent.Profile {
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",
 		Resume:     func(id string) []string { return []string{"--resume", id} },
+		SkillLine:  func(name string) string { return "/" + pluginName + ":" + name },
 		TurnsFlag:  "--max-turns",
 		BudgetFlag: "--max-budget-usd",
 		Sandbox:    true,

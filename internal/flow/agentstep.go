@@ -56,6 +56,9 @@ type agentArgs struct {
 	startHead string
 	declared  []string
 	resume    string
+	// skill is the skill keyword: the skill that the CLI loads before the first turn. Empty means none. skillLine is the line of the CLI that loads it, which the call reads before the render step.
+	skill     string
+	skillLine string
 	// edits is the edits argument: false starts the step so that Claude Code refuses each file edit.
 	edits bool
 	tries int
@@ -80,7 +83,7 @@ func agentCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		"prompt": &a.prompt, "model": &a.model, "runner": &a.runner, "inputs": &raw.inputs, "outputs": &raw.outputs, "pin": &a.pin,
-		"resume": &a.resume, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
+		"resume": &a.resume, "skill": &a.skill, "forbid_commands": &raw.kinds, "allow_paths": &raw.allow, "protect_paths": &raw.protect, "output_tries": &a.tries,
 		"edits": &a.edits, workflow.LabelKeyword: &a.label, timeoutKeyword: &raw.timeout, "idle_timeout": &raw.idle, "max_budget_usd": &raw.budget, "sandbox": &raw.sandbox, nameKeyword: &raw.name,
 		"data": &raw.data,
 	})
@@ -262,9 +265,26 @@ func (s *script) ready(a *agentArgs, label string) (name, login, prompt string, 
 		return "", "", "", err
 	}
 
+	if err = s.readSkillLine(a, login); err != nil {
+		return "", "", "", err
+	}
+
 	prompt, err = s.promptOf(a, name, login)
 
 	return name, login, prompt, err
+}
+
+// readSkillLine reads the line that loads the skill keyword on the runner of the call. A runner with no such line refuses the step before the render step and any agent start.
+func (s *script) readSkillLine(a *agentArgs, login string) error {
+	if a.skill == "" {
+		return nil
+	}
+
+	if a.skillLine = s.e.skillLine(login, a.skill); a.skillLine == "" {
+		return fmt.Errorf("runner %s has no line that loads a skill before the first turn, so the step cannot start with the skill %s. The step did not start. Run it on a runner of an agent that has one", login, a.skill)
+	}
+
+	return nil
 }
 
 // promptOf finds the folder and the output file of the call, then renders the prompt in a step and returns it. login is the runner that the call runs on.
@@ -431,16 +451,42 @@ func (s *script) render(ctx context.Context, a agentArgs) (string, []string, err
 		return "", nil, err
 	}
 
-	data := maps.Clone(a.data)
-	data["output_file"] = a.file
-	data["data_file"] = a.dataFile
-
-	filled, skills, err := fill(string(text), data)
+	filled, skills, err := fill(string(text), templateData(a))
 	if err != nil {
 		return "", nil, fmt.Errorf("prompt file %s: %w", path, err)
 	}
 
+	filled, skills = withSkillLine(a, filled, skills)
+
 	return filled, skills, nil
+}
+
+// templateData is the data that fills the template of the prompt of a step: the inputs, output_file and data_file.
+func templateData(a agentArgs) map[string]any {
+	data := maps.Clone(a.data)
+	data["output_file"] = a.file
+	data["data_file"] = a.dataFile
+
+	return data
+}
+
+// withSkillLine starts the prompt with the line that loads the skill keyword of the step, and gives the step the skill like each declared one.
+// The CLI loads only the first skill of the prompt, so the line is the first line. A step with no skill keyword is unchanged.
+func withSkillLine(a agentArgs, prompt string, skills []string) (string, []string) {
+	if a.skill == "" {
+		return prompt, skills
+	}
+
+	return a.skillLine + "\n" + prompt, withSkill(skills, a.skill)
+}
+
+// withSkill returns the skills with the name added at the end, once.
+func withSkill(skills []string, name string) []string {
+	if slices.Contains(skills, name) {
+		return skills
+	}
+
+	return append(skills, name)
 }
 
 // promptFile reads the prompt file. A relative path starts at the folder of the workflow file.

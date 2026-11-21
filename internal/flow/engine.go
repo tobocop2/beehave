@@ -332,6 +332,15 @@ func (e *Engine) facts(project string) model.Project {
 	return e.deps.Facts(project)
 }
 
+// skillLine is the line that makes the agent of the runner load the skill before its first turn. It is empty when the runner has none, and for an engine whose deps have no SkillLine.
+func (e *Engine) skillLine(runner, skill string) string {
+	if e.deps.SkillLine == nil {
+		return ""
+	}
+
+	return e.deps.SkillLine(runner, skill)
+}
+
 // registered returns the engine when the registration worked. When it failed, it shuts the engine down, so the folder lock and the store do not stay open.
 func (e *Engine) registered(err error) (*Engine, error) {
 	if err == nil {

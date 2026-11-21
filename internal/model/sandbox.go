@@ -50,7 +50,7 @@ var skillName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // CheckSkill refuses a skill name that is no folder name, such as a path, "..", or an empty name, because the engine finds the skill in a folder of that name.
 func CheckSkill(name string) error {
 	if !skillName.MatchString(name) {
-		return fmt.Errorf("the prompt names the skill %q, which is not the name of a skill. Write the name of the folder of the skill, such as review, with no path", name)
+		return fmt.Errorf("%q is not the name of a skill. Write the name of the folder of the skill, such as review, with no path", name)
 	}
 
 	return nil
