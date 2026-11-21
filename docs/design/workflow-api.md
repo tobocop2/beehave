@@ -176,6 +176,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `preflight` | `id` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `preflight` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `preflight` | `own` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `preflight` | `own_draft` | #814: the draft that the run opened is no stop of its loop | 1: `examples/remediation/workflow.star` |
 | `progress` | `-` | #589: new, reads what each child run published under a key, and does not wait | 1: `examples/planner/workflow.star` |
 | `progress` | `key` | #589: new | 1: `examples/planner/workflow.star` |
 | `progress` | `name` | #589: new | 1: `examples/planner/workflow.star` |

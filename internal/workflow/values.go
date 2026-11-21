@@ -164,6 +164,22 @@ func ProcessCap(v starlark.Value, host string) (int, error) {
 	return int(limit), nil
 }
 
+// OwnDraft reads the own_draft keyword of preflight: the number of a pull request, 1 or more, or zero for a call that leaves it out.
+func OwnDraft(v starlark.Value) (int, error) {
+	if v == nil {
+		return 0, nil
+	}
+
+	n, isInt := v.(starlark.Int)
+	number, small := n.Int64()
+
+	if !isInt || !small || number < 1 {
+		return 0, errors.New("own_draft must be the number of a pull request, a whole number of 1 or more. Write own_draft = draft.number")
+	}
+
+	return int(number), nil
+}
+
 // SlotClass reads the slots keyword of a command call: the name of a slot class, or empty for a call that sets none. Only a host job takes a slot,
 // so a call with no host cannot set it.
 func SlotClass(v starlark.Value, host string) (string, error) {
