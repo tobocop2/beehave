@@ -27,6 +27,8 @@ type EntryKind string
 const (
 	EntryText EntryKind = "text"
 	EntryCall EntryKind = "call"
+	// EntryWait is not in a stream. The follow gives it once when the run waits for an answer, and its text is the question.
+	EntryWait EntryKind = "wait"
 )
 
 // AgentEntry is one entry of the stream of an agent phase. Seq counts the entries of the phase from 1. Try counts the starts of the agent in the phase from 1:

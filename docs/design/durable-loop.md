@@ -786,13 +786,13 @@ The label of a lane is the `label` argument of the `agent` call. A label is free
 
 **The stream.** The phase writes each message text and each tool call of its agent to the DBOS stream `agent` of the phase workflow, from inside the agent step. The runner reads each output line once. The adapter reports the texts and the calls of the line (`Seen.Said`), the tap of the run gives them to the engine, and a goroutine of the step writes them in order, so a slow store never stops the reading of the agent output. A tool call reads `<tool>: <target>`, for example `Bash: ls`.
 
-**The entry.** An entry holds `seq`, `try`, `kind` (`text` or `call`) and `text`. The text passes the redactor before the write, so a token in the output is stored as `[redacted]`. `seq` counts the entries of the phase from 1.
+**The entry.** An entry holds `seq`, `try`, `kind` (`text` or `call`) and `text`. The text passes the redactor before the write, so a token shaped like an Anthropic key is stored as `[redacted]`. The redactor of the engine has no list of the secrets of the run, so another secret, for example a cloud key in a command, is stored as it is. The runner removes the account token from the output before the tap reads it. `seq` counts the entries of the phase from 1.
 
 **The cap.** A phase stores at most 4 MiB of text. The entry that passes the cap is replaced by one entry that says the stream was cut, and the phase stores nothing after it.
 
 **A lost run.** A step that a lost run left is run again in the same phase. Its entries go under the next `try`, and the numbers go on. The follow prints a heading line for each phase and each new try. A replay returns the recorded output of the phase, never runs the agent step again, and so writes no entry.
 
-**The read.** The client reads each phase of the run with the DBOS stream read, which ends when the phase is no longer open. A new phase of an open run is found by a look each second. The stream stays in the state folder after the run, so `--follow` on an ended run prints it again. A write that fails is logged once. The agent goes on, and the stream holds the entries before the failure.
+**The read.** The client reads each phase of the run with the DBOS stream read, which ends when the phase is no longer open. A new phase of an open run is found by a look each second. The follow ends only when the run has ended, because a later phase can start after an earlier one ends. A run that waits for an answer keeps it open, so the follow prints one line, `-- waiting for an answer to: <question>`, once for each question. The stream stays in the state folder after the run, so `--follow` on an ended run prints it again. A write that fails is logged once. The agent goes on, and the stream holds the entries before the failure.
 
 A workflow file has no reader of the stream. The `transcript` field of the agent result holds the text of a finished run.
 

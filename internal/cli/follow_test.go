@@ -85,3 +85,18 @@ func TestStatus_HelpNamesTheFollowFlag(t *testing.T) {
 
 	assert.Contains(t, stdout, "--follow")
 }
+
+func TestStatusFollow_PrintsOneLineWithTheQuestionOfARunThatWaits(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.followed = []flow.FollowedEntry{
+		entry("p1", 1, flow.EntryText, "LINE-ONE"),
+		{AgentEntry: flow.AgentEntry{Kind: flow.EntryWait, Text: "go?"}},
+	}
+
+	code, stdout, stderr := rig.execute(t.Context(), "status", "fix-a", "--follow")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "-- p1, try 1\nLINE-ONE\n-- waiting for an answer to: go?\n", stdout)
+}

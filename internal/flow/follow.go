@@ -26,12 +26,37 @@ func (c *Client) Follow(ctx context.Context, target string, emit func(FollowedEn
 		return err
 	}
 
-	read := map[string]bool{}
+	read, asked := map[string]bool{}, ""
 
 	for done := false; !done && err == nil; {
-		if done, err = c.followOnce(ctx, id, read, emit); !done && err == nil {
-			err = pause(ctx, followPoll)
-		}
+		done, err = c.followStep(ctx, id, read, &asked, emit)
+	}
+
+	return err
+}
+
+// followStep looks once at the run. A look that does not end the follow says once that the run waits for an answer, and then waits for the next look.
+// asked holds the question that the follow said already.
+func (c *Client) followStep(ctx context.Context, id string, read map[string]bool, asked *string, emit func(FollowedEntry)) (bool, error) {
+	done, err := c.followOnce(ctx, id, read, emit)
+	if done || err != nil {
+		return done, err
+	}
+
+	err = c.announce(id, asked, emit)
+	if err == nil {
+		err = pause(ctx, followPoll)
+	}
+
+	return false, err
+}
+
+// announce gives emit one entry with the question of the open wait of the run, when the run waits and asked does not hold the question yet.
+func (c *Client) announce(id string, asked *string, emit func(FollowedEntry)) error {
+	question, _, err := c.waitOf(id)
+	if err == nil && question != "" && question != *asked {
+		*asked = question
+		emit(FollowedEntry{AgentEntry: AgentEntry{Kind: EntryWait, Text: question}})
 	}
 
 	return err

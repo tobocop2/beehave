@@ -639,7 +639,8 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"the outcome and the fields that decide the flow.\n\n" +
 	"Give a run id or an item id with --" + followFlag + " to print the text and the tool calls of each agent phase of the run, in order, as they arrive. " +
 	"An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output again and ends. " +
-	"A tool call reads as the name of the tool and its target. A line of the output has any secret removed before it is stored."
+	"A tool call reads as the name of the tool and its target. A token shaped like an Anthropic key is removed before a line is stored. Another secret is not. " +
+	"A run that waits for an answer keeps the command open. It prints one line with the question."
 
 // errFollowAlone is returned when --follow comes with --json, --item, or no run: it reads the output of one run.
 var errFollowAlone = errors.New("give one run id or item id with --" + followFlag + ", and no --" + jsonFlag + " or --" + itemFlag)

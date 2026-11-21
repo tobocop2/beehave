@@ -323,6 +323,9 @@ func TestFollow_AClosedStoreIsAnErrorAtEachLook(t *testing.T) {
 
 	_, err = client.phasesOf("item-fix-a-r1")
 	require.Error(t, err)
+
+	asked := ""
+	require.Error(t, client.announce("item-fix-a-r1", &asked, func(FollowedEntry) {}), "the read of the question")
 }
 
 func TestFollow_AClientWithNoStoreCannotReadAPhase(t *testing.T) {
@@ -377,4 +380,93 @@ func TestAgentStream_AFollowOfARunWithTwoAgentCallsPrintsTheirPhasesInOrder(t *t
 	assert.Equal(t, entries[3].Phase, entries[5].Phase)
 	assert.NotEqual(t, entries[0].Phase, entries[3].Phase, "two calls, two phases")
 	assert.Equal(t, []int{1, 2, 3, 1, 2, 3}, []int{entries[0].Seq, entries[1].Seq, entries[2].Seq, entries[3].Seq, entries[4].Seq, entries[5].Seq}, "each phase counts its own entries")
+}
+
+func TestStreamer_RedactsTheTargetOfAToolCallBeforeItIsWritten(t *testing.T) {
+	t.Parallel()
+
+	s, written, _ := recordedStreamer(0)
+
+	go s.run()
+
+	s.say(agent.Said{Call: true, Text: "Bash: curl -H sk-ant-abcdefghijklmnop0123 https://example.test"})
+	s.finish()
+
+	assert.Equal(t, []AgentEntry{{Seq: 1, Try: 1, Kind: EntryCall, Text: "Bash: curl -H [redacted] https://example.test"}}, *written)
+}
+
+func TestStreamer_KeepsASecretThatIsNotShapedLikeAnAnthropicKey(t *testing.T) {
+	t.Parallel()
+
+	s, written, _ := recordedStreamer(0)
+
+	go s.run()
+
+	const call = "Bash: export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE" //nolint:gosec // the documented example key of AWS, planted on purpose
+
+	s.say(agent.Said{Call: true, Text: call})
+	s.finish()
+
+	assert.Equal(t, call, (*written)[0].Text, "the redactor of the engine has no list of the secrets of the run, and the help text says so")
+}
+
+func TestFollow_ARunThatEndedGivesAPhaseThatTheFollowHasNotReadBeforeItIsDone(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	harness.agents.said = said()
+	_, err := harness.engine(t).Run(testItem, testProject)
+	require.NoError(t, err)
+
+	client, got, read := harness.client(t, testVersion), &collected{}, map[string]bool{}
+
+	done, err := client.followOnce(t.Context(), runID(testItem, 1), read, got.add)
+	require.NoError(t, err)
+	assert.False(t, done, "the run had ended, but this look found a phase that was not read")
+	assert.Len(t, got.all(), 3)
+
+	done, err = client.followOnce(t.Context(), runID(testItem, 1), read, got.add)
+	require.NoError(t, err)
+	assert.True(t, done, "the next look finds no new phase")
+	assert.Len(t, got.all(), 3, "a phase is read once")
+}
+
+func TestAgentStream_AFollowOfARunThatWaitsForAnAnswerSaysSoOnceAndEndsWithTheRun(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	done := runInBackground2(rig.h.engine(t), flowFile(t, replayFlow, "Work.\n"))
+	client, got, followed := rig.h.client(t, testVersion), &collected{}, make(chan error, 1)
+
+	go func() {
+		err := errNoSuchRun
+		for errors.Is(err, errNoSuchRun) {
+			err = client.Follow(t.Context(), testItem, got.add)
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		followed <- err
+	}()
+
+	waits := func() []string {
+		var texts []string
+
+		for _, entry := range got.all() {
+			if entry.Kind == EntryWait {
+				texts = append(texts, entry.Text)
+			}
+		}
+
+		return texts
+	}
+
+	waitOn(t, condition(func() bool { return len(waits()) > 0 }))
+	time.Sleep(2500 * time.Millisecond)
+	assert.Equal(t, []string{"go?"}, waits(), "the line comes once, however long the run waits")
+
+	require.NoError(t, client.Answer(testItem, "yes"))
+	require.NoError(t, receive(t, done).err)
+	require.NoError(t, receive(t, followed))
 }

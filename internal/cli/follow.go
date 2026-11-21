@@ -35,6 +35,12 @@ func newFollowPrinter(out io.Writer) *followPrinter {
 
 // print writes one entry. A tool call starts with "> ".
 func (p *followPrinter) print(entry flow.FollowedEntry) {
+	if entry.Kind == flow.EntryWait {
+		p.say("-- waiting for an answer to: " + entry.Text)
+
+		return
+	}
+
 	if entry.Phase != p.phase || entry.Try != p.try {
 		p.phase, p.try = entry.Phase, entry.Try
 		p.say(fmt.Sprintf("-- %s, try %d", entry.Phase, entry.Try))
