@@ -253,3 +253,15 @@ func TestCheckWorkflowDryRun_AWorkflowThatRefusesARunnerWithNoSkillLineEndsWithE
 
 	require.Equal(t, 0, code, stdout.String())
 }
+
+func TestCheckWorkflowDryRun_AFirstOfOverASpawnedRunReturnsTheRunThatEnded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def child(item):\n    pass\n\n"+
+		"def main(item):\n    e = first_of(runs = spawn(items = [\"21\"], entry = \"child\"))\n    if e.kind != \"run\" or not e.outcome.ok:\n        fail(\"got \" + e.kind)\n")
+
+	code, stdout, _ := runDry(t, map[string]string{}, filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 0, code, stdout)
+}
