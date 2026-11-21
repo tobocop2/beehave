@@ -94,3 +94,54 @@ Regressions open at the head planned from: 0.
 - Review notes of #368: still not read (forge not reachable). OWED.
 
 Regressions open at the head planned from (af7c1352): 0.
+
+## Plan pass (step plan_231, second run), measured at 8e8ce977
+
+The branch now holds the fix lane: a7b45ec9 (pattern `^[A-Za-z]([A-Za-z0-9-]|\.[A-Za-z0-9])*$` in `internal/config/files.go:35`,
+refusal text in `projects.go:396`, three `t.Run` cases `trailing_dot`, `double_dot`, `dot_hyphen` at `buildhosts_test.go:36-38`)
+and 8e8ce977 (`docs/design/hosts.md:276`). This pass changes no product code.
+
+- Pull requests of the item: `pulls` in the data file is `[]` (read with `jq` at the start and again before this note).
+- Repeat-offender: `git log -S'trailing dot' --all` gives af7c1352, 6be962e7, a7b45ec9 and 8e8ce977, all on this branch. No closed pull request.
+- Skill `blast-radius-review`: invoked with the Skill tool (`beehave-skills:blast-radius-review`) this time. One round, no finding.
+
+### Measurements at 8e8ce977
+
+| run | mode | inputs | cells | red | differ from base | rc |
+|---|---|---|---|---|---|---|
+| head | regex | 19628 | 19628 | 0 | 529 (trailing-dot 316, `..` 83, `.-` 130; no other class) | 0 |
+| head | full | n/a | n/a | n/a | n/a | 2: `go test` cannot fetch toolchain go1.27.4 (module cache denied by the sandbox) |
+| `go test ./internal/config/` | n/a | n/a | n/a | n/a | n/a | 1: same toolchain download denial; tests never ran |
+| gate `make check` | n/a | n/a | n/a | n/a | n/a | 2: `golangci-lint v2.15.0 is required: run make setup` (the tool is not installed here; the diff does not cause this) |
+
+The instrument control passed: `"gpu"` was accepted and `"a b"` was refused. The pattern of the regex mode is read from the head file, so the
+regex arm exercises the shipped pattern, but not the loader. The over-strict control is the existing test `folder_test.go:180`, which accepts
+the dotted gcloud alias `beehave-rig.us-central1-a.lance-bench-8389`.
+
+### Claims (head 8e8ce977)
+
+| claim | evidence |
+|---|---|
+| The check refuses a trailing dot, `..` and `.-` | regex mode at head: 0 red; the 529 cells that changed are all in the named classes |
+| Nothing else changes | regex mode: differ-from-base outside the named classes is 0 (open classes `a-`, `a-.b` and `a--b` stay accepted) |
+| A test covers each form | `buildhosts_test.go:36-38`; each one fails at the base because the base accepts the name (not run here: no toolchain) |
+| The refusal text and the doc name the new rule | `projects.go:396` and `hosts.md:276`. The old text "digits, dots and hyphens" has 0 hits outside `docs/design/items`; the new text has 1 hit (control) |
+
+### Hunks
+
+| hunk | arm that removes it | red line |
+|---|---|---|
+| `files.go:33-35` pattern | the base pattern (regex mode at af7c1352) | `red cells: 529` (result-base.txt) |
+| `projects.go:396` text | text only; the tests match the prefix `must be "local" or the name of a build host` | none (the text is not pinned) |
+| `buildhosts_test.go:36-38` | n/a (test) | OWED: `go test` at the base on the build host |
+
+### Inputs and Siblings
+
+These are unchanged from the tables above. The head matches the expected column of `rulings.md` in every regex cell.
+Siblings `link.wordPattern` (`link.go:80`) and `skypilot.wordPattern` (`skypilot.go:29`) still accept the three forms (owner question 3, open).
+`clusterName` has one consumer, `projects.go:395`.
+
+OWED, in order: (1) `MODE=full GATE=1 acceptance.sh` at the base and at the head on the build host, which has the module cache and golangci-lint;
+(2) the review notes of #368; (3) owner questions 1 to 3 in `rulings.md`.
+
+Regressions open at the head planned from (8e8ce977): 0.
