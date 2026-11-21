@@ -47,15 +47,16 @@ func TestStatus_EventsWithJSONPrintsOneList(t *testing.T) {
 	assert.JSONEq(t, `[{"key":"progress","value":{"done":1}}]`, stdout)
 }
 
-func TestStatus_EventsReportsAReadThatFails(t *testing.T) {
+func TestStatus_APublishedReadThatFailsFailsTheEventsView(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	rig.steering.err = errors.New("the store is gone")
+	rig.steering.publishedErr = errors.New("the store is gone")
 
-	code, _, stderr := rig.execute(t.Context(), "status", "item-14-r1", "--events")
+	code, stdout, stderr := rig.execute(t.Context(), "status", "item-14-r1", "--events")
 
 	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout)
 	assert.Contains(t, stderr, "the store is gone")
 }
 
