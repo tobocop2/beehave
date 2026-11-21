@@ -16,7 +16,7 @@ func TestSandbox_DenyWritePatternsAreDeniedForWriteAndEditAndStayReadable(t *tes
 	p := plan()
 	p.DenyWritePatterns = []string{"/work/tree/**/.husky", "/work/tree/**/.claude/settings*.json"}
 
-	args := claude.New(nil).Sandbox(p, "", "/run").Args
+	args := claude.New(nil).Sandbox(p, "", "/run", nil, nil).Args
 
 	var parsed struct {
 		Sandbox struct {

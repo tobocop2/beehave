@@ -1,7 +1,7 @@
 # The remediation workflow: plan, implement, then review and fix until the gate passes and the review approves.
 # Every method value is in this file, in the review loop it loads, or in a prompt next to it. Go holds none of it.
 
-load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "restart_steps", "review_fix")
+load("@beehave//review_fix.star", "DESIGN_AFTER", "FIX_ESCALATE_AFTER", "HOST_LOSS_LIMIT", "VOID_ASKS", "VOID_RERUNS", "candidates_spent", "capped", "is_host_void", "kept_history", "restart_steps", "review_fix")
 
 # The model of each step of the method. This table is the one place a model is named. A project overrides the model or the runner of a step with vars.round.steps.
 # fix runs the fix rounds up to vars.round.escalate_after, and fix_late runs the rounds after them.
@@ -455,21 +455,21 @@ def mutation_command(project):
     return words
 
 def require_review_skill_named(project):
-    """Stops the run before any agent starts when the project vars do not name the review skill of the implement step. The key vars.review_skill is required: the workflow names no skill itself."""
+    """Stops the run before any agent starts when the project vars do not name the review skill of the sweep step. The key vars.review_skill is required: the workflow names no skill itself."""
     name = project.vars.get("review_skill")
     if type(name) != "string" or name.strip() == "":
-        fail("REFUSE: vars.review_skill of the project file is %r. Set it to the name of the skill that the implement step must call before it reports, such as \"your-review-skill\". See docs/design/workflow-files.md, the review skill of the implement step" % (name,))
+        fail("REFUSE: vars.review_skill of the project file is %r. Set it to the name of the skill that the sweep step loads after the implement step, such as \"your-review-skill\". See docs/design/workflow-files.md, the review skill of the sweep step" % (name,))
 
-def refuse_runner_without_skill_calls(project, round_settings, step):
-    """Stops the run before any agent starts when the step is on a runner whose CLI reports no skill calls, because the step could not prove that it called the skill.
-    A step on the pool needs no check: the pool holds the runners that report them. A runner that the facts do not list is left to the agent step, which refuses an unknown runner."""
+def require_runner_that_loads_skills(project, round_settings, step):
+    """Stops the run before any agent starts when the step is on a runner whose agent CLI has no line that loads a skill before the first turn, because the sweep step on that runner cannot start.
+    A step on the pool needs no check here: the sweep step itself refuses the runner that the pool picks. A runner that the facts do not list is left to the agent step, which refuses an unknown runner."""
     runner = _runner(round_settings, step)
     if runner == "":
         return
 
     known = project.runners.get(runner)
-    if known != None and not known["reports_skills"]:
-        fail("REFUSE: runner %s of step %s does not report skill calls, so the step cannot show that it called the skill it needs. The step did not start. Set vars.round.steps.%s.runner to a runner that reports skill calls, or to an empty text for the pool." % (runner, step, step))
+    if known != None and not known["loads_skills"]:
+        fail("REFUSE: runner %s of step %s has no line that loads a skill before the first turn, so the sweep step cannot start on it. The step did not start. Set vars.round.steps.%s.runner to a runner of an agent that has one, or to an empty text for the pool." % (runner, step, step))
 
 def check_mutation(words, base):
     """Runs the mutation command of the project on the build host, in the slot class mutation, and returns the findings as text. An empty text means the head is clean.
@@ -644,7 +644,10 @@ def land(approved, project, round_settings, n):
 
         # The stops of the pipeline of one item, for each item: merged, closed, branch gone, hold, draft, base, and a head that is not the reviewed one.
         # An item that stops is reported with its reason, and the other items still land.
-        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]})
+        # The pull request of an approved item is still the draft that its run opened: the merge marks it ready, after this call. The number of that draft is no stop.
+        # A child value with no draft number keeps the stop.
+        own_draft = {"own_draft": entry.pr} if entry.pr else {}
+        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
         if not check.ok:
             stopped.append(struct(item = id, reason = check.reason))
             continue
@@ -655,7 +658,8 @@ def land(approved, project, round_settings, n):
             stopped.append(struct(item = id, reason = missing))
             continue
 
-        prs.append(struct(item = id, head = head, approved = entry.approved))
+        # The merge accepts the draft that the run opened, and marks it ready after its guards. The hand-off call reads no draft.
+        prs.append(struct(item = id, head = head, approved = entry.approved, **own_draft))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
@@ -890,6 +894,9 @@ def sync_land(item, project, round_settings, line, n):
     if landed.get("state", "") not in SYNC_LAND_STATES:
         fail("REFUSE: the landing of the sync pull request %s gave the fields %r. Read the pull request. %s" % (line["pr"], landed, restart_steps(item)))
 
+    if landed["state"] == "landed":
+        round_integration(project, round_settings, "round-integration-sync-%d" % n)
+
     return sync_end("", losses)
 
 def sync_trunk(item, project, round_settings, n):
@@ -946,11 +953,12 @@ def round_question(reason, seen, idle):
 
     return "The round did not merge the trunk into the round branch: %s. %s Then answer CONTINUE to check the trunk again." % (reason, SYNC_REASONS[reason])
 
-def round_integration(project, round_settings):
-    """Finds or creates the integration pull request from the round branch into the trunk, and returns its number and state.
-    The tool `remedy integration` uses vars.round.integration_pr when it is not 0, and prints `pr=<n> state=<state>`. The tool counts the rows of the table itself, with the count rules of `remedy recount`."""
+def round_integration(project, round_settings, name = "round-integration"):
+    """Finds or creates the integration pull request from the round branch into the trunk, and returns its number and state. `name` is the name of the step.
+    The tool `remedy integration` uses vars.round.integration_pr when it is not 0, and prints `pr=<n> state=<state>`. The tool makes the whole body again from the pull requests merged into the round branch, so a merge of an item or of a sync is never missing from it.
+    The round runs it after each landing of items (round-integration-land-<n>), after each landing of a sync (round-integration-sync-<n>) and when the round has nothing to move."""
     out = command(
-        name = "round-integration",
+        name = name,
         run = ["remedy", "integration", "--base", round_settings["base"], "--into", project.base_branch, "--pr", str(round_settings["integration_pr"])],
         stop_on_rc = [2],
     )
@@ -1107,11 +1115,12 @@ def round(item):
                 if result.ok and result.value != None:
                     seen = max(seen, result.value["host_losses"])
                     if result.value["approved"]:
-                        approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"]))
+                        approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"], pr = result.value.get("pr", 0)))
 
             if len(approved) > 0:
                 seen = max(seen, land(approved, project, round_settings, n))
                 approved = []
+                round_integration(project, round_settings, "round-integration-land-%d" % n)
 
             continue
 
@@ -1166,29 +1175,38 @@ def _move_card(project, stage, pr = 0, issue = 0):
         stop_on_rc = [2],
     )
 
-def item_value(item, head, approved, reason, host_losses):
+def item_value(item, head, approved, reason, host_losses, pr = 0):
     """The value that a child run returns to the round: the item, the head it reached, whether the review approved it, why not when it did not,
-    and the highest host_losses that a gate of the child read."""
-    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses}
+    the highest host_losses that a gate of the child read, and the number of the draft that the child opened (0 when it opened none)."""
+    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr}
 
 def sweep(project):
     """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane), then `docker volume prune -f`.
-    A project with no clean command runs the prune only, and the text says so. A failed step shows its exit code in the text. It does not fail the lane, and the prune runs after a failed clean."""
+    A project with no clean command runs the prune only, and the text says so. A failed step shows its exit code in the text, and a step that cannot run (a host that is gone)
+    shows its error: failure = "return" gives the error as a result. Neither fails the lane, and the prune runs after a failed clean."""
     words = project.vars.get("clean_command")
     lines = ["clean: not run, vars.clean_command is not set"]
     if words != None:
-        clean = command(name = "sweep-clean", run = words, host = "build")
-        lines = ["clean: rc=%d" % clean.rc]
+        clean = command(name = "sweep-clean", run = words, host = "build", failure = "return")
+        lines = [_swept("clean", clean)]
 
-    prune = command(name = "sweep-prune", run = ["docker", "volume", "prune", "-f"], host = "build")
+    prune = command(name = "sweep-prune", run = ["docker", "volume", "prune", "-f"], host = "build", failure = "return")
 
-    return "\n".join(lines + ["prune: rc=%d" % prune.rc])
+    return "\n".join(lines + [_swept("prune", prune)])
+
+def _swept(step, result):
+    """One line of the sweep text: the exit code of the step, and its error when the step could not run."""
+    if result.error:
+        return "%s: rc=%d error: %s" % (step, result.rc, result.error)
+
+    return "%s: rc=%d" % (step, result.rc)
 
 def pipeline(item):
     """The child entry: the pipeline of one item. The round starts one child for each item with spawn(entry = "pipeline").
     It returns item_value to the round, which lands the approved heads in one batch. The child never merges.
     The sweep runs when the lane ends: after each verdict, and before each of the two fail calls of the lane. The value that the lane returns carries the sweep result as `sweep`.
-    A lane that a builtin error ends (a host that is gone) gets no sweep, and a sweep that raises fails the lane: Starlark has no way to catch an error."""
+    A sweep step that cannot run returns its error in the sweep text. A lane that an error of an earlier builtin ends (a host that is gone at the mutation run) gets no sweep:
+    Starlark has no way to catch an error."""
     # The facts of the project file (the plumbing fields and the vars that hold the people, rules, limits, traps and the round settings). The step records them, so a resume keeps the facts the run started with.
     # Each agent of the example gets them as the input `facts`; no agent reads a path for them.
     project = facts()
@@ -1224,9 +1242,9 @@ def _lane(item, project, round_settings):
     # The mutation command is read before any agent starts, so a project with no vars.mutation_command is refused here.
     mutation = mutation_command(project)
 
-    # The implement step needs the skill below, so its runner must report skill calls. The check runs here, before any agent starts, so a runner that cannot report them costs nothing.
-    refuse_runner_without_skill_calls(project, round_settings, "implement")
+    # The sweep step below starts with the review skill, so the project must name it. The check runs here, before any agent starts.
     require_review_skill_named(project)
+    require_runner_that_loads_skills(project, round_settings, "implement")
 
     # The item this one depends on is the parent of its row. An item with no parent has none.
     parent = item_read(name = "parent", of = "parent")
@@ -1249,6 +1267,9 @@ def _lane(item, project, round_settings):
     # The implementer, each fix and each review read the known base reds of the round from the data file that the engine writes, not from the record of the owner.
     lane_data = {"base_reds": round_settings["base_reds"], "base": base}
 
+    # The implement step and its sweep share one sandbox: the forge is the only host that they reach.
+    lane_box = sandbox(network = ["github.com", "api.github.com"])
+
     implement = agent(
         name = "implement",
         prompt = "prompts/implement.md",
@@ -1258,23 +1279,38 @@ def _lane(item, project, round_settings):
         outputs = ["report", "uncaused"],
         forbid_commands = FORBID,
         protect_paths = protected(round_settings),
-        sandbox = sandbox(network = ["github.com", "api.github.com"]),
+        sandbox = lane_box,
         inputs = {"item": item, "plan": plan.text, "facts": project, "base": base, "acceptance": round_settings["acceptance"], "base_result": round_settings["base_result"]},
         data = dict(lane_data, pulls = history.pulls),
         **scope
     )
 
-    # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the gate and the review.
+    # A cap ended the run (the output `stop` is "turns" or "budget"), so the work may be half done. The item stops here, before the sweep, the gate and the review.
     capped(implement, "implement", item)
+    kept_history(implement, "implement", item)
 
-    # The implementer must run the skill that vars.review_skill names. A runner that reports no skill calls gives an empty list, and the item stops here, before the gate and the review.
-    if project.vars["review_skill"] not in implement.skills:
-        sweep(project)
-        fail("REFUSE: the implement step did not call the skill %s, which vars.review_skill names. Check that the runner has the skill and reports its calls. %s" % (project.vars["review_skill"], restart_steps(item)))
+    # The review sweep is a step of its own that the engine starts: the agent CLI loads the review skill before the first turn of the model, so no choice of the model is left to check.
+    # It resumes the session of the implement step on the same runner, in the same sandbox and with the same limits. It may edit, and it commits each fix.
+    sweep_step = agent(
+        name = "implement-sweep",
+        prompt = "prompts/sweep.md",
+        model = _model(round_settings, "implement"),
+        runner = _runner(round_settings, "implement"),
+        resume = implement.session,
+        skill = project.vars["review_skill"],
+        label = "implement-sweep",
+        outputs = ["report"],
+        forbid_commands = FORBID,
+        protect_paths = protected(round_settings),
+        sandbox = lane_box,
+        **scope
+    )
+
+    capped(sweep_step, "implement-sweep", item)
 
     # The agent of a sandboxed step has no credential, so the engine pushes its head to the branch of the item, the branch of its worktree. This is the first push of the branch in the run:
-    # with no lease, git takes only a new branch or a fast forward. Every gate clones the forge, so the push comes before the first gate.
-    push(name = "push-implement", branch = item.id, head = implement.head_sha, expect = "")
+    # with no lease, git takes only a new branch or a fast forward. Every gate clones the forge, so the push comes before the first gate. The head is the head of the sweep, which holds the commits of the implement step.
+    push(name = "push-implement", branch = item.id, head = sweep_step.head_sha, expect = "")
 
     # The first checkpoint the engine can act on: the plan step makes no commit and one agent step is opaque, so the draft opens after the implement step, on the branch that the engine pushed.
     # The engine opens the draft pull request of the item once (a resume finds the open one) and,
@@ -1304,7 +1340,8 @@ def _lane(item, project, round_settings):
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix.
     # Before each review, design and fix agent, the loop reads the pull request again, with the head of the worktree, the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
-    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}}
+    # The loop accepts the draft that this run opened (own_draft is its number) and stops at any other draft.
+    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}
     # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
     def rise_after_review(review):
         return regression_rise(plan.regressions, review.regressions)
@@ -1313,7 +1350,9 @@ def _lane(item, project, round_settings):
     def mutants(gate):
         return check_mutation(mutation, base)
 
-    loop = review_fix(item, implement, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused"], lane_check = lane_report, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id)
+    # The loop starts from the sweep as the lane of the implementer. The violations of the implement step go with it, so its first fix still answers them.
+    starting = struct(session = sweep_step.session, head_sha = sweep_step.head_sha, report = sweep_step.report, rewrote = sweep_step.rewrote, violations = "\n".join([text for text in [implement.violations, sweep_step.violations] if text]))
+    loop = review_fix(item, starting, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused"], lane_check = lane_report, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id)
 
     if loop.stopped:
         return item_value(item, "", False, "stopped", loop.host_losses)
@@ -1361,7 +1400,7 @@ def _lane(item, project, round_settings):
         )
 
         # The ruling can take days. The settle agent is a dispatch like the others, so the pull request is read again first, with the head that the loop judged last.
-        # A run that got no candidate has no gate: its head is the head of the implementer.
+        # A run that got no candidate has no gate: its head is the head of the sweep.
         if not preflight(name = "before-settle", id = item.id, head = loop.head, **guard).ok:
             return item_value(item, loop.head, False, "stopped", loop.host_losses)
 
@@ -1402,4 +1441,4 @@ def _lane(item, project, round_settings):
             forbid_text = ATTRIBUTION,
         )
 
-    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses)
+    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number)

@@ -123,7 +123,7 @@ func (c *Client) runSteps(id string) (RunSteps, error) {
 	}
 
 	progress := progressOf(lines, c.maxRunBudget, !run{Status: row}.terminal())
-	progress.Deadline, err = c.waitDeadlineOf(row, records)
+	err = c.takeDeadline(row, records, &progress)
 
 	return RunSteps{Run: id, State: state, Error: errorText(row.Error), Steps: lines, RunProgress: progress}, err
 }
@@ -140,15 +140,16 @@ func (c *Client) addHostLosses(id string, progress *RunProgress) error {
 	return err
 }
 
-// waitDeadlineOf reads the question of an open run once and returns the deadline of its wait. A finished run has none and reads nothing.
-func (c *Client) waitDeadlineOf(row dbos.WorkflowStatus, records []dbos.StepInfo) (time.Time, error) {
+// takeDeadline reads the question of an open run once and sets the deadline of its wait or its sleep. A finished run has none and reads nothing.
+func (c *Client) takeDeadline(row dbos.WorkflowStatus, records []dbos.StepInfo, progress *RunProgress) error {
 	if (run{Status: row}).terminal() {
-		return time.Time{}, nil
+		return nil
 	}
 
 	question, _, err := c.waitOf(row.ID)
+	progress.takeDeadline(row, records, question)
 
-	return deadlineFor(row, records, question), err
+	return err
 }
 
 // runRow reads the row of one run, with its error. The error is kept with the output of the row.

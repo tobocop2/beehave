@@ -96,7 +96,7 @@ func e2eFlow(dir, path string) cli.Flow {
 			files := e2eFiles{dir: dir}
 
 			engine, err := flow.NewEngine(ctx, withModules(opts), withBatch(flow.Deps{
-				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)),
+				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)), SkillLine: skillLineOf(cfg.Runners, newAdapters(nil, nil, nil)),
 				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: files,
 			}, dir, cfg))
 			if err != nil {
@@ -162,7 +162,8 @@ func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, err
 func (e2eFiles) Comment(context.Context, string, string, string, string) (int, error) { return 0, nil }
 
 func (e2eFiles) Open(context.Context, string, string, flow.OpenRequest) (flow.OpenResult, error) {
-	return flow.OpenResult{}, nil
+	// The real forge opens a pull request with a number of 1 or more, and the workflow passes it as own_draft. Standing reads the same pull request.
+	return flow.OpenResult{Number: 1, Created: true}, nil
 }
 
 func (e2eFiles) Push(context.Context, string, string, string, string, string) error { return nil }
@@ -447,11 +448,23 @@ fi
 if [ "$step" = implement ] || [ "$step" = fix ]; then
   printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
 fi
+# The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
+if [ "$step" = sweep ]; then
+  printf '{"report":"# Report\\n"}\n' > "$(field write)"
+  printf '%s\n' "$prompt" | sed -n 2p >> sweepline.log
+fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
 # When the file no-skill exists, the fake reports no skill call, as a CLI that does not report them.
+# The result of the call follows on a user line: with the file unknown-skill, the error that the CLI gives for a skill it did not load.
+skill=%SKILL%
 if [ ! -e no-skill ]; then
-  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}'
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_skill","name":"Skill","input":{"skill":"'"$skill"'"}}]}}'
+  if [ -e unknown-skill ]; then
+    echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","is_error":true,"content":"<tool_use_error>Unknown skill: '"$skill"'</tool_use_error>"}]}}'
+  else
+    echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","content":"Launching skill: '"$skill"'"}]}}'
+  fi
 fi
 # The implementer stages everything, the command that the example forbids.
 if [ "$step" = implement ]; then
@@ -489,6 +502,7 @@ func (e2eLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\nwrite={{ .output_file }}\n",
 	"implement": "step=implement\nwrite={{ .output_file }}\n",
+	"sweep":     "step=sweep\nwrite={{ .output_file }}\n",
 	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
 	"fix":       "step=fix\nround={{ .round }}\nwrite={{ .output_file }}\nfound={{ .findings }}\n",
 	"settle":    "step=settle\nwrite={{ .output_file }}\nruling={{ .ruling }}\n",
@@ -766,6 +780,7 @@ func TestScripts(t *testing.T) {
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
+			"reviewfakes": cmdReviewLoopFakes,
 		},
 	})
 }

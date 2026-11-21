@@ -402,11 +402,11 @@ func TestStepLine_TheOutputsTheEngineRecordsDecodeIntoTheFieldsOfTheLine(t *test
 	assert.Equal(t, "h1", gate.Head)
 	assert.Equal(t, []string{"pkg TestA/case"}, gate.NewTests)
 
-	command := callLine([]dbos.StepInfo{record("command:c#1", stepResult{Outputs: commandOutputs("o", "e", 7)})}, "command:c#1")
+	command := callLine([]dbos.StepInfo{record("command:c#1", stepResult{Outputs: commandOutputs(CommandOutput{Stdout: "o", Stderr: "e", RC: 7}, 1)})}, "command:c#1")
 	require.NotNil(t, command.ExitCode)
 	assert.Equal(t, 7, *command.ExitCode)
 
-	stopped := callLine([]dbos.StepInfo{record("command:c#2", stepResult{Outputs: commandOutputs("", "", 4), Stopped: &Stopped{Step: "c", RC: 4}})}, "command:c#2")
+	stopped := callLine([]dbos.StepInfo{record("command:c#2", stepResult{Outputs: commandOutputs(CommandOutput{RC: 4}, 1), Stopped: &Stopped{Step: "c", RC: 4}})}, "command:c#2")
 	assert.Equal(t, stopOnRC, stopped.Stop)
 
 	phase := callLine([]dbos.StepInfo{withChild(record("any-name", PhaseOutput{Outcome: "exited", ExitCode: 2}))}, "agent:a#1")

@@ -23,13 +23,6 @@ const body = `Intro.
 | Closes #6 | proof |
 `
 
-func TestHasHeading_KnowsTheHeadingsOfTheTable(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, recount.HasHeading("## Merged pull requests (3)"))
-	assert.False(t, recount.HasHeading("## Closes"))
-}
-
 func TestCount_CountsTheRowsOfTheTableAndTheClosingRows(t *testing.T) {
 	t.Parallel()
 

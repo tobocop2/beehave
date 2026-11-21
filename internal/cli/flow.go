@@ -47,8 +47,12 @@ type Reading interface {
 	Status() ([]flow.RunInfo, error)
 	// Steps lists the steps of one run, in order.
 	Steps(id string) (flow.RunSteps, error)
+	// Published lists the keys that one run published and their last values.
+	Published(id string) ([]flow.PublishedValue, error)
 	// Lanes lists the lanes of one item across all its runs, oldest attempt first.
 	Lanes(item string) (flow.ItemLanes, error)
+	// Follow gives to emit each entry of the agent streams of a run or of the newest run of an item, as the entries arrive.
+	Follow(ctx context.Context, target string, emit func(flow.FollowedEntry)) error
 	// Poll returns the newest review poll that finished. The second value is false when none has.
 	Poll() (flow.PollOutput, bool, error)
 	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
@@ -64,9 +68,7 @@ type Reading interface {
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Reading
-	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
-	Answer(item, text string) error
-	AnswerAs(item, from, text string) error
+	Messaging
 	Resume(item string) error
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
@@ -78,6 +80,15 @@ type Steering interface {
 	ResumeOnThisBuild(item string) error
 	Canceling
 	Close() error
+}
+
+// Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
+type Messaging interface {
+	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
+	Answer(item, text string) error
+	AnswerAs(item, from, text string) error
+	// Send puts a message on the inbox of the open run of an item and returns its id.
+	Send(item string, msg flow.Outgoing) (string, error)
 }
 
 // Canceling stops runs.
@@ -110,7 +121,7 @@ func (f flowCommands) add(root *cobra.Command) {
 		return
 	}
 
-	root.AddCommand(f.statusCommand(), f.answerCommand(), f.resumeCommand(), f.cancelCommand())
+	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.cancelCommand())
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
@@ -144,12 +155,23 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
 	return flow.Options{
 		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, PerLogin: cfg.Agents.PerLogin, Env: f.env,
-		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
+		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
 		ReviewPoll:         time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
 		ReviewLookbackDays: cfg.Agents.ReviewLookbackDays,
 		Retention:          time.Duration(cfg.Agents.RetentionDays) * 24 * time.Hour,
 		KeepRuns:           cfg.Agents.RetentionDays == 0,
 	}
+}
+
+// deepestSpawn is the highest max_spawn_depth of the projects: the engine registers an items queue for each depth up to it. A config with no project gives 0, the default.
+func deepestSpawn(projects map[string]config.Project) int {
+	deepest := 0
+
+	for _, project := range projects {
+		deepest = max(deepest, project.MaxSpawnDepth)
+	}
+
+	return deepest
 }
 
 // itemArgs checks the item id before any state folder opens. The engine checks it again.
@@ -560,25 +582,42 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	}
 }
 
+// statusFlags are the flags of beehave status.
+type statusFlags struct {
+	config, item string
+	asJSON       bool
+	follow       bool
+	events       bool
+	days         int
+}
+
+// bind adds the flags to the command.
+func (o *statusFlags) bind(command *cobra.Command) {
+	addConfigFlag(command, &o.config)
+	command.Flags().IntVar(&o.days, daysFlag, defaultDays, "show the per-day figures of this many local days, the current day included (the list only)")
+	command.Flags().StringVar(&o.item, itemFlag, "", "list the lanes of this item across all its runs")
+	command.Flags().BoolVar(&o.asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
+	command.Flags().BoolVar(&o.events, eventsFlag, false, "print the keys and values that the run published with publish (a run id is required)")
+	command.Flags().BoolVar(&o.follow, followFlag, false, "print the text and the tool calls of the agent phases of a run as they arrive, until the run ends")
+}
+
 func (f flowCommands) statusCommand() *cobra.Command {
-	var (
-		flag   string
-		item   string
-		asJSON bool
-		days   int
-	)
+	var opts statusFlags
 
 	command := &cobra.Command{
-		Use:   "status [run id]",
+		Use:   "status [run id or item]",
 		Short: "List the runs, or the steps of one run",
 		Long:  statusHelp,
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, item, args, asJSON, days) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.follow {
+				return f.follow(cmd, opts.config, opts.item, args, opts.asJSON)
+			}
+
+			return f.status(cmd, opts, args)
+		},
 	}
-	addConfigFlag(command, &flag)
-	command.Flags().IntVar(&days, daysFlag, defaultDays, "show the per-day figures of this many local days, the current day included (the list only)")
-	command.Flags().StringVar(&item, itemFlag, "", "list the lanes of this item across all its runs")
-	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
+	opts.bind(command)
 
 	return command
 }
@@ -591,6 +630,9 @@ const cancelRunFlag = "run"
 
 // itemFlag is the name of the flag that makes status list the lanes of one item.
 const itemFlag = "item"
+
+// followFlag is the name of the flag that makes status print the agent output of a run as it arrives.
+const followFlag = "follow"
 
 // daysFlag is the name of the flag that sets how many local days the per-day figures cover. defaultDays is its value when the flag is absent.
 const (
@@ -615,30 +657,48 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"The JSON list has the same figures in days, one object for each day.\n\n" +
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
+	"Give a run id and --" + eventsFlag + " to print the keys that the run published with publish, one line each: the key, a tab and the last value as JSON. Add --" + jsonFlag + " for one JSON list.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the label of the lane, " +
-	"the outcome and the fields that decide the flow."
+	"the outcome and the fields that decide the flow.\n\n" +
+	"Give a run id or an item id with --" + followFlag + " to print the text and the tool calls of each agent phase of the run, in order, as they arrive. " +
+	"An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output again and ends. " +
+	"A tool call reads as the name of the tool and its target. A token shaped like an Anthropic key is removed before a line is stored. Another secret is not. " +
+	"A run that waits for an answer keeps the command open. It prints one line with the question."
+
+// errFollowAlone is returned when --follow comes with --json, --item, or no run: it reads the output of one run.
+var errFollowAlone = errors.New("give one run id or item id with --" + followFlag + ", and no --" + jsonFlag + " or --" + itemFlag)
 
 // errItemAndRun is returned when status gets both a run id and --item: the two views answer different questions.
 var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")
 
-// status prints the runs of the store, or the steps of the run that the command names.
-func (f flowCommands) status(cmd *cobra.Command, flag, item string, args []string, asJSON bool, days int) error {
+// eventsFlag is the name of the flag that makes status print the published values of a run.
+const eventsFlag = "events"
+
+// errEventsNeedRun is returned when status gets --events with no run id or with --item.
+var errEventsNeedRun = errors.New("--" + eventsFlag + " takes one run id. Run beehave status to see the run ids")
+
+// status prints the runs of the store, the steps of the run that the command names, or the values that the run published.
+func (f flowCommands) status(cmd *cobra.Command, view statusFlags, args []string) error {
 	out := cmd.OutOrStdout()
 
 	switch {
-	case item != "" && len(args) == 1:
+	case view.item != "" && len(args) == 1:
 		return errItemAndRun
-	case item != "":
-		return f.withClient(cmd, flag, func(client Steering) error { return printLanes(out, client, item, asJSON) })
+	case view.events && (view.item != "" || len(args) != 1):
+		return errEventsNeedRun
+	case view.events:
+		return f.withClient(cmd, view.config, func(client Steering) error { return printPublished(out, client, args[0], view.asJSON) })
+	case view.item != "":
+		return f.withClient(cmd, view.config, func(client Steering) error { return printLanes(out, client, view.item, view.asJSON) })
 	case len(args) == 1:
-		return f.withClient(cmd, flag, func(client Steering) error { return printSteps(out, client, args[0], asJSON) })
+		return f.withClient(cmd, view.config, func(client Steering) error { return printSteps(out, client, args[0], view.asJSON) })
 	}
 
-	if days < 1 {
+	if view.days < 1 {
 		return errDaysBelowOne
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error { return printRuns(out, client, f.clock(), days, asJSON) })
+	return f.withClient(cmd, view.config, func(client Steering) error { return printRuns(out, client, f.clock(), view.days, view.asJSON) })
 }
 
 // clock returns the clock of the status view.

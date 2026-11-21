@@ -12,6 +12,9 @@ import (
 // defaultTrunk is the trunk branch when --trunk is not given.
 const defaultTrunk = "main"
 
+// defaultLabel is the label of a pull request that a tool opens when --label is not given. It is the default of the project key pr_label.
+const defaultLabel = "made-by-beehave"
+
 const cutUsage = "usage: remedy cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]\n"
 
 // cutCommand cuts the next round. A refusal of the cut is exit code 2, and so is a bad argument.

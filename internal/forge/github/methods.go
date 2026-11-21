@@ -180,6 +180,16 @@ func (f *Forge) PostComment(ctx context.Context, pr int, body string) error {
 	return nil
 }
 
+// ClosePR closes a pull request with a comment.
+func (f *Forge) ClosePR(ctx context.Context, pr int, comment string) error {
+	done := f.run.Run(ctx, []string{argPR, "close", strconv.Itoa(pr), argRepo, f.repo, "--comment", comment})
+	if done.ExitCode != 0 {
+		return refused(done, "cannot close pull request %d", pr)
+	}
+
+	return nil
+}
+
 // SetDraft converts a pull request to a draft, or marks it ready for review.
 func (f *Forge) SetDraft(ctx context.Context, pr int, draft bool) error {
 	args := []string{argPR, "ready", strconv.Itoa(pr), argRepo, f.repo}

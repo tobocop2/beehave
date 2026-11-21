@@ -49,11 +49,6 @@ func Count(body string) Tally {
 	return tally
 }
 
-// HasHeading reports whether the line is a heading of the table of merged pull requests.
-func HasHeading(line string) bool {
-	return heading.MatchString(line)
-}
-
 // headingAt returns the index of the first known heading, or -1.
 func headingAt(lines []string) int {
 	return slices.IndexFunc(lines, heading.MatchString)

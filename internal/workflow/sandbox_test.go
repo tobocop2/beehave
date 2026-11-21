@@ -148,6 +148,22 @@ func TestSignature_TheAgentTakesTheSandboxKeywordAndTheSandboxBuiltinHasItsOwnSi
 
 	box, ok := workflow.Signature("sandbox")
 	require.True(t, ok)
+	boxNames := make([]string, 0, len(box))
+	for _, param := range box {
+		boxNames = append(boxNames, param.Name)
+	}
+
+	assert.Equal(t, []string{"network"}, boxNames, "the sandbox builtin takes only its own keywords")
+	assert.NotContains(t, boxNames, "sandbox")
+}
+
+func TestSignature_TheSandboxBuiltinTakesOnlyTheNetwork(t *testing.T) {
+	t.Parallel()
+
+	box, ok := workflow.Signature("sandbox")
+	require.True(t, ok)
+
 	require.Len(t, box, 1)
 	assert.Equal(t, "network", box[0].Name)
+	assert.Contains(t, problemsOf(t, `sandbox(skills = ["review"])`)[0], "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill")
 }

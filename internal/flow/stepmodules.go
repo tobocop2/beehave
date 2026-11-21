@@ -41,7 +41,13 @@ const (
 // coreVersion is the version of the core module. Version 2 added the vars field to the result of facts. Version 3 removed the round_* fields from it.
 // Version 4 records the wait:notify step at every wait, before the receive of the answer. Version 5 removed the method and board fields from the result of facts.
 // Version 6 adds the runners field to the result of facts. Version 7 adds the run and run_item fields to the input of the host job of a command call with a slot class.
-const coreVersion = 7
+// Version 8 adds the sleep step, with its marker record sleep:<name>#<n>/start.
+// Version 9 adds the publish and progress steps, and the cost_usd field to each outcome that the gather step records.
+// Version 10 adds the recv and send steps of the inbox.
+// Version 11 adds the attempts and error fields to the result of command, the attempts field to write, and the retries of a spawned run to gather.
+// Version 12 adds the cancel step, the deadline step of a gather, the deadline that each wait of a gather records and the open field of a gather result.
+// Version 13 replaces the reports_skills field of each entry of the runners field of facts with the loads_skills field.
+const coreVersion = 13
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -54,7 +60,8 @@ const coreVersion = 7
 // Version 11 adds the data keyword: the prompt_data output of the render step and the data and data_file fields of the phase input.
 // Version 12 adds the committed field to the result of an agent call.
 // Version 13 puts the data file in a folder of its own and removes the data_file field of the phase input: the phase derives the path.
-const agentVersion = 13
+// Version 14 adds the skills output of the render step and the skills field of the phase input, and removes the skills list from the recorded sandbox: the prompt declares the skills.
+const agentVersion = 14
 
 // landVersion is the version of the land module. Version 2 added the approved field to each member in the recorded input of the batch steps.
 // Version 3 added the refusal field to the result of a merge, which the reason of a batch member reads.
@@ -106,7 +113,7 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{"command", "earlier_calls", envKeyword, "facts", "gather", "now", "spawn", "wait", "write"},
+			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},

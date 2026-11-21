@@ -98,7 +98,7 @@ func ghAsks(t *testing.T, path string) []string {
 	raw, err := fs.ReadFile(os.DirFS("."), path)
 	require.NoError(t, err)
 
-	tmpl, err := template.New(path).Option("missingkey=error").Parse(string(raw))
+	tmpl, err := template.New(path).Funcs(skillFuncs).Option("missingkey=error").Parse(string(raw))
 	require.NoError(t, err)
 
 	var out bytes.Buffer

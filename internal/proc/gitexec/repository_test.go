@@ -74,7 +74,12 @@ func newEngineLayout(t *testing.T) engineLayout {
 	plainGit(t, root, "clone", "-q", origin, l.clone)
 	l.rev = plainGit(t, l.clone, "rev-parse", "HEAD")
 	plainGit(t, l.clone, "worktree", "add", "-q", "-b", "item", l.tree, l.rev)
-	require.NoError(t, os.WriteFile(filepath.Join(l.tree, "a.txt"), []byte("two\n"), 0o600))
+	// The edit changes the size and the mtime, so the index stat data of the file cannot match, whatever the timestamp tick.
+	edited := filepath.Join(l.tree, "a.txt")
+	require.NoError(t, os.WriteFile(edited, []byte("two, edited\n"), 0o600))
+
+	later := time.Now().Add(time.Minute)
+	require.NoError(t, os.Chtimes(edited, later, later))
 	require.NoError(t, os.WriteFile(filepath.Join(l.tree, "u.txt"), []byte("u\n"), 0o600))
 
 	return l
@@ -353,6 +358,8 @@ func TestGitexec_KeepsTheOwnerGlobalConfig(t *testing.T) { //nolint:paralleltest
 	plainGit(t, l.root, "config", "--file", global, "filter.evil.clean", l.prog)
 	require.NoError(t, os.MkdirAll(filepath.Join(l.clone, ".git", "info"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(l.clone, ".git", "info", "attributes"), []byte("* filter=evil\n"), 0o600))
+	// Git runs a clean filter on status only when the size matches the index and the mtime does not.
+	require.NoError(t, os.WriteFile(filepath.Join(l.tree, "a.txt"), []byte("two\n"), 0o600))
 	require.NoError(t, os.Chtimes(filepath.Join(l.tree, "a.txt"), time.Unix(0, 0), time.Unix(0, 0)))
 
 	out := gitexec.NewRepositories(l.repos).Runner(l.tree, 0).Run(t.Context(), []string{"status", "--porcelain"})

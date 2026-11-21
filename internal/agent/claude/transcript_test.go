@@ -58,6 +58,12 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	assert.False(t, p.ResumeLast, "the resume flag keeps its place before the caps")
 }
 
+func TestProfile_TheDefaultConfigFolderIsDotClaudeUnderTheHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, ".claude", claude.New(nil).Profile().ConfigHome)
+}
+
 func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +170,7 @@ func TestCalls_ReadTheStreamOfOneRun(t *testing.T) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		seen := claude.New(nil).Calls(scanner.Text())
-		shell, skills = append(shell, texts(seen.Shell)...), append(skills, seen.Skills...)
+		shell, skills = append(shell, texts(seen.Shell)...), append(skills, texts(seen.Skills)...)
 
 		assert.False(t, seen.Invalid, scanner.Text())
 		assert.Empty(t, seen.Refused, scanner.Text())
@@ -302,5 +308,15 @@ func TestCalls_ASkillCountsOnlyAsAToolUseBlockOfAnAssistantLine(t *testing.T) {
 		assert.Empty(t, claude.New(nil).Calls(line).Skills, line)
 	}
 
-	assert.Equal(t, []string{oracle}, claude.New(nil).Calls(assistant(t, toolUse("Skill", "skill", oracle))).Skills)
+	assert.Equal(t, []string{oracle}, texts(claude.New(nil).Calls(assistant(t, toolUse("Skill", "skill", oracle))).Skills))
+}
+
+func TestProfile_TheSkillLineLoadsTheSkillOfThePluginFolder(t *testing.T) {
+	t.Parallel()
+
+	p := claude.New(nil).Profile()
+
+	require.NotNil(t, p.SkillLine, "Claude Code loads a skill from the first line of the prompt")
+	assert.Equal(t, "/beehave-skills:x", p.SkillLine("x"))
+	assert.Equal(t, "/beehave-skills:lint-pass", p.SkillLine("lint-pass"), "the line names the plugin of the skills of a run, then the skill")
 }

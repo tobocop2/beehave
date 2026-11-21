@@ -26,8 +26,12 @@ type ItemInput struct {
 	// A run that `beehave run` started has none: it picks at its first agent step.
 	Login string `json:"login,omitempty"`
 	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
-	// A run that spawn started has it set to the entry of the spawn call, and such a run cannot spawn.
+	// A run that spawn started has it set to the entry of the spawn call.
 	Entry string `json:"entry,omitempty"`
+	// Depth is the level of the run below the run a user started, which is at depth 0. Spawn gives its children Depth + 1.
+	Depth int `json:"depth,omitempty"`
+	// Parent is the id of the run that spawned this run, which send(to = "parent") sends to. It is empty for a run that a user started.
+	Parent string `json:"parent,omitempty"`
 	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. It is empty for any other run, which cuts at the base branch of the project.
 	Base string `json:"base,omitempty"`
 }

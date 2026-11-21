@@ -1,9 +1,12 @@
 package workflow
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"go.starlark.net/syntax"
 )
@@ -12,16 +15,68 @@ const (
 	agentName    = "agent"
 	spawnName    = "spawn"
 	gatherName   = "gather"
+	cancelName   = "cancel"
 	entryKeyword = "entry"
 	failKeyword  = "fail"
 	untilKeyword = "until"
 	nameKeyword  = "name"
+	// timeoutKeyword is the keyword of a gather call that sets the deadline of the group.
+	timeoutKeyword = "timeout"
+	// CancelledField is the one field of the struct that cancel returns.
+	CancelledField = "cancelled" //nolint:misspell // the field name is part of the workflow API
+	// OnTimeoutKeyword is the keyword of a gather call that says what the deadline does with the runs that are still open.
+	OnTimeoutKeyword = "on_timeout"
 	// secondArgument is the position of entry in a spawn call and of fail in a gather call.
 	secondArgument = 1
 )
 
+// OnTimeout is what a gather call does at its deadline with the runs that are still open.
+type OnTimeout string
+
+const (
+	// OnTimeoutCancel cancels each open run, and its result reads ok False with the error "deadline".
+	OnTimeoutCancel OnTimeout = "cancel"
+	// OnTimeoutReturn leaves each open run running, and its result reads open True.
+	OnTimeoutReturn OnTimeout = "return"
+)
+
 // FailModes lists the values of the fail argument of a gather call.
 func FailModes() []string { return []string{"return", "raise"} }
+
+// OnTimeoutModes lists the values of the on_timeout argument of a gather call.
+func OnTimeoutModes() []string { return []string{string(OnTimeoutCancel), string(OnTimeoutReturn)} }
+
+// GroupDeadline reads the timeout and on_timeout of a gather call. A call with no timeout has no deadline, and a timeout with no on_timeout cancels.
+func GroupDeadline(timeout, onTimeout string) (time.Duration, OnTimeout, error) {
+	if err := DeadlineMode(timeout != "", onTimeout != ""); err != nil {
+		return 0, "", err
+	}
+
+	if timeout == "" {
+		return 0, "", nil
+	}
+
+	wait, err := Deadline(timeoutKeyword, timeout)
+	if err != nil {
+		return 0, "", err
+	}
+
+	mode := cmp.Or(OnTimeout(onTimeout), OnTimeoutCancel)
+	if !slices.Contains(OnTimeoutModes(), string(mode)) {
+		return 0, "", fmt.Errorf("on_timeout is %q. Use \"cancel\" or \"return\"", onTimeout)
+	}
+
+	return wait, mode, nil
+}
+
+// DeadlineMode is the rule that ties on_timeout to timeout in a gather call: on_timeout needs a timeout.
+func DeadlineMode(hasTimeout, hasMode bool) error {
+	if hasMode && !hasTimeout {
+		return errors.New("on_timeout needs a timeout. Add timeout = \"10m\" to the call, or leave on_timeout out")
+	}
+
+	return nil
+}
 
 // UntilModes lists the values of the until argument of a gather call: wait for every run, or return when one run is no longer open.
 func UntilModes() []string { return []string{"all", "any"} }
@@ -78,9 +133,12 @@ func (g *graph) keywords(call *syntax.CallExpr, builtin string, allowed []string
 			continue
 		}
 
-		if len(allowed) == 0 {
+		switch {
+		case builtin == sandboxName && key.Name == skillsField:
+			g.report(placeOf(key.NamePos), "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}.")
+		case len(allowed) == 0:
 			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, key.Name))
-		} else {
+		default:
 			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, key.Name, strings.Join(allowed, ", ")))
 		}
 	}

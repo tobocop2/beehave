@@ -14,13 +14,25 @@ const revertField = "revert"
 // The outputs of each builtin that records a step, one function each. The fields of a function are the fields in workflow.ResultFields,
 // and a test compares them, so the check of a workflow file and the run read the same names.
 
-func commandOutputs(stdout, stderr string, rc int) map[string]any {
-	return map[string]any{"stdout": stdout, "stderr": stderr, "rc": rc}
+// commandOutputs records the fields of a command: what the program printed, its exit code, the number of tries, and no error.
+func commandOutputs(out CommandOutput, attempts int) map[string]any {
+	fields := programOutputs(out, attempts)
+	fields[errorField] = ""
+
+	return fields
 }
 
-// writeOutputs records the fields of a write: the fields of a command, the key of the call, and whether the read-back found the write done.
-func writeOutputs(stdout, stderr string, rc int, key string, skipped bool) map[string]any {
-	out := commandOutputs(stdout, stderr, rc)
+// programOutputs records what a program printed, its exit code and the number of tries.
+func programOutputs(out CommandOutput, attempts int) map[string]any {
+	return map[string]any{"stdout": out.Stdout, "stderr": out.Stderr, "rc": out.RC, attemptsField: attempts}
+}
+
+// attemptsField is the result field that counts the tries of a call.
+const attemptsField = "attempts"
+
+// writeOutputs records the fields of a write: what the program printed, its exit code and tries, the key of the call, and whether the read-back found the write done.
+func writeOutputs(run CommandOutput, attempts int, key string, skipped bool) map[string]any {
+	out := programOutputs(run, attempts)
 	out["key"], out["skipped"] = key, skipped
 
 	return out

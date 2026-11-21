@@ -46,7 +46,7 @@ func TestGatherUntil_AnyReturnsWhenOneOfThreeEndedAndListsOnlyThatRun(t *testing
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 22:ok"}, h.commands.ranBy(testItem), "only the run that ended is listed")
-	assert.JSONEq(t, `{"outcomes":[{"item":"22","ok":true}]}`, gatherJSON(t, engine))
+	assert.JSONEq(t, `{"outcomes":[{"item":"22","ok":true,"cost_usd":0}]}`, gatherJSON(t, engine))
 }
 
 func TestGatherUntil_AnyWithEveryRunEndedReturnsEveryRun(t *testing.T) {

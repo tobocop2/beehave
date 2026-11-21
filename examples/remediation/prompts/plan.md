@@ -66,8 +66,8 @@ When a claim depends on a branch, find where its variable is SET and not only wh
 
 ## Skills
 
-**Invoke each skill that the rules name with the Skill tool, by name.** Reading the file of a skill instead is a skipped step, and a report with no Skill call goes back unread. If the Skill tool answers `unknown skill`, read the skill file and follow it: that answer is about the registry and is never permission to skip the step.
-**`blast-radius-review` is the floor of every lane, never the whole answer.** Choose the other skills from what the item is, not from habit: a change of output, of a dependency floor or of a harness each asks for more.
+**Invoke each skill that the rules name with the Skill tool, by name.** Reading the file of a skill instead is a skipped step, and a report with no Skill call goes back unread.
+**`{{ skill .facts.vars.review_skill }}` is the floor of every lane, never the whole answer.** Choose the other skills from what the item is, not from habit: a change of output, of a dependency floor or of a harness each asks for more.
 **A ruling of the owner binds the item.** Read the rulings file that the run names. Never reverse a ruling: if you think that it is wrong, stop and report it with your evidence.
 
 ## Project rules
@@ -79,7 +79,6 @@ Follow the rules file of the project.
 The run read these facts from the project file at its start. A fact that is empty holds no fact: ask the owner, and do not guess it.
 
 - Repository identity and fork topology: repo `{{ .facts.repo }}`, source `{{ .facts.source }}`, forge `{{ .facts.forge }}`.
-- Build host: `{{ .facts.build_host }}`.
 - Base branch: `{{ .facts.base_branch }}`.
 - The gate is `{{ .facts.gate }}`. The gate list comes from these workflow files:{{ range index .facts.vars "gate_files" }} `{{ . }}`{{ end }}
 - Tracker: `{{ .facts.tracker }}`. Queue to epic:{{ range $queue, $epic := index .facts.vars "epics" }} `{{ $queue }}` is `{{ $epic }}`;{{ end }}

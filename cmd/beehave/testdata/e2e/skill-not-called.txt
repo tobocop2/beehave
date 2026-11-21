@@ -1,0 +1,13 @@
+# The CLI reports no skill call. The engine does not read the calls of the implement step any more: the sweep step starts with the line that loads the skill, and the item goes on to the review.
+exec beehave run 7 --workflow flow/workflow.star
+grep -count=1 '^implement ' calls.log
+grep -count=1 '^sweep ' calls.log
+grep -count=1 '^/beehave-skills:the-review-skill$' sweepline.log
+grep '^review ' calls.log
+
+-- no-skill --
+-- verdicts --
+approve
+approve
+approve
+-- expected-events.log --

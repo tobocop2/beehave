@@ -88,10 +88,14 @@ func buildEnv(base map[string]string, p Profile, dir, token string) []string {
 	return list(allowed(base), p, dir, token)
 }
 
-// list adds the login folder and the token to env and returns it as a sorted NAME=value list.
+// list adds the login folder and the token to env and returns it as a sorted NAME=value list. A runner with no login folder leaves the variables unset,
+// so the CLI reads its default folder: a measured run of Claude Code with CLAUDE_CONFIG_DIR set to the empty text loads no skill of ~/.claude/skills,
+// and the same run with the variable unset does.
 func list(env map[string]string, p Profile, dir, token string) []string {
 	for _, name := range p.ConfigVars {
-		env[name] = dir
+		if dir != "" {
+			env[name] = dir
+		}
 	}
 
 	if token != "" && p.TokenVar != "" {

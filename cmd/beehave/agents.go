@@ -135,13 +135,13 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 	return strings.Join(words, " ")
 }
 
-func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan) agent.Spec {
+func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan, skills []string) agent.Spec {
 	return agent.Spec{
-		Sandbox: box,
+		Sandbox: box, Skills: skills,
 		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
-		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits,
+		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
 	}
 }
 
@@ -166,7 +166,7 @@ func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind
 		return ""
 	case guard == "":
 		return "The step lists forbid_commands, but beehave cannot find the path of its own program to start the check of the commands. The step did not start."
-	case adapter.Guard(guard, "").Empty():
+	case adapter.Guard(guard, "", nil, nil).Empty():
 		return "The step lists forbid_commands, but the agent CLI of the runner has no hook to refuse a command before it runs. The step did not start."
 	}
 
@@ -180,21 +180,36 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 		return agent.Result{}, err
 	}
 
+	return a.runIn(ctx, request, runner, dir)
+}
+
+// runIn starts the agent of the runner in the folder of the item. The step does not start when its sandbox or its skills cannot be made.
+func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.Result, error) {
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(request.Forbid, protect)
 
 	box, note := a.boxOf(ctx, request, runner, dir, adapter, guard)
-	if note != "" {
+	skills, missing := a.skillsOf(request, runner)
+
+	if note = cmp.Or(note, missing); note != "" {
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
 	request, resumed := replayOf(request, runner, dir, adapter)
-	tap := newSessionTap(adapter, a.prices, request.Named)
+	tap := a.tapOf(adapter, request)
 
-	result, err := endOf(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box), request.Model), request.Forbid, protect)
+	result, err := endOf(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box, skills), request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, box)
 
 	return result, err
+}
+
+// tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
+func (a agents) tapOf(adapter agent.Adapter, request flow.AgentRequest) *sessionTap {
+	tap := newSessionTap(adapter, a.prices, request.Named)
+	tap.said = request.Said
+
+	return tap
 }
 
 // replayOf returns the request to run for a start that follows a lost run, and whether it resumes the session of that run.
@@ -257,7 +272,7 @@ func (a agents) protection(request flow.AgentRequest, dir string) shell.Protecti
 
 // boxOf returns the sandbox plan of a step, or nil when the step has no sandbox. A step that cannot start, for want of its guard, its sandbox or a price to check its cost cap, returns the reason.
 func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (*agent.SandboxPlan, string) {
-	note := cmp.Or(a.unpricedCapNote(adapter, request), noGuardNote(adapter, guard, request.Forbid))
+	note := cmp.Or(a.unpricedCapNote(adapter, request), noGuardNote(adapter, guard, request.Forbid), a.outputNote(request, runner))
 	if note != "" {
 		return nil, note
 	}
@@ -272,6 +287,35 @@ func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner mod
 	}
 
 	return &plan, ""
+}
+
+// skillsOf returns the folder of each skill that the prompt of the step declares, in the config folder of the runner, or the reason why the step cannot start.
+// A step that declares no skill needs no folder.
+func (a agents) skillsOf(request flow.AgentRequest, runner model.Runner) ([]string, string) {
+	if len(request.Skills) == 0 {
+		return nil, ""
+	}
+
+	home, err := a.home()
+	if err != nil {
+		return nil, "the prompt names skills, and beehave cannot find the home folder to look for them in. The step did not start."
+	}
+
+	return skillFolders(request.Skills, a.configFolder(runner), home)
+}
+
+// configFolder returns the config folder of the runner. A runner with none gets the default folder of its CLI under the home folder, because the launch
+// sets the config variable to the empty text and the CLI then reads its default folder. The result is empty when the CLI has no such folder.
+func (a agents) configFolder(runner model.Runner) string {
+	if runner.ConfigDir != "" {
+		return runner.ConfigDir
+	}
+
+	if home := a.adapter(runner.Agent).Profile().ConfigHome; home != "" {
+		return filepath.Join("~", home)
+	}
+
+	return ""
 }
 
 // target returns the runner of the login and the worktree of the item. A request with no prompt, an unknown login or no worktree is refused.
@@ -493,8 +537,10 @@ type sessionTap struct {
 	session string
 	text    string
 	shell   []agent.Call
-	skills  []string
+	skills  []agent.Call
 	refused map[string]bool
+	// succeeded holds the ids of the calls whose result reported no error.
+	succeeded map[string]bool
 	// denials are the tool calls that the permission check of the CLI refused, from the result line.
 	denials []agent.Denial
 	// dropped counts the lines that the runner cut for length. invalid counts the lines that the adapter cannot read. ended is true after the line that ends the run.
@@ -513,11 +559,13 @@ type sessionTap struct {
 	prices agent.Prices
 	// named receives each new session id at the line that holds it, or is nil.
 	named func(session string)
+	// said receives each message text and tool call at the line that holds it, or is nil.
+	said func(agent.Said)
 }
 
 // newSessionTap returns a tap that estimates the cost of a run from the price table, and gives each new session id to named, when named is set.
 func newSessionTap(adapter agent.Adapter, prices agent.Prices, named func(session string)) *sessionTap {
-	return &sessionTap{adapter: adapter, refused: map[string]bool{}, prices: prices, named: named}
+	return &sessionTap{adapter: adapter, refused: map[string]bool{}, succeeded: map[string]bool{}, prices: prices, named: named}
 }
 
 // The violation lines that say the check did not see the whole output of the run.
@@ -566,16 +614,34 @@ func (t *sessionTap) see(line string) {
 
 	seen := t.adapter.Calls(line)
 	t.shell, t.skills = append(t.shell, seen.Shell...), append(t.skills, seen.Skills...)
+	t.speak(seen.Said)
 
-	for _, id := range seen.Refused {
-		t.refused[id] = true
-	}
+	mark(t.refused, seen.Refused)
+	mark(t.succeeded, seen.Succeeded)
 
 	t.addEnd(seen)
 	t.addCost(seen)
 
 	if seen.Invalid {
 		t.invalid++
+	}
+}
+
+// speak gives each message text and tool call of a line to the callback of the tap, when it has one. The caller holds the lock, so they arrive in the order of the lines.
+func (t *sessionTap) speak(said []agent.Said) {
+	if t.said == nil {
+		return
+	}
+
+	for _, one := range said {
+		t.said(one)
+	}
+}
+
+// mark adds each id to the set.
+func mark(set map[string]bool, ids []string) {
+	for _, id := range ids {
+		set[id] = true
 	}
 }
 
@@ -636,11 +702,20 @@ func (t *sessionTap) incomplete() []string {
 	return lines
 }
 
+// skillCalls returns the skill of each skill call whose result reported no error, so a skill that did not load is left out.
 func (t *sessionTap) skillCalls() []string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	return slices.Clone(t.skills)
+	var skills []string
+
+	for _, call := range t.skills {
+		if t.succeeded[call.ID] {
+			skills = append(skills, call.Text)
+		}
+	}
+
+	return skills
 }
 
 // spent returns the cost of the run: the dollars that the result line reported, else streamed (the sum of the dollars that single lines reported, which the

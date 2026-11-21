@@ -52,7 +52,6 @@ func (Adapter) Profile() agent.Profile {
 		SupportedFrom:   pinnedVersion,
 		SupportedBefore: firstUnsupported,
 		GuardPosixOnly:  true,
-		NoSkillCalls:    true,
 		DefaultTimeout:  time.Hour,
 		StallNote:       stallNote,
 	}

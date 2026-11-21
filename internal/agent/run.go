@@ -86,6 +86,12 @@ type Spec struct {
 	// Sandbox, when set, confines the shell of the run by the plan. The run does not start if the adapter has no sandbox, the system is Windows or the CLI is too old.
 	// The environment of the CLI then holds no proxy variable and no agent socket, and git reads no global or system config.
 	Sandbox *SandboxPlan
+	// Write lists the files outside the work folder that the file tools of the run may read and write, each by its exact path: the output file of the step.
+	// Every launch opens them, with or without a guard or a sandbox. In a sandbox the shell may write them too.
+	Write []string
+	// Skills lists the folder of each skill that the agent may load, and the name of the folder is the name of the skill. The adapter copies each one into the
+	// run folder, so a run with or without a sandbox loads these skills. A folder here holds no symbolic link: the engine refuses one.
+	Skills []string
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -258,7 +264,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
 	launch := launchOf(spec, runDir)
 
-	if problem := writeFiles(runDir, launch.Files); problem != "" {
+	if problem := cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies)); problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
@@ -356,18 +362,16 @@ func argsOf(spec Spec, p Profile, launch Launch, later []string) []string {
 }
 
 // launchOf returns what the adapter adds to the start: the sandbox of the spec, or the command guard when the spec has no sandbox.
+// Both carry the files that the spec opens to the file tools and the skills of the spec.
 func launchOf(spec Spec, runDir string) Launch {
-	switch {
-	case spec.Sandbox != nil:
-		plan := *spec.Sandbox
-		plan.Edits = !spec.NoEdits
-
-		return spec.Adapter.Sandbox(plan, spec.Guard, runDir)
-	case spec.Guard != "":
-		return spec.Adapter.Guard(spec.Guard, runDir)
+	if spec.Sandbox == nil {
+		return spec.Adapter.Guard(spec.Guard, runDir, spec.Write, spec.Skills)
 	}
 
-	return Launch{}
+	plan := *spec.Sandbox
+	plan.Edits = !spec.NoEdits
+
+	return spec.Adapter.Sandbox(plan, spec.Guard, runDir, spec.Write, spec.Skills)
 }
 
 // writeFiles writes the files of a launch into runDir. It returns why it cannot, or "" when every file is written.
@@ -386,6 +390,21 @@ func writeFiles(runDir string, files map[string]string) string {
 
 		if err := os.WriteFile(path, []byte(files[name]), launchFileMode); err != nil {
 			return fmt.Sprintf("cannot write the launch file %q: %v", name, err)
+		}
+	}
+
+	return ""
+}
+
+// copyFolders copies each folder of a launch into runDir, at its local path. It returns why it cannot, or "" when every folder is copied.
+func copyFolders(runDir string, copies map[string]string) string {
+	for _, name := range slices.Sorted(maps.Keys(copies)) {
+		if !filepath.IsLocal(name) {
+			return fmt.Sprintf("the launch of the agent puts the copy %q outside its run folder, so the run does not start.", name)
+		}
+
+		if err := os.CopyFS(filepath.Join(runDir, name), os.DirFS(copies[name])); err != nil {
+			return fmt.Sprintf("cannot copy %s into the run folder, so the run does not start: %v", copies[name], err)
 		}
 	}
 

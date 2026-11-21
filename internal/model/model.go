@@ -38,8 +38,10 @@ type Project struct {
 	// TestPaths are the globs of the test files. The revert run copies the added and changed ones of the head onto the base commit.
 	TestPaths []string
 	// Notify is the program and its arguments that the engine runs when a wait for the owner opens. Empty means no notice.
-	Notify    []string
-	PinFile   string
+	Notify  []string
+	PinFile string
+	// PRLabel is the label that every pull request opened by the engine carries. The config fills it, so it is never empty for a loaded project.
+	PRLabel   string
 	BuildHost string
 	// BuildHosts is every build host that a project with more than one declares, and BuildHost is the first: the default of a run.
 	// It is empty when BuildHost is the only one. Every cluster shares the Host block.
@@ -56,12 +58,14 @@ type Project struct {
 	GateAllowWrite []string
 	// SandboxEnforcer is "auto" or the name of the enforcer that runs the gate under the sandbox. Empty means "auto".
 	SandboxEnforcer string
+	// MaxSpawnDepth is the deepest level of spawn below the run a user started. The config fills it, so it is 1 or more for a loaded project.
+	MaxSpawnDepth int
 
 	// Vars are the free settings of the workflow of the project, as the file wrote them. The engine reads no key and no value. The values are JSON values:
 	// nil, bool, string, json.Number, []any and map[string]any. A project that sets none has nil.
 	Vars map[string]any
-	// RunnerSkills maps the name of each runner of the config to whether its agent CLI reports skill calls. The engine fills it from the runner profiles; a project file does not set it.
-	RunnerSkills map[string]bool
+	// RunnerSkillLoads maps the name of each runner of the config to whether its agent CLI has a line that loads a skill before the first turn. The engine fills it from the runner profiles.
+	RunnerSkillLoads map[string]bool
 }
 
 // HasRepository reports whether the project has a git repository: it sets a source or a forge, and the forge gives the clone URL.

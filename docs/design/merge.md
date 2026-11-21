@@ -369,7 +369,7 @@ A dry run takes the same path and prints `WOULD:` lines, and it makes no write c
 
 ### `remedy sync`
 
-`remedy sync --base <branch> [--trunk <branch>]` runs `roundsync`. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the sync and integration pull requests always use the default label `made-by-beehave`, and a custom `pr_label` reaches only item drafts. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|
@@ -388,7 +388,7 @@ GitHub does not merge a draft: `gh pr merge` on one exits 1 with `GraphQL: Pull 
 
 When the merge fails, or the tool gets SIGINT during the merge, the landing makes the pull request a draft again. That call runs on a context that the SIGINT does not end, with its own limit of 30 seconds. If that call fails, its failure is part of the error of the landing. A sync that finds the open pull request of its sync branch ready makes it a draft before any merge into that branch. If the draft call fails, the sync stops before the merge.
 
-A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `remedy sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
+A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `remedy sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. Once the sync holds its own open pull request, it closes every other open sync pull request into the round base, not only older ones, matched by the branch prefix `sync/<base>/`, with a comment that names the pull request that replaces it. A repeat call closes what a failed close left open. A failed close or a failed list is exit code 2 with the error of the forge. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
 
 #### The sync step of the round
 

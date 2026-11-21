@@ -65,8 +65,37 @@ type fakeAgents struct {
 	err      error
 	// named is the session id that the agent names before it counts as in flight, when it is set.
 	named string
+	// said is what the agent says at each start, before it counts as running.
+	said []agent.Said
 	// hangAt is the number (from 1) of the one agent start that holds until its context ends, so a test stops the engine while that agent runs. 0 holds none.
 	hangAt int
+	// stall is the item whose first stallStarts agent starts each hold for stallFor, or until the context ends, so a test sees that run stalled.
+	// A canceled phase of a fake has no process for the tick to end, so the hold ends on its own and gives the slot of the login back.
+	stall       string
+	stallStarts int
+	stallFor    time.Duration
+}
+
+// sayAll gives each entry of said to the request, as the agent says it.
+func sayAll(request AgentRequest, said []agent.Said) {
+	for _, one := range said {
+		request.Said(one)
+	}
+}
+
+// holdOf is what the start of an agent for item waits on, besides the end of its context. The start at hangAt waits on a nil channel, so only the
+// context ends it. The first stallStarts starts of the stalled item wait for stallFor. Any other start goes on at once. The caller holds mu.
+func (a *fakeAgents) holdOf(item string) <-chan time.Time {
+	switch {
+	case len(a.requests) == a.hangAt:
+		return nil
+	case item == a.stall && a.stallStarts > 0:
+		a.stallStarts--
+
+		return time.After(a.stallFor)
+	default:
+		return time.After(0)
+	}
 }
 
 // Run holds each agent in flight until the test closes gate, when gate is set. It reports pid as the process of the agent, when pid is set.
@@ -96,11 +125,15 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	a.perLogin[request.Login]++
 	a.maxTotal = max(a.maxTotal, a.inFlight)
 	a.maxLogin = max(a.maxLogin, a.perLogin[request.Login])
-	hang := len(a.requests) == a.hangAt
+	hold := a.holdOf(request.Item)
+	said := a.said
 	a.mu.Unlock()
 
-	if hang {
-		<-ctx.Done()
+	sayAll(request, said)
+
+	select {
+	case <-hold:
+	case <-ctx.Done():
 	}
 
 	if a.gate != nil {
@@ -586,6 +619,10 @@ type harness struct {
 	bare bool
 	// mutation is the command that the facts of the run hold as vars.mutation_command. It is nil, and so the vars hold none, unless a test sets it.
 	mutation []string
+	// skillLine is the skill-load line of the adapter of each login. It is nil, and so every login has the line "/fake-skills:<skill>", unless a test sets it.
+	skillLine func(login, skill string) string
+	// noSkillLine leaves Deps.SkillLine nil, as an engine built with no adapter table has it.
+	noSkillLine bool
 	// refuseGate is the refusal of a gate on this machine. It is nil, and so no gate is refused, unless a test sets it.
 	refuseGate func(project string, program bool) error
 	// slots resolves the slot class of a command call. It is nil, and so the build has no slot classes, unless a test sets it.
@@ -691,6 +728,11 @@ func (h *harness) deps() Deps {
 	deps.Facts = h.factsWithMutation()
 	deps.RefuseGate = h.refuseGate
 	deps.Slots = h.slots
+	deps.SkillLine = h.skillLine
+
+	if deps.SkillLine == nil && !h.noSkillLine {
+		deps.SkillLine = func(_, skill string) string { return "/fake-skills:" + skill }
+	}
 
 	if h.picker != nil {
 		deps.Logins = h.picker
@@ -1193,8 +1235,10 @@ type fakeForge struct {
 	noPullAfter  int
 	noPull       bool // reports no pull request after the first noPullAfter reads
 	// notes holds each Comment call as project|item|key|text. writeErr fails it.
-	notes    []string
-	opened   []string // each Open call as project|item|title|body|issue|base|parent
+	notes  []string
+	opened []string // each Open call as project|item|title|body|issue|base|parent
+	// onCreate runs with the item when the first Open call of that item creates its pull request, as the forge makes it: a draft.
+	onCreate func(item string)
 	writeErr error
 	// pushed holds each Push call as project|item|branch|head|expect. pushErr fails it.
 	pushed  []string
@@ -1244,6 +1288,14 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
 
 	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
+
+	prefix := project + "|" + item + "|"
+	first := !slices.ContainsFunc(f.opened[:len(f.opened)-1], func(call string) bool { return strings.HasPrefix(call, prefix) })
+
+	if first && f.onCreate != nil {
+		f.onCreate(item)
+	}
+
 	if req.Parent != "" {
 		out.Stack = "S_1"
 	}

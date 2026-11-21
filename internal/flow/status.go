@@ -247,7 +247,7 @@ func (c *Client) addProgress(row dbos.WorkflowStatus, info *RunInfo) error {
 	records, lines, readErr := c.runView(row.ID, info.State, !run{Status: row}.terminal())
 
 	info.RunProgress = progressOf(lines, c.maxRunBudget, !run{Status: row}.terminal())
-	info.Deadline = deadlineFor(row, records, info.Question)
+	info.takeDeadline(row, records, info.Question)
 
 	if info.Question != "" {
 		info.Now = ""

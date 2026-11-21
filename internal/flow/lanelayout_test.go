@@ -340,7 +340,7 @@ func TestLaneLayout_TheLanesOfTheItemAreScopedReviewsAfterFixesAndOneFullReviewF
 		kinds = append(kinds, lane.Label)
 	}
 
-	assert.Equal(t, []string{"", "implement", "review 1/24", "fix 1/18", "review 2/24", "review 3/24"}, kinds,
+	assert.Equal(t, []string{"", "implement", "implement-sweep", "review 1/24", "fix 1/18", "review 2/24", "review 3/24"}, kinds,
 		"a scoped review after the implement and after each fix, then the gate as proof, then one full review of the candidate")
 	assert.Equal(t, 1, rig.h.gate.calls, "the scoped loop runs no gate")
 }

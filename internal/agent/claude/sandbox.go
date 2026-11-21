@@ -76,14 +76,18 @@ type permissions struct {
 // leaves the Read tool open, and the reverse leaves cat open).
 // A permission path is written as //absolute. The settings never set excludedCommands, allowLocalBinding, allowAllUnixSockets or allowAppleEvents,
 // and never put the shared git directory in allowWrite: a linked work tree gets it, and an explicit entry could open hooks and config.
-// The settings set no allowWrite list. Each write file of the plan gets one Edit allow rule by its exact path, and Claude Code merges that path into the
-// write paths of the sandbox too, so the one rule opens the file to the shell and to the file tools. A plan that may edit gets one more Edit allow
+// The settings set no allowWrite list. Each output file of the run gets the allow rules of outputRules, and Claude Code merges the Edit path into the
+// write paths of the sandbox too, so the rules open the file to the shell and to the file tools. A plan that may edit gets one more Edit allow
 // rule, of the work folder with a /** tail; the deny rules still win over it.
 // The git variables of the plan reach the shell through the env file, the only file in the run folder. Its allowRead entry keeps it readable when the
 // run folder is under the home folder.
-func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string) agent.Launch {
+// The skills of the run reach the CLI as one plugin folder in the run folder (--plugin-dir), since the empty setting sources load no skill of the runner.
+// The plugin folder is also a working directory (--add-dir), so the agent reads the files of a skill; the settings deny its write.
+func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skillFolders []string) agent.Launch {
 	envPath := filepath.Join(runDir, envFile)
-	settings := settingsOf(plan, envPath)
+	skills := skillsPlugin(skillFolders, runDir)
+	plan = skills.confine(readOutput(plan, write))
+	settings := settingsOf(plan, envPath, write)
 
 	if guard != "" {
 		hooks := guardHooks(guard)
@@ -95,11 +99,20 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string) agent.Launc
 	return agent.Launch{
 		Args: slices.Concat(
 			[]string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"},
-			addDirs(plan.ReadDirs), []string{"--settings", string(raw)},
+			addDirs(plan.ReadDirs), skills.args, []string{"--settings", string(raw)},
 		),
-		Env:   map[string]string{subprocessScrub: "1", envFileVar: envPath},
-		Files: map[string]string{envFile: exports(plan.GitEnv())},
+		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath},
+		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv())}),
+		Copies: skills.copies,
 	}
+}
+
+// readOutput returns the plan with each output file readable by the shell, and its folder a working directory.
+func readOutput(plan agent.SandboxPlan, write []string) agent.SandboxPlan {
+	plan.Read = slices.Concat(plan.Read, write)
+	plan.ReadDirs = slices.Concat(plan.ReadDirs, outputDirs(write))
+
+	return plan
 }
 
 // addDirs returns the --add-dir flag with each folder, which the CLI takes as a working directory, or no argument for no folder.
@@ -124,7 +137,7 @@ func exports(env map[string]string) string {
 
 // settingsOf returns the settings of the sandbox and of the permission rules for a plan, with no hooks. envPath is the env file. The settings allow reading it, and not the
 // run folder, so a run folder under the home folder stays denied except for that file.
-func settingsOf(plan agent.SandboxPlan, envPath string) sandboxSettings {
+func settingsOf(plan agent.SandboxPlan, envPath string, write []string) sandboxSettings {
 	return sandboxSettings{
 		Sandbox: sandboxBlock{
 			Enabled:           true,
@@ -137,7 +150,7 @@ func settingsOf(plan agent.SandboxPlan, envPath string) sandboxSettings {
 			Network: network{AllowedDomains: join(plan.Network), StrictAllowlist: true},
 		},
 		Permissions: permissions{
-			BlockReadsOutsideWorkingDirectories: true, Allow: slices.Concat(patternEditRules(plan.Write), workEditRule(plan)),
+			BlockReadsOutsideWorkingDirectories: true, Allow: slices.Concat(outputRules(write), workEditRule(plan)),
 			Deny: slices.Concat(webTools(), fileRules(plan.Deny, plan.DenyPatterns), editRules(plan.DenyWrite), patternEditRules(plan.DenyWritePatterns)),
 		},
 	}
@@ -179,6 +192,29 @@ func patternEditRules(patterns []string) []string {
 	}
 
 	return rules
+}
+
+// outputRules returns the Read and the Edit allow rule of each output file, by its exact path with no tail. In a sandbox, Claude Code merges the Edit rule into the
+// write paths of the shell too. In every launch the pair opens the file to the file tools: a Write needs a Read of the file first.
+func outputRules(files []string) []string {
+	var rules []string
+
+	for _, file := range files {
+		rules = append(rules, "Read(//"+strings.TrimPrefix(file, "/")+")")
+	}
+
+	return slices.Concat(rules, patternEditRules(files))
+}
+
+// outputDirs returns the folder of each output file as a working directory of the run. The engine gives each call a folder that holds its output file
+// alone, so the file tools can read that file before they write it, and the CLI still blocks the read of every other output file.
+func outputDirs(files []string) []string {
+	dirs := make([]string, 0, len(files))
+	for _, file := range files {
+		dirs = append(dirs, filepath.Dir(file))
+	}
+
+	return dirs
 }
 
 // workEditRule returns the Edit allow rule of the work folder, as //absolute with a /** tail, for a plan that may edit, or none.

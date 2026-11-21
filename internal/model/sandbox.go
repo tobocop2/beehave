@@ -44,6 +44,18 @@ func (p Project) SandboxByDefault() bool { return p.Sandbox == SandboxOn }
 // domainName is a host name for the network list: labels of letters, digits and hyphens, with an optional leading "*." for all subdomains.
 var domainName = regexp.MustCompile(`^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
 
+// skillName is the name of the folder of one skill: letters, digits, dots, underscores and hyphens, starting with a letter or a digit.
+var skillName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// CheckSkill refuses a skill name that is no folder name, such as a path, "..", or an empty name, because the engine finds the skill in a folder of that name.
+func CheckSkill(name string) error {
+	if !skillName.MatchString(name) {
+		return fmt.Errorf("%q is not the name of a skill. Write the name of the folder of the skill, such as review, with no path", name)
+	}
+
+	return nil
+}
+
 // CheckNetwork refuses a network entry that is not a domain name. A URL, a path, a port or a bare "*" would name more than one host or none.
 func CheckNetwork(domains []string) error {
 	for _, domain := range domains {

@@ -178,9 +178,9 @@ func TestSpawnGather_AParentKilledMidGatherIsRecoveredByANewProcessAndEachOutput
 	result, err := os.ReadFile(filepath.Join(stateDir, swarmResult)) //nolint:gosec // the file is in the folder of the test
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"outcomes":[`+
-		`{"item":"21","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
-		`{"item":"22","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
-		`{"item":"23","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, string(result))
+		`{"item":"21","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
+		`{"item":"22","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
+		`{"item":"23","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, string(result))
 
 	ran, err := os.ReadFile(filepath.Join(stateDir, swarmRan)) //nolint:gosec // the file is in the folder of the test
 	require.NoError(t, err)
