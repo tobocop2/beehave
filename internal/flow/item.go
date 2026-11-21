@@ -51,6 +51,9 @@ type ItemResult struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
+// StoppedOutputLimit is the most characters of the output of a stopping step that a status line or a queue row shows.
+const StoppedOutputLimit = 120
+
 // Stopped is a command step that ended the item: its name, its exit code and what it printed.
 type Stopped struct {
 	Step   string `json:"step"`

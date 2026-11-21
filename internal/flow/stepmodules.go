@@ -93,7 +93,8 @@ const gateVersion = 6
 // roundVersion is the version of the round module. Version 2 added the step of the engine that makes the worktree at the start of every round item.
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).
 // Version 3 adds the pulls field to the result of queue and the labels field to each of its rows.
-const roundVersion = 3
+// Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
+const roundVersion = 4
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.
