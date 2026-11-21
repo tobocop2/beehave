@@ -1201,7 +1201,7 @@ def pipeline(item):
     """The child entry: the pipeline of one item. The round starts one child for each item with spawn(entry = "pipeline").
     It returns item_value to the round, which lands the approved heads in one batch. The child never merges.
     The sweep runs when the lane ends: after each verdict, and before each of the two fail calls of the lane. The value that the lane returns carries the sweep result as `sweep`.
-    A sweep step that cannot run returns its error in the sweep text. A lane that an error of an earlier builtin ends (a host that is gone at the gate) gets no sweep:
+    A sweep step that cannot run returns its error in the sweep text. A lane that an error of an earlier builtin ends (a host that is gone at the mutation run) gets no sweep:
     Starlark has no way to catch an error."""
     # The facts of the project file (the plumbing fields and the vars that hold the people, rules, limits, traps and the round settings). The step records them, so a resume keeps the facts the run started with.
     # Each agent of the example gets them as the input `facts`; no agent reads a path for them.

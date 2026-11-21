@@ -355,7 +355,7 @@ func (s *script) startRun(one spawnedRun, in ItemInput) error {
 	return nil
 }
 
-// runsValue makes the struct that spawn returns: runs, a list of structs with the fields item and run.
+// runsValue makes the struct that spawn returns: runs, a list of structs with the fields item, run and retries.
 func runsValue(plan []spawnedRun) *starlarkstruct.Struct {
 	runs := make([]starlark.Value, len(plan))
 
@@ -473,7 +473,7 @@ func textAttr(holder starlark.HasAttrs, name string) string {
 	return text
 }
 
-// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped, cost_usd and value.
+// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped, cost_usd, value and attempts.
 // The value is what the entry function of the run returned, or None.
 func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 	results := make([]starlark.Value, len(outcomes))

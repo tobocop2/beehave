@@ -548,6 +548,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value` and `attempts`. `attempts` counts the runs of the item that this call waited for.
 - `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
 - A run of `spawn` with retries left that failed does not end the wait and does not trigger `fail="raise"`. The call records the plan of the next attempts as one step, starts them, and waits again. A replay starts nothing twice.
+- `beehave resume` of a parent reopens only the last attempt of each item. An earlier attempt that a retry replaced stays failed, and the parent goes back to the start of the last attempt.
 - The wait is one recorded step that reads the rows of all the runs, so the record does not depend on the order in which the children end.
 - With `fail="raise"`, the step cancels the runs that are still open when it sees a run that failed, and records all the outcomes. The call then fails with the error of that run.
 - A restart replays `spawn` and `gather` from the records, and each child keeps its own output.
@@ -832,7 +833,8 @@ The engine has no cleanup builtin. The project owns the clean command and the wo
 - The project file can set `vars.clean_command`: a list of words, such as `["sh", "scripts/clean-lane.sh"]`. A value that is not a list of words that are not blank is refused before the first agent starts. The message names the key.
 - When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`, then `docker volume prune -f` as the step `sweep-prune`. Both run with `host`, so they run on the build host.
 - The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before each of the two `fail` calls of the lane (the skipped review skill and the missing changelog entry).
-- A workflow file cannot catch an error. A lane that a builtin error ends, such as a host that is gone, gets no sweep. A sweep that raises, such as a host lost at the sweep, fails the lane, and the round does not land its head. At a refusal site, a raising sweep replaces the refusal reason with the host error, so the operator reads the host error. A fix needs an engine setting for `command` that returns such a failure as a result. Issue #753 tracks it.
+- Both sweep steps use `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane. The prune still runs after such a clean.
+- A workflow file cannot catch an error. A lane that the error of an earlier builtin ends, such as a host that is gone at the mutation run, gets no sweep. Issue #753 tracks it.
 - With no `vars.clean_command`, the sweep runs the prune only.
 - The sweep does not fail the lane. A failed clean does not skip the prune.
 - The value that the lane returns holds the field `sweep`: one line for each step, `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`, then `prune: rc=<n>`.
