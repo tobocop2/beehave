@@ -30,8 +30,9 @@ const (
 		"Set sandbox = \"off\" in the project file, or build on a host. The project gate of a build host runs as before."
 )
 
-// clusterName is the form of a build host name: a letter, then letters, digits, dots and hyphens.
-var clusterName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9.-]*$`)
+// clusterName is the form of a build host name: a letter, then letters, digits, hyphens and dots,
+// where each dot is followed by a letter or digit (so no trailing dot, no `..` and no `.-`).
+var clusterName = regexp.MustCompile(`^[A-Za-z]([A-Za-z0-9-]|\.[A-Za-z0-9])*$`)
 
 func isFile(path string) bool {
 	info, err := os.Stat(path)
