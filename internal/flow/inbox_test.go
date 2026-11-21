@@ -363,3 +363,34 @@ command(name = "got", run = ["got", a.id])`)))
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"got " + id}, h.commands.ranBy(testItem))
 }
+
+func TestRecv_AnEndNoticeOfAChildDoesNotEndTheWaitOfARecvAndNoMessageOfAnotherTopicIsLost(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	release := holdItems(h, "21", "22", "23")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := startRun(t, engine, writeFlow(t, `def worker(item):
+    command(name = "w", run = ["w"])
+
+def main(item):
+    spawn(items = ["21", "22", "23"], entry = "worker", name = "fan")
+    a = recv("a", timeout = "1m", name = "a")
+    b = recv("b", timeout = "1m", name = "b")
+    command(name = "got", run = ["got", str(a.value), str(b.value)])
+`))
+
+	stepRecorded(t, engine, "recv:a#1.deadline")
+	close(release)
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool { return itemEnded(engine, "21") && itemEnded(engine, "22") && itemEnded(engine, "23") }))
+
+	_, err := client.Send(testItem, Outgoing{Topic: "b", Value: json.RawMessage(`1`)})
+	require.NoError(t, err)
+	_, err = client.Send(testItem, Outgoing{Topic: "a", Value: json.RawMessage(`2`)})
+	require.NoError(t, err)
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"got 2 1"}, h.commands.ranBy(testItem), "the three end notices did not end the wait of a, and the message of b stayed for the second recv")
+}

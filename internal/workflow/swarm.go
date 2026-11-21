@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
 
@@ -18,8 +19,11 @@ const (
 	cancelName   = "cancel"
 	entryKeyword = "entry"
 	failKeyword  = "fail"
-	untilKeyword = "until"
 	nameKeyword  = "name"
+	// firstOfName is the name of the builtin that waits for the first of a run that ended, a message and a timer.
+	firstOfName = "first_of"
+	// topicsKeyword is the keyword of a first_of call that lists the topics to wait for.
+	topicsKeyword = "topics"
 	// timeoutKeyword is the keyword of a gather call that sets the deadline of the group.
 	timeoutKeyword = "timeout"
 	// CancelledField is the one field of the struct that cancel returns.
@@ -78,8 +82,42 @@ func DeadlineMode(hasTimeout, hasMode bool) error {
 	return nil
 }
 
-// UntilModes lists the values of the until argument of a gather call: wait for every run, or return when one run is no longer open.
-func UntilModes() []string { return []string{"all", "any"} }
+// FirstKind is what ended a first_of call: a run that ended, a message of a topic, or the timer.
+type FirstKind string
+
+const (
+	// FirstRun is the kind of a call that a run ended.
+	FirstRun FirstKind = "run"
+	// FirstMessage is the kind of a call that a message of a listed topic ended.
+	FirstMessage FirstKind = "message"
+	// FirstTimer is the kind of a call that its timeout ended.
+	FirstTimer FirstKind = "timer"
+)
+
+// FirstOfSources is the rule that a first_of call waits for something: runs, topics or a timeout.
+func FirstOfSources(hasRuns, hasTopics, hasTimeout bool) error {
+	if hasRuns || hasTopics || hasTimeout {
+		return nil
+	}
+
+	return errors.New("first_of needs something to wait for. Add runs, topics or timeout to the call")
+}
+
+// Topics reads the topics keyword of a first_of call: a list of topic names that a user may send on. None and an absent keyword are empty.
+func Topics(v starlark.Value) ([]string, error) {
+	topics, err := Words(topicsKeyword, v)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, topic := range topics {
+		if err := MessageName(topicKeyword, topic); err != nil {
+			return nil, err
+		}
+	}
+
+	return topics, nil
+}
 
 // entryRef is the literal entry of a spawn call and where it stands. The function it names is looked up in the workflow file after the scan.
 type entryRef struct {

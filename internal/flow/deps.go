@@ -204,7 +204,9 @@ type beats interface {
 // CapWait replaces the least time of the durable sleep that waits for a usage cap to reset.
 // Overload replaces the first wait of the backoff after an overload of the provider.
 // LostPoll replaces the time of the durable sleep between two looks for the proof that a lost gate job can no longer run.
+// Window replaces the longest time that one turn of first_of waits before it reads its runs again.
 type clock struct {
+	Window    time.Duration
 	CapWait   time.Duration
 	Overload  time.Duration
 	LostPoll  time.Duration

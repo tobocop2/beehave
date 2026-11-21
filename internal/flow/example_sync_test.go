@@ -622,7 +622,7 @@ func TestRoundSync_AHeldRoundGathersItsOpenRunAndCallsNoSyncInALaterPass(t *test
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "command:sync-2#", "the second pass checks the trunk and is held")
 	assert.NotContains(t, joined, "agent:queue-audit-2#", "the held pass starts no item")
-	assert.Contains(t, joined, "gather:round-gather-2#", "the held pass still gathers the open run")
+	assert.Contains(t, joined, "first_of:round-gather-2#", "the held pass still waits for the open run")
 	assert.NotContains(t, joined, "command:sync-3#", "a later pass of a held round calls no sync")
 	assert.ElementsMatch(t, []string{"1", "2"}, rig.kids.started())
 	require.Len(t, rig.questions, 1)

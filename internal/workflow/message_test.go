@@ -136,3 +136,41 @@ func TestMessageJSON_RefusesATextOverTheCap(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "the cap is 65536")
 }
+
+func TestTopics_ReadsTheTopicsOfAFirstOfCall(t *testing.T) {
+	t.Parallel()
+
+	got, err := workflow.Topics(starlark.NewList([]starlark.Value{starlark.String("stop"), starlark.String("go.now")}))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"stop", "go.now"}, got)
+
+	none, err := workflow.Topics(starlark.None)
+	require.NoError(t, err)
+	assert.Empty(t, none)
+}
+
+func TestTopics_RefusesATopicThatIsBadOrReserved(t *testing.T) {
+	t.Parallel()
+
+	for name, topic := range map[string]string{"bad": "Bad Topic", "reserved": "beehave.child"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := workflow.Topics(starlark.NewList([]starlark.Value{starlark.String(topic)}))
+
+			require.Error(t, err)
+		})
+	}
+
+	_, err := workflow.Topics(starlark.MakeInt(3))
+	require.Error(t, err, "topics is a list")
+}
+
+func TestFirstOfSources_NeedsRunsTopicsOrATimeout(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, workflow.FirstOfSources(true, false, false))
+	require.NoError(t, workflow.FirstOfSources(false, true, false))
+	require.NoError(t, workflow.FirstOfSources(false, false, true))
+	require.ErrorContains(t, workflow.FirstOfSources(false, false, false), "first_of needs something to wait for")
+}

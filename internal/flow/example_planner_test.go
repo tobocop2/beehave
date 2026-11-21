@@ -178,3 +178,34 @@ func TestExamplePlanner_WorkersThatEndBeforeTheCheckInNeedNoNewWorker(t *testing
 	assert.Equal(t, 1, agentsOf(h, "21"))
 	assert.Equal(t, 1, agentsOf(h, "22"), "no worker stalled, so the reassign spawned no item")
 }
+
+func TestExamplePlanner_AStallMessageCancelsThatWorkerBeforeTheCheckInEnds(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Env = map[string]string{"TASKS": "21 22", "CHECK_IN": "1h", "DEADLINE": "1h"}
+	h.opts.PerLogin = 2
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 1, 5*time.Second
+
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+	done := make(chan error, 1)
+
+	go func() { done <- runTicking(t, h, engine) }()
+
+	waitOn(t, waiting[struct{}]{what: "the stall message to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r1")
+		if err != nil || len(seen) == 0 {
+			return struct{}{}, false, nil
+		}
+
+		_, err = client.Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+
+		return struct{}{}, err == nil, nil
+	}})
+
+	require.NoError(t, receive(t, done))
+	assert.Equal(t, "echo when the workers ended: 21=done 22=started 21:ok 22:ok cost_usd=0.0", lastRan(t, h), "the check-in is one hour, so only the message could stall the worker of 22")
+	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, engine, "item-22-r1"), "the message canceled the stalled worker")
+	assert.Equal(t, dbos.WorkflowStatusSuccess, statusOf(t, engine, "item-22-r2"), "the task of the worker went to a new worker")
+}

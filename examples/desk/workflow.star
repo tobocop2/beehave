@@ -103,7 +103,7 @@ def route(item, msg, rejection):
     item_comment(name = "reason", id = item.id, key = "reason", text = "%s: %s" % (rejection.code, rejection.detail))
     TEAM_HANDLERS.get(ROUTES[rejection.code], hold_for_team)(item, msg, rejection)
 
-def first_of(values):
+def first_value(values):
     for value in values:
         return value
     return ""
@@ -112,7 +112,7 @@ def clerk_trouble(answer):
     if answer.stop != "":
         return refusal(REASON.SYSTEM_FAILURE, "the clerk stopped at the %s cap" % answer.stop)
     if len(answer.violations) > 0:
-        return refusal(REASON.SYSTEM_FAILURE, "the clerk tried a refused command: %s" % first_of(answer.violations))
+        return refusal(REASON.SYSTEM_FAILURE, "the clerk tried a refused command: %s" % first_value(answer.violations))
     return None
 
 def file_procedure_note(item, answer):
