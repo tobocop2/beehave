@@ -75,3 +75,22 @@ The `.go.in` files are not Go files to the toolchain. `go list ./...`, vet and l
 | `model.Project.HostFor` (run-time `--host` choice) | membership in the config list | inherits the config rule |
 
 Regressions open at the head planned from: 0.
+
+## Plan pass (step plan_231), measured at af7c1352
+
+- Pull requests of the item: `pulls` in the data file is `[]` (read with `jq` at the start and again before this note).
+- Repeat-offender: `git log -S'trailing dot' --all` gives only af7c1352 (this design lane). No closed pull request.
+- Cited sites re-derived at af7c1352: `internal/config/files.go:34` pattern `^[A-Za-z][A-Za-z0-9.-]*$`, `projects.go:389-424`
+  `hostName`/`buildHost`, test table `TestLoadFolder_BuildHostRefusals` at `buildhosts_test.go:25-49`. `git diff a9148468 af7c1352 -- internal cmd` is empty.
+- Regex mode at af7c1352 (engine logs `acc-pre.log`, `acc-post.log`, summary lines only): rc 1, inputs 19628, cells 19628,
+  red 529 (trailing-dot 316, `..` 83, `.-` 130), differ from base 0, control `"gpu"` acc, `"a b"` ref.
+- Full mode retried twice: (1) default toolchain: `go: download go1.27.4 ... operation not permitted` (module cache denied);
+  (2) `GOTOOLCHAIN=local GOMODCACHE=$TMPDIR/gomod`: `go: downloading github.com/stretchr/testify` and then
+  `deny network-outbound proxy.golang.org:443`. The session allowlist cannot be widened. So the form×context rows and the gate at the base are still OWED on the build host.
+- Skill `blast-radius-review`: Skill tool answered `Unknown skill` again. Rule `.ai-rulez/rules/review-and-smells.md` "Cross-cutting changes"
+  followed: the sibling entry points (`link.wordPattern`, `skypilot.wordPattern`, `HostFor`) are in Siblings, and owner question 3 stands open.
+- Absence check of named forms in `build_host` values (grep for `build_host = ...` with `."`, `..` or `.-`) with a planted `build_host = "a."` control in the same call:
+  control 1 hit; tree 2 hits, both error-text strings (`projects.go:637`, `projects_source_test.go:139`) where the sentence ends in `."`, not values.
+- Review notes of #368: still not read (forge not reachable). OWED.
+
+Regressions open at the head planned from (af7c1352): 0.
