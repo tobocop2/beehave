@@ -412,17 +412,19 @@ Both builtins match text. They run no command, record no step and need no reposi
 
 `label` keeps the items that carry that tracker label. A call with no `label` keeps every open item. The engine reads no project setting for the choice: the workflow passes it. A workflow that needs a list of item ids keeps the rows whose `item` is in the list.
 
-Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested` and `labels`, the tracker labels of the item. The state:
+Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step` and `stop_reason`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
 | State | When |
 | --- | --- |
 | `running` | The item has an open run. |
 | `failed` | Its last attempt ended without success. |
+| `stopped` | Its last run ended with a stop, the way `beehave status` shows it. The workflow chose the stop, so the row is not `failed`. It is not `ready` and not `done`: the owner fixes the cause and runs `beehave cancel`, and the next pass starts a new attempt. |
 | `done` | Its last run succeeded, and no other row applies. |
 | `hold` | The tracker holds the item, or its pull request has the label that `hold` names. |
 | `ready` | Otherwise. A held item is never `ready`. |
 
 - A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
+- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
 - `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.

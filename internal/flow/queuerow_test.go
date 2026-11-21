@@ -2,6 +2,7 @@ package flow
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,4 +94,49 @@ func TestQueue_ARowTakesTheAuthorOfTheLowestPullRequestOfItsBranch(t *testing.T)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"24::first:False"}, seenBy(t, h), "the lowest number counts, for the author and for the review state")
+}
+
+// stoppedChild runs a child whose command ends it with a stop code, then prints the row of each item. The word ROW stands for the expression of the test.
+const stoppedChild = `def work(item):
+    command(name = "lint", run = ["lint"], stop_on_rc = [2])
+
+def main(item):
+    gather(spawn(items = ["21"], entry = "work", name = "s"), name = "g")
+    q = queue(name = "q")
+    command(name = "seen", run = ["seen"] + [ROW for r in q.rows])
+`
+
+// stopAtLint makes the command lint of item 21 print the reason and end with the stop code.
+func stopAtLint(h *harness) {
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.Item == "21" {
+			return CommandOutput{Stdout: "base-moved", RC: 2}, nil
+		}
+
+		return CommandOutput{}, nil
+	}
+}
+
+func TestQueue_ARunThatEndedWithAStopIsNotDone(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
+	stopAtLint(h)
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.state`)))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21|stopped"}, seenBy(t, h), "a run whose result records a stop is stopped in the queue, as status shows it")
+}
+
+func TestQueue_AStoppedRowNamesTheStepAndTheReasonOfTheStop(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)})
+	stopAtLint(h)
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, strings.ReplaceAll(stoppedChild, "ROW", `r.item + "|" + r.stop_step + "|" + r.stop_reason`)))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21|command:lint#1|base-moved", "22||"}, seenBy(t, h), "the stopped row names the step and the output of the stop; a row that is not stopped names neither")
 }
