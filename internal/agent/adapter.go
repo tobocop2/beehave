@@ -129,12 +129,9 @@ type Launch struct {
 	Files  map[string]string
 	Copies map[string]string
 	Loaded string
-}
-
-// Empty is true when the launch has no argument, variable, file, copy or loaded skill. A launch that is not empty can hold settings only (the Claude Code
-// guard always carries the attribution setting), so Empty does not tell whether a launch holds a hook.
-func (l Launch) Empty() bool {
-	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0 && len(l.Copies) == 0 && l.Loaded == ""
+	// Hooked is true when the launch holds the hook that refuses a command before it runs. An adapter sets it only when it adds that hook for a guard command.
+	// A launch can hold other settings with no hook, so the arguments do not tell.
+	Hooked bool
 }
 
 // Tokens counts the tokens of a run. Input holds every input token, the cached ones included; Output holds every output token, the reasoning ones included.

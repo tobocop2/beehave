@@ -125,7 +125,7 @@ func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launc
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
 	args = append(args, "--settings", string(raw))
 
-	return agent.Launch{Args: args, Files: plugin.files, Copies: plugin.copies}
+	return agent.Launch{Args: args, Files: plugin.files, Copies: plugin.copies, Hooked: settings.Hooks != nil}
 }
 
 // guardHooks is the PreToolUse hook on the Bash tool that runs command.

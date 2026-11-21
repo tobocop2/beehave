@@ -42,3 +42,14 @@ func TestAttribution_EveryLaunchTurnsOffTheCommitTrailerInItsSettings(t *testing
 		})
 	}
 }
+
+func TestLaunch_SaysWhetherItHoldsTheHook(t *testing.T) {
+	t.Parallel()
+
+	adapter := claude.New(nil)
+
+	assert.True(t, adapter.Guard("/bin/beehave check command", "/run", nil, nil).Hooked)
+	assert.False(t, adapter.Guard("", "/run", []string{outputFile}, nil).Hooked, "settings with no hook")
+	assert.True(t, adapter.Sandbox(plan(), "g", "/run", nil, nil).Hooked)
+	assert.False(t, adapter.Sandbox(plan(), "", "/run", nil, nil).Hooked)
+}

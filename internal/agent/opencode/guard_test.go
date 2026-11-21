@@ -87,7 +87,8 @@ func TestGuard_OpensTheFolderOfEachOutputFileThroughTheInlineConfigInEveryMode(t
 func TestGuard_AStepWithNoGuardAndNoOutputFileAddsNothing(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, opencode.New().Guard("", "/run", nil, nil).Empty())
+	assert.Equal(t, agent.Launch{}, opencode.New().Guard("", "/run", nil, nil))
+	assert.True(t, opencode.New().Guard("check", "/run", nil, nil).Hooked)
 }
 
 func TestGuard_TheGuardCommandStaysOneJavaScriptString(t *testing.T) {

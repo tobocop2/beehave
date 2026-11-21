@@ -85,16 +85,10 @@ type permissions struct {
 // The skills of the run reach the CLI as one plugin folder in the run folder (--plugin-dir), since the empty setting sources load no skill of the runner.
 // The plugin folder is also a working directory (--add-dir), so the agent reads the files of a skill; the settings deny its write.
 func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skillFolders []string) agent.Launch {
-	envPath := filepath.Join(runDir, envFile)
 	skills := skillsPlugin(skillFolders, runDir)
 	plan = skills.confine(readOutput(plan, write))
-	settings := settingsOf(plan, envPath, write)
-
-	if guard != "" {
-		hooks := guardHooks(guard)
-		settings.Hooks = &hooks
-	}
-
+	envPath := filepath.Join(runDir, envFile)
+	settings := withGuard(settingsOf(plan, envPath, write), guard)
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings and booleans always encodes
 
 	return agent.Launch{
@@ -105,6 +99,7 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skil
 		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath},
 		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv())}),
 		Copies: skills.copies,
+		Hooked: guard != "",
 	}
 }
 
@@ -134,6 +129,16 @@ func exports(env map[string]string) string {
 	}
 
 	return lines.String()
+}
+
+// withGuard returns the settings with the hook that runs guard, or the settings as they are when guard is empty.
+func withGuard(settings sandboxSettings, guard string) sandboxSettings {
+	if guard != "" {
+		hooks := guardHooks(guard)
+		settings.Hooks = &hooks
+	}
+
+	return settings
 }
 
 // settingsOf returns the settings of the sandbox and of the permission rules for a plan, with no hooks. envPath is the env file. The settings allow reading it, and not the

@@ -91,6 +91,7 @@ func launch(command, runDir string) agent.Launch {
 	if command != "" {
 		result.Files = map[string]string{pluginPath: plugin(command, filepath.Join(runDir, loadedPath))}
 		result.Loaded = loadedPath
+		result.Hooked = true
 	}
 
 	return result

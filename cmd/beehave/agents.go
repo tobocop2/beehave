@@ -159,15 +159,14 @@ func lowerCap(global, step float64) float64 {
 }
 
 // noGuardNote returns the reason why a step that lists forbid_commands cannot start, or "" when the step can start.
-// A step that asks for forbidden commands to be refused does not start without its guard. An adapter that has no hook returns an empty launch for a
-// guard command, so the empty launch is the sign of no hook; an adapter that adds settings with no hook would break this check.
+// A step that asks for forbidden commands to be refused does not start without its guard.
 func noGuardNote(adapter agent.Adapter, guard string, forbid []model.FindingKind) string {
 	switch {
 	case len(forbid) == 0:
 		return ""
 	case guard == "":
 		return "The step lists forbid_commands, but beehave cannot find the path of its own program to start the check of the commands. The step did not start."
-	case adapter.Guard(guard, "", nil, nil).Empty():
+	case !adapter.Guard(guard, "", nil, nil).Hooked:
 		return "The step lists forbid_commands, but the agent CLI of the runner has no hook to refuse a command before it runs. The step did not start."
 	}
 
