@@ -84,7 +84,8 @@ const checkWorkflowLong = "Check that a workflow file and the files it loads par
 	"Exit 0: the run reached the end of the file and every step passed. " +
 	"Exit 1: a Starlark error, a REFUSE or a failed faked step; the output shows the error and the last step that ran. " +
 	"Exit 3: the run ended early at a step the dry run does not fake, and the steps after it were not checked. " +
-	"The last line says what that step does."
+	"The last line says what that step does. " +
+	"With --" + projectFlag + ", the dry run reads the vars and the max_spawn_depth of the project."
 
 // runCheckedWorkflow refuses the calls that the named project cannot make, then checks the file and runs it as runDryWorkflow does.
 func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, named projectCheck, args []string, item string, dry dryFlags) error {
@@ -93,15 +94,15 @@ func runCheckedWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]
 		return err
 	}
 
-	return runDryWorkflow(ctx, cmd, env, file, item, dry, found.Vars)
+	return runDryWorkflow(ctx, cmd, env, file, item, dry, found.Project)
 }
 
 // dryFlags holds the flags of a dry run: whether to run, and which fakes walk a red gate or a send-back.
 type dryFlags struct{ run, redGate, sendBack bool }
 
 // runDryWorkflow checks the file, and with the run flag set it then runs the file over fakes and prints the steps. With redGate set, the first gate of the run is red. With sendBack set, the first review sends the item back.
-// The facts of the run hold vars, the vars of the named project. They are static config, so the dry run reads them.
-func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dry dryFlags, vars map[string]any) error {
+// The facts of the run hold the vars and the max_spawn_depth of the named project. They are static config, so the dry run reads them.
+func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]string, file, item string, dry dryFlags, project model.Project) error {
 	if err := runCheckWorkflow(cmd.ErrOrStderr(), file); err != nil || !dry.run {
 		return err
 	}
@@ -110,7 +111,7 @@ func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]stri
 		return err
 	}
 
-	options := []flow.DryOption{flow.WithVars(vars)}
+	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth)}
 	if dry.redGate {
 		options = append(options, flow.WithRedGate())
 	}

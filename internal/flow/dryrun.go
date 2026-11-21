@@ -72,6 +72,8 @@ type dryChoice struct {
 	vars              map[string]any
 	entry             string
 	skills            []string
+	// spawnDepth is the max_spawn_depth of the project. 0 means config.DefaultMaxSpawnDepth.
+	spawnDepth int
 }
 
 // DryOption is a choice for a dry run.
@@ -85,6 +87,9 @@ func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } 
 
 // WithVars gives the facts of the dry run the vars of a project. The vars are static config, so the dry run reads them as a real run does. Every other fact stays empty.
 func WithVars(vars map[string]any) DryOption { return func(c *dryChoice) { c.vars = vars } }
+
+// WithSpawnDepth gives the dry run the max_spawn_depth of a project, so that a spawn past the cap of the project fails as it does in a real run.
+func WithSpawnDepth(depth int) DryOption { return func(c *dryChoice) { c.spawnDepth = depth } }
 
 // WithEntry starts the dry run at the named entry of the file, as a run of the engine does, so that a test walks the file it tests.
 // An entry run skips the finish function. The command beehave check has no flag for it: the option is for tests of the library.
@@ -116,7 +121,7 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 
 	defer func() { err = errors.Join(err, os.RemoveAll(root)) }()
 
-	opts := Options{StateDir: filepath.Join(root, "state"), Version: "dry-run", MaxConcurrent: minMaxConcurrent, MaxReviewConcurrent: minMaxConcurrent, Env: env, Modules: []step.Module{StepModule()}}
+	opts := Options{StateDir: filepath.Join(root, "state"), Version: "dry-run", MaxConcurrent: minMaxConcurrent, MaxReviewConcurrent: minMaxConcurrent, MaxSpawnDepth: chosen.spawnDepth, Env: env, Modules: []step.Module{StepModule()}}
 
 	deps, err := dryPrepare(ctx, root, item, file, chosen)
 	if err != nil {
@@ -214,7 +219,9 @@ func dryDeps(tree, head, item string, chosen dryChoice) Deps {
 		Agents: agents, Gate: newDryGate(tree, head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots,
-		Facts: func(string) model.Project { return model.Project{Source: tree, Vars: chosen.vars} },
+		Facts: func(string) model.Project {
+			return model.Project{Source: tree, Vars: chosen.vars, MaxSpawnDepth: chosen.spawnDepth}
+		},
 		Clock: clock{Poll: dryPoll, Settle: dryWait, Reading: dryReading()},
 	}
 }

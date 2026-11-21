@@ -156,7 +156,7 @@ func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[I
 		return dbos.RetrieveWorkflow[ItemResult](c.flow, plan.Join)
 	}
 
-	handle, err := dbos.Enqueue[ItemResult](c.flow, itemsQueueName, itemName, in,
+	handle, err := dbos.Enqueue[ItemResult](c.flow, rootsQueueName, itemName, in,
 		dbos.WithEnqueueWorkflowID(runID(in.Item, plan.Attempt)), dbos.WithEnqueueApplicationVersion(c.version))
 	if err != nil {
 		return nil, fmt.Errorf("queue the run of item %s: %w", in.Item, err)

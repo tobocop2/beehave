@@ -12,14 +12,18 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
-	// itemsQueueName is the queue of the items that spawn starts. It has the cap agents.max_concurrent, so N children do not start N claims and N gates at once.
+	// itemsQueueName is the queue of the items that spawn starts at depth 1. Each deeper level has a queue of its own, items.<depth>.
+	// Each has the cap agents.max_concurrent, so N children do not start N claims and N gates at once.
 	itemsQueueName = "items"
+	// rootsQueueName is the queue of the runs that a user started, at depth 0, with the same cap.
+	rootsQueueName = "roots"
 	// defaultEntry is the function that runs an item: main for an item that a user started, and the default entry of spawn.
 	defaultEntry = "main"
 	// finishEntry is the optional function that the engine calls after main on every end of the run except a cancel.
@@ -170,12 +174,20 @@ func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
 	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids) })
 }
 
-// spawnIDs reads the items argument. A run that spawn started cannot spawn: the parent would wait for a child that holds a slot of the items queue.
-func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
-	if s.in.Entry != "" {
-		return nil, fmt.Errorf("item %s was started by spawn and cannot start items. Call spawn from the item that a user started", s.in.Item)
+// itemsQueueOf is the name of the items queue of the runs at a depth. A run that a user started is at depth 0 and has the queue roots, so no parent shares a queue with its children.
+func itemsQueueOf(depth int) string {
+	switch {
+	case depth <= 0:
+		return rootsQueueName
+	case depth == 1:
+		return itemsQueueName
 	}
 
+	return fmt.Sprintf("%s.%d", itemsQueueName, depth)
+}
+
+// spawnIDs reads the items argument.
+func (s *script) spawnIDs(list starlark.Value) ([]string, error) {
 	ids, err := workflow.Words("items", list)
 	if err != nil {
 		return nil, err
@@ -230,6 +242,11 @@ func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]s
 	return plan, nil
 }
 
+// spawnCap is the deepest level at which a run of the project may start: its max_spawn_depth, at most the depth of the deepest items queue of the engine.
+func (e *Engine) spawnCap(project string) int {
+	return min(cmp.Or(e.facts(project).MaxSpawnDepth, config.DefaultMaxSpawnDepth), len(e.itemQueues)-1)
+}
+
 // planOne plans one item. An open run is refused, as a joined run has no parent row and a cancel of the parent would not reach it.
 // A failed last attempt is refused until beehave resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
 // taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
@@ -250,8 +267,12 @@ func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []s
 	return e.startOf(ctx, in, id, runID(id, last.Attempt+1), taken)
 }
 
-// startOf plans the start of the run run of an item: its login and its place in the items queue.
+// startOf plans the start of the run run of an item: its login and its place in the items queue. A start one level below in past the cap of the project is refused.
 func (e *Engine) startOf(ctx context.Context, in ItemInput, id, run string, taken []string) (spawnedRun, error) {
+	if limit := e.spawnCap(in.Project); in.Depth+1 > limit {
+		return spawnedRun{}, fmt.Errorf("item %s would run at depth %d, and the project has a cap of %d. Raise max_spawn_depth in the project file, or spawn fewer levels", id, in.Depth+1, limit)
+	}
+
 	login, err := e.pickLogin(ctx, ItemInput{Item: id, Project: in.Project}, false, taken...)
 	if err != nil {
 		return spawnedRun{}, err
@@ -289,17 +310,22 @@ func openRunError(open run, item, project string) error {
 	return fmt.Errorf("item %s has an open run, %s. Run beehave status to see it, or beehave cancel %s to end it, then start this item again", item, open.Status.ID, item)
 }
 
-// startRuns starts the runs of the plan as child workflows of this run, on the items queue. The call is outside a step, so the library records each child.
-// A replay starts nothing that the first run started: the library returns the recorded child.
+// startRuns starts the runs of the plan as child workflows of this run, one level deeper, on the items queue of that depth. The call is outside a step, so the library records each child.
+// A replay starts nothing that the first run started: the library returns the recorded child. The plan step refused a start past the deepest queue, so each start has a queue.
 func (s *script) startRuns(plan []spawnedRun, entry, base string) error {
+	parent, err := dbos.GetWorkflowID(s.ctx)
+	if err != nil {
+		return fmt.Errorf("read the id of the run of item %s: %w", s.in.Item, err)
+	}
+
 	for _, one := range plan {
 		if !one.Start {
 			continue
 		}
 
-		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base}
+		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent}
 
-		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueue), dbos.WithWorkflowID(one.Run), dbos.WithPriority(one.Priority)); err != nil {
+		if _, err := dbos.RunWorkflow(s.ctx, s.e.item, in, dbos.WithQueue(s.e.itemQueues[s.in.Depth+1]), dbos.WithWorkflowID(one.Run), dbos.WithPriority(one.Priority)); err != nil {
 			return fmt.Errorf("start the run of item %s: %w", one.Item, err)
 		}
 	}

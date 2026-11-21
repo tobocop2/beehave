@@ -41,7 +41,7 @@ func TestJoinRun_AnEngineThatHoldsTheStateRunsTheEnqueuedItem(t *testing.T) {
 	rows := rowsOf(t, client, testItem)
 	require.Len(t, rows, 1)
 	assert.Equal(t, runID(testItem, 1), rows[0].ID)
-	assert.Equal(t, itemsQueueName, rows[0].QueueName, "the run entered the items queue")
+	assert.Equal(t, rootsQueueName, rows[0].QueueName, "the run entered the queue of the runs that a user started")
 	assert.Equal(t, dbos.WorkflowStatusSuccess, rows[0].Status)
 }
 

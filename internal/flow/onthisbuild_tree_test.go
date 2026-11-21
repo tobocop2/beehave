@@ -164,7 +164,7 @@ func TestClient_ReopenAgainRewindsACanceledRunOntoThisBuild(t *testing.T) {
 
 	row, err := other.row(testRun)
 	require.NoError(t, err)
-	require.NoError(t, other.reopenAgain(row, dbos.WithRewindApplicationVersion(other.version)))
+	require.NoError(t, other.reopenAgain(row, itemsQueueName, dbos.WithRewindApplicationVersion(other.version)))
 
 	row, err = other.row(testRun)
 	require.NoError(t, err)

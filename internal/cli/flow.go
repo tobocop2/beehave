@@ -144,12 +144,23 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
 	return flow.Options{
 		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, PerLogin: cfg.Agents.PerLogin, Env: f.env,
-		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
+		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
 		ReviewPoll:         time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
 		ReviewLookbackDays: cfg.Agents.ReviewLookbackDays,
 		Retention:          time.Duration(cfg.Agents.RetentionDays) * 24 * time.Hour,
 		KeepRuns:           cfg.Agents.RetentionDays == 0,
 	}
+}
+
+// deepestSpawn is the highest max_spawn_depth of the projects: the engine registers an items queue for each depth up to it. A config with no project gives 0, the default.
+func deepestSpawn(projects map[string]config.Project) int {
+	deepest := 0
+
+	for _, project := range projects {
+		deepest = max(deepest, project.MaxSpawnDepth)
+	}
+
+	return deepest
 }
 
 // itemArgs checks the item id before any state folder opens. The engine checks it again.

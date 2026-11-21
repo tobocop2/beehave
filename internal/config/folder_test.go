@@ -74,7 +74,7 @@ func TestLoadFolder_TheExampleConfigLoads(t *testing.T) { //nolint:paralleltest 
 	require.Equal(t, config.Pool{FiveHourMax: 90, SevenDayMax: 95}, cfg.Pool)
 	require.Equal(t, 2, cfg.Agents.MaxConcurrent)
 	require.Len(t, cfg.Projects, 1)
-	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(exampleConfig, "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave"},
+	require.Equal(t, model.Project{Name: "example", Repo: "your-org/your-repo", Tracker: "github", Claims: "beads", Forge: "github", Blocks: map[string]*model.Block{"beads": model.NewBlock(filepath.Join(exampleConfig, "projects", "example.star")+":12:18", []model.BlockEntry{model.TextEntry("prefix", "proj")})}, Tools: []string{"git", "bd", "gh"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth},
 		cfg.Projects["example"].Project)
 }
 
@@ -88,7 +88,7 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralle
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave",
+		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
 	}, project.Project)
 }
 
@@ -1080,6 +1080,22 @@ func TestLoadFolder_ThePerLoginVariableOverlaysTheFileAndIsValidated(t *testing.
 	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_PER_LOGIN": "5", "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT": "9"})
 	require.Len(t, problems, 1, "5 is above the cap of the agents queue")
 	require.ErrorContains(t, problems[0], "agents.max_concurrent (4)")
+}
+
+func TestLoadFolder_TheMaxSpawnDepthKeyDefaultsToThreeAndOneBelowOneIsRefused(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject))
+	require.Empty(t, problems)
+	require.Equal(t, 3, project.MaxSpawnDepth)
+
+	project, problems = loadProjectText(t, call(goodProject+`, max_spawn_depth = 1`))
+	require.Empty(t, problems)
+	require.Equal(t, 1, project.MaxSpawnDepth)
+
+	_, problems = loadProjectText(t, call(goodProject+`, max_spawn_depth = 0`))
+	require.Len(t, problems, 1)
+	require.Contains(t, problems[0].Error(), "max_spawn_depth is 0: set it to 1 or more")
 }
 
 func TestLoadFolder_ThePRLabelKeyDefaultsToMadeByBeehaveAndAnEmptyOneIsRefused(t *testing.T) {

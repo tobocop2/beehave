@@ -518,8 +518,6 @@ func TestSpawnGather_SpawnReusesAChildThatFinishedAndStartsNoSecondAttempt(t *te
 func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 	t.Parallel()
 
-	worker := "def worker(item):\n    spawn(items = [\"31\"], entry = \"worker\")\n\n"
-
 	cases := map[string]struct{ file, want string }{
 		"bad id":          {bodyFlow(`spawn(items = ["!!"])`), "invalid item"},
 		"itself":          {bodyFlow(`spawn(items = ["12"])`), "item 12 cannot spawn itself. Leave it out of items"},
@@ -544,18 +542,6 @@ func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 			require.ErrorContains(t, err, c.want)
 		})
 	}
-
-	t.Run("a child cannot spawn", func(t *testing.T) {
-		t.Parallel()
-
-		h := newHarness(t)
-		flow := worker + "def main(item):\n    done = gather(spawn(items = [\"21\"], entry = \"worker\"))\n    command(name = \"after\", run = [\"after\", done.results[0].error])\n"
-		_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
-
-		require.NoError(t, err)
-		require.Len(t, h.commands.ranBy(testItem), 1)
-		assert.Contains(t, h.commands.ranBy(testItem)[0], "item 21 was started by spawn and cannot start items. Call spawn from the item that a user started")
-	})
 }
 
 func TestSpawnGather_AnEmptyCallReturnsAtOnce(t *testing.T) {
@@ -754,7 +740,7 @@ func TestSpawnGather_AChildWhoseInputCannotBeReadTakesNoClaim(t *testing.T) {
 
 	client := newHarness(t).client(t, testVersion)
 
-	_, _, _, err := client.childClaim(dbos.WorkflowStatus{ID: "item-21-r1", Name: itemName, Input: "not json"})
+	_, _, err := client.childClaim(dbos.WorkflowStatus{ID: "item-21-r1", Name: itemName, Input: "not json"})
 
 	require.ErrorContains(t, err, "read the input of run item-21-r1")
 }
@@ -777,7 +763,8 @@ func TestSpawnGather_TheItemsQueueReportsAStoreThatIsClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, engine.Shutdown())
 
-	require.ErrorContains(t, engine.registerItemQueue(2), "register the items queue")
+	require.ErrorContains(t, engine.registerItemQueues(2, 3), "read the item runs that can run again")
+	require.ErrorContains(t, engine.registerDepths(2, 3), "register the items queue of depth 0")
 }
 
 // pickFails picks a login for every item but one.
@@ -823,7 +810,7 @@ func TestSpawnGather_SpawnReportsAChildTheQueueCannotStart(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	engine := h.engineWith(t, func(e *Engine) { e.itemQueue = nil })
+	engine := h.engineWith(t, func(e *Engine) { e.itemQueues[1] = nil })
 
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
 

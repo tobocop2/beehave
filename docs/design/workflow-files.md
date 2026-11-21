@@ -421,7 +421,7 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 - A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
-- `free` is the cap of the `items` queue less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
+- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
 - `pulls` lists every open pull request of the forge, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
 - A read of the tracker or the forge that fails ends the step with an error.
 - A project with no forge has no pull requests.
@@ -513,7 +513,12 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 `spawn(items, entry="main", base="", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
 
-- Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the `items` queue. The queue holds at most `agents.max_concurrent` runs.
+- Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the items queue of its depth. The queue holds at most `agents.max_concurrent` runs.
+- A run that `spawn` started may call `spawn`. A run that a user started is at depth 0, and each child is one level deeper than its parent. The project key `max_spawn_depth` caps the depth, 3 by default.
+- Each depth has its own queue: `roots` for the runs that `beehave run` starts, `items` for depth 1, then `items.2`, `items.3` and so on. A parent that waits in `gather` holds a slot of its own level only, so its children always find slots.
+- Each queue has the cap `agents.max_concurrent`, and the caps add up: with `max_spawn_depth` 3, at most 4 times `max_concurrent` item runs are open at once. The agent queues still cap the agent steps.
+- At start, the engine registers one queue for each depth up to the highest `max_spawn_depth` of the projects. If a run that can run again (open, canceled or failed) sits deeper, the engine also registers the queues down to the children of that run, which its replay starts again. A project file that lowers the cap does not strand a run on a queue that no worker reads.
+- The tree cost cap `agents.max_tree_budget_usd` sums every level of the tree. `beehave cancel` of the root cancels every level. A cancel of a run in the middle cancels the runs below it, and its parent sees a child that did not finish.
 - A child of a round item is cut at the base of the round item, `round/<base>`. A workflow that has a round base setting passes it as `base`, and `spawn` checks that it equals the base of the round item.
 - A child run that finished with success is reused and does not run again.
 - A cancelled run, or no run, starts the next attempt.
@@ -524,7 +529,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - An item whose last attempt failed.
 - The parent itself.
 - An item that is in `items` twice.
-- A call from a run that `spawn` started.
+- A child that would run deeper than `max_spawn_depth`. The error names the item, the depth and the cap: `item 24 would run at depth 4, and the project has a cap of 3`.
 - A `base` that differs from the base of the round item that calls `spawn`. The error names both bases. An item that is no round item has no base to compare, so `spawn` cuts each child at the `base` of the call. The gate of the child reads the pin file at the same branch.
 
 #### `gather`
@@ -559,7 +564,7 @@ Before this rule, the engine dropped what a spawn entry returned. A spawn entry 
 The retry route for a parent that failed in a `gather` is `beehave resume <parent>`. The resume:
 
 1. Finds the step that started the failed child.
-2. Takes a fresh claim for that child, and reopens it on the `items` queue.
+2. Takes a fresh claim for that child, and reopens it on the items queue of its depth. A child at depth 2 or 3 reopens in the same way, from the failed run at its own level.
 3. Forks the parent from that step.
 
 The resume also reopens each sibling that the raise canceled while it was open, so that no child stays canceled and fails the next `gather`.

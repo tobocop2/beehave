@@ -56,6 +56,8 @@ type rawProject struct {
 
 	SandboxEnforcer text
 	PRLabel         text
+	// MaxSpawnDepth is the deepest level below the run a user started at which spawn may start a run.
+	MaxSpawnDepth int
 
 	// Vars are the free settings of the workflow. The engine reads no key and no value.
 	Vars vars
@@ -82,7 +84,7 @@ func loadProject(path string, registry Adapters) (Project, error) {
 
 // projectSpec is the schema of the project call. The arguments after the fixed ones are the adapter blocks that the registry declares, each optional and named as its block.
 func projectSpec(declared []Block) spec {
-	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "vars?"}
+	args := []string{"base_branch?", "gate?", "gate_steps?", "repo?", "source?", "tracker?", "claims?", "forge?", "build_host?", "host?", "test_report?", "test_command?", "test_paths?", "notify?", "pin_file?", "visibility?", "sandbox?", "sandbox_read?", "sandbox_deny?", "gate_network?", "gate_allow_write?", "sandbox_enforcer?", "pr_label?", "max_spawn_depth?", "vars?"}
 
 	for _, block := range declared {
 		args = append(args, block.Name+"?")
@@ -140,7 +142,7 @@ func nestedBuiltins(file *loader, declared, hostDeclared []Block) []*starlark.Bu
 
 // newProject is the constructor of the project block. The tracker and the claim store default to local, and the build host to this machine.
 func newProject(at syntax.Position, kwargs []starlark.Tuple, declared []Block) (*rawProject, error) {
-	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}}
+	raw := &rawProject{At: at, Tracker: defaultTracker, Claims: defaultClaims, BuildHost: hostNames{LocalHost}, MaxSpawnDepth: DefaultMaxSpawnDepth}
 
 	if err := refuseMovedKeys(at, kwargs); err != nil {
 		return raw, err
@@ -149,7 +151,7 @@ func newProject(at syntax.Position, kwargs []starlark.Tuple, declared []Block) (
 	host, held := nested[rawHost]{want: hostSpecName}, holders(declared)
 	dests := []any{
 		&raw.BaseBranch, &raw.Gate, &raw.GateSteps, &raw.Repo, &raw.Source, &raw.Tracker, &raw.Claims, &raw.Forge, &raw.BuildHost, &host, &raw.TestReport, &raw.TestCommand, &raw.TestPaths, &raw.Notify, &raw.PinFile, &raw.Visibility, &raw.Sandbox, &raw.SandboxRead, &raw.SandboxDeny, &raw.GateNetwork, &raw.GateAllowWrite, &raw.SandboxEnforcer, &raw.PRLabel,
-		&raw.Vars,
+		&raw.MaxSpawnDepth, &raw.Vars,
 	}
 
 	err := projectSpec(declared).unpack(at, kwargs, append(dests, blockDests(held)...)...)
@@ -179,13 +181,13 @@ func profileOf(path string, raw rawProject, registry Adapters) (model.Project, e
 	return model.Project{
 		Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Repo: raw.Repo.Value, Source: source, Tracker: names.tracker, Claims: names.claims,
 		Forge: names.forge, Blocks: blocksOf(raw, names), Tools: toolsOf(names), BaseBranch: raw.BaseBranch, Gate: raw.Gate, GateSteps: slices.Clone(raw.GateSteps), BuildHost: host, BuildHosts: declaredHosts(raw.BuildHost), Host: hostTable, TestReport: raw.TestReport.Value, TestCommand: raw.TestCommand.Value,
-		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, Vars: raw.Vars,
+		TestPaths: slices.Clone(raw.TestPaths), Notify: slices.Clone(raw.Notify.Words), PinFile: raw.PinFile.Value, PRLabel: labelOf(raw), Visibility: visibility, Sandbox: sandbox, SandboxRead: slices.Clone(raw.SandboxRead), SandboxDeny: slices.Clone(raw.SandboxDeny), GateNetwork: slices.Clone(raw.GateNetwork), GateAllowWrite: slices.Clone(raw.GateAllowWrite), SandboxEnforcer: raw.SandboxEnforcer.Value, MaxSpawnDepth: raw.MaxSpawnDepth, Vars: raw.Vars,
 	}, nil
 }
 
 // checkKeys checks the keys that the named adapters need and returns the build host and the source.
 func checkKeys(raw rawProject, names adapters) (string, string, error) {
-	if err := errors.Join(requiredKeys(raw, names), notifyCommand(raw)); err != nil {
+	if err := errors.Join(requiredKeys(raw, names), notifyCommand(raw), spawnDepth(raw)); err != nil {
 		return "", "", err
 	}
 
@@ -227,6 +229,18 @@ func notifyCommand(raw rawProject) error {
 
 	if strings.TrimSpace(raw.Notify.Words[0]) == "" {
 		return refuseAt(raw.At, "`notify` names an empty program. Put the program first in the list, such as [\"ntfy\", \"publish\", \"beehave\"].")
+	}
+
+	return nil
+}
+
+// DefaultMaxSpawnDepth is the max_spawn_depth of a project that sets none: the research desk spawns sources, and each source spawns claims.
+const DefaultMaxSpawnDepth = 3
+
+// spawnDepth refuses a max_spawn_depth below 1: a project that must not fan out at all sets 1, and its runs spawn one level.
+func spawnDepth(raw rawProject) error {
+	if raw.MaxSpawnDepth < 1 {
+		return refuseAt(raw.At, "max_spawn_depth is %d: set it to 1 or more.", raw.MaxSpawnDepth)
 	}
 
 	return nil

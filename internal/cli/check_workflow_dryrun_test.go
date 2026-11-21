@@ -66,6 +66,24 @@ func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldItsVars(t *testing.T) {
 	assert.Contains(t, stdout, `V={"a": [1]}`)
 }
 
+func TestCheckWorkflowDryRun_ANamedProjectCapsTheDepthOfSpawnAndNoProjectHasTheDefaultCap(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def grand(item):\n    pass\n\ndef child(item):\n    r = gather(spawn(items = [\"22\"], entry = \"grand\")).results[0]\n    if not r.ok:\n        fail(r.error)\n\n"+
+		"def main(item):\n    r = gather(spawn(items = [\"21\"], entry = \"child\")).results[0]\n    if not r.ok:\n        fail(r.error)\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", max_spawn_depth = 1)\n")
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 1, code)
+	assert.Contains(t, stdout, "item 22 would run at depth 2, and the project has a cap of 1.")
+
+	code, stdout, _ = runDry(t, map[string]string{}, filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 0, code, stdout)
+}
+
 func TestCheckWorkflowDryRun_APlainRunWithoutTheFlagPrintsNoSteps(t *testing.T) {
 	t.Parallel()
 
