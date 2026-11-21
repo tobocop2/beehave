@@ -327,6 +327,7 @@ func writeParams() []Param {
 	return []Param{
 		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled("env", KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
+		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule),
 	}
 }
 
@@ -345,7 +346,7 @@ const treeKeyword = "tree"
 func processCap() Param { return Param{Name: "max_new_processes", Kind: KindInt, AsValue: true} }
 
 // slotClass is the keyword slots of command. The run reads it as a value, so an absent keyword differs from an empty text.
-func slotClass() Param { return Param{Name: "slots", Kind: KindText, AsValue: true} }
+func slotClass() Param { return Param{Name: slotsKeyword, Kind: KindText, AsValue: true} }
 
 // valueSignatures holds the builtins that return text or a struct of facts and start nothing.
 func valueSignatures() map[string][]Param {
@@ -370,6 +371,7 @@ func stepSignatures() map[string][]Param {
 			runParam(),
 			opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
 			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), label,
+			ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
 		},
 		writeName: writeParams(),
 		gateName: {
@@ -395,7 +397,7 @@ func swarmSignatures() map[string][]Param {
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
 		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
-		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label},
+		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
 		queueName:  {label, opt("hold", KindText), opt("label", KindText)},
 	}
 }
@@ -573,6 +575,9 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 	case commandName:
 		g.hostWithCap(call, params)
 		g.hostWithSlots(call, params)
+		g.retrying(call, builtin, params)
+	case writeName:
+		g.retrying(call, builtin, params)
 	case waitName:
 		g.asking(call, params)
 	case mergeName:
@@ -621,7 +626,7 @@ func (g *graph) hostWithCap(call *syntax.CallExpr, params []Param) {
 // hostWithSlots checks the slots of a command call with the rule of the run. A value that is not a text literal, or a host that is neither absent nor a
 // text literal, is left to the run, and so is a value of the wrong kind, which the kind check reports.
 func (g *graph) hostWithSlots(call *syntax.CallExpr, params []Param) {
-	class := paramArg(call, params, "slots")
+	class := paramArg(call, params, slotsKeyword)
 	if class == nil {
 		return
 	}

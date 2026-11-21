@@ -72,7 +72,7 @@ func TestCheck_AnUnknownKeywordOfSpawnOrGatherIsAProblemAtTheKeyword(t *testing.
 	got := checkText(t, "def main(item):\n    runs = spawn([\"1\"], limit = 2)\n    gather(runs, wait = True)\n")
 
 	require.Len(t, got, 2)
-	assert.Contains(t, got[0], "2:25 spawn takes no argument limit. Use one of: items, entry, base, name.")
+	assert.Contains(t, got[0], "2:25 spawn takes no argument limit. Use one of: items, entry, base, name, retries.")
 	assert.Contains(t, got[1], "3:18 gather takes no argument wait. Use one of: runs, fail, until, name.")
 }
 

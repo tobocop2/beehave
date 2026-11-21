@@ -2,6 +2,7 @@ package flow
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 
@@ -103,6 +104,29 @@ func TestExample_AFailedCleanShowsItsExitCodeAndDoesNotFailTheLaneOrSkipThePrune
 	assert.True(t, childOf(t, result).Approved, "a failed sweep does not fail the lane")
 	assert.Len(t, sweepRequests(rig), 2, "the prune runs after the failed clean")
 	assert.Contains(t, sweepOf(t, result), "clean: rc=3")
+	assert.Contains(t, sweepOf(t, result), "prune: rc=0")
+}
+
+func TestExample_ASweepStepThatCannotRunShowsItsErrorAndDoesNotFailTheLane(t *testing.T) {
+	t.Parallel()
+
+	rig, file := exampleRig(t, func(int) string { return "approve" })
+	rig.project.Vars["clean_command"] = []any{"clean-lane"}
+
+	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if len(request.Run) > 0 && request.Run[0] == "clean-lane" {
+			return CommandOutput{}, errors.New("the build host is gone")
+		}
+
+		return CommandOutput{}, nil
+	}
+
+	result, err := runPipeline(rig.h.engine(t), file)
+
+	require.NoError(t, err)
+	assert.True(t, childOf(t, result).Approved, "an error of the sweep does not fail the lane")
+	assert.Len(t, sweepRequests(rig), 2, "the prune runs after the clean that could not run")
+	assert.Contains(t, sweepOf(t, result), "clean: rc=-1 error: the build host is gone")
 	assert.Contains(t, sweepOf(t, result), "prune: rc=0")
 }
 

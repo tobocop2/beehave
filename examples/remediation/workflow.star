@@ -1178,22 +1178,31 @@ def item_value(item, head, approved, reason, host_losses):
 
 def sweep(project):
     """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane), then `docker volume prune -f`.
-    A project with no clean command runs the prune only, and the text says so. A failed step shows its exit code in the text. It does not fail the lane, and the prune runs after a failed clean."""
+    A project with no clean command runs the prune only, and the text says so. A failed step shows its exit code in the text, and a step that cannot run (a host that is gone)
+    shows its error: failure = "return" gives the error as a result. Neither fails the lane, and the prune runs after a failed clean."""
     words = project.vars.get("clean_command")
     lines = ["clean: not run, vars.clean_command is not set"]
     if words != None:
-        clean = command(name = "sweep-clean", run = words, host = "build")
-        lines = ["clean: rc=%d" % clean.rc]
+        clean = command(name = "sweep-clean", run = words, host = "build", failure = "return")
+        lines = [_swept("clean", clean)]
 
-    prune = command(name = "sweep-prune", run = ["docker", "volume", "prune", "-f"], host = "build")
+    prune = command(name = "sweep-prune", run = ["docker", "volume", "prune", "-f"], host = "build", failure = "return")
 
-    return "\n".join(lines + ["prune: rc=%d" % prune.rc])
+    return "\n".join(lines + [_swept("prune", prune)])
+
+def _swept(step, result):
+    """One line of the sweep text: the exit code of the step, and its error when the step could not run."""
+    if result.error:
+        return "%s: rc=%d error: %s" % (step, result.rc, result.error)
+
+    return "%s: rc=%d" % (step, result.rc)
 
 def pipeline(item):
     """The child entry: the pipeline of one item. The round starts one child for each item with spawn(entry = "pipeline").
     It returns item_value to the round, which lands the approved heads in one batch. The child never merges.
     The sweep runs when the lane ends: after each verdict, and before each of the two fail calls of the lane. The value that the lane returns carries the sweep result as `sweep`.
-    A lane that a builtin error ends (a host that is gone) gets no sweep, and a sweep that raises fails the lane: Starlark has no way to catch an error."""
+    A sweep step that cannot run returns its error in the sweep text. A lane that an error of an earlier builtin ends (a host that is gone at the gate) gets no sweep:
+    Starlark has no way to catch an error."""
     # The facts of the project file (the plumbing fields and the vars that hold the people, rules, limits, traps and the round settings). The step records them, so a resume keeps the facts the run started with.
     # Each agent of the example gets them as the input `facts`; no agent reads a path for them.
     project = facts()

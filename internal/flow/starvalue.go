@@ -149,6 +149,16 @@ func (s *script) durable(builtin, label string, fn func(ctx context.Context, nam
 	return s.durableWith(builtin, label, nil, fn)
 }
 
+// durableRetried is durable for a call with a retry policy: the workflow library runs fn again after a failed try, and records only the last one.
+func (s *script) durableRetried(builtin, label string, policy workflow.RetryPolicy, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	fields, err := s.durableFields(builtin, label, nil, fn, s.e.retryOptions(policy)...)
+	if err != nil {
+		return nil, err
+	}
+
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, fields), nil
+}
+
 // durableWith is durable for a builtin that gained result fields after its first records. A record that lacks a field reads it as the zero in zeros,
 // so a run that an older build recorded replays under a file that reads the new field.
 func (s *script) durableWith(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
@@ -161,13 +171,13 @@ func (s *script) durableWith(builtin, label string, zeros map[string]any, fn fun
 }
 
 // durableFields runs a recorded step and returns the Starlark value of each output field, by name.
-func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error)) (starlark.StringDict, error) {
+func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error), opts ...dbos.StepOption) (starlark.StringDict, error) {
 	name, err := s.name(builtin, label)
 	if err != nil {
 		return nil, err
 	}
 
-	done, err := runStep(s.e, s.ctx, name, func(ctx context.Context) (stepResult, error) { return fn(ctx, name) })
+	done, err := runStep(s.e, s.ctx, name, func(ctx context.Context) (stepResult, error) { return fn(ctx, name) }, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -41,6 +41,7 @@ const (
 	revertField      = "revert"
 	numberField      = "number"
 	statusField      = "status"
+	attemptsField    = "attempts"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -52,7 +53,7 @@ func resultFields() map[string][]string {
 	fields := map[string][]string{
 		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills"},
 		mergeName:        {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"},
-		commandName:      {"stdout", "stderr", "rc"},
+		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
 		earlierCallsName: {"count"},
 		gatherName:       {"results"},
 		hostTeardownName: {"down", reasonField},
@@ -62,7 +63,7 @@ func resultFields() map[string][]string {
 		sleepName:        {"slept"},
 		spawnName:        {"runs"},
 		waitName:         {"answer", "answers", "timed_out"},
-		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
+		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
 	for _, group := range []map[string][]string{gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields()} {
 		maps.Copy(fields, group)

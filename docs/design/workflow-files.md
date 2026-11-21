@@ -514,7 +514,9 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item`, `run` and `retries`.
+
+- With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
 
 - Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the items queue of its depth. The queue holds at most `agents.max_concurrent` runs.
 - A run that `spawn` started may call `spawn`. A run that a user started is at depth 0, and each child is one level deeper than its parent. The project key `max_spawn_depth` caps the depth, 3 by default.
@@ -543,8 +545,9 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
 - If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
 - A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
-- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd` and `value`.
+- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value` and `attempts`. `attempts` counts the runs of the item that this call waited for.
 - `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
+- A run of `spawn` with retries left that failed does not end the wait and does not trigger `fail="raise"`. The call records the plan of the next attempts as one step, starts them, and waits again. A replay starts nothing twice.
 - The wait is one recorded step that reads the rows of all the runs, so the record does not depend on the order in which the children end.
 - With `fail="raise"`, the step cancels the runs that are still open when it sees a run that failed, and records all the outcomes. The call then fails with the error of that run.
 - A restart replays `spawn` and `gather` from the records, and each child keeps its own output.
@@ -687,6 +690,23 @@ The returned struct also holds `stderr`, the second output stream of the program
 - The engine records `stderr` in the run database like `stdout`, so a program must not print a secret to either stream.
 - A run recorded before the field existed has no `stderr`. A workflow that reads it fails on a replay of that run.
 
+#### `retries`, `backoff` and `failure`
+
+| Setting | Meaning |
+| --- | --- |
+| `retries` | A whole number from 0 to 10. The default is 0. |
+| `backoff` | The wait before the first retry, a duration above zero such as `"2s"`. The wait doubles before each later retry. It needs `retries` of 1 or more. With no `backoff`, the first wait is 100 ms and no wait is longer than 5 s. |
+| `failure` | `"raise"` (the default) or `"return"`. |
+
+- A try that exits with a code that is not zero, and not in `stop_on_rc`, starts again until the retries are spent. A code in `stop_on_rc` is never retried.
+- An error of the step, such as a program that cannot start, also starts again. A cancel and a lost host are never retried.
+- The result has the field `attempts`, the number of tries. After the last try, `rc` is the code of that try.
+- The step is one record. A replay reads it and does not retry again. A crash during the retries starts the count again: the resume runs the step from the first try.
+- With `failure = "return"`, an error of the step that is left after the retries becomes the field `error` of the result, with `rc` -1 and empty `stdout` and `stderr`, and the run goes on. The default ends the run with the error. A cancel of the run always ends it.
+- A step with `slots` takes no `retries`, because it runs as a queued host job.
+- `agent` takes no `retries`.
+- `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
+
 #### The environment of the program
 
 The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
@@ -698,7 +718,8 @@ A `gate` step keeps the environment of the process.
 `write(run, read_back, undo, stdin, env, timeout, name)` is a `command` step for a program that changes a system outside the run.
 
 - It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc` or `max_new_processes`.
-- The result has the fields `stdout`, `stderr`, `rc`, `key` and `skipped`.
+- The result has the fields `stdout`, `stderr`, `rc`, `attempts`, `key` and `skipped`.
+- It takes `retries` and `backoff` with the rules of `command`, and no `failure`. Each try runs the read-back first, so a try after a write that landed is skipped. All the tries have the same key.
 - A write runs on this machine only.
 - The program of `run`, `read_back` and `undo` is pinned like the program of a `command`. A script that changes between the first run and a resume is refused. A `read_back` or `undo` list that is not a literal is counted as a dynamic command.
 
