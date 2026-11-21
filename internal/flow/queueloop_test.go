@@ -26,6 +26,28 @@ func countSteps(steps []dbos.StepInfo, prefix string) int {
 	}))
 }
 
+// holdsItem21 returns an agent action. Item 21 fails at once. Every other item stays open until the loop has held item 21, so the loop sees the failure of 21 alone, before any other run ends.
+func holdsItem21(engine func() *Engine) func(ctx context.Context, item string) error {
+	return func(ctx context.Context, item string) error {
+		if item == "21" {
+			return errFake
+		}
+
+		deadline := time.Now().Add(30 * time.Second)
+
+		for time.Now().Before(deadline) && ctx.Err() == nil {
+			steps, err := dbos.GetWorkflowSteps(engine().ctx, testRun)
+			if err == nil && hasStep(steps, "item_status:hold-0-21#1") {
+				return nil
+			}
+
+			time.Sleep(20 * time.Millisecond)
+		}
+
+		return errFake
+	}
+}
+
 // loopPreflight answers the preflight of each item. An item that is not in stops has no pull request that stops it.
 type loopPreflight struct {
 	mu    sync.Mutex
@@ -397,15 +419,12 @@ func TestQueueLoop_AFailedChildIsHeldAndTheLoopGoesOn(t *testing.T) {
 	t.Parallel()
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
-	r.agents.setAct(func(_ context.Context, item string) error {
-		if item == "21" {
-			return errFake
-		}
+	var engine *Engine
 
-		return nil
-	})
+	// Item 22 stays open until the loop has held item 21, so the first pass that ends a run sees the failure of 21 alone and item 23 is still ready.
+	r.agents.setAct(holdsItem21(func() *Engine { return engine }))
 
-	engine := r.engine(t)
+	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	_, err := engine.RunFile(testItem, testProject, r.file)
@@ -431,24 +450,7 @@ func TestQueueLoop_AFailedPassWithNothingToStartDoesNotSleep(t *testing.T) {
 	var engine *Engine
 
 	// Item 22 stays open until the loop has held item 21, so the pass after the failure has an open run and nothing to start.
-	r.agents.setAct(func(ctx context.Context, item string) error {
-		if item == "21" {
-			return errFake
-		}
-
-		deadline := time.Now().Add(30 * time.Second)
-
-		for time.Now().Before(deadline) && ctx.Err() == nil {
-			steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
-			if err == nil && hasStep(steps, "item_status:hold-0-21#1") {
-				return nil
-			}
-
-			time.Sleep(20 * time.Millisecond)
-		}
-
-		return errFake
-	})
+	r.agents.setAct(holdsItem21(func() *Engine { return engine }))
 
 	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
