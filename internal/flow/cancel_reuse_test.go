@@ -156,7 +156,7 @@ func TestCancel_ACancelRowOfTheEarlierAttemptDoesNotStopTheResumedRun(t *testing
 	require.NotNil(t, later)
 
 	waitOn(t, ownerAsks(t, harness))
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	waitOn(t, waiting[struct{}]{what: "the resumed run to end done", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
 		rows, err := client.Status()
 

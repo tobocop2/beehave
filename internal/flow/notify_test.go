@@ -67,7 +67,7 @@ func TestNotify_APlainWaitRunsTheCommandOnceWithTheItemAndTheQuestion(t *testing
 	h.facts = notifyFacts(notifyProgram)
 	client, done := openedWait(t, h, notifyPlainWait)
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 
 	got := notifyRequests(h)
@@ -84,7 +84,7 @@ func TestNotify_AWaitWithPeopleRunsTheCommandOnce(t *testing.T) {
 	h.facts = notifyFacts(notifyProgram)
 	client, done := openedWait(t, h, "def main(item):\n    wait(name = \"ask\", question = \"Who?\", timeout = \"1h\", to = [\"alice\"])\n")
 
-	require.NoError(t, client.AnswerAs(testItem, "alice", "me"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "alice", Text: "me"}))
 	require.NoError(t, receive(t, done).err)
 
 	got := notifyRequests(h)
@@ -104,7 +104,7 @@ func TestNotify_AWaitOfAProjectWithNoNotifyRunsNoCommand(t *testing.T) {
 	done := runInBackground(engine, testItem)
 
 	waitOn(t, ownerAsksWithADeadline(t, client))
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 	require.Empty(t, h.commands.ran())
 }
@@ -170,7 +170,7 @@ func TestNotify_ACommandThatExitsNonZeroDoesNotFailTheWait(t *testing.T) {
 	done := runInBackground(engine, testItem)
 
 	waitOn(t, notified(t, h, engine))
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 	require.Contains(t, logged.String(), "the notify command failed")
 	require.Contains(t, logged.String(), "boom")
@@ -185,7 +185,7 @@ func TestNotify_ACommandThatCannotStartDoesNotFailTheWait(t *testing.T) {
 	h.commands.reply = func(CommandRequest) (CommandOutput, error) { return CommandOutput{}, errors.New("no such program") }
 	client, done := openedWait(t, h, notifyPlainWait)
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 }
 
@@ -196,7 +196,7 @@ func TestNotify_TheRequestCarriesTheBoundOfThirtySecondsAndNoShell(t *testing.T)
 	h.facts = notifyFacts(notifyProgram)
 	client, done := openedWait(t, h, notifyPlainWait)
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 
 	got := notifyRequests(h)
@@ -212,7 +212,7 @@ func TestNotify_TheQuestionPassesThroughTheRedactor(t *testing.T) {
 	h.facts = notifyFacts(notifyProgram)
 	client, done := openedWait(t, h, "def main(item):\n    wait(name = \"ask\", question = \"key sk-ant-abcdefghijklmnop?\", timeout = \"1h\")\n")
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 
 	got := notifyRequests(h)
@@ -232,7 +232,7 @@ func TestNotify_TheWaitOfAMergeForTheOwnerRunsTheCommandOnceWithTheRunItem(t *te
 
 	question := questionOf(t, rig.h, "9")
 	waitOn(t, notified(t, rig.h, engine))
-	require.NoError(t, rig.h.client(t, testVersion).Answer("9", "keep #13"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
 
 	got := notifyRequests(rig.h)
@@ -329,7 +329,7 @@ func TestNotify_AReminderOfAnOpenWaitSendsNoNotice(t *testing.T) {
 	clk.advance(35 * time.Minute)
 	waitOn(t, waiting[struct{}]{what: "the run to send one reminder", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, remindedIs(t, client, 1), nil }})
 
-	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "ana", Text: "yes"}))
 	require.NoError(t, receive(t, done).err)
 	require.Len(t, notifyRequests(h), 1, "the open of the wait sent one notice, and the reminder sent none")
 }

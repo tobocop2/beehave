@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -147,13 +148,32 @@ func itemOfRun(id string) (item string, ok bool) {
 	return rest[:at], ok
 }
 
-// rewindPoint returns the step that a rewind goes back to: the look at the caps that opens the phase of a failed agent step, else the failed step.
+// rewindPoint returns the step that a rewind goes back to: the look at the caps that opens the phase of a failed agent step, the deadline step of the wait
+// of a failed receive, else the failed step.
 func rewindPoint(steps []dbos.StepInfo, failed dbos.StepInfo) int {
-	if failed.StepName != agentStepName {
+	switch failed.StepName {
+	case agentStepName:
+		return firstOpenStart(steps, failed.StepID)
+	case receiveStepName:
+		return waitStart(steps, failed.StepID)
+	default:
 		return failed.StepID
 	}
+}
 
-	return firstOpenStart(steps, failed.StepID)
+// waitStart returns the deadline step of the wait that the receive at step failed belongs to, so a resumed wait records a fresh deadline.
+// Only receives and their sleeps may lie between the two; else the receive keeps its own step.
+func waitStart(steps []dbos.StepInfo, failed int) int {
+	at := slices.IndexFunc(steps, func(step dbos.StepInfo) bool { return step.StepID == failed }) - 1
+	for at >= 0 && (steps[at].StepName == receiveStepName || steps[at].StepName == sleepStep) {
+		at--
+	}
+
+	if at >= 0 && steps[at].StepName == deadlineStep {
+		return steps[at].StepID
+	}
+
+	return failed
 }
 
 // reopenChild reopens the child workflow of a step when it failed, or when it is an item run that the raise of a gather canceled, and reports whether it did.

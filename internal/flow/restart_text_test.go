@@ -89,7 +89,7 @@ func TestRestartText_ACappedSettleOfTheRemediationExampleNamesResumeThenCancelTh
 	done := pipelineInBackground(engine, file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	outcome := receive(t, done)
 
 	assertNamesTheRestartSteps(t, outcome.err)

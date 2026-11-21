@@ -397,10 +397,6 @@ func stateOf(status dbos.WorkflowStatusType) RunState {
 	return runRunning
 }
 
-// Answer sends the answer of the owner to the open run of an item.
-// A wait that names people refuses an answer with no name; AnswerAs gives one.
-func (c *Client) Answer(item, text string) error { return c.AnswerAs(item, "", text) }
-
 // requireQuestion refuses a run that is finished or that asks the owner nothing: a message to such a run would answer the next question at once.
 // It returns the info of the run, which holds the question and who it asks.
 func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {

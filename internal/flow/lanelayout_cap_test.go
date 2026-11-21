@@ -48,7 +48,7 @@ func TestLaneLayout_ACancelledFirstRunStillCountsAgainstTheCapOfThePullRequest(t
 
 	second := pipelineInBackground(engine, file)
 	waitOn(t, aLiveRunAsks(t, rig.h))
-	require.NoError(t, client.Answer(testItem, "park all"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, second).err)
 
 	assert.Equal(t, 3, countCandidates(rig), "the second run gets no candidate after a canceled first run spent the cap")
@@ -122,7 +122,7 @@ func TestLaneLayout_ARunThatStopsBetweenAFixAndItsScopedReviewCountsTheCandidate
 
 	second := pipelineInBackground(engine, file)
 	waitOn(t, aSecondRunAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, second).err)
 
 	assert.Equal(t, 2, countCandidates(rig), "the second run gets the one candidate that is left")
@@ -168,7 +168,7 @@ func TestLaneLayout_AResumedRunKeepsTheCountOfEarlierFixLanesItStartedWith(t *te
 
 	require.NoError(t, client.Resume(testItem))
 	waitOn(t, aLiveRunAsks(t, h))
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 
 	waitOn(t, waiting[struct{}]{what: "the late agent to start", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) {
 		return struct{}{}, slices.ContainsFunc(h.agents.seen(), func(r AgentRequest) bool { return r.Model == "late-model" }), nil
@@ -208,14 +208,14 @@ func TestLaneLayout_ASecondRunOfTheItemStartsNoFixLaneAfterTheFirstRunSpentTheCa
 
 	first := pipelineInBackground(engine, file)
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, first).err)
 	require.Equal(t, 3, countCandidates(rig), "the first run spends the cap of three candidates")
 	fixes, gates := countFix(rig), rig.h.gate.calls
 
 	second := pipelineInBackground(engine, file)
 	waitOn(t, aSecondRunAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, second).err)
 
 	assert.Equal(t, fixes, countFix(rig), "the second run of the same item starts no fix lane: the pull request has used its two fix rounds")
@@ -260,7 +260,7 @@ func TestLaneLayout_ASecondRunOfTheItemGetsTheCandidatesTheFirstRunLeft(t *testi
 	rig.setRound("fix_rounds", json.Number("2"))
 	second := pipelineInBackground(engine, file)
 	waitOn(t, aSecondRunAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, second).err)
 
 	assert.Equal(t, 3, countCandidates(rig), "the cap is three candidates for the pull request, one is spent, so the second run gets two")

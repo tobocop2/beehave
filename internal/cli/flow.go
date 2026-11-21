@@ -84,9 +84,8 @@ type Steering interface {
 
 // Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
 type Messaging interface {
-	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
-	Answer(item, text string) error
-	AnswerAs(item, from, text string) error
+	// Reply sends an answer to the open wait of an item. A wait that names people needs the name of the person in From.
+	Reply(item string, reply flow.Reply) error
 	// Send puts a message on the inbox of the open run of an item and returns its id.
 	Send(item string, msg flow.Outgoing) (string, error)
 }
@@ -981,15 +980,6 @@ func (f flowCommands) withClient(cmd *cobra.Command, flag string, fn func(Steeri
 	return errors.Join(fn(client), client.Close())
 }
 
-// sendAnswer sends the text as a plain answer, or as the answer of the person that --as names.
-func sendAnswer(client Steering, item, as, text string) error {
-	if as == "" {
-		return client.Answer(item, text)
-	}
-
-	return client.AnswerAs(item, as, text)
-}
-
 // manyAnswer holds the flags that make beehave answer reply to many waiting runs.
 type manyAnswer struct {
 	all             bool
@@ -1070,7 +1060,7 @@ func (m manyAnswer) checkItems() error {
 
 // answerMany answers every waiting run that fits the selectors, one run at a time through the answer of a single run.
 // It prints one line for each run and goes on after a refusal. The error says how many runs refused.
-func answerMany(out io.Writer, client Steering, m manyAnswer, as, text string) error {
+func answerMany(out io.Writer, client Steering, m manyAnswer, reply flow.Reply) error {
 	infos, err := client.Status()
 	if err != nil {
 		return err
@@ -1081,7 +1071,7 @@ func answerMany(out io.Writer, client Steering, m manyAnswer, as, text string) e
 		return errNoWaiting
 	}
 
-	if refused := replyAll(out, client, items, as, text); refused > 0 {
+	if refused := replyAll(out, client, items, reply); refused > 0 {
 		return fmt.Errorf("%w: %d of %d runs did not take the answer", errNotTaken, refused, len(items))
 	}
 
@@ -1089,11 +1079,11 @@ func answerMany(out io.Writer, client Steering, m manyAnswer, as, text string) e
 }
 
 // replyAll answers each item in turn and returns how many refused.
-func replyAll(out io.Writer, client Steering, items []string, as, text string) int {
+func replyAll(out io.Writer, client Steering, items []string, reply flow.Reply) int {
 	refused := 0
 
 	for _, item := range items {
-		if !replyTo(out, client, item, as, text) {
+		if !replyTo(out, client, item, reply) {
 			refused++
 		}
 	}
@@ -1102,8 +1092,8 @@ func replyAll(out io.Writer, client Steering, items []string, as, text string) i
 }
 
 // replyTo answers one item, prints its line, and reports whether the run took the answer.
-func replyTo(out io.Writer, client Steering, item, as, text string) bool {
-	err := sendAnswer(client, item, as, text)
+func replyTo(out io.Writer, client Steering, item string, reply flow.Reply) bool {
+	err := client.Reply(item, reply)
 	if err != nil {
 		_, _ = fmt.Fprintf(out, "%s\trefused: %s\n", item, model.OneLine(err.Error()))
 
@@ -1137,19 +1127,24 @@ func (m *manyAnswer) addFlags(command *cobra.Command) {
 }
 
 // answer runs beehave answer: one item, or with --all every run that the selectors pick.
-func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, as string, args []string) error {
+func (f flowCommands) answer(cmd *cobra.Command, flag string, many manyAnswer, reply flow.Reply, args []string) error {
 	if many.all {
 		return f.withClient(cmd, flag, func(client Steering) error {
-			return answerMany(cmd.OutOrStdout(), client, many, as, strings.Join(args, " "))
+			reply.Text = strings.Join(args, " ")
+
+			return answerMany(cmd.OutOrStdout(), client, many, reply)
 		})
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error { return sendAnswer(client, args[0], as, strings.Join(args[1:], " ")) })
+	reply.Text = strings.Join(args[1:], " ")
+
+	return f.withClient(cmd, flag, func(client Steering) error { return client.Reply(args[0], reply) })
 }
 
 const answerLong = "Answer the question of a paused item.\n" +
 	"A wait that names people takes an answer only from them. Add --as <name> to say who answers.\n" +
 	"A wait that sets choices takes only those texts. beehave status shows the people, the choices and who answered.\n" +
+	"Add --key <key> to make a retry safe: an answer with a key that the run already got is not sent again.\n" +
 	"beehave does not prove the name: anyone who can run beehave answer on the run can give any name that the wait asks.\n\n" +
 	"Add --all to give the same answer to every run that beehave status shows as paused with a question, and give the text alone, with no item. " +
 	"Narrow the runs with --project (the project of the run), --question (a text that the question holds) and --items (a list of item ids). A run must fit every selector that is set.\n" +
@@ -1157,7 +1152,9 @@ const answerLong = "Answer the question of a paused item.\n" +
 	"The command prints one line for each run. It exits 0 only when every run took the answer, and exits 1 when a run refused or when no run waits."
 
 func (f flowCommands) answerCommand() *cobra.Command {
-	var flag, as string
+	var flag string
+
+	var reply flow.Reply
 
 	var many manyAnswer
 
@@ -1166,10 +1163,11 @@ func (f flowCommands) answerCommand() *cobra.Command {
 		Short: "Answer the question of a paused item, or of many",
 		Long:  answerLong,
 		Args:  many.answerArgs,
-		RunE:  func(cmd *cobra.Command, args []string) error { return f.answer(cmd, flag, many, as, args) },
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.answer(cmd, flag, many, reply, args) },
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().StringVar(&as, "as", "", "name of the person who answers a wait that names people")
+	command.Flags().StringVar(&reply.From, "as", "", "name of the person who answers a wait that names people")
+	command.Flags().StringVar(&reply.Key, "key", "", "key of the answer: a repeat of the command with the same key sends the answer once")
 	many.addFlags(command)
 
 	return command

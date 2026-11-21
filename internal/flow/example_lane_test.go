@@ -89,7 +89,7 @@ func TestExampleLane_APapersLaneSettleThatChangesASourcePathFailsAndNamesIt(t *t
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "fix all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "fix all"}))
 	outcome := receive(t, done)
 
 	require.ErrorContains(t, outcome.err, "src/settled.go")

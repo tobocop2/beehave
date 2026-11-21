@@ -204,7 +204,7 @@ func TestBatchGate_NoProofAtTheLimitAsksTheOwnerAndRerunsAfterTheProof(t *testin
 	waitOn(t, theLostJobShows(t, rig.h, testItem))
 
 	hosts.prove(model.LostProof{Kind: model.LostEnded})
-	waitOn(t, condition(func() bool { return client.Answer(testItem, "CONTINUE") == nil }))
+	waitOn(t, condition(func() bool { return client.Reply(testItem, Reply{Text: "CONTINUE"}) == nil }))
 
 	outcome := receive(t, done)
 
@@ -228,7 +228,7 @@ func TestBatchGate_AReadOfTheProofAfterTheAnswerThatFailsFailsTheCallAndRerunsNo
 	hosts.mu.Lock()
 	hosts.proofErr = errFake
 	hosts.mu.Unlock()
-	waitOn(t, condition(func() bool { return client.Answer(testItem, "CONTINUE") == nil }))
+	waitOn(t, condition(func() bool { return client.Reply(testItem, Reply{Text: "CONTINUE"}) == nil }))
 
 	outcome := receive(t, done)
 

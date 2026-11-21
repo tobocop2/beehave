@@ -89,6 +89,52 @@ func TestWait_AResumeBeforeTheDeadlineWaitsOnlyForTheTimeLeft(t *testing.T) {
 	require.ErrorContains(t, resumedWithDeadlineAt(t, 5*time.Second), "TIMED OUT")
 }
 
+func TestWait_AResumeOfARunWhoseWaitTimedOutWaitsAgainUntilAFreshDeadline(t *testing.T) {
+	t.Parallel()
+
+	answeredAfterAResume(t, "", Reply{Text: "go on"})
+}
+
+func TestWait_AResumeOfARunWhoseWaitOfPeopleHeardNoVoiceWaitsAgainUntilAFreshDeadline(t *testing.T) {
+	t.Parallel()
+
+	answeredAfterAResume(t, `, to = ["ana", "bo"], quorum = 2`, Reply{From: "ana", Text: "go on"}, Reply{From: "bo", Text: "go on"})
+}
+
+func TestWait_AResumeOfARunWhoseWaitWithChoicesGotNoAnswerWaitsAgainUntilAFreshDeadline(t *testing.T) {
+	t.Parallel()
+
+	answeredAfterAResume(t, `, choices = ["go on", "stop"]`, Reply{Text: "go on"})
+}
+
+// answeredAfterAResume runs a wait with a 3 s timeout and the keywords given, lets it time out, resumes the run and sends the replies to the reopened wait.
+// The run must end well: the reopened wait records a fresh deadline and does not replay the one that passed.
+func answeredAfterAResume(t *testing.T, keywords string, replies ...Reply) {
+	t.Helper()
+
+	h := newHarness(t)
+	// The agent step comes first, so the resume does not go back to the start mark of the run.
+	h.flowIs(t, "def main(item):\n    agent(name = \"work\", prompt = \"prompts/work.md\", model = \"m\")\n"+
+		"    r = wait(name = \"ask\", question = \"What now?\", timeout = \"3s\""+keywords+")\n    if r.timed_out:\n        fail(\"TIMED OUT\")\n")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	_, err := engine.Run(testItem, testProject)
+	require.ErrorContains(t, err, "TIMED OUT")
+
+	// The resume drops the receive that timed out with its sleep. The answer goes out once the reopened wait has started its receive again.
+	handle := resumeRun(t, engine, client)
+	waitOn(t, inASleep(t, engine))
+	waitOn(t, ownerAsks(t, h))
+	for _, reply := range replies {
+		require.NoError(t, client.Reply(testItem, reply), "the resumed run waits for an answer again")
+	}
+
+	_, err = resultOfHandle(t, handle)
+	require.NoError(t, err, "the answer reaches the resumed wait before its fresh deadline")
+	require.Len(t, h.agents.seen(), 1, "the steps before the wait keep their results")
+}
+
 func TestWait_ARecordedWaitWithoutTimedOutReplays(t *testing.T) {
 	t.Parallel()
 
@@ -106,7 +152,7 @@ func TestWait_ARecordedWaitWithoutTimedOutReplays(t *testing.T) {
 	}()
 
 	waitOn(t, ownerAsks(t, h))
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	require.ErrorContains(t, receive(t, done).err, "release")
 
 	dropTimedOutFromTheRecord(t, h)

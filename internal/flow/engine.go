@@ -36,7 +36,6 @@ const (
 	itemName         = "item"
 	treeName         = "tree"
 	phaseName        = "phase"
-	ownerTopic       = "owner"
 	databaseFile     = "dbos.db"
 	logFileName      = "flow.log"
 	logFileMode      = 0o600

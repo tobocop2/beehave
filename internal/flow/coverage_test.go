@@ -562,7 +562,7 @@ func TestWaitOwner_ReportsAQuestionItCannotShow(t *testing.T) {
 
 	engine := idleEngine(t, newHarness(t))
 
-	_, err := engine.waitOwner(engine.ctx, testProject, testItem, "which way?")
+	_, err := waiter(engine).waitOwner("which way?")
 
 	require.ErrorContains(t, err, "item 12 cannot show its question")
 }
@@ -614,7 +614,7 @@ func stuckQuestion(ctx dbos.Context, _ string) (string, error) {
 		return "", err
 	}
 
-	return dbos.Recv[string](ctx, ownerTopic, time.Minute)
+	return awaitInbox(ctx)
 }
 
 func TestClient_StatusReportsAQuestionThatIsNotText(t *testing.T) {
@@ -647,7 +647,7 @@ func TestClient_StatusReportsAQuestionThatIsNotText(t *testing.T) {
 
 	_, err = client.Status()
 	require.ErrorContains(t, err, "read the question of "+stuckItemID)
-	require.ErrorContains(t, client.Answer(stuckItemName, "go on"), "read the question of "+stuckItemID)
+	require.ErrorContains(t, client.Reply(stuckItemName, Reply{Text: "go on"}), "read the question of "+stuckItemID)
 	require.NoError(t, dbos.CancelWorkflow(flowCtx, stuckItemID))
 	require.NoError(t, dbos.Shutdown(flowCtx, shutdownTimeout))
 	t.Log("the run is canceled and the context is shut down")
@@ -660,7 +660,7 @@ func stuckEvent(key string) func(dbos.Context, string) (string, error) {
 			return "", err
 		}
 
-		return dbos.Recv[string](ctx, ownerTopic, time.Minute)
+		return awaitInbox(ctx)
 	}
 }
 

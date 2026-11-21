@@ -212,7 +212,9 @@ func TestSuperseded_AReplayReadsTheHeadAndCancelsTheGatesNoMore(t *testing.T) {
 	done := runInBackground2(engine, file)
 
 	waitOn(t, ownerAsks(t, h))
-	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Len(t, h.forge.asked, reads, "the replay reads the recorded head and asks the forge nothing more")

@@ -203,7 +203,7 @@ func TestExampleLoop_TheSettleAgentStartsAfterTheRulingWhileThePullRequestIsStil
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	outcome := receive(t, done)
 
 	require.NoError(t, outcome.err)
@@ -223,7 +223,7 @@ func TestExampleLoop_AStopDuringTheRulingOfTheOwnerStartsNoSettleAgent(t *testin
 	done := pipelineInBackground(engine, file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	outcome := receive(t, done)
 
 	require.NoError(t, outcome.err, "a stop is a result and not an error")

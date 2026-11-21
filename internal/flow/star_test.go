@@ -257,7 +257,9 @@ func TestRunStar_AReplayIssuesTheSameStepNamesAndRunsNoRecordedStepAgain(t *test
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, next), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, next), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	outcome := receive(t, done)
 
@@ -323,7 +325,9 @@ func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t
 	done := runInBackground(engine, testItem)
 
 	waitOn(t, ownerAsks(t, h))
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, "star30", stepsVersion)

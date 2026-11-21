@@ -54,6 +54,7 @@ func TestAnswerAll_TheSelectorsNarrowTheRuns(t *testing.T) {
 		"items":            {[]string{"--items", "13,14"}, []string{"answer 13 ok", "answer 14 ok"}},
 		"all three":        {[]string{"--project", "p", "--question", "release", "--items", "12,13"}, []string{"answer 12 ok"}},
 		"as a named voice": {[]string{"--as", "ana", "--project", "q"}, []string{"answer-as ana 14 ok"}},
+		"a key":            {[]string{"--key", "k1", "--items", "13"}, []string{"answer 13 ok key=k1"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

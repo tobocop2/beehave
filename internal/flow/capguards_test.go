@@ -198,7 +198,7 @@ func TestExample_ACappedSettleStopsTheItemWithARefuse(t *testing.T) {
 	done := pipelineInBackground(engine, file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	outcome := receive(t, done)
 
 	require.Error(t, outcome.err)

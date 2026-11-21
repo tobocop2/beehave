@@ -96,7 +96,7 @@ func TestNow_AReplayKeepsTheFirstReading(t *testing.T) {
 		done <- runOutcome{result: result, err: runErr}
 	}()
 
-	require.NoError(t, h.client(t, testVersion).Answer(testItem, "yes"))
+	require.NoError(t, h.client(t, testVersion).Reply(testItem, Reply{Text: "yes"}))
 
 	reading := readingOf(t, receive(t, done).err)
 

@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -877,7 +878,7 @@ func runOfClient(t *testing.T, client *Client) *runRef {
 	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, database: filepath.Join(client.dir, databaseFile)}
 }
 
-// messagePending says whether a message that the run receives (on the owner topic or the voice topic) waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
+// messagePending says whether a message on the inbox topic of the run waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
 func (r *runRef) messagePending() (bool, error) {
 	db, err := sql.Open("sqlite", r.database+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -888,7 +889,7 @@ func (r *runRef) messagePending() (bool, error) {
 
 	var pending bool
 
-	err = db.QueryRowContext(r.ctx, "SELECT EXISTS (SELECT 1 FROM notifications WHERE destination_uuid = ? AND topic IN (?, ?) AND consumed = 0)", r.id, ownerTopic, voiceTopic).Scan(&pending)
+	err = db.QueryRowContext(r.ctx, "SELECT EXISTS (SELECT 1 FROM notifications WHERE destination_uuid = ? AND topic = ? AND consumed = 0)", r.id, inboxTopic).Scan(&pending)
 
 	return pending, err
 }
@@ -1501,4 +1502,31 @@ func (f fakeTrees) Ensure(ctx context.Context, _, item, start, base string) (str
 	}
 
 	return f.dir, f.err
+}
+
+// awaitInbox is the body of a test workflow that waits for a message on its inbox and ends with no result.
+func awaitInbox(ctx dbos.Context) (string, error) {
+	_, err := dbos.Recv[envelope](ctx, inboxTopic, time.Minute)
+
+	return "", err
+}
+
+// sendAnswerEnvelope puts an answer on the inbox of a run, as beehave answer does, with no checks.
+func sendAnswerEnvelope(ctx dbos.Client, run string, v voice) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	return sendEnvelope(ctx, run, envelope{Topic: answerTopic, ID: v.Text, Value: raw})
+}
+
+// sendEnvelope puts an envelope on the inbox of a run, with no checks.
+func sendEnvelope(ctx dbos.Client, run string, env envelope) error {
+	return dbos.Send(ctx, run, env, inboxTopic)
+}
+
+// waiter is a script of the engine that waits as the item workflow does.
+func waiter(engine *Engine) *script {
+	return &script{e: engine, ctx: engine.ctx, in: ItemInput{Project: testProject, Item: testItem}}
 }

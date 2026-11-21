@@ -202,7 +202,7 @@ func TestStatus_ARunThatWaitsWithADeadlineShowsTheQuestionAndTheDeadline(t *test
 	require.NoError(t, err)
 	assert.Equal(t, info.Deadline, view.Deadline, "the run view shows the same deadline")
 
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	waitOn(t, waiting[struct{}]{what: "the agent of the answered run to start", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
 		return struct{}{}, harness.agents.running() == 1, nil
 	}})
@@ -244,7 +244,7 @@ func TestStatus_ARunThatWaitsWithNoDeadlineShowsNone(t *testing.T) {
 	info := onlyRun(t, client)
 	assert.True(t, info.Deadline.IsZero())
 
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	require.NoError(t, receive(t, done).err)
 }
 

@@ -67,7 +67,7 @@ func TestResume_TakesAFreshClaimAndTheRunUsesItsTokenForBeatAndRelease(t *testin
 		return slices.Contains(harness.beats.seen(), testProject+"/owner-12#2")
 	}))
 
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	waitOn(t, waiting[struct{}]{what: "the run to be done", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
 		rows, err := client.Status()
 
@@ -242,7 +242,7 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 	done := runInBackground(engine, testItem)
 	waitOn(t, waiting[struct{}]{what: "the agents of the run to start", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, harness.agents.running() == 1, nil }})
 
-	err := client.Answer(testItem, "go on")
+	err := client.Reply(testItem, Reply{Text: "go on"})
 
 	require.ErrorIs(t, err, errWrongState)
 	require.ErrorContains(t, err, "asks no question")
@@ -421,7 +421,7 @@ func TestRun_TheWaitForTheOwnerHasNoDeadline(t *testing.T) {
 	default:
 	}
 
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	require.NoError(t, receive(t, done).err)
 }
 

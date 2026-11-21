@@ -141,7 +141,7 @@ func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedR
 
 	// The resumed run takes the answer and ends with success: a stop by the answer for the first attempt would end it canceled.
 	waitOn(t, waiting[struct{}]{what: "the resumed run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
-		return struct{}{}, client.Answer(testItem, "yes") == nil, nil
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
 	}})
 	waitOn(t, condition(func() bool {
 		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterWorkflowIDs(testRun))

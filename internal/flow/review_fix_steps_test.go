@@ -216,7 +216,7 @@ func TestRunners_AProjectWithNoStepsRunsEveryStepOnItsDefaultModelAndThePool(t *
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, append([]string{"opus", "sonnet"}, capModels(2)...), rig.models(), "plan opus, implement sonnet, then the loop on review opus and fix sonnet")

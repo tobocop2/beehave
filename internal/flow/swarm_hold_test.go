@@ -184,7 +184,9 @@ def main(item):
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"after 22:ok"}, h.commands.ranBy(testItem), "the winner recorded before the stop comes back, whatever the runs say now")
@@ -574,7 +576,9 @@ func TestFirstOf_AResumeAfterTheReadReturnsTheRunsThatThatReadRecordedNotAFreshR
 
 	done := startRun(t, next, file)
 
-	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfEngine(t, next), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfEngine(t, next), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 	require.NoError(t, parentEnds(t, done))
 	assert.Equal(t, []string{"pause", "after run 21 21:True,22:True 2"}, h.commands.ranBy(testItem), "the runs that the recorded read held come back, not the three runs that ended since")
 }

@@ -126,7 +126,7 @@ func idleAnswerOnce(t *testing.T, rig *roundRig, client *Client, owner *answerin
 		before(owner.given, client)
 	}
 
-	require.NoError(t, client.AnswerAs(testItem, shipOwner, rig.answerFor(owner.given)))
+	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: rig.answerFor(owner.given)}))
 
 	owner.given++
 	owner.open = true

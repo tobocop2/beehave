@@ -37,14 +37,14 @@ func TestWaitOn_AMessageOnATopicTheRunNeverReceivesIsNotAPendingMessage(t *testi
 	assert.False(t, pending, "a message on a topic the run never receives does not wake its receive")
 	assert.Contains(t, run.parked(time.Now()), "waits in step", "so the run is parked")
 
-	// The run waits on the owner topic, so a message on the voice topic is one that the product receives on and this run does not consume.
-	require.NoError(t, dbos.Send(client.flow, testRun, "x", voiceTopic))
+	// The product receives on the inbox topic: the message is pending until the receive of the run reads it, and the run keeps waiting.
+	require.NoError(t, dbos.Send(client.flow, testRun, envelope{Topic: "other", ID: "x"}, inboxTopic))
 
 	pending, err = run.messagePending()
 	require.NoError(t, err)
 	assert.True(t, pending, "a message on a topic that the product receives on is pending")
 
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	release()
 	require.NoError(t, receive(t, done).err)
 }

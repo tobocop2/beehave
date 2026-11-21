@@ -21,6 +21,10 @@ import (
 const (
 	// inboxTopic is the one DBOS topic that every message to a run arrives on. The topic of the workflow is a field of the envelope.
 	inboxTopic = "beehave.inbox"
+	// answerTopic is the reserved topic of an answer to a wait. beehave answer sends it, and wait receives it, so no workflow file sends or receives it.
+	answerTopic = "beehave.answer"
+	// answerSender is the sender of an answer that names no person.
+	answerSender = "cli"
 	// recvKind and sendKind are the step kinds of the inbox builtins.
 	recvKind = "recv"
 	sendKind = "send"
@@ -103,10 +107,7 @@ func recvOutputs(got envelope, timedOut bool) map[string]any {
 // A message of another topic waits in the buffer of the run for a later recv. The deadline is a recorded step, so a resumed run waits only the time left.
 // Every turn calls Recv, even when the deadline has passed, so a replay makes the same calls whatever the clock reads.
 func (s *script) receive(topic, label string, wait time.Duration) (envelope, bool, error) {
-	if at := slices.IndexFunc(s.inbox, func(one envelope) bool { return one.Topic == topic }); at >= 0 {
-		got := s.inbox[at]
-		s.inbox = slices.Delete(s.inbox, at, at+1)
-
+	if got, found := s.held(topic); found {
 		return got, false, nil
 	}
 
@@ -120,6 +121,19 @@ func (s *script) receive(topic, label string, wait time.Duration) (envelope, boo
 	}
 
 	return got, timedOut, err
+}
+
+// held takes the oldest message of the topic from the buffer of the run, and reports whether there was one.
+func (s *script) held(topic string) (envelope, bool) {
+	at := slices.IndexFunc(s.inbox, func(one envelope) bool { return one.Topic == topic })
+	if at < 0 {
+		return envelope{}, false
+	}
+
+	got := s.inbox[at]
+	s.inbox = slices.Delete(s.inbox, at, at+1)
+
+	return got, true
 }
 
 // await receives from the inbox until a message of the topic arrives or the deadline passes. A message of another topic goes to the buffer.
