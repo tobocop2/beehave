@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -27,6 +28,8 @@ type syncWorld struct {
 	down  error
 	prs   []model.PullRequest
 	view  model.PullRequest
+	// created holds each pull request that the sync opened.
+	created []model.NewPull
 }
 
 func (w *syncWorld) BranchRef(_ context.Context, branch string) (string, bool, error) {
@@ -50,7 +53,13 @@ func (w *syncWorld) PRView(context.Context, int, ...string) (model.PullRequest, 
 	return w.view, nil
 }
 
-func (*syncWorld) CreatePR(context.Context, model.NewPull) (int, error) { return 4, nil }
+func (w *syncWorld) CreatePR(_ context.Context, req model.NewPull) (int, error) {
+	w.created = append(w.created, req)
+
+	return 4, nil
+}
+
+func (*syncWorld) ClosePR(context.Context, int, string) error { return nil }
 
 func (*syncWorld) MergePR(context.Context, int, string) error { return nil }
 
@@ -107,6 +116,28 @@ func TestSync_CheckShowsTheStateOfTheMoveOnOneLine(t *testing.T) {
 		assert.Equal(t, test.code, code, name)
 		assert.Equal(t, test.want, out, name)
 	}
+}
+
+func TestSync_TheLabelFlagIsTheLabelOfTheSyncPullRequestNoFlagGivesTheDefaultAndAnEmptyOneAddsNone(t *testing.T) {
+	t.Parallel()
+
+	labeled := newSyncWorld(1)
+	code, _, errOut := run(t, syncDeps(labeled), "sync", "--base", roundBase, "--label", "made-by-beehave")
+	assert.Equal(t, remedy.ExitPass, code, errOut)
+	assert.Equal(t, []model.NewPull{{
+		Head: syncRef, Base: roundBase, Title: "Merge main into integration/r1",
+		Body: "Brings the commits of main that integration/r1 lacks into the round.", Label: "made-by-beehave",
+	}}, labeled.created)
+
+	bare := newSyncWorld(1)
+	code, _, errOut = run(t, syncDeps(bare), "sync", "--base", roundBase)
+	assert.Equal(t, remedy.ExitPass, code, errOut)
+	assert.Equal(t, config.DefaultPRLabel, bare.created[0].Label, "no flag gives the default of the project key")
+
+	none := newSyncWorld(1)
+	code, _, errOut = run(t, syncDeps(none), "sync", "--base", roundBase, "--label", "")
+	assert.Equal(t, remedy.ExitPass, code, errOut)
+	assert.Empty(t, none.created[0].Label)
 }
 
 func TestSync_LandShowsTheStateAndRefusesAMovedBaseOrHead(t *testing.T) {
@@ -182,7 +213,7 @@ func TestSync_ABadArgumentShowsTheUsageAndIsARefusal(t *testing.T) {
 		code, _, errOut := run(t, syncDeps(newSyncWorld(1)), args...)
 
 		assert.Equal(t, remedy.ExitRefused, code, name)
-		assert.Contains(t, errOut, "usage: remedy sync --base <branch> [--trunk <branch>]\n       remedy sync land --pr <number> --head <sha> --base-tip <sha>\n", name)
+		assert.Contains(t, errOut, "usage: remedy sync --base <branch> [--trunk <branch>] [--label <name>]\n       remedy sync land --pr <number> --head <sha> --base-tip <sha>\n", name)
 	}
 }
 
@@ -191,7 +222,7 @@ func TestSync_TheCommandTableNamesBothCallsOfTheSync(t *testing.T) {
 
 	_, out, errOut := run(t, syncDeps(newSyncWorld(1)))
 
-	assert.Contains(t, out+errOut, "sync --base <branch> [--trunk <branch>] | sync land --pr <number> --head <sha> --base-tip <sha>")
+	assert.Contains(t, out+errOut, "sync --base <branch> [--trunk <branch>] [--label <name>] | sync land --pr <number> --head <sha> --base-tip <sha>")
 }
 
 func TestSync_AFlagThatTheCallDoesNotKnowIsARefusal(t *testing.T) {

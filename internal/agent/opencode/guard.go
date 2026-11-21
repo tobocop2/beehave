@@ -26,13 +26,53 @@ var pluginTemplate string
 // and XDG_CONFIG_HOME names an empty folder so that no global plugin of the owner loads. OPENCODE_PURE stays unset, because it may switch off the plugin.
 // The plugin is proven on the 1.x plugin interface only, and the runner does not start a guarded step on a version from Profile.GuardBefore.
 // The plugin writes a marker file when it loads (Launch.Loaded); the runner sets Result.GuardMissing when the marker is missing at the end of the run.
-func (Adapter) Guard(command, runDir string) agent.Launch {
-	return launch(command, runDir)
+// With an empty command the run stays open, and the launch only opens each file of write to the file tools (see openOutput); with no file either, it is empty.
+// The skills list is not used: the launch closes the external skills, and OpenCode has no plugin of skills.
+func (Adapter) Guard(command, runDir string, write, _ []string) agent.Launch {
+	if command == "" {
+		return openOutput(agent.Launch{}, write)
+	}
+
+	return openOutput(launch(command, runDir), write)
 }
 
 // Sandbox returns the launch of Guard. The profile has no sandbox, so the runner never asks; the answer keeps the run closed and guarded if it ever does.
-func (Adapter) Sandbox(_ agent.SandboxPlan, guard, runDir string) agent.Launch {
-	return launch(guard, runDir)
+func (Adapter) Sandbox(_ agent.SandboxPlan, guard, runDir string, write, _ []string) agent.Launch {
+	return openOutput(launch(guard, runDir), write)
+}
+
+// configContent is the variable that holds a config for the run, over the config files.
+const configContent = "OPENCODE_CONFIG_CONTENT"
+
+// permissionConfig is the config that opens folders outside the work folder to the file tools. OPENCODE_PERMISSION is not used: the profile sets it for a step with no edits.
+type permissionConfig struct {
+	Permission struct {
+		ExternalDirectory map[string]string `json:"external_directory"`
+	} `json:"permission"`
+}
+
+// openOutput returns the launch with the folder of each file of write allowed for the file tools, as a pattern of the folder with a /* tail.
+func openOutput(launch agent.Launch, write []string) agent.Launch {
+	if len(write) == 0 {
+		return launch
+	}
+
+	var config permissionConfig
+
+	config.Permission.ExternalDirectory = map[string]string{}
+	for _, file := range write {
+		config.Permission.ExternalDirectory[filepath.Dir(file)+"/*"] = "allow"
+	}
+
+	raw, _ := json.Marshal(config) //nolint:errcheck,errchkjson // a struct of strings always encodes
+
+	if launch.Env == nil {
+		launch.Env = map[string]string{}
+	}
+
+	launch.Env[configContent] = string(raw)
+
+	return launch
 }
 
 // launch returns the closed-run environment, and the plugin when command is not empty.

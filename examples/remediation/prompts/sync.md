@@ -16,7 +16,6 @@ If you cannot resolve a conflict, commit nothing, and say in your report which f
 The run read these facts from the project file at its start. A fact that is empty holds no fact: ask the owner, and do not guess it.
 
 - Repository identity and fork topology: repo `{{ .facts.repo }}`, source `{{ .facts.source }}`, forge `{{ .facts.forge }}`.
-- Build host: `{{ .facts.build_host }}`.
 - Base branch: `{{ .facts.base_branch }}`.
 - The gate is `{{ .facts.gate }}`. The gate list comes from these workflow files:{{ range index .facts.vars "gate_files" }} `{{ . }}`{{ end }}
 - Tracker: `{{ .facts.tracker }}`. Queue to epic:{{ range $queue, $epic := index .facts.vars "epics" }} `{{ $queue }}` is `{{ $epic }}`;{{ end }}

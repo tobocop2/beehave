@@ -41,16 +41,33 @@ type fakeAdapter struct {
 	reads bool
 	// files is the Files of the launch of the guard and of the sandbox.
 	files map[string]string
+	// closed makes the launch of the guard and of the sandbox leave each output file closed to the file tools.
+	closed bool
 	// transcript replaces the transcript path, <configDir>/<session>, when it is set.
 	transcript func(configDir, session string) string
 }
 
 func (a fakeAdapter) Profile() agent.Profile { return a.profile }
 
-func (a fakeAdapter) Guard(string, string) agent.Launch { return agent.Launch{Files: a.files} }
+func (a fakeAdapter) Guard(_, _ string, write, _ []string) agent.Launch { return a.launch(write) }
 
-func (a fakeAdapter) Sandbox(agent.SandboxPlan, string, string) agent.Launch {
-	return agent.Launch{Files: a.files}
+func (a fakeAdapter) Sandbox(_ agent.SandboxPlan, _, _ string, write, _ []string) agent.Launch {
+	return a.launch(write)
+}
+
+// launch is the launch of the guard and of the sandbox: the files, and a working directory for each file of write unless the adapter leaves them closed.
+func (a fakeAdapter) launch(write []string) agent.Launch {
+	launch := agent.Launch{Files: a.files}
+
+	if a.closed {
+		return launch
+	}
+
+	for _, file := range write {
+		launch.Args = append(launch.Args, "--add-dir", filepath.Dir(file))
+	}
+
+	return launch
 }
 
 func (fakeAdapter) Line(string) (string, string) { return "", "" }
@@ -274,6 +291,22 @@ func TestCheckLaunch(t *testing.T) {
 			assert.Contains(t, r.failures, tc.want+" (sandbox)")
 		})
 	}
+}
+
+func TestCheckLaunch_AnAdapterThatLeavesTheOutputFileClosedFailsInEveryLaunchMode(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.closed = true
+	a.profile.Sandbox = true
+
+	var r recorder
+
+	agenttest.CheckLaunch(&r, a)
+
+	const text = "never names the folder of the output file /state/outputs/1.step/output.json, so the file tools cannot read it"
+
+	assert.Equal(t, []string{"the launch (guard) " + text, "the launch (launch with no guard) " + text, "the launch (sandbox) " + text}, r.failures)
 }
 
 func TestCheckLaunch_DoesNotAskAProfileWithoutASandboxForOne(t *testing.T) {

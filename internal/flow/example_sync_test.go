@@ -241,7 +241,7 @@ func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMe
 	require.NoError(t, err)
 
 	names := stepNames(t, rig.last)
-	order := []string{"command:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
+	order := []string{"command:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "command:round-integration-sync-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
 
 	for i := 1; i < len(order); i++ {
 		require.GreaterOrEqual(t, at(names, order[i-1]), 0, "the step %s ran: %v", order[i-1], names)

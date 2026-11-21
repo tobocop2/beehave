@@ -96,7 +96,7 @@ func e2eFlow(dir, path string) cli.Flow {
 			files := e2eFiles{dir: dir}
 
 			engine, err := flow.NewEngine(ctx, withModules(opts), withBatch(flow.Deps{
-				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)),
+				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)), SkillLine: skillLineOf(cfg.Runners, newAdapters(nil, nil, nil)),
 				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: files,
 			}, dir, cfg))
 			if err != nil {
@@ -447,6 +447,11 @@ fi
 if [ "$step" = implement ] || [ "$step" = fix ]; then
   printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
 fi
+# The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
+if [ "$step" = sweep ]; then
+  printf '{"report":"# Report\\n"}\n' > "$(field write)"
+  printf '%s\n' "$prompt" | sed -n 2p >> sweepline.log
+fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
 # When the file no-skill exists, the fake reports no skill call, as a CLI that does not report them.
@@ -496,6 +501,7 @@ func (e2eLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\nwrite={{ .output_file }}\n",
 	"implement": "step=implement\nwrite={{ .output_file }}\n",
+	"sweep":     "step=sweep\nwrite={{ .output_file }}\n",
 	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
 	"fix":       "step=fix\nround={{ .round }}\nwrite={{ .output_file }}\nfound={{ .findings }}\n",
 	"settle":    "step=settle\nwrite={{ .output_file }}\nruling={{ .ruling }}\n",
@@ -773,6 +779,7 @@ func TestScripts(t *testing.T) {
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
+			"reviewfakes": cmdReviewLoopFakes,
 		},
 	})
 }

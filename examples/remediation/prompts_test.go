@@ -4,8 +4,10 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"text/template/parse"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,12 +93,9 @@ func evidenceRules() []rule {
 		{"precedence_rules", "A precedence test needs a LOSING field", []string{implement, fix, review}},
 		{"precedence_rules", "Enumerate a duplicated CLAIM by its substance", []string{implement, fix, review}},
 		{"precedence_rules", "Key every snapshot on the FULL PATH", []string{implement, fix, review}},
-		{"gate_step_rules", "The gate steps come from the gate list of the round", workAndReview()},
-		{"gate_step_rules", "prints `STEP_RESULT name=<name> rc=<n>`", workAndReview()},
-		{"gate_step_rules", "A step you leave out prints `GATE-SKIP <name>: <reason>`", workAndReview()},
-		{"gate_step_rules", "A missing tool is verified in the job", workAndReview()},
-		{"gate_step_rules", "print `GATE-VOID <name>: pin <x>, ran <y>`", workAndReview()},
-		{"gate_step_rules", "One failing test counts once", workAndReview()},
+		{"gate_step_rules", "Run the tests that the change touches by name, in the work folder", workLanes()},
+		{"gate_step_rules", "The engine runs the gate and the mutation run for each candidate", workAndReview()},
+		{"gate_step_rules", "Run no gate step yourself, and write no job script for one", workAndReview()},
 		{"gate_step_rules", "A result counts only with the number of tests that ran", workAndReview()},
 	}
 }
@@ -123,9 +122,8 @@ func shellRules() []rule {
 	return []rule{
 		{"handoff_first_rules", "Never pass a script string to a shell", workAndReview()},
 		{"handoff_first_rules", "A loop that needs POSIX word splitting", workAndReview()},
-		{"build_host_rules", "Put no delete in any command you run", workAndReview()},
-		{"build_host_rules", "never `sed -i.bak`", workAndReview()},
-		{"build_host_rules", "Before EVERY build, check `df` on the build host", workAndReview()},
+		{"shell_rules", "Put no delete in any command you run", workAndReview()},
+		{"shell_rules", "never `sed -i.bak`", workAndReview()},
 		{"long_jobs_rules", "Never end your turn waiting on a job you started yourself", workAndReview()},
 		{"long_jobs_rules", "Before you end, stop each background command you started", workAndReview()},
 		{"long_jobs_rules", "Wait loops have a timeout", workAndReview()},
@@ -168,7 +166,7 @@ func reviewRules() []rule {
 		{"review_rules", "compare EVERY changed cell with the BASE", only},
 		{"review_rules", "The matrix harness and the build of the base belong to the item", only},
 		{"review_rules", "Read every review body and every inline comment", only},
-		{"review_rules", "List the gate steps that ran at the head you review", only},
+		{"review_rules", "This step is given no gate result, so state no gate result as fact", only},
 		{"review_rules", "Condition 4, every item, unasked", only},
 		{"review_rules", "MERGE-BASE content against head content", only},
 		{"review_rules", "Plant an AWS key pair as a positive control", only},
@@ -177,24 +175,12 @@ func reviewRules() []rule {
 
 func gateEvidenceRules() []rule {
 	return []rule{
-		{"gate_evidence", "A red that the base tree has too is not counted", workAndReview()},
-		{"gate_evidence", "A mutation run is its own job after the gate", workAndReview()},
 		{"gate_evidence", "Capture the exit code before any pipe", workAndReview()},
 		{"gate_evidence", "gives its stdin to every command inside it", workAndReview()},
 		{"gate_evidence", "A regeneration is evidence for its own tree only", workAndReview()},
-		{"gate_evidence", "becomes a full run in two cases", workAndReview()},
 		{"gate_evidence", "assert the loop count against the input count", workAndReview()},
 		{"gate_evidence", "search the diff for `TODO` and `FIXME`", workLanes()},
 		{"gate_evidence", "names its author, as `TODO(name)`", workLanes()},
-	}
-}
-
-func hostAndDiskRules() []rule {
-	return []rule{
-		{"host_disk_rules", "Disk is per lane", workAndReview()},
-		{"host_disk_rules", "live in a jobs folder of the host", workAndReview()},
-		{"host_disk_rules", "so that the orchestrator deletes it at once", workAndReview()},
-		{"host_disk_rules", "Sweep dangling docker volumes as a backstop", workAndReview()},
 	}
 }
 
@@ -262,7 +248,6 @@ func laneBoundaryRules() []rule {
 	return []rule{
 		{"lane_boundaries", "Each lane has one item, one worktree, one branch and one pull request", workLanes()},
 		{"lane_boundaries", "Never merge, never comment on the forge, and never file an issue", workLanes()},
-		{"lane_boundaries", "Run every build, test and lint on the build host", workLanes()},
 		{"lane_boundaries", "Never touch the worktree of another lane", workLanes()},
 	}
 }
@@ -270,9 +255,9 @@ func laneBoundaryRules() []rule {
 func skillOrderRules() []rule {
 	return []rule{
 		{"skill_rules", "Invoke each skill that the rules name with the Skill tool, by name", everyLane()},
-		{"skill_rules", "is never permission to skip the step", everyLane()},
-		{"skill_rules", "`plan-vs-conventions` for a change past one file, `cross-cutting-api-change` for a new variant, field or entry point", workLanes()},
-		{"skill_rules", "then `blast-radius-review` iterated to zero before the gate", workLanes()},
+		{"skill_rules", "a report with no Skill call goes back unread", everyLane()},
+		{"skill_rules", "{{ skill \"plan-vs-conventions\" }}` for a change past one file, `{{ skill \"cross-cutting-api-change\" }}` for a new variant, field or entry point", workLanes()},
+		{"skill_rules", "then `{{ skill .facts.vars.review_skill }}` iterated to zero before the gate", workLanes()},
 	}
 }
 
@@ -424,7 +409,7 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 
 	texts := loadPrompts(t, append(everyLane(), takeReview, queue)...)
 
-	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), hostAndDiskRules(), reviewFormatRules(), briefRules(), mergeRules(), laneLayoutRules(), reviewFramingRules(), laneBoundaryRules(), skillOrderRules(), briefChoiceRules(), baseRedRules(), disjointnessRules(), queueScopeRules(), overtakenRules(), stackedBranchRules()}
+	groups := [][]rule{acceptanceRules(), reportRules(), evidenceRules(), designRules(), shellRules(), compiledAndUnionRules(), reviewRules(), gateEvidenceRules(), reviewFormatRules(), briefRules(), mergeRules(), laneLayoutRules(), reviewFramingRules(), laneBoundaryRules(), skillOrderRules(), briefChoiceRules(), baseRedRules(), disjointnessRules(), queueScopeRules(), overtakenRules(), stackedBranchRules()}
 
 	held, counted := 0, 0
 
@@ -434,7 +419,7 @@ func TestPrompts_HoldEveryRuleOfTheBriefText(t *testing.T) {
 	}
 
 	// One phrase for each mapped or added row of the proof table that has a phrase of its own: a dropped phrase fails here.
-	assert.Equal(t, 175, counted)
+	assert.Equal(t, 163, counted)
 	assert.Positive(t, held)
 }
 
@@ -470,5 +455,164 @@ func TestPrompts_NoPromptOfAStepThatCommitsTellsTheAgentToPush(t *testing.T) {
 		for line := range strings.Lines(string(raw)) {
 			assert.False(t, tells.MatchString(line), "prompts/%s.md tells the agent to push: %s", name, line)
 		}
+	}
+}
+
+// namesBuildHost reports whether a leaf of the template tree names build_host: a field, a variable field, a chained field or a string argument such as `index .facts "build_host"`.
+func namesBuildHost(node parse.Node) bool {
+	switch n := node.(type) {
+	case *parse.FieldNode:
+		return slices.Contains(n.Ident, "build_host")
+	case *parse.VariableNode:
+		return slices.Contains(n.Ident, "build_host")
+	case *parse.ChainNode:
+		return slices.Contains(n.Field, "build_host")
+	case *parse.StringNode:
+		return n.Text == "build_host"
+	default:
+		return false
+	}
+}
+
+// readsBuildHost reports whether a template tree names build_host anywhere that a value is read: an action, a condition, a range, a with, a template call or an argument.
+func readsBuildHost(node parse.Node) bool {
+	return namesBuildHost(node) || slices.ContainsFunc(childNodes(node), readsBuildHost)
+}
+
+// childNodes lists the nodes that a template node holds: the body of a list, the pipe of an action or a template call, the commands of a pipe, the operand of a chain and the parts of a branch.
+func childNodes(node parse.Node) []parse.Node {
+	switch n := node.(type) {
+	case *parse.ListNode:
+		if n == nil {
+			return nil
+		}
+
+		return n.Nodes
+	case *parse.ActionNode:
+		return []parse.Node{n.Pipe}
+	case *parse.TemplateNode:
+		return []parse.Node{n.Pipe}
+	case *parse.PipeNode:
+		return commandNodes(n.Cmds)
+	case *parse.CommandNode:
+		return n.Args
+	case *parse.ChainNode:
+		return []parse.Node{n.Node}
+	default:
+		return branchNodes(node)
+	}
+}
+
+// branchNodes lists the pipe and the two bodies of an if, a range or a with.
+func branchNodes(node parse.Node) []parse.Node {
+	switch n := node.(type) {
+	case *parse.IfNode:
+		return []parse.Node{n.Pipe, n.List, n.ElseList}
+	case *parse.RangeNode:
+		return []parse.Node{n.Pipe, n.List, n.ElseList}
+	case *parse.WithNode:
+		return []parse.Node{n.Pipe, n.List, n.ElseList}
+	default:
+		return nil
+	}
+}
+
+// commandNodes converts the commands of a pipe to plain nodes.
+func commandNodes(commands []*parse.CommandNode) []parse.Node {
+	nodes := make([]parse.Node, 0, len(commands))
+	for _, command := range commands {
+		nodes = append(nodes, command)
+	}
+
+	return nodes
+}
+
+// parseTemplate parses prompt text into every tree it defines. Unknown functions are allowed: the test reads the tree and does not run it.
+func parseTemplate(t *testing.T, text string) map[string]*parse.Tree {
+	t.Helper()
+
+	tree := parse.New("p")
+	tree.Mode = parse.SkipFuncCheck
+	trees := map[string]*parse.Tree{}
+
+	_, err := tree.Parse(text, "{{", "}}", trees)
+	require.NoError(t, err)
+
+	return trees
+}
+
+// templateReadsBuildHost reports whether any tree that the text defines reads build_host.
+func templateReadsBuildHost(t *testing.T, text string) bool {
+	t.Helper()
+
+	for _, tree := range parseTemplate(t, text) {
+		if readsBuildHost(tree.Root) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// The engine runs the gate and the mutation run, and the sandbox of an agent step denies the build host, so no prompt reads the build host fact.
+// The test reads the parse tree, so every form that renders the host is refused: a field, an index, a with, a variable, a chain and a template call.
+func TestPrompts_NoPromptReadsTheBuildHost(t *testing.T) {
+	t.Parallel()
+
+	forms := map[string]string{
+		"field":    "Host: `{{ .facts.build_host }}`.",
+		"if":       "{{ if .facts.build_host }}x{{ else }}y{{ end }}",
+		"range":    "{{ range .facts.build_host }}x{{ end }}",
+		"index":    `{{ index .facts "build_host" }}`,
+		"with":     "{{ with .facts }}{{ .build_host }}{{ end }}",
+		"variable": "{{ $f := .facts }}{{ $f.build_host }}",
+		"chain":    "{{ (index . \"facts\").build_host }}",
+		"template": `{{ define "h" }}{{ .facts.build_host }}{{ end }}{{ template "h" . }}`,
+		"pipe":     `{{ index .facts "build_host" | printf "%s" }}`,
+	}
+
+	for name, form := range forms {
+		require.True(t, templateReadsBuildHost(t, form), "the walk finds the %s form: %s", name, form)
+	}
+
+	for _, clean := range []string{"Repo `{{ .facts.repo }}`.", `{{ index .facts.vars "gate_files" }}`, "The build_host key is a fact."} {
+		require.False(t, templateReadsBuildHost(t, clean), "the walk ignores %s", clean)
+	}
+
+	entries, err := fs.ReadDir(os.DirFS("prompts"), ".")
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+
+	for _, entry := range entries {
+		raw, err := fs.ReadFile(os.DirFS("prompts"), entry.Name())
+		require.NoError(t, err)
+
+		assert.False(t, templateReadsBuildHost(t, string(raw)), "prompts/%s reads the build host fact", entry.Name())
+	}
+}
+
+// The sandbox of an agent step denies the build host, so no prompt orders a command there. The patterns are the host orders of the base prompts.
+func TestPrompts_NoPromptOrdersACommandOnTheBuildHost(t *testing.T) {
+	t.Parallel()
+
+	orders := regexp.MustCompile(`(?i)on the build host|jobs folder of the host|check .df. on the build host`)
+
+	for _, control := range []string{
+		"Run every build, test and lint on the build host. Never run one on this machine.",
+		"**Before EVERY build, check `df` on the build host.**",
+		"Job scripts live in a jobs folder of the host (`jobs/<lane>/`).",
+	} {
+		require.True(t, orders.MatchString(control), "the pattern finds the order in %q", control)
+	}
+
+	entries, err := fs.ReadDir(os.DirFS("prompts"), ".")
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+
+	for _, entry := range entries {
+		raw, err := fs.ReadFile(os.DirFS("prompts"), entry.Name())
+		require.NoError(t, err)
+
+		assert.False(t, orders.MatchString(squash(string(raw))), "prompts/%s orders a command on the build host", entry.Name())
 	}
 }

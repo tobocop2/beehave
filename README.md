@@ -186,6 +186,7 @@ The result is a branch named `fix-login` in your repository. If the run stops, r
 | [`swarm`](examples/swarm) | Splits a job into tasks, one agent each, and lands them with one merge per priority. |
 | [`maintenance`](examples/maintenance) | Bumps the dependencies of many repositories once a week. |
 | [`research`](examples/research) | Answers a question with notes and sources. No code. |
+| [`review-loop`](examples/review-loop) | An author and a reviewer improve one draft by messages, at most three rounds. |
 | [`research-desk`](examples/research-desk) | A cited report on a wiki, with every quote checked and a person who approves. |
 | [`incident`](examples/incident) | An incident desk: an agent proposes, the on-call roles approve in order. |
 | [`approvals`](examples/approvals) | Signed sign-offs by role, with a tamper-evident ledger. |

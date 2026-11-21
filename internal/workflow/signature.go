@@ -127,6 +127,16 @@ func wordsRule(name string) func(starlark.Value) error {
 	}
 }
 
+// skillRule is the rule of the skill keyword of agent: the name of a skill folder. An empty text names no skill.
+func skillRule(v starlark.Value) error {
+	name, _ := starlark.AsString(v) // the unpack check has refused a value that is not text
+	if name == "" {
+		return nil
+	}
+
+	return model.CheckSkill(name)
+}
+
 // durationRule is the rule of a timeout keyword.
 func durationRule(name string) func(starlark.Value) error {
 	return timeoutRule(name, Duration)
@@ -295,8 +305,10 @@ func signatures() map[string][]Param {
 	all := stepSignatures()
 	maps.Copy(all, valueSignatures())
 	maps.Copy(all, swarmSignatures())
+	maps.Copy(all, eventSignatures())
 	maps.Copy(all, itemSignatures())
 	maps.Copy(all, readSignatures())
+	maps.Copy(all, inboxSignatures())
 
 	return all
 }
@@ -310,7 +322,7 @@ func agentParams() []Param {
 		ruled("allow_paths", KindList, allowRule), words("protect_paths"), ruled("output_tries", KindInt, triesRule),
 		opt("edits", KindBool), opt(LabelKeyword, KindText), ruled("timeout", KindText, durationRule("timeout")),
 		ruled("idle_timeout", KindText, durationRule("idle_timeout")), ruled(budgetKeyword, KindAny, budgetRule(budgetKeyword)), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
-		ruled(dataKeyword, KindDict, dataRule),
+		ruled(dataKeyword, KindDict, dataRule), ruled("skill", KindText, skillRule),
 	}
 }
 
@@ -320,11 +332,22 @@ const LabelKeyword = "label"
 // dataKeyword is the keyword of the agent builtin whose dict the engine writes to the data file that the prompt names as data_file.
 const dataKeyword = "data"
 
+// commandParams holds the keywords of the command builtin: the program and where it runs, its stops and caps, and its retry policy.
+func commandParams() []Param {
+	return []Param{
+		runParam(),
+		opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
+		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(nameKeyword, KindText),
+		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
+	}
+}
+
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
 func writeParams() []Param {
 	return []Param{
 		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled("env", KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
+		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule),
 	}
 }
 
@@ -343,7 +366,7 @@ const treeKeyword = "tree"
 func processCap() Param { return Param{Name: "max_new_processes", Kind: KindInt, AsValue: true} }
 
 // slotClass is the keyword slots of command. The run reads it as a value, so an absent keyword differs from an empty text.
-func slotClass() Param { return Param{Name: "slots", Kind: KindText, AsValue: true} }
+func slotClass() Param { return Param{Name: slotsKeyword, Kind: KindText, AsValue: true} }
 
 // valueSignatures holds the builtins that return text or a struct of facts and start nothing.
 func valueSignatures() map[string][]Param {
@@ -363,17 +386,14 @@ func stepSignatures() map[string][]Param {
 
 	return map[string][]Param{
 		agentName:   agentParams(),
-		sandboxName: {ruled("network", KindList, networkRule), ruled("skills", KindList, skillsRule)},
-		commandName: {
-			runParam(),
-			opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
-			ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), label,
-		},
-		writeName: writeParams(),
+		sandboxName: {ruled("network", KindList, networkRule)},
+		commandName: commandParams(),
+		writeName:   writeParams(),
 		gateName: {
 			words(runWord), opt("host", KindText), ruled("timeout", KindText, durationRule("timeout")), opt("head", KindText), opt("base", KindText), opt("pin_base", KindText), label,
 		},
 		waitName:         waitParams(),
+		sleepName:        {{Name: "duration", Kind: KindText, Required: true, Rule: deadlineRule("duration"), Why: "The duration is how long the run sleeps, such as \"90s\" or \"10m\"."}, label},
 		earlierCallsName: {req("call", KindText), label},
 		hostTeardownName: {opt("host", KindText), label},
 		hostUpName:       {opt("host", KindText), label},
@@ -391,8 +411,12 @@ func swarmSignatures() map[string][]Param {
 			forbidText(), words("gate_run"), opt("integration", KindInt), opt("hand_off", KindBool),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
-		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
-		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label},
+		gatherName: {
+			req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()),
+			ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), one(OnTimeoutKeyword, OnTimeoutModes()), label,
+		},
+		cancelName: {req("run", KindAny), label},
+		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
 		queueName:  {label, opt("hold", KindText), opt("label", KindText)},
 	}
 }
@@ -570,10 +594,24 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 	case commandName:
 		g.hostWithCap(call, params)
 		g.hostWithSlots(call, params)
+		g.retrying(call, builtin, params)
+	case writeName:
+		g.retrying(call, builtin, params)
 	case waitName:
 		g.asking(call, params)
 	case mergeName:
 		g.handingOff(call, params)
+	case gatherName:
+		g.deadlineMode(call, params)
+	}
+}
+
+// deadlineMode refuses a gather call that names on_timeout and no timeout, as the run does.
+func (g *graph) deadlineMode(call *syntax.CallExpr, params []Param) {
+	mode := paramArg(call, params, OnTimeoutKeyword)
+
+	if err := DeadlineMode(paramArg(call, params, timeoutKeyword) != nil, mode != nil); err != nil {
+		g.report(placeOf(syntax.Start(mode)), gatherName+": "+err.Error()+".")
 	}
 }
 
@@ -618,7 +656,7 @@ func (g *graph) hostWithCap(call *syntax.CallExpr, params []Param) {
 // hostWithSlots checks the slots of a command call with the rule of the run. A value that is not a text literal, or a host that is neither absent nor a
 // text literal, is left to the run, and so is a value of the wrong kind, which the kind check reports.
 func (g *graph) hostWithSlots(call *syntax.CallExpr, params []Param) {
-	class := paramArg(call, params, "slots")
+	class := paramArg(call, params, slotsKeyword)
 	if class == nil {
 		return
 	}

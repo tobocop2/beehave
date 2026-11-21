@@ -74,6 +74,8 @@ type Entry struct {
 	Tools []string
 	// Idle is true for a host provider that beehave deletes after idle_minutes.
 	Idle bool
+	// LoadsSkills is true for an agent whose CLI has a line that loads a skill before the first turn.
+	LoadsSkills bool
 }
 
 // Adapters is the registry of every adapter of a build: the names that the config accepts, by kind, with the entry of each name.

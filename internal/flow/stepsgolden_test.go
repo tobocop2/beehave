@@ -2,11 +2,13 @@ package flow
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/beehave/internal/step"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -42,7 +44,8 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
-		"command: rc,stderr,stdout",
+		"cancel: " + workflow.CancelledField,
+		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
 		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
@@ -61,9 +64,12 @@ var goldenShapes = map[string][]string{
 		"preflight: code,ok,reason,stop",
 		"push: head",
 		"queue: free,pulls,rows",
+		"recv: id,sender,timed_out,value",
+		"send: id",
+		"sleep: slept",
 		"spawn: runs",
 		"wait: answer,answers,timed_out",
-		"write: key,rc,skipped,stderr,stdout",
+		"write: attempts,key,rc,skipped,stderr,stdout",
 	},
 }
 
@@ -80,9 +86,9 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "command", "earlier_calls", "env", "facts", "gate", "gather", "host_teardown", "host_up",
+		"agent", "cancel", "command", "earlier_calls", "env", "facts", "gate", "gather", "host_teardown", "host_up",
 		"item_comment", "item_create", "item_read", "item_status", "login", "now",
-		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "scope", "spawn", "wait", "write",
+		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "wait", "write",
 	},
 }
 
@@ -136,6 +142,9 @@ func TestStepsVersion_EveryPathThatRecordsAStepRefusesAKindOutsideTheTable(t *te
 	require.ErrorIs(t, err, errUnknownStepKind)
 
 	_, _, err = s.writePlan(writeRaw{})
+	require.ErrorIs(t, err, errUnknownStepKind)
+
+	_, err = s.gather(starlark.NewBuiltin("gather", nil), starlark.Tuple{starlark.NewList(nil)}, nil)
 	require.ErrorIs(t, err, errUnknownStepKind)
 
 	assert.Empty(t, s.counts, "a refused kind counts no call")
@@ -197,4 +206,23 @@ func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGolden
 	}
 
 	assert.Equal(t, goldenLostBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+}
+
+// goldenRunnerFacts holds the fields of each entry of the runners field of the facts result. The shape above lists top-level fields only, so a nested field of a recorded result is pinned here.
+var goldenRunnerFacts = []string{"loads_skills"}
+
+func TestStepsVersion_TheEntryOfARunnerInTheRecordedFactsHoldsTheGoldenFields(t *testing.T) {
+	t.Parallel()
+
+	runners := runnerFacts(map[string]bool{"a": true})
+	entry, ok := runners["a"].(map[string]any)
+	require.True(t, ok, "the runners field holds a dict for each runner")
+
+	var fields []string
+	for name := range entry {
+		fields = append(fields, name)
+	}
+
+	slices.Sort(fields)
+	assert.Equal(t, goldenRunnerFacts, fields, "a field of the runners entry changed: bump the core module in stepmodules.go and update the golden fields")
 }

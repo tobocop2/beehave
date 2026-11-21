@@ -32,7 +32,7 @@ example remediation/workflow.star flow/workflow.star
 mkdir forge
 mkdir home
 mkdir login
-# The implement step names the review skill in its sandbox, so the config folder of the runner holds it, as an installed user skill.
+# The config folder of the runner holds the review skill that the prompts declare, as an installed user skill.
 mkdir login/skills/the-review-skill
 cp skill.md login/skills/the-review-skill/SKILL.md
 env SWARM_REMOTE=$WORK/remote.git
@@ -125,6 +125,9 @@ write={{ .output_file }}
 step=implement
 write={{ .output_file }}
 item={{ .item.id }}
+-- flow/prompts/sweep.md --
+step=sweep
+write={{ .output_file }}
 -- flow/prompts/review.md --
 step=review
 write={{ .output_file }}
@@ -160,6 +163,7 @@ case $step in
   plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
   review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
+  sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)
     id=$(basename "$(pwd)")
     echo "$id" > "$id.txt"

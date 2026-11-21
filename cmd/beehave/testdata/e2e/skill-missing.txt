@@ -22,6 +22,9 @@ exec git -C syncclone push -q origin sync/s1
 
 example remediation/workflow.star flow/workflow.star
 
+# The shared prompt of the implement step declares no skill. This script gives the step a prompt that declares the review skill of the project.
+cp skill-implement.md flow/prompts/implement.md
+
 # The login folder of the runners is a credential path, so it holds nothing else: the state folder of beehave lies outside it, and an agent may read the data file.
 mkdir forge
 mkdir home
@@ -101,10 +104,11 @@ project(
 -- flow/prompts/plan.md --
 step=plan
 write={{ .output_file }}
--- flow/prompts/implement.md --
+-- skill-implement.md --
 step=implement
 write={{ .output_file }}
 item={{ .item.id }}
+skill={{ skill .facts.vars.review_skill }}
 -- flow/prompts/review.md --
 step=review
 write={{ .output_file }}

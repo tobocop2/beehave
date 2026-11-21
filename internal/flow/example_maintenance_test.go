@@ -15,7 +15,7 @@ import (
 const publishEntry = `
 def main(item):
     job = struct(repo = "api", week = "2026-W44", fingerprint = "fp", base = "main", table = "t")
-    ending = publish(job, 2)
+    ending = open_pull_request(job, 2)
     conclude(item, job, ending)
 `
 

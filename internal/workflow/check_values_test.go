@@ -23,6 +23,10 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"wait timeout text", `wait(question = "q", timeout = "soon")`, `wait: timeout is "soon", which is not a duration`},
 		{"wait timeout zero", `wait(question = "q", timeout = "0s")`, `wait: timeout is "0s", which must be above zero`},
 		{"wait timeout bare zero", `wait(question = "q", timeout = "0")`, `wait: timeout is "0", which must be above zero`},
+		{"recv topic", `recv("Bad Topic", timeout = "1m")`, `recv: topic "Bad Topic" is not allowed`},
+		{"recv topic reserved", `recv("beehave.answer", timeout = "1m")`, `recv: topic "beehave.answer" is reserved for beehave`},
+		{"recv timeout zero", `recv("go", timeout = "0s")`, `recv: timeout is "0s", which must be above zero`},
+		{"send topic", `send(to = "parent", topic = "A", value = 1)`, `send: topic "A" is not allowed`},
 		{"wait timeout negative", `wait(question = "q", timeout = "-5s")`, `wait: timeout is "-5s", which must be above zero`},
 		{"wait timeout empty", `wait(question = "q", timeout = "")`, `wait: timeout is "", which must be above zero`},
 		{"wait to empty", `wait(question = "q", to = [])`, "to is an empty list"},
@@ -98,6 +102,18 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"merge own emails text", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"emails": "a@b"})`, "merge: own.emails must be a list of strings"},
 		{"merge own element", `merge(prs = x, base = "b", repo = "r", name = "n", own = {"emails": [None]})`, "merge: own.emails must hold strings only"},
 		{"preflight own element", `preflight(own = {"logins": [True]})`, "preflight: own.logins must hold strings only"},
+		{"command retries negative", `command(run = ["x"], retries = -1)`, "command: retries is -1. Use a whole number from 0 to 10"},
+		{"command retries above 10", `command(run = ["x"], retries = 11)`, "command: retries is 11. Use a whole number from 0 to 10"},
+		{"command backoff zero", `command(run = ["x"], retries = 1, backoff = "0s")`, `command: backoff is "0s", which must be above zero`},
+		{"command backoff text", `command(run = ["x"], retries = 1, backoff = "soon")`, `command: backoff is "soon", which is not a duration`},
+		{"command backoff alone", `command(run = ["x"], backoff = "1s")`, "command: backoff is set, but the call has no retries"},
+		{"command backoff with no retry", `command(run = ["x"], retries = 0, backoff = "1s")`, "command: backoff is set, but the call has no retries"},
+		{"command retries with slots", `command(run = ["x"], host = "h", slots = "big", retries = 1)`, "command: retries cannot be used with slots"},
+		{"command failure", `command(run = ["x"], failure = "ignore")`, "failure"},
+		{"write retries", `write(run = ["x"], retries = 11)`, "write: retries is 11"},
+		{"write backoff alone", `write(run = ["x"], backoff = "1s")`, "write: backoff is set, but the call has no retries"},
+		{"spawn retries", `spawn(items = ["a"], retries = 11)`, "spawn: retries is 11"},
+		{"agent retries", `agent("p", "m", retries = 1)`, "agent takes no argument retries"},
 	}
 
 	for _, tc := range cases {
@@ -134,6 +150,12 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    command(run = [\"x\"], max_new_processes = 5, host = \"\")\n"+
 		"    command(run = [\"x\"], host = \"h\", slots = \"mutation\")\n"+
 		"    command(run = [\"x\"], host = who[0], slots = D)\n"+
+		"    command(run = [\"x\"], retries = 10, backoff = \"2s\", failure = \"return\")\n"+
+		"    command(run = [\"x\"], retries = 0, failure = \"raise\")\n"+
+		"    command(run = [\"x\"], retries = len(who), backoff = D)\n"+
+		"    command(run = [\"x\"], host = \"h\", slots = \"mutation\", retries = 0)\n"+
+		"    write(run = [\"x\"], retries = 2, backoff = \"1s\")\n"+
+		"    spawn(items = [\"a\"], retries = 3)\n"+
 		"    merge(prs = [struct(item = \"a\", head = \"h\")], base = \"b\", repo = \"r\", name = \"n\", integration = 7, own = {})\n"+
 		"    preflight(own = {\"logins\": [\"me\"]})\n")
 

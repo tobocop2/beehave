@@ -107,16 +107,19 @@ type fakeSteering struct {
 	schedules    []flow.ScheduleInfo
 	schedulesErr error
 	// days and daysErr are what Days returns.
-	days      []flow.DayFigures
-	daysErr   error
-	infos     []flow.RunInfo
-	view      flow.RunSteps
-	lanes     flow.ItemLanes
-	err       error
-	pinned    string
-	pinnedErr error
-	calls     []string
-	closeOK   bool
+	days    []flow.DayFigures
+	daysErr error
+	infos   []flow.RunInfo
+	view    flow.RunSteps
+	lanes   flow.ItemLanes
+	// published and publishedErr are what Published returns.
+	published    []flow.PublishedValue
+	publishedErr error
+	err          error
+	pinned       string
+	pinnedErr    error
+	calls        []string
+	closeOK      bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// running is what EngineRuns returns, and runningErr its error.
@@ -133,6 +136,9 @@ type fakeSteering struct {
 	joinBlock bool
 	// closeErr is what Close returns.
 	closeErr error
+	// followed are the entries that Follow emits, and followErr is what it returns.
+	followed  []flow.FollowedEntry
+	followErr error
 }
 
 func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }
@@ -176,6 +182,12 @@ func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
 	return s.view, s.err
 }
 
+func (s *fakeSteering) Published(id string) ([]flow.PublishedValue, error) {
+	s.calls = append(s.calls, "published "+id)
+
+	return s.published, s.publishedErr
+}
+
 func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
 	if s.poll == nil {
 		return flow.PollOutput{}, false, s.pollErr
@@ -206,6 +218,12 @@ func (s *fakeSteering) AnswerAs(item, from, text string) error {
 	s.calls = append(s.calls, "answer-as "+from+" "+item+" "+text)
 
 	return cmp.Or(s.answerErrs[item], s.err)
+}
+
+func (s *fakeSteering) Send(item string, msg flow.Outgoing) (string, error) {
+	s.calls = append(s.calls, "send "+item+" "+msg.Topic+" "+msg.Key+" "+msg.Sender+" "+string(msg.Value))
+
+	return "id-1", s.err
 }
 
 func (s *fakeSteering) Resume(item string) error {

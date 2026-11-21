@@ -18,12 +18,13 @@ type Account struct {
 	Login string `json:"login"`
 }
 
-// NewPull is a draft pull request to open: the branch with the commits, the branch to merge into, and the title and body.
+// NewPull is a draft pull request to open: the branch with the commits, the branch to merge into, the title and body, and the label. An empty Label adds none.
 type NewPull struct {
 	Head  string
 	Base  string
 	Title string
 	Body  string
+	Label string
 }
 
 // Card is one card of a GitHub Project board: the pull request (Pull) or issue (not Pull) with the number, on the board with the number Board.

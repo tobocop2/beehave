@@ -23,11 +23,14 @@ exec git -C syncclone push -q origin sync/s1
 
 example remediation/workflow.star flow/workflow.star
 
+# The shared prompt of the implement step declares no skill. This script gives the step a prompt that declares the review skill of the project.
+cp skill-implement.md flow/prompts/implement.md
+
 # The login folder of the runners is a credential path, so it holds nothing else: the state folder of beehave lies outside it, and an agent may read the data file.
 mkdir forge
 mkdir home
 mkdir login
-# The implement step names the review skill in its sandbox, so the config folder of the runner holds it, as an installed user skill.
+# The prompt of the implement step declares the review skill, so the config folder of the runner holds it, as an installed user skill.
 mkdir login/skills/the-review-skill
 cp skill.md login/skills/the-review-skill/SKILL.md
 env SWARM_REMOTE=$WORK/remote.git
@@ -63,8 +66,10 @@ stdout 'finished'
 grep -count=1 '^sync_review$' calls.log
 grep -count=1 '^plan$' calls.log
 grep -count=1 '^implement$' calls.log
-# Only the implement step names the skill in its sandbox, so only its call loaded the copy.
+# The prompt of the implement step declares the skill, and the sweep step names it with the skill keyword, so only those two calls loaded the copy.
 grep -count=1 '^implement$' loaded.log
+grep -count=1 '^sweep$' loaded.log
+! grep '^review$' loaded.log
 grep -count=2 '^review$' calls.log
 grep -count=1 '^sync land ' remedy.log
 grep -count=1 '^MergePR ' forge/calls.log
@@ -118,10 +123,14 @@ project(
 -- flow/prompts/plan.md --
 step=plan
 write={{ .output_file }}
--- flow/prompts/implement.md --
+-- skill-implement.md --
 step=implement
 write={{ .output_file }}
 item={{ .item.id }}
+skill={{ skill .facts.vars.review_skill }}
+-- flow/prompts/sweep.md --
+step=sweep
+write={{ .output_file }}
 -- flow/prompts/review.md --
 step=review
 write={{ .output_file }}
@@ -171,6 +180,7 @@ case $step in
   plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
   review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
+  sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)
     id=$(basename "$(pwd)")
     echo "$id" > "$id.txt"

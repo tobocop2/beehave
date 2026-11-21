@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -12,8 +13,14 @@ import (
 
 // CreatePR opens a draft pull request and returns its number, which gh prints as the last part of the address. Title and body go as single arguments.
 // The branch must be on the remote already: gh refuses a branch that is not.
+// A non-empty label goes to the same create call, and the repository gets the label first when it has none, because gh refuses a label that does not exist.
 func (f *Forge) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
-	done := f.run.Run(ctx, []string{argPR, "create", "--draft", argRepo, f.repo, "--head", req.Head, "--base", req.Base, "--title", req.Title, argBody, req.Body})
+	args, err := f.createArgs(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+
+	done := f.run.Run(ctx, args)
 	if done.ExitCode != 0 {
 		return 0, refused(done, "cannot open a draft pull request for branch %s into %s. Push the branch first", req.Head, req.Base)
 	}
@@ -24,6 +31,51 @@ func (f *Forge) CreatePR(ctx context.Context, req model.NewPull) (int, error) {
 	}
 
 	return number, nil
+}
+
+// createArgs returns the arguments of the create call. A label goes in as a flag, after the repository has the label.
+func (f *Forge) createArgs(ctx context.Context, req model.NewPull) ([]string, error) {
+	args := []string{argPR, "create", "--draft", argRepo, f.repo, "--head", req.Head, "--base", req.Base, "--title", req.Title, argBody, req.Body}
+	if req.Label == "" {
+		return args, nil
+	}
+
+	if err := f.ensureLabel(ctx, req.Label); err != nil {
+		return nil, err
+	}
+
+	return append(args, "--label", req.Label), nil
+}
+
+// labelPage is the most labels that one search of the repository reads.
+const labelPage = 100
+
+// labelRow is one label as gh prints it.
+type labelRow struct {
+	Name string `json:"name"`
+}
+
+// ensureLabel creates the label when the repository has none of that name. GitHub compares label names without case.
+func (f *Forge) ensureLabel(ctx context.Context, name string) error {
+	done := f.run.Run(ctx, []string{"label", "list", argRepo, f.repo, "--search", name, argJSON, "name", argLimit, strconv.Itoa(labelPage)})
+	if done.ExitCode != 0 {
+		return refused(done, "cannot list the labels of %s", f.repo)
+	}
+
+	rows, err := model.Decode[[]labelRow]("gh label list", done.Stdout)
+	if err != nil {
+		return forge.Refusal("cannot list the labels of "+f.repo, err)
+	}
+
+	if slices.ContainsFunc(rows, func(row labelRow) bool { return strings.EqualFold(row.Name, name) }) {
+		return nil
+	}
+
+	if done = f.run.Run(ctx, []string{"label", "create", name, argRepo, f.repo}); done.ExitCode != 0 {
+		return refused(done, "cannot create the label %q in %s", name, f.repo)
+	}
+
+	return nil
 }
 
 // LinkStack puts the child pull request on top of the parent in a native stack. gh takes the pull requests by address, because the command has no repository flag.

@@ -1,27 +1,9 @@
-# The implement step reports no skill call. The item stops, and the text names how to start it again.
-! exec beehave run 7 --workflow flow/workflow.star
-stderr 'did not call the skill'
-stderr 'beehave resume 7, then beehave cancel 7, then beehave run 7'
-grep -count=1 '^implement ' calls.log
-
-exec beehave status
-stdout '^item-7-r1\tfailed'
-
-# The resume replays the recorded implement step, so the stop comes again and the agent does not run a second time.
-exec beehave resume 7
-! exec beehave run 7 --workflow flow/workflow.star
-stderr 'did not call the skill'
-grep -count=1 '^implement ' calls.log
-
-# The cancel ends the failed run, and the item then starts again as a new run.
-exec beehave cancel 7
-exec beehave status
-stdout '^item-7-r1\tcancelled'
-rm no-skill
+# The CLI reports no skill call. The engine does not read the calls of the implement step any more: the sweep step starts with the line that loads the skill, and the item goes on to the review.
 exec beehave run 7 --workflow flow/workflow.star
-exec beehave status
-stdout 'item-7-r2'
-grep -count=2 '^implement ' calls.log
+grep -count=1 '^implement ' calls.log
+grep -count=1 '^sweep ' calls.log
+grep -count=1 '^/beehave-skills:the-review-skill$' sweepline.log
+grep '^review ' calls.log
 
 -- no-skill --
 -- verdicts --

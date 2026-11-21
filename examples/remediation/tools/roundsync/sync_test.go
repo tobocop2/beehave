@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -39,6 +40,8 @@ type world struct {
 	ahead         map[string]int
 	fail          map[string]error
 	pulls         []model.PullRequest
+	open          []model.PullRequest
+	labels        []string
 	view          model.PullRequest
 	calls         map[string]int
 	writes        []string
@@ -81,10 +84,26 @@ func (w *world) PRView(_ context.Context, _ int, fields ...string) (model.PullRe
 	return w.view, w.failIf("PRView", "")
 }
 
+// PRList answers the list of one branch (a call with --head) with pulls, and the scan of the round base for older sync pull requests with open.
 func (w *world) PRList(_ context.Context, _ int, args ...string) ([]model.PullRequest, error) {
 	w.reads = append(w.reads, "list "+strings.Join(args, " "))
 
-	return w.pulls, w.failIf("PRList", "")
+	if slices.Contains(args, "--head") {
+		return w.pulls, w.failIf("PRList", "")
+	}
+
+	return w.open, w.failIf("PRList", "scan")
+}
+
+// ClosePR records a close with its comment.
+func (w *world) ClosePR(_ context.Context, pr int, comment string) error {
+	if err := w.failIf("ClosePR", strconv.Itoa(pr)); err != nil {
+		return err
+	}
+
+	w.writes = append(w.writes, fmt.Sprintf("close %d %s", pr, comment))
+
+	return nil
 }
 
 func (w *world) BranchRef(_ context.Context, branch string) (string, bool, error) {
@@ -110,6 +129,7 @@ func (w *world) CreatePR(_ context.Context, req model.NewPull) (int, error) {
 		return 0, err
 	}
 
+	w.labels = append(w.labels, req.Label)
 	w.writes = append(w.writes, fmt.Sprintf("pr %s %s %s", req.Head, req.Base, req.Title))
 
 	return 7, nil
@@ -215,7 +235,84 @@ func TestCheck_ACleanMoveCutsTheBranchMergesTheTrunkAndOpensADraftPull(t *testin
 		"merge " + syncName + " " + trunk,
 		"pr " + syncName + " " + base + " Merge main into integration/r1",
 	}, w.writes)
-	assert.Equal(t, []string{"list --state open --head " + syncName + " --base " + base + " --json number,isDraft"}, w.reads)
+	assert.Equal(t, []string{
+		"list --state open --head " + syncName + " --base " + base + " --json number,isDraft",
+		"list --state open --base " + base + " --json number,headRefName",
+	}, w.reads)
+}
+
+// openSync is an open pull request of the round base with the head branch.
+func openSync(number int, head string) model.PullRequest {
+	return model.PullRequest{Number: number, HeadRefName: &head}
+}
+
+func TestCheck_TheSyncPullRequestCarriesTheLabelOfTheRequest(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+
+	_, err := roundsync.Check(context.Background(), w, roundsync.Request{Base: base, Trunk: trunk, Label: "made-by-beehave"})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"made-by-beehave"}, w.labels)
+}
+
+func TestCheck_AnOlderSyncPullRequestOfTheSameBaseIsClosedWithACommentThatNamesTheNewOne(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.open = []model.PullRequest{
+		openSync(690, "sync/"+base+"/be3a1b1f"),
+		openSync(725, "sync/"+base+"/4f9e577c"),
+		openSync(7, syncName),
+		openSync(12, "bb-12"),
+		openSync(13, "sync/other/base/deadbeef"),
+		{Number: 14},
+	}
+
+	_, err := check(t, w)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"branch " + syncName + " " + baseTip,
+		"merge " + syncName + " " + trunk,
+		"pr " + syncName + " " + base + " Merge main into integration/r1",
+		"close 690 Closed: pull request #7 replaces this sync, which is for an older tip of main.",
+		"close 725 Closed: pull request #7 replaces this sync, which is for an older tip of main.",
+	}, w.writes, "the live sync, an item pull request, another base and a pull request with no branch stay open")
+}
+
+func TestCheck_ARepeatCallStillClosesAnOlderSyncPullRequestThatAFailedCloseLeftOpen(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.tips[syncName] = mergedTip
+	w.ahead[syncName+"..."+trunk] = 0
+	w.pulls = []model.PullRequest{draftPull(3)}
+	w.open = []model.PullRequest{openSync(690, "sync/"+base+"/be3a1b1f")}
+
+	_, err := check(t, w)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"close 690 Closed: pull request #3 replaces this sync, which is for an older tip of main."}, w.writes)
+}
+
+func TestCheck_AFailedCloseOrScanOfAnOlderSyncPullRequestStopsTheCallWithTheError(t *testing.T) {
+	t.Parallel()
+
+	for name, key := range map[string]string{"close": "ClosePR:690", "scan": "PRList:scan"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld()
+			w.open = []model.PullRequest{openSync(690, "sync/"+base+"/be3a1b1f")}
+			w.fail[key] = errDown
+
+			_, err := check(t, w)
+
+			require.ErrorIs(t, err, errDown)
+		})
+	}
 }
 
 // draftPull is an open sync pull request that is a draft.
@@ -616,4 +713,23 @@ func TestLand_AMissingBranchIsAnError(t *testing.T) {
 	_, err := land(t, w, mergedTip, baseTip)
 
 	require.ErrorContains(t, err, "cannot find branch "+syncName)
+}
+
+func TestCheck_ABranchThatOnlySharesTheStartOfTheSyncPrefixIsNotClosed(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.open = []model.PullRequest{
+		openSync(15, "sync/integration/r10/deadbeef"),
+		openSync(16, "sync/integration/r1"),
+	}
+
+	_, err := check(t, w)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"branch " + syncName + " " + baseTip,
+		"merge " + syncName + " " + trunk,
+		"pr " + syncName + " " + base + " Merge main into integration/r1",
+	}, w.writes, "round r10 and a branch with no slash after the base are not sync pull requests of round r1")
 }

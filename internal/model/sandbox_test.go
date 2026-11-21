@@ -40,13 +40,15 @@ func TestCheckNetwork_AcceptsDomainNamesAndRefusesEverythingElse(t *testing.T) {
 	}
 }
 
-func TestCheckSkills_AcceptsAFolderNameAndRefusesAPath(t *testing.T) {
+func TestCheckSkill_AcceptsAFolderNameAndRefusesAPath(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, model.CheckSkills([]string{"your-review-skill", "review_2", "v1.2"}))
+	for _, good := range []string{"your-review-skill", "review_2", "v1.2"} {
+		require.NoError(t, model.CheckSkill(good), good)
+	}
 
 	for _, bad := range []string{"", ".", "..", "a/b", `a\b`, "/abs", ".hidden", "-dash", "has space", "beehave-skills:review"} {
-		require.ErrorContains(t, model.CheckSkills([]string{bad}), "is not the name of a skill", bad)
+		require.ErrorContains(t, model.CheckSkill(bad), "is not the name of a skill", bad)
 	}
 }
 

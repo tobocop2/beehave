@@ -15,25 +15,59 @@ import (
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
-// commandCall unpacks the arguments of the command builtin: the request, the stop codes and the label.
-func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (CommandRequest, []int, string, error) {
-	var c commandRaw
+// commandPlan is a command call after its check: the request, the stop codes, the label, and the count of its tries.
+type commandPlan struct {
+	request CommandRequest
+	stops   []int
+	label   string
+	tries   *tries
+}
+
+// commandCall unpacks and checks the arguments of the command builtin.
+func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (commandPlan, error) {
+	c := commandRaw{failure: string(workflow.FailureRaise)}
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
 		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, slotsKeyword: &c.slots, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+		retriesKeyword: &c.retries, backoffKeyword: &c.backoff, failureKeyword: &c.failure,
 	})
 	if err != nil {
-		return CommandRequest{}, nil, "", err
+		return commandPlan{}, err
 	}
 
-	request, stops, err := s.commandRequest(c)
+	plan := commandPlan{label: c.label}
+	if plan.request, plan.stops, err = s.commandRequest(c); err != nil {
+		return plan, err
+	}
 
-	return request, stops, c.label, err
+	plan.tries, err = triesOf(c)
+
+	return plan, err
+}
+
+// triesOf reads the retry policy and the failure mode of a call.
+func triesOf(c commandRaw) (*tries, error) {
+	policy, err := workflow.Retry(c.retries, c.backoff)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := workflow.RetrySlots(c.retries, c.slots != nil && c.slots != starlark.None); err != nil {
+		return nil, err
+	}
+
+	if !slices.Contains(workflow.FailureModes(), c.failure) {
+		return nil, fmt.Errorf("failure is %q. Use \"raise\" or \"return\"", c.failure)
+	}
+
+	return &tries{policy: policy, failure: workflow.FailureMode(c.failure)}, nil
 }
 
 // commandRaw are the arguments of a command call as the file wrote them.
 type commandRaw struct {
 	label, timeout, host, stdin string
+	backoff, failure            string
+	retries                     int
 	run, own, codes             starlark.Value
 	// processes is max_new_processes as the file wrote it. It stays a value so that a text or a fraction is refused with its own message.
 	processes starlark.Value
@@ -109,47 +143,60 @@ func (s *script) environment(request CommandRequest, own starlark.Value) ([]stri
 
 // command runs a program. A code in stop_on_rc ends the item: the step records it, so a replay stops at the same call.
 func (s *script) command(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	request, stops, label, err := s.commandCall(b, args, kwargs)
+	plan, err := s.commandCall(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
 
-	if request.SlotClass != "" {
-		return s.slotCommand(request, stops, label)
+	if plan.request.SlotClass != "" {
+		return s.slotCommand(plan)
 	}
 
-	return s.durable("command", label, func(ctx context.Context, name string) (stepResult, error) {
-		return s.runCommand(ctx, name, request, stops)
+	return s.durableRetried("command", plan.label, plan.tries.policy, func(ctx context.Context, name string) (stepResult, error) {
+		return s.runCommand(ctx, name, plan)
 	})
 }
 
 // slotCommand runs a command call that names a slot class as a job on the queue of the class, then records its output as the step of the call.
 // DBOS records a child run from the run, never from inside a step, so the queue wait comes first and the step records what it returned.
-// A replay reads the recorded result of the child run and queues nothing again.
-func (s *script) slotCommand(request CommandRequest, stops []int, label string) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	out, err := s.e.queueSlotCommand(s.ctx, request)
-	if err != nil {
-		return nil, fmt.Errorf("command %q could not run: %w", label, err)
+// A replay reads the recorded result of the child run and queues nothing again. With failure "return", a job that could not run is the recorded result.
+func (s *script) slotCommand(plan commandPlan) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
+	out, err := s.e.queueSlotCommand(s.ctx, plan.request)
+	if err != nil && !plan.tries.returned(s.ctx, err, func(error) bool { return false }) {
+		return nil, fmt.Errorf("command %q could not run: %w", plan.label, err)
 	}
 
-	return s.durable("command", label, func(_ context.Context, name string) (stepResult, error) {
-		return commandRecord(name, out, stops), nil
+	return s.durable("command", plan.label, func(_ context.Context, name string) (stepResult, error) {
+		if err != nil {
+			return stepResult{Outputs: s.e.failedOutputs(err, 1)}, nil
+		}
+
+		return commandRecord(name, out, plan.stops, 1), nil
 	})
 }
 
-// runCommand runs the program of a command call and records its output. A code in stops adds the stop to the record.
-func (s *script) runCommand(ctx context.Context, name string, request CommandRequest, stops []int) (stepResult, error) {
-	out, err := s.writes().Run(ctx, request)
-	if err != nil {
+// runCommand runs one try of the program of a command call and records its output. A code in stops adds the stop to the record.
+// A try that a retry may cure returns retriedRC. With failure "return", an error that ends the tries is the recorded result.
+func (s *script) runCommand(ctx context.Context, name string, plan commandPlan) (stepResult, error) {
+	plan.tries.start()
+
+	out, err := s.writes().Run(ctx, plan.request)
+
+	switch {
+	case err != nil && plan.tries.returned(ctx, err, s.e.retryable):
+		return stepResult{Outputs: s.e.failedOutputs(err, plan.tries.n)}, nil
+	case err != nil:
 		return stepResult{}, err
+	case plan.tries.retry(out.RC, plan.stops):
+		return stepResult{}, &retriedRC{rc: out.RC}
 	}
 
-	return commandRecord(name, out, stops), nil
+	return commandRecord(name, out, plan.stops, plan.tries.n), nil
 }
 
 // commandRecord is the record of a command step: the output, and the stop when the exit code is one of stops.
-func commandRecord(name string, out CommandOutput, stops []int) stepResult {
-	recorded := stepResult{Outputs: commandOutputs(out.Stdout, out.Stderr, out.RC)}
+func commandRecord(name string, out CommandOutput, stops []int, attempts int) stepResult {
+	recorded := stepResult{Outputs: commandOutputs(out, attempts)}
 	if slices.Contains(stops, out.RC) {
 		recorded.Stopped = &Stopped{Step: name, RC: out.RC, Output: out.Stdout}
 	}

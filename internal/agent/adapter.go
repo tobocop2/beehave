@@ -27,6 +27,8 @@ type Profile struct {
 	NoEditArgs []string
 	NoEditEnv  map[string]string
 	ConfigVars []string
+	// ConfigHome is the folder under the home folder where the CLI keeps its config when the runner sets no config folder. Empty means the CLI has none.
+	ConfigHome string
 	TokenVar   string
 	ModelFlag  string
 	// Resume returns the arguments that resume the session with the given id. A nil Resume means the CLI has no such option.
@@ -60,8 +62,9 @@ type Profile struct {
 	GuardBefore string
 	// GuardPosixOnly is true when the hook of Guard needs a POSIX shell, so a run with a guard does not start on Windows.
 	GuardPosixOnly bool
-	// NoSkillCalls is true when the CLI reports no skill calls on its output, so a step that needs a skill cannot be proved and does not start.
-	NoSkillCalls bool
+	// SkillLine returns the line that makes the CLI load the skill of the given name before the first turn of the model, when it is the first line of the prompt.
+	// A nil SkillLine means the CLI has no such line, so a step with the skill keyword does not start on it.
+	SkillLine func(name string) string
 	// DefaultTimeout is the total limit of a run whose spec sets no Timeout. Zero means no limit. StallNote is added to the Note of a run that a total or idle
 	// limit ended, for a CLI that prints nothing and retries when it cannot work (for example a model over its quota). It names the likely cause.
 	DefaultTimeout time.Duration
@@ -183,6 +186,7 @@ type Denial struct {
 // a limit is near reports none.
 // Denied is the reason why the provider refused more work in a way that no wait cures, such as usage credits that the account does not have or a pause of
 // the organization, or empty when the line reports none. A line with Denied reports no Limit.
+// Said is the message texts and the tool calls of an assistant line, for the stream that a reader follows. A tool call reads "<tool>: <target>".
 type Seen struct {
 	Cost      float64
 	Spent     float64
@@ -199,6 +203,13 @@ type Seen struct {
 	Priced    bool
 	Limit     *Limit
 	Denied    string
+	Said      []Said
+}
+
+// Said is one thing the agent said on an output line: the text of a message, or a tool call with its target. A line lists them in the order of the message.
+type Said struct {
+	Call bool
+	Text string
 }
 
 // Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.
@@ -211,12 +222,17 @@ type Adapter interface {
 	Profile() Profile
 	// ReadUsage returns the usage of one runner of this agent, or a reading that says the agent cannot report it.
 	ReadUsage(ctx context.Context, runner model.Runner) model.Reading
-	// Guard returns the launch that makes the CLI run command before each shell command of one run and refuse the shell command when command exits with code 2.
-	// It returns an empty launch when the CLI has no such option. runDir is the folder of the run: a path in Files is relative to it, and Args or Env can name a file in it.
-	Guard(command, runDir string) Launch
+	// Guard returns the launch of a run with no sandbox. A non-empty command makes the CLI run command before each shell command and refuse the shell command
+	// when command exits with code 2; the launch is empty of a hook when the CLI has no such option. An empty command adds no hook.
+	// write lists the files that the file tools of the run may read and write, each by its exact path (Spec.Write): the launch opens each one, whatever the command.
+	// skills lists the folder of each skill that the run loads (Spec.Skills): the launch copies each one into the run folder and loads it as a plugin, if the CLI has such a plugin.
+	// The launch is empty when command, write and skills are empty.
+	// runDir is the folder of the run: a path in Files is relative to it, and Args or Env can name a file in it.
+	Guard(command, runDir string, write, skills []string) Launch
 	// Sandbox returns the launch that confines the shell of one run to the plan, and nothing else the CLI reads can widen it: no settings file and no MCP server.
 	// A non-empty guard is the hook of Guard, and the launch carries it in the same settings as the sandbox. Only a profile with Sandbox true is asked.
-	Sandbox(plan SandboxPlan, guard, runDir string) Launch
+	// write and skills are the same lists as for Guard, and the shell may write the files of write too.
+	Sandbox(plan SandboxPlan, guard, runDir string, write, skills []string) Launch
 	// Line reads one line of the output of the CLI. It returns the session id and the message text that the line holds, or empty strings.
 	Line(line string) (session, text string)
 	// Calls reads one line of the output of the CLI and returns what it holds. More than one reader asks for the same line (the runner for the turn cap and

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,7 +34,7 @@ func TestSessionTap_RecordsASkillOnlyWhenItsCallHasAResultWithNoError(t *testing
 		"the Unknown skill call and the call with no result do not count; the plugin skill counts by its plain name")
 }
 
-func TestSandboxPlan_TheSkillsOfTheStepComeFromTheConfigFolderOfTheRunner(t *testing.T) {
+func TestRun_TheSkillsOfASandboxedStepComeFromTheConfigFolderOfTheRunner(t *testing.T) {
 	t.Parallel()
 
 	r := newSandboxRig(t)
@@ -41,16 +42,53 @@ func TestSandboxPlan_TheSkillsOfTheStepComeFromTheConfigFolderOfTheRunner(t *tes
 	r.touch(t, filepath.Join(r.home, "login", "skills", "other", "SKILL.md"))
 
 	req := request()
-	req.Sandbox = &model.Sandbox{Skills: []string{"review"}}
+	req.Skills = []string{"review"}
+	req.Sandbox = &model.Sandbox{}
 
 	_, err := r.f.agents.Run(t.Context(), req)
 	require.NoError(t, err)
 	require.NotNil(t, r.f.spec.Sandbox)
-	assert.Equal(t, []string{filepath.Join(r.home, "login", "skills", "review")}, r.f.spec.Sandbox.Skills, "only the skill that the step names")
+	assert.Equal(t, []string{filepath.Join(r.home, "login", "skills", "review")}, r.f.spec.Skills, "only the skill that the prompt declares")
 	assert.Contains(t, r.f.spec.Sandbox.Deny, filepath.Join(r.home, "login"), "the config folder of the runner stays denied")
 }
 
-func TestSandboxPlan_ASkillThatTheConfigFolderDoesNotHoldStopsTheStepBeforeItStarts(t *testing.T) {
+func TestRun_TheSkillsOfAStepWithNoSandboxComeFromTheConfigFolderOfTheRunner(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	r.touch(t, filepath.Join(r.home, "login", "skills", "review", "SKILL.md"))
+	r.touch(t, filepath.Join(r.home, "login", "skills", "other", "SKILL.md"))
+
+	req := request()
+	req.Skills = []string{"review"}
+
+	_, err := r.f.agents.Run(t.Context(), req)
+	require.NoError(t, err)
+	assert.Nil(t, r.f.spec.Sandbox, "the step runs with no sandbox")
+	assert.Equal(t, []string{filepath.Join(r.home, "login", "skills", "review")}, r.f.spec.Skills, "the step gets the skill that its prompt declares, and not the other one")
+}
+
+func TestRun_AStepThatDeclaresNoSkillNeedsNoHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	r.f.agents.home = func() (string, error) { return "", errors.New("no home") }
+
+	got, err := r.f.agents.Run(t.Context(), request())
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Empty(t, r.f.spec.Skills)
+
+	req := request()
+	req.Skills = []string{"review"}
+
+	got, err = r.f.agents.Run(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, "cannot find the home folder")
+}
+
+func TestRun_ASkillThatTheConfigFolderDoesNotHoldStopsTheStepBeforeItStarts(t *testing.T) {
 	t.Parallel()
 
 	r := newSandboxRig(t)
@@ -58,7 +96,7 @@ func TestSandboxPlan_ASkillThatTheConfigFolderDoesNotHoldStopsTheStepBeforeItSta
 
 	for _, name := range []string{"review", "empty"} {
 		req := request()
-		req.Sandbox = &model.Sandbox{Skills: []string{name}}
+		req.Skills = []string{name}
 
 		got, err := r.f.agents.Run(t.Context(), req)
 
@@ -70,14 +108,47 @@ func TestSandboxPlan_ASkillThatTheConfigFolderDoesNotHoldStopsTheStepBeforeItSta
 	}
 }
 
-func TestSandboxPlan_ASkillOnARunnerWithNoConfigFolderStopsTheStep(t *testing.T) {
+// homeAdapter is an adapter whose CLI keeps its config in the folder .cfg of the home folder when the runner sets none.
+type homeAdapter struct{ lineAdapter }
+
+func (homeAdapter) Profile() agent.Profile {
+	return agent.Profile{BudgetFlag: "--max-budget-usd", ConfigHome: ".cfg"}
+}
+
+func TestRun_ARunnerWithNoConfigFolderGetsTheSkillsOfTheDefaultFolderOfItsCLI(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	r.f.agents.adapter = func(model.Agent) agent.Adapter { return homeAdapter{} }
+	r.f.agents.runners[0].ConfigDir = ""
+	r.touch(t, filepath.Join(r.home, ".cfg", "skills", "review", "SKILL.md"))
+
+	req := request()
+	req.Skills = []string{"review"}
+
+	got, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Equal(t, []string{filepath.Join(r.home, ".cfg", "skills", "review")}, r.f.spec.Skills)
+
+	req.Skills = []string{"absent"}
+
+	got, err = r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, filepath.Join(r.home, ".cfg", "skills", "absent"), "the note names the default folder")
+}
+
+func TestRun_ASkillOnARunnerWithNoConfigFolderAndACLIWithNoDefaultFolderStopsTheStep(t *testing.T) {
 	t.Parallel()
 
 	r := newSandboxRig(t)
 	r.f.agents.runners[0].ConfigDir = ""
 
 	req := request()
-	req.Sandbox = &model.Sandbox{Skills: []string{"review"}}
+	req.Skills = []string{"review"}
 
 	got, err := r.f.agents.Run(t.Context(), req)
 
@@ -87,7 +158,7 @@ func TestSandboxPlan_ASkillOnARunnerWithNoConfigFolderStopsTheStep(t *testing.T)
 	assert.Contains(t, got.Note, "config folder")
 }
 
-func TestSandboxPlan_ASkillThatHoldsALinkStopsTheStepBeforeItStarts(t *testing.T) {
+func TestRun_ASkillThatHoldsALinkStopsTheStepBeforeItStarts(t *testing.T) {
 	t.Parallel()
 
 	for _, link := range []string{"link-out.txt", filepath.Join("references", "deep-link")} {
@@ -98,7 +169,7 @@ func TestSandboxPlan_ASkillThatHoldsALinkStopsTheStepBeforeItStarts(t *testing.T
 		require.NoError(t, os.Symlink(filepath.Join(r.home, "login", "settings.json"), filepath.Join(skill, link)))
 
 		req := request()
-		req.Sandbox = &model.Sandbox{Skills: []string{"review"}}
+		req.Skills = []string{"review"}
 
 		got, err := r.f.agents.Run(t.Context(), req)
 
@@ -106,11 +177,11 @@ func TestSandboxPlan_ASkillThatHoldsALinkStopsTheStepBeforeItStarts(t *testing.T
 		assert.Equal(t, agent.OutcomeNotStarted, got.Outcome, link)
 		assert.Contains(t, got.Note, "skill review", link)
 		assert.Contains(t, got.Note, filepath.Join(skill, link), "the note names the link: %s", link)
-		assert.Equal(t, (*agent.SandboxPlan)(nil), r.f.spec.Sandbox, "the CLI does not start: %s", link)
+		assert.Empty(t, r.f.spec.Skills, "the CLI does not start: %s", link)
 	}
 }
 
-func TestSandboxPlan_ASkillFolderThatIsItselfALinkIsCopied(t *testing.T) {
+func TestRun_ASkillFolderThatIsItselfALinkIsCopied(t *testing.T) {
 	t.Parallel()
 
 	r := newSandboxRig(t)
@@ -120,10 +191,9 @@ func TestSandboxPlan_ASkillFolderThatIsItselfALinkIsCopied(t *testing.T) {
 	require.NoError(t, os.Symlink(source, filepath.Join(r.home, "login", "skills", "review")))
 
 	req := request()
-	req.Sandbox = &model.Sandbox{Skills: []string{"review"}}
+	req.Skills = []string{"review"}
 
 	_, err := r.f.agents.Run(t.Context(), req)
 	require.NoError(t, err)
-	require.NotNil(t, r.f.spec.Sandbox, "an installed skill is often a link to its checkout")
-	assert.Equal(t, []string{filepath.Join(r.home, "login", "skills", "review")}, r.f.spec.Sandbox.Skills)
+	assert.Equal(t, []string{filepath.Join(r.home, "login", "skills", "review")}, r.f.spec.Skills, "an installed skill is often a link to its checkout")
 }

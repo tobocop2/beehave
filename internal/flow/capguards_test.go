@@ -177,7 +177,7 @@ func TestExample_ACappedPlanStopsTheItemWithARefuseBeforeTheImplement(t *testing
 func TestExample_ACappedReviewStopsTheItemWithARefuseBeforeAnyFix(t *testing.T) {
 	t.Parallel()
 
-	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(3), agent.OutcomeBudgetCap)
+	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(4), agent.OutcomeBudgetCap)
 
 	_, err := runPipeline(rig.h.engine(t), file)
 
@@ -192,7 +192,7 @@ func TestExample_ACappedSettleStopsTheItemWithARefuse(t *testing.T) {
 
 	// The settle is the call after the plan, the implement and every agent of the two candidates of one fix round.
 	settle := 2 + len(capModels(2)) + 1
-	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(settle), agent.OutcomeTurnCap)
+	rig, file := capRig(t, func(int) string { return "changes" }, nthCall(settle+1), agent.OutcomeTurnCap) // the sweep is one more call that rig.models() does not list
 	rig.setRound("fix_rounds", oneFixRound)
 	engine := rig.h.engine(t)
 	done := pipelineInBackground(engine, file)

@@ -51,13 +51,14 @@ func TestDryRun_ThePipelineOfTheExamplePrintsEachStepInOrderAndEndsClean(t *test
 	text := out.String()
 	assert.Contains(t, text, "step 1 ")
 	// The listing clips each line at dryOutLimit, so the test reads the head of each render record: the kind, the login and the model come first.
-	assert.Equal(t, 4, strings.Count(text, `"login":"dry-run","model":`), "each of the four agent calls records the fake login and its model before the agent runs")
+	assert.Equal(t, 5, strings.Count(text, `"login":"dry-run","model":`), "each of the five agent calls records the fake login and its model before the agent runs")
 	assert.Contains(t, text, `"model":"opus"`)
 	assert.Contains(t, text, `"model":"sonnet"`)
 	assert.Positive(t, strings.Index(text, " agent:plan#1"), text)
 	assert.Less(t, strings.Index(text, " agent:plan#1"), strings.Index(text, " agent:implement#2"), text)
-	assert.Less(t, strings.Index(text, " agent:implement#2"), strings.Index(text, " agent:scoped-review-implement#3"), text)
-	assert.Less(t, strings.Index(text, " agent:scoped-review-implement#3"), strings.Index(text, " agent:candidate-review#4"), text)
+	assert.Less(t, strings.Index(text, " agent:implement#2"), strings.Index(text, " agent:implement-sweep#3"), text)
+	assert.Less(t, strings.Index(text, " agent:implement-sweep#3"), strings.Index(text, " agent:scoped-review-implement#4"), text)
+	assert.Less(t, strings.Index(text, " agent:scoped-review-implement#4"), strings.Index(text, " agent:candidate-review#5"), text)
 	assert.NotContains(t, text, "agent:fix")
 	assert.NotContains(t, text, "FAILED")
 }
@@ -300,12 +301,12 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 	assert.Equal(t, []string{
 		"claim", "item", "facts#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "push:push-implement#1", "pr_open:draft#1",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "push:push-implement#1", "pr_open:draft#1",
 		"preflight:before-scoped-review-1#2",
-		"agent:scoped-review-implement#3/render", "agent:scoped-review-implement#3/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#3/read1",
+		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:candidate-gate#1", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
 		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3",
-		"agent:candidate-review#4/render", "agent:candidate-review#4/clear1", "phase", "DBOS.getResult", "agent:candidate-review#4/read1", "pr_comment:approved#1",
+		"agent:candidate-review#5/render", "agent:candidate-review#5/clear1", "phase", "DBOS.getResult", "agent:candidate-review#5/read1", "pr_comment:approved#1",
 		"command:sweep-prune#5", "worktree", "release",
 	}, remediationStepNames(t))
 }
@@ -316,16 +317,16 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound
 	assert.Equal(t, []string{
 		"claim", "item", "facts#1", "preflight:intake#1", "pr_history:history#1", "earlier_calls:spent-fix-scoped-1#1", "earlier_calls:spent-scoped-review-implement#2", "item_read:parent#1", "login#1",
 		"agent:plan#1/render", "agent:plan#1/clear1", "phase", "DBOS.getResult", "agent:plan#1/read1",
-		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "push:push-implement#1", "pr_open:draft#1",
+		"agent:implement#2/render", "agent:implement#2/clear1", "phase", "DBOS.getResult", "agent:implement#2/read1", "agent:implement-sweep#3/render", "agent:implement-sweep#3/clear1", "phase", "DBOS.getResult", "agent:implement-sweep#3/read1", "push:push-implement#1", "pr_open:draft#1",
 		"preflight:before-scoped-review-1#2",
-		"agent:scoped-review-implement#3/render", "agent:scoped-review-implement#3/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#3/read1",
+		"agent:scoped-review-implement#4/render", "agent:scoped-review-implement#4/clear1", "phase", "DBOS.getResult", "agent:scoped-review-implement#4/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:candidate-gate#1", "gate:candidate-gate#1", "preflight:before-fix-2#3",
-		"agent:fix-scoped-1#4/render", "agent:fix-scoped-1#4/clear1", "phase", "DBOS.getResult", "agent:fix-scoped-1#4/read1", "push:push-fix-1#2",
+		"agent:fix-scoped-1#5/render", "agent:fix-scoped-1#5/clear1", "phase", "DBOS.getResult", "agent:fix-scoped-1#5/read1", "push:push-fix-1#2",
 		"preflight:before-scoped-review-2#4",
-		"agent:scoped-review-1#5/render", "agent:scoped-review-1#5/clear1", "phase", "DBOS.getResult", "agent:scoped-review-1#5/read1",
+		"agent:scoped-review-1#6/render", "agent:scoped-review-1#6/clear1", "phase", "DBOS.getResult", "agent:scoped-review-1#6/read1",
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#2", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
 		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5",
-		"agent:candidate-review#6/render", "agent:candidate-review#6/clear1", "phase", "DBOS.getResult", "agent:candidate-review#6/read1", "pr_comment:approved#1",
+		"agent:candidate-review#7/render", "agent:candidate-review#7/clear1", "phase", "DBOS.getResult", "agent:candidate-review#7/read1", "pr_comment:approved#1",
 		"command:sweep-prune#5", "worktree", "release",
 	}, remediationStepNames(t, WithRedGate()))
 }
@@ -810,4 +811,45 @@ func TestDryRun_AProjectWithNoReviewSkillInItsVarsReportsNoSkillAndTheExampleRef
 	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryPipeline, WithVars(vars))
 
 	require.ErrorContains(t, err, "vars.review_skill")
+}
+
+func TestDryRun_ASleepPrintsItsStepAfterTheDuration(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	started := time.Now()
+
+	require.NoError(t, DryRun(t.Context(), dryFile(t, "def main(item):\n    sleep(\"200ms\", name = \"nap\")\n"), "12", map[string]string{}, &out), out.String())
+	assert.Contains(t, out.String(), "sleep:nap#1")
+	assert.GreaterOrEqual(t, time.Since(started), 200*time.Millisecond)
+}
+
+func TestDryRun_ASkillThatTheProjectNamesIsOneOfTheSkillsThatTheFakeAgentReports(t *testing.T) {
+	t.Parallel()
+
+	file := dryFile(t, "def main(item):\n    project = facts()\n    a = agent(model = \"m\", prompt = \"a.md\", name = \"a\")\n    if project.vars[\"review_skill\"] not in a.skills:\n        fail(\"REFUSE: the skill did not load\")\n")
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "a.md"), []byte("hello\n"), 0o600))
+
+	var out bytes.Buffer
+
+	require.NoError(t, DryRun(t.Context(), file, "12", map[string]string{}, &out, WithVars(map[string]any{"review_skill": "lint-pass"})), out.String())
+	assert.NotContains(t, out.String(), "REFUSE")
+}
+
+func TestDryRun_AnImplementRunnerWithNoSkillLineIsRefusedAsARealRunRefusesIt(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+
+	vars := with(roundVars(map[string]any{
+		"base": "integration", "owner": "owner", "owner_email": "owner@example.com", "source_checkout": "/own/checkout", "merge": false,
+		"lane_cap": json.Number("3"), "fix_rounds": json.Number("5"), "label": "beehave-round",
+		"steps": map[string]any{"implement": map[string]any{"runner": "oc"}},
+	}), map[string]any{"mutation_command": []any{"sh", "scripts/mutation-pr.sh"}, "review_skill": exampleSkill})
+
+	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryPipeline, WithVars(vars), WithRunnerSkillLoads(map[string]bool{"oc": false}))
+
+	require.ErrorContains(t, err, "runner oc of step implement has no line that loads a skill before the first turn", out.String())
+	assert.NotContains(t, out.String(), "agent:", "no agent step ran")
 }

@@ -135,7 +135,7 @@ type children struct {
 	mu          sync.Mutex
 	gated       []string
 	reviewed    []string
-	readAt      []string            // the items that were reviewed at the first read of the integration pull request
+	readAt      []string            // the items that were reviewed at the last read of the integration pull request
 	reviewHooks map[string][]func() // the hooks that run when the review of the item has ended
 }
 
@@ -162,17 +162,15 @@ func (c *children) started() []string {
 	return items
 }
 
-// atIntegration records the items that are reviewed now, the first time the round reads the integration pull request.
+// atIntegration records the items that are reviewed now, at each read of the integration pull request, so the record is that of the last read.
 func (c *children) atIntegration() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.readAt == nil {
-		c.readAt = slices.Clone(c.reviewed)
-	}
+	c.readAt = slices.Clone(c.reviewed)
 }
 
-// reviewedAtIntegration returns the items that were reviewed when the round first read the integration pull request.
+// reviewedAtIntegration returns the items that were reviewed when the round last read the integration pull request.
 func (c *children) reviewedAtIntegration() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()

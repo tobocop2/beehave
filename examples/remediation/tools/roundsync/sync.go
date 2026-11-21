@@ -16,6 +16,8 @@ import (
 const (
 	// listLimit is the most pull requests one list reads.
 	listLimit = 10
+	// scanLimit is the most open pull requests of the round base that the search for older sync pull requests reads.
+	scanLimit = 200
 	// shortLength is the number of characters of the trunk tip in the name of the sync branch.
 	shortLength = 8
 	// draftLimit is the most time that the return of a pull request to draft may take after a failed or canceled merge.
@@ -45,16 +47,18 @@ type Forge interface {
 	BranchRef(ctx context.Context, branch string) (sha string, found bool, err error)
 	CreateBranch(ctx context.Context, branch, sha string) error
 	CreatePR(ctx context.Context, req model.NewPull) (int, error)
+	ClosePR(ctx context.Context, pr int, comment string) error
 	MergePR(ctx context.Context, pr int, sha string) error
 	SetDraft(ctx context.Context, pr int, draft bool) error
 	CommitsAhead(ctx context.Context, base, head string) (int, error)
 	MergeBranch(ctx context.Context, base, head string) (string, error)
 }
 
-// Request is one check: the round base and the trunk.
+// Request is one check: the round base, the trunk and the label of the pull request that the check opens. An empty Label adds none.
 type Request struct {
 	Base  string
 	Trunk string
+	Label string
 }
 
 // LandRequest is one landing: the pull request, the head that the gate ran on and the base tip that the sync recorded.
@@ -245,7 +249,35 @@ func (s *syncer) open(ctx context.Context, branch, baseTip string, number int) (
 		return Result{}, err
 	}
 
+	if err := s.closeOlder(ctx, branch, number); err != nil {
+		return Result{}, err
+	}
+
 	return Result{State: Synced, Branch: branch, PR: number, Head: head, BaseTip: baseTip}, nil
+}
+
+// closeOlder closes every other open sync pull request into the round base, not only older ones: branch names carry no order. The match is the prefix sync/<base>/, and the comment names the pull request that replaces it.
+// It runs on every call that reaches the open pull request, so a close that failed is tried again by the next call. A failed close is an error.
+func (s *syncer) closeOlder(ctx context.Context, branch string, replacement int) error {
+	rows, err := s.forge.PRList(ctx, scanLimit, "--state", "open", "--base", s.req.Base, "--json", "number,headRefName")
+	if err != nil {
+		return err
+	}
+
+	prefix := "sync/" + s.req.Base + "/"
+
+	for _, row := range rows {
+		if row.HeadRefName == nil || *row.HeadRefName == branch || !strings.HasPrefix(*row.HeadRefName, prefix) {
+			continue
+		}
+
+		comment := fmt.Sprintf("Closed: pull request #%d replaces this sync, which is for an older tip of %s.", replacement, s.req.Trunk)
+		if err := s.forge.ClosePR(ctx, row.Number, comment); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *syncer) create(ctx context.Context, branch string) (int, error) {
@@ -254,6 +286,7 @@ func (s *syncer) create(ctx context.Context, branch string) (int, error) {
 		Base:  s.req.Base,
 		Title: fmt.Sprintf("Merge %s into %s", s.req.Trunk, s.req.Base),
 		Body:  fmt.Sprintf("Brings the commits of %s that %s lacks into the round.", s.req.Trunk, s.req.Base),
+		Label: s.req.Label,
 	})
 }
 

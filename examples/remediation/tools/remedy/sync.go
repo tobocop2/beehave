@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	syncCheckUsage = "sync --base <branch> [--trunk <branch>]"
+	syncCheckUsage = "sync --base <branch> [--trunk <branch>] [--label <name>]"
 	syncLandUsage  = "sync land --pr <number> --head <sha> --base-tip <sha>"
-	syncUsage      = "usage: remedy sync --base <branch> [--trunk <branch>]\n       remedy sync land --pr <number> --head <sha> --base-tip <sha>\n"
+	syncUsage      = "usage: remedy sync --base <branch> [--trunk <branch>] [--label <name>]\n       remedy sync land --pr <number> --head <sha> --base-tip <sha>\n"
 	landWord       = "land"
 )
 
@@ -90,8 +90,8 @@ func runSync(ctx context.Context, deps Deps, call syncCall) (roundsync.Result, e
 
 // syncFlags are the values of the flags of sync and of sync land.
 type syncFlags struct {
-	base, trunk, head, baseTip string
-	pr                         int
+	base, trunk, head, baseTip, label string
+	pr                                int
 }
 
 func (f *syncFlags) declare(flags *flag.FlagSet, land bool) {
@@ -105,6 +105,7 @@ func (f *syncFlags) declare(flags *flag.FlagSet, land bool) {
 
 	flags.StringVar(&f.base, "base", "", "the round branch")
 	flags.StringVar(&f.trunk, "trunk", defaultTrunk, "the trunk branch")
+	flags.StringVar(&f.label, "label", defaultLabel, "the label of the sync pull request; empty adds none")
 }
 
 // complete says whether every flag of the call has a value.
@@ -125,7 +126,7 @@ func (f *syncFlags) call(land bool) syncCall {
 	}
 
 	return func(ctx context.Context, forge roundsync.Forge) (roundsync.Result, error) {
-		return roundsync.Check(ctx, forge, roundsync.Request{Base: f.base, Trunk: f.trunk})
+		return roundsync.Check(ctx, forge, roundsync.Request{Base: f.base, Trunk: f.trunk, Label: f.label})
 	}
 }
 
