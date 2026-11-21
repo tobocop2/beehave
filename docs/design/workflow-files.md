@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `push`, `queue`, `sandbox`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `sandbox`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -58,6 +58,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `push` | Safe. | Git exits 0 when the branch is already at the head, and checks no lease then. A replay of a push that landed passes. |
 | `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
+| `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
 | `wait` | Safe. It rests on the library, and no test in this table stops a wait. | The deadline is the output of a recorded DBOS sleep, and the answer is a durable receive. A resume waits for the same answer. |
 | `sleep` | Safe. It rests on the library. | The wake time is the record of a DBOS sleep. A test stops the engine in the middle of a sleep, and the resumed run sleeps only the time left. |
 | `write` with `read_back` | Safe. | The read-back runs first and finds a write that is done. |
@@ -71,7 +72,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -540,10 +541,23 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
 - If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
 - A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
-- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped` and `value`.
+- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd` and `value`.
+- `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
 - The wait is one recorded step that reads the rows of all the runs, so the record does not depend on the order in which the children end.
 - With `fail="raise"`, the step cancels the runs that are still open when it sees a run that failed, and records all the outcomes. The call then fails with the error of that run.
 - A restart replays `spawn` and `gather` from the records, and each child keeps its own output.
+
+#### `publish` and `progress`
+
+`publish(key, value, name="")` sets the value of a key of this run and returns None. A second call with the same key replaces the value. `progress(runs, key, name="")` reads the value of that key from each run and returns a list in the order of the call. Each element has the fields `item`, `run`, `set` and `value`.
+
+- A key has 1 to 64 characters from `a-z`, `0-9`, `_`, `.` and `-`, and starts with a letter or a digit. A key that starts with `beehave.` is reserved. The check of a workflow file refuses a literal key that breaks the rule, and the run refuses a computed one.
+- A value is a dict with string keys, a list, a tuple, a string, a number, a bool or None, at most 64 KiB as JSON, as the value of a child run is. The engine hides secrets in the value before it stores it.
+- `publish` sets a DBOS event of the run, named `u.<key>`, and the event `beehave.keys`, which lists the keys of the run in the order of their first use. DBOS has no call that lists the events of a run.
+- `progress` does not wait. A run that published nothing under the key reads `set = False` and `value = None`. A published None reads `set = True` and `value = None`.
+- `progress` accepts only the runs that a `spawn` call of this run returned, as `gather` does, and refuses any other run with `run <id> is not a child of this run`.
+- `progress` reads all the runs in one recorded step, so a replay of the parent returns the values of the first read, even if a child published again since.
+- `beehave status <run id> --events` prints the keys of a run and their last values, one line each, while the run goes on and after it ended. Add `--json` for one JSON list.
 
 #### The value of a child run
 
