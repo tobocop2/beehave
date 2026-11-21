@@ -1,0 +1,97 @@
+package PKG
+
+// The generator and the oracle of item 432. The oracle is a character loop written from the rule of the item.
+// It does not use the pattern under test. acceptance.sh puts this file into the package it runs.
+
+import "strings"
+
+// genAlphabet holds one character of each class that the check tells apart: a lower letter, an upper letter, a digit,
+// the dot, the hyphen, and two characters that the base already refuses.
+var genAlphabet = []byte{'a', 'Z', '7', '.', '-', '_', ' '}
+
+// namedInputs are the forms that the issue names, real aliases and the near neighbors of each form.
+var namedInputs = []string{
+	"gpu", "gpu-b", "local", "beehave-rig.us-central1-a.lance-bench-8389", "a.b", "a-b", "a.b.c",
+	"a.", "gpu.", "local.", "beehave-rig.us-central1-a.lance-bench-8389.", "a.b.",
+	"a..b", "a..", "gpu..b", "a...b",
+	"a.-b", "a.-", "gpu.-b",
+	"a-.b", "a-", "a--b", "a-.",
+	".a", "-a", "7a", "a_b", "a b", "",
+}
+
+// genInputs returns every string over genAlphabet of length 1 to maxLen, then the named inputs that it did not make.
+func genInputs(maxLen int) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	level := []string{""}
+	for n := 1; n <= maxLen; n++ {
+		next := []string{}
+		for _, prefix := range level {
+			for _, c := range genAlphabet {
+				s := prefix + string(c)
+				next = append(next, s)
+				seen[s] = true
+			}
+		}
+		out = append(out, next...)
+		level = next
+	}
+	for _, s := range namedInputs {
+		if !seen[s] {
+			out = append(out, s)
+			seen[s] = true
+		}
+	}
+	return out
+}
+
+func isLetter(c byte) bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') }
+func isDigit(c byte) bool  { return c >= '0' && c <= '9' }
+
+// oracleBase is the rule of the base: a letter, then letters, digits, dots and hyphens.
+func oracleBase(s string) bool {
+	if s == "" || !isLetter(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !isLetter(c) && !isDigit(c) && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// oracleHead is the rule of the head: the base rule, and no trailing dot, no ".." and no ".-".
+func oracleHead(s string) bool {
+	return oracleBase(s) && !strings.HasSuffix(s, ".") && !strings.Contains(s, "..") && !strings.Contains(s, ".-")
+}
+
+// classOf names the rule that decides s. A name starting "open:" is a form that the issue leaves open: it keeps its base value.
+func classOf(s string) string {
+	switch {
+	case !oracleBase(s):
+		return "base-refused"
+	case strings.HasSuffix(s, "."):
+		return "named:trailing-dot"
+	case strings.Contains(s, ".."):
+		return "named:dotdot"
+	case strings.Contains(s, ".-"):
+		return "named:dotdash"
+	case strings.HasSuffix(s, "-"):
+		return "open:trailing-hyphen"
+	case strings.Contains(s, "-."):
+		return "open:dashdot"
+	case strings.Contains(s, "--"):
+		return "open:dashdash"
+	default:
+		return "valid"
+	}
+}
+
+func word(ok bool) string {
+	if ok {
+		return "acc"
+	}
+	return "ref"
+}
