@@ -69,6 +69,30 @@ func TestSpawnRetries_AChildThatFailsOnceStartsAgainAsItsNextAttemptAndTheRaiseD
 	assert.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "gather:fan#1.retry1", "gather:fan#1.1", "command:after#1"}, stepNames(t, engine))
 }
 
+func TestSpawnRetries_ASecondGatherOfTheSpawnedRunsAcceptsThemAfterARetryAndSeesTheLastAttempt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	failTimes(h, "22", 1)
+	engine := h.engine(t)
+
+	body := `
+def worker(item):
+    command(name = "work", run = ["work", item.id])
+
+def main(item):
+    runs = spawn(items = ["21", "22"], entry = "worker", retries = 1, name = "fan")
+    gather(runs, name = "first")
+    again = gather(runs, name = "again")
+    command(name = "after", run = ["after"] + [r.item + ":" + ("ok" if r.ok else "failed") + ":" + str(r.attempts) for r in again.results])
+`
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+
+	require.NoError(t, err, "the runs that spawn returned stay children of this run after a retry")
+	assert.Equal(t, []string{"after 21:ok:1 22:ok:2"}, h.commands.ranBy(testItem))
+}
+
 func TestSpawnRetries_AChildThatFailsEachAttemptIsAFailedOutcomeAfterItsRetries(t *testing.T) {
 	t.Parallel()
 
