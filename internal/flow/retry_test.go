@@ -88,6 +88,20 @@ func TestCommandRetries_WhenTheAttemptsAreSpentTheLastExitCodeIsTheResult(t *tes
 	assert.Equal(t, "log 7 2", logged(h))
 }
 
+func TestCommandRetries_TheSpentRetriesLeaveOneRecordOfTheLastTry(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.commands.reply = codes(7)
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 2, backoff = \"1ms\", name = \"fetch\")\n")))
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, timesRun(h, "fetch"))
+	assert.Equal(t, []string{"command:fetch#1"}, stepNames(t, engine), "the step holds the last try, so a replay reads one record")
+}
+
 func TestCommandRetries_ACodeInStopOnRCIsNeverRetried(t *testing.T) {
 	t.Parallel()
 

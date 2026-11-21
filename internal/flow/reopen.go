@@ -75,9 +75,10 @@ func raised(steps []dbos.StepInfo) map[string]bool {
 // It reopens every such child, not only the first: a gather that raised canceled the children that were still open, and each of them must run again.
 func (c *Client) failedStep(steps []dbos.StepInfo, canceled map[string]bool, opts ...dbos.RewindWorkflowOption) (int, error) {
 	first := len(steps)
+	replaced := superseded(steps)
 
 	for _, step := range steps {
-		child, err := c.reopenChild(step.ChildWorkflowID, canceled, opts...)
+		child, err := c.reopenChild(reopenable(step, replaced), canceled, opts...)
 		if err != nil {
 			return 0, err
 		}
@@ -90,6 +91,51 @@ func (c *Client) failedStep(steps []dbos.StepInfo, canceled map[string]bool, opt
 	}
 
 	return first, nil
+}
+
+// superseded returns the item runs that the run started and then replaced with a later attempt of the same item, as gather does for a child with retries.
+// A resume reopens only the last attempt of each item, so no replaced attempt runs beside it.
+func superseded(steps []dbos.StepInfo) map[string]bool {
+	last := map[string]string{}
+
+	for _, step := range steps {
+		if item, ok := itemOfRun(step.ChildWorkflowID); ok {
+			last[item] = step.ChildWorkflowID
+		}
+	}
+
+	replaced := map[string]bool{}
+
+	for _, step := range steps {
+		if item, ok := itemOfRun(step.ChildWorkflowID); ok && last[item] != step.ChildWorkflowID {
+			replaced[step.ChildWorkflowID] = true
+		}
+	}
+
+	return replaced
+}
+
+// reopenable returns the child of the step that a resume may reopen. An attempt that a later attempt of its item replaced gives none.
+func reopenable(step dbos.StepInfo, replaced map[string]bool) string {
+	if replaced[step.ChildWorkflowID] {
+		return ""
+	}
+
+	return step.ChildWorkflowID
+}
+
+// itemOfRun returns the item of an item run id. ok is false for an id that runID did not make, such as the id of a phase.
+func itemOfRun(id string) (item string, ok bool) {
+	rest, found := strings.CutPrefix(id, runPrefix)
+	at := strings.LastIndex(rest, attemptMarker)
+
+	if !found || at < 0 {
+		return "", false
+	}
+
+	_, ok = attemptOf(rest[at:], attemptMarker)
+
+	return rest[:at], ok
 }
 
 // rewindPoint returns the step that a rewind goes back to: the look at the caps that opens the phase of a failed agent step, else the failed step.

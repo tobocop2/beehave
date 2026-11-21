@@ -4,7 +4,9 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,6 +21,17 @@ def main(item):
     done = gather(runs, ` + gatherArgs + `name = "fan")
     command(name = "after", run = ["after"] + [r.item + ":" + ("ok" if r.ok else "failed") + ":" + str(r.attempts) for r in done.results])
 `
+}
+
+// runStatus returns the status of one run by its id.
+func runStatus(t *testing.T, engine *Engine, id string) dbos.WorkflowStatusType {
+	t.Helper()
+
+	rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterWorkflowIDs(id))
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "run %s", id)
+
+	return rows[0].Status
 }
 
 // failTimes makes the commands of one item fail for its first n commands. It returns the count of the commands of the item that started.
@@ -121,6 +134,151 @@ func TestSpawnRetries_ARaiseFiresWhenTheRetriesAreSpent(t *testing.T) {
 	require.ErrorContains(t, err, errFake.Error())
 	assert.Equal(t, int32(2), tries.Load())
 	assert.Empty(t, h.commands.ranBy(testItem), "the raise ends the parent")
+}
+
+func TestSpawnRetries_AStartAgainThatTheQueueRefusesFailsTheParent(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	tries := failTimes(h, "22", 5)
+	engine := h.engine(t)
+
+	// A row of another workflow holds the id of the next attempt of item 22, so the library refuses to start the item run under it.
+	_, err := dbos.Enqueue[ItemResult](h.client(t, testVersion).flow, nobodyQueue, phaseName, PhaseInput{}, dbos.WithEnqueueWorkflowID(runID("22", 2)), dbos.WithEnqueueApplicationVersion(testVersion))
+	require.NoError(t, err)
+
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)))
+
+	require.ErrorContains(t, err, "start the run of item 22")
+	assert.Equal(t, int32(1), tries.Load(), "the refused start ran no second attempt")
+	assert.Empty(t, h.commands.ranBy(testItem))
+}
+
+func TestSpawnRetries_ThePlanOfAStartAgainReportsAFailedRunWhoseInputCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	enqueueRun(t, h.client(t, testVersion), runID("21", 1), "not an item input", testVersion)
+
+	_, err := engine.planRestarts(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: runID("21", 1), Retries: 1}}, []int{0})
+
+	require.ErrorContains(t, err, "read the input of run "+runID("21", 1))
+}
+
+// crashAtPick picks a login for each item, and crashes the parent at the second pick of its item: the plan of the start again.
+type crashAtPick struct {
+	noReset
+
+	item  string
+	picks *atomic.Int32
+	crash *crashOnce
+}
+
+func (p crashAtPick) Pick(_ context.Context, _, item string, _ []string, _ bool) (string, error) {
+	if item == p.item && p.picks.Add(1) == 2 {
+		p.crash.after()
+	}
+
+	return testLogin, nil
+}
+
+func TestSpawnRetries_ACrashWhileThePlanOfAStartAgainRunsStartsTheNextAttemptOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.picker = crashAtPick{item: "22", picks: &atomic.Int32{}, crash: newCrash(t, h)}
+
+	var (
+		tries   atomic.Int32
+		running atomic.Pointer[Engine]
+	)
+
+	// The first attempt of item 22 fails only when 21 and 23 ended, so the cancel that stands for the crash reaches no open sibling.
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		if request.Item != "22" || tries.Add(1) > 1 {
+			return nil
+		}
+
+		for !itemEnded(running.Load(), "21") || !itemEnded(running.Load(), "23") {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Millisecond):
+			}
+		}
+
+		return errFake
+	}
+
+	engine := h.engine(t)
+	running.Store(engine)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	require.Error(t, err, "the crash ends the parent")
+	require.Equal(t, []string{"spawn:fan#1", "gather:fan#1"}, stepNames(t, engine), "the crash cut the plan off before its record")
+
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
+	require.NoError(t, err)
+
+	last, _, err := latestRun(engine.ctx, "22")
+	require.NoError(t, err)
+	assert.Equal(t, 2, last.Attempt, "the resume planned and started the second attempt, and no third")
+	assert.Equal(t, int32(2), tries.Load(), "the item ran once more after the crash")
+	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem))
+}
+
+func TestSpawnRetries_AResumeOfTheParentReopensTheLastAttemptOfARetriedChildOnly(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	tries := failTimes(h, "22", 2)
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	require.ErrorContains(t, err, errFake.Error(), "both attempts of item 22 failed")
+	require.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "gather:fan#1.retry1", "gather:fan#1.1"}, stepNames(t, engine))
+
+	// The resume rewinds the parent to the start of the second attempt: the recorded plan of the start again replays, and the start runs again and joins the reopened run.
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
+	require.NoError(t, err)
+
+	last, _, err := latestRun(engine.ctx, "22")
+	require.NoError(t, err)
+	assert.Equal(t, 2, last.Attempt, "the resume reopened the second attempt and started no third")
+	assert.Equal(t, dbos.WorkflowStatusError, runStatus(t, engine, runID("22", 1)), "the first attempt stays failed")
+	assert.Equal(t, int32(3), tries.Load(), "only the reopened attempt ran again")
+	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem))
+	h.life.mu.Lock()
+	assert.Equal(t, 3, h.life.takes["22"], "one claim for each attempt and one for the reopen")
+	h.life.mu.Unlock()
+	assert.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "gather:fan#1.retry1", "gather:fan#1.1", "command:after#1"}, stepNames(t, engine))
+}
+
+func TestSpawnRetries_OnlyAnItemRunIdNamesAnItem(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, id, item string
+		ok             bool
+	}{
+		{name: "item_run", id: runID("bb-r12", 3), item: "bb-r12", ok: true},
+		{name: "phase_of_an_item_run", id: runID("12", 1) + "-5", ok: false},
+		{name: "no_child", id: "", ok: false},
+		{name: "no_attempt", id: runPrefix + "12", ok: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			item, ok := itemOfRun(tc.id)
+
+			assert.Equal(t, tc.ok, ok)
+
+			if tc.ok {
+				assert.Equal(t, tc.item, item)
+			}
+		})
+	}
 }
 
 func TestSpawnRetries_ARetriedChildStartsAgainOnTheQueueOfItsDepth(t *testing.T) {
