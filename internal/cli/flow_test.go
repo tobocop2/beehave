@@ -220,6 +220,12 @@ func (s *fakeSteering) AnswerAs(item, from, text string) error {
 	return cmp.Or(s.answerErrs[item], s.err)
 }
 
+func (s *fakeSteering) Send(item string, msg flow.Outgoing) (string, error) {
+	s.calls = append(s.calls, "send "+item+" "+msg.Topic+" "+msg.Key+" "+msg.Sender+" "+string(msg.Value))
+
+	return "id-1", s.err
+}
+
 func (s *fakeSteering) Resume(item string) error {
 	s.calls = append(s.calls, "resume "+item)
 

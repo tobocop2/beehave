@@ -64,9 +64,9 @@ func resultFields() map[string][]string {
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped"},
 	}
-	maps.Copy(fields, gateResultFields())
-	maps.Copy(fields, trackerResultFields())
-	maps.Copy(fields, factsResultFields())
+	for _, group := range []map[string][]string{gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields()} {
+		maps.Copy(fields, group)
+	}
 
 	return fields
 }

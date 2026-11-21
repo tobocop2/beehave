@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `sandbox`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -44,7 +44,7 @@ DBOS records a step only when the step ends. If the engine stops after the effec
 1. Check first. The step reads the state and sends no second write.
 2. A cited rule. The call is documented to treat a repeat as no change, and a test pins the exact call.
 3. The same value. A repeat sets the value that is set already, and no page states that this is a no-op. The status and comment writes of the `local` tracker use this basis.
-4. The library. DBOS replays the step and not beehave: `spawn`, `wait` and `sleep`.
+4. The library. DBOS replays the step and not beehave: `spawn`, `wait`, `sleep`, `send` and `recv`.
 
 Four cases are not safe today, and a later change fixes each of them.
 
@@ -59,6 +59,8 @@ Four cases are not safe today, and a later change fixes each of them.
 | `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
 | `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
+| `send` | Safe. It rests on the library. | The send carries an idempotency key made of the run and the step name, and the store inserts one message for a key. |
+| `recv` | Safe. It rests on the library. | The deadline is a recorded step, and the receive is a durable DBOS step. A resume receives the same message. |
 | `wait` | Safe. It rests on the library, and no test in this table stops a wait. | The deadline is the output of a recorded DBOS sleep, and the answer is a durable receive. A resume waits for the same answer. |
 | `sleep` | Safe. It rests on the library. | The wake time is the record of a DBOS sleep. A test stops the engine in the middle of a sleep, and the resumed run sleeps only the time left. |
 | `write` with `read_back` | Safe. | The read-back runs first and finds a write that is done. |
@@ -590,6 +592,33 @@ The resume also reopens each sibling that the raise canceled while it was open, 
 - The raise cancels the children of each canceled child, so no phase of a canceled child stays in the queue.
 - A canceled child gives its claim back on the next tick of the engine, not when the `gather` returns. If a resume comes right after the raise, it can ask you to run `beehave resume` again.
 - A failed parent cannot be cancelled, and a new attempt of it is refused until it resumes.
+
+### `send` and `recv`
+
+Each run has one inbox. A run sends a message to its parent or to a child, and a run reads its own inbox by topic.
+
+#### `send`
+
+`send(to, topic, value, name="")` puts a message on the inbox of another run, and returns `id`, the id of the message.
+
+- `to` is `"parent"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run.
+- `topic` is lowercase letters, digits, `.`, `_` and `-`. A topic that starts with `beehave.` is reserved.
+- `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
+- The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. It is the idempotency key of the send, so a resumed run inserts the message once.
+
+`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
+
+#### `recv`
+
+`recv(topic, timeout, name="")` waits for the next message of the topic on the inbox of the run. It returns `value`, `sender`, `id` and `timed_out`.
+
+- `timeout` is required, such as `"10m"`. When it passes, `timed_out` is true and `value` is None.
+- The messages of one topic come in the order that they arrived. A message of another topic waits for a later `recv` of its topic.
+- The deadline is a recorded step, so a resumed run waits only the time that is left.
+
+#### `beehave send`
+
+`beehave send <item> --topic <topic> <text>` puts a message on the inbox of the open run of the item. `--json <file>` gives the value as a file of JSON in place of the text. The command prints the id of the message. A second send with the same `--key` to the same run inserts nothing, so a repeated send delivers once. The sender of the message is `cli:<user>`.
 
 ### `command`
 

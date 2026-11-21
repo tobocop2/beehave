@@ -68,9 +68,7 @@ type Reading interface {
 // Steering reads and steers runs without running any.
 type Steering interface {
 	Reading
-	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
-	Answer(item, text string) error
-	AnswerAs(item, from, text string) error
+	Messaging
 	Resume(item string) error
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
@@ -82,6 +80,15 @@ type Steering interface {
 	ResumeOnThisBuild(item string) error
 	Canceling
 	Close() error
+}
+
+// Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
+type Messaging interface {
+	// Answer sends a plain answer. AnswerAs sends the answer of a named person, which a wait that names people needs.
+	Answer(item, text string) error
+	AnswerAs(item, from, text string) error
+	// Send puts a message on the inbox of the open run of an item and returns its id.
+	Send(item string, msg flow.Outgoing) (string, error)
 }
 
 // Canceling stops runs.
@@ -114,7 +121,7 @@ func (f flowCommands) add(root *cobra.Command) {
 		return
 	}
 
-	root.AddCommand(f.statusCommand(), f.answerCommand(), f.resumeCommand(), f.cancelCommand())
+	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.cancelCommand())
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
