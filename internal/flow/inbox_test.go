@@ -97,6 +97,30 @@ command(name = "got", run = ["got", str(a.value), str(b.value)])`)))
 	assert.False(t, hasStep(steps, "recv:b#1.deadline"), "the recv of b took the buffered message and waited for nothing")
 }
 
+func TestRecv_TakesTheMessagesOfOneTopicInOrderAndNoTopicThatOnlyStartsWithIt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := startRun(t, engine, writeFlow(t, bodyFlow(`a = recv("a", timeout = "1m", name = "a")
+b1 = recv("b", timeout = "1m", name = "b")
+b2 = recv("b", timeout = "1m", name = "b")
+g = recv("go", timeout = "50ms", name = "go")
+command(name = "got", run = ["got", str(a.value), str(b1.value), str(b2.value), str(g.timed_out)])`)))
+
+	stepRecorded(t, engine, "recv:a#1.deadline")
+
+	for _, msg := range []Outgoing{{Topic: "b", Value: json.RawMessage(`1`)}, {Topic: "gone", Value: json.RawMessage(`9`)}, {Topic: "b", Value: json.RawMessage(`2`)}, {Topic: "a", Value: json.RawMessage(`3`)}} {
+		_, err := client.Send(testItem, msg)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"got 3 1 2 True"}, h.commands.ranBy(testItem), "the first b came first, and the topic gone is not the topic go")
+}
+
 func TestRecv_AStoppedEngineEndsTheReceive(t *testing.T) {
 	t.Parallel()
 
