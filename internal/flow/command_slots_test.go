@@ -13,6 +13,8 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/host"
 )
 
 // slotJobs holds each host job of a test until the test lets it go. The jobs report their start on started, and the log keeps the order of the starts and the ends.
@@ -142,6 +144,47 @@ func TestCommand_ASlotCommandRunsOnTheHostOfItsGrantAndRecordsItsOutput(t *testi
 	assert.Equal(t, []string{testProject + "//mutation"}, asked, "the call asks for the class of its project and the host that host_up chose, empty here")
 	assert.Equal(t, []string{"x", "saw-the-output"}, h.commands.ran())
 	assert.Equal(t, "mutation", h.commands.requests[0].SlotClass)
+}
+
+// lostSlotJob makes a harness whose slot job of the class mutation loses its host.
+func lostSlotJob(t *testing.T) *harness {
+	t.Helper()
+
+	h := newHarness(t)
+	h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
+		if request.SlotClass == "mutation" {
+			return CommandOutput{}, fmt.Errorf("the box is gone: %w", host.ErrLost)
+		}
+
+		return CommandOutput{}, nil
+	}
+	h.slots = func(_, _, _ string) (SlotGrant, error) { return SlotGrant{Host: "box", Count: 1}, nil }
+
+	return h
+}
+
+func TestCommand_ASlotJobThatCannotRunRaisesByDefault(t *testing.T) {
+	t.Parallel()
+
+	h := lostSlotJob(t)
+
+	_, err := walkBody(t, h, "command(name = \"mutate\", run = [\"x\"], host = \"build\", slots = \"mutation\")\ncommand(name = \"later\", run = [\"later\"])\n")
+
+	require.ErrorContains(t, err, `command "mutate" could not run`)
+	assert.Equal(t, []string{"x"}, h.commands.ran(), "the run ends at the slot job")
+}
+
+func TestCommand_ASlotJobThatCannotRunIsTheResultWithFailureReturn(t *testing.T) {
+	t.Parallel()
+
+	h := lostSlotJob(t)
+
+	_, err := walkBody(t, h, "r = command(name = \"mutate\", run = [\"x\"], host = \"build\", slots = \"mutation\", failure = \"return\")\ncommand(name = \"log\", run = [\"log\", str(r.rc), str(r.attempts), r.error])\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.ran(), 2, "the run goes on after the slot job")
+	assert.Equal(t, []string{"log", "-1", "1"}, h.commands.requests[1].Run[:3])
+	assert.Contains(t, h.commands.requests[1].Run[3], "the box is gone")
 }
 
 func TestCommand_ASlotClassTheBuildCannotGrantIsRefusedAtTheCall(t *testing.T) {

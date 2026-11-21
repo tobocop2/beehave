@@ -127,8 +127,7 @@ def run_section(item, run, n, gen):
         body = json.encode({"run": run, "n": n, "gen": gen, "title": title_question[1], "question": title_question[2]}),
         parent = item.id,
     )
-    # A section that fails starts once more as a new attempt of its item. The section resets its claims first, so the second attempt starts clean.
-    spawned = spawn([made.id], entry = "section", retries = 1, name = "spawn-%d-%s" % (n, gen))
+    spawned = spawn([made.id], entry = "section", name = "spawn-%d-%s" % (n, gen))
     result = gather(spawned.runs, fail = "return", name = "wait-%d-%s" % (n, gen)).results[0]
     if not result.ok:
         fail("REFUSE: section %d stopped. See the child item %s. %s" % (n, made.id, result.error))

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.starlark.net/starlark"
 
 	"github.com/tobocop2/beehave/internal/step"
 	"github.com/tobocop2/beehave/internal/workflow"
@@ -42,7 +43,7 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
-		"command: rc,stderr,stdout",
+		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
 		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
 		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
@@ -66,7 +67,7 @@ var goldenShapes = map[string][]string{
 		"sleep: slept",
 		"spawn: runs",
 		"wait: answer,answers,timed_out",
-		"write: key,rc,skipped,stderr,stdout",
+		"write: attempts,key,rc,skipped,stderr,stdout",
 	},
 }
 
@@ -139,6 +140,9 @@ func TestStepsVersion_EveryPathThatRecordsAStepRefusesAKindOutsideTheTable(t *te
 	require.ErrorIs(t, err, errUnknownStepKind)
 
 	_, _, err = s.writePlan(writeRaw{})
+	require.ErrorIs(t, err, errUnknownStepKind)
+
+	_, err = s.gather(starlark.NewBuiltin("gather", nil), starlark.Tuple{starlark.NewList(nil)}, nil)
 	require.ErrorIs(t, err, errUnknownStepKind)
 
 	assert.Empty(t, s.counts, "a refused kind counts no call")

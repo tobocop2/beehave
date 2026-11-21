@@ -182,9 +182,14 @@ func TestUnpack_ReadsTheKeywordsOfTheSignature(t *testing.T) {
 		run, env, codes, processes  starlark.Value
 		timeout, host, stdin, label string
 		slots                       starlark.Value
+		retries                     int
+		backoff, failure            string
 	)
 
-	into := map[string]any{"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "max_new_processes": &processes, "slots": &slots, "name": &label}
+	into := map[string]any{
+		"run": &run, "host": &host, "stdin": &stdin, "env": &env, "timeout": &timeout, "stop_on_rc": &codes, "max_new_processes": &processes, "slots": &slots, "name": &label,
+		"retries": &retries, "backoff": &backoff, "failure": &failure,
+	}
 
 	kwargs := []starlark.Tuple{{starlark.String("name"), starlark.String("n")}}
 	err := workflow.Unpack("command", starlark.Tuple{starlark.NewList(nil)}, kwargs, into)
