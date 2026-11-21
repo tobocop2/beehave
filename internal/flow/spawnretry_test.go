@@ -147,6 +147,51 @@ def main(item):
 	assert.Equal(t, int32(1), tries.Load(), "the spawn call took no retries")
 }
 
+func TestSpawnRetries_AFailedChildStartsAgainWhileItsSiblingIsStillOpen(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	var (
+		tries   atomic.Int32
+		running atomic.Pointer[Engine]
+	)
+
+	// Item 22 fails once. Item 21 stays open until the second attempt of 22 exists, so the start again must come before the wait for all the runs is over.
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		switch {
+		case request.Item == "22" && tries.Add(1) == 1:
+			return errFake
+		case request.Item != "21":
+			return nil
+		}
+
+		deadline := time.After(20 * time.Second)
+
+		for {
+			if last, _, err := latestRun(running.Load().ctx, "22"); err == nil && last.Attempt == 2 {
+				return nil
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-deadline:
+				return errFake
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
+
+	engine := h.engine(t)
+	running.Store(engine)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem), "21 saw the second attempt of 22 start while it was open")
+}
+
 func TestSpawnRetries_AChildThatFailsEachAttemptIsAFailedOutcomeAfterItsRetries(t *testing.T) {
 	t.Parallel()
 
