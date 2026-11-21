@@ -49,6 +49,8 @@ type Reading interface {
 	Steps(id string) (flow.RunSteps, error)
 	// Lanes lists the lanes of one item across all its runs, oldest attempt first.
 	Lanes(item string) (flow.ItemLanes, error)
+	// Follow gives to emit each entry of the agent streams of a run or of the newest run of an item, as the entries arrive.
+	Follow(ctx context.Context, target string, emit func(flow.FollowedEntry)) error
 	// Poll returns the newest review poll that finished. The second value is false when none has.
 	Poll() (flow.PollOutput, bool, error)
 	// PollNotScheduled returns why the last launch could not schedule the review poll. It is empty when the poll is scheduled.
@@ -571,25 +573,40 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	}
 }
 
+// statusFlags are the flags of beehave status.
+type statusFlags struct {
+	config, item string
+	asJSON       bool
+	follow       bool
+	days         int
+}
+
+// bind adds the flags to the command.
+func (o *statusFlags) bind(command *cobra.Command) {
+	addConfigFlag(command, &o.config)
+	command.Flags().IntVar(&o.days, daysFlag, defaultDays, "show the per-day figures of this many local days, the current day included (the list only)")
+	command.Flags().StringVar(&o.item, itemFlag, "", "list the lanes of this item across all its runs")
+	command.Flags().BoolVar(&o.asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
+	command.Flags().BoolVar(&o.follow, followFlag, false, "print the text and the tool calls of the agent phases of a run as they arrive, until the run ends")
+}
+
 func (f flowCommands) statusCommand() *cobra.Command {
-	var (
-		flag   string
-		item   string
-		asJSON bool
-		days   int
-	)
+	var opts statusFlags
 
 	command := &cobra.Command{
-		Use:   "status [run id]",
+		Use:   "status [run id or item]",
 		Short: "List the runs, or the steps of one run",
 		Long:  statusHelp,
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  func(cmd *cobra.Command, args []string) error { return f.status(cmd, flag, item, args, asJSON, days) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.follow {
+				return f.follow(cmd, opts.config, opts.item, args, opts.asJSON)
+			}
+
+			return f.status(cmd, opts.config, opts.item, args, opts.asJSON, opts.days)
+		},
 	}
-	addConfigFlag(command, &flag)
-	command.Flags().IntVar(&days, daysFlag, defaultDays, "show the per-day figures of this many local days, the current day included (the list only)")
-	command.Flags().StringVar(&item, itemFlag, "", "list the lanes of this item across all its runs")
-	command.Flags().BoolVar(&asJSON, jsonFlag, false, "print the runs, the steps of one run, or the lanes of one item, as JSON for a script")
+	opts.bind(command)
 
 	return command
 }
@@ -602,6 +619,9 @@ const cancelRunFlag = "run"
 
 // itemFlag is the name of the flag that makes status list the lanes of one item.
 const itemFlag = "item"
+
+// followFlag is the name of the flag that makes status print the agent output of a run as it arrives.
+const followFlag = "follow"
 
 // daysFlag is the name of the flag that sets how many local days the per-day figures cover. defaultDays is its value when the flag is absent.
 const (
@@ -627,7 +647,14 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"Give a run id to list the steps of that run, one line each: the step name, the start time, the duration, the outcome and the fields that decide the flow. " +
 	"A step that runs now shows as running with its elapsed time. Add --" + jsonFlag + " for one JSON object that a script reads.\n\n" +
 	"Give --" + itemFlag + " to list the lanes of one item across all its runs, one line each: the run id, the step name, the label of the lane, " +
-	"the outcome and the fields that decide the flow."
+	"the outcome and the fields that decide the flow.\n\n" +
+	"Give a run id or an item id with --" + followFlag + " to print the text and the tool calls of each agent phase of the run, in order, as they arrive. " +
+	"An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output again and ends. " +
+	"A tool call reads as the name of the tool and its target. A token shaped like an Anthropic key is removed before a line is stored. Another secret is not. " +
+	"A run that waits for an answer keeps the command open. It prints one line with the question."
+
+// errFollowAlone is returned when --follow comes with --json, --item, or no run: it reads the output of one run.
+var errFollowAlone = errors.New("give one run id or item id with --" + followFlag + ", and no --" + jsonFlag + " or --" + itemFlag)
 
 // errItemAndRun is returned when status gets both a run id and --item: the two views answer different questions.
 var errItemAndRun = errors.New("give a run id or --" + itemFlag + ", not both")

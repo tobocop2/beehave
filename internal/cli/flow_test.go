@@ -133,6 +133,9 @@ type fakeSteering struct {
 	joinBlock bool
 	// closeErr is what Close returns.
 	closeErr error
+	// followed are the entries that Follow emits, and followErr is what it returns.
+	followed  []flow.FollowedEntry
+	followErr error
 }
 
 func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }

@@ -189,12 +189,20 @@ func (a agents) Run(ctx context.Context, request flow.AgentRequest) (agent.Resul
 	}
 
 	request, resumed := replayOf(request, runner, dir, adapter)
-	tap := newSessionTap(adapter, a.prices, request.Named)
+	tap := a.tapOf(adapter, request)
 
 	result, err := endOf(adapter, runner, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box), request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, box)
 
 	return result, err
+}
+
+// tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
+func (a agents) tapOf(adapter agent.Adapter, request flow.AgentRequest) *sessionTap {
+	tap := newSessionTap(adapter, a.prices, request.Named)
+	tap.said = request.Said
+
+	return tap
 }
 
 // replayOf returns the request to run for a start that follows a lost run, and whether it resumes the session of that run.
@@ -515,6 +523,8 @@ type sessionTap struct {
 	prices agent.Prices
 	// named receives each new session id at the line that holds it, or is nil.
 	named func(session string)
+	// said receives each message text and tool call at the line that holds it, or is nil.
+	said func(agent.Said)
 }
 
 // newSessionTap returns a tap that estimates the cost of a run from the price table, and gives each new session id to named, when named is set.
@@ -568,6 +578,7 @@ func (t *sessionTap) see(line string) {
 
 	seen := t.adapter.Calls(line)
 	t.shell, t.skills = append(t.shell, seen.Shell...), append(t.skills, seen.Skills...)
+	t.speak(seen.Said)
 
 	mark(t.refused, seen.Refused)
 	mark(t.succeeded, seen.Succeeded)
@@ -577,6 +588,17 @@ func (t *sessionTap) see(line string) {
 
 	if seen.Invalid {
 		t.invalid++
+	}
+}
+
+// speak gives each message text and tool call of a line to the callback of the tap, when it has one. The caller holds the lock, so they arrive in the order of the lines.
+func (t *sessionTap) speak(said []agent.Said) {
+	if t.said == nil {
+		return
+	}
+
+	for _, one := range said {
+		t.said(one)
 	}
 }
 
