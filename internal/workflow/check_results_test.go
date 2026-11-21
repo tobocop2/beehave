@@ -187,7 +187,7 @@ func TestCheck_AFieldOfACallThatIsNotTheBuiltinIsLeftToTheRun(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "command", "earlier_calls", "facts", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "recv", "send", "sleep", "spawn", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "cancel", "command", "earlier_calls", "facts", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "recv", "send", "sleep", "spawn", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {

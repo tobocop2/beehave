@@ -401,7 +401,11 @@ func swarmSignatures() map[string][]Param {
 			forbidText(), words("gate_run"), opt("integration", KindInt), opt("hand_off", KindBool),
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
-		gatherName: {req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()), label},
+		gatherName: {
+			req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()),
+			ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), one(OnTimeoutKeyword, OnTimeoutModes()), label,
+		},
+		cancelName: {req("run", KindAny), label},
 		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
 		queueName:  {label, opt("hold", KindText), opt("label", KindText)},
 	}
@@ -587,6 +591,17 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.asking(call, params)
 	case mergeName:
 		g.handingOff(call, params)
+	case gatherName:
+		g.deadlineMode(call, params)
+	}
+}
+
+// deadlineMode refuses a gather call that names on_timeout and no timeout, as the run does.
+func (g *graph) deadlineMode(call *syntax.CallExpr, params []Param) {
+	mode := paramArg(call, params, OnTimeoutKeyword)
+
+	if err := DeadlineMode(paramArg(call, params, timeoutKeyword) != nil, mode != nil); err != nil {
+		g.report(placeOf(syntax.Start(mode)), gatherName+": "+err.Error()+".")
 	}
 }
 

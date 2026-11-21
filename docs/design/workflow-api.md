@@ -62,6 +62,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `agent` | `runner` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `sandbox` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `agent` | `timeout` | unchanged | 6: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 4 more |
+| `cancel` | `-` | #593: new, cancels one run that spawn returned, with its children | 1: `examples/planner/workflow.star` |
+| `cancel` | `name` | #593: new | 1: `examples/planner/workflow.star` |
+| `cancel` | `run` | #593: new | 1: `examples/planner/workflow.star` |
 | `closing_references` | `-` | #586: new, reads the issues that the pull request of the item closes | 1: `internal/workflow/lib/review_fix.star` |
 | `closing_references` | `text` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `command` | `-` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
@@ -81,7 +84,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `earlier_calls` | `call` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `name` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `env` | `-` | unchanged | 18: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 16 more |
-| `env` | `default` | unchanged | 11: `examples/approvals/policy.star`, `examples/desk/eval.star` and 9 more |
+| `env` | `default` | unchanged | 12: `examples/approvals/policy.star`, `examples/desk/eval.star` and 10 more |
 | `env` | `name` | unchanged | 18: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 16 more |
 | `facts` | `-` | unchanged | 3: `examples/remediation/workflow.star`, `examples/ticket-pipeline/backfill.star` and 1 more |
 | `gate` | `-` | unchanged | 5: `examples/local/workflow.star`, `examples/maintenance/bump.star` and 3 more |
@@ -95,7 +98,9 @@ The Change column says how the pair differs from the contract that the five piec
 | `gather` | `-` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `gather` | `fail` | unchanged | 5: `examples/desk/eval.star`, `examples/desk/workflow.star` and 3 more |
 | `gather` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `on_timeout` | #593: new, `cancel` or `return` for the runs still open at the deadline | 1: `examples/planner/workflow.star` |
 | `gather` | `runs` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `timeout` | #593: new, the deadline of the group | 1: `examples/planner/workflow.star` |
 | `gather` | `until` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `host_teardown` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `host` | unchanged | 1: `examples/remediation/workflow.star` |

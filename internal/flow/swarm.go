@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
@@ -32,6 +33,16 @@ const (
 	failRaise   = "raise"
 	untilAll    = "all"
 	untilAny    = "any"
+	// deadlineError is the error of a run that was still open at the deadline of a gather.
+	deadlineError = "deadline"
+	// cancelSuffix ends the name of the step that cancels the runs that were open at the deadline of a gather, after the name of the gather step.
+	cancelSuffix = ".cancel"
+	// openSuffix ends the name of the step that records whether the run of a cancel call is open, after the name of the cancel step.
+	openSuffix = ".open"
+	// cancelKind is the step kind of the cancel builtin.
+	cancelKind = "cancel"
+	// gatherKind is the step kind of the gather builtin.
+	gatherKind = "gather"
 	// nameKeyword is the keyword of a builtin call that names its step. The keywords below are those that more than one builtin takes.
 	nameKeyword    = "name"
 	runKeyword     = "run"
@@ -86,6 +97,8 @@ type childOutcome struct {
 	Value json.RawMessage `json:"value,omitempty"`
 	// Attempts is the number of runs of the item that the gather waited for: 1, and one more for each start again after a failure.
 	Attempts int `json:"attempts,omitempty"`
+	// Open is true for a run that was still open at the deadline of a gather with on_timeout "return".
+	Open bool `json:"open,omitempty"`
 }
 
 // gathered is the output of the gather step: the outcome of each run in the order of the call. Failed holds the error that fail="raise" raises after the step.
@@ -96,6 +109,11 @@ type gathered struct {
 	Canceled []string `json:"canceled,omitempty"`
 	// Retry holds the places in the runs of the call of the runs that failed with retries left. The gather starts each one again and waits once more.
 	Retry []int `json:"retry,omitempty"`
+	// Expired holds the ids of the runs that were open at the deadline of a gather with on_timeout "cancel". The step after the wait cancels them,
+	// so the record of the outcomes comes before any cancel and a replay reads each of them as "deadline".
+	Expired []string `json:"expired,omitempty"`
+	// Deadline is the deadline that the wait used, in Unix milliseconds, or 0 for a wait with no deadline. Each wait of a call records the same one.
+	Deadline int64 `json:"deadline,omitempty"`
 }
 
 // spawn starts the items as runs of the same workflow file and returns their run ids. Each run executes the function entry(item) on the bytes that this run pinned.
@@ -384,12 +402,7 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return nil, err
 	}
 
-	name, err := s.name("gather", call.label)
-	if err != nil {
-		return nil, err
-	}
-
-	done, err := s.gatherRetried(name, refs, call)
+	done, err := s.waitFor(call, refs)
 	if err != nil {
 		return nil, err
 	}
@@ -401,10 +414,12 @@ func (s *script) gather(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	return outcomesValue(done.Outcomes)
 }
 
-// gatherCall is the arguments of a gather call.
+// gatherCall is the arguments of a gather call. wait and mode are the deadline of the group that timeout and on_timeout give.
 type gatherCall struct {
-	runs               starlark.Value
-	fail, until, label string
+	runs                                   starlark.Value
+	fail, until, timeout, onTimeout, label string
+	wait                                   time.Duration
+	mode                                   workflow.OnTimeout
 }
 
 // unpackGather reads and checks the arguments of a gather call, and returns the runs it names.
@@ -412,22 +427,35 @@ func unpackGather(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tu
 	call := gatherCall{fail: failReturn, until: untilAll}
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"runs": &call.runs, "fail": &call.fail, "until": &call.until, nameKeyword: &call.label,
+		"runs": &call.runs, "fail": &call.fail, "until": &call.until, timeoutKeyword: &call.timeout, workflow.OnTimeoutKeyword: &call.onTimeout, nameKeyword: &call.label,
 	}); err != nil {
 		return call, nil, err
 	}
 
-	if !slices.Contains(workflow.UntilModes(), call.until) {
-		return call, nil, fmt.Errorf("`until` is %q. Use \"all\" or \"any\"", call.until)
-	}
-
-	if !slices.Contains(workflow.FailModes(), call.fail) {
-		return call, nil, fmt.Errorf("`fail` is %q. Use \"return\" or \"raise\"", call.fail)
+	if err := call.check(); err != nil {
+		return call, nil, err
 	}
 
 	refs, err := runRefs(call.runs)
 
 	return call, refs, err
+}
+
+// check refuses a mode of a gather call that is not in its closed set, and reads the deadline of the group.
+func (c *gatherCall) check() error {
+	if !slices.Contains(workflow.UntilModes(), c.until) {
+		return fmt.Errorf("`until` is %q. Use \"all\" or \"any\"", c.until)
+	}
+
+	if !slices.Contains(workflow.FailModes(), c.fail) {
+		return fmt.Errorf("`fail` is %q. Use \"return\" or \"raise\"", c.fail)
+	}
+
+	var err error
+
+	c.wait, c.mode, err = workflow.GroupDeadline(c.timeout, c.onTimeout)
+
+	return err
 }
 
 // runRefs reads the runs argument: the struct that spawn returned, or a list of its run structs.
@@ -468,7 +496,8 @@ func textAttr(holder starlark.HasAttrs, name string) string {
 	return text
 }
 
-// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped, cost_usd, value and attempts.
+// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped, cost_usd, value,
+// attempts and open.
 // The value is what the entry function of the run returned, or None.
 func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 	results := make([]starlark.Value, len(outcomes))
@@ -483,6 +512,7 @@ func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
 			mergeKey: starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "cost_usd": starlark.Float(one.CostUSD), valueField: value,
 			attemptsField: starlark.MakeInt(one.Attempts),
+			"open":        starlark.Bool(one.Open),
 		})
 	}
 
@@ -508,23 +538,28 @@ type look struct {
 	out      childOutcome
 }
 
+// gatherRule is how a gather step waits: raise cancels the open runs at the first failure, first ends the wait at the first run that ended,
+// and end, when set, is the deadline of the group, with what onTimeout does to the runs that are still open then.
+type gatherRule struct {
+	raise, first bool
+	end          time.Time
+	onTimeout    workflow.OnTimeout
+}
+
 // gather waits until every run ended, or until ctx ends. It reads the rows of the runs once for each poll.
 // The first read that shows a failed run, with raise set, cancels the runs that are still open. The wait goes on until they ended, so the outcomes are final.
 // With first set, the wait ends at the first read that shows a run no longer open, and the outcomes are those of the runs that ended. A raise that fired overrides it.
-func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, raise, first bool) (gathered, error) {
+// With a deadline, the wait ends at it, and the runs that are still open read "deadline". With cancel the step after the wait cancels them.
+func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, rule gatherRule) (gathered, error) {
 	fired := raiseResult{trigger: -1}
 
 	for {
-		looks, err := e.readRuns(refs)
-		if err == nil && raise && fired.trigger < 0 {
-			fired, err = e.cancelOnFailure(in.Project, looks)
-		}
+		done, finished, err := e.gatherOnce(in, refs, rule, &fired)
+		if err != nil || finished {
+			if !rule.end.IsZero() {
+				done.Deadline = rule.end.UnixMilli()
+			}
 
-		if err != nil {
-			return gathered{}, err
-		}
-
-		if done, over, err := e.waitDone(in.Item, looks, fired, first); over {
 			return done, err
 		}
 
@@ -532,6 +567,124 @@ func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, ra
 			return gathered{}, err
 		}
 	}
+}
+
+// gatherOnce is one poll of the wait of gather: it reads the runs, fires the raise, and reports the output of the step when the wait is over.
+// A run that failed with retries left ends the wait first, before the deadline, so gather starts it again and waits once more for the same deadline.
+func (e *Engine) gatherOnce(in ItemInput, refs []spawnedRun, rule gatherRule, fired *raiseResult) (gathered, bool, error) {
+	looks, err := e.readRuns(refs)
+	if err == nil && rule.raise && fired.trigger < 0 {
+		*fired, err = e.cancelOnFailure(in.Project, looks)
+	}
+
+	if err != nil {
+		return gathered{}, false, err
+	}
+
+	if done, over, err := e.waitDone(in.Item, looks, *fired, rule.first); over {
+		return done, true, err
+	}
+
+	if rule.end.IsZero() || e.deps.Clock.reading().Before(rule.end) {
+		return gathered{}, false, nil
+	}
+
+	done, err := e.atDeadline(in.Item, looks, *fired, rule.onTimeout)
+
+	return done, true, err
+}
+
+// atDeadline ends the wait of gather at the deadline of the group, with the priced outcomes of every run. Each open run reads ok False with the error
+// "deadline". With return it reads open True and goes on. With cancel its id goes to Expired, and the step after the wait cancels it: this step cancels
+// nothing, so its record cannot follow a cancel.
+func (e *Engine) atDeadline(parent string, looks []look, fired raiseResult, mode workflow.OnTimeout) (gathered, error) {
+	expired := deadlineOutcomes(looks, mode)
+
+	done, err := e.priced(parent, looks, fired)
+	done.Expired = expired
+
+	return done, err
+}
+
+// deadlineOutcomes sets the outcome of each run that is open at the deadline, and returns the ids of the runs that the cancel step cancels.
+func deadlineOutcomes(looks []look, mode workflow.OnTimeout) []string {
+	var expired []string
+
+	for i, l := range looks {
+		if !l.open {
+			continue
+		}
+
+		looks[i].out = childOutcome{Item: l.ref.Item, Error: deadlineError, Open: mode == workflow.OnTimeoutReturn}
+		if mode == workflow.OnTimeoutCancel {
+			expired = append(expired, l.ref.Run)
+		}
+	}
+
+	return expired
+}
+
+// waitFor runs the steps of one gather call: the deadline step when the call sets a timeout, the wait steps of gather:<label>#<n> with the retries of the
+// runs, and the cancel step of the runs that were open at a deadline with on_timeout "cancel".
+func (s *script) waitFor(call gatherCall, spawned []spawnedRun) (gathered, error) {
+	rule, err := s.gatherRule(call)
+	if err != nil {
+		return gathered{}, err
+	}
+
+	name, err := s.name(gatherKind, call.label)
+	if err != nil {
+		return gathered{}, err
+	}
+
+	done, err := s.gatherRetried(name, spawned, rule)
+	if err == nil {
+		err = s.cancelExpired(name, spawned, done.Expired)
+	}
+
+	return done, err
+}
+
+// cancelExpired cancels the runs that were open at the deadline of a gather with on_timeout "cancel", as the step <gather step>.cancel after the wait,
+// through the path of beehave cancel. Each one is the latest attempt of a spawned run. A run that has ended since is left as it is, and the children of a
+// run that is canceled already are canceled.
+func (s *script) cancelExpired(step string, spawned []spawnedRun, expired []string) error {
+	if len(expired) == 0 {
+		return nil
+	}
+
+	latest, _ := s.lastAttempts(spawned)
+	open := slices.DeleteFunc(latest, func(ref spawnedRun) bool { return !slices.Contains(expired, ref.Run) })
+
+	_, err := runStep(s.e, s.ctx, step+cancelSuffix, func(context.Context) ([]string, error) { return s.e.cancelRefs(s.in.Project, open) })
+
+	return err
+}
+
+// cancelRefs reads the runs and cancels each one that is open, with the children of each one that is canceled already. It returns the ids it canceled.
+func (e *Engine) cancelRefs(project string, refs []spawnedRun) ([]string, error) {
+	looks, err := e.readRuns(refs)
+	if err != nil {
+		return nil, err
+	}
+
+	return e.cancelOpen(project, looks)
+}
+
+// gatherRule makes the rule of the wait of a gather call. A call that sets a timeout records its deadline first, as the step gather:<label>#<n>.deadline before
+// the gather step, so a replay keeps the first deadline. A call with no timeout has no deadline and records nothing.
+func (s *script) gatherRule(call gatherCall) (gatherRule, error) {
+	rule := gatherRule{raise: call.fail == failRaise, first: call.until == untilAny, onTimeout: call.mode}
+	if call.wait <= 0 {
+		return rule, nil
+	}
+
+	millis, err := runStep(s.e, s.ctx, s.nextName(gatherKind, call.label)+deadlineSuffix, func(context.Context) (int64, error) {
+		return s.e.deps.Clock.reading().Add(call.wait).UnixMilli(), nil
+	})
+	rule.end = time.UnixMilli(millis)
+
+	return rule, err
 }
 
 // waitDone reports whether the wait of gather is over, and the output of the step when it is. A run that failed with retries left ends the wait first,

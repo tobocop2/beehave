@@ -55,7 +55,7 @@ func recordsCountedStep(builtin string) bool {
 
 // stepDefs lists the builtins of this package. The names are the builtins of workflow.Builtins less json, which is the module of the Starlark library.
 func stepDefs() []builtinDef {
-	return slices.Concat(repositoryDefs(), itemDefs(), eventDefs(), runDefs(), inboxDefs())
+	return slices.Concat(repositoryDefs(), itemDefs(), eventDefs(), runDefs(), inboxDefs(), swarmDefs())
 }
 
 // repositoryDefs lists the builtins that read git or a forge. The engine refuses a call of one of them in a project with no repository.
@@ -99,7 +99,6 @@ func runDefs() []builtinDef {
 		{name: "earlier_calls", call: (*script).earlierCalls},
 		{name: "env", call: (*script).env},
 		{name: "facts", call: (*script).facts},
-		{name: "gather", call: (*script).gather},
 		{name: "host_teardown", call: (*script).hostTeardown},
 		{name: "host_up", call: (*script).hostUp},
 		{name: "now", call: (*script).now},
@@ -107,10 +106,18 @@ func runDefs() []builtinDef {
 		{name: "queue", call: (*script).queue},
 		{name: "sandbox", call: (*script).sandbox},
 		{name: "sleep", call: (*script).sleep},
-		{name: "spawn", call: (*script).spawn},
 		{name: "struct", call: structCall},
 		{name: "wait", call: (*script).wait},
 		{name: "write", call: (*script).writeOutside},
+	}
+}
+
+// swarmDefs lists the builtins that start child runs, wait for them and cancel them.
+func swarmDefs() []builtinDef {
+	return []builtinDef{
+		{name: cancelKind, call: (*script).cancel},
+		{name: gatherKind, call: (*script).gather},
+		{name: "spawn", call: (*script).spawn},
 	}
 }
 
