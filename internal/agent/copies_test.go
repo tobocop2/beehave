@@ -44,9 +44,3 @@ func TestRunner_ALaunchCopyThatCannotBeMadeDoesNotStartTheCLI(t *testing.T) { //
 		assert.NoFileExists(t, filepath.Join(records, "args"), name)
 	}
 }
-
-func TestLaunch_ACopyIsNotEmpty(t *testing.T) {
-	t.Parallel()
-
-	assert.False(t, agent.Launch{Copies: map[string]string{"a": "/b"}}.Empty())
-}

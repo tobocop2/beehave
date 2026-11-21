@@ -15,7 +15,7 @@ import (
 )
 
 // failFirstThenRelease fails the first command of item 21. The command of item 21 with the count releaseAt releases the commands of item 22, which wait for it.
-// So item 22 ends only after the second attempt of 21 runs that far, and a gather with until="any" returns 22 while 21 is open.
+// So item 22 ends only after the second attempt of 21 runs that far, and a first_of returns 22 while 21 is open.
 func failFirstThenRelease(t *testing.T, h *harness, releaseAt int32) {
 	t.Helper()
 
@@ -59,7 +59,7 @@ def quick(item):
 def main(item):
     a = spawn(items = ["21"], entry = "child", retries = 1, name = "a")
     b = spawn(items = ["22"], entry = "quick", name = "b")
-    ended = gather(a.runs + b.runs, until = "any", name = "first")
+    first_of(runs = a.runs + b.runs, name = "first")
 ` + then + `
     gather(a, name = "all")
 `

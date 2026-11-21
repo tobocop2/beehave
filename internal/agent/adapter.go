@@ -129,11 +129,9 @@ type Launch struct {
 	Files  map[string]string
 	Copies map[string]string
 	Loaded string
-}
-
-// Empty is true when the launch adds nothing to the run.
-func (l Launch) Empty() bool {
-	return len(l.Args) == 0 && len(l.Env) == 0 && len(l.Files) == 0 && len(l.Copies) == 0 && l.Loaded == ""
+	// Hooked is true when the launch holds the hook that refuses a command before it runs. An adapter sets it only when it adds that hook for a guard command.
+	// A launch can hold other settings with no hook, so the arguments do not tell.
+	Hooked bool
 }
 
 // Tokens counts the tokens of a run. Input holds every input token, the cached ones included; Output holds every output token, the reasoning ones included.
@@ -226,7 +224,7 @@ type Adapter interface {
 	// when command exits with code 2; the launch is empty of a hook when the CLI has no such option. An empty command adds no hook.
 	// write lists the files that the file tools of the run may read and write, each by its exact path (Spec.Write): the launch opens each one, whatever the command.
 	// skills lists the folder of each skill that the run loads (Spec.Skills): the launch copies each one into the run folder and loads it as a plugin, if the CLI has such a plugin.
-	// The launch is empty when command, write and skills are empty.
+	// The launch adds nothing for command, write and skills when they are empty. It can still carry the settings that keep the commits of the run free of an attribution trailer.
 	// runDir is the folder of the run: a path in Files is relative to it, and Args or Env can name a file in it.
 	Guard(command, runDir string, write, skills []string) Launch
 	// Sandbox returns the launch that confines the shell of one run to the plan, and nothing else the CLI reads can widen it: no settings file and no MCP server.

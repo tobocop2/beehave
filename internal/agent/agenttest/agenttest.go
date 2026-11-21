@@ -40,7 +40,16 @@ type Factory func() agent.Adapter
 // Option changes what TestAdapter checks.
 type Option func(*options)
 
-type options struct{ costLine string }
+type options struct {
+	costLine string
+	launch   []string
+}
+
+// WithLaunchArgs gives the arguments that the launch of the adapter adds after the arguments of the profile in a plain run. The suite checks the whole
+// argument list of the CLI against the profile and these arguments. An adapter whose launch adds none passes no option.
+func WithLaunchArgs(args ...string) Option {
+	return func(o *options) { o.launch = args }
+}
 
 // WithCostLine gives a line of the output of the CLI that reports dollars. An adapter whose profile sets StreamsCost must pass one: the suite checks that
 // Calls reads dollars from it (Seen.Spent above 0) and returns the same other fields for each reader.
@@ -61,7 +70,7 @@ func TestAdapter(t *testing.T, make Factory, opts ...Option) {
 		CheckProfile(t, make())
 	})
 	t.Run("a_run_follows_the_profile", func(t *testing.T) {
-		CheckRun(t, make(), t.TempDir())
+		CheckRun(t, make(), t.TempDir(), o.launch...)
 	})
 	t.Run("a_launch_keeps_its_files_inside_the_run_folder", func(t *testing.T) {
 		CheckLaunch(t, make())
@@ -120,7 +129,7 @@ func checkTranscriptPath(r Reporter, adapter agent.Adapter, dir string) {
 func testLimits(t *testing.T, make Factory, o options) {
 	t.Helper()
 	t.Run("a_step_with_no_edits_follows_the_no_edit_profile", func(t *testing.T) {
-		CheckNoEdits(t, make(), t.TempDir())
+		CheckNoEdits(t, make(), t.TempDir(), o.launch...)
 	})
 	t.Run("a_cost_cap_follows_the_profile", func(t *testing.T) {
 		CheckBudget(t, make(), t.TempDir(), o.costLine)
@@ -152,8 +161,9 @@ func CheckProfile(r Reporter, adapter agent.Adapter) {
 }
 
 // CheckRun starts a fake CLI named by the profile, in dir, and checks what it saw: the arguments of the profile, the prompt on stdin,
-// the login folder in each login variable, the token in its variable and none of the other variables of the caller.
-func CheckRun(r Reporter, adapter agent.Adapter, dir string) {
+// the login folder in each login variable, the token in its variable and none of the other variables of the caller. The argument list is exact: the arguments
+// of the profile, then launch, the arguments that the launch of the adapter adds.
+func CheckRun(r Reporter, adapter agent.Adapter, dir string, launch ...string) {
 	r.Helper()
 
 	profile := adapter.Profile()
@@ -169,7 +179,7 @@ func CheckRun(r Reporter, adapter agent.Adapter, dir string) {
 	result := runFake(adapter, dir, &out)
 
 	expect(r, result.Outcome == agent.OutcomeExited && result.ExitCode == 0, "the run did not exit with code 0: %+v", result)
-	checkSeen(r, profile, dir, strings.Split(out.String(), "\n"))
+	checkSeen(r, profile, dir, strings.Split(out.String(), "\n"), launch)
 }
 
 // runFake starts the adapter in dir with the prompt, the token and one variable of the caller that must not reach the CLI.
@@ -194,8 +204,8 @@ func runFake(adapter agent.Adapter, dir string, out io.Writer, change ...func(*a
 }
 
 // CheckNoEdits starts the fake CLI with NoEdits set, and checks that it got the arguments of the profile followed by NoEditArgs, with no EditArgs, and every
-// variable of NoEditEnv. A run that may edit must get none of them.
-func CheckNoEdits(r Reporter, adapter agent.Adapter, dir string) {
+// variable of NoEditEnv. A run that may edit must get none of them. The argument list is exact, and launch is what the launch of the adapter adds after it.
+func CheckNoEdits(r Reporter, adapter agent.Adapter, dir string, launch ...string) {
 	r.Helper()
 
 	profile := adapter.Profile()
@@ -209,14 +219,14 @@ func CheckNoEdits(r Reporter, adapter agent.Adapter, dir string) {
 	runFake(adapter, dir, &noEdits, func(s *agent.Spec) { s.NoEdits = true })
 	runFake(adapter, dir, &edits)
 
-	checkNoEditSeen(r, profile, strings.Split(noEdits.String(), "\n"), strings.Split(edits.String(), "\n"))
+	checkNoEditSeen(r, profile, strings.Split(noEdits.String(), "\n"), strings.Split(edits.String(), "\n"), launch)
 }
 
 // checkNoEditSeen checks the lines that the fake CLI printed for a step with no edits (seen) and for a step that may edit (mayEdit).
-func checkNoEditSeen(r Reporter, profile agent.Profile, seen, mayEdit []string) {
+func checkNoEditSeen(r Reporter, profile agent.Profile, seen, mayEdit, launch []string) {
 	r.Helper()
 
-	args := append(slices.Clone(profile.Args), profile.NoEditArgs...)
+	args := slices.Concat(profile.Args, profile.NoEditArgs, launch)
 	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI of a step with no edits did not get the arguments %q", args)
 
 	for name, value := range profile.NoEditEnv {
@@ -295,10 +305,10 @@ func checkCostLine(r Reporter, adapter agent.Adapter, line string) {
 }
 
 // checkSeen checks the lines the fake CLI printed against the profile.
-func checkSeen(r Reporter, profile agent.Profile, dir string, seen []string) {
+func checkSeen(r Reporter, profile agent.Profile, dir string, seen, launch []string) {
 	r.Helper()
 
-	args := append(slices.Clone(profile.Args), profile.EditArgs...)
+	args := slices.Concat(profile.Args, profile.EditArgs, launch)
 	expect(r, slices.Contains(seen, "args="+strings.Join(args, " ")), "the CLI did not get the arguments of the profile %q", args)
 	expect(r, slices.Contains(seen, "stdin="+prompt), "the CLI did not get the prompt on stdin")
 

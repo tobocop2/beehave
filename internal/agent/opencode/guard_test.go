@@ -84,10 +84,17 @@ func TestGuard_OpensTheFolderOfEachOutputFileThroughTheInlineConfigInEveryMode(t
 	assert.NotContains(t, open.Env, "OPENCODE_PERMISSION", "the variable of a step with no edits is not replaced")
 }
 
-func TestGuard_AStepWithNoGuardAndNoOutputFileAddsNothing(t *testing.T) {
+func TestGuard_OnlyALaunchWithAGuardCommandIsHooked(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, opencode.New().Guard("", "/run", nil, nil).Empty())
+	adapter := opencode.New()
+	plan := agent.SandboxPlan{Work: "/w"}
+
+	assert.Equal(t, agent.Launch{}, adapter.Guard("", "/run", nil, nil), "a step with no guard and no output file adds nothing")
+	assert.False(t, adapter.Guard("", "/run", []string{"/out/file"}, nil).Hooked, "output file, no guard")
+	assert.False(t, adapter.Sandbox(plan, "", "/run", nil, nil).Hooked, "sandbox with no guard")
+	assert.True(t, adapter.Guard("check", "/run", nil, nil).Hooked)
+	assert.True(t, adapter.Sandbox(plan, "check", "/run", nil, nil).Hooked)
 }
 
 func TestGuard_TheGuardCommandStaysOneJavaScriptString(t *testing.T) {

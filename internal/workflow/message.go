@@ -85,6 +85,13 @@ func inboxSignatures() map[string][]Param {
 	}
 }
 
+// topicsRule is the rule of the topics keyword of first_of.
+func topicsRule(v starlark.Value) error {
+	_, err := Topics(v)
+
+	return err
+}
+
 // topicRule is the rule of the topic keyword of recv and send.
 func topicRule(v starlark.Value) error {
 	text, _ := starlark.AsString(v) // the unpack check has refused a value that is not text

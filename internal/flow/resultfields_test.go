@@ -91,12 +91,16 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	landed, err := batchResult(batch.Result{}, batch.Report{}, nil, nil, nil)
 	require.NoError(t, err)
 
+	first, err := firstOfValue(firstChoice{})
+	require.NoError(t, err)
+
 	got := map[string][]string{
-		"cancel": cancelValue(cancelOutcome{}).AttrNames(),
-		"merge":  batchStruct(t, landed).AttrNames(),
-		"gather": gathered.AttrNames(),
-		"queue":  queuedValue(queued{}).AttrNames(),
-		"spawn":  runsValue([]spawnedRun{{}}).AttrNames(),
+		"cancel":   cancelValue(cancelOutcome{}).AttrNames(),
+		"first_of": first.AttrNames(),
+		"merge":    batchStruct(t, landed).AttrNames(),
+		"gather":   gathered.AttrNames(),
+		"queue":    queuedValue(queued{}).AttrNames(),
+		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
 	}
 
 	for builtin, names := range got {

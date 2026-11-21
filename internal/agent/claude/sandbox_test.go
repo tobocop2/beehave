@@ -120,6 +120,7 @@ func TestSandbox_WritesTheDenyByDefaultBaseTheCredentialLayerAndTheNetworkList(t
 	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Args)
 
 	want := `{
+	  "attribution": {"commit": "", "pr": "", "sessionUrl": false},
 	  "sandbox": {
 	    "enabled": true,
 	    "failIfUnavailable": true,
