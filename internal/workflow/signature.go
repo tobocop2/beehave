@@ -298,6 +298,7 @@ func signatures() map[string][]Param {
 	maps.Copy(all, eventSignatures())
 	maps.Copy(all, itemSignatures())
 	maps.Copy(all, readSignatures())
+	maps.Copy(all, inboxSignatures())
 
 	return all
 }

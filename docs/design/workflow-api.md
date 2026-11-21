@@ -42,21 +42,21 @@ The Change column says how the pair differs from the contract that the five piec
 <!-- contract:target -->
 | Builtin | Keyword | Change | Use |
 |---|---|---|---|
-| `agent` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `agent` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `allow_paths` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `agent` | `data` | #693: new, a dict that the engine writes to the data file that the prompt names as `data_file` | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `agent` | `edits` | #497: also picks the review queue | 11: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 9 more |
+| `agent` | `edits` | #497: also picks the review queue | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `forbid_commands` | unchanged | 11: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 9 more |
 | `agent` | `idle_timeout` | unchanged | 2: `examples/swarm/workflow.star`, `examples/ticket-pipeline/partition.star` |
-| `agent` | `inputs` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `agent` | `inputs` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `label` | #497: new, a free text for the ledger and the status line | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `max_budget_usd` | unchanged | 1: `examples/swarm/workflow.star` |
-| `agent` | `model` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
-| `agent` | `name` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `agent` | `model` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
+| `agent` | `name` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `output_tries` | unchanged | 3: `examples/remediation/workflow.star`, `examples/research/workflow.star` and 1 more |
-| `agent` | `outputs` | unchanged | 11: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 9 more |
+| `agent` | `outputs` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `pin` | unchanged | 3: `examples/local/workflow.star`, `examples/remediation/workflow.star` and 1 more |
-| `agent` | `prompt` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
+| `agent` | `prompt` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `protect_paths` | unchanged | 3: `examples/maintenance/bump.star`, `examples/remediation/workflow.star` and 1 more |
 | `agent` | `resume` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `agent` | `runner` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
@@ -89,10 +89,10 @@ The Change column says how the pair differs from the contract that the five piec
 | `gate` | `pin_base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `gate` | `run` | unchanged | 2: `examples/remediation/workflow.star`, `examples/research-desk/workflow.star` |
 | `gate` | `timeout` | unchanged | 1: `examples/remediation/workflow.star` |
-| `gather` | `-` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
+| `gather` | `-` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `gather` | `fail` | unchanged | 5: `examples/desk/eval.star`, `examples/desk/workflow.star` and 3 more |
-| `gather` | `name` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
-| `gather` | `runs` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
+| `gather` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `runs` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `gather` | `until` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `host_teardown` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -100,23 +100,23 @@ The Change column says how the pair differs from the contract that the five piec
 | `host_up` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_comment` | `-` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
+| `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_comment` | `id` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `key` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `name` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `text` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_create` | `-` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `key` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `name` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `text` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_create` | `-` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `assignee` | unchanged | 1: `examples/ticket-pipeline/backfill.star` |
-| `item_create` | `body` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `body` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `key` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
-| `item_create` | `name` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `key` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `item_create` | `name` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `operator` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `parent` | unchanged | 6: `examples/desk/eval.star`, `examples/desk/workflow.star` and 4 more |
+| `item_create` | `parent` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `item_create` | `severity` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `shared` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `title` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `title` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_read` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `of` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -184,17 +184,26 @@ The Change column says how the pair differs from the contract that the five piec
 | `queue` | `hold` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `queue` | `label` | unchanged | 1: `examples/remediation/workflow.star` |
 | `queue` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
+| `recv` | `-` | #588: new, waits for the next message of a topic on the inbox of the run | 1: `examples/review-loop/workflow.star` |
+| `recv` | `name` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `recv` | `timeout` | #588: new, required | 1: `examples/review-loop/workflow.star` |
+| `recv` | `topic` | #588: new | 1: `examples/review-loop/workflow.star` |
 | `sandbox` | `-` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `sandbox` | `skills` | #775: new, the skills of the runner that a sandboxed step loads from a plugin folder | 1: `examples/remediation/workflow.star` |
+| `send` | `-` | #588: new, puts a message on the inbox of the parent run or of a child run | 1: `examples/review-loop/workflow.star` |
+| `send` | `name` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `send` | `to` | #588: new, `"parent"` or a run that `spawn` returned | 1: `examples/review-loop/workflow.star` |
+| `send` | `topic` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `send` | `value` | #588: new, a value that encodes as JSON | 1: `examples/review-loop/workflow.star` |
 | `sleep` | `-` | #590: new, a durable sleep that a recovered run does not start again | 1: `examples/queue/workflow.star` |
 | `sleep` | `duration` | #590: new | 1: `examples/queue/workflow.star` |
 | `sleep` | `name` | #590: new | 1: `examples/queue/workflow.star` |
-| `spawn` | `-` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
+| `spawn` | `-` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `spawn` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
-| `spawn` | `entry` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
-| `spawn` | `items` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
-| `spawn` | `name` | unchanged | 9: `examples/desk/eval.star`, `examples/desk/workflow.star` and 7 more |
+| `spawn` | `entry` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `items` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `struct` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `wait` | `-` | unchanged | 10: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 8 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |

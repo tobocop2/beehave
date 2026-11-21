@@ -82,6 +82,8 @@ type script struct {
 
 	// keys holds the keys that publish set in this run, in the order of their first use. The output of each publish step holds the list, so a replay rebuilds it.
 	keys []string
+	// inbox holds the messages that a recv received for another topic, oldest first. The receives are recorded steps, so a replay builds the same buffer.
+	inbox []envelope
 
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool

@@ -105,3 +105,34 @@ func TestMessageValue_RefusesAValueOverTheCap(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "65536")
 }
+
+func TestMessageValue_TheRefusalNamesAMessageAndNoPrompt(t *testing.T) {
+	t.Parallel()
+
+	_, err := workflow.MessageValue(starlark.NewBuiltin("f", nil))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a message cannot hold this value")
+	assert.NotContains(t, err.Error(), "prompt")
+}
+
+func TestMessageJSON_KeepsAJSONTextAndRefusesTextThatIsNotJSON(t *testing.T) {
+	t.Parallel()
+
+	raw, err := workflow.MessageJSON([]byte(`{"n": 1}`))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"n":1}`, string(raw))
+
+	_, err = workflow.MessageJSON([]byte(`{"n": `))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not JSON")
+}
+
+func TestMessageJSON_RefusesATextOverTheCap(t *testing.T) {
+	t.Parallel()
+
+	_, err := workflow.MessageJSON([]byte(`"` + strings.Repeat("a", workflow.MaxMessageBytes) + `"`))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the cap is 65536")
+}

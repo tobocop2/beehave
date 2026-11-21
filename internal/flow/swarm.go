@@ -449,7 +449,7 @@ func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 
 		results[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
-			mergeKey: starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "cost_usd": starlark.Float(one.CostUSD), "value": value,
+			mergeKey: starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "cost_usd": starlark.Float(one.CostUSD), valueField: value,
 		})
 	}
 

@@ -67,6 +67,7 @@ func resultFields() map[string][]string {
 	maps.Copy(fields, gateResultFields())
 	maps.Copy(fields, trackerResultFields())
 	maps.Copy(fields, factsResultFields())
+	maps.Copy(fields, inboxResultFields())
 
 	return fields
 }

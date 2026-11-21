@@ -361,11 +361,21 @@ func DataRecord(v starlark.Value) (string, error) {
 	return encoded(dict)
 }
 
-// encoded is the text that the encoder of the Starlark JSON library gives for v.
+// encoded is the text that the encoder of the Starlark JSON library gives for v, for a prompt or a request.
 func encoded(v starlark.Value) (string, error) {
-	text, err := starlark.Call(&starlark.Thread{Name: "json"}, starjson.Module.Members["encode"], starlark.Tuple{v}, nil)
+	text, err := jsonText(v)
 	if err != nil {
 		return "", fmt.Errorf("a value cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts (%w)", err)
+	}
+
+	return text, nil
+}
+
+// jsonText is the text that the encoder of the Starlark JSON library gives for v.
+func jsonText(v starlark.Value) (string, error) {
+	text, err := starlark.Call(&starlark.Thread{Name: "json"}, starjson.Module.Members["encode"], starlark.Tuple{v}, nil)
+	if err != nil {
+		return "", err
 	}
 
 	out, _ := starlark.AsString(text) // json.encode returns a string.
