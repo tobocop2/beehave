@@ -735,14 +735,62 @@ func isClosedErr(done chan error) bool {
 
 // waitsForOwnersLock reports whether a goroutine that the function creator started waits in the lock of a file while it writes a cancel marker.
 func waitsForOwnersLock(creator string) bool {
-	buf := make([]byte, 1<<20)
-	buf = buf[:runtime.Stack(buf, true)]
-
-	for _, stack := range strings.Split(string(buf), "\n\n") {
+	for _, stack := range strings.Split(string(goroutineStacks()), "\n\n") {
 		if strings.Contains(stack, "/internal/flow."+creator+" in goroutine") && strings.Contains(stack, "markRunCancel") && strings.Contains(stack, "(*Flock).Lock") {
 			return true
 		}
 	}
 
 	return false
+}
+
+// goroutineStacks returns the stack of every goroutine of the process. The buffer grows until the dump fits: a dump that fills its buffer is cut, and the stacks that it cuts are missing.
+func goroutineStacks() []byte {
+	for size := 1 << 20; ; size *= 2 {
+		buf := make([]byte, size)
+
+		if n := runtime.Stack(buf, true); n < size {
+			return buf[:n]
+		}
+	}
+}
+
+// parkedForStackDump holds a goroutine in a stack of depth+1 frames that the dump of goroutineStacks must show. It calls parked when it holds.
+func parkedForStackDump(depth int, parked func(), release <-chan struct{}) {
+	if depth > 0 {
+		parkedForStackDump(depth-1, parked, release)
+
+		return
+	}
+
+	parked()
+	<-release
+}
+
+func TestGoroutineStacks_ADumpLargerThanTheFirstBufferShowsEveryGoroutine(t *testing.T) {
+	t.Parallel()
+
+	const (
+		goroutines = 150
+		depth      = 60
+	)
+
+	release := make(chan struct{})
+
+	var holding sync.WaitGroup
+
+	for range goroutines {
+		holding.Add(1)
+
+		go parkedForStackDump(depth, holding.Done, release)
+	}
+
+	holding.Wait()
+
+	defer close(release)
+
+	dump := goroutineStacks()
+
+	require.Greater(t, len(dump), 1<<20, "the dump is larger than the first buffer, so the test needs the growth")
+	assert.Equal(t, goroutines*(depth+1), bytes.Count(dump, []byte("flow.parkedForStackDump(")), "a cut dump misses the stacks past its end")
 }
