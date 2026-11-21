@@ -26,8 +26,14 @@ const subprocessScrub = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"
 // envFileVar names a file that the CLI sources in its shell after the scrub, so a variable that the scrub drops, such as GIT_CONFIG_GLOBAL, still reaches git.
 const envFileVar = "CLAUDE_ENV_FILE"
 
-// envFile is the launch file in the run folder that exports the git variables of the plan.
+// envFile is the launch file in the run folder that exports the git variables of the plan and the home folder of the shell.
 const envFile = "sandbox-env.sh"
+
+// homeLines returns the lines of the env file that give the shell a new, empty home folder of its own, named after the run folder, in its temporary folder, which
+// the sandbox lets it write. The Go command keeps its telemetry and its build cache under the home folder, and the sandbox denies the home folder of the owner.
+func homeLines(runDir string) string {
+	return "export HOME=\"${TMPDIR:-/tmp}\"/" + model.ShellQuote("beehave-home-"+filepath.Base(runDir)) + "\nmkdir -p \"$HOME\"\n"
+}
 
 // Tools that the settings deny by name. The sandbox covers the Bash tool; these two reach the network without it.
 func webTools() []string { return []string{"WebFetch", "WebSearch"} }
@@ -97,7 +103,7 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skil
 			addDirs(plan.ReadDirs), skills.args, []string{"--settings", string(raw)},
 		),
 		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath},
-		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv())}),
+		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv()) + homeLines(runDir)}),
 		Copies: skills.copies,
 		Hooked: guard != "",
 	}
