@@ -121,6 +121,28 @@ command(name = "got", run = ["got", str(a.value), str(b1.value), str(b2.value), 
 	assert.Equal(t, []string{"got 3 1 2 True"}, h.commands.ranBy(testItem), "the first b came first, and the topic gone is not the topic go")
 }
 
+func TestRecv_AMessageOfATopicThatOnlyStartsWithTheTopicDoesNotEndAWaitingRecv(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := startRun(t, engine, writeFlow(t, bodyFlow(`a = recv("go", timeout = "1m", name = "go")
+b = recv("gone", timeout = "200ms", name = "gone")
+command(name = "got", run = ["got", str(a.value), str(b.value)])`)))
+
+	stepRecorded(t, engine, "recv:go#1.deadline")
+
+	for _, msg := range []Outgoing{{Topic: "gone", Value: json.RawMessage(`9`)}, {Topic: "go", Value: json.RawMessage(`1`)}} {
+		_, err := client.Send(testItem, msg)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"got 1 9"}, h.commands.ranBy(testItem), "the waiting recv of go kept waiting past gone, and gone waited in the buffer")
+}
+
 func TestRecv_AStoppedEngineEndsTheReceive(t *testing.T) {
 	t.Parallel()
 
@@ -263,6 +285,24 @@ def main(item):
 	require.NoError(t, err)
 	require.Len(t, h.commands.ranBy(testItem), 1)
 	assert.NotContains(t, h.commands.ranBy(testItem)[0], secret)
+}
+
+func TestClientSend_TheValuePassesTheRedactor(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := startRun(t, engine, writeFlow(t, bodyFlow(`a = recv("go", timeout = "1m", name = "one")
+command(name = "got", run = ["got", a.value])`)))
+	stepRecorded(t, engine, "recv:one#1.deadline")
+
+	_, err := client.Send(testItem, Outgoing{Topic: "go", Value: text(t, "token sk-ant-"+strings.Repeat("b", 12))})
+	require.NoError(t, err)
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"got token [redacted]"}, h.commands.ranBy(testItem))
 }
 
 func TestClientSend_RefusesAnItemWithNoOpenRun(t *testing.T) {
