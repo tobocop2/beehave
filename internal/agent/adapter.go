@@ -183,6 +183,7 @@ type Denial struct {
 // a limit is near reports none.
 // Denied is the reason why the provider refused more work in a way that no wait cures, such as usage credits that the account does not have or a pause of
 // the organization, or empty when the line reports none. A line with Denied reports no Limit.
+// Said is the message texts and the tool calls of an assistant line, for the stream that a reader follows. A tool call reads "<tool>: <target>".
 type Seen struct {
 	Cost      float64
 	Spent     float64
@@ -199,6 +200,13 @@ type Seen struct {
 	Priced    bool
 	Limit     *Limit
 	Denied    string
+	Said      []Said
+}
+
+// Said is one thing the agent said on an output line: the text of a message, or a tool call with its target. A line lists them in the order of the message.
+type Said struct {
+	Call bool
+	Text string
 }
 
 // Adapter is one agent CLI. The runner calls Profile and, when the spec sets a guard, Guard before it starts a run.

@@ -273,3 +273,20 @@ func TestLine_AnyOtherLineHoldsNoText(t *testing.T) {
 	assert.Empty(t, session)
 	assert.Empty(t, text)
 }
+
+func TestCalls_ATextLineAndAToolLineSayWhatTheyHold(t *testing.T) {
+	t.Parallel()
+
+	adapter := opencode.New()
+	lines := fixtureLines(t, "ok.jsonl")
+
+	var said []agent.Said
+
+	for _, line := range lines {
+		said = append(said, adapter.Calls(line).Said...)
+	}
+
+	assert.Equal(t, []agent.Said{{Call: true, Text: "bash: echo hi"}, {Text: "done"}}, said)
+	assert.Equal(t, []agent.Said{{Call: true, Text: "read"}}, adapter.Calls(`{"type":"tool_use","part":{"tool":"read","state":{"input":{}}}}`).Said, "a tool with no command says its name")
+	assert.Empty(t, adapter.Calls(`{"type":"text","part":{"text":""}}`).Said, "an empty text says nothing")
+}
