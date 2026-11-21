@@ -1071,7 +1071,7 @@ def idle_reason(q, round_settings):
 
 def round(item):
     """The round: one entry for the whole round, with one child run (the entry pipeline) for each item. `item` is the round itself, an id that no tracker row uses.
-    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, the cap, round-spawn-<n>, round-gather-<n> (until any run ends) and round-land-<n>. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
+    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, the cap, round-spawn-<n>, round-gather-<n> (first_of: waits until a run ends and takes every run that ended in the same read) and round-land-<n>. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
     A sync that ends with a reason holds the round: the later passes start no sync and no item, and only gather the open runs. With none open, the round waits in round-wait with the reason.
     The host losses hold it too. `seen` is the highest host_losses that a child result, the landing or the sync gate gave: the count of the engine for the tree of the run, and no count of the round.
     At HOST_LOSS_LIMIT or more, and above `acked`, the reason is host-loss. CONTINUE sets `acked` to `seen`, so the round asks again only after a newer loss.
@@ -1108,7 +1108,7 @@ def round(item):
                 runs = runs + spawn(items = take, entry = "pipeline", base = round_settings["base"], name = "round-spawn-%d" % n).runs
 
         if len(runs) > 0:
-            ended = gather(runs, until = "any", name = "round-gather-%d" % n).results
+            ended = [e.outcome for e in first_of(runs = runs, name = "round-gather-%d" % n).runs]
             ended_items = [e.item for e in ended]
             runs = [r for r in runs if r.item not in ended_items]
             for result in ended:

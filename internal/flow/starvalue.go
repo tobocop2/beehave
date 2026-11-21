@@ -79,6 +79,8 @@ type script struct {
 
 	// spawned holds the runs that the spawn calls of this run returned, started or reused. gather accepts only these.
 	spawned []spawnedRun
+	// taken holds the run ids that first_of returned in this run, so a later call does not return the same run again. The first_of steps are recorded, so a replay rebuilds it.
+	taken []string
 
 	// keys holds the keys that publish set in this run, in the order of their first use. The output of each publish step holds the list, so a replay rebuilds it.
 	keys []string

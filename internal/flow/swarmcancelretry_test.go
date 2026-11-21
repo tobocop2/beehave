@@ -19,7 +19,7 @@ import (
 )
 
 // retriedFlow spawns 21 with one retry and 22 with none. The first attempt of 21 fails at its first command. Its second attempt spawns 23, which holds, and
-// waits for it. 22 ends once 23 holds, so the gather with until "any" returns while the second attempt of 21 and its child are open. The parent then stops
+// waits for it. 22 ends once 23 holds, so the first_of returns while the second attempt of 21 and its child are open. The parent then stops
 // 21 with the call it is given, and runs a command that names what the call returned.
 func retriedFlow(stop string) string {
 	return `def inner(item):
@@ -35,7 +35,7 @@ def quick(item):
 def main(item):
     a = spawn(items = ["21"], entry = "child", retries = 1, name = "a")
     b = spawn(items = ["22"], entry = "quick", name = "b")
-    gather(a.runs + b.runs, until = "any", name = "first")
+    first_of(runs = a.runs + b.runs, name = "first")
     got = ` + stop + `
     command(name = "after", run = ["after", got])
 `

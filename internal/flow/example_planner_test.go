@@ -178,3 +178,77 @@ func TestExamplePlanner_WorkersThatEndBeforeTheCheckInNeedNoNewWorker(t *testing
 	assert.Equal(t, 1, agentsOf(h, "21"))
 	assert.Equal(t, 1, agentsOf(h, "22"), "no worker stalled, so the reassign spawned no item")
 }
+
+func TestExamplePlanner_AStallMessageCancelsThatWorkerBeforeTheCheckInEnds(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Env = map[string]string{"TASKS": "21 22", "CHECK_IN": "1h", "DEADLINE": "1h"}
+	h.opts.PerLogin = 2
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 1, 5*time.Second
+
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+	done := make(chan error, 1)
+
+	go func() { done <- runTicking(t, h, engine) }()
+
+	waitOn(t, waiting[struct{}]{what: "the stall message to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		seen, err := client.Published("item-22-r1")
+		if err != nil || len(seen) == 0 {
+			return struct{}{}, false, nil
+		}
+
+		_, err = client.Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+
+		return struct{}{}, err == nil, nil
+	}})
+
+	require.NoError(t, receive(t, done))
+	assert.Equal(t, "echo when the workers ended: 21=done 22=started 21:ok 22:ok cost_usd=0.0", lastRan(t, h), "the check-in is one hour, so only the message could stall the worker of 22")
+	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, engine, "item-22-r1"), "the message canceled the stalled worker")
+	assert.Equal(t, dbos.WorkflowStatusSuccess, statusOf(t, engine, "item-22-r2"), "the task of the worker went to a new worker")
+}
+
+func TestExamplePlanner_TwoWorkersThatEndInOneReadBothKeepTheirOutcomeAndNeedNoNewWorker(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Env = map[string]string{"TASKS": "21 22", "CHECK_IN": "2s", "DEADLINE": "1h"}
+	engine := h.engine(t)
+	children := []spawnedRun{{Run: "item-21-r1"}, {Run: "item-22-r1"}}
+
+	// The report of the peek runs just before the first first_of, so both workers have ended when that call reads the runs.
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		if request.Run[0] != "echo" || !strings.Contains(request.Run[1], "while the workers run") {
+			return ctx.Err()
+		}
+
+		for {
+			rows, err := engine.rowsOf(children)
+			if err != nil {
+				return err
+			}
+
+			if rows["item-21-r1"].Status == dbos.WorkflowStatusSuccess && rows["item-22-r1"].Status == dbos.WorkflowStatusSuccess {
+				return ctx.Err()
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+
+	err := runTicking(t, h, engine)
+
+	require.NoError(t, err)
+	assert.Equal(t, "echo when the workers ended: 21=done 22=done 21:ok 22:ok cost_usd=0.0", lastRan(t, h))
+
+	names := strings.Join(stepNamesOf(t, engine, runID(testItem, 1)), " ")
+	assert.Contains(t, names, "first_of:watch-0#", "the first call read both ended workers")
+	assert.NotContains(t, names, "first_of:watch-1#", "the one read took both workers, so the planner made no second call")
+	assert.NotContains(t, names, "stalled-22", "the worker of 22 ended in the same read as 21, so the check-in did not stall it")
+}

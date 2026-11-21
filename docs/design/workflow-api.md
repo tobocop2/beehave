@@ -88,6 +88,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `env` | `default` | unchanged | 12: `examples/approvals/policy.star`, `examples/desk/eval.star` and 10 more |
 | `env` | `name` | unchanged | 18: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 16 more |
 | `facts` | `-` | unchanged | 3: `examples/remediation/workflow.star`, `examples/ticket-pipeline/backfill.star` and 1 more |
+| `first_of` | `-` | #591: new, waits for the first of a run that ended, a message and a timeout | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `name` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `runs` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `timeout` | #591: new | 1: `examples/planner/workflow.star` |
+| `first_of` | `topics` | #591: new | 1: `examples/planner/workflow.star` |
 | `gate` | `-` | unchanged | 5: `examples/local/workflow.star`, `examples/maintenance/bump.star` and 3 more |
 | `gate` | `base` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `gate` | `head` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -96,13 +101,12 @@ The Change column says how the pair differs from the contract that the five piec
 | `gate` | `pin_base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `gate` | `run` | unchanged | 2: `examples/remediation/workflow.star`, `examples/research-desk/workflow.star` |
 | `gate` | `timeout` | unchanged | 1: `examples/remediation/workflow.star` |
-| `gather` | `-` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `-` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `gather` | `fail` | unchanged | 5: `examples/desk/eval.star`, `examples/desk/workflow.star` and 3 more |
-| `gather` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `name` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `gather` | `on_timeout` | #593: new, `cancel` or `return` for the runs still open at the deadline | 1: `examples/planner/workflow.star` |
-| `gather` | `runs` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `gather` | `runs` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `gather` | `timeout` | #593: new, the deadline of the group | 1: `examples/planner/workflow.star` |
-| `gather` | `until` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `host_teardown` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `name` | unchanged | 1: `examples/remediation/workflow.star` |

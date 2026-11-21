@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -541,13 +541,23 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - A child that would run deeper than `max_spawn_depth`. The error names the item, the depth and the cap: `item 24 would run at depth 4, and the project has a cap of 3`.
 - A `base` that differs from the base of the round item that calls `spawn`. The error names both bases. An item that is no round item has no base to compare, so `spawn` cuts each child at the `base` of the call. The gate of the child reads the pin file at the same branch.
 
+#### `first_of`
+
+`first_of(runs=None, topics=None, timeout="", name="")` waits for the first of three events and returns `struct(kind, run, outcome, runs, message)`. The call needs at least one of `runs`, `topics` and `timeout`.
+
+- `kind` is `"run"` when a run of `runs` ended, `"message"` when a message came on one of `topics`, and `"timer"` when `timeout` passed first.
+- For `"run"`, `runs` lists every run of the call that ended in the read that found the first one, in the order of the call, each as `struct(item, run, outcome)`. `run` and `outcome` are the first of them: `run` is the run as `spawn` returned it and `outcome` has the fields of a result of `gather`. For `"message"`, `message` is the value of the message. For `"message"` and `"timer"`, `run` and `outcome` are `None` and `runs` is empty.
+- A run that an earlier `first_of` call of this run returned, as `run` or in `runs`, does not win again, so a loop passes the same list on every turn. A call with no topics and no timeout, and no run left, is refused.
+- A run that failed with retries left starts again as in `gather`, and does not end the wait.
+- The topics are user topics. The topic `beehave.child` is reserved: a run of a child sends it to its parent when it ends, and `recv` skips it.
+- Each turn reads the rows of the runs in the recorded step `first_of:<name>#<n>.look<turn>`, then waits on the inbox. The end notice wakes the parent at once. If the notice does not come, a turn ends after 60 seconds and reads the rows again, so a lost notice costs one minute and never a hang.
+- A timeout is the recorded step `first_of:<name>#<n>.deadline`, as in `gather`. A restart keeps the first deadline.
+- A message on another topic stays in the buffer of the run until a `recv` or a `first_of` call names its topic.
+
 #### `gather`
 
-`gather(runs, fail="return", until="all", timeout="", on_timeout="", name="")` waits for the runs and returns `results`, a list in the order of the call.
-
-- With `until="any"`, the wait ends when at least one run is no longer open, and `results` holds only the runs that ended, in the order of the call. Any other `until` value is refused.
-- A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
-- If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
+`gather(runs, fail="return", timeout="", on_timeout="", name="")` waits for every run and returns `results`, a list in the order of the call. To wait for the first run that ends, use `first_of`. `gather` has no `until` keyword.
+- If `fail="raise"` and a run failed, the call waits for every run.
 - A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
 - Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value`, `attempts` and `open`. `attempts` counts the runs of the item that this call waited for.
 - `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
