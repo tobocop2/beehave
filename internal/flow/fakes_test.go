@@ -1235,8 +1235,10 @@ type fakeForge struct {
 	noPullAfter  int
 	noPull       bool // reports no pull request after the first noPullAfter reads
 	// notes holds each Comment call as project|item|key|text. writeErr fails it.
-	notes    []string
-	opened   []string // each Open call as project|item|title|body|issue|base|parent
+	notes  []string
+	opened []string // each Open call as project|item|title|body|issue|base|parent
+	// onCreate runs with the item when the first Open call of that item creates its pull request, as the forge makes it: a draft.
+	onCreate func(item string)
 	writeErr error
 	// pushed holds each Push call as project|item|branch|head|expect. pushErr fails it.
 	pushed  []string
@@ -1286,6 +1288,14 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
 
 	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
+
+	prefix := project + "|" + item + "|"
+	first := !slices.ContainsFunc(f.opened[:len(f.opened)-1], func(call string) bool { return strings.HasPrefix(call, prefix) })
+
+	if first && f.onCreate != nil {
+		f.onCreate(item)
+	}
+
 	if req.Parent != "" {
 		out.Stack = "S_1"
 	}

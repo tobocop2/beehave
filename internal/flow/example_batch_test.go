@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,8 @@ type remoteBranches struct {
 	mu    sync.Mutex
 	heads map[string]string
 	asked []string
+	// drafts is the number of the pull request of each item whose pull request is a draft. A call for such an item stops with Draft unless it names that number as its own draft.
+	drafts map[string]int
 
 	// before runs at the start of each call, with no lock held. The round rig holds the turn of a member here: the preflight holds no queue slot.
 	before func(ctx context.Context, item string)
@@ -45,6 +48,8 @@ func (r *remoteBranches) Preflight(ctx context.Context, _, item string, req pref
 		return preflight.Result{Stop: preflight.BranchGone, Lines: []string{"STOP: the head branch of item " + item + " no longer exists"}}, nil
 	case req.ExpectHead != "" && req.ExpectHead != head:
 		return preflight.Result{Stop: preflight.HeadMoved, Lines: []string{"STOP: head moved to " + head}}, nil
+	case r.drafts[item] != 0 && req.OwnDraft != r.drafts[item]:
+		return preflight.Result{Stop: preflight.Draft, Lines: []string{"STOP: #" + strconv.Itoa(r.drafts[item]) + " is a DRAFT."}}, nil
 	}
 
 	return preflight.Result{Stop: preflight.Unchanged}, nil
@@ -94,6 +99,24 @@ func gitLines(rig *roundRig) []string {
 	}
 
 	return lines
+}
+
+func TestExampleBatch_AnApprovedItemLandsWhileItsPullRequestIsStillTheDraftItsRunOpened(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.h.forge.onCreate = func(item string) {
+		rig.remote.mu.Lock()
+		defer rig.remote.mu.Unlock()
+
+		rig.remote.drafts = map[string]int{item: rig.h.forge.state.Number}
+	}
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"1"}, rig.merger.landed(), "the batch intake accepts the draft that the run opened")
+	assert.Empty(t, heldOf(rig.writer), "the item does not stop at its own draft one stage after the loop")
 }
 
 func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateRun(t *testing.T) {

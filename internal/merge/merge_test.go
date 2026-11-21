@@ -236,6 +236,38 @@ func TestRun_ADraftIsReadiedBeforeTheMergeWhenAllowed(t *testing.T) {
 	assert.Equal(t, []string{"SetDraft 5 false", "MergePR 5 " + sha}, w.writes)
 }
 
+func TestRun_TheDraftTheCallerOpenedIsReadiedAfterTheGuardsWithoutAllowReady(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t).set(t, map[string]any{"isDraft": true})
+	later := pullJSON(t, nil)
+	w.later = &later
+	req := request()
+	req.OwnDraft = req.PR
+
+	assert.Equal(t, merge.Done, w.run(req).Stop)
+	assert.Equal(t, []string{"SetDraft 5 false", "MergePR 5 " + sha}, w.writes, "the ready step runs after the guards")
+}
+
+func TestRun_ADraftThatIsNotTheOneTheCallerOpenedIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for name, own := range map[string]int{"another number": 6, "no number": 0} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newWorld(t).set(t, map[string]any{"isDraft": true})
+			req := request()
+			req.OwnDraft = own
+			result := w.run(req)
+
+			assert.Equal(t, merge.Refused, result.Stop)
+			assert.Contains(t, all(result), "#5 is a draft")
+			assert.Empty(t, w.writes)
+		})
+	}
+}
+
 func TestRun_AFailedReadyRefuses(t *testing.T) {
 	t.Parallel()
 

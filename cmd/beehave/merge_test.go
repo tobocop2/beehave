@@ -40,6 +40,15 @@ type shipForge struct {
 	writes     []string
 	// tipTree is the tree of the tip of the base after the merge.
 	tipTree string
+	// readied is true after a SetDraft call marked the pull request ready.
+	readied bool
+}
+
+func (f *shipForge) SetDraft(_ context.Context, pr int, draft bool) error {
+	f.writes = append(f.writes, fmt.Sprintf("SetDraft %d %t", pr, draft))
+	f.readied = !draft
+
+	return nil
 }
 
 func (f *shipForge) PRList(_ context.Context, _ int, args ...string) ([]model.PullRequest, error) {
@@ -260,6 +269,27 @@ func TestMerge_AGatedTreeThatTheTipHoldsPasses(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+}
+
+func TestMerge_TheDraftTheRunOpenedIsMarkedReadyAfterItsGuardsAndMerged(t *testing.T) {
+	t.Parallel()
+
+	p, f, settings := shipping(t, nil)
+	draft, ready := pullOf(t, map[string]any{"isDraft": true}), pullOf(t, nil)
+	f.view = func(int) model.PullRequest {
+		if f.readied {
+			return ready
+		}
+
+		return draft
+	}
+	settings.OwnDraft = number
+
+	result, err := p.Merge(t.Context(), "p", "item", gated, settings)
+
+	require.NoError(t, err)
+	assert.Equal(t, merge.Done, result.Stop, strings.Join(result.Lines, "\n"))
+	assert.Equal(t, []string{fmt.Sprintf("SetDraft %d false", number), fmt.Sprintf("MergePR %d %s", number, gated)}, f.writes)
 }
 
 type noTreeForge struct{ forge.Forge }

@@ -481,7 +481,7 @@ def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, f
     rounds caps the candidates. With 0 the loop runs no agent and ends exhausted at the head of the implementer. checks lists functions of one argument, the passed gate, that run after the checks before review and before the full review.
     Each returns an empty text for a clean head, or the findings as text, which send the candidate back to a fix.
     review_check is a function of one argument, the full review, that runs after each full review whose verdict is not reject. A reason ends the loop: held holds it.
-    guard holds the settings of the preflight call before every agent of the loop: base, hold and own. A stop ends the loop with stopped set.
+    guard holds the settings of the preflight call before every agent of the loop: base, hold, own and own_draft (the number of the draft that the run opened, which is no stop). A stop ends the loop with stopped set.
     protect lists the directories that no command of a review or a fix may write in. allow lists the globs that a fix may change, and None is no scope. A list that before_review refuses stops the item before the first step of the loop.
     design_prompt turns on the design round: each review then writes the output `mechanism`. review_outputs lists more outputs of the full review, and fix_outputs lists more outputs of each fix.
     lane_check is a function of one argument, the lane (the result of the implement or fix agent) that made the candidate head. It runs after the checks before review and before checks.

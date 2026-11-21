@@ -29,6 +29,8 @@ type Member struct {
 	Item     string `json:"item"`
 	Head     string `json:"head"`
 	Approved bool   `json:"approved"`
+	// OwnDraft is the number of the draft that the run opened for this member, or zero. The merge accepts that one draft and marks it ready after its guards.
+	OwnDraft int `json:"own_draft,omitempty"`
 }
 
 // Tip is the base tip: a commit and its tree.
