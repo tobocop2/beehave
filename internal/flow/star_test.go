@@ -285,7 +285,7 @@ const goldenFlow = `def main(item):
 // A later change re-keys this list for each module.
 var goldenSteps = []string{
 	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "scope:g#1", "gate:g#1",
-	"login#1", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1",
+	"login#1", "agent:a#1/start", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1", "agent:a#1/commit",
 	"wait:w#1",
 }
 

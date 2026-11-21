@@ -113,11 +113,13 @@ func prHistoryOutputs(pulls []model.PriorPull) map[string]any {
 // rewrote is true when the commit the run started on is not in the history of the commit it ended on.
 // skills lists the skills that the agent called, in the order of the calls. It is an empty list, never null, for a run that called none.
 // committed is true when the commit the run ended on is not the commit it started on.
+// commit_subject and commit_body are the message of the commit that the engine made for the step. Both are empty when the step wrote no message.
 func agentOutputs(text, session, transcript, head, violations, stop string, spend agent.Spend, rewrote, committed bool, skills []string) map[string]any {
 	out := spendOutputs(spend)
 	out[textKeyword], out["session"], out["transcript"], out["head_sha"], out["violations"], out["stop"] = text, session, transcript, head, violations, stop
 	out["rewrote"], out["committed"] = rewrote, committed
 	out["skills"] = append([]string{}, skills...)
+	out[commitSubjectField], out[commitBodyField] = "", ""
 
 	return out
 }

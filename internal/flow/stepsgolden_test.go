@@ -43,7 +43,7 @@ func resultShape(t *testing.T) []string {
 // (stepmodules.go) and update the shape. A later change re-keys these goldens for each module; until then the key stays star30.
 var goldenShapes = map[string][]string{
 	"star30": {
-		"agent: committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
+		"agent: commit_body,commit_subject,committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",

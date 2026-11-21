@@ -405,7 +405,7 @@ func TestAgentStep_ACallWithNoOutputsNeverTouchesTheOutputsFolder(t *testing.T) 
 	require.NoError(t, os.MkdirAll(rig.h.opts.StateDir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(rig.h.opts.StateDir, outputsFolder), nil, 0o600), "a file where the outputs folder would be")
 
-	_, err := rig.run(t, agentFlow(""), "Write to {{ .output_file }}\n")
+	_, err := rig.run(t, agentFlow("edits = False, "), "Write to {{ .output_file }}\n")
 
 	require.NoError(t, err)
 	assert.Len(t, rig.h.agents.seen(), 1)
@@ -1201,4 +1201,39 @@ func TestAgentStep_TheStartMarkIsTheHeadOfTheFolderAndAMarkThatGitCannotWriteIsA
 
 	_, err = agentArgs{dir: dir, git: engineGit(dir)}.writeStartMark(t.Context())
 	require.ErrorContains(t, err, "write the start mark of the item folder")
+}
+
+func TestAgentStep_AFolderWhoseHeadCannotBeReadStopsThePinCheckAndTheRenderStepBeforeTheirOtherWork(t *testing.T) {
+	t.Parallel()
+
+	notARepository := engineGit(t.TempDir())
+
+	require.ErrorContains(t, checkPin(t.Context(), notARepository, "abc"), "read HEAD of the item folder")
+
+	// The start mark of the call reads HEAD before the render step does, so only this direct call reaches the failing read of the render step.
+	prompts := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(prompts, "a.md"), []byte("Work.\n"), 0o600))
+
+	s := &script{in: ItemInput{File: filepath.Join(prompts, "workflow.star")}}
+	a := agentArgs{git: notARepository, prompt: "a.md", data: map[string]any{}}
+
+	got, err := s.renderStep(a, "login")(t.Context())
+
+	require.ErrorContains(t, err, "read HEAD of the item folder")
+	assert.Equal(t, "Work.\n", got.Note, "the prompt is rendered before the start mark is written")
+}
+
+func TestAgentStep_AFailingReadOfTheCommitMessageFailsTheReadStepAndNoNoteIsRecorded(t *testing.T) {
+	t.Parallel()
+
+	a, _ := commitArgs(t)
+	a.startHead = a.start.Head
+	require.NoError(t, os.WriteFile(a.file, []byte(goodOutput), 0o600))
+
+	inner := a.git
+	a.git = failing(func(args []string) model.CommandResult { return inner.Run(t.Context(), args) }, "interpret-trailers")
+
+	_, err := readAgent(t.Context(), a, PhaseOutput{})
+
+	require.ErrorContains(t, err, "check the commit message for a trailer")
 }

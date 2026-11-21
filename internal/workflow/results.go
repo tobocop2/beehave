@@ -51,7 +51,7 @@ const (
 // come in addition to the fields listed here.
 func resultFields() map[string][]string {
 	fields := map[string][]string{
-		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills"},
+		agentName:        {"text", "session", "transcript", "head_sha", "violations", "stop", "cost_usd", "cost_estimated", "cost_unknown", "rewrote", "committed", "skills", "commit_subject", "commit_body"},
 		mergeName:        {"merged", "rejected", "deferred", "tip", treeKeyword, "gates", "findings", "note", "unproven", "moved", "host_loss", "host_losses"},
 		commandName:      {"stdout", "stderr", "rc", attemptsField, "error"},
 		earlierCallsName: {"count"},

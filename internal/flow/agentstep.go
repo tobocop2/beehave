@@ -247,12 +247,12 @@ func (s *script) agent(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, err
 	}
 
-	done, err := s.attempts(name, a, a.phase(s.in, login, prompt, s.treeStart))
+	outputs, err := s.agentAndCommit(name, a, a.phase(s.in, login, prompt, s.treeStart))
 	if err != nil {
 		return nil, err
 	}
 
-	return result(done.Outputs)
+	return result(outputs)
 }
 
 // ready returns the step name, the login and the rendered prompt of an agent call. The login comes first, so a call that waits for a usage cap holds no start mark.
@@ -400,9 +400,9 @@ func (s *script) prepare(a *agentArgs, name string) (err error) {
 	return a.makeOutputFolder()
 }
 
-// makeOutputFolder makes the folder of the output file of a call that declares outputs. A call with no outputs gets no folder.
+// makeOutputFolder makes the folder of the output file of a call that declares outputs or commits. A call with neither gets no folder.
 func (a agentArgs) makeOutputFolder() error {
-	if len(a.declared) == 0 {
+	if len(a.wanted()) == 0 {
 		return nil
 	}
 
@@ -434,7 +434,7 @@ func (a agentArgs) phase(in ItemInput, login, prompt, treeStart string) PhaseInp
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
-		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box, Skills: a.skills, StartHead: a.startHead, TreeStart: treeStart, Base: in.Base,
+		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.wanted(), Sandbox: a.box, Skills: a.skills, StartHead: a.startHead, TreeStart: treeStart, Base: in.Base,
 		Data: a.record,
 	}
 }
@@ -648,10 +648,10 @@ func (s *script) clearOutput(name string, a agentArgs, in PhaseInput, try int) e
 	return err
 }
 
-// emptyOutput removes the old output file and makes a new empty one. A call that declares no outputs has no output file and no folder, so it touches nothing.
+// emptyOutput removes the old output file and makes a new empty one. A call that declares no outputs and does not commit has no output file and no folder, so it touches nothing.
 // The step stays recorded for such a call, so the step numbers of a run recorded before this rule still replay.
 func (a agentArgs) emptyOutput() error {
-	if len(a.declared) == 0 {
+	if len(a.wanted()) == 0 {
 		return nil
 	}
 
@@ -687,7 +687,23 @@ func readAgent(ctx context.Context, a agentArgs, ended PhaseOutput) (stepResult,
 		return stepResult{Note: problem, Final: true, Outputs: spendOutputs(ended.Spend)}, nil
 	}
 
-	if problem := a.readOutputs(outputs, ended.Denials); problem != "" {
+	return a.readAll(ctx, outputs, ended)
+}
+
+// readAll reads the declared outputs and then the commit message from the output file. The first problem is the Note of the result, and the run still
+// costs what it cost.
+func (a agentArgs) readAll(ctx context.Context, outputs map[string]any, ended PhaseOutput) (stepResult, error) {
+	problem := a.readOutputs(outputs, ended.Denials)
+
+	if problem == "" {
+		var err error
+
+		if problem, err = a.readCommit(ctx, outputs); err != nil {
+			return stepResult{}, err
+		}
+	}
+
+	if problem != "" {
 		return stepResult{Note: problem, Outputs: spendOutputs(ended.Spend)}, nil
 	}
 

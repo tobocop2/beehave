@@ -39,14 +39,19 @@ func (s scope) allows(name string) bool {
 // startMark is what an agent call with a scope records when it starts: the commit, and the untracked and ignored entries that were already
 // in the folder. An untracked file carries its size and modification time. An ignored entry carries an empty value, and an ignored
 // directory is one entry that ends with a slash, so a write inside a directory that was already ignored at the start is not seen.
+//
+// For a call that the engine commits, the mark also holds the state of each tracked file that differs from the commit: the hash of its content and its mode.
+// The engine commits such a file only when its state is not the state at the start.
 type startMark struct {
-	Head string            `json:"head"`
-	Seen map[string]string `json:"seen"`
+	Head  string            `json:"head"`
+	Seen  map[string]string `json:"seen"`
+	Dirty map[string]string `json:"dirty"`
 }
 
-// markStart records the start mark of an agent call with a scope, in a step, so a replay keeps the first one. A call with no scope records nothing.
+// markStart records the start mark of an agent call with a scope or with a commit by the engine, in a step, so a replay keeps the first one.
+// A call with neither records nothing.
 func (s *script) markStart(a *agentArgs, name string) error {
-	if !a.scope.active() {
+	if !a.scope.active() && !a.commits() {
 		return nil
 	}
 
@@ -92,8 +97,13 @@ func takeMark(ctx context.Context, tree proc.Runner) (startMark, error) {
 	}
 
 	seen, err := others(ctx, tree)
+	if err != nil {
+		return startMark{}, err
+	}
 
-	return startMark{Head: head, Seen: seen}, err
+	dirty, err := dirtyTracked(ctx, tree)
+
+	return startMark{Head: head, Seen: seen, Dirty: dirty}, err
 }
 
 // others maps each untracked or ignored entry of the folder to its stamp. The keys are relative to the root of the repository.
