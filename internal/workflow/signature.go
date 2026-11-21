@@ -295,6 +295,7 @@ func signatures() map[string][]Param {
 	all := stepSignatures()
 	maps.Copy(all, valueSignatures())
 	maps.Copy(all, swarmSignatures())
+	maps.Copy(all, eventSignatures())
 	maps.Copy(all, itemSignatures())
 	maps.Copy(all, readSignatures())
 

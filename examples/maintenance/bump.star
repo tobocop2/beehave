@@ -99,7 +99,7 @@ def verify(job, table):
 def pull_request_text(job, table, attempts):
     return "Weekly bump of %s for %s.\n\nUpdates (ecosystem, name, from, to):\n\n%s\n\nThe gate passed after %d fix rounds." % (job.repo, job.week, table, attempts)
 
-def publish(job, attempts):
+def open_pull_request(job, attempts):
     text = pull_request_text(job, job.table, attempts)
     pr = command(name = "pr", run = ["sh", SCRIPTS + "pr.sh", job.repo, job.week, job.fingerprint, job.base], stdin = text, timeout = TIMEOUT.PR, max_new_processes = PR_MAX_PROCESSES)
     if pr.rc != 0:
@@ -120,4 +120,4 @@ def main(item):
     checked = verify(job, job.table)
     if checked.stop:
         return conclude(item, job, checked.stop)
-    conclude(item, job, publish(job, checked.attempts))
+    conclude(item, job, open_pull_request(job, checked.attempts))

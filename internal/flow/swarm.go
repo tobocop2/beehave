@@ -73,6 +73,8 @@ type childOutcome struct {
 	SentBack string   `json:"sent_back,omitempty"`
 	Closed   string   `json:"closed,omitempty"`
 	Stopped  *Stopped `json:"stopped,omitempty"`
+	// CostUSD is the spend of the run and of every run below it, in dollars, read when the wait ended.
+	CostUSD float64 `json:"cost_usd"`
 	// Value is the JSON text that the entry function of the run returned. It is empty when the run returned None, and for a run that did not succeed.
 	Value json.RawMessage `json:"value,omitempty"`
 }
@@ -338,10 +340,10 @@ func runsValue(plan []spawnedRun) *starlarkstruct.Struct {
 	runs := make([]starlark.Value, len(plan))
 
 	for i, one := range plan {
-		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(one.Item), "run": starlark.String(one.Run)})
+		runs[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{itemName: starlark.String(one.Item), runField: starlark.String(one.Run)})
 	}
 
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"runs": starlark.NewList(runs)})
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{runsField: starlark.NewList(runs)})
 }
 
 // gather waits for the runs that spawn returned and returns how each ended. It reads the rows of all the runs in one recorded step and makes no GetResult call in
@@ -434,7 +436,7 @@ func textAttr(holder starlark.HasAttrs, name string) string {
 	return text
 }
 
-// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped and value.
+// outcomesValue makes the struct that gather returns: results, a list of structs with the fields item, ok, error, merge, sent_back, closed, stopped, cost_usd and value.
 // The value is what the entry function of the run returned, or None.
 func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 	results := make([]starlark.Value, len(outcomes))
@@ -447,7 +449,7 @@ func outcomesValue(outcomes []childOutcome) (*starlarkstruct.Struct, error) {
 
 		results[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 			itemName: starlark.String(one.Item), "ok": starlark.Bool(one.OK), "error": starlark.String(one.Error),
-			mergeKey: starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "value": value,
+			mergeKey: starlark.String(one.Merge), "sent_back": starlark.String(one.SentBack), "closed": starlark.String(one.Closed), "stopped": stoppedValue(one.Stopped), "cost_usd": starlark.Float(one.CostUSD), "value": value,
 		})
 	}
 
@@ -489,8 +491,8 @@ func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, ra
 			return gathered{}, err
 		}
 
-		if done, finished := finish(in.Item, looks, fired, first); finished {
-			return done, nil
+		if used, over := waitOver(looks, fired, first); over {
+			return e.priced(in.Item, used, fired)
 		}
 
 		if err := proc.Sleep(ctx, cmp.Or(e.deps.Clock.Poll, tickInterval)); err != nil {
@@ -499,20 +501,37 @@ func (e *Engine) gather(ctx context.Context, in ItemInput, refs []spawnedRun, ra
 	}
 }
 
-// finish reports whether the wait of gather is over, and the output of the step when it is. It is over when no run is open. With first set and no raise fired,
+// waitOver reports whether the wait of gather is over, and the reads that the output of the step holds when it is. It is over when no run is open. With first set and no raise fired,
 // it is also over when one run is no longer open, and the output holds only the runs that ended.
-func finish(parent string, looks []look, fired raiseResult, first bool) (gathered, bool) {
+func waitOver(looks []look, fired raiseResult, first bool) ([]look, bool) {
 	open := func(l look) bool { return l.open }
 	ended := func(l look) bool { return !l.open }
 
 	switch {
 	case !slices.ContainsFunc(looks, open):
-		return settled(parent, looks, fired), true
+		return looks, true
 	case first && fired.trigger < 0 && slices.ContainsFunc(looks, ended):
-		return settled(parent, slices.DeleteFunc(slices.Clone(looks), open), fired), true
+		return slices.DeleteFunc(slices.Clone(looks), open), true
 	default:
-		return gathered{}, false
+		return nil, false
 	}
+}
+
+// priced builds the output of the gather step from the reads of runs that ended, with the spend of each run and of every run below it.
+// The spend is read once, when the wait is over, so a poll of the wait walks no tree.
+func (e *Engine) priced(parent string, used []look, fired raiseResult) (gathered, error) {
+	priced := slices.Clone(used)
+
+	for i := range priced {
+		spent, err := runAndBelowSpend(e.ctx, priced[i].ref.Run)
+		if err != nil {
+			return gathered{}, fmt.Errorf("read the spend of run %s: %w", priced[i].ref.Run, err)
+		}
+
+		priced[i].out.CostUSD = spent.Cost
+	}
+
+	return settled(parent, priced, fired), nil
 }
 
 // raiseResult is what a raise did: trigger is the index of the first run that ended without success, or -1, and canceled holds the ids of the runs the raise canceled.

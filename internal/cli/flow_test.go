@@ -107,16 +107,19 @@ type fakeSteering struct {
 	schedules    []flow.ScheduleInfo
 	schedulesErr error
 	// days and daysErr are what Days returns.
-	days      []flow.DayFigures
-	daysErr   error
-	infos     []flow.RunInfo
-	view      flow.RunSteps
-	lanes     flow.ItemLanes
-	err       error
-	pinned    string
-	pinnedErr error
-	calls     []string
-	closeOK   bool
+	days    []flow.DayFigures
+	daysErr error
+	infos   []flow.RunInfo
+	view    flow.RunSteps
+	lanes   flow.ItemLanes
+	// published and publishedErr are what Published returns.
+	published    []flow.PublishedValue
+	publishedErr error
+	err          error
+	pinned       string
+	pinnedErr    error
+	calls        []string
+	closeOK      bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// running is what EngineRuns returns, and runningErr its error.
@@ -177,6 +180,12 @@ func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
 	s.calls = append(s.calls, "steps "+id)
 
 	return s.view, s.err
+}
+
+func (s *fakeSteering) Published(id string) ([]flow.PublishedValue, error) {
+	s.calls = append(s.calls, "published "+id)
+
+	return s.published, s.publishedErr
 }
 
 func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {

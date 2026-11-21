@@ -174,3 +174,26 @@ func spanOf(seconds *float64) string {
 
 	return span.Round(time.Millisecond).String()
 }
+
+// printPublished writes the keys that a run published: one line each, the key, a tab and the last value as JSON, or one JSON list.
+func printPublished(stdout io.Writer, client Steering, id string, asJSON bool) error {
+	values, err := client.Published(id)
+	if err != nil {
+		return err
+	}
+
+	if asJSON {
+		return json.NewEncoder(stdout).Encode(values)
+	}
+
+	// A failed write to stdout has no recovery.
+	if len(values) == 0 {
+		_, _ = fmt.Fprintf(stdout, "run %s has published no keys\n", id)
+	}
+
+	for _, one := range values {
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\n", one.Key, one.Value)
+	}
+
+	return nil
+}

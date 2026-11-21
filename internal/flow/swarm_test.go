@@ -162,8 +162,8 @@ func TestSpawnGather_FailRaiseCancelsTheOpenChildrenAndRaisesAfterTheStep(t *tes
 	assert.Equal(t, dbos.WorkflowStatusCancelled, childStatus(t, engine, "23"))
 	ended := `"error":"the run ended as ` + string(dbos.WorkflowStatusCancelled) + `"`
 
-	assert.JSONEq(t, `{"outcomes":[{"item":"21","ok":false,`+ended+`},{"item":"22","ok":false,"error":"workflow.star:2:12: fake failure"},`+
-		`{"item":"23","ok":false,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehave resume 12 to reopen item 22 and run the spawn again"}`,
+	assert.JSONEq(t, `{"outcomes":[{"item":"21","ok":false,"cost_usd":0,`+ended+`},{"item":"22","ok":false,"cost_usd":0,"error":"workflow.star:2:12: fake failure"},`+
+		`{"item":"23","ok":false,"cost_usd":0,`+ended+`}],"canceled":["item-21-r1","item-23-r1"],"failed":"item 22 did not finish: workflow.star:2:12: fake failure. Run beehave resume 12 to reopen item 22 and run the spawn again"}`,
 		gatherJSON(t, engine))
 
 	h.tick(t)
@@ -250,9 +250,9 @@ func TestSpawnGather_ResumeOfAFailedParentReopensTheMidListChildAndEachOutputIsI
 	}})
 
 	assert.JSONEq(t, `{"outcomes":[`+
-		`{"item":"21","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
-		`{"item":"22","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
-		`{"item":"23","ok":true,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, gatherJSON(t, engine), "each output is its own")
+		`{"item":"21","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-21"}},`+
+		`{"item":"22","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-22"}},`+
+		`{"item":"23","ok":true,"cost_usd":0,"stopped":{"step":"command:w#1","rc":2,"output":"out-23"}}]}`, gatherJSON(t, engine), "each output is its own")
 	assert.Equal(t, []string{"after 21:out-21 22:out-22 23:out-23"}, h.commands.ranBy(testItem))
 	h.life.mu.Lock()
 	assert.Equal(t, 2, h.life.takes["22"], "the reopened child holds a fresh claim")

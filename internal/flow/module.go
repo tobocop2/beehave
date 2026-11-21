@@ -55,7 +55,7 @@ func recordsCountedStep(builtin string) bool {
 
 // stepDefs lists the builtins of this package. The names are the builtins of workflow.Builtins less json, which is the module of the Starlark library.
 func stepDefs() []builtinDef {
-	return slices.Concat(repositoryDefs(), itemDefs(), runDefs())
+	return slices.Concat(repositoryDefs(), itemDefs(), eventDefs(), runDefs())
 }
 
 // repositoryDefs lists the builtins that read git or a forge. The engine refuses a call of one of them in a project with no repository.
@@ -79,6 +79,14 @@ func itemDefs() []builtinDef {
 		{name: "item_create", call: (*script).itemCreate},
 		{name: "item_read", call: (*script).itemRead},
 		{name: "item_status", call: (*script).itemStatus},
+	}
+}
+
+// eventDefs lists the builtins that publish a value of this run and read the values of the child runs.
+func eventDefs() []builtinDef {
+	return []builtinDef{
+		{name: progressKind, call: (*script).progress},
+		{name: publishKind, call: (*script).publish},
 	}
 }
 
