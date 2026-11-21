@@ -78,6 +78,7 @@ func facts() map[string]any {
 			"gate_files": []any{".github/workflows/ci.yml"}, "conventions": []any{"AGENTS.md"}, "brief_rules": []any{"name the tempting wrong fix"},
 			"stacked_rules": []any{"merge the base first"}, "limits": []any{"never run rm on a glob"}, "traps": []any{"the cache hides a stale build"},
 			"token_rules": []any{"read a log by its summary lines"}, "changelog": "CHANGELOG.md",
+			"review_skill": "your-review-skill",
 		},
 	}
 }
@@ -95,7 +96,7 @@ func TestPrompts_TheFactsOfTheProjectReachTheText(t *testing.T) {
 		raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
 		require.NoError(t, err)
 
-		tmpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+		tmpl, err := template.New(name).Funcs(skillFuncs).Option("missingkey=error").Parse(string(raw))
 		require.NoError(t, err)
 
 		var out bytes.Buffer
@@ -121,7 +122,7 @@ func TestPrompts_EveryPromptShowsTheGateThatRunsForAStringAndForAList(t *testing
 			raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
 			require.NoError(t, err)
 
-			tmpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+			tmpl, err := template.New(name).Funcs(skillFuncs).Option("missingkey=error").Parse(string(raw))
 			require.NoError(t, err)
 
 			data := facts()
@@ -140,14 +141,14 @@ func TestPrompts_AnEmptyFactRendersAsEmptyNotMissing(t *testing.T) {
 	t.Parallel()
 
 	empty := map[string]any{
-		"repo": "", "source": "", "forge": "", "tracker": "", "base_branch": "", "gate": "", "build_host": "", "gate_steps": []any{}, "vars": map[string]any{},
+		"repo": "", "source": "", "forge": "", "tracker": "", "base_branch": "", "gate": "", "build_host": "", "gate_steps": []any{}, "vars": map[string]any{"review_skill": ""},
 	}
 
 	for _, name := range factsLanes() {
 		raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
 		require.NoError(t, err)
 
-		tmpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+		tmpl, err := template.New(name).Funcs(skillFuncs).Option("missingkey=error").Parse(string(raw))
 		require.NoError(t, err)
 
 		require.NoError(t, tmpl.Execute(&bytes.Buffer{}, promptData(empty)), name)
@@ -161,7 +162,7 @@ func TestPrompts_TheLanesReadTheBaseRedsFromTheDataFileAndRefuseWithoutIt(t *tes
 		raw, err := fs.ReadFile(os.DirFS("prompts"), name+".md")
 		require.NoError(t, err)
 
-		tmpl, err := template.New(name).Option("missingkey=error").Parse(string(raw))
+		tmpl, err := template.New(name).Funcs(skillFuncs).Option("missingkey=error").Parse(string(raw))
 		require.NoError(t, err)
 
 		var out bytes.Buffer

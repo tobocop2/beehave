@@ -519,8 +519,17 @@ func TestAgents_TheSpecOfAStepCarriesItsSandboxPlan(t *testing.T) {
 
 	plan := &agent.SandboxPlan{Work: "/w"}
 
-	assert.Same(t, plan, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", plan).Sandbox)
-	assert.Nil(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil).Sandbox)
+	assert.Same(t, plan, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", plan, nil).Sandbox)
+	assert.Nil(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, nil).Sandbox)
+}
+
+func TestAgents_TheSpecOfAStepCarriesItsSkills(t *testing.T) {
+	t.Parallel()
+
+	skills := []string{"/login/skills/review"}
+
+	assert.Equal(t, skills, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, skills).Skills, "a step with no sandbox carries them too")
+	assert.Empty(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, nil).Skills)
 }
 
 func TestWithin_ComparesWholeNamesAndNotPrefixes(t *testing.T) {
@@ -594,7 +603,7 @@ func TestSandboxPlan_TheFolderOfTheOutputFileOfTheCallIsAReadDirectoryAndNoSibli
 	assert.NotContains(t, plan.ReadDirs, filepath.Dir(file), "the plan of the sandbox no longer carries the output folder")
 	assert.NotContains(t, plan.DenyWrite, filepath.Dir(file), "the folder of the output file is not read only")
 
-	args := claude.New(nil).Sandbox(*plan, "", t.TempDir(), r.f.spec.Write).Args
+	args := claude.New(nil).Sandbox(*plan, "", t.TempDir(), r.f.spec.Write, nil).Args
 	assert.Contains(t, args, filepath.Dir(file), "the folder of the one output file is a working directory of the call")
 	assert.NotContains(t, args, sibling, "the folder of another call stays closed")
 	assert.NotContains(t, args, outputs, "never the outputs folder")

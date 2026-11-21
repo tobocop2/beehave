@@ -32,7 +32,7 @@ example remediation/workflow.star flow/workflow.star
 mkdir forge
 mkdir home
 mkdir login
-# The implement step names the review skill in its sandbox, so the config folder of the runner holds it, as an installed user skill.
+# The config folder of the runner holds the review skill that the prompts declare, as an installed user skill.
 mkdir login/skills/the-review-skill
 cp skill.md login/skills/the-review-skill/SKILL.md
 env SWARM_REMOTE=$WORK/remote.git

@@ -89,7 +89,7 @@ func TestSandboxPlan_AStepWithOutputsAndNoEditsGetsSettingsThatAllowItsOutputFil
 	require.NotNil(t, r.f.spec.Sandbox)
 	assert.True(t, r.f.spec.NoEdits, "edits stay off")
 
-	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write).Args)
+	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write, nil).Args)
 
 	assertOnlyWriteGrant(t, settings, file, sibling, file+".tmp", outputs, r.work, filepath.Join(r.work, "a.go"))
 	assert.False(t, within(r.work, sibling), "the sibling is outside the work folder, which the sandbox opens by default")
@@ -106,7 +106,7 @@ func TestSandboxPlan_AStepThatDeclaresNoOutputsOpensNoPathForWrite(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, r.f.spec.Sandbox)
 
-	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write).Args)
+	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write, nil).Args)
 	assert.Empty(t, settings.Sandbox.Filesystem.AllowWrite)
 	assert.Empty(t, settings.Permissions.Allow)
 }

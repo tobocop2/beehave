@@ -108,8 +108,8 @@ func TestAgentStep_ARefusedSandboxValueStopsTheStepBeforeTheAgentStarts(t *testi
 		`sandbox = sandbox(network = "x"), `:               "network must be a list, not a text.",
 		`sandbox = sandbox(network = [3]), `:               "network must hold strings only",
 		`sandbox = sandbox(network = ["https://x.org"]), `: "not a domain name",
-		`sandbox = sandbox(allow_write = ["out"]), `:       "sandbox takes no argument allow_write. Use one of: network, skills.",
-		`sandbox = sandbox(read = []), `:                   "sandbox takes no argument read. Use one of: network, skills.",
+		`sandbox = sandbox(allow_write = ["out"]), `:       "sandbox takes no argument allow_write. Use one of: network.",
+		`sandbox = sandbox(read = []), `:                   "sandbox takes no argument read. Use one of: network.",
 		`sandbox = sandbox(network = [3] + []), `:          "network must hold strings only",
 	} {
 		t.Run(extra, func(t *testing.T) {
@@ -128,14 +128,11 @@ func TestAgentStep_ARefusedSandboxValueStopsTheStepBeforeTheAgentStarts(t *testi
 func TestBoxOf_RefusesAListThatIsNoListOfStrings(t *testing.T) {
 	t.Parallel()
 
-	_, err := boxOf(starlark.MakeInt(1), nil)
+	_, err := boxOf(starlark.MakeInt(1))
 	require.ErrorContains(t, err, "network must be a list of strings")
 
-	_, err = boxOf(starlark.NewList([]starlark.Value{starlark.String("https://x.org")}), nil)
+	_, err = boxOf(starlark.NewList([]starlark.Value{starlark.String("https://x.org")}))
 	require.ErrorContains(t, err, "not a domain name")
-
-	_, err = boxOf(nil, starlark.MakeInt(1))
-	require.ErrorContains(t, err, "skills must be a list of strings")
 }
 
 func TestRecalledSandbox_AStepRecordedWithNoSandboxReplaysWithNoSandbox(t *testing.T) {

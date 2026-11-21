@@ -44,9 +44,9 @@ func (a launchAdapter) Profile() agent.Profile {
 	return p
 }
 
-func (a launchAdapter) Guard(_, runDir string, _ []string) agent.Launch { return a.launch(runDir) }
+func (a launchAdapter) Guard(_, runDir string, _, _ []string) agent.Launch { return a.launch(runDir) }
 
-func (a launchAdapter) Sandbox(_ agent.SandboxPlan, _, runDir string, _ []string) agent.Launch {
+func (a launchAdapter) Sandbox(_ agent.SandboxPlan, _, runDir string, _, _ []string) agent.Launch {
 	return a.launch(runDir)
 }
 

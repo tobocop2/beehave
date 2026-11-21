@@ -15,15 +15,18 @@ The default is off. A project opts in with `sandbox = "on"` in its project file.
 | Key | Default | Meaning |
 |---|---|---|
 | `network` | empty list (no network) | The domains that the shell can reach. |
-| `skills` | empty list (no skill of the runner) | The skills of the runner that the agent can load, by the folder name of each skill. |
 
 ### The skills of a step
 
-The sandbox loads no settings file, so the agent sees no skill of the runner. A step that needs one names it in `skills`, such as `skills = [project.vars["review_skill"]]`. A name is a folder name: no path, no `..`.
+The sandbox loads no settings file, so the agent sees no skill of the runner. The prompt of a step declares each skill that the step needs with the template function `skill`, such as `{{ skill "review" }}` or `{{ skill .facts.vars.review_skill }}`. The function renders the plain name, and the engine gives the step each skill that the prompt declares, with a sandbox or without one. A name is a folder name: no path, no `..`; the render refuses any other name.
 
-- The engine finds each skill at `<config folder of the runner>/skills/<name>`. If that folder holds no `SKILL.md`, or the runner names no config folder, the step does not start, and the message names the skill and the folder.
+- With a sandbox, the step sees exactly the declared skills.
+- Without a sandbox, the step sees the declared skills and also the skills that the settings of the runner load. The CLI has no flag that limits skills alone. `--setting-sources` takes the sources `user`, `project` and `local`, and each source carries both its skills and its settings, so an empty list would also drop the permission rules, the hooks and the credential helper of the runner that an unsandboxed step relies on.
+- The remediation example declares skills in its prompts, so it needs an adapter that supports skills. The OpenCode adapter does not, and the engine stops a step of an OpenCode runner that declares a skill.
+
+- The engine finds each skill at `<config folder of the runner>/skills/<name>`. A runner with no config folder gets the default folder of its CLI under the home folder, `~/.claude` for Claude Code. If that folder holds no `SKILL.md`, or the CLI has no default folder, the step does not start, and the message names the skill and the folder.
 - If a skill folder holds a symbolic link, the step does not start, and the message names the skill and the link. A copy keeps a link as a link, and its target can be a file of the config folder. The skill folder itself can be a link: the copy reads through it.
-- The Claude adapter copies each named skill into a plugin folder in the run folder, `skills-plugin`, beside a manifest with the name `beehave-skills`. It passes the folder with `--plugin-dir`, which loads the skills. The setting sources stay empty, so no other user skill, plugin or hook loads.
+- The Claude adapter copies each declared skill into a plugin folder in the run folder, `skills-plugin`, beside a manifest with the name `beehave-skills`. It passes the folder with `--plugin-dir`, which loads the skills. In a sandboxed launch the setting sources stay empty, so no other user skill, plugin or hook loads. A step with no sandbox gets the same plugin folder, and the settings of its runner still load, and a step that declares no skill gets none.
 - The adapter also passes the plugin folder with `--add-dir`, as it does the folder of the data file. The flag loads no skill from the folder; it makes the folder a working directory, so `blockReadsOutsideWorkingDirectories` lets the Read tool and the shell read the files of a skill. The sandbox and the permission rules deny the write of the folder. The config folder of the runner stays denied.
 - The CLI names a plugin skill `beehave-skills:<name>`. The adapter records it as `<name>`. A skill of any other plugin keeps its prefix, so it never counts as the named skill.
 - A skill counts as called only when the CLI answers its Skill call with no error. A call that the CLI answers with `Unknown skill` does not count.

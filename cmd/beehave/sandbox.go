@@ -37,14 +37,13 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runn
 	git := gitOf(a.projects, request.Project, a.repos).Runner(dir, proc.DefaultTimeout)
 	closed, err := closedPaths(ctx, git, dir, home)
 	identity := a.identity(ctx, git)
-	skills, missing := skillFolders(request.Sandbox.Skills, runner.ConfigDir, home)
 
-	if note := cmp.Or(refusedNote(err), readNote(read, home, deny), stateNote(deny, request.DataFile), workNote(dir, request.NoEdits), identityNote(identity, dir), missing); note != "" {
+	if note := cmp.Or(refusedNote(err), readNote(read, home, deny), stateNote(deny, request.DataFile), workNote(dir, request.NoEdits), identityNote(identity, dir)); note != "" {
 		return agent.SandboxPlan{}, note
 	}
 
 	return agent.SandboxPlan{
-		Skills: skills, Work: dir, GitDirs: sharedGitDirs(a.repos, dir), Read: withData(read, request.DataFile), ReadDirs: dataFolder(request.DataFile),
+		Work: dir, GitDirs: sharedGitDirs(a.repos, dir), Read: withData(read, request.DataFile), ReadDirs: dataFolder(request.DataFile),
 		Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed, request.DataFile), DenyWritePatterns: hookPatterns(dir), Network: request.Sandbox.Network, Identity: identity,
 	}, ""
 }
@@ -52,8 +51,8 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runn
 // skillFile is the file that every skill folder holds.
 const skillFile = "SKILL.md"
 
-// skillFolders returns the folder of each skill that the step names, in the skills folder of the config folder of the runner, or why the step cannot start:
-// the runner names no config folder, or a folder holds no SKILL.md.
+// skillFolders returns the folder of each skill that the prompt of the step declares, in the skills folder of the config folder of the runner, or why the step cannot start:
+// the runner names no config folder, a folder holds no SKILL.md, or a folder holds a link.
 func skillFolders(names []string, configDir, home string) ([]string, string) {
 	folders := make([]string, 0, len(names))
 
@@ -64,7 +63,7 @@ func skillFolders(names []string, configDir, home string) ([]string, string) {
 
 		folder := filepath.Join(expand(configDir, home), "skills", name)
 		if !isFile(filepath.Join(folder, skillFile)) {
-			return nil, fmt.Sprintf("the step names the skill %s, and %s holds no %s. The step did not start. Install the skill there, or remove it from the skills of the sandbox.", name, folder, skillFile)
+			return nil, fmt.Sprintf("the step names the skill %s, and %s holds no %s. The step did not start. Install the skill there, or remove it from the prompt.", name, folder, skillFile)
 		}
 
 		if link := linkIn(folder); link != "" {

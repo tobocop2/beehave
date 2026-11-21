@@ -38,7 +38,7 @@ func settingsOf(t *testing.T, args []string) ([]string, map[string]any) {
 func TestSandbox_IsolatesTheSettingSourcesAndTheMCPServersAndRemovesTheWebTools(t *testing.T) {
 	t.Parallel()
 
-	flags, _ := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil).Args)
+	flags, _ := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Args)
 
 	assert.Equal(t, []string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"}, flags)
 }
@@ -46,7 +46,7 @@ func TestSandbox_IsolatesTheSettingSourcesAndTheMCPServersAndRemovesTheWebTools(
 func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Sandbox(plan(), "", "/run", nil)
+	launch := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil)
 
 	assert.Equal(t, map[string]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", "CLAUDE_ENV_FILE": "/run/sandbox-env.sh"}, launch.Env)
 }
@@ -58,7 +58,7 @@ func TestSandbox_TheShellReadsTheGitVariablesOfTheEngineFromAnEnvFile(t *testing
 	p.Identity = agent.GitIdentity{Name: "Ann O'Brien $HOME", Email: "ann@example.com"}
 	runDir := t.TempDir()
 
-	launch := claude.New(nil).Sandbox(p, "", runDir, nil)
+	launch := claude.New(nil).Sandbox(p, "", runDir, nil, nil)
 
 	envFile := filepath.Join(runDir, "sandbox-env.sh")
 	require.Equal(t, envFile, launch.Env["CLAUDE_ENV_FILE"], "the CLI sources the file in its shell")
@@ -87,7 +87,7 @@ func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndNothingElse(t *testing.T)
 	p := plan()
 	p.Identity = agent.GitIdentity{Name: "Ann", Email: "ann@example.com"}
 
-	launch := claude.New(nil).Sandbox(p, "", "/run", nil)
+	launch := claude.New(nil).Sandbox(p, "", "/run", nil, nil)
 
 	assert.Equal(t, map[string]string{"sandbox-env.sh": "export GIT_AUTHOR_EMAIL=ann@example.com\n" +
 		"export GIT_AUTHOR_NAME=Ann\n" +
@@ -100,7 +100,7 @@ func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndNothingElse(t *testing.T)
 func TestSandbox_TheSettingsAllowReadingTheEnvFileAndNotTheRunFolder(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run/folder", nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run/folder", nil, nil).Args
 
 	assert.Equal(t, 1, strings.Count(args[len(args)-1], "/run/folder"), "the settings name the run folder once")
 
@@ -117,7 +117,7 @@ func TestSandbox_TheSettingsAllowReadingTheEnvFileAndNotTheRunFolder(t *testing.
 func TestSandbox_WritesTheDenyByDefaultBaseTheCredentialLayerAndTheNetworkList(t *testing.T) {
 	t.Parallel()
 
-	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil).Args)
+	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Args)
 
 	want := `{
 	  "sandbox": {
@@ -150,7 +150,7 @@ func TestSandbox_DeniesThePatternsInTheSandboxAndInTheRulesOfTheFileTools(t *tes
 	p := plan()
 	p.DenyPatterns = []string{"/work/tree/.env*", "/work/tree/**/.env*"}
 
-	args := claude.New(nil).Sandbox(p, "", "/run", nil).Args
+	args := claude.New(nil).Sandbox(p, "", "/run", nil, nil).Args
 
 	var parsed struct {
 		Sandbox struct {
@@ -177,7 +177,7 @@ func TestSandbox_DeniesWritesToTheClosedPathsInTheSandboxAndTheEditRules(t *test
 	p := plan()
 	p.DenyWrite = []string{"/work/tree/.husky", "/work/tree/.git"}
 
-	args := claude.New(nil).Sandbox(p, "", "/run", nil).Args
+	args := claude.New(nil).Sandbox(p, "", "/run", nil, nil).Args
 
 	var parsed struct {
 		Sandbox struct {
@@ -199,7 +199,7 @@ func TestSandbox_DeniesWritesToTheClosedPathsInTheSandboxAndTheEditRules(t *test
 func TestSandbox_OpensEachWriteFileByAReadAndAnEditAllowRuleOfItsExactPath(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "", "/run", []string{"/state/outputs/1.review.json"}).Args
+	args := claude.New(nil).Sandbox(plan(), "", "/run", []string{"/state/outputs/1.review.json"}, nil).Args
 
 	var parsed struct {
 		Permissions struct{ Allow, Deny []string }
@@ -220,7 +220,7 @@ func TestSandbox_AnEditPlanAllowsTheFileToolsInTheWorkFolderByOneRule(t *testing
 		p := plan()
 		p.Edits = edits
 
-		args := claude.New(nil).Sandbox(p, "", "/run", []string{"/state/outputs/1.review.json"}).Args
+		args := claude.New(nil).Sandbox(p, "", "/run", []string{"/state/outputs/1.review.json"}, nil).Args
 
 		var parsed struct {
 			Permissions struct{ Allow, Deny []string }
@@ -241,7 +241,7 @@ func TestSandbox_AnEditPlanAllowsTheFileToolsInTheWorkFolderByOneRule(t *testing
 func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run", nil).Args
+	args := claude.New(nil).Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run", nil, nil).Args
 	text := args[len(args)-1]
 
 	assert.Contains(t, text, `"allowedDomains":[]`)
@@ -252,7 +252,7 @@ func TestSandbox_AnEmptyPlanWritesEmptyListsAndNeverNull(t *testing.T) {
 func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil, nil).Args
 	text := args[len(args)-1]
 
 	for _, key := range []string{"excludedCommands", "allowLocalBinding", "allowAllUnixSockets", "allowAppleEvents"} {
@@ -277,7 +277,7 @@ func TestSandbox_NeverSetsTheKeysThatWidenTheSandbox(t *testing.T) {
 func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil).Args
+	args := claude.New(nil).Sandbox(plan(), "/bin/beehave check command", "/run", nil, nil).Args
 
 	assert.Equal(t, 1, countOf(args, "--settings"), "one settings object holds the hook and the sandbox")
 
@@ -293,7 +293,7 @@ func TestSandbox_CarriesTheHookOfTheGuardInTheSameSettings(t *testing.T) {
 func TestSandbox_WithoutAGuardWritesNoHook(t *testing.T) {
 	t.Parallel()
 
-	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil).Args)
+	_, settings := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Args)
 
 	assert.NotContains(t, settings, "hooks")
 }
@@ -325,7 +325,7 @@ func TestSandbox_PassesEachReadFolderAsAWorkingDirectoryByTheAddDirFlag(t *testi
 	p := plan()
 	p.ReadDirs = []string{"/state/inputs/1.plan"}
 
-	args := claude.New(nil).Sandbox(p, "", "/run", nil).Args
+	args := claude.New(nil).Sandbox(p, "", "/run", nil, nil).Args
 
 	flags, parsed := settingsOf(t, args)
 	assert.Equal(t, []string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch", "--add-dir", "/state/inputs/1.plan"}, flags,
@@ -333,6 +333,6 @@ func TestSandbox_PassesEachReadFolderAsAWorkingDirectoryByTheAddDirFlag(t *testi
 	assert.NotContains(t, parsed["permissions"], "additionalDirectories", "one mechanism: the flag, not the settings key")
 	assert.NotContains(t, parsed["permissions"], "allow", "no Read allow rule: the docs say no allow rule lets the file tools through the block")
 
-	none, _ := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil).Args)
+	none, _ := settingsOf(t, claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Args)
 	assert.NotContains(t, none, "--add-dir", "a plan with no read folder passes no flag")
 }

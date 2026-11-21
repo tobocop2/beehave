@@ -58,6 +58,12 @@ func TestProfile_NamesTheModelAndResumeFlags(t *testing.T) {
 	assert.False(t, p.ResumeLast, "the resume flag keeps its place before the caps")
 }
 
+func TestProfile_TheDefaultConfigFolderIsDotClaudeUnderTheHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, ".claude", claude.New(nil).Profile().ConfigHome)
+}
+
 func TestProfile_AcceptsEditsInTheWorkFolderAndRunsBashCalls(t *testing.T) {
 	t.Parallel()
 

@@ -89,6 +89,9 @@ type Spec struct {
 	// Write lists the files outside the work folder that the file tools of the run may read and write, each by its exact path: the output file of the step.
 	// Every launch opens them, with or without a guard or a sandbox. In a sandbox the shell may write them too.
 	Write []string
+	// Skills lists the folder of each skill that the agent may load, and the name of the folder is the name of the skill. The adapter copies each one into the
+	// run folder, so a run with or without a sandbox loads these skills. A folder here holds no symbolic link: the engine refuses one.
+	Skills []string
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -359,16 +362,16 @@ func argsOf(spec Spec, p Profile, launch Launch, later []string) []string {
 }
 
 // launchOf returns what the adapter adds to the start: the sandbox of the spec, or the command guard when the spec has no sandbox.
-// Both carry the files that the spec opens to the file tools.
+// Both carry the files that the spec opens to the file tools and the skills of the spec.
 func launchOf(spec Spec, runDir string) Launch {
 	if spec.Sandbox == nil {
-		return spec.Adapter.Guard(spec.Guard, runDir, spec.Write)
+		return spec.Adapter.Guard(spec.Guard, runDir, spec.Write, spec.Skills)
 	}
 
 	plan := *spec.Sandbox
 	plan.Edits = !spec.NoEdits
 
-	return spec.Adapter.Sandbox(plan, spec.Guard, runDir, spec.Write)
+	return spec.Adapter.Sandbox(plan, spec.Guard, runDir, spec.Write, spec.Skills)
 }
 
 // writeFiles writes the files of a launch into runDir. It returns why it cannot, or "" when every file is written.

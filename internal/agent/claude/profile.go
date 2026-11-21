@@ -51,6 +51,7 @@ func (Adapter) Profile() agent.Profile {
 		Args:       []string{"-p", "--output-format", streamJSON, "--verbose", "--allowedTools", bashTool},
 		EditArgs:   []string{"--permission-mode", "acceptEdits"},
 		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
+		ConfigHome: ".claude",
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",
 		Resume:     func(id string) []string { return []string{"--resume", id} },
@@ -91,8 +92,9 @@ type hookHandler struct {
 // Claude Code merges hook entries across settings sources, so no settings file of the user changes.
 // The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
 // "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
-// Each file of write is opened to the file tools by the same rules and working directory as in the sandbox, and the launch is empty when it has no hook and no file.
-func (Adapter) Guard(command, _ string, write []string) agent.Launch {
+// Each file of write is opened to the file tools by the same rules and working directory as in the sandbox.
+// The skills reach the CLI as the plugin folder of the sandbox does, so a run with no sandbox loads them too. The launch is empty when it has no hook, no file and no skill.
+func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launch {
 	var settings guardSettings
 
 	if command != "" {
@@ -104,13 +106,16 @@ func (Adapter) Guard(command, _ string, write []string) agent.Launch {
 		settings.Permissions = &allowOnly{Allow: outputRules(write)}
 	}
 
-	if settings.Hooks == nil && settings.Permissions == nil {
-		return agent.Launch{}
+	plugin := skillsPlugin(skills, runDir)
+	args := slices.Concat(addDirs(slices.Concat(outputDirs(write), plugin.readDirs())), plugin.args)
+
+	if settings.Hooks != nil || settings.Permissions != nil {
+		raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
+
+		args = append(args, "--settings", string(raw))
 	}
 
-	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
-
-	return agent.Launch{Args: slices.Concat(addDirs(outputDirs(write)), []string{"--settings", string(raw)})}
+	return agent.Launch{Args: args, Files: plugin.files, Copies: plugin.copies}
 }
 
 // guardHooks is the PreToolUse hook on the Bash tool that runs command.

@@ -28,7 +28,7 @@ func allowRules(t *testing.T, args []string) []string {
 func TestLaunch_AStepWithNoSandboxOpensItsOutputFileToTheFileTools(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Guard("/bin/beehave check command", "/run", []string{outputFile}).Args
+	args := claude.New(nil).Guard("/bin/beehave check command", "/run", []string{outputFile}, nil).Args
 
 	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[:2], "the folder of the one output file is a working directory")
 	assert.Equal(t, "--settings", args[2])
@@ -39,7 +39,7 @@ func TestLaunch_AStepWithNoSandboxOpensItsOutputFileToTheFileTools(t *testing.T)
 func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFileToTheFileTools(t *testing.T) {
 	t.Parallel()
 
-	args := claude.New(nil).Guard("", "/run", []string{outputFile}).Args
+	args := claude.New(nil).Guard("", "/run", []string{outputFile}, nil).Args
 
 	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[:2])
 	assert.Equal(t, []string{"Read(//state/outputs/7.review/output.json)", "Edit(//state/outputs/7.review/output.json)"}, allowRules(t, args))
@@ -49,15 +49,15 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFileToTheFileTool
 func TestLaunch_AStepWithNoOutputFileAndNoGuardAddsNothing(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, claude.New(nil).Guard("", "/run", nil).Empty())
+	assert.True(t, claude.New(nil).Guard("", "/run", nil, nil).Empty())
 }
 
 func TestLaunch_TheGuardAndTheSandboxOpenTheOutputFileByTheSameRules(t *testing.T) {
 	t.Parallel()
 
 	adapter := claude.New(nil)
-	guarded := allowRules(t, adapter.Guard("g", "/run", []string{outputFile}).Args)
-	boxed := allowRules(t, adapter.Sandbox(plan(), "g", "/run", []string{outputFile}).Args)
+	guarded := allowRules(t, adapter.Guard("g", "/run", []string{outputFile}, nil).Args)
+	boxed := allowRules(t, adapter.Sandbox(plan(), "g", "/run", []string{outputFile}, nil).Args)
 
 	assert.Equal(t, guarded, boxed[:len(guarded)], "one function writes the rules for every mode")
 }

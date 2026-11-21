@@ -66,6 +66,8 @@ type agentArgs struct {
 	// sandbox is the sandbox keyword as written. box is the sandbox the step runs with, which the render step records, or nil for no sandbox.
 	sandbox sandboxChoice
 	box     *model.Sandbox
+	// skills are the skills that the prompt declares through the template function skill, which the render step records. The step gets these skills.
+	skills []string
 	// record is the JSON text of the data keyword, and dataFile the file that the prompt names for it. Both are empty for a call with no data.
 	record   string
 	dataFile string
@@ -307,7 +309,16 @@ func (a *agentArgs) recall(outputs map[string]any) (err error) {
 		return err
 	}
 
-	a.box, err = recalledSandbox(outputs)
+	return a.recallLimits(outputs)
+}
+
+// recallLimits reads the sandbox and the skills that the render step recorded. A record that holds neither replays with neither.
+func (a *agentArgs) recallLimits(outputs map[string]any) (err error) {
+	if a.box, err = recalledSandbox(outputs); err != nil {
+		return err
+	}
+
+	a.skills, err = recalledSkills(outputs)
 
 	return err
 }
@@ -315,7 +326,7 @@ func (a *agentArgs) recall(outputs map[string]any) (err error) {
 // renderStep returns the step that renders the prompt of an agent call, records the sandbox, the lane kind, the login and the model of the call and marks its start commit.
 func (s *script) renderStep(a agentArgs, login string) func(context.Context) (stepResult, error) {
 	return func(ctx context.Context) (stepResult, error) {
-		prompt, err := s.render(ctx, a)
+		prompt, skills, err := s.render(ctx, a)
 		if err != nil {
 			return stepResult{Note: prompt}, err
 		}
@@ -325,11 +336,13 @@ func (s *script) renderStep(a agentArgs, login string) func(context.Context) (st
 			return stepResult{Note: prompt}, err
 		}
 
+		a.skills = skills
+
 		return stepResult{Note: prompt, Outputs: a.recordOutputs(head, login, s.sandboxDefault())}, nil
 	}
 }
 
-// recordOutputs is the record of the render step: the output file, the start commit, the login, the label and model when set, the sandbox, and the data and its file.
+// recordOutputs is the record of the render step: the output file, the start commit, the login, the label and model when set, the sandbox, the skills of the prompt, and the data and its file.
 func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[string]any {
 	outputs := map[string]any{recordedOutputFile: a.file, recordedStartHead: head, recordedLogin: login}
 	if a.label != "" {
@@ -341,6 +354,7 @@ func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[st
 	}
 
 	maps.Copy(outputs, recordSandbox(a.sandbox.effective(sandboxDefault)))
+	maps.Copy(outputs, recordSkills(a.skills))
 	maps.Copy(outputs, recordData(promptData{File: a.dataFile, Text: a.record}))
 
 	return outputs
@@ -400,32 +414,33 @@ func (a agentArgs) phase(in ItemInput, login, prompt, treeStart string) PhaseInp
 	return PhaseInput{
 		Item: in.Item, Project: in.Project, Login: login, Prompt: prompt,
 		Resume: a.resume, Model: a.model, Timeout: a.timeout, IdleTimeout: a.idleTimeout, Forbid: a.forbid, Protect: a.protect, MaxBudget: a.maxBudget,
-		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box, StartHead: a.startHead, TreeStart: treeStart, Base: in.Base,
+		NoEdits: !a.edits, OutputFile: a.file, Outputs: a.declared, Sandbox: a.box, Skills: a.skills, StartHead: a.startHead, TreeStart: treeStart, Base: in.Base,
 		Data: a.record,
 	}
 }
 
 // render checks the pin, reads the prompt file and fills it. The data are the inputs, output_file and data_file.
-func (s *script) render(ctx context.Context, a agentArgs) (string, error) {
+// It returns the prompt and the skills that the prompt declares.
+func (s *script) render(ctx context.Context, a agentArgs) (string, []string, error) {
 	if err := checkPin(ctx, a.git, a.pin); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	path, text, err := s.promptFile(a.prompt)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	data := maps.Clone(a.data)
 	data["output_file"] = a.file
 	data["data_file"] = a.dataFile
 
-	filled, err := fill(string(text), data)
+	filled, skills, err := fill(string(text), data)
 	if err != nil {
-		return "", fmt.Errorf("prompt file %s: %w", path, err)
+		return "", nil, fmt.Errorf("prompt file %s: %w", path, err)
 	}
 
-	return filled, nil
+	return filled, skills, nil
 }
 
 // promptFile reads the prompt file. A relative path starts at the folder of the workflow file.
@@ -442,18 +457,20 @@ func (s *script) promptFile(path string) (string, []byte, error) {
 	return path, text, nil
 }
 
-// fill executes a prompt template. A name that the data lacks is an error.
-func fill(text string, data map[string]any) (string, error) {
-	tmpl, err := template.New("prompt").Option("missingkey=error").Parse(text)
+// fill executes a prompt template and returns the text with the skills that the template declares. A name that the data lacks is an error.
+func fill(text string, data map[string]any) (string, []string, error) {
+	var declared skillDeclarations
+
+	tmpl, err := template.New("prompt").Option("missingkey=error").Funcs(declared.funcs()).Parse(text)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	var out bytes.Buffer
 
 	err = tmpl.Execute(&out, data)
 
-	return out.String(), err
+	return out.String(), declared.names, err
 }
 
 // checkPin refuses a folder whose HEAD is not the pin. An empty pin accepts any HEAD.

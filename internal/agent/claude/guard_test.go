@@ -87,7 +87,7 @@ func TestGuard_TheHookLetsACleanCommandThrough(t *testing.T) {
 func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil)
+	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil)
 	got := launch.Args
 
 	assert.Empty(t, launch.Env)

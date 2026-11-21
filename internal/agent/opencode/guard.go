@@ -27,7 +27,8 @@ var pluginTemplate string
 // The plugin is proven on the 1.x plugin interface only, and the runner does not start a guarded step on a version from Profile.GuardBefore.
 // The plugin writes a marker file when it loads (Launch.Loaded); the runner sets Result.GuardMissing when the marker is missing at the end of the run.
 // With an empty command the run stays open, and the launch only opens each file of write to the file tools (see openOutput); with no file either, it is empty.
-func (Adapter) Guard(command, runDir string, write []string) agent.Launch {
+// The skills list is not used: the launch closes the external skills, and OpenCode has no plugin of skills.
+func (Adapter) Guard(command, runDir string, write, _ []string) agent.Launch {
 	if command == "" {
 		return openOutput(agent.Launch{}, write)
 	}
@@ -36,7 +37,7 @@ func (Adapter) Guard(command, runDir string, write []string) agent.Launch {
 }
 
 // Sandbox returns the launch of Guard. The profile has no sandbox, so the runner never asks; the answer keeps the run closed and guarded if it ever does.
-func (Adapter) Sandbox(_ agent.SandboxPlan, guard, runDir string, write []string) agent.Launch {
+func (Adapter) Sandbox(_ agent.SandboxPlan, guard, runDir string, write, _ []string) agent.Launch {
 	return openOutput(launch(guard, runDir), write)
 }
 

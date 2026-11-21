@@ -78,9 +78,12 @@ func (g *graph) keywords(call *syntax.CallExpr, builtin string, allowed []string
 			continue
 		}
 
-		if len(allowed) == 0 {
+		switch {
+		case builtin == sandboxName && key.Name == skillsField:
+			g.report(placeOf(key.NamePos), "sandbox takes no argument skills. The prompt declares the skills of a step with the template function skill, such as {{ skill \"review\" }}.")
+		case len(allowed) == 0:
 			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument, and the call gives %s.", builtin, key.Name))
-		} else {
+		default:
 			g.report(placeOf(key.NamePos), fmt.Sprintf("%s takes no argument %s. Use one of: %s.", builtin, key.Name, strings.Join(allowed, ", ")))
 		}
 	}

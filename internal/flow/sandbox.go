@@ -25,23 +25,20 @@ type sandboxChoice struct {
 	box *model.Sandbox
 }
 
-// sandbox is the builtin sandbox(network = [...], skills = [...]). It checks the lists and returns a value for the sandbox keyword of an agent call.
+// sandbox is the builtin sandbox(network = [...]). It checks the list and returns a value for the sandbox keyword of an agent call.
 func (s *script) sandbox(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var network, skills starlark.Value
+	var network starlark.Value
 
-	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{"network": &network, "skills": &skills}); err != nil {
+	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{"network": &network}); err != nil {
 		return nil, err
 	}
 
-	box, err := boxOf(network, skills)
+	box, err := boxOf(network)
 	if err != nil {
 		return nil, err
 	}
 
-	return starlarkstruct.FromKeywords(sandboxMark, []starlark.Tuple{
-		{starlark.String("network"), stringList(box.Network)},
-		{starlark.String("skills"), stringList(box.Skills)},
-	}), nil
+	return starlarkstruct.FromKeywords(sandboxMark, []starlark.Tuple{{starlark.String("network"), stringList(box.Network)}}), nil
 }
 
 func stringList(items []string) *starlark.List {
@@ -53,19 +50,14 @@ func stringList(items []string) *starlark.List {
 	return starlark.NewList(values)
 }
 
-// boxOf reads the network list and the skills list of a sandbox call.
-func boxOf(network, skills starlark.Value) (*model.Sandbox, error) {
+// boxOf reads the network list of a sandbox call.
+func boxOf(network starlark.Value) (*model.Sandbox, error) {
 	domains, err := workflow.NetworkDomains(network)
 	if err != nil {
 		return nil, err
 	}
 
-	names, err := workflow.SkillNames(skills)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.Sandbox{Network: domains, Skills: names}, nil
+	return &model.Sandbox{Network: domains}, nil
 }
 
 // readSandbox reads the sandbox keyword of an agent call. A nil value is a call that leaves the keyword out.
@@ -88,7 +80,7 @@ func sandboxFromStruct(value *starlarkstruct.Struct) (sandboxChoice, error) {
 	fields := starlark.StringDict{}
 	value.ToStringDict(fields)
 
-	box, err := boxOf(fields["network"], fields["skills"])
+	box, err := boxOf(fields["network"])
 
 	return sandboxChoice{set: true, box: box}, err
 }

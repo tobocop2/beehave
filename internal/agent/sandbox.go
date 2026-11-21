@@ -24,11 +24,8 @@ import (
 // the CLI blocks reads outside the working directories, so each folder here holds only the files that the run may read.
 // Identity is the git identity of the engine at the work folder, which the commits of the shell carry.
 // Edits is true for a run that may edit the files of the work folder with the file tools. The runner sets it from Spec.NoEdits.
-// Skills lists the folder of each skill that the agent may load, and the name of the folder is the name of the skill. The adapter copies each one into the
-// run folder, so the agent loads no other skill of the runner and reads no file of its config folder. A folder here holds no symbolic link: the engine refuses one.
 type SandboxPlan struct {
 	Edits             bool
-	Skills            []string
 	Work              string
 	GitDirs           []string
 	Read              []string

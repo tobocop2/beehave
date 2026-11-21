@@ -127,6 +127,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 - A fact that the project file leaves out is empty text, an empty list or an empty dict, never a missing field. A key that `vars` leaves out is missing: read it with `facts().vars.get("key", default)`.
 - The call is a recorded step named `facts#<n>`, so a replay returns the facts the run started with and never reads the config again.
 - A workflow passes the struct in the `inputs` of an agent call, and the prompt reads a field as `{{ .facts.<field> }}` and a setting of `vars` as `{{ index .facts.vars "<key>" }}`. The `index` form gives nothing, and no error, for a key that `vars` leaves out. The agent reads no file for it.
+- A prompt declares a skill with the template function `skill`, as `{{ skill "name" }}` or `{{ skill .facts.vars.review_skill }}`. The function renders the plain name. The step gets the skills that its prompt declares, with a sandbox or without one. A sandboxed step sees only those skills. An unsandboxed step also sees the skills of the settings of its runner (see [the skills of a step](sandbox.md#the-skills-of-a-step)). If the runner lacks a declared skill, the step stops before the agent starts. The dry run renders the prompt, so it refuses a name that is no folder name. `beehave check workflow` without `--dry-run` reads no prompt.
 - In a dry run the facts are empty, except `vars`. `beehave check workflow --project <name> --dry-run` gives `vars` the value of that project. Without `--project`, `vars` is an empty dict.
 - `beehave check workflow` refuses a field that `facts()` does not return.
 
@@ -826,7 +827,7 @@ One workflow written in this form, with five prompt files. The method lives in t
 The workflow names no skill. The project names it.
 
 - The project file sets `vars.review_skill`: the name of a skill, such as `"your-review-skill"`. A run with no such key, or a value that is not a text that is not blank, is refused before the first agent starts. The message names the key.
-- The implement step names the skill in its sandbox, `skills = [project.vars["review_skill"]]`, so the sandboxed agent can load it from the config folder of the runner (see [the skills of a step](sandbox.md#the-skills-of-a-step)).
+- The prompts name the skill with `{{ skill .facts.vars.review_skill }}`, so the agent of the step can load it from the config folder of the runner (see [the skills of a step](sandbox.md#the-skills-of-a-step)).
 - After the implement step, the example refuses the item when the agent did not call that skill, or the CLI answered the call with an error such as `Unknown skill`. The message names the skill and the key.
 - The test is `if project.vars["review_skill"] not in implement.skills:` with a `fail` call in its branch, so a dry run reads the key from the vars of the project and reports that skill from its fake agent.
 
