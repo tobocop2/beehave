@@ -358,3 +358,59 @@ func TestPublished_AKeyThatTheListNamesAndNoEventHoldsIsAnError(t *testing.T) {
 
 	require.ErrorContains(t, err, "read the key ghost of "+testRun)
 }
+
+func TestPublish_AValueThatHoldsAnAnthropicKeyIsRedactedForProgressAndForStatusEvents(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	flow := `def worker(item):
+    publish("note", {"text": "key sk-ant-abcdefghijklmnop0123 here"}, name = "note")
+
+def main(item):
+    runs = spawn(items = ["21"], entry = "worker", name = "fan")
+    gather(runs, name = "fan")
+    p = progress(runs, "note", name = "peek")
+    command(name = "log", run = ["log", p[0].value["text"]])
+`
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, flow))
+	require.NoError(t, err)
+
+	ran := h.commands.ranBy(testItem)
+	require.Len(t, ran, 1)
+	assert.Contains(t, ran[0], "[redacted]", "progress returns the redacted value")
+	assert.NotContains(t, ran[0], "sk-ant")
+
+	got, err := h.client(t, testVersion).Published("item-21-r1")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Contains(t, string(got[0].Value), "[redacted]", "status --events reads the redacted value")
+	assert.NotContains(t, string(got[0].Value), "sk-ant")
+}
+
+func TestGather_CostUSDAtDepthThreeIncludesEveryRunBelowTheChild(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", costing(2.5))
+
+	flow := `def leaf(item):
+    agent(model = "m", prompt = "prompts/a.md", name = "leaf")
+
+def middle(item):
+    agent(model = "m", prompt = "prompts/a.md", name = "middle")
+    gather(spawn(items = ["23"], entry = "leaf", name = "deep"), name = "deep")
+
+def child(item):
+    agent(model = "m", prompt = "prompts/a.md", name = "child")
+    gather(spawn(items = ["22"], entry = "middle", name = "mid"), name = "mid")
+
+def main(item):
+    done = gather(spawn(items = ["21"], entry = "child", name = "fan"), name = "fan")
+    command(name = "cost", run = ["cost", str(done.results[0].cost_usd)])
+`
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, capFile(t, flow))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cost 7.5"}, rig.h.commands.ranBy(testItem), "the child, its child and the child of that one cost 2.5 each")
+}
