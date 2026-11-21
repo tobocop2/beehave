@@ -80,6 +80,9 @@ type script struct {
 	// spawned holds the runs that the spawn calls of this run returned, started or reused. gather accepts only these.
 	spawned []spawnedRun
 
+	// keys holds the keys that publish set in this run, in the order of their first use. The output of each publish step holds the list, so a replay rebuilds it.
+	keys []string
+
 	// hostStarted is true once a host_up call of this run launched the host. host_teardown stops no other host.
 	hostStarted bool
 

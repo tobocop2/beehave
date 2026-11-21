@@ -42,7 +42,8 @@ const (
 // Version 4 records the wait:notify step at every wait, before the receive of the answer. Version 5 removed the method and board fields from the result of facts.
 // Version 6 adds the runners field to the result of facts. Version 7 adds the run and run_item fields to the input of the host job of a command call with a slot class.
 // Version 8 adds the sleep step, with its marker record sleep:<name>#<n>/start.
-const coreVersion = 8
+// Version 9 adds the publish and progress steps, and the cost_usd field to each outcome that the gather step records.
+const coreVersion = 9
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -107,7 +108,7 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{"command", "earlier_calls", envKeyword, "facts", "gather", "now", sleepKind, "spawn", "wait", "write"},
+			kinds:   []string{"command", "earlier_calls", envKeyword, "facts", "gather", "now", progressKind, publishKind, sleepKind, "spawn", "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},

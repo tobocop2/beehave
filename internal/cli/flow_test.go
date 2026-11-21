@@ -112,6 +112,7 @@ type fakeSteering struct {
 	infos     []flow.RunInfo
 	view      flow.RunSteps
 	lanes     flow.ItemLanes
+	published []flow.PublishedValue
 	err       error
 	pinned    string
 	pinnedErr error
@@ -177,6 +178,12 @@ func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
 	s.calls = append(s.calls, "steps "+id)
 
 	return s.view, s.err
+}
+
+func (s *fakeSteering) Published(id string) ([]flow.PublishedValue, error) {
+	s.calls = append(s.calls, "published "+id)
+
+	return s.published, s.err
 }
 
 func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
