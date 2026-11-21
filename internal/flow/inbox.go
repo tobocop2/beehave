@@ -26,6 +26,8 @@ const (
 	sendKind = "send"
 	// topicKeyword is the keyword of recv and send that names the topic of a message.
 	topicKeyword = "topic"
+	// topicsKeyword is the keyword of first_of that lists the topics to wait for.
+	topicsKeyword = "topics"
 	// parentTarget is the value of the to keyword of send that names the run that spawned this run.
 	parentTarget = "parent"
 	// deadlineSuffix ends the name of the step that records the deadline of one recv call or one gather call, after the name of its step.
@@ -134,6 +136,13 @@ func (s *script) await(topic string, deadline time.Time) (envelope, bool, error)
 			return got, false, nil
 		}
 
+		s.stash(got)
+	}
+}
+
+// stash keeps a message of another topic in the buffer for a later receive. An end notice only wakes a first_of, so no later receive wants it and it is dropped.
+func (s *script) stash(got envelope) {
+	if got.Topic != childTopic {
 		s.inbox = append(s.inbox, got)
 	}
 }

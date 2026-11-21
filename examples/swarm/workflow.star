@@ -142,7 +142,7 @@ def park(swarm, p, item_id, key, text):
 def wait_for_one(swarm, p):
     if len(swarm.live) == 0:
         return
-    results = gather(swarm.live, until = "any", name = "g-%d" % p).results
+    results = [first_of(runs = swarm.live, name = "g-%d" % p).outcome]
     gone = [r.item for r in results]
     keep = [run for run in swarm.live if run.item not in gone]
     swarm.live.clear()

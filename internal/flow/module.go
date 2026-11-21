@@ -116,6 +116,7 @@ func runDefs() []builtinDef {
 func swarmDefs() []builtinDef {
 	return []builtinDef{
 		{name: cancelKind, call: (*script).cancel},
+		{name: firstOfKind, call: (*script).firstOf},
 		{name: gatherKind, call: (*script).gather},
 		{name: "spawn", call: (*script).spawn},
 	}
