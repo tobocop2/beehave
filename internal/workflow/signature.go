@@ -243,6 +243,12 @@ func triesRule(v starlark.Value) error {
 	return OutputTries(tries)
 }
 
+func ownDraftRule(v starlark.Value) error {
+	_, err := OwnDraft(v)
+
+	return err
+}
+
 func ownRule(v starlark.Value) error {
 	_, _, err := OwnerIdentity(v)
 
@@ -442,7 +448,7 @@ func itemSignatures() map[string][]Param {
 		itemStatusName: {filled("id"), {Name: statusField, Kind: KindText, Required: true, Values: StatusValues()}, label},
 		prCommentName:  {filled("text"), filled("key"), forbidText(), opt("integration", KindBool), label},
 		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), forbidText(), opt("integration", KindBool), label},
-		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), label},
+		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), {Name: "own_draft", Kind: KindInt, AsValue: true, Rule: ownDraftRule}, label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
 	}
 }

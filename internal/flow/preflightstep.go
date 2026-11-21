@@ -60,11 +60,15 @@ func (s *script) preflight(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 // preflightArgs reads the keywords of a preflight call: the request, the hold label, the name of the step and the id of the item to read.
 // The id is empty when the call leaves it out, and the call then reads the item of the run.
 func preflightArgs(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req preflight.Request, hold, label, id string, err error) {
-	var own starlark.Value
+	var own, draft starlark.Value
 
 	if err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label, "id": &id,
+		headKeyword: &req.ExpectHead, baseKeyword: &req.ExpectBase, holdKeyword: &hold, ownKeyword: &own, nameKeyword: &label, "id": &id, ownDraftKeyword: &draft,
 	}); err != nil {
+		return req, "", "", "", err
+	}
+
+	if req.OwnDraft, err = workflow.OwnDraft(draft); err != nil {
 		return req, "", "", "", err
 	}
 

@@ -644,7 +644,10 @@ def land(approved, project, round_settings, n):
 
         # The stops of the pipeline of one item, for each item: merged, closed, branch gone, hold, draft, base, and a head that is not the reviewed one.
         # An item that stops is reported with its reason, and the other items still land.
-        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]})
+        # The pull request of an approved item is still the draft that its run opened: the merge marks it ready, after this call. The number of that draft is no stop.
+        # A child value with no draft number keeps the stop.
+        own_draft = {"own_draft": entry.pr} if entry.pr else {}
+        check = preflight(name = "intake-" + id, id = id, head = head, base = base, hold = "hold", own = {"logins": [round_settings["owner"]]}, **own_draft)
         if not check.ok:
             stopped.append(struct(item = id, reason = check.reason))
             continue
@@ -655,7 +658,8 @@ def land(approved, project, round_settings, n):
             stopped.append(struct(item = id, reason = missing))
             continue
 
-        prs.append(struct(item = id, head = head, approved = entry.approved))
+        # The merge accepts the draft that the run opened, and marks it ready after its guards. The hand-off call reads no draft.
+        prs.append(struct(item = id, head = head, approved = entry.approved, **own_draft))
 
     for skipped in stopped:
         item_comment(name = "stop-" + skipped.item, id = skipped.item, key = "rejected", text = skipped.reason, forbid_text = ATTRIBUTION)
@@ -1111,7 +1115,7 @@ def round(item):
                 if result.ok and result.value != None:
                     seen = max(seen, result.value["host_losses"])
                     if result.value["approved"]:
-                        approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"]))
+                        approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"], pr = result.value.get("pr", 0)))
 
             if len(approved) > 0:
                 seen = max(seen, land(approved, project, round_settings, n))
@@ -1171,10 +1175,10 @@ def _move_card(project, stage, pr = 0, issue = 0):
         stop_on_rc = [2],
     )
 
-def item_value(item, head, approved, reason, host_losses):
+def item_value(item, head, approved, reason, host_losses, pr = 0):
     """The value that a child run returns to the round: the item, the head it reached, whether the review approved it, why not when it did not,
-    and the highest host_losses that a gate of the child read."""
-    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses}
+    the highest host_losses that a gate of the child read, and the number of the draft that the child opened (0 when it opened none)."""
+    return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr}
 
 def sweep(project):
     """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane), then `docker volume prune -f`.
@@ -1336,7 +1340,8 @@ def _lane(item, project, round_settings):
     # This method has no follow-ups: a review that leaves any finding open gets the verdict "changes", and the loop runs a fix.
     # Before each review, design and fix agent, the loop reads the pull request again, with the head of the worktree, the base, the hold label and the own logins.
     # A stop in the loop ends the run as the stop at the intake does: no more agents start, and the result holds the step, the exit code and the reason.
-    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}}
+    # The loop accepts the draft that this run opened (own_draft is its number) and stops at any other draft.
+    guard = {"base": base, "hold": "hold", "own": {"logins": [round_settings["owner"]]}, "own_draft": draft.number}
     # The loop calls rise_after_review after each full review, so a rise ends the loop before the next fix lane starts. A scoped review writes no count.
     def rise_after_review(review):
         return regression_rise(plan.regressions, review.regressions)
@@ -1436,4 +1441,4 @@ def _lane(item, project, round_settings):
             forbid_text = ATTRIBUTION,
         )
 
-    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses)
+    return item_value(item, loop.gate.head, loop.verdict == "approve", "" if loop.verdict == "approve" else loop.verdict, loop.host_losses, pr = draft.number)

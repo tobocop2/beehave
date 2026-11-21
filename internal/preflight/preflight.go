@@ -77,11 +77,13 @@ func (s Stop) String() string {
 }
 
 // Request names the pull request. ExpectHead is the full SHA the caller expects, ExpectBase the branch it gated against; an empty one is not checked.
+// OwnDraft is the number of the draft that the caller opened itself: that one draft is no stop. Zero means every draft is a stop.
 // Own lists the logins of the caller. An open pull request by any other login claims the item, and so does an assignee of the pull request or of a linked issue that is not in the list. An empty list checks no author and no assignee.
 type Request struct {
 	PR         int
 	ExpectHead string
 	ExpectBase string
+	OwnDraft   int
 	Own        []string
 }
 
@@ -177,7 +179,7 @@ func judge(ctx context.Context, r Reader, v view, req Request, hold string) (Sto
 		return stop, lines, err
 	}
 
-	if stop, lines := labelStop(v, hold); stop != Unchanged {
+	if stop, lines := labelStop(v, hold, req.OwnDraft); stop != Unchanged {
 		return stop, lines, nil
 	}
 
@@ -321,7 +323,8 @@ func claimStop(v view, own []string) (Stop, []string) {
 }
 
 // labelStop holds the hold label and the draft flag. A hold is a product decision opening, so it outranks a draft.
-func labelStop(v view, hold string) (Stop, []string) {
+// The draft that the caller opened itself, by number, is no stop.
+func labelStop(v view, hold string, ownDraft int) (Stop, []string) {
 	if hold != "" && slices.Contains(strings.Split(v.labels, ","), hold) {
 		return Held, []string{
 			fmt.Sprintf("STOP: #%d now carries the '%s' label. A product decision is open; nothing merges.", v.pr, hold),
@@ -329,7 +332,7 @@ func labelStop(v view, hold string) (Stop, []string) {
 		}
 	}
 
-	if v.draft {
+	if v.draft && v.pr != ownDraft {
 		return Draft, []string{
 			fmt.Sprintf("STOP: #%d is a DRAFT. It is not mergeable and may be mid-rework by its author.", v.pr),
 			"  Recovery: review it if you were sent to review it, but do not merge and do not push",

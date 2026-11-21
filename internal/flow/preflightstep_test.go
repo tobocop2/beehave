@@ -157,6 +157,38 @@ func TestPreflight_AnUnknownKeywordFailsAtItsLine(t *testing.T) {
 	assert.Empty(t, fake.asked)
 }
 
+func TestPreflight_OwnDraftIsTheNumberOfAPullRequestAndAnythingElseFailsAtItsLine(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]string{"zero": "0", "negative": "-5", "text": `"7"`, "none": "None"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h, fake, _ := preflightHarness(t, preflight.Result{})
+
+			_, err := walkBody(t, h, "preflight(own_draft = "+value+")\n")
+
+			require.ErrorContains(t, err, "workflow.star:")
+			assert.Empty(t, fake.asked, "a refused value never reaches the forge")
+
+			// A value that the file computes passes the check, and the run refuses it with the same text.
+			h, fake, _ = preflightHarness(t, preflight.Result{})
+
+			_, err = walkBody(t, h, "number = "+value+"\npreflight(own_draft = number)\n")
+
+			require.ErrorContains(t, err, "own_draft must be the number of a pull request")
+			assert.Empty(t, fake.asked, "a refused value never reaches the forge at the run")
+		})
+	}
+
+	h, fake, _ := preflightHarness(t, preflight.Result{})
+
+	_, err := walkBody(t, h, "preflight(own_draft = 7)\n")
+
+	require.NoError(t, err)
+	assert.Equal(t, []preflight.Request{{OwnDraft: 7}}, fake.asked)
+}
+
 func TestPreflight_TheStepIsRecordedUnderItsName(t *testing.T) {
 	t.Parallel()
 

@@ -147,6 +147,8 @@ type Request struct {
 	AllowOrphans  bool
 	AllowNoChecks bool
 	AllowReady    bool
+	// OwnDraft is the number of the draft that the caller opened. The draft guard accepts that pull request, and the ready step marks it ready after the guards.
+	OwnDraft int
 	// AuditClosing turns on the audit of the closing references. Names are the issues the item names: the pull request must close exactly those.
 	AuditClosing bool
 	Names        []int

@@ -14,10 +14,15 @@ import (
 // approvedField is the optional bool field of a member of prs that carries the approval of that member.
 const approvedField = "approved"
 
+// ownDraftField is the optional int field of a member of prs: the number of the draft that the run opened, which the merge guard for drafts accepts.
+const ownDraftField = "own_draft"
+
 // PullRequest is one member of the prs argument of a merge call. Approved is true when another step accepted the head of this member.
+// OwnDraft is the number of the draft that the run opened for this member, or zero when the member names none.
 type PullRequest struct {
 	Item, Head string
 	Approved   bool
+	OwnDraft   int
 }
 
 // errNoPullRequest is returned for a prs argument with no member.
@@ -84,9 +89,38 @@ func pullRequest(entry starlark.Value) (PullRequest, error) {
 		return PullRequest{}, err
 	}
 
-	approved, err := prApproved(pr)
+	member := PullRequest{Item: item, Head: head}
+	err = member.readOptional(pr)
 
-	return PullRequest{Item: item, Head: head, Approved: approved}, err
+	return member, err
+}
+
+// readOptional reads the optional fields approved and own_draft of a member struct. The first wrong field is the error.
+func (m *PullRequest) readOptional(pr *starlarkstruct.Struct) (err error) {
+	if m.Approved, err = prApproved(pr); err != nil {
+		return err
+	}
+
+	m.OwnDraft, err = prOwnDraft(pr)
+
+	return err
+}
+
+// prOwnDraft reads the optional field own_draft of a member struct with the rule of the own_draft keyword of preflight. A member that leaves it out names no draft.
+func prOwnDraft(pr *starlarkstruct.Struct) (int, error) {
+	fields := starlark.StringDict{}
+	pr.ToStringDict(fields)
+
+	value, found := fields[ownDraftField]
+	if !found {
+		return 0, nil
+	}
+
+	if _, later := value.(computed); later {
+		return 0, nil
+	}
+
+	return OwnDraft(value)
 }
 
 // prApproved reads the optional bool field approved of a member struct. A member that leaves it out is not approved.

@@ -105,6 +105,15 @@ func (w *shipWorld) SetBase(_ context.Context, pr int, base string) error {
 	return nil
 }
 
+// SetDraft marks the pull request a draft or ready, as the forge does.
+func (w *shipWorld) SetDraft(_ context.Context, pr int, draft bool) error {
+	w.write(fmt.Sprintf("SetDraft %d %t", pr, draft))
+
+	w.pull.IsDraft = &draft
+
+	return nil
+}
+
 func (w *shipWorld) MergePR(_ context.Context, pr int, sha string) error {
 	w.write(fmt.Sprintf("MergePR %d %s", pr, sha))
 
@@ -151,7 +160,7 @@ func mergerOver(world *shipWorld) func(context.Context, string, MergeSettings) (
 
 		return merge.Run(ctx, world, merge.Request{
 			PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
-			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
+			OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 			Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget,
 		}), nil
 	}
@@ -274,7 +283,7 @@ func (m *forgeMerger) Merge(ctx context.Context, _, item, head string, settings 
 
 	got := merge.Run(ctx, m.worlds[item], merge.Request{
 		PR: testPull, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: []string{"bee-1"},
-		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
+		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,
 	})
@@ -387,10 +396,6 @@ func TestExampleMerge_TheRoundLandsThroughTheBatchMergerAndTheGuardsOfTheForgeFa
 		"a pull request that cannot merge cleanly is refused": {
 			over:    map[string]any{"mergeable": "CONFLICTING"},
 			refusal: "mergeable is CONFLICTING",
-		},
-		"a draft is refused": {
-			over:    map[string]any{"isDraft": true},
-			refusal: "is a draft",
 		},
 		"a head that moved after the review is refused": {
 			over:    map[string]any{shipHeadKey: strings.Repeat("e", 40)},
