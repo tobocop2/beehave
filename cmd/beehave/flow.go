@@ -294,8 +294,7 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 
 	return worktrees{
 		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles,
-		git:    func(dir string) proc.Runner { return noPrompt(found.Runner(dir, proc.DefaultTimeout)) },
-		remote: func(dir string) proc.Runner { return noPrompt(gitexec.NewRemote(dir, proc.DefaultTimeout)) },
+		git: func(dir string) proc.Runner { return noPrompt(found.Runner(dir, proc.DefaultTimeout)) },
 	}
 }
 
@@ -304,9 +303,12 @@ func reposFolder(stateDir string) string {
 	return filepath.Join(stateDir, "repos")
 }
 
+// noPromptEnv is the git setting that fails a call that would ask for a password.
+const noPromptEnv = "GIT_TERMINAL_PROMPT=0"
+
 // noPrompt sets GIT_TERMINAL_PROMPT=0 on the runner.
 func noPrompt(runner gitexec.Runner) proc.Runner { //nolint:ireturn // the worktrees take the runner as the interface
-	runner.Env = []string{"GIT_TERMINAL_PROMPT=0"}
+	runner.Env = []string{noPromptEnv}
 
 	return runner
 }

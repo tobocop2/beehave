@@ -17,7 +17,7 @@ import (
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/reach"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
@@ -154,7 +154,7 @@ func TestWriters_AProjectWithNoCredentialsRunsGhWithTheLoginOfTheOwnerAndOneWith
 	assert.Nil(t, runner.Only, "the owner login keeps the environment of the process")
 
 	_, err = roles.runner(model.Project{Name: "p", Credentials: map[model.Role]model.Credential{model.RoleWriter: {File: "f"}}})
-	require.ErrorIs(t, err, errCredentialsNotLoaded)
+	require.ErrorIs(t, err, reach.ErrNotLoaded)
 	require.ErrorContains(t, err, "project p")
 }
 
@@ -184,10 +184,10 @@ func TestAdapters_TheForgeAndTheTrackerOfAProjectWithUnloadedCredentialsFailClos
 	table := newAdapters(nil, nil, nil)
 
 	_, err := table.forge(project)
-	require.ErrorIs(t, err, errCredentialsNotLoaded)
+	require.ErrorIs(t, err, reach.ErrNotLoaded)
 
 	_, err = table.tracker(t.Context(), project)
-	require.ErrorIs(t, err, errCredentialsNotLoaded)
+	require.ErrorIs(t, err, reach.ErrNotLoaded)
 }
 
 func TestNewEngine_ARefusedCredentialStopsTheEngineBeforeItStarts(t *testing.T) {
@@ -248,26 +248,28 @@ func TestWritersStart_ASourceOfAProjectWithCredentialsMustBeAnHTTPSAddress(t *te
 func TestWorktrees_AGitCallToTheRemoteRunsAsTheWriterOnlyForAProjectWithCredentialsAndAnHTTPSAddress(t *testing.T) {
 	t.Parallel()
 
-	owner := &fakeGit{}
-	loaded := &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath, "HOME": "/owner"}}
-	trees := worktrees{remote: owner.runner, roles: loaded}
+	chosen := 0
+	owner := func(string) proc.Runner {
+		chosen++
 
-	role, isGit := trees.reach("p", "/clone", "https://github.com/o/r.git").(gitexec.Runner)
-	require.True(t, isGit, "a project with credentials reaches its remote through the writer runner")
-	assert.Contains(t, role.Only, "GIT_CONFIG_GLOBAL=/dev/null")
-	assert.Contains(t, role.Only, "BEEHAVE_FORGE_TOKEN="+writerToken)
-	assert.Contains(t, role.Only, "BEEHAVE_FORGE_HOST=github.com")
-	assert.NotContains(t, strings.Join(role.Only, "\n"), "HOME=")
+		return (&fakeGit{}).runner("")
+	}
+	loaded := &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath, "HOME": "/owner"}}
+	trees := worktrees{remote: owner, roles: loaded}
+
+	_ = trees.reach("p", "/clone", "https://github.com/o/r.git")
+	assert.Zero(t, chosen, "a project with credentials reaches its remote through the writer runner, never the runner of the owner")
 
 	out := trees.reach("p", "/clone", "git@github.com:o/r.git").Run(t.Context(), []string{"fetch"})
 	assert.Equal(t, 1, out.ExitCode, "a remote that is not https is refused for the writer")
 	assert.Contains(t, out.Stderr, "project p: the writer credential is a token for https")
+	assert.Zero(t, chosen, "a refused call never falls back to the runner of the owner")
 
-	_ = trees.reach("q", "/clone", "https://github.com/o/r.git").Run(t.Context(), []string{"fetch"})
-	assert.Len(t, owner.calls, 1, "a project with no credentials keeps the runner of the owner")
+	_ = trees.reach("q", "/clone", "https://github.com/o/r.git")
+	assert.Equal(t, 1, chosen, "a project with no credentials keeps the runner of the owner")
 
-	_ = worktrees{remote: owner.runner}.reach("p", "/clone", "/srv/repo").Run(t.Context(), []string{"fetch"})
-	assert.Len(t, owner.calls, 2, "a table with no writers keeps the runner of the owner for a project with no credentials")
+	_ = worktrees{remote: owner}.reach("p", "/clone", "/srv/repo")
+	assert.Equal(t, 2, chosen, "a table with no writers keeps the runner of the owner for a project with no credentials")
 }
 
 func TestWorktrees_AClientThatHoldsNoWriterRefusesTheRemoteCallOfAProjectWithCredentials(t *testing.T) {
@@ -284,33 +286,6 @@ func TestWorktrees_AClientThatHoldsNoWriterRefusesTheRemoteCallOfAProjectWithCre
 
 	_, err := trees.Heads(t.Context(), "p")
 	require.ErrorContains(t, err, "the credentials of the project are not loaded")
-}
-
-func TestWorktrees_TheSourceOfTheProgramBuildsWorktreesOnlyInTheConstructorWithTheWritersAndPicksTheOwnerRunnerInReachOnly(t *testing.T) {
-	t.Parallel()
-
-	files, err := filepath.Glob("*.go")
-	require.NoError(t, err)
-
-	owners, builders, literals := 0, 0, 0
-
-	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-
-		text, readErr := os.ReadFile(file) //nolint:gosec // a source file of this package
-		require.NoError(t, readErr)
-
-		owners += strings.Count(string(text), "w.remote(")
-		builders += strings.Count(string(text), "newWorktrees(cfg.Projects, opts, table.forge, table.writers)")
-
-		literals += strings.Count(string(text), "worktrees{")
-	}
-
-	assert.Equal(t, 1, literals, "only the constructor builds the type, so no literal leaves the roles unset")
-	assert.Equal(t, 1, owners, "the runner of the owner is picked in reach only")
-	assert.Equal(t, 2, builders, "the engine and the client both pass the writers of their table")
 }
 
 func TestWorktrees_TheCloneOfAProjectWithCredentialsRunsThroughTheWriterRunnerAndNeverTheOwnerRunner(t *testing.T) {
@@ -356,7 +331,7 @@ func credentialRig(t *testing.T) pushRig {
 	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
 
 	root, dir := pushRepository(rig.pulls.trees.repos, "p")
-	require.NoError(t, openPushRepository(t.Context(), pushGit(dir), root, dir))
+	require.NoError(t, openPushRepository(t.Context(), pushLocal(dir), root, dir))
 	runGit(t, dir, "config", "url."+rig.remote+".insteadOf", address)
 
 	return rig

@@ -72,14 +72,6 @@ func TestRunner_EveryLocalCallTakesTheFileTransportOnlyAndFetchesNoMissingObject
 	assert.Equal(t, strings.Repeat("allow=file lazy=1\n", 4), calls(t, log)+"\n", "no env of the caller widens a local call, the read of the settings included")
 }
 
-func TestNewRemote_ReachesTheRemoteOverTheTransportOfItsAddress(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	log := envGit(t)
-
-	gitexec.NewRemote(t.TempDir(), 0).Run(t.Context(), []string{"fetch"})
-
-	assert.Equal(t, "allow=unset lazy=unset", calls(t, log))
-}
-
 func TestArgs_PutsTheHooksSettingFirstAndKeepsTheArguments(t *testing.T) {
 	t.Parallel()
 

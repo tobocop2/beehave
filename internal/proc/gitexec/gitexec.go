@@ -2,8 +2,9 @@
 // that the owner or the project put in a tree never runs as the owner. This package is the one place that names the git binary.
 //
 // A runner from New is local: it allows the file transport only and never fetches a missing object from a promisor remote, so no setting that an agent
-// writes into the git config of a tree can send it to the network with the credential of the owner. Only NewRemote reaches a remote. A runner from
-// Repositories.Runner is local too, and it names the repository of each call from the engine layout and refuses a clone setting outside the allow list.
+// writes into the git config of a tree can send it to the network with the credential of the owner. The package reach builds the runners that reach a remote.
+// A runner from Repositories.Runner is local too, and it names the repository of each call from the engine layout and refuses a clone setting outside the
+// allow list.
 package gitexec
 
 import (
@@ -39,9 +40,8 @@ func Args(args []string) []string {
 type Runner struct {
 	proc.ExecRunner
 
-	remote bool
-	repo   Repository
-	fail   error
+	repo Repository
+	fail error
 }
 
 // Runner returns a local runner for git in the repository of dir. A run sets the repository that Of finds and never one from a file in dir, and it
@@ -56,15 +56,6 @@ func (r Repositories) Runner(dir string, timeout time.Duration) Runner {
 // New returns a local runner for git in dir. A zero timeout means no limit.
 func New(dir string, timeout time.Duration) Runner {
 	return Runner{ExecRunner: proc.ExecRunner{Binary: Binary, Dir: dir, Timeout: timeout}}
-}
-
-// NewRemote returns a runner for git in dir that reaches a remote over any transport. Run it only where no agent writes the git config: in a repository
-// that only the engine writes, with --git-dir set, or for a clone into a folder that does not exist yet.
-func NewRemote(dir string, timeout time.Duration) Runner {
-	runner := New(dir, timeout)
-	runner.remote = true
-
-	return runner
 }
 
 // Run runs git with the hooks off. A pinned runner runs no git when its folder is unknown, or the config of its clone cannot be listed or holds a
@@ -89,9 +80,7 @@ func (r Runner) run(ctx context.Context, args []string) model.CommandResult {
 	runner := r.ExecRunner
 	runner.Env = append(slices.Clone(r.Env), pin...)
 
-	if !r.remote {
-		runner.Env = append(runner.Env, local()...)
-	}
+	runner.Env = append(runner.Env, local()...)
 
 	return runner.Run(ctx, args)
 }
