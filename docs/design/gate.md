@@ -212,7 +212,11 @@ A gate on a build host with `gate_program` set runs these words, in this order, 
 
 The base commit is the one that the engine read once for the gate. A gate with `gate_program` and no base commit starts no job. The gate key holds the list.
 
-A local gate with `gate_program` set runs the same words. The gate makes a new folder, and the job clones the worktree of the item into it, so head code never writes the worktree. The job reads the base commit from the source of the project when the clone lacks it. With the sandbox on, the job runs under the enforcer in that folder, and the plan lets it read the worktree, its shared git folders and a source that is a local folder. A job that fails with a log line `beehave-gate-program` gives the step `gate-program` in the state `fail`. The limits of an unsandboxed gate stay: head code can still write the tools of the host, `go.work` and the git config of the clone, and the final check does not see them.
+A local gate with `gate_program` set runs the same words. The gate makes a new folder, and the job clones the worktree of the item into it with `git clone --no-local`. The copy holds its own object files, so it shares no file with the worktree, its git folder or the source. The job then removes the `origin` remote, so the git config of the copy holds no path of them. The job reads the base commit from the source of the project when the copy lacks it.
+
+The engine finds git, find, sort, readlink, cat and the digest tool once, when it starts, and gives these absolute paths to the job. A tool that an agent step puts first on the PATH later is not used by the words of the gate program.
+
+With the sandbox on, the job runs under the enforcer in that folder. The plan lets it read the worktree, its shared git folders and a source that is a local folder, and the job runs git with no config file of the user. With the sandbox off, head code runs as the user and can write any path that it can name. The gate keeps it from the paths that it finds in the copy, and no more. A job that fails keeps its log in the report. A job that fails with a log line `beehave-gate-program` gives the step `gate-program` in the state `fail`. The limits of an unsandboxed gate stay: head code can still write the tools of the host other than those six, `go.work` and the git config of the copy, and the final check does not see them.
 
 #### The owner command
 

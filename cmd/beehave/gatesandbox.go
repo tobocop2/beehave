@@ -86,6 +86,8 @@ func (g gateSandbox) runGate(ctx context.Context, project, dir string, argv, env
 // runJob is run for the job of a gate_program in the empty folder root that beehave made. The job clones the head from the repository at from, so the plan
 // also lets it read that repository, its shared git folders and the source of the project when that is a folder.
 func (g gateSandbox) runJob(ctx context.Context, project, from, root string, argv []string, limit time.Duration) (out string, code int) {
+	g.ownGit = true
+
 	return g.runAt(ctx, project, folder{path: root, own: true, readFrom: from}, argv, nil, limit)
 }
 

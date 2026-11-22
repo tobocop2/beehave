@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
@@ -33,10 +34,52 @@ type projectGate struct {
 	forge    func(model.Project) (forge.Forge, error)
 	// timeout is the time that a local gate command may run. Zero means gateTimeout.
 	timeout time.Duration
+	// tools are the programs that the job of a gate_program uses, resolved when the engine starts. toolsErr is the reason when one is missing:
+	// a local gate_program job then does not start.
+	tools    gate.Tools
+	toolsErr error
 	// tip reads the commit that a branch names at the address of a project. fetch brings a commit of that address into the clone by its id. Both
 	// reach the address from the push repository of the project, never from the clone, whose config an agent can write.
 	tip   func(ctx context.Context, project, remote, branch string) (string, error)
 	fetch func(ctx context.Context, project, remote, sha string) error
+}
+
+// withTools returns the gate with the tools of the gate_program job found in the folders of path. The engine calls it at its start, before any agent step runs.
+func (g projectGate) withTools(path string) projectGate {
+	g.tools, g.toolsErr = resolveGateTools(path)
+
+	return g
+}
+
+// resolveGateTools finds git and the tools of the final compare of a gate program in the folders of path. The digest tool is sha256sum, else shasum.
+func resolveGateTools(path string) (gate.Tools, error) {
+	var found []string
+
+	for _, names := range [][]string{{model.ToolGit}, {"find"}, {"sort"}, {"readlink"}, {"cat"}, {"sha256sum", "shasum"}} {
+		binary, err := lookFirst(names, path)
+		if err != nil {
+			return gate.Tools{}, fmt.Errorf("find the tool %s for the gate program: %w", strings.Join(names, " or "), err)
+		}
+
+		found = append(found, binary)
+	}
+
+	return gate.Tools{Git: found[0], Find: found[1], Sort: found[2], Readlink: found[3], Cat: found[4], Digest: found[5]}, nil
+}
+
+// lookFirst returns the first of the programs names that the folders of path hold.
+func lookFirst(names []string, path string) (string, error) {
+	var err error
+
+	for _, name := range names {
+		var binary string
+
+		if binary, err = proc.LookPath(name, path); err == nil {
+			return binary, nil
+		}
+	}
+
+	return "", err
 }
 
 // anchor reads, once, the commit that the base branch names at the source of the project, and makes sure that the clone of the item holds it.
@@ -144,13 +187,17 @@ func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, p
 func (g projectGate) gate(project string) gate.Gate {
 	hosts := func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) }
 
-	return gate.New(g.shellFor(project), g.treeOf(project), hosts).WithProgramShell(g.programShellFor(project))
+	return gate.New(g.shellFor(project), g.treeOf(project), hosts).WithProgramShell(g.programShellFor(project)).WithTools(g.tools)
 }
 
 // programShellFor returns the function that runs the job of a gate_program in the new folder root: under the sandbox when the project has it on, else as before.
 // Under the sandbox the job may also read the repository at from, its shared git folders and the source of the project, because it clones the head from there.
 func (g projectGate) programShellFor(project string) gate.ProgramShell {
 	return func(ctx context.Context, from, root, command string) (string, int) {
+		if g.toolsErr != nil {
+			return g.toolsErr.Error() + "\n", 1
+		}
+
 		if !g.programs.sandbox.applies(project, false) {
 			return g.shell(ctx, project, root, command)
 		}

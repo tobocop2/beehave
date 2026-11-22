@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,6 +109,72 @@ func TestProjectGate_AGateProgramJobRunsInItsFolderWithTheShellWhenTheSandboxIsO
 	assert.Equal(t, []string{root}, calls.dirs)
 }
 
+func TestProjectGate_AToolThatTheEngineCannotFindAtItsStartStopsTheGateProgramJobWithTheReason(t *testing.T) {
+	t.Parallel()
+
+	calls := &gateCalls{}
+	pg := projectGate{projects: programGateProject("/srv/source", []string{"Makefile"}), programs: programs{local: gateRunner(calls, model.CommandResult{}, model.CommandResult{})}}.withTools(t.TempDir())
+
+	out, code := pg.programShellFor("p")(t.Context(), t.TempDir(), t.TempDir(), "make check")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "find the tool git for the gate program")
+	assert.Empty(t, calls.binaries, "no job started")
+}
+
+func TestProjectGate_TheEngineResolvesTheToolsOfTheGateProgramJobFromThePathAtItsStart(t *testing.T) {
+	t.Parallel()
+
+	tools, err := resolveGateTools("")
+	require.NoError(t, err)
+
+	got := projectGate{}.withTools("")
+
+	require.NoError(t, got.toolsErr)
+	assert.Equal(t, tools, got.tools)
+
+	for _, found := range []string{tools.Git, tools.Find, tools.Sort, tools.Readlink, tools.Cat, tools.Digest} {
+		assert.True(t, filepath.IsAbs(found), found)
+	}
+}
+
+func TestResolveGateTools_TakesShasumWhenThereIsNoSha256sumAndRefusesWhenThereIsNeither(t *testing.T) {
+	t.Parallel()
+
+	tools, err := resolveGateTools("")
+	require.NoError(t, err)
+
+	links := map[string]string{"git": tools.Git, "find": tools.Find, "sort": tools.Sort, "readlink": tools.Readlink, "cat": tools.Cat}
+	folder := func() string {
+		dir := t.TempDir()
+
+		for name, target := range links {
+			require.NoError(t, os.Symlink(target, filepath.Join(dir, name)))
+		}
+
+		return dir
+	}
+
+	_, err = resolveGateTools(folder())
+	require.ErrorContains(t, err, "find the tool sha256sum or shasum for the gate program")
+
+	links["shasum"] = tools.Digest
+	found, err := resolveGateTools(folder())
+	require.NoError(t, err)
+
+	assert.Equal(t, "shasum", filepath.Base(found.Digest))
+}
+
+func TestDepsOn_TheGateOfTheEngineHoldsTheToolsOfTheGateProgramJob(t *testing.T) {
+	t.Parallel()
+
+	pg, ok := engineDeps(t).Gate.(projectGate)
+	require.True(t, ok, "the engine builds a project gate")
+
+	require.NoError(t, pg.toolsErr)
+	assert.True(t, filepath.IsAbs(pg.tools.Git), pg.tools.Git)
+}
+
 func TestProjectGate_TheCloneURLOfALocalProjectIsItsSourceOnlyWithAGateProgram(t *testing.T) {
 	t.Parallel()
 
@@ -142,7 +209,7 @@ func TestProjectGate_ARunOfAProjectWithAGateProgramRunsTheJobThatClonesTheItemAn
 		}
 	}
 
-	assert.Contains(t, job, "git clone -- /tree", "the job clones the worktree of the item")
+	assert.Contains(t, job, `clone --no-local -- /tree`, "the job copies the worktree of the item")
 	assert.Contains(t, job, "gpsha="+anchorOld, "the job reads the base commit that the engine read")
 	assert.Contains(t, job, "gpurl=/src", "the job falls back to the source of the project")
 	assert.True(t, strings.HasSuffix(job, "gpcompare"), "the job ends with the final compare")
@@ -165,7 +232,7 @@ func TestProjectGate_ARunOfASandboxedProjectWithAGateProgramRunsTheJobUnderTheEn
 	require.True(t, result.Passed, result.Report)
 
 	require.Len(t, fake.argv, 3)
-	assert.Contains(t, fake.argv[2], "git clone -- "+repo)
+	assert.Contains(t, fake.argv[2], "clone --no-local -- "+repo)
 	assert.Contains(t, fake.plan.Read, repo)
 	assert.Contains(t, fake.plan.Read, "/src")
 }

@@ -22,7 +22,8 @@ func (g Gate) localProgram(ctx context.Context, request Request, head string) (R
 
 	defer os.RemoveAll(root)
 
-	command := jobCommand(request.Project, request.pins, request.Dir, request.CloneURL, head, root+"/job", "", request.anchor())
+	src := jobSource{from: request.Dir, cloneURL: request.CloneURL, tools: g.jobTools, local: true}
+	command := jobCommand(request.Project, request.pins, src, head, root+"/job", "", request.anchor())
 	out, code := g.runJob(ctx, request.Dir, root, command)
 
 	return localVerdict(ctx, request, head, out, code)
@@ -58,6 +59,7 @@ func localVerdict(ctx context.Context, request Request, head, out string, code i
 func failedJob(project model.Project, head, out string) Result {
 	if marked, found := markedResult(out, project); found {
 		marked.Head = head
+		marked.Report = tail(marked.Report + "\nthe log of the gate job:\n" + out)
 
 		return marked
 	}

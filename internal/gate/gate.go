@@ -147,10 +147,18 @@ func (r Request) needBase() error {
 
 // Gate runs gates.
 type Gate struct {
-	shell   Shell
-	tree    Tree
-	hosts   Hosts
-	program ProgramShell
+	shell    Shell
+	tree     Tree
+	hosts    Hosts
+	program  ProgramShell
+	jobTools Tools
+}
+
+// WithTools returns the gate whose local job of a gate_program uses the tools that the engine resolved at its start (see ResolveTools).
+func (g Gate) WithTools(tools Tools) Gate {
+	g.jobTools = tools
+
+	return g
 }
 
 // ProgramShell runs the job of a local gate that has a gate_program. The job clones the repository at from into the folder root that the gate made,
@@ -699,17 +707,25 @@ func plainWord(word string) bool {
 // the refusal of a changed path and the overlay, and last the final compare (see program.go).
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
-	return jobCommand(project, pins, cloneURL, cloneURL, head, clone, base, baseSHA)
+	return jobCommand(project, pins, jobSource{from: cloneURL, cloneURL: cloneURL}, head, clone, base, baseSHA)
 }
 
-// jobCommand is hostCommand for a job that reads the head from the repository at from. The fallback fetch of the base commit reads cloneURL.
-func jobCommand(project model.Project, pins []Pin, from, cloneURL, head, clone, base, baseSHA string) string {
-	words := cloneWords(from, head, clone)
+// jobSource says where a job reads the head. from is the repository that the job clones, and the fallback fetch of the base commit reads cloneURL.
+// A local job (tools set) uses the tools that the engine resolved and copies the objects of the clone, so the copy shares no file with from and keeps no address of it.
+type jobSource struct {
+	from, cloneURL string
+	tools          Tools
+	local          bool
+}
+
+// jobCommand is hostCommand for a job that reads the head from the repository of src.
+func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, base, baseSHA string) string {
+	words := cloneWords(src, head, clone, len(project.GateProgram) > 0)
 
 	var check []string
 
 	if len(project.GateProgram) > 0 {
-		words = slices.Concat([]string{programFirst}, words, programBefore(project, cloneURL, clone, baseSHA))
+		words = slices.Concat([]string{programFirst(src.tools)}, words, programBefore(project, src.cloneURL, clone, baseSHA))
 		check = []string{programCheck}
 	}
 
@@ -727,7 +743,26 @@ func jobCommand(project model.Project, pins []Pin, from, cloneURL, head, clone, 
 }
 
 // cloneWords are the words that make the clone folder and check out head in it.
-func cloneWords(cloneURL, head, clone string) []string {
+// A job with a gate program runs the git that the first word resolved. A local job copies the objects (--no-local) and drops the address of the clone,
+// so head code finds no path of the repository that it was cloned from.
+func cloneWords(src jobSource, head, clone string, program bool) []string {
+	git := "git"
+
+	if program {
+		git = `"$gpbin"`
+	}
+
+	words := slices.Concat(cloneFolder(clone), []string{git + " clone " + src.copyFlag() + "-- " + model.ShellQuote(src.from) + " tree", "cd tree"})
+
+	if src.local {
+		words = append(words, git+" remote remove origin")
+	}
+
+	return append(words, git+" checkout --detach "+model.ShellQuote(head), `[ "$(`+git+` rev-parse HEAD)" = `+model.ShellQuote(head)+` ]`)
+}
+
+// cloneFolder are the words that make the clone folder, enter it, and delete it on exit with the marker line.
+func cloneFolder(clone string) []string {
 	path := model.ShellQuote(clone)
 
 	return []string{
@@ -736,11 +771,16 @@ func cloneWords(cloneURL, head, clone string) []string {
 		"rm -rf " + path,
 		"mkdir " + path,
 		"cd " + path,
-		"git clone -- " + model.ShellQuote(cloneURL) + " tree",
-		"cd tree",
-		"git checkout --detach " + model.ShellQuote(head),
-		`[ "$(git rev-parse HEAD)" = ` + model.ShellQuote(head) + ` ]`,
 	}
+}
+
+// copyFlag is the flag that makes git copy the objects of a local source instead of linking them. A source that is a URL needs none.
+func (s jobSource) copyFlag() string {
+	if s.local {
+		return "--no-local "
+	}
+
+	return ""
 }
 
 // gateWords are the words that run the gate command. A project with a gate string has one word. A gate list has one word for each step:

@@ -17,10 +17,11 @@ const (
 
 // programFirst is the word that resolves git and the tools of the final check to absolute paths, before any head command runs.
 // The words of the gate program use these paths and never a tool through the PATH, which head code can write.
-const programFirst = `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` +
-	`gpbin=$(command -v git) && gpfind=$(command -v find) && gpsort=$(command -v sort) && gpreadlink=$(command -v readlink) && gpcat=$(command -v cat) && ` +
-	`gpshasum=$(command -v sha256sum || command -v shasum) && gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpcat" "$gpshasum" && ` +
-	`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
+func programFirst(tools Tools) string {
+	return `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` + tools.words() +
+		`gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpcat" "$gpshasum" && ` +
+		`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
+}
 
 // programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot with no replace refs
 // and no config of the machine. The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept

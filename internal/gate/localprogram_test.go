@@ -2,6 +2,7 @@ package gate
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -14,14 +15,46 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+// localCleanPath is the PATH of the engine at its start in these tests.
+const localCleanPath = "/usr/bin:/bin:/opt/homebrew/bin"
+
 // localProgramGate is a gate whose shell runs the command with a real sh and whose tree reads the real item folder.
+// The engine resolved the tools of the job on a clean PATH, as it does at its start.
 func localProgramGate(t *testing.T, dir string) Gate {
+	t.Helper()
+
+	return localProgramGateOn(t, dir, localCleanPath, localTools(t))
+}
+
+// localTools finds the tools of the job in localCleanPath, as the engine does at its start.
+func localTools(t *testing.T) Tools {
+	t.Helper()
+
+	find := func(names ...string) string {
+		for _, name := range names {
+			for _, dir := range filepath.SplitList(localCleanPath) {
+				if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+					return filepath.Join(dir, name)
+				}
+			}
+		}
+
+		require.FailNow(t, "tool not found", names)
+
+		return ""
+	}
+
+	return Tools{Git: find("git"), Find: find("find"), Sort: find("sort"), Readlink: find("readlink"), Cat: find("cat"), Digest: find("sha256sum", "shasum")}
+}
+
+// localProgramGateOn is localProgramGate for a job that runs with the PATH jobPath and the given tools.
+func localProgramGateOn(t *testing.T, dir, jobPath string, tools Tools) Gate {
 	t.Helper()
 
 	shell := func(ctx context.Context, where, command string) (string, int) {
 		cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // the job text under test
 		cmd.Dir = where
-		cmd.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin", "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+		cmd.Env = []string{"PATH=" + jobPath, "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
 		out, err := cmd.CombinedOutput()
 
 		if err == nil {
@@ -46,7 +79,7 @@ func localProgramGate(t *testing.T, dir string) Gate {
 		return State{Head: read(ctx, "rev-parse", "HEAD"), Tree: read(ctx, "rev-parse", "HEAD^{tree}"), Clean: read(ctx, "status", "--porcelain") == ""}, nil
 	}
 
-	return New(shell, tree, nil)
+	return New(shell, tree, nil).WithTools(tools)
 }
 
 // localItem makes the item worktree at the head of the case, as the engine does for an item. It returns the folder and the request of the gate.
@@ -125,7 +158,7 @@ func TestRun_ALocalGateWithAGateProgramGivesTheJobTheItemFolderAndAFolderThatItR
 		from, root = source, made
 
 		assert.DirExists(t, made)
-		assert.Contains(t, command, "git clone -- "+item)
+		assert.Contains(t, command, `"$gpbin" clone --no-local -- `+item)
 
 		return "", 0
 	})
@@ -163,6 +196,7 @@ func TestRun_ALocalGateWithAGateProgramReadsItsJobResultFromTheExitCodeAndTheLog
 		{name: "a_signal_gives_no_result", project: programProjectOf(), code: 137, report: "killed by a signal", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "the_time_limit_gives_no_result", project: programProjectOf(), code: ExitTimedOut, report: "time limit", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "a_refusal_line_names_the_step", project: programProjectOf(), code: 1, out: programMarker + " the head changed the gate program, paths Makefile\n", report: "paths Makefile", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
+		{name: "a_refusal_report_holds_the_log_of_the_job", project: programProjectOf(), code: 1, out: "fatal: unable to access a file\n" + programMarker + " the base commit cannot be read\n", report: "fatal: unable to access a file", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
 		{name: "a_marker_inside_a_word_is_no_refusal", project: programProjectOf(), code: 1, out: "x" + programMarker + " the head changed the gate program, paths Makefile\n", report: "xbeehave-gate-program", steps: []Step{{Name: StepCommand, Status: StatusFail}, {Name: StepTests, Status: StatusUnknown}}},
 		{name: "the_first_of_two_refusal_lines_gives_the_reason", project: programProjectOf(), code: 1, out: programMarker + " first reason\n" + programMarker + " second reason\n", report: "first reason", steps: []Step{{Name: StepCommand, Status: StatusUnknown}, {Name: StepTests, Status: StatusUnknown}, {Name: model.StepGateProgram, Status: StatusFail}}},
 		{name: "a_failed_gate_string_fails_with_its_output", project: programProjectOf(), code: 2, out: "boom\n", report: "boom", steps: []Step{{Name: StepCommand, Status: StatusFail}, {Name: StepTests, Status: StatusUnknown}}},
