@@ -147,9 +147,21 @@ func (r Request) needBase() error {
 
 // Gate runs gates.
 type Gate struct {
-	shell Shell
-	tree  Tree
-	hosts Hosts
+	shell   Shell
+	tree    Tree
+	hosts   Hosts
+	program ProgramShell
+}
+
+// ProgramShell runs the job of a local gate that has a gate_program. The job clones the repository at from into the folder root that the gate made,
+// and a caller that limits what the job reads or writes needs both paths. A Gate with no ProgramShell runs the job with its Shell in root.
+type ProgramShell func(ctx context.Context, from, root, command string) (string, int)
+
+// WithProgramShell returns the gate that runs the job of a gate_program with shell.
+func (g Gate) WithProgramShell(shell ProgramShell) Gate {
+	g.program = shell
+
+	return g
 }
 
 // New returns a gate that runs a local command with shell, reads trees with tree and finds the build host with hosts.
@@ -294,6 +306,10 @@ func (g Gate) execute(ctx context.Context, request Request, head string) (Result
 }
 
 func (g Gate) local(ctx context.Context, request Request, head string) (Result, error) {
+	if len(request.Project.GateProgram) > 0 {
+		return g.localProgram(ctx, request, head)
+	}
+
 	before := takeSnapshot(request.Dir, request.Project.TestReport)
 	ran, abort := g.runSpecs(ctx, request)
 
@@ -683,7 +699,12 @@ func plainWord(word string) bool {
 // the refusal of a changed path and the overlay, and last the final compare (see program.go).
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
-	words := cloneWords(cloneURL, head, clone)
+	return jobCommand(project, pins, cloneURL, cloneURL, head, clone, base, baseSHA)
+}
+
+// jobCommand is hostCommand for a job that reads the head from the repository at from. The fallback fetch of the base commit reads cloneURL.
+func jobCommand(project model.Project, pins []Pin, from, cloneURL, head, clone, base, baseSHA string) string {
+	words := cloneWords(from, head, clone)
 
 	var check []string
 

@@ -212,6 +212,8 @@ A gate on a build host with `gate_program` set runs these words, in this order, 
 
 The base commit is the one that the engine read once for the gate. A gate with `gate_program` and no base commit starts no job. The gate key holds the list.
 
+A local gate with `gate_program` set runs the same words. The gate makes a new folder, and the job clones the worktree of the item into it, so head code never writes the worktree. The job reads the base commit from the source of the project when the clone lacks it. With the sandbox on, the job runs under the enforcer in that folder, and the plan lets it read the worktree, its shared git folders and a source that is a local folder. A job that fails with a log line `beehave-gate-program` gives the step `gate-program` in the state `fail`. The limits of an unsandboxed gate stay: head code can still write the tools of the host, `go.work` and the git config of the clone, and the final check does not see them.
+
 #### The owner command
 
 A pull request that changes a listed path fails the refusal by design. The owner runs `beehave gate --own-program <pull request> [project]` on a terminal. The command refuses to start when its input or output is not a terminal. It prints the diff of the pull request and runs nothing until the owner types the number of the pull request. The printed diff shows each control character except the line break and the tab, each format character (such as a bidi override or a zero-width space) and each line or paragraph separator as an escape such as `<U+202E>`. The command runs the gate of the project with `gate_program` empty, so the head runs its own program with no overlay and no refusal. Then it posts `beehave/gate` on the head with the description "gate program changed, run by owner command" and the gate key. The status is `success` for a pass and `failure` for a fail. The status goes through the writer role of the project.
@@ -223,8 +225,6 @@ The command refuses a pull request whose base is not the base branch of the proj
 The command refuses a pull request that changes a path that `gate_program` does not list, and a pull request that changes a submodule. It reads the changed paths with git, against the tip of the base branch. A rename shows as a delete of the old path and an add of the new path, so a rename and a long file list cannot hide a path. A project with no `gate_program` lists no path, so the command refuses every change.
 
 The command is not a barrier. The terminal and the diff stop a script by mistake. An agent step that is not in a sandbox can still push a branch under another name and run the command. Only the sandbox closes that.
-
-A local gate does not use the key yet. The limits of an unsandboxed gate stay: head code can still write the tools of the host, `go.work` and the git config of the clone, and the final check does not see them.
 
 ### Pinned tools
 

@@ -142,7 +142,21 @@ func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, p
 }
 
 func (g projectGate) gate(project string) gate.Gate {
-	return gate.New(g.shellFor(project), g.treeOf(project), func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) })
+	hosts := func(chosen model.Project) (gate.Remote, error) { return g.programs.hosts(project, chosen.BuildHost) }
+
+	return gate.New(g.shellFor(project), g.treeOf(project), hosts).WithProgramShell(g.programShellFor(project))
+}
+
+// programShellFor returns the function that runs the job of a gate_program in the new folder root: under the sandbox when the project has it on, else as before.
+// Under the sandbox the job may also read the repository at from, its shared git folders and the source of the project, because it clones the head from there.
+func (g projectGate) programShellFor(project string) gate.ProgramShell {
+	return func(ctx context.Context, from, root, command string) (string, int) {
+		if !g.programs.sandbox.applies(project, false) {
+			return g.shell(ctx, project, root, command)
+		}
+
+		return g.programs.sandbox.runJob(ctx, project, from, root, []string{"sh", "-c", command}, cmp.Or(g.timeout, gateTimeout))
+	}
 }
 
 // shellFor returns the function that runs the gate command of the project: under the sandbox when the project has it on and builds here, else as before.
@@ -265,9 +279,9 @@ func (g projectGate) onCluster(project, cluster string) (config.Project, error) 
 	return found, nil
 }
 
-// cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none.
+// cloneURL returns the URL that a build host clones the repository of the project from: its source, else the URL of its forge. A project that builds here needs none, unless it has a gate_program: its gate reads the base commit from there.
 func (g projectGate) cloneURL(project config.Project) (string, error) {
-	if project.BuildHost == config.LocalHost {
+	if project.BuildHost == config.LocalHost && len(project.GateProgram) == 0 {
 		return "", nil
 	}
 

@@ -140,7 +140,7 @@ func programResult(log string, project model.Project) (Result, bool) {
 
 		steps := slices.Concat(hostSteps(project, StatusUnknown, StatusUnknown), []Step{{Name: model.StepGateProgram, Status: StatusFail}})
 
-		return Result{Report: tail("the gate refused the head: " + reason + "\n"), Steps: steps}, true
+		return Result{Report: tail("the gate refused the head at the step " + model.StepGateProgram + ": " + reason + "\n"), Steps: steps}, true
 	}
 
 	return Result{}, false
