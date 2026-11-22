@@ -5,8 +5,26 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 )
+
+func TestConfig_OnlyAProjectThatSaysOnRunsTheSandboxByDefault(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{Projects: map[string]config.Project{
+		"on":      {Project: model.Project{Sandbox: model.SandboxOn}},
+		"off":     {Project: model.Project{Sandbox: model.SandboxOff}},
+		"unset":   {},
+		"invalid": {Project: model.Project{Sandbox: "bogus"}},
+	}}
+
+	require.True(t, cfg.SandboxDefault("on"))
+	require.False(t, cfg.SandboxDefault("off"))
+	require.False(t, cfg.SandboxDefault("unset"))
+	require.False(t, cfg.SandboxDefault("invalid"))
+	require.False(t, cfg.SandboxDefault("missing"))
+}
 
 func TestLoadFolder_TheSandboxKeyIsReadAndAnUnknownOrEmptyOneIsRefused(t *testing.T) {
 	t.Parallel()

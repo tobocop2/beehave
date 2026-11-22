@@ -238,6 +238,7 @@ func TestRun_AnOpenRunPrintsTheOffLineFromItsStoredModeNotFromTheProjectFile(t *
 		"stored off, project unset": {"project()\n", model.SandboxOff, true},
 		"no stored mode, off":       {"project(sandbox = \"off\")\n", "", true},
 		"no stored mode, on":        {"project(sandbox = \"on\")\n", "", false},
+		"no stored mode, unset":     {"project()\n", "", true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

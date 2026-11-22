@@ -542,7 +542,7 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 // openRun returns the open run of the item. It says which file the run continues with.
 // beehave run ignores --workflow when it joins an open run. A run recorded before the mode existed uses the live default of its project.
 func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, item string) (flow.OpenRun, error) {
-	open, err := client.OpenRun(item, func(project string) bool { return cfg.Projects[project].SandboxByDefault() })
+	open, err := client.OpenRun(item, cfg.SandboxDefault)
 	if err != nil || open.File == "" {
 		return open, err
 	}
