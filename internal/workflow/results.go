@@ -63,7 +63,7 @@ func resultFields() map[string][]string {
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
-	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields()} {
+	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields()} {
 		maps.Copy(fields, group)
 	}
 
