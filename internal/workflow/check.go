@@ -4,8 +4,8 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"net/url"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -57,25 +57,29 @@ func ReservedEnvAdvice() string {
 // secretSuffixes lists the last parts of a name that mark a secret. A name ends in one of them after an underscore, so PATH and AUTHOR do not match.
 func secretSuffixes() []string { return []string{"KEY", "PAT", "DSN", "AUTH"} }
 
+// secretWholeNames lists the names that mark a secret when they are the whole name.
+func secretWholeNames() []string { return []string{"PAT", "AUTH", "DSN"} }
+
 // SecretEnvName reports whether name looks like the name of a secret, in any case.
+// A name marks a secret when it ends in a secret suffix, is a whole secret name, holds PAT as a part (GH_PAT_OLD), or holds a secret word.
 func SecretEnvName(name string) bool {
 	upper := strings.ToUpper(name)
 
-	return slices.ContainsFunc(secretSuffixes(), func(part string) bool { return strings.HasSuffix(upper, "_"+part) }) ||
+	return slices.Contains(secretWholeNames(), upper) ||
+		strings.Contains(upper, "_PAT_") ||
+		slices.ContainsFunc(secretSuffixes(), func(part string) bool { return strings.HasSuffix(upper, "_"+part) }) ||
 		slices.ContainsFunc(secretWords(), func(word string) bool { return strings.Contains(upper, word) })
 }
 
-// SecretEnvValue reports whether value is a URL with a password in its user part. Such a value is a secret whatever the name of its variable.
-func SecretEnvValue(value string) bool {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.User == nil {
-		return false
-	}
+// urlPassword matches scheme://user:password@ with a non-empty password. The password can hold any character but white space and @.
+var urlPassword = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]*:[^\s@]+@`)
 
-	password, set := parsed.User.Password()
+// SecretEnvValue reports whether value holds scheme://user:password@ with a password that is not empty, anywhere in the text.
+// The text can be a bare URL, a quoted one, a jdbc: URL or a command. The value is a secret whatever the name of its variable.
+func SecretEnvValue(value string) bool { return urlPassword.MatchString(value) }
 
-	return set && password != ""
-}
+// SecretEnv reports whether the name or the value of a variable marks a secret. The env builtin and the redactor of the run both ask it.
+func SecretEnv(name, value string) bool { return SecretEnvName(name) || SecretEnvValue(value) }
 
 // The smallest and the largest value of max_new_processes in a command call.
 const (

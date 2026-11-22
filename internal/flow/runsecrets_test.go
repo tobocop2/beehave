@@ -182,6 +182,41 @@ func TestRunSecrets_PersonalTokenConnectionStringAuthAndUrlPasswordAreRemoved(t 
 	assert.Contains(t, got, sock, "SSH_AUTH_SOCK is a path, not a secret")
 }
 
+func TestRunSecrets_AUrlPasswordIsRemovedInEveryFormUnderAnyName(t *testing.T) {
+	t.Parallel()
+
+	//nolint:gosec // the values hold fake passwords planted to test the redactor
+	forms := map[string]string{
+		"raw slash":     "postgres://app:fake/pw0123456789@db.example.test/app",
+		"raw question":  "postgres://app:fake?pw0123456789@db.example.test/app",
+		"raw hash":      "postgres://app:fake#pw0123456789@db.example.test/app",
+		"jdbc prefix":   "jdbc:postgresql://app:fakepw0123456789@db.example.test/app",
+		"quoted":        `"postgres://app:fakepw0123456789@db.example.test/app"`,
+		"leading space": " postgres://app:fakepw0123456789@db.example.test/app",
+		"in a command":  "psql postgres://app:fakepw0123456789@db.example.test/app -c x",
+	}
+
+	for name, value := range forms {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			redact := runRedactor(map[string]string{"SOME_SETTING": value})
+
+			assert.Equal(t, "see [redacted] end", redact("see "+value+" end"))
+		})
+	}
+}
+
+func TestRunSecrets_ANameWithASuffixAfterPatIsRemovedAndOauthStays(t *testing.T) {
+	t.Parallel()
+
+	const old, oauth = "fakeoldpat-0123456789abcdefghijklmn", "fakeoauth-0123456789abcdefghijklmn"
+
+	redact := runRedactor(map[string]string{"GH_PAT_OLD": old, "OAUTH": oauth})
+
+	assert.Equal(t, "[redacted] "+oauth, redact(old+" "+oauth))
+}
+
 func TestRunSecrets_AValueShorterThanTheFloorStaysInTheText(t *testing.T) {
 	t.Parallel()
 
