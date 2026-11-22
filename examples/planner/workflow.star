@@ -39,7 +39,7 @@ def main(item):
         command(name = "pause", run = ["sleep", PAUSE])
         seen = progress(runs, KEY, name = "peek")
 
-    command(name = "peeked", run = ["echo", "while the workers run:", stages(seen)])
+    command(name = "peeked", run = ["echo", "while the workers run:", stages(seen)], sandbox = sandbox())
 
     # Part 2: each turn the planner waits for the first of three events: a worker ends, a user sends the message "stall" with the item id of a worker, or
     # CHECK_IN passes with no event. A stall message stalls that worker. At the end of CHECK_IN every worker that is still open is stalled.
