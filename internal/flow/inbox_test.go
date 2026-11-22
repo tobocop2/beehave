@@ -3,8 +3,10 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -362,4 +364,72 @@ command(name = "got", run = ["got", a.id])`)))
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"got " + id}, h.commands.ranBy(testItem))
+}
+
+func TestRecv_AnEndNoticeOfAChildDoesNotEndTheWaitOfARecvAndNoMessageOfAnotherTopicIsLost(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	release := holdItems(h, "21", "22", "23")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := startRun(t, engine, writeFlow(t, `def worker(item):
+    command(name = "w", run = ["w"])
+
+def main(item):
+    spawn(items = ["21", "22", "23"], entry = "worker", name = "fan")
+    a = recv("a", timeout = "1m", name = "a")
+    b = recv("b", timeout = "1m", name = "b")
+    command(name = "got", run = ["got", str(a.value), str(b.value)])
+`))
+
+	stepRecorded(t, engine, "recv:a#1.deadline")
+	close(release)
+	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool { return itemEnded(engine, "21") && itemEnded(engine, "22") && itemEnded(engine, "23") }))
+
+	_, err := client.Send(testItem, Outgoing{Topic: "b", Value: json.RawMessage(`1`)})
+	require.NoError(t, err)
+	_, err = client.Send(testItem, Outgoing{Topic: "a", Value: json.RawMessage(`2`)})
+	require.NoError(t, err)
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"got 2 1"}, h.commands.ranBy(testItem), "the three end notices did not end the wait of a, and the message of b stayed for the second recv")
+}
+
+func TestRecv_AnEndNoticeThatArrivesDuringARecvIsNotKeptForALaterReceive(t *testing.T) {
+	t.Parallel()
+
+	engine := newHarness(t).opened(t)
+	kept := make(chan []envelope, 1)
+
+	// The workflow waits on topic a the way recv does, and hands the buffer to the test after the wait.
+	hold := func(ctx dbos.Context, in ItemInput) (string, error) {
+		s := &script{e: engine, ctx: ctx, in: in}
+
+		got, timedOut, err := s.await("a", engine.deps.Clock.reading().Add(time.Minute))
+		if err != nil || timedOut {
+			return "", errors.Join(err, errors.New("the wait for a ended without a message"))
+		}
+
+		kept <- s.inbox
+
+		return string(got.Value), nil
+	}
+
+	dbos.RegisterWorkflow(engine.ctx, hold, dbos.WithWorkflowName(itemName))
+	require.NoError(t, dbos.Launch(engine.ctx))
+
+	handle, err := dbos.RunWorkflow(engine.ctx, hold, ItemInput{Item: testItem, Project: testProject}, dbos.WithWorkflowID(testRun))
+	require.NoError(t, err)
+
+	other := envelope{Topic: "b", Sender: "person", ID: "b-1", Value: json.RawMessage(`1`)}
+	require.NoError(t, endNotice(engine.ctx, testRun, "item-21-r1"))
+	require.NoError(t, dbos.Send(engine.ctx, testRun, other, inboxTopic))
+	require.NoError(t, dbos.Send(engine.ctx, testRun, envelope{Topic: "a", Sender: "person", ID: "a-1", Value: json.RawMessage(`2`)}, inboxTopic))
+
+	got, err := handle.GetResult()
+	require.NoError(t, err)
+	assert.Equal(t, "2", got)
+	assert.Equal(t, []envelope{other}, receive(t, kept), "the buffer keeps the message of b for a later recv and drops the end notice")
 }

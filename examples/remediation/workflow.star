@@ -1043,6 +1043,7 @@ def ready_items(q, round_settings):
 ITEM_CLAUSES = {
     "failed": "Listed item {item} is failed: run beehave resume {item}. If the resume refuses the run, run beehave cancel {item}, and the next pass starts a new attempt.",
     "hold": "Listed item {item} is on hold: take the hold off the item or its pull request.",
+    "stopped": "Listed item {item} stopped at {step} with the output \"{reason}\". Fix the cause and run beehave run {item}: it starts a new attempt. beehave cancel does not reach a stopped run.",
     "done": "Listed item {item} is done.",
     "running": "Listed item {item} has an open run outside this round: beehave status shows it.",
     "ready": "Listed item {item} is ready, and the items queue has no free slot.",
@@ -1060,18 +1061,21 @@ def idle_reason(q, round_settings):
         head = "The queue has no ready row." if counts.get("ready", 0) == 0 else "The items queue has no free slot."
         failed = [r.item for r in q.rows if r.state == "failed"]
         steps = " Failed: %s. Run beehave resume for each, or beehave cancel when the resume refuses the run." % ", ".join(failed) if len(failed) > 0 else ""
-        return "%s Rows: %d ready, %d failed, %d on hold, %d done, %d running.%s" % (head, counts.get("ready", 0), counts.get("failed", 0), counts.get("hold", 0), counts.get("done", 0), counts.get("running", 0), steps)
+        stopped = ["%s at %s with the output \"%s\"" % (r.item, r.stop_step, r.stop_reason) for r in q.rows if r.state == "stopped"]
+        steps += " Stopped: %s. Fix each cause, then run beehave run for each item: it starts a new attempt." % "; ".join(stopped) if len(stopped) > 0 else ""
+        return "%s Rows: %d ready, %d failed, %d stopped, %d on hold, %d done, %d running.%s" % (head, counts.get("ready", 0), counts.get("failed", 0), counts.get("stopped", 0), counts.get("hold", 0), counts.get("done", 0), counts.get("running", 0), steps)
 
-    rows = {r.item: r.state for r in q.rows}
+    rows = {r.item: r for r in q.rows}
     clauses = []
     for item in listed:
-        clauses.append(ITEM_CLAUSES[rows.get(item, "missing")].format(item = item))
+        row = rows.get(item)
+        clauses.append(ITEM_CLAUSES["missing" if row == None else row.state].format(item = item, step = "" if row == None else row.stop_step, reason = "" if row == None else row.stop_reason))
 
     return " ".join(clauses)
 
 def round(item):
     """The round: one entry for the whole round, with one child run (the entry pipeline) for each item. `item` is the round itself, an id that no tracker row uses.
-    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, the cap, round-spawn-<n>, round-gather-<n> (until any run ends) and round-land-<n>. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
+    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, the cap, round-spawn-<n>, round-gather-<n> (first_of: waits until a run ends and takes every run that ended in the same read) and round-land-<n>. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
     A sync that ends with a reason holds the round: the later passes start no sync and no item, and only gather the open runs. With none open, the round waits in round-wait with the reason.
     The host losses hold it too. `seen` is the highest host_losses that a child result, the landing or the sync gate gave: the count of the engine for the tree of the run, and no count of the round.
     At HOST_LOSS_LIMIT or more, and above `acked`, the reason is host-loss. CONTINUE sets `acked` to `seen`, so the round asks again only after a newer loss.
@@ -1108,7 +1112,7 @@ def round(item):
                 runs = runs + spawn(items = take, entry = "pipeline", base = round_settings["base"], name = "round-spawn-%d" % n).runs
 
         if len(runs) > 0:
-            ended = gather(runs, until = "any", name = "round-gather-%d" % n).results
+            ended = [e.outcome for e in first_of(runs = runs, name = "round-gather-%d" % n).runs]
             ended_items = [e.item for e in ended]
             runs = [r for r in runs if r.item not in ended_items]
             for result in ended:

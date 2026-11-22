@@ -951,15 +951,12 @@ func finishedNote(info flow.RunInfo) string {
 	return ""
 }
 
-// stoppedOutputLimit is the most characters of the output of a stopping step that a status line shows.
-const stoppedOutputLimit = 120
-
 // stoppedNote is the text for a run that a command ended: the step, the exit code and the start of what the step printed.
 // The output is the result of the stop, so the owner reads the cause without opening the step view.
 func stoppedNote(stopped *flow.Stopped) string {
 	note := fmt.Sprintf("\tstopped at %s rc %d", stopped.Step, stopped.RC)
 
-	text := model.Clip(stopped.Output, stoppedOutputLimit, "…")
+	text := model.Clip(stopped.Output, flow.StoppedOutputLimit, "…")
 	if text == "" {
 		return note
 	}

@@ -266,16 +266,22 @@ func (c *Client) details(row dbos.WorkflowStatus, info *RunInfo) error {
 	case info.State == runDone:
 		var result ItemResult
 
-		result, err = resultOf(row)
+		info.State, result, err = settledOf(row)
 		info.SentBack, info.Closed, info.Merge, info.Stopped = result.SentBack, result.Closed, result.Merge, result.Stopped
-
-		// The workflow returns a stop as a result, so the store records success. The result tells the two apart.
-		if info.Stopped != nil {
-			info.State = runStopped
-		}
 	}
 
 	return err
+}
+
+// settledOf reads the state and the result of a run that the store records as success. The workflow returns a stop as a result, so the result tells a stop from a finish:
+// a result with a stop gives the state stopped, any other gives done. The status and the queue both read a finished run here.
+func settledOf(row dbos.WorkflowStatus) (RunState, ItemResult, error) {
+	result, err := resultOf(row)
+	if result.Stopped != nil {
+		return runStopped, result, err
+	}
+
+	return runDone, result, err
 }
 
 // openDetails reads what an open run shows: its question, the other orchestrators it found, its merge state and the lost gate job it asks about.
@@ -520,10 +526,24 @@ func (c *Client) Cancel(item string) error {
 	}
 
 	if !last.cancelable() {
-		return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, last.Status.ID, stateOf(last.Status.Status))
+		return nothingToCancel(last)
 	}
 
 	return c.cancelRun(item, last)
+}
+
+// nothingToCancel is the error for a run that a cancel does not reach. A run that ended with a stop is shown as stopped, as status shows it,
+// and the error names beehave run, which starts a new attempt after a stop.
+func nothingToCancel(r run) error {
+	state := stateOf(r.Status.Status)
+
+	if state == runDone {
+		if settled, result, err := settledOf(r.Status); err == nil && settled == runStopped {
+			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", errWrongState, r.Status.ID, settled, result.Item)
+		}
+	}
+
+	return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, r.Status.ID, state)
 }
 
 // CancelRun stops the open run with this run id, a pass run included, ends a failed one, and cancels a canceled run with an open run under it again, as Cancel does. The run need not be the latest run of its item.
@@ -537,7 +557,7 @@ func (c *Client) CancelRun(id string) error {
 	case target.Status.ApplicationVersion != c.version && !target.terminal():
 		return strandedError(target, c.version)
 	case !target.cancelable():
-		return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, id, stateOf(target.Status.Status))
+		return nothingToCancel(target)
 	}
 
 	in, err := target.input()
@@ -589,7 +609,22 @@ func (c *Client) cancelHeld(item string, last run) error {
 		return err
 	}
 
+	c.tellParent(last)
+
 	return errors.Join(c.releaseUnowned(mark.attempt(last.Status.ID)), c.sayStopped(last, stopped))
+}
+
+// tellParent sends the end notice of a canceled run to the run that spawned it, so a first_of of the parent wakes at once: a canceled run sends no notice of its own.
+// The key is the key of the notice that the run itself sends, so a run that ended before the cancel notifies once. A send that fails is logged, and the parent reads the end at its next look.
+func (c *Client) tellParent(canceled run) {
+	parent := canceled.Status.ParentWorkflowID
+	if parent == "" {
+		return
+	}
+
+	if err := endNotice(c.flow, parent, canceled.Status.ID); err != nil {
+		c.logger.Warn("cannot tell the parent run that this run was canceled; the parent reads the end at its next look", "run", canceled.Status.ID, "parent", parent, "error", err)
+	}
 }
 
 // leftOpen returns the open runs under a canceled run, and refuses a canceled run that has none. It returns nothing for an open run.

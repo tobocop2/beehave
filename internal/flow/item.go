@@ -51,6 +51,9 @@ type ItemResult struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
+// StoppedOutputLimit is the most characters of the output of a stopping step that a status line or a queue row shows.
+const StoppedOutputLimit = 120
+
 // Stopped is a command step that ended the item: its name, its exit code and what it printed.
 type Stopped struct {
 	Step   string `json:"step"`
@@ -78,8 +81,23 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 			return result, workErr
 		}
 
-		return result, errors.Join(workErr, e.finish(ctx, a))
+		released := e.finish(ctx, a)
+		e.tellParent(ctx, in)
+
+		return result, errors.Join(workErr, released)
 	})
+}
+
+// tellParent sends the end notice of a run that spawn started to the run that spawned it, after the file and the release ended, as a recorded send.
+// The notice only wakes a first_of of the parent. A send that fails is logged, and the parent finds the end at its next read of the rows.
+func (e *Engine) tellParent(ctx dbos.Context, in ItemInput) {
+	if in.Parent == "" {
+		return
+	}
+
+	if err := endNotice(ctx, in.Parent, workflowID(ctx)); err != nil {
+		e.logger.WarnContext(ctx, "cannot tell the parent run that this run ended; the parent reads the end at its next look", "item", in.Item, "parent", in.Parent, "error", err)
+	}
 }
 
 // claimTake is the claim of a run: its owner token, and when the take began. took is zero when this run did not make the take:

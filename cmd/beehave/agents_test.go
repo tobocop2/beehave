@@ -26,16 +26,18 @@ import (
 type lineAdapter struct{ agent.Adapter }
 
 func (lineAdapter) Guard(command, _ string, _, _ []string) agent.Launch {
-	return agent.Launch{Args: []string{"--hook", command}}
+	return agent.Launch{Args: []string{"--hook", command}, Hooked: true}
 }
 
 // Profile is the profile of a CLI that caps the dollars of a run itself.
 func (lineAdapter) Profile() agent.Profile { return agent.Profile{BudgetFlag: "--max-budget-usd"} }
 
-// noHookAdapter is an adapter whose CLI has no hook.
+// noHookAdapter is an adapter whose CLI has no hook but whose guard launch still carries a setting, as the Claude Code launch carries the attribution setting.
 type noHookAdapter struct{ lineAdapter }
 
-func (noHookAdapter) Guard(string, string, []string, []string) agent.Launch { return agent.Launch{} }
+func (noHookAdapter) Guard(string, string, []string, []string) agent.Launch {
+	return agent.Launch{Args: []string{"--settings", `{"attribution":{"commit":"","pr":"","sessionUrl":false}}`}}
+}
 
 func (lineAdapter) Line(line string) (string, string) {
 	if id, ok := cutPrefix(line, "session="); ok {

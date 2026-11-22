@@ -72,7 +72,7 @@ func resultFields() map[string][]string {
 
 // swarmResultFields holds the fields of the builtins that start child runs, wait for them and cancel them.
 func swarmResultFields() map[string][]string {
-	return map[string][]string{spawnName: {"runs"}, gatherName: {"results"}, cancelName: {CancelledField}}
+	return map[string][]string{spawnName: {"runs"}, gatherName: {"results"}, cancelName: {CancelledField}, firstOfName: {"kind", "run", "outcome", "runs", "message"}}
 }
 
 // gateResultFields holds the fields of the gate builtin.

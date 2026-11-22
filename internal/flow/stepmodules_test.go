@@ -74,17 +74,18 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core13.agent14.tracker2.forge6.land9.gate6.host1.round3", applicationVersion("v1"))
-	assert.Equal(t, "v1+core13.agent14.tracker2.forge6.land9.gate7.host1.round3", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core14.agent14.tracker2.forge6.land9.gate6.host1.round4", applicationVersion("v1"))
+	assert.Equal(t, "v1+core14.agent14.tracker2.forge6.land9.gate7.host1.round4", versionWithModule("v1", moduleGate, 7))
 }
 
-func TestStepModules_TheCoreModuleIsAtVersionThirteen(t *testing.T) {
+func TestStepModules_TheCoreModuleIsAtVersionFourteen(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "core13", "the facts step records ten fields: the method and board fields moved under vars at core5 and runners came at core6, so a run recorded at core5 replays no facts step, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "core14", "the facts step records ten fields: the method and board fields moved under vars at core5 and runners came at core6, so a run recorded at core5 replays no facts step, "+
 		"the host job of a command call with a slot class names its run at core7, the sleep step records its marker at core8, the publish and progress steps and the cost_usd of a gather outcome come at core9, "+
 		"the recv and send steps of the inbox come at core10, the result of command and write records attempts at core11, "+
-		"the cancel step and the deadline steps of a gather come at core12, and the runners entry of the facts holds loads_skills in place of reports_skills at core13")
+		"the cancel step and the deadline steps of a gather come at core12, the runners entry of the facts holds loads_skills in place of reports_skills at core13, "+
+		"and the first_of step with its look steps comes at core14, and gather has no until keyword")
 }
 
 func TestStepModules_TheLandModuleIsAtVersionNine(t *testing.T) {

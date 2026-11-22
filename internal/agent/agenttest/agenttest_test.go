@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,6 +42,8 @@ type fakeAdapter struct {
 	reads bool
 	// files is the Files of the launch of the guard and of the sandbox.
 	files map[string]string
+	// extra is the arguments that the launch of the guard and of the sandbox always adds.
+	extra []string
 	// closed makes the launch of the guard and of the sandbox leave each output file closed to the file tools.
 	closed bool
 	// transcript replaces the transcript path, <configDir>/<session>, when it is set.
@@ -57,7 +60,7 @@ func (a fakeAdapter) Sandbox(_ agent.SandboxPlan, _, _ string, write, _ []string
 
 // launch is the launch of the guard and of the sandbox: the files, and a working directory for each file of write unless the adapter leaves them closed.
 func (a fakeAdapter) launch(write []string) agent.Launch {
-	launch := agent.Launch{Files: a.files}
+	launch := agent.Launch{Files: a.files, Args: slices.Clone(a.extra)}
 
 	if a.closed {
 		return launch
@@ -241,6 +244,44 @@ func TestCheckRun(t *testing.T) {
 		assert.Contains(t, r.failures, "the CLI saw BEEHAVE_SUITE_LEAK, a variable of the caller")
 	})
 
+	t.Run("a_stray_launch_argument_that_nobody_declared_is_a_failure", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.extra = []string{"--stray"}
+
+		var r recorder
+
+		agenttest.CheckRun(&r, a, t.TempDir())
+
+		require.Len(t, r.failures, 1)
+		assert.Contains(t, r.failures[0], "the CLI did not get the arguments")
+	})
+
+	t.Run("a_declared_launch_argument_passes", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.extra = []string{"--settings", "{}"}
+
+		var r recorder
+
+		agenttest.CheckRun(&r, a, t.TempDir(), "--settings", "{}")
+
+		assert.Empty(t, r.failures)
+	})
+
+	t.Run("a_declared_launch_argument_that_the_adapter_never_adds_is_a_failure", func(t *testing.T) {
+		t.Parallel()
+
+		var r recorder
+
+		agenttest.CheckRun(&r, good(), t.TempDir(), "--settings", "{}")
+
+		require.Len(t, r.failures, 1)
+		assert.Contains(t, r.failures[0], "the CLI did not get the arguments")
+	})
+
 	t.Run("a_folder_that_does_not_exist_is_a_failure", func(t *testing.T) {
 		t.Parallel()
 
@@ -322,6 +363,15 @@ func TestCheckLaunch_DoesNotAskAProfileWithoutASandboxForOne(t *testing.T) {
 	assert.Equal(t, []string{`the launch file "../x" is outside the run folder (guard)`}, r.failures)
 }
 
+func TestTestAdapter_PassesAnAdapterWhoseLaunchAddsTheArgumentsItDeclares(t *testing.T) {
+	t.Parallel()
+
+	a := good()
+	a.extra = []string{"--settings", "{}"}
+
+	agenttest.TestAdapter(t, func() agent.Adapter { return a }, agenttest.WithLaunchArgs("--settings", "{}"))
+}
+
 func TestTestAdapter_PassesAnAdapterThatStreamsItsCostWhenGivenACostLine(t *testing.T) {
 	t.Parallel()
 
@@ -345,6 +395,33 @@ func TestCheckNoEdits(t *testing.T) {
 		var r recorder
 
 		agenttest.CheckNoEdits(&r, a, t.TempDir())
+
+		assert.Empty(t, r.failures)
+	})
+
+	t.Run("a_stray_launch_argument_of_a_step_with_no_edits_is_a_failure", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.extra = []string{"--stray"}
+
+		var r recorder
+
+		agenttest.CheckNoEdits(&r, a, t.TempDir())
+
+		require.Len(t, r.failures, 1)
+		assert.Contains(t, r.failures[0], "the CLI of a step with no edits did not get the arguments")
+	})
+
+	t.Run("a_declared_launch_argument_of_a_step_with_no_edits_passes", func(t *testing.T) {
+		t.Parallel()
+
+		a := good()
+		a.extra = []string{"--settings", "{}"}
+
+		var r recorder
+
+		agenttest.CheckNoEdits(&r, a, t.TempDir(), "--settings", "{}")
 
 		assert.Empty(t, r.failures)
 	})

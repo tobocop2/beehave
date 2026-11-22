@@ -7,7 +7,7 @@
 # Each pass does four things:
 #   1. queue() reads the items and the pull requests again. A merge in an earlier pass shows here, so an item that the merge unblocked is ready now.
 #   2. spawn starts the ready items that fit in the free slots. A held item is never ready, and a failed item is never ready.
-#   3. gather(until = "any") waits until at least one open run ends. The other runs keep their slots, so one item that loops does not stop the rest.
+#   3. first_of(runs = live) waits until an open run ends, and its field `runs` lists every run that ended in the same read. The other runs keep their slots, so one item that loops does not stop the rest.
 #   4. The loop removes the ended runs from its list, holds each failed item with a comment, and sleeps before it starts runs after a pass that saw a failure.
 # The loop ends when no item is ready and no run is open.
 #
@@ -71,7 +71,7 @@ def main(item):
             live = live + spawn(items = take, entry = "work", name = "s-%d" % n).runs
 
         # With no free slot and no new run, the wait still ends when a run ends, so the next pass starts the next item.
-        ended = gather(live, until = "any", name = "g-%d" % n).results
+        ended = [e.outcome for e in first_of(runs = live, name = "g-%d" % n).runs]
         gone = [e.item for e in ended]
         live = [r for r in live if r.item not in gone]
 

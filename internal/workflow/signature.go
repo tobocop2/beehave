@@ -418,12 +418,13 @@ func swarmSignatures() map[string][]Param {
 			{Name: nameKeyword, Kind: KindText, Required: true, Why: "The name makes the step names of the call unique, so use one for each call of the run."},
 		},
 		gatherName: {
-			req("runs", KindAny), one(failKeyword, FailModes()), one(untilKeyword, UntilModes()),
+			req("runs", KindAny), one(failKeyword, FailModes()),
 			ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), one(OnTimeoutKeyword, OnTimeoutModes()), label,
 		},
-		cancelName: {req("run", KindAny), label},
-		spawnName:  {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
-		queueName:  {label, opt("hold", KindText), opt("label", KindText)},
+		firstOfName: {opt("runs", KindAny), ruled(topicsKeyword, KindList, topicsRule), ruled(timeoutKeyword, KindText, deadlineRule(timeoutKeyword)), label},
+		cancelName:  {req("run", KindAny), label},
+		spawnName:   {{Name: "items", Kind: KindList, Required: true, Rule: wordsRule("items")}, opt(entryKeyword, KindText), opt("base", KindText), label, ruled(retriesKeyword, KindInt, retriesRule)},
+		queueName:   {label, opt("hold", KindText), opt("label", KindText)},
 	}
 }
 
@@ -598,9 +599,7 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 	case agentName:
 		g.protection(call, params)
 	case commandName:
-		g.hostWithCap(call, params)
-		g.hostWithSlots(call, params)
-		g.retrying(call, builtin, params)
+		g.commandPairs(call, params)
 	case writeName:
 		g.retrying(call, builtin, params)
 	case waitName:
@@ -609,7 +608,16 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 		g.handingOff(call, params)
 	case gatherName:
 		g.deadlineMode(call, params)
+	case firstOfName:
+		g.reportRule(call, FirstOfSources(paramArg(call, params, "runs") != nil, paramArg(call, params, topicsKeyword) != nil, paramArg(call, params, timeoutKeyword) != nil))
 	}
+}
+
+// commandPairs checks the rules of a command call that tie two keywords together.
+func (g *graph) commandPairs(call *syntax.CallExpr, params []Param) {
+	g.hostWithCap(call, params)
+	g.hostWithSlots(call, params)
+	g.retrying(call, commandName, params)
 }
 
 // deadlineMode refuses a gather call that names on_timeout and no timeout, as the run does.
