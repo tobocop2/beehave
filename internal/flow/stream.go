@@ -41,21 +41,27 @@ func (s *script) stream(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return nil, err
 	}
 
-	until, err := runStep(s.e, s.ctx, s.nextName(streamKind, call.label)+deadlineSuffix, func(context.Context) (int64, error) {
-		return s.e.deps.Clock.reading().Add(call.wait).UnixMilli(), nil
+	window, err := runStep(s.e, s.ctx, s.nextName(streamKind, call.label)+deadlineSuffix, func(context.Context) (streamWindow, error) {
+		return streamWindow{Until: s.e.deps.Clock.reading().Add(call.wait), Run: call.run}, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	read, err := countedStep(s, streamKind, call.label, func(ctx context.Context) (streamRead, error) {
-		return s.e.streamWait(ctx, call.run, call.from, time.UnixMilli(until))
+		return s.e.streamWait(ctx, call.run, call.from, window.Until)
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return streamValue(read), nil
+}
+
+// streamWindow is the record of the deadline step of one stream call: the time the wait ends and the run it reads. Status reads it while the call waits.
+type streamWindow struct {
+	Until time.Time `json:"until"`
+	Run   string    `json:"run"`
 }
 
 // streamArgs is a checked stream call: the child run, the cursor, how long to wait and the label.
