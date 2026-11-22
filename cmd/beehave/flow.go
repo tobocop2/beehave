@@ -137,7 +137,12 @@ func stateFolder(dir string) func() (string, error) {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	return flow.NewEngine(ctx, withModules(opts), newDeps(cfg, opts))
+	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)
+	if err := table.writers.start(ctx, cfg, opts); err != nil {
+		return nil, err
+	}
+
+	return flow.NewEngine(ctx, withModules(opts), newDeps(cfg, opts, table))
 }
 
 // stepModules lists the step modules that the engine runs.
@@ -153,8 +158,8 @@ func withModules(opts flow.Options) flow.Options {
 }
 
 // newDeps builds what the engine of the run command needs. The pool pick reads the usage through the agent entries.
-func newDeps(cfg config.Config, opts flow.Options) flow.Deps {
-	return depsOn(cfg, opts, newLogins(cfg, opts), newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env))
+func newDeps(cfg config.Config, opts flow.Options, table adapters) flow.Deps {
+	return depsOn(cfg, opts, newLogins(cfg, opts), table)
 }
 
 // newEngineReading builds the engine with the reader of the usage that the pool pick uses.
@@ -164,12 +169,16 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 
 // newEngineOn builds the engine over a table of adapters. A test passes a table with one adapter replaced.
 func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader, table adapters) (*flow.Engine, error) {
+	if err := table.writers.start(ctx, cfg, opts); err != nil {
+		return nil, err
+	}
+
 	return flow.NewEngine(ctx, withModules(opts), depsOn(cfg, opts, loginsReading(cfg, read), table))
 }
 
 // depsOn builds the deps of the engine over a pool pick and a table of adapters.
 func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
-	trees := newWorktrees(cfg.Projects, opts, table.forge)
+	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 	folders := &fstree.Folders{}
 	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
@@ -254,7 +263,7 @@ func repositoryOf(projects map[string]config.Project) func(string) bool {
 // The projects tell the worktrees and the release which projects have no repository, so a release never reads git in a plain folder. The forge of the
 // table gives the address at which the release reads the branches of the remote.
 func releaseDeps(cfg config.Config, opts flow.Options, table adapters) flow.ReleaseDeps {
-	trees := newWorktrees(cfg.Projects, opts, table.forge)
+	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 
 	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: trees, Repository: repositoryOf(cfg.Projects), Merge: life}
@@ -270,20 +279,21 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 
 	return itemLife{
 		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
-		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy()},
+		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy(), writers: table.writers},
 	}
 }
 
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.
 // The client of the commands only reads worktrees; it passes the projects so that it knows which have no repository.
 // Every git call sets GIT_TERMINAL_PROMPT=0, so a private repository fails and never waits for a password. A git call in the clone or a worktree is
-// local (see gitexec), so no setting in the clone config can send it to the network.
-func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error)) worktrees {
+// local (see gitexec), so no setting in the clone config can send it to the network. roles is the writers table of the caller, so no worktrees value exists
+// without it: a call to a remote of a project with credentials runs as its writer, or is refused when the roles are not loaded, as in the client.
+func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error), roles *writers) worktrees {
 	repos := reposFolder(opts.StateDir)
 	found := gitexec.NewRepositories(repos)
 
 	return worktrees{
-		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges,
+		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles,
 		git:    func(dir string) proc.Runner { return noPrompt(found.Runner(dir, proc.DefaultTimeout)) },
 		remote: func(dir string) proc.Runner { return noPrompt(gitexec.NewRemote(dir, proc.DefaultTimeout)) },
 	}

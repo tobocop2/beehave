@@ -23,9 +23,10 @@ const (
 	MinSecretLen = 8
 )
 
-var tokenShape = regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{8,}`)
+// tokenShape matches an Anthropic key and the forge token prefixes ghp_, gho_, ghs_, github_pat_ and glpat-.
+var tokenShape = regexp.MustCompile(`(?:sk-ant-|ghp_|gho_|ghs_|github_pat_|glpat-)[A-Za-z0-9_-]{8,}`)
 
-// redactor removes secrets from text: the exact values it holds, any token shaped like an Anthropic key, and then whatever next removes.
+// redactor removes secrets from text: the exact values it holds, any token shaped like an Anthropic key or a forge token, and then whatever next removes.
 type redactor struct {
 	replacer *strings.Replacer
 	next     func(string) string

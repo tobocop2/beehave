@@ -60,6 +60,8 @@ type Project struct {
 	SandboxEnforcer string
 	// MaxSpawnDepth is the deepest level of spawn below the run a user started. The config fills it, so it is 1 or more for a loaded project.
 	MaxSpawnDepth int
+	// Credentials says where the engine reads the token of each role. A project with none runs its forge calls with the login of the owner.
+	Credentials map[Role]Credential
 
 	// Vars are the free settings of the workflow of the project, as the file wrote them. The engine reads no key and no value. The values are JSON values:
 	// nil, bool, string, json.Number, []any and map[string]any. A project that sets none has nil.

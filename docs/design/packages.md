@@ -46,6 +46,7 @@ flowchart TD
         link["host/link<br/>ssh command line"]
         jobwait["host/jobwait<br/>wait states"]
         sandbox["sandbox<br/>enforcer contract, allow-list proxy, Landlock enforcer"]
+        credential["credential<br/>forge token loader, role environment, start probe"]
     end
 
     subgraph L0["Layer 0: foundation"]
@@ -94,6 +95,10 @@ flowchart TD
     ghforge --> forge
     config --> model
     proc --> model
+    credential --> proc
+    credential --> model
+    ghforge --> credential
+    main --> credential
     store --> model
     store --> lockfile
     forge --> model

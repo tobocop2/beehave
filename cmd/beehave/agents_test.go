@@ -20,6 +20,7 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/pool"
+	"github.com/tobocop2/beehave/internal/proc"
 )
 
 // lineAdapter is an adapter whose output lines are "session=<id>" and "text=<message>".
@@ -1250,7 +1251,7 @@ func TestNewDeps_TheEnginePickReadsTheUsageThroughTheClaudeAdapterOnThePathOfThe
 	cfg, opts := usageFixture(t)
 	cfg.Projects = map[string]config.Project{"p": {}}
 
-	_, err := newDeps(cfg, opts).Logins.Pick(t.Context(), "p", "1", nil, false)
+	_, err := newDeps(cfg, opts, newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)).Logins.Pick(t.Context(), "p", "1", nil, false)
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }

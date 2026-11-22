@@ -35,7 +35,7 @@ func newPushRig(t *testing.T) pushRig {
 
 	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: remote, BaseBranch: "main", Forge: forgegithub.Name}}}
 	opts := flow.Options{StateDir: evaluated(t, t.TempDir())}
-	trees := newWorktrees(projects, opts, nil)
+	trees := newWorktrees(projects, opts, nil, nil)
 
 	tree, err := trees.Ensure(t.Context(), "p", pushItem, "", "")
 	require.NoError(t, err)

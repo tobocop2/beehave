@@ -79,6 +79,22 @@ func TestLoadFolder_ASourceThatIsAUrlOrAPathWithALocalHostIsKept(t *testing.T) {
 	require.Equal(t, "gpu", project.BuildHost)
 }
 
+func TestLoadFolder_TheSchemeAndTheHostOfASourceAreWrittenInLowerCaseAndThePathIsKept(t *testing.T) {
+	t.Parallel()
+
+	for source, want := range map[string]string{
+		"HTTPS://GitHub.COM/O/R.git":       "https://github.com/O/R.git",
+		"https://Example.COM:8443/O/R?x=Y": "https://example.com:8443/O/R?x=Y",
+		"ssh://Git@Example.COM/O/R.git":    "ssh://Git@example.com/O/R.git",
+		"https://example.com":              "https://example.com",
+		"Git@Example.COM:O/R.git":          "Git@Example.COM:O/R.git",
+	} {
+		project, problems := loadProjectText(t, call(`source = "`+source+`", `+tail))
+		require.Empty(t, problems, source)
+		require.Equal(t, want, project.Source, source)
+	}
+}
+
 func TestLoadFolder_ALeadingTildeOfASourceExpands(t *testing.T) {
 	t.Parallel()
 
