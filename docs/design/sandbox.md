@@ -221,6 +221,10 @@ The kernel limits a TCP connection by port only. The enforcer lets the command c
 
 The first line of the output of the gate is the plan. The report of the gate step records it, and a replay reads the recorded result.
 
+### The test report
+
+The command of the project gate writes its `test_report` files in the copy of the work folder. When the command exits 0, `beehave` copies each file that the `test_report` glob matches and that did not exist in the copy before the command to the same name in the real work folder, where the gate reads it. A file that the copy already held, for example a tracked file, is never carried, so the gate never rewrites a file of the repository. `beehave` carries only a plain file with one name. A link, a folder, or a file with a second name (a hard link) fails the gate, and the output names the file. The command gets no extra right to write. `beehave` reads only inside the copy and writes only inside the real folder, through `os.Root`. A `test_report` that is absolute or leaves the work folder with `..` is refused, and the gate does not run. Only the project gate does this. A command call, and a program gate, run as before. A gate in a folder with no `.git` writes its report in that folder, so it needs the folder in `gate_allow_write`.
+
 ### The gate lists
 
 The project file keeps two lists for the gate, and `beehave` records them. The enforcer applies them to a gate that runs on this machine.

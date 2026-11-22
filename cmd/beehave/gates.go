@@ -94,7 +94,7 @@ func (g projectGate) gate(project string) gate.Gate {
 func (g projectGate) shellFor(project string) func(context.Context, string, string) (string, int) {
 	return func(ctx context.Context, dir, command string) (string, int) {
 		if g.programs.sandbox.applies(project, false) {
-			return g.programs.sandbox.run(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
+			return g.programs.sandbox.runGate(ctx, project, dir, []string{"sh", "-c", command}, nil, cmp.Or(g.timeout, gateTimeout))
 		}
 
 		return g.shell(ctx, project, dir, command)

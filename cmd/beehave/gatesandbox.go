@@ -77,11 +77,18 @@ func (g gateSandbox) run(ctx context.Context, project, dir string, argv, env []s
 	return g.runAt(ctx, project, folder{path: dir}, argv, env, limit)
 }
 
+// runGate is run for the command of the project gate: the files that the command writes below the test_report glob of the project in the copy of the work
+// folder are carried to the real folder, where the gate reads them.
+func (g gateSandbox) runGate(ctx context.Context, project, dir string, argv, env []string, limit time.Duration) (out string, code int) {
+	return g.runAt(ctx, project, folder{path: dir, report: g.projects[project].TestReport}, argv, env, limit)
+}
+
 // folder is the folder that a gate command works in. own is true for an empty folder that beehave made for the command: the command may write it. A folder
-// that is not own and has no .git is the real work folder of a project with no repository.
+// that is not own and has no .git is the real work folder of a project with no repository. report is the test_report glob to carry out of the copy, or empty.
 type folder struct {
-	path string
-	own  bool
+	path   string
+	own    bool
+	report string
 }
 
 // runOwn is run for a folder that beehave made for the command alone.
@@ -280,6 +287,15 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 
 	defer release()
 
+	return g.runCopied(ctx, enforcer, project, tmp, at, copied, clone, argv, env, limit)
+}
+
+// runCopied makes the plan for the work folder copied, runs the command there, and carries the test report back to the real folder of at.
+func (g gateSandbox) runCopied(ctx context.Context, enforcer sandbox.Enforcer, project config.Project, tmp string, at folder, copied gitexec.Repository, clone gateClone,
+	argv, env []string, limit time.Duration,
+) (string, int) {
+	dir := at.path
+
 	// A folder with no .git has no copy. The plan then never grants it for writing, unless beehave made it for the command: a write there would change the
 	// real folder, where a planted hook folder or agent setting runs later as the owner. A project with no repository still writes through gate_allow_write.
 	plan, note := g.plan(ctx, project, dir, copied, tmp, clone.git, copied.WorkTree == dir && !at.own)
@@ -287,9 +303,15 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 		return notStarted(note)
 	}
 
+	reports, err := startCarry(at.report, copied.WorkTree, dir)
+	if err != nil {
+		return notStarted(err.Error() + ". The gate did not run.")
+	}
+
 	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: g.commandEnv(ctx, env, tmp, clone.git.Runner(dir, proc.DefaultTimeout))}
 
-	return execute(ctx, enforcer, plan, command, limit)
+	// The gate reads the test report in the real work folder, and the command wrote it in the copy that beehave throws away.
+	return reports.settle(execute(ctx, enforcer, plan, command, limit))
 }
 
 // commandEnv returns the environment of the command: env without the SSH agent, its temporary folder, and for a command call the git variables of the engine.
