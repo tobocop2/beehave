@@ -148,7 +148,7 @@ func (s *script) stash(got envelope) {
 }
 
 // send puts a message on the inbox of the parent run or of a run that this run spawned, and returns its id.
-// The id is the run and the step name, and it is the idempotency key of the DBOS send, so a resumed run inserts the message once.
+// The id is the run and the step name. The send is a recorded step of DBOS, so a resumed run inserts the message once.
 func (s *script) send(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var to, value starlark.Value
 
@@ -203,9 +203,9 @@ func sendOutputs(id string) map[string]any {
 	return map[string]any{"id": id}
 }
 
-// deliver sends the envelope to the inbox of the run dest. A run that stopped after the record of the send step sends again on resume, with the same key, and the store inserts the message once.
+// deliver sends the envelope to the inbox of the run dest. The send of DBOS inside a workflow is one step: the insert and the step record commit together, so a resumed run replays the record and inserts the message once.
 func (s *script) deliver(dest string, env envelope) error {
-	if err := dbos.Send(s.ctx, dest, env, inboxTopic, dbos.WithIdempotencyKey(env.ID)); err != nil {
+	if err := dbos.Send(s.ctx, dest, env, inboxTopic); err != nil {
 		return fmt.Errorf("item %s cannot send on topic %s to run %s: %w", s.in.Item, env.Topic, dest, err)
 	}
 
