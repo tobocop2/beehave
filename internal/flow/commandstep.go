@@ -507,13 +507,13 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	})
 }
 
-// refuseEnvName returns an error for the name of a variable that a file cannot read: one of the engine, or a secret.
-func refuseEnvName(name string) error {
+// refuseEnv returns an error for a variable that a file cannot read: one of the engine, or a secret by its name or its value.
+func (e *Engine) refuseEnv(name string) error {
 	switch {
 	case workflow.ReservedEnvName(name):
 		return fmt.Errorf("env cannot read `%s`. %s", name, workflow.ReservedEnvAdvice())
-	case workflow.SecretEnvName(name):
-		return fmt.Errorf("env cannot read `%s`, because the name is a secret. Pass secrets to the runner, not to the workflow", name)
+	case workflow.SecretEnv(name, e.env[name]):
+		return fmt.Errorf("env cannot read `%s`, because the variable is a secret. Pass secrets to the runner, not to the workflow", name)
 	}
 
 	return nil
@@ -563,7 +563,7 @@ func (s *script) env(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark
 		return nil, err
 	}
 
-	if err := refuseEnvName(name); err != nil {
+	if err := s.e.refuseEnv(name); err != nil {
 		return nil, err
 	}
 

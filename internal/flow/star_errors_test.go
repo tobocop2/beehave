@@ -40,7 +40,11 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"env reads a name that is not set", `env("NOPE_ZZ")`, "the environment variable NOPE_ZZ is not set"},
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},
 		{"agent has an empty model", `agent(prompt = "p", model = "")`, "an agent call needs a model"},
-		{"env reads a secret", `env("GITHUB_TOKEN")`, "because the name is a secret"},
+		{"env reads a secret", `env("GITHUB_TOKEN")`, "because the variable is a secret"},
+		{"env reads a personal access token", `env("GH_PAT")`, "because the variable is a secret"},
+		{"env reads a personal access token with a suffix", `env("GH_PAT_OLD")`, "because the variable is a secret"},
+		{"env reads a connection string", `env("DATABASE_DSN")`, "because the variable is a secret"},
+		{"env reads an auth value", `env("SERVICE_AUTH")`, "because the variable is a secret"},
 		{"a dict key is not text in a prompt value", `x = struct(a = {1: 2})` + "\n" + `agent(prompt = "p", model = "m", inputs = {"x": x})`, "dict has int key, want string"},
 		{"a function cannot go into a request", `agent(prompt = "p", model = "m", inputs = {"f": env})`, "cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts (json.encode: in dict key \"f\": cannot encode builtin_function_or_method as JSON)"},
 	}
@@ -57,6 +61,24 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 			assert.Empty(t, h.commands.ran())
 		})
 	}
+}
+
+func TestBuiltins_EnvRefusesAVariableWhoseValueHoldsAUrlPassword(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Env = map[string]string{"DATABASE_URL": "postgres://app:fakepw@db.example.test/app"} //nolint:gosec // a fake password planted to test the refusal
+
+	_, err := walkBody(t, h, `env("DATABASE_URL")`)
+
+	require.ErrorContains(t, err, "env cannot read `DATABASE_URL`, because the variable is a secret")
+
+	h = newHarness(t)
+	h.opts.Env = map[string]string{"PLAIN_URL": "postgres://app@db.example.test/app"}
+
+	_, err = walkBody(t, h, `env("PLAIN_URL")`)
+
+	require.NoError(t, err)
 }
 
 func TestMerge_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {

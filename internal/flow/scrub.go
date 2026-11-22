@@ -29,7 +29,7 @@ func secretNames(env map[string]string) []string {
 	var names []string
 
 	for name, value := range env {
-		if value != "" && workflow.SecretEnvName(name) {
+		if value != "" && workflow.SecretEnv(name, value) {
 			names = append(names, name)
 		}
 	}
