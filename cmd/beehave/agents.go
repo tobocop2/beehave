@@ -68,9 +68,8 @@ type agents struct {
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
-func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table adapters) agents {
+func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table adapters, folders *fstree.Folders) agents {
 	repos := gitexec.NewRepositories(reposFolder(opts.StateDir))
-	folders := &fstree.Folders{}
 
 	return agents{
 		runners:  cfg.Runners,

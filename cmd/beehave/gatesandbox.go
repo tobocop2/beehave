@@ -36,12 +36,12 @@ type gateSandbox struct {
 	environ []string
 	// clones is the lock of the clone of each project. The gate adds, lists and removes the worktree of its copy under it.
 	clones cloneLock
-	// folders is the set of the gate folders that this process made.
+	// folders is the set of the folders that the engine made. The engine builds one set, and a second set on one root removes the live folders of the first.
 	folders *fstree.Folders
 }
 
-func newGateSandbox(projects map[string]config.Project, clones cloneLock) gateSandbox {
-	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: &fstree.Folders{}}
+func newGateSandbox(projects map[string]config.Project, clones cloneLock, folders *fstree.Folders) gateSandbox {
+	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: folders}
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.

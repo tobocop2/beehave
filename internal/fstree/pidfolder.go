@@ -26,6 +26,7 @@ func Name(pid, n int) string { return strconv.Itoa(pid) + "-" + strconv.Itoa(n) 
 
 // Folders makes the folders of one process and knows which ones it made. A folder with the pid of this process that it did not make is the leftover of
 // a killed process that had the same pid, and the next Make removes it. One Folders serves all the callers of a process that share a root. The zero value is ready.
+// Two sets on one root remove each other's live folders, so a process builds one set and shares it.
 // A nil Folders knows no folder, so it keeps every folder whose pid runs, this process included.
 type Folders struct {
 	mu   sync.Mutex

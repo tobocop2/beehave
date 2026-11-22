@@ -290,7 +290,7 @@ func TestPrograms_ACapThatCannotBeCountedOrSetFailsTheStepWithItsCause(t *testin
 }
 
 func TestNewPrograms_ACappedProgramThatExits125WithCouldNotKeepsItsResult(t *testing.T) { //nolint:paralleltest // the cap counts every process of the user
-	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", `echo out; echo "could not open the thing" >&2; exit 125`}, MaxNewProcesses: 1000})
 
@@ -302,7 +302,7 @@ func TestNewPrograms_ACappedProgramThatExits125WithCouldNotKeepsItsResult(t *tes
 func TestNewPrograms_ACommandStepGetsOnlyTheEnvironmentOfItsRequestAndItsStdin(t *testing.T) {
 	t.Setenv("BEEHAVE_TEST_SECRET", "secret")
 
-	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(t.TempDir()), cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", "env; cat"}, Stdin: "from stdin\n", Env: []string{"A=1"}})
 
@@ -435,7 +435,7 @@ func TestNewPrograms_BuildTheHostOfTheProjectOnlyWhenItHasOne(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Projects: map[string]config.Project{"bare": {}}}
-	runs := newPrograms(cfg, treeAt("/tree"), cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(cfg, treeAt("/tree"), cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	_, err := runs.hosts("zzz", "")
 	require.ErrorIs(t, err, errUnknownProject)
@@ -457,7 +457,7 @@ func TestNewPrograms_ReturnTheHostThatTheTableBuildsForTheProject(t *testing.T) 
 	}
 
 	project := config.Project{Project: model.Project{Name: "h", Host: &model.HostConfig{Provider: skypilot.Name}}}
-	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), cloneLock{}, table)
+	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), cloneLock{}, table, nil)
 
 	got, err := runs.hosts("h", "")
 
@@ -483,7 +483,7 @@ func TestNewPrograms_BuildTheHostOfTheClusterThatTheRunChose(t *testing.T) {
 	}
 
 	project := config.Project{Project: model.Project{Name: "h", BuildHost: "gpu", BuildHosts: []string{"gpu", "gpu-b"}, Host: &model.HostConfig{Provider: skypilot.Name}}}
-	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), cloneLock{}, table)
+	runs := newPrograms(config.Config{Projects: map[string]config.Project{"h": project}}, treeAt("/tree"), cloneLock{}, table, nil)
 
 	_, err := runs.hosts("h", "gpu-b")
 	require.NoError(t, err)

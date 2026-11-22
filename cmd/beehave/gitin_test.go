@@ -104,7 +104,7 @@ func TestEveryPathToGitRunsWithTheHooksOff(t *testing.T) { //nolint:paralleltest
 			return newWorktrees(nil, flow.Options{StateDir: state}, nil).git(dir).Run(t.Context(), []string{"status"})
 		},
 		"the batch and gate": func() model.CommandResult {
-			return newPrograms(config.Config{Projects: repositoryProject()}, nil, cloneLock{repos: repos}, adapters{}).local("p", "git", dir, 0).Run(t.Context(), []string{"status"})
+			return newPrograms(config.Config{Projects: repositoryProject()}, nil, cloneLock{repos: repos}, adapters{}, nil).local("p", "git", dir, 0).Run(t.Context(), []string{"status"})
 		},
 	}
 
