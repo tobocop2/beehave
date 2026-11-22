@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,6 +91,45 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderServeWhenNoModuleChanged(
 
 	require.NoError(t, outcome.err, "a client that joins the engine of this build moves the open run of the older release build")
 	assert.Equal(t, []string{"old", "old", "new"}, seen.all())
+}
+
+func TestPatch_AWaitDoesNotTakeTheCancelOfAMoveForTheEndOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	run := runOfClient(t, client)
+
+	// The move takes the fresh claim after the cancel and before the rewind, so the claim holds the move between the two.
+	paused, resume := make(chan struct{}), make(chan struct{})
+
+	var once sync.Once
+
+	h.life.onClaim = func() { once.Do(func() { close(paused); <-resume }) }
+
+	moved := make(chan error, 1)
+
+	go func() {
+		moved <- client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
+	}()
+
+	select {
+	case <-paused:
+	case err := <-moved:
+		t.Fatalf("the move ended before it took the claim: %v", err)
+	}
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	require.Equal(t, dbos.WorkflowStatusCancelled, last.Status.Status, "the move canceled the run and has not rewound it yet")
+	assert.Empty(t, run.stalled(time.Now()), "the move holds probe.lock, so the wait does not take its cancel for the end of the run")
+
+	close(resume)
+	require.NoError(t, receive(t, moved))
+	assert.Empty(t, run.stalled(time.Now()), "the moved run is open on this build")
+
+	require.NoError(t, client.Cancel(testItem))
+	assert.Contains(t, run.stalled(time.Now()), "ended with status "+string(dbos.WorkflowStatusCancelled), "a cancel that no move follows is the end of the run")
 }
 
 func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByRunAndNamesTheModuleThatChanged(t *testing.T) {
