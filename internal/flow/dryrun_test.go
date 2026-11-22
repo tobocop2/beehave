@@ -307,7 +307,7 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleIsComplete(t *testing.T) {
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "scope:candidate-gate#1", "gate:candidate-gate#1", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
 		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-1#3",
 		"agent:candidate-review#5/render", "agent:candidate-review#5/clear1", "phase", "DBOS.getResult", "agent:candidate-review#5/read1", "pr_comment:approved#1",
-		"command:sweep-prune#5", "worktree", "release",
+		"worktree", "release",
 	}, remediationStepNames(t))
 }
 
@@ -327,7 +327,7 @@ func TestDryRun_TheStepListOfThePipelineOfTheExampleWithARedGateHoldsTheFixRound
 		"gate:tip", "exclusive", "gate:stop", "DBOS.getResult", "gate:candidate-gate#2", "facts#2", "command:candidate-before-review-ancestor#1", "command:candidate-before-review-keywords#2",
 		"command:candidate-lane-report#3", "host_job", "DBOS.getResult", "command:mutation#4", "preflight:before-review-2#5",
 		"agent:candidate-review#7/render", "agent:candidate-review#7/clear1", "phase", "DBOS.getResult", "agent:candidate-review#7/read1", "pr_comment:approved#1",
-		"command:sweep-prune#5", "worktree", "release",
+		"worktree", "release",
 	}, remediationStepNames(t, WithRedGate()))
 }
 

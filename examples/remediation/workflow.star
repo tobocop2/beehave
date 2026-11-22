@@ -1185,18 +1185,16 @@ def item_value(item, head, approved, reason, host_losses, pr = 0):
     return {"item": item.id, "head": head, "approved": approved, "reason": reason, "host_losses": host_losses, "pr": pr}
 
 def sweep(project):
-    """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane), then `docker volume prune -f`.
-    A project with no clean command runs the prune only, and the text says so. A failed step shows its exit code in the text, and a step that cannot run (a host that is gone)
-    shows its error: failure = "return" gives the error as a result. Neither fails the lane, and the prune runs after a failed clean."""
+    """Runs the sweep of a lane on the build host and returns its result as text: the project command `vars.clean_command` (it deletes the target directory of the lane).
+    A project with no clean command runs nothing, and the text says so. A failed step shows its exit code in the text, and a step that cannot run (a host that is gone)
+    shows its error: failure = "return" gives the error as a result. Neither fails the lane."""
     words = project.vars.get("clean_command")
-    lines = ["clean: not run, vars.clean_command is not set"]
-    if words != None:
-        clean = command(name = "sweep-clean", run = words, host = "build", failure = "return")
-        lines = [_swept("clean", clean)]
+    if words == None:
+        return "clean: not run, vars.clean_command is not set"
 
-    prune = command(name = "sweep-prune", run = ["docker", "volume", "prune", "-f"], host = "build", failure = "return")
+    clean = command(name = "sweep-clean", run = words, host = "build", failure = "return")
 
-    return "\n".join(lines + [_swept("prune", prune)])
+    return _swept("clean", clean)
 
 def _swept(step, result):
     """One line of the sweep text: the exit code of the step, and its error when the step could not run."""

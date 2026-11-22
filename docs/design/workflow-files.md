@@ -876,13 +876,13 @@ The workflow names no skill. The project names it.
 The engine has no cleanup builtin. The project owns the clean command and the workflow runs it as a host command.
 
 - The project file can set `vars.clean_command`: a list of words, such as `["sh", "scripts/clean-lane.sh"]`. A value that is not a list of words that are not blank is refused before the first agent starts. The message names the key.
-- When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`, then `docker volume prune -f` as the step `sweep-prune`. Both run with `host`, so they run on the build host.
+- When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`. The step runs with `host`, so it runs on the build host. The sweep runs no other command: a cleanup of docker volumes belongs in `vars.clean_command`.
 - The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before the `fail` call of the lane for a missing changelog entry.
-- Both sweep steps use `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane. The prune still runs after such a clean.
+- The sweep step uses `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane.
 - A workflow file cannot catch an error. A lane that the error of an earlier builtin ends, such as a host that is gone at the mutation run, gets no sweep. Issue #753 tracks it.
-- With no `vars.clean_command`, the sweep runs the prune only.
-- The sweep does not fail the lane. A failed clean does not skip the prune.
-- The value that the lane returns holds the field `sweep`: one line for each step, `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`, then `prune: rc=<n>`.
+- With no `vars.clean_command`, the sweep runs no command.
+- The sweep does not fail the lane.
+- The value that the lane returns holds the field `sweep`: the line `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`.
 
 #### The mutation step of `examples/remediation/`
 
