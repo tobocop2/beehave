@@ -93,7 +93,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 `env("<NAME>")` reads a variable of the engine environment. The value is recorded, so a replay sees the value of the first run.
 
 - A name that is not set fails the step and names the variable, unless the call gives `default`, which is then the value.
-- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `env` also refuses the name `SSH_AUTH_SOCK`, at check time and at the call, so a workflow cannot pass the agent socket back to a step. `OAUTH` is not a secret name.
+- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `env` also refuses to read `SSH_AUTH_SOCK`. The check refuses a literal name, and the call refuses any name, such as one that the workflow builds. So no value of a workflow holds the path of the agent socket of the engine. `OAUTH` is not a secret name.
 
 ### `now`
 
@@ -687,6 +687,8 @@ A send to a child goes to its latest attempt: the run that `gather` started agai
 ### `command`
 
 A `command` step has five settings besides `run`, `timeout`, `host` and `name`: `max_new_processes`, `slots`, `stdin`, `env` and `stop_on_rc`.
+
+The `env` setting of `command` and `write` refuses the name `SSH_AUTH_SOCK` as a key. The check refuses a literal key. The call refuses every other form: a key that the workflow builds, a dict held in a variable and a `**` spread. This refusal is separate from the `env` builtin, which refuses to read the variable.
 
 A `command` can run twice after a crash that cuts the step before its record. Put a program that changes a system outside the run in `write`. A `command` with `host` or `slots` can also submit its host job twice today. A later change fixes this.
 

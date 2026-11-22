@@ -378,7 +378,7 @@ func slotClass() Param { return Param{Name: slotsKeyword, Kind: KindText, AsValu
 // valueSignatures holds the builtins that return text or a struct of facts and start nothing.
 func valueSignatures() map[string][]Param {
 	return map[string][]Param{
-		envName:   {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
+		envName:   {{Name: nameKeyword, Kind: KindText, Required: true, Rule: envReadRule}, {Name: "default", Kind: KindText, AsValue: true}},
 		"now":     {},
 		factsName: {},
 		// The two matchers judge text and run no step. They read the dialect of the agent scope and the grammar of the merge guard.
