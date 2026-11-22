@@ -83,12 +83,36 @@ func (g gateSandbox) runGate(ctx context.Context, project, dir string, argv, env
 	return g.runAt(ctx, project, folder{path: dir, report: g.projects[project].TestReport}, argv, env, limit)
 }
 
+// runJob is run for the job of a gate_program in the empty folder root that beehave made. The job clones the head from the repository at from, so the plan
+// also lets it read that repository, its shared git folders and the source of the project when that is a folder.
+func (g gateSandbox) runJob(ctx context.Context, project, from, root string, argv []string, limit time.Duration) (out string, code int) {
+	g.ownGit = true
+
+	return g.runAt(ctx, project, folder{path: root, own: true, readFrom: from}, argv, nil, limit)
+}
+
 // folder is the folder that a gate command works in. own is true for an empty folder that beehave made for the command: the command may write it. A folder
 // that is not own and has no .git is the real work folder of a project with no repository. report is the test_report glob to carry out of the copy, or empty.
+// readFrom is a repository that the command may also read, or empty.
 type folder struct {
-	path   string
-	own    bool
-	report string
+	path     string
+	own      bool
+	report   string
+	readFrom string
+}
+
+// readable returns the paths that the command may read besides its folder: the repository readFrom with its shared git folders, and the local source of the project.
+func (at folder) readable(project config.Project, git projectGit) []string {
+	if at.readFrom == "" {
+		return nil
+	}
+
+	paths := append([]string{at.readFrom}, sharedGitDirs(git.clones, at.readFrom)...)
+	if filepath.IsAbs(project.Source) {
+		paths = append(paths, project.Source)
+	}
+
+	return paths
 }
 
 // runOwn is run for a folder that beehave made for the command alone.
@@ -298,10 +322,12 @@ func (g gateSandbox) runCopied(ctx context.Context, enforcer sandbox.Enforcer, p
 
 	// A folder with no .git has no copy. The plan then never grants it for writing, unless beehave made it for the command: a write there would change the
 	// real folder, where a planted hook folder or agent setting runs later as the owner. A project with no repository still writes through gate_allow_write.
-	plan, note := g.plan(ctx, project, dir, copied, tmp, clone.git, copied.WorkTree == dir && !at.own)
+	plan, note := g.plan(ctx, project, cmp.Or(at.readFrom, dir), copied, tmp, clone.git, copied.WorkTree == dir && !at.own)
 	if note != "" {
 		return notStarted(note)
 	}
+
+	plan.Read = append(plan.Read, at.readable(project, clone.git)...)
 
 	reports, err := startCarry(at.report, copied.WorkTree, dir)
 	if err != nil {

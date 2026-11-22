@@ -17,23 +17,52 @@ const (
 
 // programFirst is the word that resolves git and the tools of the final check to absolute paths, before any head command runs.
 // The words of the gate program use these paths and never a tool through the PATH, which head code can write.
-const programFirst = `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` +
-	`gpbin=$(command -v git) && gpfind=$(command -v find) && gpsort=$(command -v sort) && gpreadlink=$(command -v readlink) && gpcat=$(command -v cat) && ` +
-	`gpshasum=$(command -v sha256sum || command -v shasum) && gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpcat" "$gpshasum" && ` +
-	`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
+func programFirst(tools Tools) string {
+	return `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` + tools.words() +
+		`gpabs "$gpbin" "$gpenv" "$gpfind" "$gpsort" "$gpreadlink" "$gpcat" "$gpshasum" && ` +
+		`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
+}
 
-// programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot with no replace refs
-// and no config of the machine. The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept
+// programGit is the word that defines the git of a job with a gate program, before its first git call. gpgit starts the resolved git through the
+// resolved env with an empty environment and then only the variables of gitAllowed: of the caller it keeps PATH, HOME and TMPDIR, and drops every
+// GIT_* variable. It also sets core.hooksPath=/dev/null, but Apple Git 2.39 still runs a hook of the repository in git remote remove, so the empty
+// template of each repository that the job makes (cloneWords, gpsnapshot) is what keeps hooks out. gpsrc is the git that reads the repository of the head and the address of the base:
+// gpgit in a local job, and in a host job the git of the host with its config, which holds the credentials of the forge.
+func programGit(local bool) string {
+	src := `gpsrc() { "$gpbin" "$@"; }`
+	if local {
+		src = `gpsrc() { gpgit "$@"; }`
+	}
+
+	return `{ gpgit() { "$gpenv" -i ` + gitAllowed + ` "$gpbin" -c core.hooksPath=/dev/null "$@"; }; ` + src + `; }`
+}
+
+// gitAllowed is the whole environment of a git call of the job: no system or global config file, an empty XDG_CONFIG_HOME (gpempty, so no
+// attributes or ignore file of the user), no replace refs and no prompt on a terminal.
+const gitAllowed = `PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null XDG_CONFIG_HOME="$gpempty" ` +
+	`GIT_NO_REPLACE_OBJECTS=1 GIT_TERMINAL_PROMPT=0`
+
+// gitWord is the one constructor of a git call in the words of a job. A job with a gate program calls gpgit (see programGit); a job with none
+// runs the git of the PATH, as it did.
+func gitWord(program bool, args string) string {
+	if program {
+		return "gpgit " + args
+	}
+
+	return "git " + args
+}
+
+// programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot through gpgit (see programGit).
+// The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept
 // in shell variables (a path, a mode and a digest or a link target for each listed file). The final compare uses no git word and no tool through
 // the PATH: it reads the digest, the execute bit and the kind of each file.
 const programShell = `{
 gpfail() { echo "` + programMarker + ` $*"; return 1; }
-gpgit() { GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 "$gpbin" "$@"; }
 gphash() { set -- $("$gpshasum" $gpshaarg "$1"); printf %s "$1"; }
 gpsnapshot() {
 	mkdir -p "$gpsnap/files" && : > "$gpsnap/manifest" || return 1
-	gpgit init -q --bare "$gpsnap/repo.git" || return 1
-	gpgit -C "$gpsnap/repo.git" fetch -q --no-tags -- "$PWD" "$gpsha" || "$gpbin" -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
+	gpgit init -q --bare --template="$gpempty" "$gpsnap/repo.git" || return 1
+	gpgit -C "$gpsnap/repo.git" fetch -q --no-tags -- "$PWD" "$gpsha" || gpsrc -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
 	[ "$(gpgit -C "$gpsnap/repo.git" rev-parse --verify -q "$gpsha^{commit}")" = "$gpsha" ] || return 1
 	gpgit -C "$gpsnap/repo.git" ls-tree -r "$gpsha" -- $gppaths > "$gpsnap/tree.txt" || return 1
 	gpwant=
@@ -50,7 +79,7 @@ gpsnapshot() {
 	gpwantlist=$(printf '%s\n' "$gpwant" | while IFS="$gptab" read -r m p s; do printf '%s\n' "$p"; done | LC_ALL=C "$gpsort")
 }
 gprefuse() {
-	gpgit cat-file -e "$gpsha^{commit}" || "$gpbin" fetch -q --no-tags -- "$gpurl" "$gpsha"
+	gpgit cat-file -e "$gpsha^{commit}" || gpsrc fetch -q --no-tags -- "$gpurl" "$gpsha"
 	mb=$(gpgit merge-base HEAD "$gpsha") && [ -n "$mb" ] || { gpfail "the head has no merge base with the base commit $gpsha, so the gate program cannot be compared"; return 1; }
 	changed=$(gpgit diff-tree -r --no-renames --name-only "$mb" HEAD -- $gppaths) || { gpfail "the gate program of the head cannot be compared with the base commit $gpsha"; return 1; }
 	[ -z "$changed" ] || { gpfail "the head changed the gate program, paths $(printf %s "$changed" | paste -s -d ' ' -). The gate runs the program of the base commit. The owner lands a change of these paths, then the gate runs again"; return 1; }
@@ -113,7 +142,7 @@ func programBefore(project model.Project, cloneURL, clone, baseSHA string) []str
 
 	for _, path := range project.GateProgram {
 		quoted := model.ShellQuote(path)
-		words = append(words, "{ gpgit rm -r -q -f --ignore-unmatch -- "+quoted+" && rm -rf -- "+quoted+"; }")
+		words = append(words, "{ "+gitWord(true, "rm -r -q -f --ignore-unmatch -- "+quoted)+" && rm -rf -- "+quoted+"; }")
 	}
 
 	return append(words, `{ gprestore || gpfail "the gate program of the base commit cannot be written into the copy"; }`)
@@ -140,7 +169,7 @@ func programResult(log string, project model.Project) (Result, bool) {
 
 		steps := slices.Concat(hostSteps(project, StatusUnknown, StatusUnknown), []Step{{Name: model.StepGateProgram, Status: StatusFail}})
 
-		return Result{Report: tail("the gate refused the head: " + reason + "\n"), Steps: steps}, true
+		return Result{Report: tail("the gate refused the head at the step " + model.StepGateProgram + ": " + reason + "\n"), Steps: steps}, true
 	}
 
 	return Result{}, false
