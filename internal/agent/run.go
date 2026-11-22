@@ -153,11 +153,13 @@ type Timer interface {
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 // Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
 // Temp is the folder in which a sandboxed run gets its own temporary folder; the zero value is /tmp.
+// Folders is the set of the temporary folders that this process made. The runners of one process share one. A runner with none keeps every folder of a live pid, this process included.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
 	Version   func(ctx context.Context, binary string, env []string) (string, error)
 	OS        string
 	Temp      string
+	Folders   *fstree.Folders
 }
 
 // Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
@@ -178,7 +180,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return stalled(execute(ctx, spec, p, idle, r.version(), cmp.Or(r.Temp, shortTemp)), p)
+	return stalled(execute(ctx, spec, p, idle, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
 }
 
 // stalled adds the StallNote of the profile to a run that a total or idle limit ended.
@@ -259,7 +261,7 @@ func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Ti
 	return func() { timer.Stop() }
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, tempRoot string) Result {
+func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, where tempPlace) Result {
 	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
@@ -272,7 +274,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 	defer os.RemoveAll(runDir)
 
-	spec, remove, problem := withTemp(spec, p.Binary, tempRoot)
+	spec, remove, problem := withTemp(spec, p.Binary, where)
 	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
@@ -282,14 +284,22 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 	return launchRun(ctx, spec, p, binary, runDir, idle, version)
 }
 
+// tempPlace is where a sandboxed run makes its temporary folder: the root of the folders of the users, and the set of the folders that this process made.
+type tempPlace struct {
+	root    string
+	folders *fstree.Folders
+}
+
 // withTemp returns the spec with a new temporary folder in root for its sandbox, and the function that removes the folder. A spec with no sandbox gets no folder.
 // It returns why it cannot make the folder, or "".
-func withTemp(spec Spec, binary, root string) (Spec, func(), string) {
+func withTemp(spec Spec, binary string, where tempPlace) (Spec, func(), string) {
+	root := where.root
+
 	if spec.Sandbox == nil {
 		return spec, func() {}, ""
 	}
 
-	temp, err := fstree.PidFolder(filepath.Join(root, userTempName(os.Getuid()))) // mode 0700
+	temp, err := where.folders.Make(filepath.Join(root, userTempName(os.Getuid()))) // mode 0700
 	if err != nil {
 		return spec, nil, fmt.Sprintf("cannot make the temporary folder for %s in %s: %v", binary, root, err)
 	}

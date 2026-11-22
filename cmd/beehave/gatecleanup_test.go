@@ -103,7 +103,7 @@ func TestGateSandbox_TheNextGateReclaimsTheCopyOfAGateThatWasKilled(t *testing.T
 	require.Len(t, worktreesOf(t, repo), 2)
 
 	// The copy of a gate that still runs, and a folder that beehave did not name.
-	live := filepath.Join(root, strconv.Itoa(os.Getpid())+"-live")
+	live := filepath.Join(root, strconv.Itoa(os.Getppid())+"-live") // the parent process runs, and is not this process
 	require.NoError(t, os.Mkdir(live, 0o700))
 	require.NoError(t, os.Mkdir(filepath.Join(root, "stray"), 0o700))
 

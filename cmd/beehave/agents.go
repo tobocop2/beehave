@@ -18,6 +18,7 @@ import (
 	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
@@ -69,6 +70,7 @@ type agents struct {
 // newAgents runs the agent CLIs with the environment of the process.
 func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table adapters) agents {
 	repos := gitexec.NewRepositories(reposFolder(opts.StateDir))
+	folders := &fstree.Folders{}
 
 	return agents{
 		runners:  cfg.Runners,
@@ -76,7 +78,9 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		projects: cfg.Projects,
 		adapter:  table.agent,
 		env:      opts.Env,
-		run:      func(ctx context.Context, spec agent.Spec) agent.Result { return agent.Runner{}.Run(ctx, spec) },
+		run: func(ctx context.Context, spec agent.Spec) agent.Result {
+			return agent.Runner{Folders: folders}.Run(ctx, spec)
+		},
 		guard:    guardCommand(os.Executable),
 		home:     os.UserHomeDir,
 		identity: gitIdentity,

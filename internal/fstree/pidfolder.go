@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -23,23 +24,72 @@ const Attempts = 100
 // Name is the name of the folder that the process pid makes as its number n, from 0 up to Attempts - 1. The pid in the name is the mark of ownership.
 func Name(pid, n int) string { return strconv.Itoa(pid) + "-" + strconv.Itoa(n) }
 
-// PidFolder makes a new folder named by Name in root, which holds the folders of the processes of one user. It makes root when it is missing, refuses
+// Folders makes the folders of one process and knows which ones it made. A folder with the pid of this process that it did not make is the leftover of
+// a killed process that had the same pid, and the next Make removes it. One Folders serves all the callers of a process that share a root. The zero value is ready.
+// A nil Folders knows no folder, so it keeps every folder whose pid runs, this process included.
+type Folders struct {
+	mu   sync.Mutex
+	made map[string]bool
+}
+
+// lock takes the lock of the set, and returns the function that gives it back. A nil set has no lock.
+func (f *Folders) lock() func() {
+	if f == nil {
+		return func() {}
+	}
+
+	f.mu.Lock()
+
+	return f.mu.Unlock
+}
+
+// keeps says whether the folder at path belongs to this process: the set made it, or the set is nil and so cannot tell.
+func (f *Folders) keeps(path string) bool { return f == nil || f.made[path] }
+
+// record notes that the set made the folder at path.
+func (f *Folders) record(path string) {
+	if f == nil {
+		return
+	}
+
+	if f.made == nil {
+		f.made = map[string]bool{}
+	}
+
+	f.made[path] = true
+}
+
+// openRoot makes root when it is missing and refuses a root that TrustedRoot refuses.
+func openRoot(root string) error {
+	if err := os.Mkdir(root, ownerOnlyFolder); err != nil && !errors.Is(err, fs.ErrExist) {
+		return err
+	}
+
+	return TrustedRoot(root, os.Getuid())
+}
+
+// Make makes a new folder named by Name in root, which holds the folders of the processes of one user. It makes root when it is missing, refuses
 // a root that TrustedRoot refuses, and first removes the folders of the processes that are gone, so a process that was killed leaves a folder for the next
 // caller to reclaim, not for the owner to find.
-func PidFolder(root string) (string, error) {
-	if err := os.Mkdir(root, ownerOnlyFolder); err != nil && !errors.Is(err, fs.ErrExist) {
+func (f *Folders) Make(root string) (string, error) {
+	defer f.lock()()
+
+	if err := openRoot(root); err != nil {
 		return "", err
 	}
 
-	if err := TrustedRoot(root, os.Getuid()); err != nil {
+	if err := f.reclaim(root); err != nil {
 		return "", err
 	}
 
-	if err := reclaim(root); err != nil {
+	path, err := makeNumbered(root)
+	if err != nil {
 		return "", err
 	}
 
-	return makeNumbered(root)
+	f.record(path)
+
+	return path, nil
 }
 
 // makeNumbered makes the first folder of the process in root whose name is free.
@@ -89,21 +139,29 @@ func trusted(root string, info fs.FileInfo, uid int) error {
 
 // reclaim removes the folders in root that belong to a process which is gone. A folder that stays is tried again by the next caller. Each path is root
 // joined with the name of one entry that root lists, so the removal never leaves root.
-func reclaim(root string) error {
+func (f *Folders) reclaim(root string) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return err
 	}
 
 	for _, entry := range entries {
-		if ownerAlive(entry.Name()) {
+		path := filepath.Join(root, entry.Name())
+		if ownerAlive(entry.Name()) && (!ownPid(entry.Name()) || f.keeps(path)) {
 			continue
 		}
 
-		_ = Remove(filepath.Join(root, entry.Name())) //nolint:errcheck // best effort; the next caller tries again
+		_ = Remove(path) //nolint:errcheck // best effort; the next caller tries again
 	}
 
 	return nil
+}
+
+// ownPid says whether the name of a folder (<pid>-<random>) holds the pid of this process.
+func ownPid(name string) bool {
+	text, _, _ := strings.Cut(name, "-")
+
+	return text == strconv.Itoa(os.Getpid())
 }
 
 // ownerAlive says whether the process that the name of a folder (<pid>-<random>) holds is still running. A name that holds no process id is not alive.

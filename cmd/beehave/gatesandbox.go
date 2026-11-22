@@ -36,10 +36,12 @@ type gateSandbox struct {
 	environ []string
 	// clones is the lock of the clone of each project. The gate adds, lists and removes the worktree of its copy under it.
 	clones cloneLock
+	// folders is the set of the gate folders that this process made.
+	folders *fstree.Folders
 }
 
 func newGateSandbox(projects map[string]config.Project, clones cloneLock) gateSandbox {
-	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones}
+	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: &fstree.Folders{}}
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.
@@ -75,7 +77,7 @@ func (g gateSandbox) runAt(ctx context.Context, project string, at folder, argv,
 		return notStarted(err.Error())
 	}
 
-	tmp, err := gateTemp()
+	tmp, err := g.gateTemp()
 	if err != nil {
 		return notStarted(fmt.Sprintf("make the temporary folder: %v", err))
 	}
@@ -134,8 +136,8 @@ func isRepository(dir string) bool {
 const ownerOnly = 0o700
 
 // gateTemp makes the temporary folder of one gate under the one folder that beehave owns for them.
-func gateTemp() (string, error) {
-	return fstree.PidFolder(filepath.Join(os.TempDir(), fmt.Sprintf("beehave-gate-%d", os.Getuid())))
+func (g gateSandbox) gateTemp() (string, error) {
+	return g.folders.Make(filepath.Join(os.TempDir(), fmt.Sprintf("beehave-gate-%d", os.Getuid())))
 }
 
 // forgetCopies tells the repository of git to forget the worktrees of gate copies whose folder is gone. A gate copy is a worktree whose path lies under root,

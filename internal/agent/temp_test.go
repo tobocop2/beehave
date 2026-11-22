@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/exectest"
+	"github.com/tobocop2/beehave/internal/fstree"
 )
 
 // tempScript records the temporary folder that the CLI gets, fills it as the Go command fills its module cache (a read-only folder with a file in it),
@@ -65,7 +66,7 @@ func TestRunner_TheTemporaryFolderOfASandboxedRunIsGoneAfterTheRunWhateverItsExi
 		f, root := tempFixture(t, strconv.Itoa(code))
 		f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
 
-		got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root}.Run(context.Background(), f.spec)
+		got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root, Folders: &fstree.Folders{}}.Run(context.Background(), f.spec)
 
 		require.Equal(t, agent.OutcomeExited, got.Outcome, name+": "+got.Note)
 		assert.Equal(t, code, got.ExitCode, name)
@@ -96,7 +97,7 @@ func TestRunner_ASandboxedRunWhoseTemporaryFolderCannotBeMadeDoesNotStartTheCLI(
 	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
 	missing := filepath.Join(root, "missing")
 
-	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: missing}.Run(context.Background(), f.spec)
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: missing, Folders: &fstree.Folders{}}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 	assert.Contains(t, got.Note, "cannot make the temporary folder for claude in "+missing)
@@ -109,16 +110,31 @@ func TestRunner_ARunReclaimsTheTemporaryFolderOfAnEngineThatWasKilledAndKeepsThe
 
 	// The folder of an engine whose process is gone, with a read-only folder in it as the Go command leaves, and the folder of an engine that runs.
 	dead := filepath.Join(mine(root), "999999999-dead")
-	live := filepath.Join(mine(root), strconv.Itoa(os.Getpid())+"-live")
+	live := filepath.Join(mine(root), strconv.Itoa(os.Getppid())+"-live") // the parent process runs, and is not this process
 	require.NoError(t, os.MkdirAll(filepath.Join(dead, "go", "mod"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dead, "go", "mod", "go.mod"), []byte("module m\n"), 0o600))
 	require.NoError(t, exectest.ChmodFolder(filepath.Join(dead, "go", "mod"), 0o500))
 	require.NoError(t, os.Mkdir(live, 0o700))
 
-	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root}.Run(context.Background(), f.spec)
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root, Folders: &fstree.Folders{}}.Run(context.Background(), f.spec)
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.Equal(t, []string{filepath.Base(live)}, entriesOf(t, mine(root)))
+}
+
+func TestRunner_AKilledEngineThatHadThePidOfThisProcessLeavesNoFolderThatBlocksTheNextRun(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f, root := tempFixture(t, "0")
+	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
+
+	// The leftovers of a killed engine whose pid this process has now: more than a root holds for one process.
+	for n := range fstree.Attempts {
+		require.NoError(t, os.MkdirAll(filepath.Join(mine(root), fstree.Name(os.Getpid(), n)), 0o700))
+	}
+
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root, Folders: &fstree.Folders{}}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Empty(t, entriesOf(t, mine(root)), "the old folders are gone and the folder of the run is removed")
 }
 
 func TestRunner_ASandboxedRunWhoseUserFolderIsALinkDoesNotStartTheCLI(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -126,7 +142,7 @@ func TestRunner_ASandboxedRunWhoseUserFolderIsALinkDoesNotStartTheCLI(t *testing
 	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
 	require.NoError(t, os.Symlink(t.TempDir(), mine(root)))
 
-	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root}.Run(context.Background(), f.spec)
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root, Folders: &fstree.Folders{}}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 	assert.Contains(t, got.Note, "cannot make the temporary folder for claude in "+root)
