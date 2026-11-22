@@ -449,7 +449,7 @@ linters:
           files:
             - "!**/cmd/beehave/**"
             - "!**/examples/**"
-            - "!**/scripts/**"
+            - "!**/internal/hostsetup/**"
             - "!**/internal/model/**"
             - "!**/internal/config/**"
             - "!**/internal/lockfile/**"
