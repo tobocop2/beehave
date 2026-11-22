@@ -110,6 +110,32 @@ func TestJoin_TwoMoversAtOnceMoveTheRunOnceAndBothFindItOnThisBuild(t *testing.T
 	assert.NotEqual(t, dbos.WorkflowStatusCancelled, last.Status.Status)
 }
 
+func TestJoin_AMoveWhoseCancelFailsReturnsTheFailure(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	h.life.failing["release"] = true
+
+	err := client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
+
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "beehave resume", "the cancel failed before any reopen, so the error does not offer a retry of the reopen")
+}
+
+func TestJoin_AMoveWhoseClaimFailsSaysThatTheRunIsCanceledAndHowToRetry(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	h.life.failing["claim"] = true
+
+	err := client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem)
+
+	require.ErrorContains(t, err, "is now canceled")
+	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build again")
+}
+
 func TestJoin_ARunThatEndedBeforeTheMoveIsNotReopened(t *testing.T) {
 	t.Parallel()
 

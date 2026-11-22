@@ -92,7 +92,11 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 		return err
 	}
 
-	return c.reopenHeld(item, last) //nolint:contextcheck // see the comment above
+	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
+		return canceledNotMoved(item, last, err)
+	}
+
+	return nil
 }
 
 // namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
@@ -102,23 +106,6 @@ func namedVersions(err error, stored run, version string) error {
 	}
 
 	return fmt.Errorf("%w. The run started under version %s and this is %s", err, stored.Status.ApplicationVersion, version)
-}
-
-// reopenHeld takes a fresh claim and rewinds the canceled run onto this build. The caller holds probe.lock.
-func (c *Client) reopenHeld(item string, last run) error {
-	project, owner, err := c.takeClaim(item, last)
-	if err == nil {
-		err = c.rewindHere(last)
-		if err != nil {
-			err = errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
-		}
-	}
-
-	if err != nil {
-		return canceledNotMoved(item, last, err)
-	}
-
-	return nil
 }
 
 // EngineRuns reports whether an engine holds the state folder, as beehave serve or another beehave run does.

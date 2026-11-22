@@ -235,28 +235,28 @@ func requirePinned(last run) error {
 }
 
 // reopenHere takes a fresh claim, as Resume does, and rewinds the run and the phases the cancel reached onto this build.
+// probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
 func (c *Client) reopenHere(item string, last run) error {
+	return c.underProbe(func() error { return c.reopenHeld(item, last) })
+}
+
+// reopenHeld takes a fresh claim and rewinds the phases that the cancel reached and the run onto this build. A rewind that fails gives the claim back. The caller holds probe.lock.
+func (c *Client) reopenHeld(item string, last run) error {
 	project, owner, err := c.takeClaim(item, last)
 	if err != nil {
 		return err
 	}
 
-	// probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
-	err = c.underProbe(func() error { return c.rewindHere(last) })
+	restamp := dbos.WithRewindApplicationVersion(c.version)
+
+	err = c.reopenCanceledPhases(last.Status.ID, restamp)
+	if err == nil {
+		err = c.reopen(last.Status.ID, restamp)
+	}
+
 	if err != nil {
 		return errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
 	}
 
 	return nil
-}
-
-// rewindHere rewinds the phases that the cancel reached and the run onto this build. The caller holds probe.lock.
-func (c *Client) rewindHere(last run) error {
-	restamp := dbos.WithRewindApplicationVersion(c.version)
-
-	if err := c.reopenCanceledPhases(last.Status.ID, restamp); err != nil {
-		return err
-	}
-
-	return c.reopen(last.Status.ID, restamp)
 }
