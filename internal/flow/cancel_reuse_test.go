@@ -139,12 +139,16 @@ func TestCancel_ACancelRowOfTheEarlierAttemptDoesNotStopTheResumedRun(t *testing
 
 	earlier := endedOf(engine, testRun)
 
-	var later chan struct{}
+	var (
+		later chan struct{}
+		first runOutcome
+	)
 
 	// The first attempt ends and the run resumes after the tick read the canceled row and before it acts on it.
+	// The run resumes only after the first attempt returned its outcome: the wait for the outcome reads the store row, and a resume that lands first
+	// makes the row open again, so the first attempt would then wait for the resumed run.
 	hook.run = func() {
-		stopRun(engine, testRun)
-		assert.Eventually(t, func() bool { return isClosed(earlier) }, soonBound, pollEvery, "the first attempt ends")
+		first = endFirstAttempt(t, engine, done)
 
 		later = resumeAndList(t, engine, client, earlier)
 	}
@@ -152,7 +156,8 @@ func TestCancel_ACancelRowOfTheEarlierAttemptDoesNotStopTheResumedRun(t *testing
 
 	harness.tick(t)
 
-	require.Error(t, receive(t, done).err, "the first attempt ended at its cancel")
+	require.Error(t, first.err, "the first attempt ended at its cancel")
+	require.True(t, isClosed(earlier), "the first attempt ended")
 	require.NotNil(t, later)
 
 	waitOn(t, ownerAsks(t, harness))
