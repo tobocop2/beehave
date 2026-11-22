@@ -402,6 +402,84 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 	}
 }
 
+func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtTheFirstWakeTimeAndStartsEachItemOnce(t *testing.T) {
+	t.Parallel()
+
+	const pause = 4 * time.Second
+
+	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
+	r.h.opts.Env["PAUSE_AFTER_FAILURE"] = pause.String()
+
+	first, stop := r.crashEngine(t)
+	r.agents.setAct(holdsItem21(func() *Engine { return first }))
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := first.RunFile(testItem, testProject, r.file)
+		ran <- runErr
+	}()
+
+	// Item 21 failed and item 22 ended, so the pass that starts item 23 sleeps first.
+	var wake time.Time
+
+	waitOn(t, condition(func() bool {
+		steps, err := dbos.GetWorkflowSteps(first.ctx, testRun)
+		if err == nil {
+			wake = sleepDeadline(steps)
+		}
+
+		return !wake.IsZero() && statusOf(t, first, "item-22-r1") == dbos.WorkflowStatusSuccess
+	}))
+	stop()
+	require.NoError(t, first.Shutdown())
+	require.Error(t, receive(t, ran), "the stopped engine ends the run of the first engine")
+
+	// No engine runs until a quarter of the pause is left. A sleep that starts again from the restart ends three quarters of a pause after the first wake time.
+	waitOn(t, condition(func() bool { return !time.Now().Before(wake.Add(-pause / 4)) }))
+
+	var (
+		mu     sync.Mutex
+		starts = map[string]time.Time{}
+	)
+
+	r.agents.setAct(func(_ context.Context, item string) error {
+		mu.Lock()
+		defer mu.Unlock()
+
+		starts[item] = time.Now()
+
+		return nil
+	})
+
+	second := r.engine(t)
+	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
+
+	_, err := second.RunFile(testItem, testProject, r.file)
+	require.NoError(t, err)
+
+	mu.Lock()
+	started := starts["23"]
+	mu.Unlock()
+
+	assert.False(t, started.Before(wake), "item 23 started at %s, before the wake time %s", started, wake)
+	// The spawn and the start of the agent take about a second after the wake.
+	assert.Less(t, started.Sub(wake), pause/2, "item 23 started at %s, too long after the first wake time %s: the sleep started again", started, wake)
+	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started())
+
+	for _, item := range []string{"21", "22", "23"} {
+		assert.Equal(t, 1, r.agents.callsOf(item), "the agent of item %s ran once", item)
+	}
+
+	assert.Equal(t, []string{testProject + "|21|hold"}, r.w.statuses, "the failed item was held once")
+	require.Len(t, r.w.notes, 1, "the comment on the failed item was written once")
+	assert.Contains(t, r.w.notes[0], "|21|")
+
+	steps, err := dbos.GetWorkflowSteps(second.ctx, testRun)
+	require.NoError(t, err)
+	assert.Equal(t, 1, countSteps(steps, "sleep:pause-"), "the loop slept once")
+}
+
 func TestQueueLoop_AHeldItemNeverStarts(t *testing.T) {
 	t.Parallel()
 

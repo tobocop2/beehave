@@ -25,6 +25,12 @@ while IFS= read -r line; do
       ;;
   esac
 done
+# With a file hold in the work folder, the first review is the crash point: it writes the draft it got to held, and waits for the kill of the engine without an answer.
+if [ "$step" = review ] && [ -f "@WORK@/hold" ] && [ ! -f "@WORK@/held" ]; then
+  echo "$got" > "@WORK@/held"
+  sleep 30
+  exit 1
+fi
 echo "$step${got:+ $got}" >> "@WORK@/calls.log"
 n=$(grep -c "^$step" "@WORK@/calls.log")
 case $step in

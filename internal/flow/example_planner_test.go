@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -251,4 +252,69 @@ func TestExamplePlanner_TwoWorkersThatEndInOneReadBothKeepTheirOutcomeAndNeedNoN
 	assert.Contains(t, names, "first_of:watch-0#", "the first call read both ended workers")
 	assert.NotContains(t, names, "first_of:watch-1#", "the one read took both workers, so the planner made no second call")
 	assert.NotContains(t, names, "stalled-22", "the worker of 22 ended in the same read as 21, so the check-in did not stall it")
+}
+
+// inCall reports whether the run has a record of the call: the step of the call, or a sub-step of it such as its deadline.
+func inCall(engine *Engine, run, call string) bool {
+	steps, err := dbos.GetWorkflowSteps(engine.ctx, run)
+
+	return err == nil && slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return strings.HasPrefix(step.StepName, call) })
+}
+
+// countName counts the step names that equal name.
+func countName(names []string, name string) int {
+	return len(slices.DeleteFunc(slices.Clone(names), func(one string) bool { return one != name }))
+}
+
+func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTimeOnceAfterTheRestart(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.opts.Env = map[string]string{"TASKS": "21 22", "CHECK_IN": "1h", "DEADLINE": "1h"}
+	h.opts.PerLogin = 2
+	// The first two agent starts of 22 hold. The first is the worker of 22 before the stop. The second is that worker again after the restart, when its
+	// recovery starts the agent before the message cancels it, or else the new worker, which then ends after the hold. Either way the first worker ends only by the cancel.
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 2, 5*time.Second
+
+	stopped, stop := context.WithCancel(t.Context())
+	first, err := NewEngine(stopped, h.opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := first.RunFile(testItem, testProject, plannerFile)
+		ran <- runErr
+	}()
+
+	// The worker of 21 ended in watch-0, so the planner waits in watch-1 for the worker of 22 or a stall message.
+	waitOn(t, condition(func() bool { return inCall(first, runID(testItem, 1), "first_of:watch-1#") }))
+	stop()
+	require.NoError(t, first.Shutdown())
+	require.Error(t, receive(t, ran), "the stopped engine ends the call of the first engine")
+
+	_, err = h.client(t, testVersion).Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+	require.NoError(t, err, "the message lands while no engine runs")
+
+	second := h.engine(t)
+
+	require.NoError(t, runTicking(t, h, second))
+	assert.Equal(t, "echo when the workers ended: 21=done 22=started 21:ok 22:ok cost_usd=0.0", lastRan(t, h), "the run ends as the run with no stop does")
+	assert.Equal(t, 1, agentsOf(h, "21"), "the worker of 21 ended before the stop and did not run again")
+	assert.Len(t, slices.DeleteFunc(h.commands.ranBy(testItem), func(ran string) bool { return !strings.Contains(ran, "while the workers run") }), 1,
+		"the step before first_of ran once")
+	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, second, "item-22-r1"), "the message canceled the stalled worker")
+	assert.Equal(t, dbos.WorkflowStatusSuccess, statusOf(t, second, "item-22-r2"), "the task of the worker went to one new worker")
+
+	last, found, err := latestRun(second.ctx, "22")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 2, last.Attempt, "the planner took the message once, so it gave the task of 22 to one new worker")
+
+	names := stepNamesOf(t, second, runID(testItem, 1))
+	assert.Equal(t, 1, countName(names, "first_of:watch-1#2"), "the call that the stop cut ended once, on the message")
+	assert.Equal(t, 1, countName(names, "cancel:named-22#1"), "the planner canceled the worker of 22 once")
+	assert.False(t, inCall(second, runID(testItem, 1), "first_of:watch-2#"), "no worker was left open, so the planner made no later call")
+	assert.NotContains(t, strings.Join(names, " "), "stalled-", "the message, not the check-in, stalled the worker")
 }
