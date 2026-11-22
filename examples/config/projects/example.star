@@ -66,7 +66,7 @@ project(
     #     "void_reruns": 2, "void_asks": 3, # the reruns and the owner questions for a void gate, 0 to 100
     #     "escalate_after": 3,              # the last fix round on the step "fix"; later rounds start fresh on "fix_late", 0 to 100
     # }},                                 # optional. Also: owner_email, source_checkout, acceptance, base_result, base_reds, base_reds_file, allow_paths
-    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster; a letter, then letters, digits, dots and hyphens), or a list of names such as ["gpu", "gpu-b"]
+    build_host = "local",   # "local", or the name of a build host (a SkyPilot cluster, or the ssh alias of a machine or of the head node of a Slurm cluster; a letter, then letters, digits, dots and hyphens, with no trailing dot, no `..` and no `.-`), or a list of names such as ["gpu", "gpu-b"]
     # The first name of a list is the default. A run chooses another with the host argument of host_up. All the clusters share the host block below.
     # The host argument is required when build_host is a cluster name, and refused when build_host is "local".
     # host = host(
