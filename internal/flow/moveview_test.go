@@ -237,7 +237,7 @@ func TestStoreView_AReallyCanceledRunReadsAsEndedAtOnceWhileProbeLockIsHeld(t *t
 	probe, err := holdProbe(client.dir)
 	require.NoError(t, err)
 
-	t.Cleanup(func() { _ = probe.Unlock() })
+	t.Cleanup(func() { require.NoError(t, probe.Unlock()) })
 
 	within := func(what string, f func() error) {
 		t.Helper()
@@ -283,5 +283,4 @@ func TestStoreView_AReallyCanceledRunReadsAsEndedAtOnceWhileProbeLockIsHeld(t *t
 
 		return err
 	})
-
 }

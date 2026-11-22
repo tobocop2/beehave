@@ -389,6 +389,8 @@ var holdMoveLockOf = flag.String("hold-move-lock-of", "", "the state folder whos
 
 // TestHelperHoldsMoveLock is the process that TestStoreView_AMoverThatDiesLeavesARunThatReadsAsCanceled starts. It holds move.lock until it is killed.
 func TestHelperHoldsMoveLock(t *testing.T) {
+	t.Parallel()
+
 	if *holdMoveLockOf == "" {
 		t.Skip("this test is the helper process of another test")
 	}
@@ -425,7 +427,7 @@ func TestStoreView_AMoverThatDiesLeavesARunThatReadsAsCanceled(t *testing.T) {
 	assert.Equal(t, runRunning, infos[0].State, "the mover lives")
 
 	require.NoError(t, cmd.Process.Kill())
-	_ = cmd.Wait()
+	require.ErrorContains(t, cmd.Wait(), "killed")
 
 	infos, err = client.Status()
 	require.NoError(t, err)
@@ -434,7 +436,7 @@ func TestStoreView_AMoverThatDiesLeavesARunThatReadsAsCanceled(t *testing.T) {
 
 	require.NoError(t, client.ResumeOnThisBuild(testItem), "the next resume on this build moves the run")
 	requireNoMarks(t, client)
-	assert.False(t, exactRun(t, client).Status == dbos.WorkflowStatusCancelled, "the run is open again")
+	assert.NotEqual(t, dbos.WorkflowStatusCancelled, exactRun(t, client).Status, "the run is open again")
 }
 
 func TestMove_TheMarkAndTheLockAreInPlaceBeforeTheCancel(t *testing.T) {
