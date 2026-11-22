@@ -69,11 +69,11 @@ func TestDepsOn_TheAgentRunnerOfTheEngineReclaimsAFolderOfAKilledEngineWithThePi
 	built, ok := engineDeps(t).Agents.(agents)
 	require.True(t, ok, "the engine builds agents")
 
-	got := built.run(t.Context(), agent.Spec{
-		Adapter: claude.New(nil), Runner: model.Runner{Name: "main", Agent: claude.Name, ConfigDir: t.TempDir()}, Dir: work, Prompt: "go\n",
+	// The outcome is not asserted: the runner reclaims before it starts the CLI, and a host without the platform sandbox refuses the start after that.
+	built.run(t.Context(), agent.Spec{
+		Adapter: claude.New(nil), Runner: model.Runner{Name: "main", Agent: claude.Name}, ConfigFolder: t.TempDir(), Dir: work, Prompt: "go\n",
 		Env: map[string]string{"PATH": bin + ":/bin:/usr/bin", "HOME": t.TempDir()}, Sandbox: &agent.SandboxPlan{Work: work},
 	})
 
-	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.NoDirExists(t, old, "the set of the engine did not make the folder, so it is a leftover")
 }
