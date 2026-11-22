@@ -147,7 +147,7 @@ func TestStream_AnEntryCountOverThePageCapGivesTheFirstPageWithTheChildNotEnded(
 	}
 
 	body := "gather(runs, name = \"w\")\na = stream(w, timeout = \"5s\", name = \"a\")\nb = stream(w, after = a.next, timeout = \"5s\", name = \"b\")\n" +
-		`command(name = "log", run = ["log", str(len(a.entries)), str(a.ended), str(len(b.entries)), str(b.ended), str(b.entries[0].seq), str(getattr(b.entries[0], "try"))])`
+		`command(name = "log", run = ["log", str(len(a.entries)), str(a.ended), str(len(b.entries)), str(b.ended), str(b.entries[0].seq), str(b.entries[0].attempt)])`
 	_, err := rig.run(t, a853Parent(body), "Work.\n")
 
 	require.NoError(t, err)

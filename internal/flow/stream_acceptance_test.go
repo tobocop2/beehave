@@ -189,7 +189,7 @@ func TestAcceptance853_TheCheckKnowsTheBuiltinItsArgumentsAndItsResultFields(t *
 		{"ok-all-arguments", `s = stream(w, after = "", timeout = "5s", name = "p")`, true},
 		{"ok-after-default", `s = stream(w, timeout = "5s")`, true},
 		{"ok-fields", `s = stream(w, timeout = "5s")
-x = [s.entries, s.next, s.ended, [e.seq for e in s.entries], [e.try for e in s.entries], [e.kind for e in s.entries], [e.text for e in s.entries]]`, true},
+x = [s.entries, s.next, s.ended, [e.seq for e in s.entries], [e.attempt for e in s.entries], [e.kind for e in s.entries], [e.text for e in s.entries]]`, true},
 		{"no-timeout", `s = stream(w)`, false},
 		{"zero-timeout", `s = stream(w, timeout = "0s")`, false},
 		{"after-not-text", `s = stream(w, after = 3, timeout = "5s")`, false},

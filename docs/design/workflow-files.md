@@ -609,7 +609,7 @@ The deadline is a recorded step, `gather:<name>#<n>.deadline`, before the step o
 
 `stream(run, after="", timeout, name="")` returns the redacted entries of the agent stream of a run that a `spawn` call of this run returned, and the next cursor. It returns `entries`, `next` and `ended`.
 
-- Each entry has `seq`, `try`, `kind` and `text`. The kind is `text` or `call`. The entries are those that `beehave status --follow` prints, redacted when the agent wrote them. The word `try` is reserved in Starlark, so read the field with `getattr(entry, "try")`.
+- Each entry has `seq`, `attempt`, `kind` and `text`. The kind is `text` or `call`. The entries are those that `beehave status --follow` prints, redacted when the agent wrote them.
 - `after` is empty, or the `next` of an earlier call. The call returns the entries that follow it. `next` is the cursor of the last entry returned, and it is `after` when the call returns no entry. A text that is not a cursor that `stream` returned is refused.
 - `timeout` is required and above zero. The call returns at once when an entry exists. Otherwise it waits up to `timeout`, and returns no entry, `next = after` and `ended = False`.
 - One call returns at most 200 entries and 64 KiB of text, and always at least one entry when one exists. The caller loops until `ended`.

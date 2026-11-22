@@ -180,13 +180,13 @@ func (r *streamRead) fits(size int, entry AgentEntry) bool {
 	return len(r.Entries) == 0 || len(r.Entries) < streamPageEntries && size+len(entry.Text) <= valueLimit
 }
 
-// streamValue makes the struct that stream returns: the entries, each with the fields seq, try, kind and text, the next cursor and ended.
+// streamValue makes the struct that stream returns: the entries, each with the fields seq, attempt, kind and text, the next cursor and ended.
 func streamValue(read streamRead) *starlarkstruct.Struct {
 	entries := make([]starlark.Value, len(read.Entries))
 
 	for i, entry := range read.Entries {
 		entries[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
-			"seq": starlark.MakeInt(entry.Seq), "try": starlark.MakeInt(entry.Try), entryKindField: starlark.String(entry.Kind), "text": starlark.String(entry.Text),
+			"seq": starlark.MakeInt(entry.Seq), "attempt": starlark.MakeInt(entry.Try), entryKindField: starlark.String(entry.Kind), "text": starlark.String(entry.Text),
 		})
 	}
 
