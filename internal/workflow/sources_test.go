@@ -312,8 +312,24 @@ func TestEnvNames(t *testing.T) {
 		assert.True(t, workflow.SecretEnvName(name), name)
 	}
 
-	for _, name := range []string{"REPO", "BASE", "KEYBOARD", "OWNER_LOGIN"} {
+	for _, name := range []string{"GH_PAT", "gh_pat", "DATABASE_DSN", "SENTRY_DSN", "SERVICE_AUTH", "api_auth"} {
+		assert.True(t, workflow.SecretEnvName(name), name)
+	}
+
+	for _, name := range []string{"REPO", "BASE", "KEYBOARD", "OWNER_LOGIN", "PATH", "PATCH_LEVEL", "AUTHOR", "GIT_AUTHOR", "DSN_HOST", "PAT", "AUTH", "SSH_AUTH_SOCK"} {
 		assert.False(t, workflow.SecretEnvName(name), name)
+	}
+}
+
+func TestSecretEnvValue(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"postgres://app:hunter2@db.example.com:5432/app", "https://user:s3cret@host/path", "redis://:pw@cache:6379"} {
+		assert.True(t, workflow.SecretEnvValue(value), value)
+	}
+
+	for _, value := range []string{"postgres://app@db.example.com/app", "postgres://app:@db.example.com/app", "https://example.com/path", "user:pw@host", "/usr/bin:/bin", "", "http://a b:pw@host/%zz"} {
+		assert.False(t, workflow.SecretEnvValue(value), value)
 	}
 }
 

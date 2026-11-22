@@ -41,6 +41,9 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"agent has no model", `agent(prompt = "p", **{})`, "missing argument for model"},
 		{"agent has an empty model", `agent(prompt = "p", model = "")`, "an agent call needs a model"},
 		{"env reads a secret", `env("GITHUB_TOKEN")`, "because the name is a secret"},
+		{"env reads a personal access token", `env("GH_PAT")`, "because the name is a secret"},
+		{"env reads a connection string", `env("DATABASE_DSN")`, "because the name is a secret"},
+		{"env reads an auth value", `env("SERVICE_AUTH")`, "because the name is a secret"},
 		{"a dict key is not text in a prompt value", `x = struct(a = {1: 2})` + "\n" + `agent(prompt = "p", model = "m", inputs = {"x": x})`, "dict has int key, want string"},
 		{"a function cannot go into a request", `agent(prompt = "p", model = "m", inputs = {"f": env})`, "cannot go into a prompt or a request. Use text, numbers, booleans, lists and dicts (json.encode: in dict key \"f\": cannot encode builtin_function_or_method as JSON)"},
 	}

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -53,11 +54,27 @@ func ReservedEnvAdvice() string {
 	return "Names that start with " + strings.Join(reservedEnvPrefixes(), " or ") + " belong to the engine. Use another name."
 }
 
+// secretSuffixes lists the last parts of a name that mark a secret. A name ends in one of them after an underscore, so PATH and AUTHOR do not match.
+func secretSuffixes() []string { return []string{"KEY", "PAT", "DSN", "AUTH"} }
+
 // SecretEnvName reports whether name looks like the name of a secret, in any case.
 func SecretEnvName(name string) bool {
 	upper := strings.ToUpper(name)
 
-	return strings.HasSuffix(upper, "_KEY") || slices.ContainsFunc(secretWords(), func(word string) bool { return strings.Contains(upper, word) })
+	return slices.ContainsFunc(secretSuffixes(), func(part string) bool { return strings.HasSuffix(upper, "_"+part) }) ||
+		slices.ContainsFunc(secretWords(), func(word string) bool { return strings.Contains(upper, word) })
+}
+
+// SecretEnvValue reports whether value is a URL with a password in its user part. Such a value is a secret whatever the name of its variable.
+func SecretEnvValue(value string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return false
+	}
+
+	password, set := parsed.User.Password()
+
+	return set && password != ""
 }
 
 // The smallest and the largest value of max_new_processes in a command call.

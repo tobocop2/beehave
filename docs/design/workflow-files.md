@@ -92,7 +92,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 `env("<NAME>")` reads a variable of the engine environment. The value is recorded, so a replay sees the value of the first run.
 
 - A name that is not set fails the step and names the variable, unless the call gives `default`, which is then the value.
-- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`.
+- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`.
 
 ### `now`
 
