@@ -13,6 +13,9 @@ example local/prompts/review.md
 example local/prompts/fix.md
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The agent steps keep their own sandbox() from the workflow, as in local.txt. The gate runs unsandboxed until #913.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+claudemodel fake/claude
 subst fake/claude
 chmod 755 fake/claude
 

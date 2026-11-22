@@ -14,6 +14,8 @@ cp stdout base-tip
 
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off as it did before the example set it.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 subst flow/round.star
 subst fake/claude
 chmod 755 fake/claude
