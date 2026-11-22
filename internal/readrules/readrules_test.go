@@ -172,6 +172,7 @@ var rules = map[string]rule{
 	"internal/cli.Reading.Published":              {Proof: "TestStatus_APublishedReadThatFailsFailsTheEventsView", Needle: "publishedErr"},
 	"internal/cli.Reading.Schedules":              {Proof: "TestStatus_AScheduleThatCannotBeReadFailsTheListInTextAndJSON", Needle: "schedulesErr"},
 	"internal/cli.Reading.Days":                   {Proof: "TestStatus_ADaysReadThatFailsFailsTheList", Needle: "daysErr"},
+	"internal/cli.Reading.AgentsCap":              {Proof: "TestStatus_AnAgentsLimitThatCannotBeReadFailsTheList", Needle: "agentsCapErr"},
 	"internal/cli.Reading.Poll":                   {NotHeld: noEngine},
 	"internal/cli.Reading.PollNotScheduled":       {NotHeld: noEngine},
 	"internal/cli.Steering.OpenRun":               {NotHeld: noEngine},
