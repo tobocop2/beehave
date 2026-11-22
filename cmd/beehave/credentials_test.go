@@ -31,8 +31,7 @@ const (
 func loosen(t *testing.T, home string) {
 	t.Helper()
 
-	mode := os.FileMode(0o644)
-	require.NoError(t, os.Chmod(filepath.Join(home, ".config", "beehave", "credentials", "writer.token"), mode))
+	require.NoError(t, os.Chmod(filepath.Join(home, ".config", "beehave", "credentials", "writer.token"), 0o644)) //nolint:gosec // the test makes a loose file, which the loader refuses
 }
 
 // writerHome makes a home folder with the writer token file and returns the options of an engine that runs with it and the config of a project that names the file.

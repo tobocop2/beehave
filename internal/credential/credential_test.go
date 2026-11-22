@@ -26,12 +26,15 @@ func home(t *testing.T) (string, map[string]string) {
 	return dir, map[string]string{"HOME": dir, "PATH": "/usr/bin:/bin", "USER": "u"}
 }
 
-func tokenFile(t *testing.T, dir, text string, mode os.FileMode) string {
+func tokenFile(t *testing.T, dir, text string, loose bool) string {
 	t.Helper()
 
 	path := filepath.Join(dir, ".config", "beehave", "credentials", "w.token")
-	require.NoError(t, os.WriteFile(path, []byte(text), mode))
-	require.NoError(t, os.Chmod(path, mode))
+	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
+
+	if loose {
+		require.NoError(t, os.Chmod(path, 0o644)) //nolint:gosec // the test makes a loose file, which the loader refuses
+	}
 
 	return path
 }
@@ -40,7 +43,7 @@ func TestLoad_AFileInTheCredentialFolderGivesItsTrimmedText(t *testing.T) {
 	t.Parallel()
 
 	dir, env := home(t)
-	tokenFile(t, dir, "tok-1\n", 0o600)
+	tokenFile(t, dir, "tok-1\n", false)
 
 	got, err := credential.Load(t.Context(), model.Credential{File: "~/.config/beehave/credentials/w.token"}, env)
 	require.NoError(t, err)
@@ -55,7 +58,7 @@ func TestLoad_AFileIsRefusedForItsModeItsPlaceItsOwnerItsKindOrItsText(t *testin
 	t.Parallel()
 
 	dir, env := home(t)
-	path := tokenFile(t, dir, "tok-1", 0o644)
+	path := tokenFile(t, dir, "tok-1", true)
 	load := func(file string, env map[string]string) error {
 		_, err := credential.Load(t.Context(), model.Credential{File: file}, env)
 
