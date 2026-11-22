@@ -51,6 +51,56 @@ func TestPidFolder_RemovesTheFoldersOfProcessesThatAreGoneAndKeepsTheOnesOfLiveP
 	assert.DirExists(t, made)
 }
 
+func TestPidFolder_ARootThatIsALinkIsRefused(t *testing.T) {
+	t.Parallel()
+
+	target := t.TempDir()
+	require.NoError(t, exectest.ChmodFolder(target, 0o700))
+	root := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(target, root))
+
+	_, err := fstree.PidFolder(root)
+
+	require.ErrorContains(t, err, "not a folder")
+	assert.Empty(t, mustList(t, target), "the folder that the link names stays empty")
+}
+
+func TestPidFolder_ARootWhoseNumbersAreAllInUseIsAnError(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "folders")
+	require.NoError(t, os.Mkdir(root, 0o700))
+
+	for range fstree.Attempts {
+		_, err := fstree.PidFolder(root)
+		require.NoError(t, err)
+	}
+
+	_, err := fstree.PidFolder(root)
+
+	require.ErrorContains(t, err, "folders of this process already")
+}
+
+func TestName_JoinsThePidAndTheNumber(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "4194304-99", fstree.Name(4194304, 99))
+}
+
+func mustList(t *testing.T, dir string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+
+	return names
+}
+
 func TestPidFolder_ARootThatAnotherUserCanWriteIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -78,4 +128,9 @@ func TestPidFolder_ARootThatCannotBeMadeOrListedIsAnError(t *testing.T) {
 
 	_, err = fstree.PidFolder(root)
 	require.Error(t, err, "the root cannot be listed")
+
+	require.NoError(t, exectest.ChmodFolder(root, 0o500))
+
+	_, err = fstree.PidFolder(root)
+	require.Error(t, err, "the root cannot be written")
 }

@@ -17,9 +17,15 @@ const ownerOnlyFolder = 0o700
 // groupOrOtherWrite is the part of a mode that lets another user change a folder.
 const groupOrOtherWrite = 0o022
 
-// PidFolder makes a new folder named <pid>-<random> in root, which holds the folders of the processes of one user. It makes root when it is missing, refuses
+// Attempts is the number of folders that one process can hold in one root at the same time. It bounds the number in a folder name, and so the length of the path.
+const Attempts = 100
+
+// Name is the name of the folder that the process pid makes as its number n, from 0 up to Attempts - 1. The pid in the name is the mark of ownership.
+func Name(pid, n int) string { return strconv.Itoa(pid) + "-" + strconv.Itoa(n) }
+
+// PidFolder makes a new folder named by Name in root, which holds the folders of the processes of one user. It makes root when it is missing, refuses
 // a root that TrustedRoot refuses, and first removes the folders of the processes that are gone, so a process that was killed leaves a folder for the next
-// caller to reclaim, not for the owner to find. The pid in the name is the mark of ownership.
+// caller to reclaim, not for the owner to find.
 func PidFolder(root string) (string, error) {
 	if err := os.Mkdir(root, ownerOnlyFolder); err != nil && !errors.Is(err, fs.ErrExist) {
 		return "", err
@@ -33,7 +39,25 @@ func PidFolder(root string) (string, error) {
 		return "", err
 	}
 
-	return os.MkdirTemp(root, strconv.Itoa(os.Getpid())+"-")
+	return makeNumbered(root)
+}
+
+// makeNumbered makes the first folder of the process in root whose name is free.
+func makeNumbered(root string) (string, error) {
+	for n := range Attempts {
+		path := filepath.Join(root, Name(os.Getpid(), n))
+
+		err := os.Mkdir(path, ownerOnlyFolder)
+		if err == nil {
+			return path, nil
+		}
+
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+
+	return "", fmt.Errorf("%s holds %d folders of this process already", root, Attempts)
 }
 
 // TrustedRoot looks at the folder root itself, not at what a link there points to, and applies trusted.
@@ -63,8 +87,8 @@ func trusted(root string, info fs.FileInfo, uid int) error {
 	return nil
 }
 
-// reclaim removes the folders in root that belong to a process which is gone. A folder that stays is tried again by the next caller. Each path is built from
-// root and the name of one entry that root lists, and is removed only when its folder is root itself, so the removal never leaves root.
+// reclaim removes the folders in root that belong to a process which is gone. A folder that stays is tried again by the next caller. Each path is root
+// joined with the name of one entry that root lists, so the removal never leaves root.
 func reclaim(root string) error {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -72,12 +96,11 @@ func reclaim(root string) error {
 	}
 
 	for _, entry := range entries {
-		path := filepath.Join(root, entry.Name())
-		if filepath.Dir(path) != filepath.Clean(root) || ownerAlive(entry.Name()) {
+		if ownerAlive(entry.Name()) {
 			continue
 		}
 
-		_ = Remove(path) //nolint:errcheck // best effort; the next caller tries again
+		_ = Remove(filepath.Join(root, entry.Name())) //nolint:errcheck // best effort; the next caller tries again
 	}
 
 	return nil

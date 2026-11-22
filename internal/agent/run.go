@@ -49,10 +49,15 @@ const (
 	runDirMode     = 0o700
 	launchFileMode = 0o600
 	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
-	// keeps the socket paths of the shell under the limit of 104 bytes on macOS.
+	// keeps the socket paths of the shell under the limit of 104 bytes on macOS, and the path of the CLI home under the limit of cliTempLimit.
 	shortTemp  = "/tmp"
-	tempPrefix = "bh-"
+	tempPrefix = "b"
+	// cliTempLimit is the longest <temporary folder>/claude-<uid> that the CLI keeps as the TMPDIR of the shell. Over it, the CLI sets /tmp/claude-<uid>.
+	cliTempLimit = 44
 )
+
+// userTempName is the name of the folder of the user in the root of the temporary folders. The uid is in base 36 to keep the path short.
+func userTempName(uid int) string { return tempPrefix + strconv.FormatInt(int64(uid), 36) }
 
 var (
 	errTotalTimeout = errors.New("total timeout")
@@ -284,7 +289,7 @@ func withTemp(spec Spec, binary, root string) (Spec, func(), string) {
 		return spec, func() {}, ""
 	}
 
-	temp, err := fstree.PidFolder(filepath.Join(root, tempPrefix+strconv.Itoa(os.Getuid()))) // mode 0700
+	temp, err := fstree.PidFolder(filepath.Join(root, userTempName(os.Getuid()))) // mode 0700
 	if err != nil {
 		return spec, nil, fmt.Sprintf("cannot make the temporary folder for %s in %s: %v", binary, root, err)
 	}

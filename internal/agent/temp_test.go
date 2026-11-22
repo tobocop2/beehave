@@ -30,7 +30,9 @@ exit "$(cat "$here/code")"
 `
 
 // mine is the folder that the runner makes inside root for the temporary folders of the user.
-func mine(root string) string { return filepath.Join(root, "bh-"+strconv.Itoa(os.Getuid())) }
+func mine(root string) string {
+	return filepath.Join(root, "b"+strconv.FormatInt(int64(os.Getuid()), 36))
+}
 
 // entriesOf lists the names in dir.
 func entriesOf(t *testing.T, dir string) []string {
@@ -117,4 +119,16 @@ func TestRunner_ARunReclaimsTheTemporaryFolderOfAnEngineThatWasKilledAndKeepsThe
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.Equal(t, []string{filepath.Base(live)}, entriesOf(t, mine(root)))
+}
+
+func TestRunner_ASandboxedRunWhoseUserFolderIsALinkDoesNotStartTheCLI(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f, root := tempFixture(t, "0")
+	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
+	require.NoError(t, os.Symlink(t.TempDir(), mine(root)))
+
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, "cannot make the temporary folder for claude in "+root)
+	assert.NoFileExists(t, filepath.Join(f.records, "temp"))
 }
