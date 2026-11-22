@@ -635,5 +635,35 @@ func TestMove_AReopenThatFailsLeavesTheMarksOfAMoverThatDied(t *testing.T) {
 
 	require.ErrorContains(t, client.ResumeOnThisBuild(testItem), "claim of item")
 	assert.Equal(t, dbos.WorkflowStatusCancelled, exactRun(t, client).Status)
-	time.Sleep(0)
+}
+
+func TestMove_AMoveThatCannotTakeTheMoveLockDoesNotCancelTheRun(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+
+	require.NoError(t, os.Mkdir(filepath.Join(client.dir, moveLockName), 0o700))
+
+	err := client.ResumeOnThisBuild(testItem)
+
+	require.ErrorContains(t, err, "lock "+moveLockName)
+	assert.NotEqual(t, dbos.WorkflowStatusCancelled, exactRun(t, client).Status)
+}
+
+func TestStoreView_ARunThatTheOpenReadListedIsNotAddedAgain(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+
+	markedMove(t, client)
+	holdMoveLock(t, client)
+
+	listed := []dbos.WorkflowStatus{{ID: testRun, Status: dbos.WorkflowStatusPending}}
+
+	open, err := client.store().addMoving(listed, "", []dbos.ListWorkflowsOption{dbos.WithFilterWorkflowIDs(testRun)})
+
+	require.NoError(t, err)
+	assert.Len(t, open, 1, "the run counts once")
 }
