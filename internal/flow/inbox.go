@@ -31,8 +31,8 @@ const (
 	topicKeyword = "topic"
 	// topicsKeyword is the keyword of first_of that lists the topics to wait for.
 	topicsKeyword = "topics"
-	// parentTarget is the value of the to keyword of send that names the run that spawned this run.
-	parentTarget = "parent"
+	// targetSuffix ends the name of the step that records the run that a send to an item names, after the name of its send step.
+	targetSuffix = ".to"
 	// deadlineSuffix ends the name of the step that records the deadline of one recv call or one gather call, after the name of its step.
 	deadlineSuffix = ".deadline"
 	// shortestReceive is the least time that one receive of a recv waits, so a recv whose deadline passed still takes a message that is there.
@@ -166,7 +166,7 @@ func (s *script) stash(got envelope) {
 	}
 }
 
-// send puts a message on the inbox of the parent run or of a run that this run spawned, and returns its id.
+// send puts a message on the inbox of the parent run, of a run that this run spawned, or of the open run of an item of the project, and returns its id.
 // The id is the run and the step name. The send is a recorded step of DBOS, so a resumed run inserts the message once.
 func (s *script) send(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	var to, value starlark.Value
@@ -243,7 +243,7 @@ func (s *script) outgoing(to starlark.Value, topic string, value starlark.Value,
 		return envelope{}, spawnedRun{}, err
 	}
 
-	dest, err := s.destination(to)
+	dest, err := s.destination(to, label)
 	if err != nil {
 		return envelope{}, spawnedRun{}, err
 	}
@@ -253,15 +253,67 @@ func (s *script) outgoing(to starlark.Value, topic string, value starlark.Value,
 	return envelope{Topic: topic, Sender: sender, ID: sender + ":" + s.nextName(sendKind, label), Value: json.RawMessage(s.e.redact(string(raw)))}, dest, nil
 }
 
-// destination is the run that the to keyword of send names: the parent of this run, with no item, or the latest attempt of a run that a spawn call of this run returned.
-func (s *script) destination(to starlark.Value) (spawnedRun, error) {
-	if text, isText := starlark.AsString(to); isText {
-		parent, err := s.parentRun(text)
-
-		return spawnedRun{Run: parent}, err
+// destination is the run that the to keyword of send names, with no item: the parent of this run, or the open run of an item of the project.
+// It is the latest attempt of a run that a spawn call of this run returned, when to is such a run.
+func (s *script) destination(to starlark.Value, label string) (spawnedRun, error) {
+	text, isText := starlark.AsString(to)
+	if !isText {
+		return s.childDestination(to)
 	}
 
-	return s.childDestination(to)
+	if item, found := strings.CutPrefix(text, workflow.ItemTarget); found {
+		return s.itemDestination(item, label)
+	}
+
+	parent, err := s.parentRun(text)
+
+	return spawnedRun{Run: parent}, err
+}
+
+// sendTarget is the record of the step that resolves the item of a send: the run that the message goes to.
+type sendTarget struct {
+	Run string `json:"run"`
+}
+
+// itemDestination is the open run of an item of the project, which the send step records before it sends. A replay reads the record and looks nothing up.
+func (s *script) itemDestination(item, label string) (spawnedRun, error) {
+	target, err := runStep(s.e, s.ctx, s.nextName(sendKind, label)+targetSuffix, func(context.Context) (sendTarget, error) {
+		return s.e.openRunInProject(item, s.in.Project)
+	})
+
+	return spawnedRun{Run: target.Run}, err
+}
+
+// noOpenRunError is the error of an item that has no open run.
+type noOpenRunError struct{ item string }
+
+func (e *noOpenRunError) Error() string {
+	return fmt.Sprintf("item %s has no open run. Run beehave status to see the runs, or beehave run %s to start one", e.item, e.item)
+}
+
+// openRunInProject finds the open run of an item and refuses a run of another project. A dry run has no other item, so it ends clean where the run is absent.
+func (e *Engine) openRunInProject(item, project string) (sendTarget, error) {
+	open, err := openRunOf(e.ctx, e.version, item)
+
+	var none *noOpenRunError
+	if project == dryProject && errors.As(err, &none) {
+		return sendTarget{}, &absentError{message: err.Error(), step: "send a message to an item"}
+	}
+
+	if err != nil {
+		return sendTarget{}, err
+	}
+
+	held, err := open.project()
+	if err != nil {
+		return sendTarget{}, err
+	}
+
+	if held != project {
+		return sendTarget{}, fmt.Errorf("%w: item %s has an open run under project %s, and this run is under project %s. A send reaches only an item of its own project", errProjectConflict, item, held, project)
+	}
+
+	return sendTarget{Run: open.Status.ID}, nil
 }
 
 // childDestination is the latest attempt of the run that spawn returned, which the to keyword of send names.
@@ -273,7 +325,7 @@ func (s *script) childDestination(to starlark.Value) (spawnedRun, error) {
 	}
 
 	if ref.Run == "" {
-		return spawnedRun{}, fmt.Errorf("to is %s. Give \"parent\", or a run that spawn returned", to)
+		return spawnedRun{}, fmt.Errorf("to is %s. Give \"parent\", \"item:<id>\", or a run that spawn returned", to)
 	}
 
 	live, err := s.liveRuns([]spawnedRun{ref})
@@ -286,8 +338,8 @@ func (s *script) childDestination(to starlark.Value) (spawnedRun, error) {
 
 // parentRun is the run id of the parent when the to keyword of send is "parent".
 func (s *script) parentRun(text string) (string, error) {
-	if text != parentTarget {
-		return "", fmt.Errorf("to is %q. Give \"parent\", or a run that spawn returned", text)
+	if text != workflow.ParentTarget {
+		return "", fmt.Errorf("to is %q. Give \"parent\", \"item:<id>\", or a run that spawn returned", text)
 	}
 
 	if s.in.Parent == "" {
@@ -311,11 +363,7 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 		return "", err
 	}
 
-	last, err := c.latest(item)
-	if errors.Is(err, errNoRun) || err == nil && last.terminal() {
-		return "", fmt.Errorf("item %s has no open run. Run beehave status to see the runs, or beehave run %s to start one", item, item)
-	}
-
+	last, err := openRunOf(c.flow, c.version, item)
 	if err != nil {
 		return "", err
 	}
@@ -324,6 +372,16 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 	env := envelope{Topic: msg.Topic, Sender: msg.Sender, ID: id, Value: json.RawMessage(c.redact(string(msg.Value)))}
 
 	return id, dbos.Send(c.flow, last.Status.ID, env, inboxTopic, dbos.WithIdempotencyKey(id))
+}
+
+// openRunOf returns the open run of an item that a build of this version can finish. beehave send and the to keyword of send share it.
+func openRunOf(client dbos.Client, version, item string) (run, error) {
+	last, err := latestOf(client, version, item)
+	if errors.Is(err, errNoRun) || err == nil && last.terminal() {
+		return run{}, &noOpenRunError{item: item}
+	}
+
+	return last, err
 }
 
 // checkOutgoing applies the rules of a message to the topic, the key and the value that beehave send got.

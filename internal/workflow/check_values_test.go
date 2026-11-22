@@ -27,6 +27,8 @@ func TestCheck_RefusesTheLiteralValuesThatTheRunRefuses(t *testing.T) {
 		{"recv topic reserved", `recv("beehave.answer", timeout = "1m")`, `recv: topic "beehave.answer" is reserved for beehave`},
 		{"recv timeout zero", `recv("go", timeout = "0s")`, `recv: timeout is "0s", which must be above zero`},
 		{"send topic", `send(to = "parent", topic = "A", value = 1)`, `send: topic "A" is not allowed`},
+		{"send to other text", `send(to = "boss", topic = "t", value = 1)`, `send: to is "boss". Give "parent", "item:<id>", or a run that spawn returned`},
+		{"send to an item with no id", `send(to = "item:", topic = "t", value = 1)`, `send: to is "item:". Give "parent", "item:<id>"`},
 		{"wait timeout negative", `wait(question = "q", timeout = "-5s")`, `wait: timeout is "-5s", which must be above zero`},
 		{"wait timeout empty", `wait(question = "q", timeout = "")`, `wait: timeout is "", which must be above zero`},
 		{"wait to empty", `wait(question = "q", to = [])`, "to is an empty list"},
@@ -158,6 +160,20 @@ func TestCheck_AcceptsTheLiteralValuesThatTheRunAccepts(t *testing.T) {
 		"    spawn(items = [\"a\"], retries = 3)\n"+
 		"    merge(prs = [struct(item = \"a\", head = \"h\")], base = \"b\", repo = \"r\", name = \"n\", integration = 7, own = {})\n"+
 		"    preflight(own = {\"logins\": [\"me\"]})\n")
+
+	assert.Empty(t, got)
+}
+
+func TestCheck_AcceptsEachTargetOfSend(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "who = \"item:3\"\n\ndef main(item):\n"+
+		"    k = spawn(items = [\"a\"])\n"+
+		"    send(to = \"parent\", topic = \"t\", value = 1)\n"+
+		"    send(to = \"item:21\", topic = \"t\", value = 1)\n"+
+		"    send(to = \"item:fix-login\", topic = \"t\", value = 1)\n"+
+		"    send(to = who, topic = \"t\", value = 1)\n"+
+		"    send(to = k.runs[0], topic = \"t\", value = 1)\n")
 
 	assert.Empty(t, got)
 }

@@ -743,25 +743,35 @@ func (c *Client) PinnedFile(item string) (string, error) {
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.
 func (c *Client) latest(item string) (run, error) {
-	last, err := c.newest(item)
+	return latestOf(c.flow, c.version, item)
+}
+
+// newest returns the newest run of an item, whatever build started it.
+func (c *Client) newest(item string) (run, error) {
+	return newestOf(c.flow, item)
+}
+
+// latestOf returns the newest run of an item, and refuses a run that a build of another version started.
+func latestOf(client dbos.Client, version, item string) (run, error) {
+	last, err := newestOf(client, item)
 	if err != nil {
 		return run{}, err
 	}
 
-	if last.Status.ApplicationVersion != c.version && !last.terminal() {
-		return run{}, strandedError(last, c.version)
+	if last.Status.ApplicationVersion != version && !last.terminal() {
+		return run{}, strandedError(last, version)
 	}
 
 	return last, nil
 }
 
-// newest returns the newest run of an item, whatever build started it.
-func (c *Client) newest(item string) (run, error) {
+// newestOf returns the newest run of an item, whatever build started it.
+func newestOf(client dbos.Client, item string) (run, error) {
 	if model.ItemKind(item) == "" {
 		return run{}, fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, item)
 	}
 
-	last, found, err := latestRun(c.flow, item)
+	last, found, err := latestRun(client, item)
 	if err != nil {
 		return run{}, err
 	}

@@ -77,12 +77,33 @@ func inboxSignatures() map[string][]Param {
 	return map[string][]Param{
 		recvName: {topic, {Name: "timeout", Kind: KindText, Required: true, Rule: deadlineRule("timeout"), Why: "A receive waits at most this long, such as \"10m\"."}, label},
 		sendName: {
-			{Name: "to", Kind: KindAny, Required: true, Why: "Give \"parent\", or a run that spawn returned."},
+			{Name: "to", Kind: KindAny, Required: true, Rule: sendTargetRule, Why: "Give \"parent\", \"item:<id>\", or a run that spawn returned."},
 			topic,
 			{Name: "value", Kind: KindAny, Required: true, AsValue: true},
 			label,
 		},
 	}
+}
+
+// The text values of the to keyword of send: the parent run, or the open run of an item with the id after the prefix.
+const (
+	ParentTarget = "parent"
+	ItemTarget   = "item:"
+)
+
+// sendTargetRule is the rule of the to keyword of send. A text must be "parent", or "item:" and an id. A run that spawn returned is a struct, which the run checks.
+// The run reads the id with the rule of beehave send, so a bad id gets the error of that command.
+func sendTargetRule(v starlark.Value) error {
+	text, isText := starlark.AsString(v)
+	if !isText || text == ParentTarget {
+		return nil
+	}
+
+	if id, found := strings.CutPrefix(text, ItemTarget); found && id != "" {
+		return nil
+	}
+
+	return fmt.Errorf("to is %q. Give \"parent\", \"item:<id>\", or a run that spawn returned", text)
 }
 
 // topicsRule is the rule of the topics keyword of first_of.
