@@ -150,7 +150,7 @@ beehave reads no clock. So a file with a future timestamp, a coarse timestamp or
 
 A `gate` call with `base` submits the job of a candidate head. A `gate` call without `base` is a sync head or a landing gate: it runs the gate command only, with no secret scan and no new-tests check. A candidate gate never reuses an earlier pass, because a reused pass holds no checks.
 
-The job of a candidate runs its steps apart, each in its own subshell, and a failed step never stops a later one. Each step writes the line `beehave-gate-step <name> rc=<code>`. The step names `head-gate`, `secret-scan`, `base-suite` and `revert-run` are reserved, and `gate_steps` refuses them. The job exits with the exit code of `head-gate`.
+The job of a candidate runs its steps apart, each in its own subshell, and a failed step never stops a later one. Each step writes the line `beehave-gate-step <name> rc=<code>`. The step names `head-gate`, `secret-scan`, `base-suite`, `revert-run` and `gate-program` are reserved, and `gate_steps` refuses them. The job exits with the exit code of `head-gate`, and with a failure when the final check of the gate program failed.
 
 | Step | What it does |
 |---|---|
@@ -201,7 +201,18 @@ Three states, one owner: `internal/gate` sets `pass`, `fail` and `unknown`.
 
 ### Gate program
 
-The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate is to take its program from the base and its code from the head. The config reads the key. The gate does not use it yet, so an empty or a set list changes no verdict. See `configuration.md` for the rules that the config checks.
+The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate takes its program from the base commit and its code from the head. See `configuration.md` for the rules that the config checks.
+
+A gate on a build host with `gate_program` set runs these words, in this order, in a new clone of the head. The clone holds no untracked file, and the job runs no `git submodule update`.
+
+1. Snapshot. Before any head command, the job fetches the base commit into a private bare repository and copies the bytes and the mode of each listed path into a folder of the job. Git reads the private repository with no replace refs and no config of the machine.
+2. Refusal. If the head changed a listed path since the merge base with the base commit, the job fails with the line `beehave-gate-program` and the changed paths. The gate result then has the step `gate-program` in the state `fail`.
+3. Overlay. The job removes each listed path from the clone and restores it from the snapshot. A path that the base lacks stays absent, so a head cannot add `GNUmakefile`.
+4. Final check. After the last head command, the job compares each listed path with the snapshot by raw bytes, the execute bit and the kind of file. It uses no git word, because the head writes the git config. A changed, added or missing file, a link that points elsewhere and a file that is not regular, a link or a folder all fail the job.
+
+The base commit is the one that the engine read once for the gate. A gate with `gate_program` and no base commit starts no job. The gate key holds the list.
+
+A local gate does not use the key yet. The limits of an unsandboxed gate stay: head code can still write the tools of the host, `go.work` and the git config of the clone, and the final check does not see them.
 
 ### Pinned tools
 

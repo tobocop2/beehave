@@ -138,8 +138,8 @@ func (r Request) anchor() string { return cmp.Or(r.BaseSHA, r.Plan.BaseSHA) }
 
 // needBase refuses a candidate head that has no base commit: its job could not name the base that it judges the head against.
 func (r Request) needBase() error {
-	if r.Base != "" && r.anchor() == "" {
-		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, r.Base, r.Project.Name)
+	if (r.Base != "" || len(r.Project.GateProgram) > 0) && r.anchor() == "" {
+		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, r.pinBase(), r.Project.Name)
 	}
 
 	return nil
@@ -557,6 +557,10 @@ func explainFailure(ctx context.Context, host Remote, project model.Project, id 
 
 // markedResult is the result that the first marker line in the log gives, and whether the log holds one.
 func markedResult(log string, project model.Project) (Result, bool) {
+	if refused, found := programResult(log, project); found {
+		return refused, true
+	}
+
 	if reason := voidReason(log); reason != "" {
 		return Result{Report: tail("the gate did not run: " + reason + ". Install the pinned version on " + project.BuildHost + ", then run the gate again.\n"), Steps: unknownSteps(project)}, true
 	}
@@ -679,6 +683,13 @@ func plainWord(word string) bool {
 func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
 	words := cloneWords(cloneURL, head, clone)
 
+	var check []string
+
+	if len(project.GateProgram) > 0 {
+		words = slices.Concat([]string{programFirst}, words, programBefore(project, cloneURL, clone, baseSHA))
+		check = []string{programCheck}
+	}
+
 	// A candidate head runs its steps apart (see candidateWord). A sync head and a landing gate keep the gate command only.
 	if base != "" {
 		return strings.Join(append(words, candidateWord(project, pins, base, baseSHA, clone)), " && ")
@@ -689,7 +700,7 @@ func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base,
 	words = append(words, before...)
 	words = append(words, gateWords(project, pins)...)
 
-	return strings.Join(append(words, after...), " && ")
+	return strings.Join(slices.Concat(words, after, check), " && ")
 }
 
 // cloneWords are the words that make the clone folder and check out head in it.
