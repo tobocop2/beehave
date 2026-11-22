@@ -21,7 +21,7 @@ const (
 var errOtherBuild = errors.New("the engine that runs is another build")
 
 // ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays open, and the next engine of the same build recovers it: beehave run takes over at once.
-var ErrEngineGone = errors.New("the engine stopped; the run is queued")
+var ErrEngineGone = errors.New("the engine stopped before the run ended")
 
 // attemptPlan says what a run call does for an item: join the run with the id Join, or start attempt Attempt.
 type attemptPlan struct {
@@ -78,7 +78,7 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
-// The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays queued.
+// The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
 func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemResult, error) {
 	in, err := pinnedInput(item, project, file)
 	if err != nil {
@@ -233,7 +233,7 @@ type engineWatch struct {
 	since time.Time
 }
 
-// check returns ErrEngineGone, with the next step for the item, when no engine has held the state folder for the whole grace time.
+// check returns ErrEngineGone when no engine has held the state folder for the whole grace time.
 func (w *engineWatch) check() error {
 	running, err := engineRuns(w.dir)
 	if err != nil {
@@ -251,7 +251,7 @@ func (w *engineWatch) check() error {
 	}
 
 	if time.Since(w.since) >= w.grace {
-		return fmt.Errorf("%w: start beehave serve or run beehave run %s again", ErrEngineGone, w.item)
+		return ErrEngineGone
 	}
 
 	return nil

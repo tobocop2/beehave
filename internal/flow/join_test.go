@@ -288,7 +288,6 @@ func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheWaiterSaysSo(t *testin
 	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)))
 
 	require.ErrorIs(t, err, ErrEngineGone)
-	require.ErrorContains(t, err, "start beehave serve or run beehave run 12 again")
 
 	rows := rowsOf(t, client, testItem)
 	require.Len(t, rows, 1)

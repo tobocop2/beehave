@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -83,6 +84,24 @@ func TestRun_AJoinWhoseEngineStoppedTakesOverTheItemOnItsOwnEngine(t *testing.T)
 	assert.Equal(t, 1, rig.engines)
 	assert.Equal(t, []string{"12@p"}, rig.runner.items)
 	assert.True(t, rig.steering.closeOK)
+}
+
+func TestRun_ATakeoverThatLosesTheStateFolderJoinsTheEngineThatWonIt(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.running = true
+	rig.steering.joinErrs = []error{flow.ErrEngineGone}
+	rig.engineOf = func() error { return flow.ErrStateBusy }
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 finished\n", stdout)
+	assert.Equal(t, 1, strings.Count(stderr, "this command continues the run"))
+	assert.Equal(t, 1, rig.engines, "the takeover tried its own engine once")
+	assert.Len(t, rig.steering.joined, 2, "the first join saw the engine gone, the second joined the engine that won")
+	assert.Empty(t, rig.runner.items)
 }
 
 func TestRun_AJoinWhoseEngineStoppedAndWhoseUserStoppedTheCommandDoesNotTakeOver(t *testing.T) {
