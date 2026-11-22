@@ -87,20 +87,29 @@ After guard 0, the guards refuse in this order:
 
 1. the repository and the base branch of the merge request,
 2. a gated commit id that is not 40 characters,
-3. the state,
-4. the base,
-5. the head,
-6. the mergeable flag,
-7. the hold label,
-8. the closing references,
-9. children,
-10. checks,
-11. the workflow scope,
-12. change requests,
-13. open threads,
-14. the forbidden text of `forbid_text`,
-15. commits with no linked account,
-16. the draft rule.
+3. the protection of the base,
+4. the state,
+5. the base,
+6. the head,
+7. the mergeable flag,
+8. the hold label,
+9. the closing references,
+10. children,
+11. checks,
+12. the workflow scope,
+13. change requests,
+14. open threads,
+15. the forbidden text of `forbid_text`,
+16. commits with no linked account,
+17. the draft rule.
+
+#### Protection of the base
+
+The protection guard reads the rules of the base from the forge, before any write, with the optional `Statuses` side of the forge.
+
+- A project with a `writer` entry in `credentials` needs a base whose protection has a pull request rule and requires `beehave/gate` and `beehave/review`. The refusal names the base, what is missing, and the ruleset to add (see [trust.md](trust.md#the-ruleset)). The forge enforces the rules. The merge only refuses to merge into a base that would not.
+- A forge that cannot read the protection refuses such a project, and the refusal names the forge. A read that fails is a transient refusal.
+- A project with no `credentials` key keeps its guards. If the base requires `beehave/gate` or `beehave/review`, the merge refuses and says that the project needs credentials, because nothing posts those statuses. A forge that cannot read the protection, or a read that fails, does not refuse such a project: the forge still enforces its own rules.
 
 #### Reads
 
@@ -272,7 +281,7 @@ A member that a guard rejects or defers gets no status, and so does a member who
 
 A project with no `credentials` key posts none, and the merge says so in a `WARN:` line. A forge that cannot post statuses does the same. A post that the forge refuses stops that member before its merge call, and the member is deferred. The members that merged before it stay merged.
 
-The forge methods are `PostStatus` and `Protection` of `forge.Statuses`. `Protection` reads the pull request rule and the required status contexts of a branch. The `merge` builtin does not read it yet.
+The forge methods are `PostStatus` and `Protection` of `forge.Statuses`. `Protection` reads the pull request rule and the required status contexts of a branch. The `merge` builtin reads it in its protection guard (see [Protection of the base](#protection-of-the-base)).
 
 ### Splitting a red union
 
