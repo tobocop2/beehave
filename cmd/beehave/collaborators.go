@@ -1290,15 +1290,8 @@ func (p pulls) request(name string, project config.Project, item string, number 
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
-		Queue: true, Credentialed: hasWriter(project), ForgeName: string(project.Forge),
+		Queue: true, Credentialed: project.HasWriter(), ForgeName: string(project.Forge),
 	}
-}
-
-// hasWriter reports whether the project declares a writer credential.
-func hasWriter(project config.Project) bool {
-	_, declared := project.Credentials[model.RoleWriter]
-
-	return declared
 }
 
 // prepared returns the known project and the compiled forbid_text patterns of a merge step.

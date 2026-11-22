@@ -33,7 +33,7 @@ func posting(project model.Project, built forge.Forge, statuses []model.CommitSt
 
 // Post sets each status as the writer role. A project with no writer role posts none, and neither does a forge that cannot post one: the answer says why.
 func (s statusPost) Post(ctx context.Context) (string, error) {
-	if _, declared := s.project.Credentials[model.RoleWriter]; !declared {
+	if !s.project.HasWriter() {
 		return noWriterNote, nil
 	}
 

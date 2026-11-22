@@ -101,13 +101,14 @@ func TestRun_TheProtectionRefusalStopsBeforeTheStatusPostAndTheReadyStep(t *test
 	t.Parallel()
 
 	s := shield(t, model.Protection{})
+	s.set(t, map[string]any{"isDraft": true})
 	req, _ := posting(s.world)
-	req.Credentialed, req.ForgeName = true, "github"
+	req.Credentialed, req.ForgeName, req.OwnDraft = true, "github", pr
 
 	result := merge.Run(context.Background(), s, req)
 
 	assert.Equal(t, merge.Refused, result.Stop)
-	assert.Empty(t, s.writes, "no status is posted and nothing merges for a base that would not require the statuses")
+	assert.Empty(t, s.writes, "no SetDraft, no status and no MergePR happen for a base that would not require the statuses")
 }
 
 func TestRun_AProjectWithCredentialsReadsTheProtectionOfItsOwnBase(t *testing.T) {

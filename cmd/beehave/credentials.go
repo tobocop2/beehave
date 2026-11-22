@@ -53,7 +53,7 @@ func readRoles(ctx context.Context, cfg config.Config, opts flow.Options) (map[s
 	found := map[string]writerRole{}
 
 	for _, name := range slices.Sorted(maps.Keys(cfg.Projects)) {
-		if _, declared := cfg.Projects[name].Credentials[model.RoleWriter]; !declared {
+		if !cfg.Projects[name].HasWriter() {
 			continue
 		}
 
@@ -120,7 +120,7 @@ func (w *writers) of(project string) (writerRole, bool) {
 // runner returns the gh runner of a project. A project with no credentials runs gh with the login of the owner. A project with credentials runs it as the
 // writer, with its own environment, and fails when the credentials are not loaded.
 func (w *writers) runner(project model.Project) (proc.ExecRunner, error) {
-	if _, declared := project.Credentials[model.RoleWriter]; !declared {
+	if !project.HasWriter() {
 		return proc.NewExecRunner(forgegithub.Tool, ""), nil
 	}
 
@@ -136,10 +136,9 @@ func (w *writers) runner(project model.Project) (proc.ExecRunner, error) {
 // a project with no credentials, or nil for the runner of the owner with ownerEnv. reach.Runner picks the runner (see there).
 func (w *writers) git(projects map[string]config.Project, project, dir, remote string, owner func(string) proc.Runner, ownerEnv []string, pairs ...string) proc.Runner { //nolint:ireturn // the callers take the interface
 	role, loaded := w.of(project)
-	_, declared := projects[project].Credentials[model.RoleWriter]
 
 	return reach.Runner(reach.Call{
-		Project: project, Dir: dir, Remote: remote, Declared: declared, Loaded: loaded, Token: role.token,
+		Project: project, Dir: dir, Remote: remote, Declared: projects[project].HasWriter(), Loaded: loaded, Token: role.token,
 		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv,
 	}, owner)
 }
