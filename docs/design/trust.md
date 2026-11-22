@@ -8,7 +8,7 @@ The rule for every decision here: a rule that the forge or the operating system 
 
 This page is the design. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
 
-Not built yet: the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the new environment of an agent step and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
+This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `CanWriteCI` and `Protection` start checks (the tree still has `TokenScopes`), the `Login` forge method, the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the new environment of an agent step and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
 
 ## The threat model
 
@@ -20,7 +20,7 @@ There are three trust levels. Each decision below names the level that it protec
 | Agent | Every agent step, ours or a model's | A worktree, a network allow-list, the model token of its CLI | Edit files and commit in its worktree. Nothing on the forge. |
 | Outside | Issue text, a foreign pull request, the code of its head | Nothing | Reach an agent prompt as data, and a sandboxed review step on a host with no credential. |
 
-The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can merge. No merge happens without the required statuses at the head.
+The boundary between Owner and Agent is the operating-system sandbox, and the absence of any forge credential in the reach of the agent. The boundary on the forge is the ruleset. No identity that an agent can reach can push to `integration/**` or merge. No merge happens without the required statuses at the head.
 
 An agent step that runs without the sandbox runs as the user id of the owner. It can read any file and the login keychain of that user. No scrub of the environment changes that. So an unsandboxed agent step is never a trust boundary, and no part of this design relies on one.
 
@@ -53,11 +53,10 @@ project(
 )
 ```
 
-- `credential(file?, env?, command?, login?, ci_locked?)` takes exactly one of `file`, `env` and `command`.
+- `credential(file?, command?, login?, ci_locked?)` takes exactly one of `file` and `command`. There is no `env` source: the start block of the environment of the engine stays readable by `ps eww` and `/proc/<pid>/environ` (see "Platform gaps"), even after the engine removes the variable.
 - `file`: a path inside `~/.config/beehave/credentials/`, mode 0600, in a folder of mode 0700. The loader refuses any other mode and path.
-- `env`: the name of a variable that the engine reads once and then removes from its own environment, so no child process inherits it.
 - `command`: an argument list, run once at start with no shell. Its trimmed output is the token. Examples: the macOS keychain, the Linux Secret Service, `gh auth token`.
-- `login`: optional. The engine reads the login of the token at start and refuses when it differs.
+- `login`: optional. The engine reads the login of the token at start with the forge method `Login` and refuses when it differs.
 - A workflow that pushes, posts or merges needs `writer`. Without it, `beehave check workflow` refuses.
 
 The recommended `writer` token on GitHub is a fine-grained token of the owner's account. It covers the project repository only. It has Contents, Pull requests, Issues and Commit statuses at read and write, Metadata at read, and no Workflows permission.
@@ -78,7 +77,28 @@ The recommended `writer` token on GitHub is a fine-grained token of the owner's 
 3. The CLI process of an agent step keeps the `HOME` of the owner, so that its login works. The shell of a sandboxed step gets a `HOME` that is a new, empty folder of that step, in a temporary folder that the engine makes for the step and removes when the step ends. The shell of a sandboxed step also gets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`. It sets `GIT_AUTHOR_*` and `GIT_COMMITTER_*` to the git identity of the engine for the work folder, so its commits carry that identity. No agent code sets `GH_CONFIG_DIR`: an agent step holds no forge credential in its environment, and the sandbox denies the `gh` config of the owner.
 4. The sandbox denies `~/` and the credential list. No network list names `github.com`, so `git push` over HTTPS has no host.
 5. The engine pushes, not the agent. A `push` step runs with `--force-with-lease=refs/heads/<branch>:<expect>`. It is a recorded step, so a replay does not push again. The prompts contain no push line.
-6. A `command` step gets no forge token. A workflow cannot ask for one.
+6. A `command` step gets no forge token. A workflow cannot ask for one. It gets the same environment as an agent step, so it has no `SSH_AUTH_SOCK`.
+
+### Command steps
+
+A `command` step runs code that an agent wrote (`make`, tests, the gate program), and it runs as the user id of the owner. So an unsandboxed `command` step is not a trust boundary. It can read the `gh` config, the keychain and any file by its absolute path. A new empty `HOME` does not close that: a keychain login and an absolute path stay open, and an empty home breaks `go`, the git identity and `bd`.
+
+Two rules close it.
+
+- A forge write is not a `command` step. The `remedy` writes (`take`, `sync`, `sync land`, `integration`, `cut`, `board`) become engine builtins that run as `writer`. The `remedy` steps that stay (`report`, `gatelist`) only read.
+- A `command` step that runs agent-written code gets a sandbox. It reuses the enforcer of the gate (`cmd/beehave/gatesandbox.go`), and its plan grants the Go and git folders, not the home folder of the owner.
+
+An unsandboxed `command` step that is left is a limit. Until the sandbox covers it, the ruleset stays unposted while such a step can run agent code.
+
+### Limits
+
+| Channel | Mechanism or limit |
+|---|---|
+| `SSH_AUTH_SOCK` variable | No allow-list (agent, `command`, usage reader) holds it. |
+| The agent socket, a file | A sandboxed step: the engine adds the path of its own `SSH_AUTH_SOCK` to the deny list of the plan, and `~/.ssh` is denied. An unsandboxed step can find the socket. This is a limit. The sandbox default closes it, because a project with the sandbox on refuses an unsandboxed step. |
+| The token file of the `file` source | An unsandboxed step can read it. This is a limit, closed the same way. The sandbox denies `~/.config/beehave`. |
+| The git credential helper of the owner | An unsandboxed step reads `~/.gitconfig`. The engine sets `GIT_CONFIG_GLOBAL=/dev/null` for its own forge git calls. The token of a call is readable by the same user while the call runs (`ps eww`). This is a limit. |
+| The start check | It sees the environment that the engine builds. It cannot see files, so it checks the environment channel only. |
 
 ### The CI lock
 
@@ -89,7 +109,7 @@ The CI of a head runs with the workflow files of that head. A workflow that an a
 
 A lane that must change a workflow file is held for the owner. The owner lands that change by hand.
 
-The start check asks the forge adapter whether an agent can write CI. It has three answers.
+The start check asks the forge adapter whether the `writer` can change CI files. It has three answers.
 
 - `no`: the engine starts.
 - `yes`: the engine refuses to start, whatever `ci_locked` says. On GitHub, a classic token whose scopes hold `workflow` gives `yes`.
@@ -146,7 +166,8 @@ Each adapter maps these methods to its forge. A forge that cannot do one returns
 | Post a status | `POST repos/{repo}/statuses/{sha}` | external status check response | `POST repos/{repo}/statuses/{sha}` |
 | Post a review | `POST pulls/{n}/reviews` with `commit_id` | approve at the head SHA | `POST pulls/{n}/reviews` with `commit_id` |
 | Read the protection | rules for the branch | approval rules and status checks | branch protection |
-| Can an agent write CI | `yes` for a classic token with the `workflow` scope, `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
+| Login | `gh api user` | `GET /user` | `GET /user` |
+| Can the `writer` change CI files | `yes` for a classic token with the `workflow` scope, `unknown` for a fine-grained token | `no` when the CI file lives in another project | `unknown` |
 
 The default mode on GitLab needs external status checks, which is an Ultimate feature. On a lower tier the adapter reports the capability missing and the engine refuses. On Forgejo, branch protection takes a status context pattern and refuses a merge until it succeeds.
 
@@ -168,7 +189,7 @@ The step fails closed: no sandbox capability, Windows, a CLI below the minimum v
 
 A project with `sandbox = "off"` still gets the environment of an agent step described above. It still runs as the user id of the owner, so beehave treats such a project as trusted input only.
 
-A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
+A foreign pull request refuses to start when the project has the sandbox off, or when its `build_host` is not declared `host(..., credentials = "none")`. That key is the statement of the owner that the host holds no forge credential, no `credentials` source and no SSH agent forwarding. The host check reads `ssh -G <host>` and refuses `forwardagent yes`.
 
 ### Platform gaps
 
