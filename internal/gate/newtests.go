@@ -121,10 +121,11 @@ func candidateWord(project model.Project, pins []Pin, base, baseSHA, clone strin
 		baseSuite(project, glob),
 		compareWord(glob, base, baseSHA),
 		revertRun(project, glob),
-		`cat ../checks.txt ../revert.txt`,
-		closingMarkers(),
-		`[ "$headrc" -eq 0 ]`,
 	}
+
+	closing, logs, exit := programClosing(project)
+	parts = append(parts, closing...)
+	parts = append(parts, logs, closingMarkers(), exit)
 
 	return "{ " + strings.Join(parts, "; ") + "; }"
 }

@@ -39,7 +39,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, pinned, request.anchor())
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
 
 	return key, nil
 }

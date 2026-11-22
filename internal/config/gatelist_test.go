@@ -29,6 +29,7 @@ func TestLoadFolder_AGateListIsRefusedWithGateAndForABadStep(t *testing.T) {
 		`, gate_steps = {"a b": "make a"}`:              "step name",
 		`, gate_steps = {"head-gate": "make a"}`:        `"head-gate". The gate job of a candidate head takes that name. Rename the step.`,
 		`, gate_steps = {"secret-scan": "make a"}`:      `"secret-scan". The gate job`,
+		`, gate_steps = {"gate-program": "make a"}`:     `"gate-program". The gate job`,
 		`, gate_steps = {"base-suite": "make a"}`:       `"base-suite". The gate job`,
 		`, gate_steps = {"a": " "}`:                     "blank command",
 		`, gate_steps = ["a"]`:                          "want a dict",
