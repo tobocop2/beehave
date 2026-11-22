@@ -295,11 +295,15 @@ func writeTools(t *testing.T) string {
 
 		require.NoError(t, err)
 
-		wrapper := "#!/bin/sh\nexec " + found + "\"$@\"\n"
-		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapper))
+		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapperText(found)))
 	}
 
 	return tools
+}
+
+// wrapperText is the script of a wrapper: it runs the program at found, by its full path, with the arguments of the caller.
+func wrapperText(found string) string {
+	return "#!/bin/sh\nexec \"" + found + "\" \"$@\"\n"
 }
 
 // cmdIsolate sets PATH to the fake claude of the script (the folder fake), the beehave commands and the wrappers in tools, and TOOLS to the folder of the wrappers.
