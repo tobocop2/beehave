@@ -891,6 +891,8 @@ type runRef struct {
 	ctx  context.Context
 	flow dbos.Client
 	id   string
+	// version is the build of the watcher. An open run of another build waits for a move to this build, not for a message.
+	version string
 	// dir is the state folder, which holds probe.lock.
 	dir string
 	// database is the file of the workflow store, which holds the messages that were sent to the run.
@@ -901,14 +903,14 @@ type runRef struct {
 func runOfEngine(t *testing.T, engine *Engine) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, dir: engine.dir, database: filepath.Join(engine.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, version: engine.version, dir: engine.dir, database: filepath.Join(engine.dir, databaseFile)}
 }
 
 // runOfClient is the test run as a client reads it.
 func runOfClient(t *testing.T, client *Client) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, dir: client.dir, database: filepath.Join(client.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, version: client.version, dir: client.dir, database: filepath.Join(client.dir, databaseFile)}
 }
 
 // messagePending says whether a message on the inbox topic of the run waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
@@ -948,7 +950,7 @@ func (r *runRef) stalled(bound time.Time) string {
 	return why
 }
 
-// stalledHeld is stalled while the caller holds probe.lock.
+// stalledHeld is stalled while the caller holds probe.lock. An open run of another build is not parked: it takes no message until a move puts it on this build.
 func (r *runRef) stalledHeld(bound time.Time) string {
 	rows, err := dbos.ListWorkflows(r.flow, dbos.WithFilterWorkflowIDs(r.id))
 	if err != nil {
@@ -961,6 +963,10 @@ func (r *runRef) stalledHeld(bound time.Time) string {
 
 	if slices.Contains(endedStatuses, rows[0].Status) {
 		return fmt.Sprintf("the run %s ended with status %s", r.id, rows[0].Status)
+	}
+
+	if rows[0].ApplicationVersion != r.version {
+		return ""
 	}
 
 	return r.parked(bound)
