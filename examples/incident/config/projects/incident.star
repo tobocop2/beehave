@@ -4,5 +4,6 @@ project(
     source = "~/ops",
     base_branch = "main",
     gate = "true",
+    sandbox = "on",  # the analyst and the postmortem step read the text that the workflow passes and reach no host
     test_report = "reports/*.xml",
 )

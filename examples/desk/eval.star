@@ -126,6 +126,7 @@ def judge_reply(case_text, reply_text):
         model = JUDGE_MODEL,
         edits = False,
         forbid_commands = READ_ONLY_FORBIDDEN,
+        sandbox = sandbox(),
         inputs = {"case": case_text, "reply": reply_text},
         outputs = JUDGE_OUTPUTS,
     )

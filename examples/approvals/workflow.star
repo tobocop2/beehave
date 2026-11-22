@@ -133,6 +133,7 @@ def brief(request, state, change):
         model = BRIEF_MODEL,
         edits = False,
         forbid_commands = BRIEF_FORBIDDEN,
+        sandbox = sandbox(),
         inputs = inputs,
         outputs = ["summary"],
         timeout = BRIEF_TIMEOUT,

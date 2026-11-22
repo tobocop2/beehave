@@ -3,4 +3,6 @@
 # Its items are in local.db and beehave needs no beads, no gh and no network for the engine.
 # The agents write their notes in the work folder of the item. The report goes to the folder that RESEARCH_OUT names.
 
-project()
+# The sandbox is off because the research step reads web pages. A sandboxed step has no WebFetch and no WebSearch, and its shell reaches only the listed hosts, which a research question cannot name in advance.
+
+project(sandbox = "off")

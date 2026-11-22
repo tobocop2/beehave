@@ -80,6 +80,7 @@ def call_agent(run, label, prompt, inputs, outputs):
         model = MODEL,
         edits = False,
         forbid_commands = READ_ONLY_FORBIDDEN,
+        sandbox = sandbox(),
         inputs = inputs,
         outputs = outputs,
         timeout = AGENT_TIMEOUT,
