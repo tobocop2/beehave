@@ -2,6 +2,8 @@ package gate
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -76,6 +78,78 @@ func TestRun_TheJobOfALocalGateRunsEveryGitCallThroughTheConstructor(t *testing.
 	require.Len(t, jobs, 1, "the local gate runs one job")
 	require.Contains(t, jobs[0], "gpgit ", "the job has git calls")
 	assert.Empty(t, gitBypasses(jobs[0], localTools(t)), "a git call of the job that the local gate runs does not go through gpgit")
+}
+
+// failingGitPath makes a folder with a git that records its call in a marker file and exits 97, and returns the folder and the marker path.
+func failingGitPath(t *testing.T) (string, string) {
+	t.Helper()
+
+	dir, marker := t.TempDir(), filepath.Join(t.TempDir(), "calls")
+	script := "#!/bin/sh\necho \"$*\" >> " + marker + "\nexit 97\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o700)) //nolint:gosec // a test fake that must be executable
+
+	return dir, marker
+}
+
+// plantedJob runs the job of a local gate with a failing git first on its PATH, after word is planted in the job text after the clone is entered.
+// It returns the calls that the failing git recorded.
+func plantedJob(t *testing.T, word string) string {
+	t.Helper()
+
+	item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
+	fake, marker := failingGitPath(t)
+	env := []string{"PATH=" + fake + ":" + localCleanPath, "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	g := localProgramGateEnv(t, item, localTools(t), env)
+	inner := g.shell
+	planted := 0
+
+	g.shell = func(ctx context.Context, where, command string) (string, int) {
+		if word != "" {
+			planted = strings.Count(command, " && cd tree")
+			command = strings.Replace(command, " && cd tree", " && cd tree && { "+word+"; :; }", 1)
+		}
+
+		return inner(ctx, where, command)
+	}
+
+	_, err := g.Run(context.Background(), request)
+	require.NoError(t, err)
+
+	if word != "" {
+		require.Equal(t, 1, planted, "the plant point occurs once in the job")
+	}
+
+	calls, err := os.ReadFile(marker) //nolint:gosec // the marker file of this test
+	if os.IsNotExist(err) {
+		return ""
+	}
+
+	require.NoError(t, err)
+
+	return string(calls)
+}
+
+func TestGitGuard_AGitOnThePathThatFailsSeesNoCallOfTheJobItself(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, plantedJob(t, ""), "the job calls git only through its allow-listed start")
+}
+
+func TestGitGuard_AGitOnThePathThatFailsSeesAGitCallInAnySpelling(t *testing.T) {
+	t.Parallel()
+
+	for name, word := range map[string]string{
+		"plain":               "git status",
+		"backslash":           `\git status`,
+		"command_substituted": `"$(command -v git)" status`,
+		"split_quotes":        `gi''t status`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, "status\n", plantedJob(t, word), "a git call of the job outside the allow-listed start reaches the git of the PATH")
+		})
+	}
 }
 
 func TestGitGuard_FlagsEveryWayToCallGitPastTheConstructor(t *testing.T) {
