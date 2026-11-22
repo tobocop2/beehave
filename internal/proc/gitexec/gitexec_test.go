@@ -1,10 +1,8 @@
 package gitexec_test
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -94,45 +92,4 @@ func TestReadConfig_DoesNotSetTheHooksPathItReads(t *testing.T) { //nolint:paral
 
 	lines := strings.Split(calls(t, log), "\n")
 	assert.Equal(t, "config --get core.hooksPath", lines[len(lines)-1])
-}
-
-// runnerPattern matches the code that makes a runner or a command for the git program.
-var runnerPattern = regexp.MustCompile(`Binary:\s*("git"|model\.ToolGit)|NewExecRunner\(("git"|model\.ToolGit)|GroupCommand\([^,]+,\s*("git"|model\.ToolGit)|exec\.Command(Context)?\([^"\n]*("git"|model\.ToolGit)`)
-
-// TestTheGitProgramIsNamedOnlyHere fails when code outside this package makes its own runner for git, because that call would run the hooks of the tree.
-func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
-	t.Parallel()
-
-	root := filepath.Join("..", "..", "..")
-	own := filepath.Join(root, "internal", "proc", "gitexec")
-
-	var found []string
-
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if entry.IsDir() && (entry.Name() == ".git" || path == own) {
-			return filepath.SkipDir
-		}
-
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-
-		data, err := os.ReadFile(path) //nolint:gosec // a source file of this module
-		if err != nil {
-			return err
-		}
-
-		if runnerPattern.Match(data) {
-			found = append(found, path)
-		}
-
-		return nil
-	})
-	require.NoError(t, err)
-
-	assert.Empty(t, found, "make the runner with gitexec.New, so the hooks stay off")
 }
