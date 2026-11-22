@@ -44,6 +44,9 @@ func ParseSandboxMode(text string) (SandboxMode, error) {
 // SandboxByDefault is true when the project file says sandbox = "on". A project that says nothing runs its steps with no sandbox.
 func (p Project) SandboxByDefault() bool { return p.Sandbox == SandboxOn }
 
+// SandboxOffLine is the line that a run prints when its sandbox mode is off. It names the setting and what it does.
+const SandboxOffLine = `sandbox = "off": the agent steps of this run start with no sandbox, except a step that sets sandbox(...)`
+
 // RunSandboxMode is the sandbox mode that a run of the project stores when it starts: on when the project file says sandbox = "on", and off otherwise.
 func (p Project) RunSandboxMode() SandboxMode {
 	if p.SandboxByDefault() {

@@ -242,13 +242,15 @@ func (p projectCheck) run(stderr io.Writer, env map[string]string, file string) 
 	return found, &ExitError{Code: exitWorkflowProblems}
 }
 
-// refusedCalls lists the calls that the named project cannot make: the git builtins of a project with no repository, and the gates that its sandbox refuses on this machine.
+// refusedCalls lists the calls that the named project cannot make: the git builtins of a project with no repository, a step with sandbox = None in a project with the sandbox on, and the gates that its sandbox refuses on this machine.
 func (p projectCheck) refusedCalls(found config.Project, file string) []workflow.Diagnostic {
 	var calls []workflow.Diagnostic
 
 	if !found.HasRepository() {
 		calls = workflow.CheckNoRepository(file, p.project)
 	}
+
+	calls = append(calls, workflow.CheckSandboxNone(file, p.project, found.RunSandboxMode())...)
 
 	if reason := p.refusal.reason(found, true); reason != "" {
 		calls = append(calls, workflow.CheckSandboxedGates(file, p.project, reason, p.refusal.reason(found, false) != "")...)

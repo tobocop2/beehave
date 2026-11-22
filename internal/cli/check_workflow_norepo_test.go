@@ -73,3 +73,32 @@ func TestCheckWorkflow_ANamedProjectThatTheConfigLacksIsAnError(t *testing.T) {
 	require.Equal(t, 2, code)
 	require.Contains(t, stderr, `no project "nope"`)
 }
+
+const noneSandboxWorkflow = "def main(item):\n    agent(prompt = \"p\", model = \"m\", sandbox = None)\n"
+
+func TestCheckWorkflow_ASandboxNoneStepIsAProblemForAProjectWithTheSandboxOnAndANoteForOff(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		key  string
+		code int
+	}{"on": {`sandbox = "on"`, 1}, "off": {`sandbox = "off"`, 0}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, "workflow.star", noneSandboxWorkflow)
+			writeConfig(t, dir, "projects/desk.star", "project("+test.key+")\n")
+
+			code, _, stderr := runCheckWorkflow(t, "--config", dir, "--project", "desk", filepath.Join(dir, "workflow.star"))
+
+			require.Equal(t, test.code, code, stderr)
+
+			if test.code == 0 {
+				require.Contains(t, stderr, "note: ")
+			} else {
+				require.Contains(t, stderr, "workflow.star:2:48: sandbox is None, and project desk has the sandbox on")
+			}
+		})
+	}
+}

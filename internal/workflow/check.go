@@ -103,6 +103,8 @@ type graph struct {
 	unparsed bool
 	// notes are the facts for Notes: no problem, and no effect on the exit code.
 	notes []Diagnostic
+	// noneSandboxes are the agent calls with the literal sandbox = None, at the keyword value.
+	noneSandboxes []Diagnostic
 	// entries are the literal entries of the spawn calls, and mainNames the functions that the workflow file binds at the top level.
 	entries   []entryRef
 	mainNames []string

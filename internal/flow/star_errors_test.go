@@ -278,28 +278,28 @@ func TestRunStar_AnErrorInANestedFunctionNamesTheCallInThatFunction(t *testing.T
 	require.ErrorContains(t, err, "workflow.star:2:12")
 }
 
-func TestPinnedFile_ReadsTheFileOfTheOpenRunOnly(t *testing.T) {
+func TestOpenRun_ReadsTheFileOfTheOpenRunOnly(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	client := h.client(t, testVersion)
 
-	file, err := client.PinnedFile(testItem)
+	open, err := client.OpenRun(testItem, nil)
 	require.NoError(t, err)
-	assert.Empty(t, file, "an item with no run has no file")
+	assert.Empty(t, open.File, "an item with no run has no file")
 
 	path := writeFlow(t, crashFlow)
 	interrupted(t, h, path)
 
-	file, err = client.PinnedFile(testItem)
+	open, err = client.OpenRun(testItem, nil)
 	require.NoError(t, err)
-	assert.Equal(t, path, file)
+	assert.Equal(t, path, open.File)
 
 	require.NoError(t, client.Cancel(testItem))
 
-	file, err = client.PinnedFile(testItem)
+	open, err = client.OpenRun(testItem, nil)
 	require.NoError(t, err)
-	assert.Empty(t, file, "a run that ended has no file")
+	assert.Empty(t, open.File, "a run that ended has no file")
 }
 
 func TestStarValues_RoundTripEveryTypeAFileCanHold(t *testing.T) {

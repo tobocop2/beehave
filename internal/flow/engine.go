@@ -208,6 +208,8 @@ type Engine struct {
 	keepRuns  bool
 	// overCap is Options.OverCap.
 	overCap bool
+	// serving is true for the engine of beehave serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
+	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
 	version     string
@@ -318,7 +320,7 @@ func newEngine(opts Options, deps Deps, state store, held *flock.Flock, registry
 	}
 
 	engine := &Engine{
-		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
+		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
 		procs: &groups{path: groupsFile(state.dir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress, redact: redact},
 	}
 	warnShortSecrets(engine.logger, opts.Env)
@@ -512,11 +514,36 @@ func (e *Engine) Launch() error {
 
 	e.launched = time.Now()
 
+	if err := e.sayResumedOff(); err != nil {
+		return err
+	}
+
 	if err := e.launchAndSchedule(); err != nil {
 		return err
 	}
 
 	e.tidy()
+
+	return nil
+}
+
+// sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,
+// before it launches and resumes these runs. A run with no stored mode uses the live default of its project.
+func (e *Engine) sayResumedOff() error {
+	if !e.serving {
+		return nil
+	}
+
+	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
+	if err != nil {
+		return fmt.Errorf("list the open runs: %w", err)
+	}
+
+	for _, row := range open {
+		if in, err := (run{Status: row}).input(); err == nil && in.UsedSandbox(e.deps.SandboxDefault) == model.SandboxOff {
+			e.progress.say("run %s: %s", row.ID, model.SandboxOffLine)
+		}
+	}
 
 	return nil
 }
