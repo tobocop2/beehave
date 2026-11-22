@@ -174,3 +174,12 @@ func TestFirstOfSources_NeedsRunsTopicsOrATimeout(t *testing.T) {
 	require.NoError(t, workflow.FirstOfSources(false, false, true))
 	require.ErrorContains(t, workflow.FirstOfSources(false, false, false), "first_of needs something to wait for")
 }
+
+func TestSend_ACallWithNoToKeywordEndsWithTheHintOfThatKeyword(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    send(topic = \"t\", value = 1)\n")
+
+	require.Len(t, got, 1)
+	assert.True(t, strings.HasSuffix(got[0], "send needs the `to` keyword. Add to = ... to the call. "+workflow.SendTargetHint+"."), got[0])
+}
