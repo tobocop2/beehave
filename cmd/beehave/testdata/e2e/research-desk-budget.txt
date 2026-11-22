@@ -2,7 +2,7 @@
 # does not run: its claims run, two levels below the question run, waits for a person.
 # The person adds 2 calls. The two readers of section 2 run, and the judge in the question run waits. The run is cancelled, as an upgrade would strand it,
 # and the item runs again with a larger cap. The new run keeps the plan and the finished section 1, so the planner and the agents of section 1 do not run twice.
-# Section 2 starts again with new source runs, so its readers run again.
+# Section 2 starts again from its source runs, so its readers run again.
 [!exec:jq] skip
 isolate
 ! exec bd version

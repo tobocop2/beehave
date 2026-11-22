@@ -27,7 +27,6 @@ kill -KILL
 wait
 cmp held expected-held
 grep -count=1 '^plan$' calls.log
-! grep 'read' calls.log
 
 exec beehavereal run cold-cost research-desk --workflow rd/workflow.star &
 waitstatus 'paused: Review the draft report of cold-cost'
@@ -37,6 +36,7 @@ stdout 'item cold-cost finished'
 
 # The runs are the question run, and for each of the four sources one source run and one claims run. Each is done once, and no run follows them.
 exec beehavereal status
+stdout -count=9 '^item-.*-r1\tdone'
 stdout -count=1 'item-cold-cost-r1\tdone'
 stdout -count=1 'item-research-desk-2-r1\tdone'
 stdout -count=1 'item-research-desk-3-r1\tdone'

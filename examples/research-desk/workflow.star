@@ -125,7 +125,6 @@ def run_section(item, run, n, gen):
     title = title_question[1]
     question = title_question[2]
     ok("reset", tool("reset", "claims.sh", ["reset", run, str(n), gen]))
-    attempt = ok("try", tool("try", "store.sh", ["try", run, str(n), gen])).strip()
     found = ok("search", tool("search", "search.sh", [question, str(MAX_SOURCES)]))
     urls = [url.strip() for url in found.splitlines() if url.strip() != ""]
     # The source runs go one after the other, so the source ids and the claim ids in the store come in the same order on every run.
@@ -133,8 +132,8 @@ def run_section(item, run, n, gen):
         made = item_create(
             name = "source",
             title = "%s: section %d, source %d" % (run, n, k + 1),
-            key = "%s-s%d-g%s-t%s-u%d" % (run, n, gen, attempt, k + 1),
-            body = json.encode({"run": run, "n": n, "gen": gen, "try": attempt, "k": k + 1, "question": question, "url": url}),
+            key = "%s-s%d-g%s-u%d" % (run, n, gen, k + 1),
+            body = json.encode({"run": run, "n": n, "gen": gen, "k": k + 1, "question": question, "url": url}),
             parent = item.id,
         )
         spawned = spawn([made.id], entry = "source", name = "spawn-source-%d-%s-%d" % (n, gen, k + 1))
@@ -175,14 +174,14 @@ def set_status(run, n, gen, status):
     ok("set-status", tool("set-status", "store.sh", ["status", run, str(n), gen, status]))
 
 # One source: the entry of a child run of the question run. The item body names the run, the section, the generation, the source number, the question and the address.
-# The run fetches the page, spawns one claims run for it, and gathers it. The run returns the number of claims that kept their quote.
+# The run fetches the page, spawns one claims run for it, and gathers it.
 def source(item):
     spec = json.decode(item.body)
     page = ok("fetch", tool("fetch", "fetch.sh", [spec["run"], spec["url"]], retries = 2)).strip()
     made = item_create(
         name = "claims",
         title = "%s: section %d, source %d, claims" % (spec["run"], spec["n"], spec["k"]),
-        key = "%s-s%d-g%s-t%s-u%d-claims" % (spec["run"], spec["n"], spec["gen"], spec["try"], spec["k"]),
+        key = "%s-s%d-g%s-u%d-claims" % (spec["run"], spec["n"], spec["gen"], spec["k"]),
         body = json.encode({"run": spec["run"], "n": spec["n"], "gen": spec["gen"], "question": spec["question"], "page": page}),
         parent = item.id,
     )
@@ -190,16 +189,14 @@ def source(item):
     result = gather(spawned.runs, fail = "return", name = "wait-claims").results[0]
     if not result.ok:
         fail("REFUSE: the claims of source %d stopped. See the child item %s. %s" % (spec["k"], made.id, result.error))
-    return result.value
 
 # The claims of one source: the entry of a grandchild run, two levels below the question run. A reader agent extracts claims with exact quotes from the page,
-# and a script tests each quote against the snapshot. The run returns the number of claims that kept their quote.
+# and a script tests each quote against the snapshot and adds the claims to the store.
 def claims(item):
     spec = json.decode(item.body)
     run = spec["run"]
     read = call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": spec["page"]}, ["claims"])
     ok("add-claims", tool("add-claims", "claims.sh", ["add", run, str(spec["n"]), spec["gen"]], stdin = read.claims))
-    return int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, str(spec["n"]), spec["gen"], "quote"])).strip())
 
 def judge_and_write(run, n, gen, title, question):
     if int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, n, gen, "quote"])).strip()) == 0:
