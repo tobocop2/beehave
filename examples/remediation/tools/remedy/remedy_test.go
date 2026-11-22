@@ -118,7 +118,7 @@ func TestExecute_UnknownCommandRefuses(t *testing.T) {
 func TestNames_AreTheCommandsOfTheTable(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"audit", "take", "admit", "size", "ledger", "recount", "scope", "board", "papers", "handoff", "authors", "spend", "gatelist", "job", "report"}, remedy.Names())
+	assert.Equal(t, []string{"audit", "take", "admit", "size", "ledger", "recount", "scope", "board", "papers", "handoff", "authors", "spend", "job", "report"}, remedy.Names())
 }
 
 // history answers the reads of an audit. A call is answered by its arguments joined with spaces.

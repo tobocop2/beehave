@@ -363,6 +363,7 @@ linters:
           list-mode: lax
           files:
             - "**/internal/check/shell/**"
+            - "**/internal/ci/**"
             - "**/internal/batch/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
@@ -385,6 +386,7 @@ linters:
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
+            - github.com/tobocop2/beehave/internal/ci
             - github.com/tobocop2/beehave/internal/batch
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
@@ -482,6 +484,7 @@ linters:
             - "!**/internal/roundintegration/**"
             - "!**/internal/takeover/**"
             - "!**/internal/check/**"
+            - "!**/internal/ci/**"
             - "!**/internal/batch/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"

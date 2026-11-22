@@ -971,7 +971,7 @@ def record_base_reds(round_settings):
 
 def derive_gate_list(project):
     """Derives the gate list of the round from the CI workflow files of vars.gate_files, and holds gate_steps to it by vars.gate_map. A project with no gate_files derives nothing.
-    `remedy gatelist` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
+    `beehave check gate-list` stops the round (exit code 2) when the files give no step, or when gate_map does not map each derived command exactly to gate_steps names.
     See the gate list section of docs/design/agent-runs.md."""
     files = project.vars.get("gate_files", [])
 
@@ -985,7 +985,7 @@ def derive_gate_list(project):
     for name in project.gate_steps:
         steps += ["--steps", name]
 
-    command(name = "gate-list", run = ["remedy", "gatelist"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
+    command(name = "gate-list", run = ["beehave", "check", "gate-list"] + steps + ["--map", json.encode(project.vars.get("gate_map", {}))] + files, stop_on_rc = [2])
 
 # A bound for the loop of the round, because Starlark has no while. A pass ends one run or starts one, so the bound is far above the work of any real round.
 MAX_PASSES = 500

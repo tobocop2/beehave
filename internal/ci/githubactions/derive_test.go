@@ -1,4 +1,4 @@
-package gate_test
+package githubactions_test
 
 import (
 	"testing"
@@ -6,20 +6,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehave/internal/ci/githubactions"
 )
 
-func derivedAll(t *testing.T, text string) gate.Derived {
+func derivedAll(t *testing.T, text string) ci.Derived {
 	t.Helper()
 
-	got, err := gate.Derive([]gate.File{{Path: "ci.yaml", Text: text}})
+	got, err := githubactions.Derive([]ci.File{{Path: "ci.yaml", Text: text}})
 	require.NoError(t, err)
 
 	return got
 }
 
-func derived(t *testing.T, text string) []gate.Step {
+func derived(t *testing.T, text string) []ci.Step {
 	t.Helper()
 
 	return derivedAll(t, text).Steps
@@ -28,9 +28,9 @@ func derived(t *testing.T, text string) []gate.Step {
 func refusedDerive(t *testing.T, text string) string {
 	t.Helper()
 
-	_, err := gate.Derive([]gate.File{{Path: "ci.yaml", Text: text}})
+	_, err := githubactions.Derive([]ci.File{{Path: "ci.yaml", Text: text}})
 
-	var refusal *check.Refusal
+	var refusal *ci.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 
@@ -38,7 +38,7 @@ func refusedDerive(t *testing.T, text string) string {
 }
 
 // stepNames gives the names of the derived steps.
-func stepNames(got gate.Derived) []string {
+func stepNames(got ci.Derived) []string {
 	names := make([]string, len(got.Steps))
 	for i, step := range got.Steps {
 		names[i] = step.Name
@@ -48,7 +48,7 @@ func stepNames(got gate.Derived) []string {
 }
 
 // refusedNames gives the names of the refused steps and jobs.
-func refusedNames(got gate.Derived) []string {
+func refusedNames(got ci.Derived) []string {
 	names := make([]string, len(got.Refused))
 	for i, r := range got.Refused {
 		names[i] = r.Name
@@ -62,7 +62,7 @@ func TestDerive_AStepIsNamedByItsJobAndItsNameOrItsPlaceInTheJob(t *testing.T) {
 
 	steps := derived(t, readOnlyFile+"jobs:\n  b:\n    steps:\n      - run: one\n      - name: '***'\n        run: two\n      - name: Run  the Tests!\n        run: three\n")
 
-	assert.Equal(t, []gate.Step{{Name: "b:run-1", Command: "one"}, {Name: "b:run-2", Command: "two"}, {Name: "b:run-the-tests", Command: "three"}}, steps)
+	assert.Equal(t, []ci.Step{{Name: "b:run-1", Command: "one"}, {Name: "b:run-2", Command: "two"}, {Name: "b:run-the-tests", Command: "three"}}, steps)
 }
 
 func TestDerive_TheJobsAreInTheOrderOfTheFileAndTheirNamesAreNotSortedByTheMap(t *testing.T) {
@@ -70,7 +70,7 @@ func TestDerive_TheJobsAreInTheOrderOfTheFileAndTheirNamesAreNotSortedByTheMap(t
 
 	steps := derived(t, readOnlyFile+"jobs:\n  zeta:\n    steps:\n      - run: z\n  alpha:\n    steps:\n      - run: a\n")
 
-	assert.Equal(t, []gate.Step{{Name: "zeta:run-1", Command: "z"}, {Name: "alpha:run-1", Command: "a"}}, steps)
+	assert.Equal(t, []ci.Step{{Name: "zeta:run-1", Command: "z"}, {Name: "alpha:run-1", Command: "a"}}, steps)
 }
 
 func TestDerive_ACommandOfSeveralLinesIsOneStepWithoutBlankLinesOrComments(t *testing.T) {
@@ -78,7 +78,7 @@ func TestDerive_ACommandOfSeveralLinesIsOneStepWithoutBlankLinesOrComments(t *te
 
 	steps := derived(t, readOnlyFile+"jobs:\n  a:\n    steps:\n      - run: |\n          # install\n          go install x \\\n            -v\n\n          make   test\n")
 
-	assert.Equal(t, []gate.Step{{Name: "a:run-1", Command: "go install x -v; make test"}}, steps)
+	assert.Equal(t, []ci.Step{{Name: "a:run-1", Command: "go install x -v; make test"}}, steps)
 }
 
 func TestDerive_ARunStepWithNoCommandAndAStepWithNoRunAddNoStep(t *testing.T) {
@@ -86,7 +86,7 @@ func TestDerive_ARunStepWithNoCommandAndAStepWithNoRunAddNoStep(t *testing.T) {
 
 	got := derivedAll(t, readOnlyFile+"jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v7\n      - run: \"\"\n      - run: make test\n")
 
-	assert.Equal(t, []gate.Step{{Name: "a:run-3", Command: "make test"}}, got.Steps)
+	assert.Equal(t, []ci.Step{{Name: "a:run-3", Command: "make test"}}, got.Steps)
 	assert.Empty(t, got.Refused)
 }
 
@@ -95,7 +95,7 @@ func TestDerive_AnExpressionOfTheWorkflowInACommandDoesNotStopTheRead(t *testing
 
 	steps := derived(t, readOnlyFile+"jobs:\n  a:\n    steps:\n      - run: make test SLICE=${{ matrix.slice }}\n")
 
-	assert.Equal(t, []gate.Step{{Name: "a:run-1", Command: "make test SLICE=${{ matrix.slice }}"}}, steps)
+	assert.Equal(t, []ci.Step{{Name: "a:run-1", Command: "make test SLICE=${{ matrix.slice }}"}}, steps)
 }
 
 func TestDerive_ATwoStepsOfOneNameGetANumber(t *testing.T) {
@@ -127,7 +127,7 @@ func TestDerive_AStepThatTheListCannotHoldIsNamedWithItsReasonAndTheOtherStepsSt
 
 	got := derivedAll(t, readOnlyFile+"jobs:\n  a:\n    steps:\n      - name: Bad\n        run: if then fi )\n      - name: Lint\n        uses: golangci/golangci-lint-action@v8\n      - run: make test\n")
 
-	assert.Equal(t, []gate.Step{{Name: "a:run-3", Command: "make test"}}, got.Steps)
+	assert.Equal(t, []ci.Step{{Name: "a:run-3", Command: "make test"}}, got.Steps)
 	require.Len(t, got.Refused, 2)
 	assert.Equal(t, "step a:bad", got.Refused[0].Name)
 	assert.Contains(t, got.Refused[0].Reason, "(unparsed)")
@@ -138,12 +138,12 @@ func TestDerive_AStepThatTheListCannotHoldIsNamedWithItsReasonAndTheOtherStepsSt
 func TestDerive_EveryFileIsReadAndEveryDefectIsNamed(t *testing.T) {
 	t.Parallel()
 
-	_, err := gate.Derive([]gate.File{
+	_, err := githubactions.Derive([]ci.File{
 		{Path: "a.yaml", Text: "jobs: [x\n"},
 		{Path: "b.yaml", Text: "jobs: [y\n"},
 	})
 
-	var refusal *check.Refusal
+	var refusal *ci.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	assert.Contains(t, refusal.Message, "a.yaml: not a workflow file")
@@ -158,10 +158,10 @@ func TestDerive_AJobThatCanWriteOrReadsASecretIsLeftOutWhole(t *testing.T) {
 		"job_write_all": "jobs:\n  rel:\n    permissions: write-all\n    steps:\n      - run: make test\n  t:\n    steps:\n      - run: make test\n",
 		"job_env":       "jobs:\n  rel:\n    env:\n      TOKEN: ${{ secrets.TOKEN }}\n    steps:\n      - run: make test\n  t:\n    steps:\n      - run: make test\n",
 	} {
-		got, err := gate.Derive([]gate.File{{Path: "w.yaml", Text: readOnlyFile + text}})
+		got, err := githubactions.Derive([]ci.File{{Path: "w.yaml", Text: readOnlyFile + text}})
 
 		require.NoError(t, err, name)
-		assert.Equal(t, []gate.Step{{Name: "t:run-1", Command: "make test"}}, got.Steps, name)
+		assert.Equal(t, []ci.Step{{Name: "t:run-1", Command: "make test"}}, got.Steps, name)
 		require.Len(t, got.Refused, 1, name)
 		assert.Equal(t, "job w.yaml:rel", got.Refused[0].Name, name)
 	}
@@ -178,7 +178,7 @@ func TestDerive_AFileThatCanWriteGivesNoStep(t *testing.T) {
 func TestDerive_ARepeatedStepNameFromAnotherFileStaysUnique(t *testing.T) {
 	t.Parallel()
 
-	got, err := gate.Derive([]gate.File{
+	got, err := githubactions.Derive([]ci.File{
 		{Path: "a.yaml", Text: readOnlyFile + "jobs:\n  t:\n    steps:\n      - run: one\n"},
 		{Path: "b.yaml", Text: readOnlyFile + "jobs:\n  t:\n    steps:\n      - run: two\n"},
 	})

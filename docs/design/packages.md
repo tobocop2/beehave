@@ -27,6 +27,7 @@ flowchart TD
     subgraph L2["Layer 2: round policy"]
         claim["claim<br/>claim policy"]
         check["check/shell<br/>shell scan"]
+        ci["ci · ci/githubactions<br/>gate steps from CI files"]
         policy["batch · gate · pool · preflight · review · merge<br/>lane policy"]
     end
 
@@ -109,7 +110,10 @@ flowchart TD
     agent --> model
     claim --> model
     check --> model
+    ci --> check
     cli --> model
+    cli --> ci
+    main --> ci
 
     main --> flow
     cli --> flow

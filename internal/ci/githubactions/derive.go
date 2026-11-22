@@ -1,4 +1,5 @@
-package gate
+// Package githubactions reads GitHub Actions workflow files into the gate steps of a project.
+package githubactions
 
 import (
 	"cmp"
@@ -12,6 +13,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/tobocop2/beehave/internal/check/shell"
+	"github.com/tobocop2/beehave/internal/ci"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -43,22 +45,6 @@ var (
 	errAliasLoop  = errors.New("a YAML alias refers to a node that holds it")
 	errAliasBound = fmt.Errorf("with its YAML aliases expanded, it holds more than %d nodes", maxExpandedNodes)
 )
-
-// File is a CI workflow file: its path and its text.
-type File struct {
-	Path, Text string
-}
-
-// Refused is a step or a job of a CI workflow file that the gate list leaves out, with the reason.
-type Refused struct {
-	Name, Reason string
-}
-
-// Derived is what a read of the CI workflow files gives: the steps of the gate list, and the steps and jobs that the gate list leaves out.
-type Derived struct {
-	Steps   []Step
-	Refused []Refused
-}
 
 // workflowStep is one step of a job of a CI workflow file.
 type workflowStep struct {
@@ -293,8 +279,8 @@ func readOnly(node *yaml.Node) bool {
 // Derive reads the CI workflow files and returns the gate steps: one for each run step of each job, in file order. A step or a job that the gate list cannot hold is in Refused, with the reason.
 // A job stays out when it calls a reusable workflow, when its token can write, or when it, any of its steps, or the file env or defaults names a secret. A step stays out when it uses an action other than a setup or checkout action,
 // runs in a shell other than bash or sh, or has run text that the shell reader finds a git write, an opaque command or an unparsed line in. Derive refuses a file that is not a workflow, and files with no run step to give.
-func Derive(files []File) (Derived, error) {
-	out, problems := Derived{}, []string(nil)
+func Derive(files []ci.File) (ci.Derived, error) {
+	out, problems := ci.Derived{}, []string(nil)
 
 	for _, file := range files {
 		got, bad := deriveFile(file)
@@ -308,7 +294,7 @@ func Derive(files []File) (Derived, error) {
 	}
 
 	if len(problems) > 0 {
-		return Derived{}, listRefusal(problems, nil)
+		return ci.Derived{}, ci.NewRefusal(problems, nil)
 	}
 
 	out.Steps = uniqueNames(out.Steps)
@@ -316,7 +302,7 @@ func Derive(files []File) (Derived, error) {
 	return out, nil
 }
 
-func refusedLines(refused []Refused) []string {
+func refusedLines(refused []ci.Refused) []string {
 	lines := make([]string, len(refused))
 	for i, r := range refused {
 		lines[i] = r.Name + " " + r.Reason
@@ -325,24 +311,24 @@ func refusedLines(refused []Refused) []string {
 	return lines
 }
 
-func deriveFile(file File) (Derived, []string) {
+func deriveFile(file ci.File) (ci.Derived, []string) {
 	workflow, err := readWorkflow(file.Text)
 	if err != nil {
-		return Derived{}, []string{fmt.Sprintf("%s: not a workflow file: %v", file.Path, err)}
+		return ci.Derived{}, []string{fmt.Sprintf("%s: not a workflow file: %v", file.Path, err)}
 	}
 
 	return deriveJobs(file.Path, &workflow), nil
 }
 
 // deriveJobs gives the steps of each job of a workflow file, and each job that the list leaves out whole.
-func deriveJobs(path string, workflow *workflowFile) Derived {
-	var out Derived
+func deriveJobs(path string, workflow *workflowFile) ci.Derived {
+	var out ci.Derived
 
 	secrets := secretReader{}
 
 	for _, job := range workflow.Jobs {
 		if problem := jobProblem(workflow, job, secrets); problem != "" {
-			out.Refused = append(out.Refused, Refused{"job " + path + nameJoin + job.ID, problem})
+			out.Refused = append(out.Refused, ci.Refused{Name: "job " + path + nameJoin + job.ID, Reason: problem})
 
 			continue
 		}
@@ -391,17 +377,17 @@ func jobContext(file *workflowFile, job *workflowJob) stepContext {
 }
 
 // deriveJob gives the steps of a job.
-func deriveJob(job workflowJob, context stepContext) Derived {
-	var out Derived
+func deriveJob(job workflowJob, context stepContext) ci.Derived {
+	var out ci.Derived
 
 	for i, step := range job.Steps {
 		stepName := stepNameOf(job.ID, step, i+1)
 		stepShell := cmp.Or(step.Shell, context.shell)
 
 		if problem := stepProblem(step, stepShell); problem != "" {
-			out.Refused = append(out.Refused, Refused{"step " + stepName, problem})
+			out.Refused = append(out.Refused, ci.Refused{Name: "step " + stepName, Reason: problem})
 		} else if command := runCommand(step.Run); command != "" {
-			out.Steps = append(out.Steps, Step{stepName, stepRecord(command, step, stepShell, context)})
+			out.Steps = append(out.Steps, ci.Step{Name: stepName, Command: stepRecord(command, step, stepShell, context)})
 		}
 	}
 
@@ -600,7 +586,7 @@ func (q *quoteScan) close(char byte) {
 }
 
 // uniqueNames gives a later step of the same name a number, so that the list holds no name twice.
-func uniqueNames(steps []Step) []Step {
+func uniqueNames(steps []ci.Step) []ci.Step {
 	seen := map[string]bool{}
 
 	for i, step := range steps {

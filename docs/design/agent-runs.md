@@ -373,7 +373,7 @@ The engine has one check package: `check/shell`, for the shell scan. The other c
 
 | Check | Run by |
 |---|---|
-| The gate list derive | `remedy gatelist` |
+| The gate list derive | `beehave check gate-list` |
 | The job check | `remedy job` |
 | The report check | `remedy report` |
 | The papers check | `remedy papers` |
@@ -430,7 +430,7 @@ The author check compares the address of a commit with the address of the accoun
 
 The gate list is a Markdown file. Its `## Gate steps` section holds one row for each step.
 
-`remedy gatelist [--steps <name>]... [--map <json>] <workflow-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
+`beehave check gate-list [--steps <name>]... [--map <json>] <ci-file>...` derives the steps from the CI workflow files: one step for each run step of each job, named `<job>:<step name>`, in file order. The round runs it from the project var `gate_files` before its first pass, with each name of `gate_steps` as `--steps` and the project var `gate_map` as `--map`.
 
 #### The guard is the gate, not the label
 

@@ -1,4 +1,4 @@
-package gate_test
+package githubactions_test
 
 import (
 	"testing"
@@ -6,7 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehave/internal/ci/githubactions"
 )
 
 // readOnlyFile is the top of a workflow file whose token of the run can only read.
@@ -53,7 +54,7 @@ func TestDerive_EveryStructuralFormIsLeftOutOfTheList(t *testing.T) {
 	t.Parallel()
 
 	for name, text := range structuralForms() {
-		got, err := gate.Derive([]gate.File{{Path: "w.yaml", Text: text}})
+		got, err := githubactions.Derive([]ci.File{{Path: "w.yaml", Text: text}})
 
 		require.NoError(t, err, name)
 		commands := make([]string, len(got.Steps))

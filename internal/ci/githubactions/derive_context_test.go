@@ -1,4 +1,4 @@
-package gate_test
+package githubactions_test
 
 import (
 	"strconv"
@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehave/internal/ci/githubactions"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 	aliasBoundRefusal = "ci.yaml: not a workflow file: with its YAML aliases expanded, it holds more than 100000 nodes"
 )
 
-func commands(got gate.Derived) []string {
+func commands(got ci.Derived) []string {
 	out := make([]string, len(got.Steps))
 	for i, step := range got.Steps {
 		out[i] = step.Command
@@ -151,10 +152,10 @@ func TestDerive_TheRunTextKeepsTheSpacesInsideQuotes(t *testing.T) {
 func TestDerive_TheCommandsOfTheHeldListAreExactCIText(t *testing.T) {
 	t.Parallel()
 
-	got, err := gate.Derive([]gate.File{{Path: "ci.yaml", Text: readOnlyFile + "jobs:\n  j:\n    steps:\n      - run: grep -c \"a  b\" f\n"}})
+	got, err := githubactions.Derive([]ci.File{{Path: "ci.yaml", Text: readOnlyFile + "jobs:\n  j:\n    steps:\n      - run: grep -c \"a  b\" f\n"}})
 	require.NoError(t, err)
 
-	assert.Empty(t, gate.Hold(got.Steps, []string{"test"}, gate.Map{`grep -c "a  b" f`: {"test"}}), "a key copied from the CI file matches")
+	assert.Empty(t, ci.Hold(got.Steps, []string{"test"}, ci.Map{`grep -c "a  b" f`: {"test"}}), "a key copied from the CI file matches")
 }
 
 func TestDerive_AnIfWithNoBracesIsReadForTheTokenAndSecrets(t *testing.T) {
@@ -225,7 +226,7 @@ func TestDerive_AFileOfTwelveAliasLevelsIsRefusedWithinASecond(t *testing.T) {
 	refused := make(chan error, 1)
 
 	go func() {
-		_, err := gate.Derive([]gate.File{{Path: "ci.yaml", Text: nestedAliases(12, 10)}})
+		_, err := githubactions.Derive([]ci.File{{Path: "ci.yaml", Text: nestedAliases(12, 10)}})
 		refused <- err
 	}()
 
