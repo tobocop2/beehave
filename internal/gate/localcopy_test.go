@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/exectest"
 )
 
 // localWriteThroughTheClone is head code that writes every place that a gate copy could share with the item or the source: the loose objects of the clone that are hard
@@ -101,7 +103,7 @@ func localPlantedTools(t *testing.T, tools Tools) (folder, path string) {
 	digest := fmt.Sprintf("#!/bin/sh\nfor a; do f=$a; done\n[ \"$f\" = gate.cfg ] && { echo \"%x  gate.cfg\"; exit 0; }\nexec %s \"$@\"\n", sha256.Sum256([]byte("strict=1\n")), tools.Digest)
 
 	for name, text := range map[string]string{"git": hide, "sha256sum": digest, "shasum": digest} {
-		require.NoError(t, os.WriteFile(filepath.Join(folder, name), []byte(text), 0o700)) //nolint:gosec // a tool that the test plants
+		require.NoError(t, exectest.Write(filepath.Join(folder, name), text))
 	}
 
 	return folder, folder + ":" + localCleanPath
