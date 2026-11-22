@@ -312,8 +312,7 @@ The sandbox does not limit stdin or `max_new_processes` of a program gate.
 
 ### The sandbox of a command step
 
-A `command` step with `sandbox = sandbox(network = [...])` runs under the same enforcer, the same copy and the same plan as the program gate. The step does not need `sandbox = "on"` in the project. The `network` list of the call replaces `gate_network`. The `sandbox_read` and `gate_allow_write` paths of the project apply, so a project grants the Go folders that its programs need there, and never the home folder. The gate gets them the same way, and the step has no other grant. A resumed run replays the recorded result of a finished `command` step and does not run it again sandboxed.
-
+A `command` step with `sandbox = sandbox(network = [...])` runs under the same enforcer, the same copy and the same plan as the program gate. The step does not need `sandbox = "on"` in the project. The `network` list of the call replaces `gate_network`. The `sandbox_read` and `gate_allow_write` paths of the project apply, so a project grants the Go folders that its programs need there, and never the home folder. The gate gets them the same way, and the step has no other grant.
 The plan closes `~/.gitconfig`, so git would fail on it. The engine gives the program the git variables that it reads from its own git: `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, and `user.name` and `user.email` through `GIT_CONFIG_COUNT`. The step has no credential helper, no `gh` login and no SSH key. A write to the copy is lost when the step ends. See [`sandbox` of `command`](workflow-files.md#sandbox).
 
 ### The folder of the gate copies
