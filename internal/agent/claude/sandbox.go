@@ -26,6 +26,9 @@ const subprocessScrub = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"
 // envFileVar names a file that the CLI sources in its shell after the scrub, so a variable that the scrub drops, such as GIT_CONFIG_GLOBAL, still reaches git.
 const envFileVar = "CLAUDE_ENV_FILE"
 
+// tempVar names the folder under which the CLI keeps its temporary files and gives the shell its TMPDIR, so the home folder of the shell is in it too.
+const tempVar = "CLAUDE_CODE_TMPDIR"
+
 // envFile is the launch file in the run folder that exports the git variables of the plan and the home folder of the shell.
 const envFile = "sandbox-env.sh"
 
@@ -102,7 +105,7 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skil
 			[]string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"},
 			addDirs(plan.ReadDirs), skills.args, []string{"--settings", string(raw)},
 		),
-		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath},
+		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath, tempVar: plan.Temp},
 		Files:  skills.withFiles(map[string]string{envFile: exports(plan.GitEnv()) + homeLines(runDir)}),
 		Copies: skills.copies,
 		Hooked: guard != "",

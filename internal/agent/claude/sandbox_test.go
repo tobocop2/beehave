@@ -18,7 +18,7 @@ import (
 func plan() agent.SandboxPlan {
 	return agent.SandboxPlan{
 		Work: "/work/tree", GitDirs: []string{"/repo/.git"}, Read: []string{"/opt/tools"},
-		Deny: []string{"/home/o/.ssh", "/home/o/.aws"}, Network: []string{"api.example.org"},
+		Deny: []string{"/home/o/.ssh", "/home/o/.aws"}, Network: []string{"api.example.org"}, Temp: "/tmp/bh-1",
 	}
 }
 
@@ -48,7 +48,9 @@ func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses
 
 	launch := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil)
 
-	assert.Equal(t, map[string]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", "CLAUDE_ENV_FILE": "/run/sandbox-env.sh"}, launch.Env)
+	assert.Equal(t, map[string]string{
+		"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", "CLAUDE_ENV_FILE": "/run/sandbox-env.sh", "CLAUDE_CODE_TMPDIR": "/tmp/bh-1",
+	}, launch.Env, "the CLI keeps its temporary files, and the TMPDIR of the shell, in the temporary folder of the run")
 }
 
 func TestSandbox_TheShellReadsTheGitVariablesOfTheEngineFromAnEnvFile(t *testing.T) {
@@ -155,6 +157,7 @@ func TestGuard_ARunWithNoSandboxGetsNoEnvFileAndNoHomeFolder(t *testing.T) {
 
 	assert.NotContains(t, launch.Files, "sandbox-env.sh")
 	assert.NotContains(t, launch.Env, "CLAUDE_ENV_FILE")
+	assert.NotContains(t, launch.Env, "CLAUDE_CODE_TMPDIR")
 	assert.NotContains(t, launch.Env, "HOME")
 }
 
