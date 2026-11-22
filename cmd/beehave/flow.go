@@ -34,6 +34,8 @@ type logins struct {
 	pool     func(ctx context.Context, busy []string) (string, error)
 	overCap  func(ctx context.Context, busy []string) (string, error)
 	reset    func(ctx context.Context, login string) (time.Time, bool, error)
+	// room reads the usage of every runner of the agent kind through the same reader and says whether each one has room.
+	room func(ctx context.Context) bool
 }
 
 // newLogins reads the projects of the config. The pool pick reads the usage of each runner through the agent entries.
@@ -43,7 +45,19 @@ func newLogins(cfg config.Config, opts flow.Options) logins {
 
 // loginsReading is newLogins with the reader of the usage given. A test of the whole command gives a reader that needs no login.
 func loginsReading(cfg config.Config, read pool.Reader) logins {
-	return logins{projects: cfg.Projects, pool: poolPick(cfg, stepAgent, read, pool.Select), overCap: poolPick(cfg, stepAgent, read, pool.SelectOverCap), reset: poolReset(cfg, read)}
+	return logins{projects: cfg.Projects, pool: poolPick(cfg, stepAgent, read, pool.Select), overCap: poolPick(cfg, stepAgent, read, pool.SelectOverCap), reset: poolReset(cfg, read), room: poolRoom(cfg, stepAgent, read)}
+}
+
+// poolRoom returns the function that reads the usage of the runners of the agent kind and says whether each one is known and under both usage caps.
+func poolRoom(cfg config.Config, kind model.Agent, read pool.Reader) func(ctx context.Context) bool {
+	return func(ctx context.Context) bool {
+		return pool.Headroom(ctx, cfg.Runners, cfg.Pool, kind, read)
+	}
+}
+
+// Headroom says whether every runner of the agent kind has room under the usage caps. A logins value that was built with no reader has none.
+func (l logins) Headroom(ctx context.Context) bool {
+	return l.room != nil && l.room(ctx)
 }
 
 // poolReset returns the function that reads the usage of one runner and gives the time when it gets room under the usage caps, and false when the read knows none.

@@ -37,6 +37,8 @@ pool(
 # review_lookback_days is the number of days that the poll looks back for replies to answer. The default is 3. The least is 1. The most is 365.
 # per_login is the most agent steps that one login runs at once, in each of the two agent queues. The default is 1. The least is 1. The most is the lower of max_concurrent and max_review_concurrent.
 # concurrency is "static" or "adaptive". The default is "static": the agents queue holds max_concurrent.
+# With "adaptive", max_concurrent is the ceiling. The limit starts at per_login, adds one agent each minute while every login has room and a phase waits,
+# and halves (never below per_login) when a phase ends at a provider limit. beehave status shows the limit.
 # retention_days is the age in days at which `beehave run` deletes a finished run with its recorded steps. The default is 7.
 # 0 keeps every finished run. The most is 36500. A failed or canceled run is never deleted.
 # Call agents() once.

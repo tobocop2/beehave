@@ -67,7 +67,7 @@ A refusal of the ledger and a failed read are exit code 2.
 
 ### The pick
 
-A runner has room when both windows are under their caps from `config.Pool`. The pick order is:
+A runner has room when both windows are under their caps from `config.Pool`. The adaptive limit of the queue `agents` (`agents.concurrency = "adaptive"`) adds one phase only when every runner of the agent kind has room. A runner that reads unknown has no room. The pick order is:
 
 1. the lowest seven-day use,
 2. then the lowest five-hour use,

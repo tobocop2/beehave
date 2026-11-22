@@ -160,6 +160,8 @@ type logins interface {
 	Pick(ctx context.Context, project, item string, busy []string, overCap bool) (string, error)
 	// Reset reads the usage of one login and returns the time when it gets room again, and false when the usage read knows none.
 	Reset(ctx context.Context, project, login string) (time.Time, bool, error)
+	// Headroom reads the usage of every login and says whether each one is known and under both usage caps. It reads only: the controller of an adaptive agents queue calls it at any time after Launch.
+	Headroom(ctx context.Context) bool
 }
 
 // resetter is the error of a pick that found no runner under the usage caps. ResetAt returns the earliest time a runner gets room,
@@ -193,6 +195,7 @@ type beats interface {
 
 // clock sets the intervals the engine waits on. The zero value uses the real ones.
 // Tick replaces the ticker of the status tick: each value received runs one tick.
+// Adapt replaces the ticker of the controller of an adaptive agents queue: each value received runs one step at that time.
 // Poll replaces the interval at which the agents queue looks for work, at which a run looks for the result of a phase,
 // at which a phase looks again for the first trust of its run, and at which a run tries again the first renewal of a claim it did not take.
 // Release replaces the time that the git calls of one worktree release share.
@@ -216,6 +219,7 @@ type clock struct {
 	Overload  time.Duration
 	LostPoll  time.Duration
 	Tick      <-chan time.Time
+	Adapt     <-chan time.Time
 	Poll      time.Duration
 	Release   time.Duration
 	Beat      time.Duration

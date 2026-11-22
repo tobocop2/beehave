@@ -123,7 +123,7 @@ func (o Options) validateConcurrency() error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
+	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q. Set it in runners.star or in BEEHAVE_AGENTS_CONCURRENCY", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
 }
 
 // validateReviewPoll refuses a negative poll interval and a negative look-back.
@@ -217,6 +217,10 @@ type Engine struct {
 	// retention and keepRuns are Options.Retention and Options.KeepRuns.
 	retention time.Duration
 	keepRuns  bool
+	// concurrency is Options.Concurrency: the mode of the cap of the agents queue.
+	concurrency config.Concurrency
+	// limited carries each phase that ends at a provider limit to the controller of an adaptive engine. A static engine has no controller, and the channel drops every send.
+	limited chan limitSignal
 	// overCap is Options.OverCap.
 	overCap bool
 	// serving is true for the engine of beehave serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
@@ -331,7 +335,7 @@ func newEngine(opts Options, deps Deps, state store, held *flock.Flock, registry
 	}
 
 	engine := &Engine{
-		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
+		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, concurrency: opts.Concurrency, limited: make(chan limitSignal, limitSignals), overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
 		procs: &groups{path: groupsFile(state.dir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress, redact: redact},
 	}
 	warnShortSecrets(engine.logger, opts.Env)
@@ -439,8 +443,14 @@ func (e *Engine) register(opts Options) error {
 	dbos.RegisterWorkflow(e.ctx, e.hostJob, dbos.WithWorkflowName(hostJobName))
 	dbos.RegisterWorkflow(e.ctx, e.poll, dbos.WithWorkflowName(pollName))
 
+	// An adaptive engine registers the agents queue at the floor, so no burst runs before the controller writes the floor at Launch.
+	agentsLimit := maxConcurrent
+	if e.adaptive() {
+		agentsLimit = e.perLogin
+	}
+
 	return errors.Join(
-		e.registerQueue(queueName, maxConcurrent, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
+		e.registerQueue(queueName, agentsLimit, &e.queue), e.registerQueue(reviewsQueueName, opts.MaxReviewConcurrent, &e.reviewQueue),
 		e.registerItemQueues(maxConcurrent, cmp.Or(opts.MaxSpawnDepth, config.DefaultMaxSpawnDepth)), e.registerExclusiveQueue(), e.registerHostQueue(),
 	)
 }
@@ -535,7 +545,7 @@ func (e *Engine) Launch() error {
 
 	e.tidy()
 
-	return nil
+	return e.startController()
 }
 
 // sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,

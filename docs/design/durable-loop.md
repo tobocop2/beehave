@@ -87,6 +87,7 @@ The queue holds only phases. Phases run on the queue `agents`, or on the queue `
 
 - The partition key of a phase is the login. Each partition of a queue runs at most `agents.per_login` phases at once. The default is 1.
 - Each queue has a global limit: `agents.max_concurrent` for `agents` and `agents.max_review_concurrent` for `reviews`.
+- With `agents.concurrency = "adaptive"`, `agents.max_concurrent` is the ceiling of the queue `agents`, and the limit moves at run time between `agents.per_login` and that ceiling. One controller in the engine writes the limit to the queue row once each minute. It adds one when every login has room under its usage caps and a phase waits. It halves the limit, never below `agents.per_login`, when a phase ends at a provider limit, and it adds nothing until the reset time of that limit. A lower limit stops no running phase and starts no new one. `beehave status` shows the limit.
 - The queues do not lend slots. The host never runs more than the sum of the two limits.
 - One login can run one review phase and one implement phase at once.
 

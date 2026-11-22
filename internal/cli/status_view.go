@@ -24,6 +24,8 @@ type statusList struct {
 	Schedules []flow.ScheduleInfo `json:"schedules,omitempty"`
 	// Days is the per-day figures of the window. It is empty for a window with no run.
 	Days []flow.DayFigures `json:"days,omitempty"`
+	// Agents is the limit of the agents queue. It is nil for a static config.
+	Agents *flow.AgentsCap `json:"agents_concurrency,omitempty"`
 	// Poll is nil when no review poll has finished.
 	Poll *flow.PollOutput `json:"poll,omitempty"`
 	// PollNotScheduled is the cause when the review poll does not run. It is empty when the poll is scheduled.
@@ -45,7 +47,7 @@ func readStatusList(client Steering, since time.Time) (statusList, error) {
 		return statusList{}, err
 	}
 
-	if list.Days, err = client.Days(since); err != nil {
+	if err = readFigures(client, &list, since); err != nil {
 		return statusList{}, err
 	}
 
@@ -63,6 +65,29 @@ func readEngineSection(client Steering, list *statusList) (err error) {
 	list.Schedules, err = client.Schedules()
 
 	return err
+}
+
+// readFigures reads the limit of the agents queue and the per-day figures of the window.
+func readFigures(client Steering, list *statusList, since time.Time) (err error) {
+	if err = readAgentsCap(client, list); err != nil {
+		return err
+	}
+
+	list.Days, err = client.Days(since)
+
+	return err
+}
+
+// readAgentsCap reads the limit of the agents queue. A static config leaves it nil.
+func readAgentsCap(client Steering, list *statusList) error {
+	shown, adaptive, err := client.AgentsCap()
+	if err != nil || !adaptive {
+		return err
+	}
+
+	list.Agents = &shown
+
+	return nil
 }
 
 // readEngine reads what holds the state folder. It returns nil when no engine does.
