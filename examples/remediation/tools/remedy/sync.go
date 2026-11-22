@@ -6,7 +6,7 @@ import (
 	"flag"
 	"io"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/roundsync"
+	"github.com/tobocop2/beehave/internal/roundsync"
 )
 
 const (

@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 func TestDry_AssignedButNotIdleTheNoticeMayGoOut(t *testing.T) {
@@ -141,7 +140,7 @@ func TestApply_AFailedReadOfTheCommentsBeforeThePostPostsNothing(t *testing.T) {
 	s.secondViewErr = errDown
 	_, err := s.try(takeover.ModeApply)
 
-	var refusal *check.Refusal
+	var refusal *takeover.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	require.ErrorIs(t, err, errDown)
@@ -186,7 +185,7 @@ func TestApply_AFailedCommentIsARefusal(t *testing.T) {
 	s.postErr = errDown
 	_, err := s.try(takeover.ModeApply)
 
-	var refusal *check.Refusal
+	var refusal *takeover.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	require.ErrorIs(t, err, errDown)

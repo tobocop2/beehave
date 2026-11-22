@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 func comments(pairs ...string) []model.Comment {
@@ -97,7 +96,7 @@ func TestRead_APullRequestThatCannotBeReadIsARefusal(t *testing.T) {
 	s.viewErr = errDown
 	_, err := s.try(takeover.ModeDry)
 
-	var refusal *check.Refusal
+	var refusal *takeover.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	require.ErrorIs(t, err, errDown)
@@ -111,7 +110,7 @@ func TestRead_ReviewCommentsThatCannotBeReadAreARefusal(t *testing.T) {
 	s.rowsErr = errDown
 	_, err := s.try(takeover.ModeDry)
 
-	var refusal *check.Refusal
+	var refusal *takeover.Refusal
 
 	require.ErrorAs(t, err, &refusal)
 	assert.Equal(t, "cannot read the review comments of #7.", refusal.Message)

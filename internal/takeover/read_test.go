@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 const badTime = "2026-10-23T11:00:00"
@@ -36,7 +35,7 @@ func TestRead_ATimeThatIsNotAUTCStampIsRefusedInEverySource(t *testing.T) {
 		change(s)
 		_, err := s.try(takeover.ModeDry)
 
-		var refusal *check.Refusal
+		var refusal *takeover.Refusal
 
 		require.ErrorAs(t, err, &refusal, name)
 		assert.Equal(t, "cannot read the time '"+badTime+"' as a UTC timestamp.", refusal.Message, name)

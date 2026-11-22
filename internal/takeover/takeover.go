@@ -16,6 +16,11 @@ const (
 	CodeRule  = 3
 )
 
+// Refusal is a step that cannot run: a read failed or a value has the wrong shape.
+type Refusal struct{ Message string }
+
+func (r *Refusal) Error() string { return r.Message }
+
 // Reader is the forge reads and the one write of the takeover.
 type Reader interface {
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
