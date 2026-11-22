@@ -60,7 +60,7 @@ func idlePrior(t *testing.T, engine *Engine, item string, how string) {
 	require.NoError(t, os.WriteFile(file, []byte(body), 0o600))
 
 	if how == "wait" {
-		in, err := pinnedInput(item, testProject, file)
+		in, err := pinnedInput(item, testProject, file, modeOff())
 		require.NoError(t, err)
 
 		_, err = dbos.RunWorkflow(engine.ctx, engine.item, in, dbos.WithQueue(engine.itemQueues[1]), dbos.WithWorkflowID(runID(item, 1)))

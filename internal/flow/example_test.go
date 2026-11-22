@@ -82,7 +82,7 @@ func runPipeline(engine *Engine, file string) (ItemResult, error) {
 
 // runPipelineOf is runPipeline for the item `item`.
 func runPipelineOf(engine *Engine, item, file string) (ItemResult, error) {
-	in, err := pinnedInput(item, testProject, file)
+	in, err := pinnedInput(item, testProject, file, modeOff())
 	if err != nil {
 		return ItemResult{}, err
 	}

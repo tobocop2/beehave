@@ -264,7 +264,7 @@ func TestRound_ATimeoutReturnsTheStateWaitingWithTheBaseAndThePullRequestAndCuts
 	engine := waitOverEngine(t, rig)
 
 	// The entry round keeps its value in the result, which main drops.
-	in, err := pinnedInput(testItem, testProject, rig.file)
+	in, err := pinnedInput(testItem, testProject, rig.file, modeOff())
 	require.NoError(t, err)
 
 	in.Entry = "round"

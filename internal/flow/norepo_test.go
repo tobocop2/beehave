@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // plainRig is an agent rig whose item folder is a plain folder with no git repository, for a project with no repository.
@@ -20,7 +21,7 @@ func plainRig(t *testing.T) *agentRig {
 	h.trees = &fakeTrees{dir: dir}
 	h.repository = func(string) bool { return false }
 
-	return &agentRig{h: h, dir: dir}
+	return &agentRig{h: h, dir: dir, sandbox: model.SandboxOff}
 }
 
 func TestAgentStep_AProjectWithNoRepositoryRunsTheAgentInAPlainFolderAndRewroteIsFalse(t *testing.T) {

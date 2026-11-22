@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,6 +239,9 @@ func runOldRecord(t *testing.T, rig *agentRig, flow string) (ItemResult, error) 
 	return engine.result(handle, testItem)
 }
 
+// refusedStartBound bounds the return of a refused start. The refusal comes before any run is stored, so it returns at once.
+const refusedStartBound = 30 * time.Second
+
 func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 	t.Parallel()
 
@@ -256,6 +260,19 @@ func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 
 			return err
 		},
+		"an entry run with no option": func(t *testing.T, rig *agentRig, file string) error {
+			t.Helper()
+
+			in, err := pinnedInput(testItem, testProject, file)
+			if err != nil {
+				return err
+			}
+
+			in.Entry = "main"
+			_, err = rig.h.engine(t).run(in)
+
+			return err
+		},
 		"join with no option": func(t *testing.T, rig *agentRig, file string) error {
 			t.Helper()
 			rig.h.engine(t)
@@ -270,7 +287,18 @@ func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 			rig := newAgentRig(t)
 			rig.reply("", exited)
 
-			err := start(t, rig, flowFile(t, agentFlow(``), "x"))
+			file := flowFile(t, agentFlow(``), "x")
+			done := make(chan error, 1)
+
+			go func() { done <- start(t, rig, file) }()
+
+			var err error
+
+			select {
+			case err = <-done:
+			case <-time.After(refusedStartBound):
+				require.FailNow(t, "a refused start must return at once and leave nothing to wait for")
+			}
 
 			require.ErrorIs(t, err, errNoSandboxMode)
 			assert.Empty(t, rig.h.agents.seen(), "no step of the run started")

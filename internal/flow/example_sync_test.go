@@ -293,7 +293,7 @@ func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWi
 
 	engine := waitOverEngine(t, rig)
 
-	in, err := pinnedInput(testItem, testProject, rig.file)
+	in, err := pinnedInput(testItem, testProject, rig.file, modeOff())
 	require.NoError(t, err)
 
 	in.Entry = "round"

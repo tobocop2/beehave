@@ -421,7 +421,7 @@ func TestNestedSpawn_AnEngineThatStartsWithALowerCapReplaysTheSpawnOfARunAtDepth
 func queueOldRoot(t *testing.T, client *Client) {
 	t.Helper()
 
-	in, err := pinnedInput(testItem, testProject, writeFlow(t, chainFlow("l2")))
+	in, err := pinnedInput(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 	require.NoError(t, err)
 
 	_, err = dbos.Enqueue[ItemResult](client.flow, itemsQueueName, itemName, in, dbos.WithEnqueueWorkflowID(runID(testItem, 1)), dbos.WithEnqueueApplicationVersion(client.version))

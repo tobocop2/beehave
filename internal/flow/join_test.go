@@ -53,7 +53,7 @@ func TestJoinRun_TwoJoinsOfOneItemMakeOneRun(t *testing.T) {
 	client := harness.client(t, testVersion)
 	file := writeFlow(t, bodyFlow("wait(name = \"ask\", question = \"What now?\")\n"))
 
-	in, err := pinnedInput(testItem, testProject, file)
+	in, err := pinnedInput(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// The run waits for an answer, so it is open while both joins plan. The second join cannot see a finished run and start attempt 2.
@@ -91,7 +91,7 @@ func TestJoinRun_AStatusThatCannotBeReadStopsTheWait(t *testing.T) {
 
 	file := writeFlow(t, bodyFlow("wait(name = \"ask\", question = \"What now?\")\n"))
 
-	in, err := pinnedInput(testItem, testProject, file)
+	in, err := pinnedInput(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	handle, err := client.planAndHandle(t.Context(), in)
