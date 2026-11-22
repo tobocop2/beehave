@@ -104,7 +104,7 @@ func TestExamplePush_ASettleThatCommitsPushesItsHeadLeasedOnTheLoopHeadAndTheIte
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "fix all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "fix all"}))
 	outcome := receive(t, done)
 	require.NoError(t, outcome.err)
 

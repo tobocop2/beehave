@@ -70,7 +70,7 @@ func TestJoinRun_TwoJoinsOfOneItemMakeOneRun(t *testing.T) {
 
 		return struct{}{}, statusErr == nil && len(infos) == 1 && infos[0].Question != "", nil
 	}})
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 
 	firstResult, err := first.GetResult()
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestJoinRun_AnOpenRunIsJoinedAndNotEnqueuedAgain(t *testing.T) {
 
 		return struct{}{}, err == nil && len(infos) == 1 && infos[0].Question != "", nil
 	}})
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 
 	require.NoError(t, receive(t, started))
 	require.NoError(t, receive(t, joined))

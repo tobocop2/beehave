@@ -216,6 +216,32 @@ func TestResume_AFinishedPhaseDoesNotRunAgainWhenALaterPhaseFailed(t *testing.T)
 	assert.Equal(t, []string{"Work on the item.\n", "Second.\n", "Second.\n"}, prompts, "the first agent does not run again and the second does")
 }
 
+func TestRewindPoint_AReceiveOfAWaitGoesBackToTheDeadlineOfTheWaitOnlyOverReceives(t *testing.T) {
+	t.Parallel()
+
+	failed := dbos.StepInfo{StepID: 9, StepName: receiveStepName, Error: errFake}
+
+	timed := []dbos.StepInfo{
+		{StepID: 5, StepName: "DBOS.setEvent"},
+		{StepID: 6, StepName: deadlineStep},
+		{StepID: 7, StepName: receiveStepName},
+		{StepID: 8, StepName: sleepStep},
+		failed,
+	}
+	assert.Equal(t, 6, rewindPoint(timed, failed), "a wait that counted nothing records its deadline again")
+
+	counted := []dbos.StepInfo{
+		{StepID: 5, StepName: deadlineStep},
+		{StepID: 6, StepName: receiveStepName},
+		{StepID: 7, StepName: sleepStep},
+		{StepID: 8, StepName: "DBOS.setEvent"},
+		failed,
+	}
+	assert.Equal(t, 9, rewindPoint(counted, failed), "a wait that counted a voice keeps its receive")
+
+	assert.Equal(t, 9, rewindPoint([]dbos.StepInfo{failed}, failed), "a receive with no step before it keeps its own step")
+}
+
 func TestOpenStart_AFinishedAgentStepClosesTheMarksBeforeIt(t *testing.T) {
 	t.Parallel()
 

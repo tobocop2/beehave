@@ -93,7 +93,7 @@ func TestWaitRemind_StatusShowsTheNextReminderAndMovesItWhenOneIsSent(t *testing
 	waitOn(t, waiting[struct{}]{what: "the run to send one reminder", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, remindedIs(t, client, 1), nil }})
 	assert.WithinDuration(t, start.Add(54*time.Minute), askedNow(t, client).NextRemind, time.Second)
 
-	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "ana", Text: "yes"}))
 	require.NoError(t, receive(t, done).err)
 }
 
@@ -118,7 +118,7 @@ func TestWaitRemind_ALateWakeSendsEachOwedReminderOnceInOrder(t *testing.T) {
 	waitOn(t, waiting[struct{}]{what: "the run to send two reminders", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, remindedIs(t, client, 2), nil }})
 	assert.True(t, askedNow(t, client).NextRemind.IsZero(), "no reminder is left")
 
-	require.NoError(t, client.AnswerAs(testItem, "bo", "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "bo", Text: "yes"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, []string{remindStepPrefix + "1", remindStepPrefix + "2"}, remindSteps(t, client))

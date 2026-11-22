@@ -3,6 +3,8 @@ package flow
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,14 +13,15 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 const (
 	// askKey is the event in which an open wait shows who it asks. A wait that names no one and sets no choices sets nothing.
 	askKey = "ask"
-	// voiceTopic carries the answers to a wait that names people or choices. A plain wait receives on ownerTopic.
-	voiceTopic = "voice"
-	// deadlineStep records the moment a wait with people ends, so each receive of the wait reads the time that is left.
+	// deadlineStep records the moment a wait with a timeout ends, so each receive of the wait reads the time that is left.
 	deadlineStep = "wait:deadline"
 	// waitIDStep records the id of a wait with people, so a replay and the voices it counts name the same wait.
 	waitIDStep = "wait:id"
@@ -48,7 +51,7 @@ type Asked struct {
 	NextRemind time.Time `json:"next_remind,omitzero"`
 }
 
-// voice is one answer to a wait that names people or choices. From is empty when the wait names no people.
+// voice is the value of one answer on the inbox. Wait is empty for an answer to a plain wait, and From is empty when the wait names no people.
 type voice struct {
 	Wait string `json:"wait,omitempty"`
 	From string `json:"from"`
@@ -121,7 +124,8 @@ func (t *tally) enough(a Asked) bool {
 
 // waitVoices asks the people a wait names and counts their answers until the quorum is reached or the deadline passes.
 // Each answer is one recorded receive, and each receive that follows reads the deadline from one recorded step, so a replay counts the same answers.
-func (e *Engine) waitVoices(ctx dbos.Context, project, item string, plan waitPlan) (heard, error) {
+func (s *script) waitVoices(plan waitPlan) (heard, error) {
+	ctx, project, item := s.ctx, s.in.Project, s.in.Item
 	asked, count := plan.asked, &tally{answers: map[string]string{}}
 	asked.Question, asked.Wait = plan.question, plan.id
 
@@ -131,9 +135,9 @@ func (e *Engine) waitVoices(ctx dbos.Context, project, item string, plan waitPla
 		return heard{}, err
 	}
 
-	e.announce(ctx, project, item, plan.question)
+	s.e.announce(ctx, project, item, plan.question)
 
-	timedOut, err := e.within(ctx, item, plan.deadline, plan.remind, &asked, count)
+	timedOut, err := s.within(plan.deadline, plan.remind, &asked, count)
 	if err == nil {
 		err = dbos.SetEvent(ctx, askKey, Asked{})
 	}
@@ -146,24 +150,24 @@ func (e *Engine) waitVoices(ctx dbos.Context, project, item string, plan waitPla
 }
 
 // within records the end of the deadline and counts voices until the quorum or that end. A wait with reminders sends each one when it falls due.
-func (e *Engine) within(ctx dbos.Context, item string, deadline time.Duration, shares []float64, asked *Asked, count *tally) (bool, error) {
-	end, err := e.endOf(ctx, deadline)
+func (s *script) within(deadline time.Duration, shares []float64, asked *Asked, count *tally) (bool, error) {
+	end, err := s.e.endOf(s.ctx, deadline)
 	if err != nil {
 		return false, err
 	}
 
 	if len(shares) == 0 {
-		return e.collect(ctx, item, end, asked, count)
+		return s.collect(end, asked, count)
 	}
 
 	plan := remindersOf(end, deadline, shares)
 	asked.Reminders, asked.NextRemind = len(plan.dues), plan.next(0)
 
-	if err := show(ctx, item, askKey, *asked, "who it asks"); err != nil {
+	if err := show(s.ctx, s.in.Item, askKey, *asked, "who it asks"); err != nil {
 		return false, err
 	}
 
-	return e.collectReminding(ctx, item, plan, asked, count)
+	return s.collectReminding(plan, asked, count)
 }
 
 // schedule is the moments at which the reminders of a wait fall due, in order, and the moment the wait ends.
@@ -200,21 +204,21 @@ type due struct {
 
 // collectReminding counts voices like collect, and each time a receive ends with no voice it sends the reminders that are owed.
 // A receive lasts until the next reminder, the deadline or one wait window, whichever comes first, so the clock is read often enough.
-func (e *Engine) collectReminding(ctx dbos.Context, item string, plan schedule, asked *Asked, count *tally) (bool, error) {
+func (s *script) collectReminding(plan schedule, asked *Asked, count *tally) (bool, error) {
 	for !count.enough(*asked) {
-		v, err := dbos.Recv[voice](ctx, voiceTopic, e.reminderWindow(plan, asked.Reminded))
+		v, timedOut, err := s.hear(s.e.deps.Clock.reading().Add(s.e.reminderWindow(plan, asked.Reminded)))
 
 		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			if ended, sendErr := e.remindDue(ctx, item, plan, asked); sendErr != nil || ended {
-				return ended, sendErr
-			}
 		case err != nil:
 			return false, err
+		case timedOut:
+			if ended, sendErr := s.e.remindDue(s.ctx, s.in.Item, plan, asked); sendErr != nil || ended {
+				return ended, sendErr
+			}
 		case v.Wait == asked.Wait && asked.accepts(v):
 			count.take(asked, v)
 
-			if shown := show(ctx, item, askKey, *asked, "who it asks"); shown != nil {
+			if shown := show(s.ctx, s.in.Item, askKey, *asked, "who it asks"); shown != nil {
 				return false, shown
 			}
 		}
@@ -303,9 +307,9 @@ func (t *tally) outcome(timedOut bool) heard {
 }
 
 // listen waits for the owner. A wait that names people or choices counts their answers; any other wait takes the first plain answer.
-func (e *Engine) listen(ctx dbos.Context, project, item string, plan waitPlan) (heard, error) {
+func (s *script) listen(plan waitPlan) (heard, error) {
 	if plan.addressed() {
-		id, err := runStep(e, ctx, waitIDStep, func(context.Context) (string, error) {
+		id, err := runStep(s.e, s.ctx, waitIDStep, func(context.Context) (string, error) {
 			return strconv.FormatInt(time.Now().UnixNano(), 36), nil
 		})
 		if err != nil {
@@ -314,21 +318,21 @@ func (e *Engine) listen(ctx dbos.Context, project, item string, plan waitPlan) (
 
 		plan.id = id
 
-		return e.waitVoices(ctx, project, item, plan)
+		return s.waitVoices(plan)
 	}
 
-	answer, timedOut, err := e.waitOwnerUntil(ctx, project, item, plan.question, plan.deadline)
+	answer, timedOut, err := s.waitOwnerUntil(plan.question, plan.deadline)
 
 	return heard{answer: answer, timedOut: timedOut}, err
 }
 
 // collect counts voices until the quorum is reached or the deadline passes, and reports whether the deadline passed.
 // A voice that the wait refuses is dropped. Each counted voice updates who the wait shows as heard.
-func (e *Engine) collect(ctx dbos.Context, item string, end time.Time, asked *Asked, count *tally) (bool, error) {
+func (s *script) collect(end time.Time, asked *Asked, count *tally) (bool, error) {
 	var shown error
 
 	for shown == nil && !count.enough(*asked) {
-		v, got, late, err := e.nextVoice(ctx, end)
+		v, got, late, err := s.nextVoice(end)
 
 		switch {
 		case err != nil:
@@ -337,7 +341,7 @@ func (e *Engine) collect(ctx dbos.Context, item string, end time.Time, asked *As
 			return true, nil
 		case got && v.Wait == asked.Wait && asked.accepts(v):
 			count.take(asked, v)
-			shown = show(ctx, item, askKey, *asked, "who it asks")
+			shown = show(s.ctx, s.in.Item, askKey, *asked, "who it asks")
 		}
 	}
 
@@ -346,9 +350,9 @@ func (e *Engine) collect(ctx dbos.Context, item string, end time.Time, asked *As
 
 // nextVoice receives one voice. late is true when the deadline passed with no voice. A window of a wait with no deadline that ends with no voice
 // gives got false, and the caller receives again.
-func (e *Engine) nextVoice(ctx dbos.Context, end time.Time) (v voice, got, late bool, err error) {
-	v, err = e.receiveVoice(ctx, end)
-	if errors.Is(err, context.DeadlineExceeded) {
+func (s *script) nextVoice(end time.Time) (v voice, got, late bool, err error) {
+	v, timedOut, err := s.hear(end)
+	if timedOut {
 		return voice{}, false, !end.IsZero(), nil
 	}
 
@@ -371,16 +375,25 @@ func (e *Engine) endOf(ctx dbos.Context, deadline time.Duration) (time.Time, err
 	return time.UnixMilli(millis), nil
 }
 
-// receiveVoice waits for one voice. With a deadline the receive ends at it, and a receive that finds the deadline gone still reads a voice that is waiting.
-// With no deadline, the caller receives again when a window of the wait ends.
-func (e *Engine) receiveVoice(ctx dbos.Context, end time.Time) (voice, error) {
-	window := e.waitWindow()
+// hear takes the next answer from the inbox of the run: the oldest one that a receive of another topic held, else one that arrives before end.
+// A zero end is one wait window, so a wait with no deadline receives again when the window ends. timedOut is true when end passed with no answer.
+func (s *script) hear(end time.Time) (v voice, timedOut bool, err error) {
+	got, held := s.held(answerTopic)
+	if !held {
+		if end.IsZero() {
+			end = s.e.deps.Clock.reading().Add(s.e.waitWindow())
+		}
 
-	if !end.IsZero() {
-		window = max(end.Sub(e.deps.Clock.reading()), time.Millisecond)
+		if got, timedOut, err = s.await(answerTopic, end); err != nil || timedOut {
+			return voice{}, timedOut, err
+		}
 	}
 
-	return dbos.Recv[voice](ctx, voiceTopic, window)
+	if err = json.Unmarshal(got.Value, &v); err != nil {
+		return voice{}, false, fmt.Errorf("item %s got an answer from %s that holds no text: %w", s.in.Item, got.Sender, err)
+	}
+
+	return v, false, nil
 }
 
 // waitWindow is the time of one receive of a wait with no deadline.
@@ -410,11 +423,32 @@ func withZeros(outputs, zeros map[string]any) map[string]any {
 // waitZeros are the fields that the result of a wait gained after the first records: no one answered by name.
 func waitZeros() map[string]any { return map[string]any{"answers": map[string]string{}} }
 
-// AnswerAs sends the answer of one named person to the open run of an item. A wait that names people accepts only them, and a wait with choices only those texts.
-// The name is not proved: beehave has no key store, and anyone who can run beehave answer on the run can give any name that the wait asks.
-func (c *Client) AnswerAs(item, from, text string) error {
-	if text == "" {
+// Reply is an answer to the open wait of a run: the text, the person who gives it, and the key that makes a repeat of it count once. An empty Key gets a fresh one.
+type Reply struct {
+	From string
+	Text string
+	Key  string
+}
+
+// check refuses an answer with no text, and a key that the rules of a message refuse.
+func (r Reply) check() error {
+	if r.Text == "" {
 		return fmt.Errorf("%w: write the answer after the item", errEmptyAnswer)
+	}
+
+	if r.Key == "" {
+		return nil
+	}
+
+	return workflow.MessageName("key", r.Key)
+}
+
+// Reply sends an answer to the open run of an item. A wait that names people accepts only them, and a wait with choices only those texts.
+// The name is not proved: beehave has no key store, and anyone who can run beehave answer on the run can give any name that the wait asks.
+// A second Reply with the same key inserts nothing.
+func (c *Client) Reply(item string, reply Reply) error {
+	if err := reply.check(); err != nil {
+		return err
 	}
 
 	last, err := c.latest(item)
@@ -427,26 +461,37 @@ func (c *Client) AnswerAs(item, from, text string) error {
 		return err
 	}
 
-	return c.deliver(info, from, text)
+	return c.deliver(info, reply)
 }
 
-// deliver sends an answer to the run on the topic that its open wait receives on, after the wait accepts it.
-func (c *Client) deliver(info RunInfo, from, text string) error {
-	id, asked := info.ID, info.Asked
+// deliver sends an answer to the inbox of the run, after the open wait accepts it. The idempotency key of the DBOS send is the key of the answer under the reserved topic, so it cannot equal the key of a beehave send: that key may not start with the reserved prefix.
+func (c *Client) deliver(info RunInfo, reply Reply) error {
+	asked := info.Asked
 
-	if asked == nil {
-		if from != "" {
-			return fmt.Errorf("%w: this wait names no people, so leave out --as", errRefusedAnswer)
+	switch {
+	case asked == nil && reply.From != "":
+		return fmt.Errorf("%w: this wait names no people, so leave out --as", errRefusedAnswer)
+	case asked != nil:
+		if err := asked.refuses(reply.From, reply.Text); err != nil {
+			return err
 		}
-
-		return dbos.Send(c.flow, id, text, ownerTopic)
 	}
 
-	if err := asked.refuses(from, text); err != nil {
-		return err
+	reply.Key = cmp.Or(reply.Key, strings.ToLower(rand.Text()))
+
+	return dbos.Send(c.flow, info.ID, reply.envelope(asked), inboxTopic, dbos.WithIdempotencyKey(answerTopic+"."+reply.Key))
+}
+
+// envelope is the message that carries the answer on the inbox. It names the wait that the answer is for, when the wait asks people.
+func (r Reply) envelope(asked *Asked) envelope {
+	value := voice{From: r.From, Text: r.Text}
+	if asked != nil {
+		value.Wait = asked.Wait
 	}
 
-	return dbos.Send(c.flow, id, voice{Wait: asked.Wait, From: from, Text: text}, voiceTopic)
+	raw, _ := json.Marshal(value) //nolint:errcheck // three strings always encode
+
+	return envelope{Topic: answerTopic, Sender: cmp.Or(r.From, answerSender), ID: r.Key, Value: json.RawMessage(agent.Redactor()(string(raw)))}
 }
 
 // questionText is the question that the ask event holds. A wait that asks people sets that event and no other, and clears it with one write, so it alone shows which kind of wait is open.

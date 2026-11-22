@@ -99,7 +99,9 @@ func TestFacts_TheVarsKeepTheirNumberTypesOnAReplayFromTheRecordedFacts(t *testi
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	outcome := receive(t, done)
 

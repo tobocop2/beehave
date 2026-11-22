@@ -42,7 +42,7 @@ func TestMerge_ARefusedMemberOfABatchOfOneIsRejectedAndLandsNothing(t *testing.T
 	done := rig.runItemOne(t, engine)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer("1", "no"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "no"}))
 
 	got := receive(t, done)
 
@@ -61,7 +61,7 @@ func TestMerge_AnOwnerLineThatNamesTheNewIssueLetsTheMemberLand(t *testing.T) {
 	done := rig.runItemOne(t, engine)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer("1", "keep #13"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}))
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
@@ -166,8 +166,8 @@ func TestMerge_AMemberOfAnotherItemTakesItsBaselineFromTheEarlierRunOfThatMember
 	assert.NotContains(t, question, "#12 now")
 	assert.Contains(t, question, `Answer in the form "keep #N[, #N ...]", for example "keep #13".`, "the question shows the form and an example")
 	assert.Contains(t, question, "Answer with beehave answer 9.", "the question names the run whose wait the owner answers")
-	require.ErrorContains(t, rig.h.client(t, testVersion).Answer("1", "keep #13"), "waits for no answer", "the member is not the run that waits")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("9", "keep #13"))
+	require.ErrorContains(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}), "waits for no answer", "the member is not the run that waits")
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 }
@@ -184,7 +184,7 @@ func TestMerge_TheScopeQuestionListsTheIssuesOfTheFirstReviewNextToTheNewIssue(t
 	question := questionOf(t, rig.h, "9")
 
 	assert.Contains(t, question, "closes #13 now, and did not at its first review (then: #12 #14).", "the owner sees the issues that the new one is compared against")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("9", "keep #13"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
 }
 
@@ -215,7 +215,7 @@ func TestMerge_ASecondMergeCallOfAMemberInTheSameRunAsksNoSecondQuestionForAKept
 	}()
 
 	questionOf(t, rig.h, "9")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("9", "keep #13"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "keep #13"}))
 
 	select {
 	case outcome := <-done:
@@ -274,7 +274,7 @@ func TestMerge_AMemberWhoseOwnerAnswerIsNoIsRejectedAndTheOtherMembersLand(t *te
 	done := rig.runMergeAs(t, engine, "9", "1 3")
 
 	questionOf(t, rig.h, "9")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("9", "no"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("9", Reply{Text: "no"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, []string{"3"}, rig.merger.landed(), "the refused member is rejected and the other member lands")
@@ -295,7 +295,7 @@ func answerTheScopeQuestion(t *testing.T, closing [][]int, answer string) (*batc
 	done := rig.runItemOne(t, engine)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer("1", answer))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: answer}))
 	require.NoError(t, receive(t, done).err)
 
 	if ran := rig.h.commands.ran(); len(ran) > 0 {
@@ -350,7 +350,7 @@ func TestMerge_ASetThatChangesAfterTheFirstGateIsComparedWithTheFirstGate(t *tes
 	}()
 
 	question := questionOf(t, rig.h, "1")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("1", "no"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "no"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Contains(t, question, "item 1 closes #13 now", "the second gate reads nothing, so #13 is new against the first gate")
@@ -368,7 +368,7 @@ func TestMerge_ANewRunOfTheMemberKeepsTheScopeOfItsFirstReview(t *testing.T) {
 	done := rig.runItemOne(t, engine)
 
 	questionOf(t, rig.h, "1")
-	require.NoError(t, rig.h.client(t, testVersion).Answer("1", "keep #13"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply("1", Reply{Text: "keep #13"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, []string{"1"}, rig.merger.landed(), "the second run compares with the first review of the first run")

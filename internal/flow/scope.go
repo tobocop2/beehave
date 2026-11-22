@@ -207,7 +207,7 @@ func (b *batchBase) holdScope(m batch.Member) (string, error) {
 		return "", nil
 	}
 
-	answer, err := b.s.e.waitOwner(b.s.ctx, b.s.in.Project, b.s.in.Item, b.scopeQuestion(m.Item, read.Fresh, read.Then))
+	answer, err := b.s.waitOwner(b.scopeQuestion(m.Item, read.Fresh, read.Then))
 	if err != nil {
 		return "", err
 	}

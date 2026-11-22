@@ -59,18 +59,18 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	engine := harness.engine(t)
 	client := harness.client(t, testVersion)
 
-	require.ErrorIs(t, client.Answer("not an id", "x"), ErrBadItem)
-	require.ErrorContains(t, client.Answer("not an id", "x"), "use an item id such as 12 or fix-login")
+	require.ErrorIs(t, client.Reply("not an id", Reply{Text: "x"}), ErrBadItem)
+	require.ErrorContains(t, client.Reply("not an id", Reply{Text: "x"}), "use an item id such as 12 or fix-login")
 	require.ErrorIs(t, client.Cancel("not an id"), ErrBadItem)
 	require.ErrorIs(t, client.Resume("not an id"), ErrBadItem)
-	require.ErrorIs(t, client.Answer(testItem, ""), errEmptyAnswer)
-	require.ErrorIs(t, client.Answer(testItem, "x"), errNoRun)
+	require.ErrorIs(t, client.Reply(testItem, Reply{Text: ""}), errEmptyAnswer)
+	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), errNoRun)
 	require.ErrorContains(t, client.Cancel(testItem), "start item 12 with beehave run 12")
 
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	require.ErrorIs(t, client.Answer(testItem, "x"), errWrongState)
+	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), errWrongState)
 	require.ErrorIs(t, client.Cancel(testItem), errWrongState)
 	require.ErrorIs(t, client.Resume(testItem), errWrongState)
 	require.ErrorContains(t, client.Resume(testItem), "only a cancelled or failed run resumes") //nolint:misspell // user-facing state word
@@ -136,7 +136,7 @@ func TestClient_CancelStopsTheRunAndResumeReopensIt(t *testing.T) {
 	require.Error(t, receive(t, done).err, "the run ends after another process canceled it")
 
 	require.NoError(t, client.Resume(testItem))
-	require.NoError(t, client.Answer(testItem, "go on"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
 	waitOn(t, waiting[struct{}]{what: "the resumed run to end done", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
 		rows, statusErr := client.Status()
 

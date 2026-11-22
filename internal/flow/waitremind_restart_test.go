@@ -59,7 +59,7 @@ func TestWaitRemind_ARestartNeitherRepeatsASentReminderNorLosesAnOwedOne(t *test
 
 	waitOn(t, waiting[struct{}]{what: "the run to send two reminders", run: runOfEngine(t, second), read: func() (struct{}, bool, error) { return struct{}{}, remindedIs(t, client, 2), nil }})
 
-	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "ana", Text: "yes"}))
 
 	_, err = resultOfHandle(t, handle)
 	require.NoError(t, err)

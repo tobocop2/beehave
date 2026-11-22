@@ -45,7 +45,7 @@ func parkedRigSeeded(t *testing.T, parked string, seed map[string]string) (*agen
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 
 	return rig, writer, receive(t, done)
 }

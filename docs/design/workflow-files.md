@@ -551,7 +551,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - For `"run"`, `runs` lists every run of the call that ended in the read that found the first one, in the order of the call, each as `struct(item, run, outcome)`. `run` and `outcome` are the first of them: `run` is the run as `spawn` returned it and `outcome` has the fields of a result of `gather`. For `"message"`, `message` is the value of the message. For `"message"` and `"timer"`, `run` and `outcome` are `None` and `runs` is empty.
 - A run that an earlier `first_of` call of this run returned, as `run` or in `runs`, does not win again, so a loop passes the same list on every turn. A call with no topics and no timeout, and no run left, is refused.
 - A run that failed with retries left starts again as in `gather`, and does not end the wait.
-- The topics are user topics. The topic `beehave.child` is reserved: a run of a child sends it to its parent when it ends, and `recv` skips it.
+- The topics are user topics. The topic `beehave.child` is reserved: a run of a child sends it to its parent when it ends, and `recv` skips it. The topic `beehave.answer` is reserved: `beehave answer` sends it, and only `wait` reads it.
 - Each turn reads the rows of the runs in the recorded step `first_of:<name>#<n>.look<turn>`, then waits on the inbox. The end notice wakes the parent at once. If the notice does not come, a turn ends after 60 seconds and reads the rows again, so a lost notice costs one minute and never a hang.
 - A timeout is the recorded step `first_of:<name>#<n>.deadline`, as in `gather`. A restart keeps the first deadline.
 - A message on another topic stays in the buffer of the run until a `recv` or a `first_of` call names its topic.

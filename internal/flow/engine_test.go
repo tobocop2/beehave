@@ -248,7 +248,7 @@ func TestRun_AnOpenRunOfTheItemIsJoinedNotStartedAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, infos, 1)
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 
 	firstOutcome, secondOutcome := receive(t, first), receive(t, second)
 	require.NoError(t, firstOutcome.err)
@@ -329,11 +329,11 @@ func TestRun_AnOtherVersionStrandsTheOpenRunAndEveryCommandSaysSo(t *testing.T) 
 	require.NoError(t, err)
 	assert.False(t, infos[0].Stranded)
 
-	require.ErrorIs(t, other.Answer(testItem, "go"), errStranded)
+	require.ErrorIs(t, other.Reply(testItem, Reply{Text: "go"}), errStranded)
 	require.ErrorIs(t, other.Cancel(testItem), errStranded)
-	require.ErrorContains(t, other.Answer(testItem, "go"), "Start version v1 to finish it")
+	require.ErrorContains(t, other.Reply(testItem, Reply{Text: "go"}), "Start version v1 to finish it")
 
-	require.NoError(t, same.Answer(testItem, "go"))
+	require.NoError(t, same.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 }
 
@@ -347,7 +347,7 @@ func TestEngine_PinsTheApplicationVersionToTheBuildVersion(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	assert.Equal(t, "v1.2.3-pinned+core14.agent14.tracker2.forge6.land9.gate6.host1.round4", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
+	assert.Equal(t, "v1.2.3-pinned+core15.agent14.tracker2.forge6.land9.gate6.host1.round4", dbos.GetApplicationVersion(engine.ctx), "the build version and one version for each step module")
 
 	infos, err := harness.client(t, "v1.2.3-pinned").Status()
 	require.NoError(t, err)

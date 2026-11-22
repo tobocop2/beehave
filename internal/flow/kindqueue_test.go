@@ -120,7 +120,7 @@ func TestAgentQueue_AnItemThatWaitsForTheOwnerHoldsNoAgentSlot(t *testing.T) {
 	default:
 	}
 
-	waitOn(t, condition(func() bool { return client.Answer(testItem, "go") == nil }))
+	waitOn(t, condition(func() bool { return client.Reply(testItem, Reply{Text: "go"}) == nil }))
 	require.NoError(t, receive(t, run).err)
 }
 

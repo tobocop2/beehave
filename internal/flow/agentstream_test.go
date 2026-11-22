@@ -187,7 +187,9 @@ func TestAgentStream_AReplayOfARecordedPhaseWritesNoEntryAndStartsNoAgent(t *tes
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the open run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the open run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 	require.NoError(t, receive(t, done).err)
 
 	got := &collected{}
@@ -466,7 +468,7 @@ func TestAgentStream_AFollowOfARunThatWaitsForAnAnswerSaysSoOnceAndEndsWithTheRu
 	time.Sleep(2500 * time.Millisecond)
 	assert.Equal(t, []string{"go?"}, waits(), "the line comes once, however long the run waits")
 
-	require.NoError(t, client.Answer(testItem, "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "yes"}))
 	require.NoError(t, receive(t, done).err)
 	require.NoError(t, receive(t, followed))
 }

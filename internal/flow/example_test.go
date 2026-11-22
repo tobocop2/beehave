@@ -598,7 +598,7 @@ func TestExample_SixCandidatesAreTheCapAndTheSixthFullReviewIsTheLast(t *testing
 	done := pipelineInBackground(engine, file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	outcome := receive(t, done)
 	require.NoError(t, outcome.err)
 
@@ -822,7 +822,9 @@ func TestExample_AGateThatIsVoidEveryTimeAsksTheOwnerAndRefusesAfterTheLastAnswe
 	}()
 
 	for range 3 {
-		waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "run it again") == nil, nil }})
+		waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+			return struct{}{}, client.Reply(testItem, Reply{Text: "run it again"}) == nil, nil
+		}})
 	}
 
 	outcome := receive(t, done)
@@ -847,7 +849,9 @@ func TestExample_AnAnswerToAVoidGateQuestionRunsTheGateAgainAndAPassGoesToTheRev
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "run it again") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "run it again"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, 4, rig.h.gate.calls, "the answer, which the refusal-free question names, ran the gate again")

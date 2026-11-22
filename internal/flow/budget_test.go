@@ -185,7 +185,9 @@ command(run = ["done"])
 	client := rig.h.client(t, testVersion)
 	done := runInBackground2(next, file)
 
-	waitOn(t, waiting[struct{}]{what: "the open run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the open run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 	waitOn(t, waiting[struct{}]{what: "the run to stop", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, stoppedRun(t, client, testRun) != nil, nil }})
 
 	assert.Contains(t, stoppedRun(t, client, testRun).Note, "the agent steps of the item run spent $13", "3 from the record of a, then 10 from b")

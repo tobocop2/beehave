@@ -314,22 +314,23 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 
 // waitOwner blocks until the owner answers through beehave answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
-func (e *Engine) waitOwner(ctx dbos.Context, project, item, question string) (string, error) {
-	answer, _, err := e.waitOwnerUntil(ctx, project, item, question, 0)
+func (s *script) waitOwner(question string) (string, error) {
+	answer, _, err := s.waitOwnerUntil(question, 0)
 	return answer, err
 }
 
 // waitOwnerUntil is waitOwner with a deadline. A deadline of zero is no deadline. When the deadline passes first, the answer is empty and timedOut is true.
-func (e *Engine) waitOwnerUntil(ctx dbos.Context, project, item, question string, deadline time.Duration) (answer string, timedOut bool, err error) {
-	if err := show(ctx, item, questionKey, question, "its question"); err != nil {
+func (s *script) waitOwnerUntil(question string, deadline time.Duration) (answer string, timedOut bool, err error) {
+	item := s.in.Item
+	if err := show(s.ctx, item, questionKey, question, "its question"); err != nil {
 		return "", false, err
 	}
 
-	e.announce(ctx, project, item, question)
+	s.e.announce(s.ctx, s.in.Project, item, question)
 
-	answer, timedOut, err = e.receiveAnswer(ctx, deadline)
+	answer, timedOut, err = s.receiveAnswer(deadline)
 	if err == nil {
-		err = dbos.SetEvent(ctx, questionKey, "")
+		err = dbos.SetEvent(s.ctx, questionKey, "")
 	}
 
 	if err != nil {
@@ -348,22 +349,24 @@ func show[T any](ctx dbos.Context, item, key string, value T, what string) error
 	return nil
 }
 
-// receiveAnswer waits for the answer of the owner. With a deadline, one receive ends at the deadline and reports timedOut.
-// With no deadline, a receive that times out starts again.
-func (e *Engine) receiveAnswer(ctx dbos.Context, deadline time.Duration) (answer string, timedOut bool, err error) {
-	if deadline > 0 {
-		answer, err = dbos.Recv[string](ctx, ownerTopic, deadline)
-		if errors.Is(err, context.DeadlineExceeded) {
-			return "", true, nil
-		}
-
-		return answer, false, err
+// receiveAnswer waits for the answer of the owner: the first answer that names no wait. An answer to a wait that names people is not one.
+// The end of the deadline is a recorded step, so a replay waits no longer than the first run did.
+func (s *script) receiveAnswer(deadline time.Duration) (answer string, timedOut bool, err error) {
+	end, err := s.e.endOf(s.ctx, deadline)
+	if err != nil {
+		return "", false, err
 	}
 
 	for {
-		answer, err = dbos.Recv[string](ctx, ownerTopic, e.waitWindow())
-		if !errors.Is(err, context.DeadlineExceeded) {
-			return answer, false, err
+		v, got, late, err := s.nextVoice(end)
+
+		switch {
+		case err != nil:
+			return "", false, err
+		case late:
+			return "", true, nil
+		case got && v.Wait == "":
+			return v.Text, false, nil
 		}
 	}
 }

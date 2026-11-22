@@ -208,14 +208,17 @@ func (s *fakeSteering) Schedules() ([]flow.ScheduleInfo, error) {
 	return s.schedules, s.schedulesErr
 }
 
-func (s *fakeSteering) Answer(item, text string) error {
-	s.calls = append(s.calls, "answer "+item+" "+text)
+func (s *fakeSteering) Reply(item string, reply flow.Reply) error {
+	call := "answer " + item + " " + reply.Text
+	if reply.From != "" {
+		call = "answer-as " + reply.From + " " + item + " " + reply.Text
+	}
 
-	return cmp.Or(s.answerErrs[item], s.err)
-}
+	if reply.Key != "" {
+		call += " key=" + reply.Key
+	}
 
-func (s *fakeSteering) AnswerAs(item, from, text string) error {
-	s.calls = append(s.calls, "answer-as "+from+" "+item+" "+text)
+	s.calls = append(s.calls, call)
 
 	return cmp.Or(s.answerErrs[item], s.err)
 }
@@ -865,6 +868,17 @@ func TestAnswerCommand_TheAsFlagNamesThePersonWhoAnswers(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 
 	assert.Equal(t, []string{"answer-as ana 12 yes please"}, rig.steering.calls)
+}
+
+func TestAnswerCommand_TheKeyFlagGoesWithTheAnswerOfOneItemAndOfEveryItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "answer", "12", "--key", "k1", "yes")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"answer 12 yes key=k1"}, rig.steering.calls)
 }
 
 func TestStatus_ShowsThePeopleTheChoicesAndWhoAnswered(t *testing.T) {

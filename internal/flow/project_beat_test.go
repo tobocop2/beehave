@@ -53,7 +53,7 @@ func TestRun_AnOpenRunUnderAnotherProjectIsRefusedAndNamesBothProjects(t *testin
 	require.ErrorContains(t, err, "other")
 	require.ErrorContains(t, err, "beehave cancel 12")
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, first).err)
 }
 
@@ -72,7 +72,7 @@ func TestTick_RenewsTheClaimOfARunThatWaitsForTheOwner(t *testing.T) {
 	require.NotEmpty(t, harness.beats.seen())
 	assert.Equal(t, "p/"+testOwner+testItem, harness.beats.seen()[0])
 
-	require.NoError(t, client.Answer(testItem, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go"}))
 	require.NoError(t, receive(t, done).err)
 	assert.Empty(t, engine.holds.snapshot())
 }

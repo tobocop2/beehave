@@ -570,7 +570,7 @@ func (r *roundRig) answerOnce(t *testing.T, client *Client, owner *answering) {
 	r.deadlines = append(r.deadlines, view.Deadline)
 	r.questions = append(r.questions, infos[at].Question)
 
-	require.NoError(t, client.AnswerAs(testItem, shipOwner, r.answerFor(owner.given)))
+	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: r.answerFor(owner.given)}))
 
 	owner.given++
 	owner.open = true

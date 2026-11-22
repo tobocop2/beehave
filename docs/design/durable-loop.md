@@ -419,6 +419,8 @@ If the loop used all its rounds, the `exhausted` field of its result is true. Th
 - With `timeout = "48h"`, the wait ends at the deadline. The `timed_out` field of its result is true, and the `answer` field is empty.
 - `beehave check workflow` and the run refuse a `timeout` of zero or below, because it would read as no deadline. For a wait with no deadline, leave the argument out.
 - DBOS records the deadline of the wait. A run that stops and resumes after the deadline times out at once. A run that resumes before it waits for the time left.
+- If a wait timed out and the run failed, `beehave resume` reopens the wait at its deadline step when only receives and their sleeps lie between the deadline step and the receive that timed out. That means the wait counted nothing. It records a new deadline and waits its whole `timeout` again. This holds for a plain wait, for a wait with people and no voice, and for a wait with choices and no answer.
+- A wait that counted a voice, and a wait with reminders, record a step between the deadline and the receive. `beehave resume` reopens such a wait at the receive that timed out. The wait keeps its old deadline and times out again at once.
 - An answer that arrives after the deadline and before the engine clears the question is kept for the next `wait` of the same run.
 
 **Who answers.** A plain wait takes the first answer from anyone who can run `beehave answer` on the run. A wait can instead set these keywords:
@@ -438,6 +440,10 @@ A person answers with `beehave answer <item> --as ana <text>`. The command refus
 - A text that is not in `choices`.
 
 The engine does not prove the name. It keeps no key store, so anyone who can run `beehave answer` on the run can give any listed name.
+
+**Where answers arrive.** An answer is a message of the reserved topic `beehave.answer` on the inbox of the run, the same inbox that `recv` reads. A `wait` takes the oldest answer of its own. An answer that comes while a `recv` waits for another topic stays in the buffer of the run until a `wait` reads it. A wait with no `to` ignores an answer that names a wait.
+
+**Retry an answer.** Add `--key <key>` to `beehave answer`. The key is the idempotency key of the message. If the run already got an answer with that key, the command sends nothing again. The key of an answer and the key of `beehave send` are separate: the same text on both sends both messages. With no key, each answer gets a new one.
 
 **Counting.**
 

@@ -48,7 +48,8 @@ const (
 // Version 12 adds the cancel step, the deadline step of a gather, the deadline that each wait of a gather records and the open field of a gather result.
 // Version 13 replaces the reports_skills field of each entry of the runners field of facts with the loads_skills field.
 // Version 14 adds the first_of step with its deadline step and its look steps, which record every run that ended in the read, and a child run sends an end notice to its parent.
-const coreVersion = 14
+// Version 15 moves the answers of wait onto the inbox as messages of the topic beehave.answer, and a wait with a timeout and no people records its deadline step.
+const coreVersion = 15
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
