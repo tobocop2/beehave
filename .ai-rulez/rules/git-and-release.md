@@ -26,7 +26,7 @@ x-ai-rulez:
 
 ## Build and release artifacts
 
-- GoReleaser builds darwin and linux for amd64 and arm64 with `CGO_ENABLED=0`. `make release-snapshot` runs it without publishing. It builds `beehave` and `remedy`.
+- GoReleaser builds darwin and linux for amd64 and arm64 with `CGO_ENABLED=0`. `make release-snapshot` runs it without publishing. It builds `beehave` only. The release never holds `remedy`, the tool of the remediation example.
 - A pushed tag runs `.github/workflows/release.yaml`. It publishes the GitHub release and the cask in `tobocop2/homebrew-tap` over SSH with the deploy key in the secret `HOMEBREW_TAP_SSH_KEY`. The goreleaser version is pinned in the Makefile only. `make goreleaser-install` installs it, and `make setup`, the CI snapshot job and the release workflow run that target.
 - A new gate must be proven to fail. Run it against input it should reject before you trust it.
 - `beehave --version` passing is not verification of a binary. The smoke step runs a real command on the built artifact.
