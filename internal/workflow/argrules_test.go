@@ -24,3 +24,18 @@ func TestEnvAssignments_ReadsWhatTheRunReads(t *testing.T) {
 	_, err = workflow.EnvAssignments(starlark.MakeInt(1))
 	require.ErrorContains(t, err, "env must be a dict of strings")
 }
+
+func TestEnvAssignments_RefusesTheSocketOfTheSSHAgentAsAKey(t *testing.T) {
+	t.Parallel()
+
+	_, err := workflow.EnvAssignments(dictOf(t, map[string]starlark.Value{"SSH_AUTH_SOCK": starlark.String("/tmp/agent.sock")}))
+
+	require.ErrorContains(t, err, "env cannot set `SSH_AUTH_SOCK`")
+}
+
+func TestAgentSocketRead_RefusesOnlyTheSSHAgentVariable(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorContains(t, workflow.AgentSocketRead("SSH_AUTH_SOCK"), "env cannot read `SSH_AUTH_SOCK`")
+	assert.NoError(t, workflow.AgentSocketRead("HOME"))
+}
