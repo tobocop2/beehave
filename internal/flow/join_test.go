@@ -273,7 +273,38 @@ func TestJoinRun_AnOpenRunOfAnotherProjectIsRefused(t *testing.T) {
 	require.ErrorIs(t, err, errProjectConflict)
 }
 
-func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheWaiterSaysSo(t *testing.T) {
+func TestJoinRun_AnEngineOfAnotherBuildThatTakesTheFolderDuringTheGraceRefusesTheWaiterAtOnce(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+	client.give.Clock.Poll = time.Millisecond
+	client.give.Clock.Gone = time.Hour
+
+	require.NoError(t, engine.Shutdown())
+
+	file := writeFlow(t, bodyFlow(joinFlow))
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		done <- err
+	}()
+
+	waitOn(t, condition(func() bool { return len(rowsOf(t, client, testItem)) == 1 }))
+
+	harness.opts.Version = "v2"
+	harness.engine(t)
+
+	err := receive(t, done)
+
+	require.ErrorIs(t, err, errOtherBuild)
+	require.ErrorContains(t, err, "restart beehave serve")
+	assert.Len(t, rowsOf(t, client, testItem), 1)
+}
+
+func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheJoinReturnsEngineGone(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
