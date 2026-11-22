@@ -644,7 +644,7 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 
 `send(to, topic, value, name="")` puts a message on the inbox of another run, and returns `id`, the id of the message.
 
-- `to` is `"parent"`, `"item:<id>"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run. `"item:<id>"` names the open run of another item of the project of this run.
+- `to` is `"parent"`, `"item:<id>"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run. `"item:<id>"` names the open run of an item of the project of this run, which can be the item of this run.
 - `topic` is lowercase letters, digits, `.`, `_` and `-`. A topic that starts with `beehave.` is reserved.
 - `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
 - The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. The send is a recorded step, so a resumed run inserts the message once.
