@@ -1,4 +1,4 @@
-package scripts_test
+package hostsetup_test
 
 import (
 	"archive/tar"
@@ -84,7 +84,7 @@ var provedTools = []string{
 // fakeHost is one machine for the script: a clone, a home, a folder that stands for /, the work root and the fakes.
 type fakeHost struct {
 	t                                                           *testing.T
-	root, source                                                *os.Root
+	root, scripts, fakes                                        *os.Root
 	base, clone, home, sysroot, workRoot, bin, log, down, state string
 	jobKey                                                      string
 	env                                                         []string
@@ -98,7 +98,7 @@ func newFakeHost(t *testing.T) *fakeHost {
 	require.NoError(t, err)
 
 	h := &fakeHost{
-		t: t, root: openRoot(t, base), source: openRoot(t, "."), base: base, clone: filepath.Join(base, "root/src/clone"), home: filepath.Join(base, "home"),
+		t: t, root: openRoot(t, base), scripts: openRoot(t, "../../scripts"), fakes: openRoot(t, "testdata"), base: base, clone: filepath.Join(base, "root/src/clone"), home: filepath.Join(base, "home"),
 		sysroot: filepath.Join(base, "root"), workRoot: filepath.Join(base, "work"), bin: filepath.Join(base, "bin"), log: filepath.Join(base, "log"),
 		down: filepath.Join(base, "dl"), state: filepath.Join(base, "state"),
 	}
@@ -109,7 +109,7 @@ func newFakeHost(t *testing.T) *fakeHost {
 	}
 
 	for _, script := range []string{"host-setup.sh", "host-tools.sh", "metadata-guard.nft", "metadata-guard.service"} {
-		h.copy(script, filepath.Join(h.clone, "scripts", script), h.write)
+		h.copy(h.scripts, script, filepath.Join(h.clone, "scripts", script), h.write)
 	}
 
 	h.write(filepath.Join(h.clone, "go.mod"), "module example.com/h\n\ngo 1.27\n\ntoolchain "+pinnedGo+"\n")
@@ -190,11 +190,11 @@ func workRootActions(log, workRoot string) []string {
 func (h *fakeHost) installFakes() {
 	h.t.Helper()
 
-	fakes, err := fs.ReadDir(h.source.FS(), "testdata/fakes")
+	fakes, err := fs.ReadDir(h.fakes.FS(), "fakes")
 	require.NoError(h.t, err)
 
 	for _, fake := range fakes {
-		h.copy(filepath.Join("testdata/fakes", fake.Name()), filepath.Join(h.bin, fake.Name()), h.program)
+		h.copy(h.fakes, filepath.Join("fakes", fake.Name()), filepath.Join(h.bin, fake.Name()), h.program)
 	}
 
 	for name, line := range goInstalledTools {
@@ -255,11 +255,11 @@ func (h *fakeHost) program(path, text string) {
 	require.NoError(h.t, exectest.Write(path, text))
 }
 
-// readSource reads a file of the repository.
+// readSource reads a file of the scripts folder.
 func (h *fakeHost) readSource(name string) string {
 	h.t.Helper()
 
-	data, err := h.source.ReadFile(name)
+	data, err := h.scripts.ReadFile(name)
 	require.NoError(h.t, err)
 
 	return string(data)
@@ -274,11 +274,11 @@ func (h *fakeHost) read(path string) string {
 	return string(data)
 }
 
-// copy copies a file of the scripts folder to a path under the temporary folder, with write or program.
-func (h *fakeHost) copy(from, to string, put func(path, text string)) {
+// copy copies a file of the source root to a path under the temporary folder, with write or program.
+func (h *fakeHost) copy(source *os.Root, from, to string, put func(path, text string)) {
 	h.t.Helper()
 
-	data, err := h.source.ReadFile(from)
+	data, err := source.ReadFile(from)
 	require.NoError(h.t, err)
 	put(to, string(data))
 }

@@ -1,4 +1,4 @@
-package scripts_test
+package hostsetup_test
 
 import (
 	"os"
