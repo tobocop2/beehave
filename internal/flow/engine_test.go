@@ -58,6 +58,7 @@ func TestOptions_RefuseUnusableSettingsForTheEngineAndTheClient(t *testing.T) {
 		{"no_agent_slot", func(o *Options) { o.MaxConcurrent = 0 }, "agents.max_concurrent is 0: set it to 1 or more"},
 		{"a_negative_per_login", func(o *Options) { o.PerLogin = -1 }, "agents.per_login is -1: set it to 1 or more"},
 		{"a_per_login_above_a_queue_cap", func(o *Options) { o.MaxConcurrent, o.MaxReviewConcurrent, o.PerLogin = 3, 1, 2 }, "agents.per_login is 2: set it to agents.max_concurrent (3) or agents.max_review_concurrent (1), whichever is lower, or less"},
+		{"an_unknown_concurrency", func(o *Options) { o.Concurrency = "turbo" }, "agents.concurrency is \"turbo\": set it to \"static\" or \"adaptive\""},
 		{"a_negative_review_lookback", func(o *Options) { o.ReviewLookbackDays = -1 }, "agents.review_lookback_days is -1: set it to 1 or more"},
 		{"a_negative_review_poll", func(o *Options) { o.ReviewPoll = -time.Minute }, "review poll interval is -1m0s: set it to 0 or more"},
 	}

@@ -32,6 +32,8 @@ type agents struct {
 	MaxReviewConcurrent int
 	// PerLogin is the most agent steps that one login runs at once, in each of the two agent queues. The default is 1.
 	PerLogin int
+	// Concurrency is the mode of the cap of the agents queue. The default is ConcurrencyStatic.
+	Concurrency Concurrency
 	// MaxTurns is the most agentic turns of one agent run. 0 means no cap.
 	MaxTurns int
 	// MaxBudgetUSD is the most dollars that one agent run spends on API calls. 0 means no cap.
@@ -63,7 +65,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -89,10 +91,13 @@ func loadRunnersFile(path string, adapters Adapters) (agents, Pool, []model.Runn
 
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
 	budget, runBudget, treeBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD)
+	mode := string(f.agents.Concurrency)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode); err != nil {
 		return err
 	}
+
+	f.agents.Concurrency = Concurrency(mode)
 
 	f.agents.MaxBudgetUSD, f.agents.MaxRunBudgetUSD, f.agents.MaxTreeBudgetUSD = float64(budget), float64(runBudget), float64(treeBudget)
 

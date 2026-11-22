@@ -76,6 +76,8 @@ type Options struct {
 	ReviewLookbackDays int
 	// PerLogin is agents.per_login, the agent steps that one login runs at once in each agent queue. 0 means config.DefaultPerLogin.
 	PerLogin int
+	// Concurrency is agents.concurrency, the mode of the cap of the agents queue. Empty means config.ConcurrencyStatic.
+	Concurrency config.Concurrency
 	// Retention is the age at which Launch deletes a finished run: agents.retention_days. 0 means config.DefaultRetention.
 	Retention time.Duration
 	// KeepRuns turns the deletion off, so every finished run stays: agents.retention_days set to 0.
@@ -108,11 +110,20 @@ func (o Options) validate() error {
 		return fmt.Errorf("%w: agents.max_review_concurrent is %d: set it to 1 or more", errBadOptions, o.MaxReviewConcurrent)
 	}
 
-	if err := o.validateReviewPoll(); err != nil {
+	if err := errors.Join(o.validateReviewPoll(), o.validateConcurrency()); err != nil {
 		return err
 	}
 
 	return o.validatePerLogin()
+}
+
+// validateConcurrency refuses a concurrency mode that is neither empty nor one of the two that the engine knows.
+func (o Options) validateConcurrency() error {
+	if o.Concurrency == "" || o.Concurrency.Known() {
+		return nil
+	}
+
+	return fmt.Errorf("%w: agents.concurrency is %q: set it to %q or %q", errBadOptions, string(o.Concurrency), config.ConcurrencyStatic, config.ConcurrencyAdaptive)
 }
 
 // validateReviewPoll refuses a negative poll interval and a negative look-back.

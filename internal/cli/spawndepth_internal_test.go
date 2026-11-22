@@ -9,6 +9,15 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
+func TestEngineOptions_TheConcurrencyModeOfTheConfigReachesTheOptions(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Agents.Concurrency = config.ConcurrencyAdaptive
+
+	assert.Equal(t, config.ConcurrencyAdaptive, flowCommands{}.engineOptions(cfg, "/state").Concurrency)
+}
+
 func TestEngineOptions_TheItemsQueuesReachTheHighestMaxSpawnDepthOfTheProjects(t *testing.T) {
 	t.Parallel()
 

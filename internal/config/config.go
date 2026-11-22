@@ -20,6 +20,7 @@ const (
 	envMaxConcurrent       = "BEEHAVE_AGENTS_MAX_CONCURRENT"
 	envMaxReviewConcurrent = "BEEHAVE_AGENTS_MAX_REVIEW_CONCURRENT"
 	envPerLogin            = "BEEHAVE_AGENTS_PER_LOGIN"
+	envConcurrency         = "BEEHAVE_AGENTS_CONCURRENCY"
 	envMaxTurns            = "BEEHAVE_AGENTS_MAX_TURNS"
 	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
@@ -80,7 +81,7 @@ func (p Problems) Error() string {
 // DefaultConfig returns the config of an empty folder.
 func DefaultConfig() Config {
 	return Config{
-		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays},
+		Agents:   agents{MaxConcurrent: defaultConcurrent, MaxReviewConcurrent: defaultConcurrent, PerLogin: DefaultPerLogin, Concurrency: ConcurrencyStatic, ReviewLookbackDays: DefaultReviewLookbackDays, RetentionDays: defaultRetentionDays},
 		Pool:     Pool{FiveHourMax: defaultFiveHourMax, SevenDayMax: defaultSevenDayMax},
 		Projects: map[string]Project{},
 	}
@@ -97,6 +98,9 @@ func LoadFolder(dir string, env map[string]string, adapters Adapters) (Config, P
 	}
 
 	problems := cfg.loadFiles(adapters)
+
+	overlayConcurrency(env, &cfg.Agents.Concurrency)
+
 	if err := cfg.applyEnv(env); err != nil {
 		problems = append(problems, err)
 	}
@@ -189,6 +193,13 @@ func overlayWhole(env map[string]string, name, hint string, into *int) error {
 	return nil
 }
 
+// overlayConcurrency sets the concurrency mode from the variable. An empty variable leaves the value; the check of the value is in Validate.
+func overlayConcurrency(env map[string]string, into *Concurrency) {
+	if value := env[envConcurrency]; value != "" {
+		*into = Concurrency(value)
+	}
+}
+
 func (c *Config) applyEnv(env map[string]string) error {
 	err := errors.Join(
 		overlayWhole(env, envMaxConcurrent, "for example 2.", &c.Agents.MaxConcurrent),
@@ -245,9 +256,9 @@ func overlayPercent(env map[string]string, name string, target *float64) error {
 	return nil
 }
 
-// limitProblems checks the two limits on agent processes.
+// limitProblems checks the two limits on agent processes and the mode of the cap of the agents queue.
 func (c Config) limitProblems(runnersPath string) Problems {
-	var problems Problems
+	problems := c.concurrencyProblems(runnersPath)
 
 	if c.Agents.MaxConcurrent < 1 {
 		problems = append(problems, refuse("agents.max_concurrent must be 1 or more. Set it in %s or in %s.", runnersPath, envMaxConcurrent))
@@ -272,6 +283,15 @@ func (c Config) perLoginProblems(runnersPath string) Problems {
 	}
 
 	return nil
+}
+
+// concurrencyProblems refuses a concurrency mode other than the two that the engine knows.
+func (c Config) concurrencyProblems(runnersPath string) Problems {
+	if c.Agents.Concurrency.Known() {
+		return nil
+	}
+
+	return Problems{refuse("agents.concurrency is %q: set it to %q or %q. Set it in %s or in %s.", string(c.Agents.Concurrency), ConcurrencyStatic, ConcurrencyAdaptive, runnersPath, envConcurrency)}
 }
 
 // Validate checks the values that no single file owns: the agent limit and the pool caps.
