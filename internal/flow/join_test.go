@@ -99,7 +99,7 @@ func TestJoinRun_AStatusThatCannotBeReadStopsTheWait(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	watch := engineWatch{dir: client.dir, item: testItem, grace: time.Hour}
-	_, done, err := watch.poll(handle)
+	_, done, err := watch.poll(t.Context(), handle)
 
 	assert.False(t, done)
 	require.ErrorContains(t, err, "read the status of the run")

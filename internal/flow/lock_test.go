@@ -12,6 +12,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWaitForMove_ReturnsWhenTheHolderFreesTheLockAndAtTheLimitWhenItDoesNot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	require.NoError(t, waitForMove(t.Context(), dir, time.Second), "a free lock ends the wait at once")
+
+	probe, err := holdProbe(dir)
+	require.NoError(t, err)
+
+	start := time.Now()
+
+	require.NoError(t, waitForMove(t.Context(), dir, 100*time.Millisecond), "a hold that outlasts the limit leaves the reader with what the store shows")
+	assert.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond, "the wait lasted until the limit")
+
+	taken, err := lockFile(dir, probeLockName).TryLock()
+	require.NoError(t, err)
+	assert.False(t, taken, "the wait took nothing from the holder")
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		assert.NoError(t, probe.Unlock())
+	}()
+
+	start = time.Now()
+
+	require.NoError(t, waitForMove(t.Context(), dir, 10*time.Second))
+	assert.Less(t, time.Since(start), 5*time.Second, "the wait ended when the holder freed the lock")
+}
+
 func TestNewEngine_AStartIsNotRefusedByACheckThatHoldsTheEngineLockUnderTheProbeLock(t *testing.T) {
 	t.Parallel()
 

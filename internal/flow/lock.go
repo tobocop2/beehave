@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,10 @@ import (
 )
 
 const (
+	// moveWait is how long a reader of a canceled run waits for a move that holds probe.lock, and moveRetry is the time between two tries.
+	moveWait  = 10 * time.Second
+	moveRetry = 10 * time.Millisecond
+
 	engineLockName = "engine.lock"
 	// probeLockName names the lock that serializes every check of the engine lock and the start of an engine, and a cancel and a resume of a client.
 	// A process holds it for microseconds, except a cancel, which holds it for the cancel and its release, and a resume, which holds it for the reopen.
@@ -176,6 +181,27 @@ func holdProbe(dir string) (*flock.Flock, error) {
 	}
 
 	return probe, nil
+}
+
+// waitForMove waits until no process holds probe.lock, for at most limit (moveWait), and frees it at once. A reader of a canceled run calls it, because a move of a run to this build holds the lock from its cancel to its reopen.
+// DBOS rewinds only a run that ended, so the store shows the run canceled for the time of the move, and the lock is the only sign of it. A hold ends within the limits of the forge calls it makes, 30 seconds each.
+// A hold that outlasts moveWait leaves the reader with what the store shows.
+func waitForMove(ctx context.Context, dir string, limit time.Duration) error {
+	ctx, stop := context.WithTimeout(ctx, limit)
+	defer stop()
+
+	probe := lockFile(dir, probeLockName)
+
+	taken, err := probe.TryLockContext(ctx, moveRetry)
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("lock %s: %w", probeLockName, err)
+	}
+
+	if !taken {
+		return nil
+	}
+
+	return probe.Unlock()
 }
 
 // holdEngine takes the engine lock without waiting, and returns ErrStateBusy when another process holds it. One engine holds the lock from NewEngine until Shutdown. Call it only under probe.lock.

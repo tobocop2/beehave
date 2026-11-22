@@ -451,7 +451,7 @@ func (c *Client) Reply(item string, reply Reply) error {
 		return err
 	}
 
-	last, err := c.latest(item)
+	last, err := c.latestAfterMove(item)
 	if err != nil {
 		return err
 	}
