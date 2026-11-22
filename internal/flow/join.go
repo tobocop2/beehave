@@ -24,9 +24,11 @@ var errOtherBuild = errors.New("the engine that runs is another build")
 var ErrEngineGone = errors.New("the engine stopped before the run ended")
 
 // attemptPlan says what a run call does for an item: join the run with the id Join, or start attempt Attempt.
+// Move is true when the run to join is stored under another build, and the caller moves it to this build first.
 type attemptPlan struct {
 	Join    string
 	Attempt int
+	Move    bool
 }
 
 // planOf decides what a run call does with the latest run of the item. The engine that runs the item and the client that joins it both ask here.
@@ -45,7 +47,7 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 	return attemptPlan{Attempt: last.Attempt + 1}, nil
 }
 
-// joinPlan joins an open run. It refuses a run of another project or another version.
+// joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
 func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
 	held, err := open.project()
 	if err != nil {
@@ -56,11 +58,25 @@ func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
 		return attemptPlan{}, conflictError(in.Item, held, in.Project)
 	}
 
-	if open.Status.ApplicationVersion != version {
-		return attemptPlan{}, strandedError(open, version)
+	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+}
+
+// moveIfOtherBuild moves the open run of the plan to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
+// so the run moves only when every module that the run used has the same version here, and the refusal names the module.
+func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item string, open run) error {
+	if !plan.Move {
+		return nil
 	}
 
-	return attemptPlan{Join: open.Status.ID}, nil
+	if err := c.requireMovable(ctx, item, open); err != nil {
+		if errors.Is(err, errStranded) {
+			return fmt.Errorf("%w. The run started under version %s and this is %s", err, open.Status.ApplicationVersion, c.version)
+		}
+
+		return err
+	}
+
+	return c.moveOpen(item, open) //nolint:contextcheck // the cancel and the release of a move bound their own work, as beehave resume --on-this-build does with no context
 }
 
 // EngineRuns reports whether an engine holds the state folder, as beehave serve or another beehave run does.
@@ -93,7 +109,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 		return ItemResult{}, err
 	}
 
-	handle, err := c.planAndHandle(in)
+	handle, err := c.planAndHandle(ctx, in)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -102,7 +118,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 }
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
-func (c *Client) planAndHandle(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	last, found, err := latestRun(c.flow, in.Item)
 	if err != nil {
 		return nil, err
@@ -110,6 +126,10 @@ func (c *Client) planAndHandle(in ItemInput) (dbos.WorkflowHandle[ItemResult], e
 
 	plan, err := planOf(last, found, in, c.version, false)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := c.moveIfOtherBuild(ctx, plan, in.Item, last); err != nil {
 		return nil, err
 	}
 

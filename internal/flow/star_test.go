@@ -280,22 +280,22 @@ const goldenFlow = `def main(item):
     wait(name = "w", question = "go?")
 `
 
-// goldenSteps are the step names that goldenFlow records at the module versions of this build (before the modules, under stepsVersion star30).
-// A change to this list is a change to the sequence of a builtin: bump the version of the module that owns it in moduleTable (stepmodules.go) in the same commit.
-// A later change re-keys this list for each module.
-var goldenSteps = []string{
+// goldenBaseSteps are the step names that goldenFlow records at the module versions of this build (before the modules, under stepsVersion star30), at the last bump.
+// A change to the sequence of a builtin that is not behind a patch: bump the version of the module that owns it in moduleTable (stepmodules.go) and record the list here in the same commit.
+// A change behind a patch leaves this list alone and shows its marker in goldenSteps (see goldenpatch_test.go). A later change re-keys this list for each module.
+var goldenBaseSteps = []string{
 	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "scope:g#1", "gate:g#1",
 	"login#1", "agent:a#1/start", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1", "agent:a#1/commit",
 	"wait:w#1",
 }
 
-// goldenGateSteps are the steps of the exclusive run that the gate of goldenFlow queues. They are in the child run, so goldenSteps does not list them.
+// goldenBaseGateSteps are the steps of the exclusive run that the gate of goldenFlow queues, at the last bump. They are in the child run, so goldenBaseSteps does not list them.
 // The step gate:job holds the host job, and a replay that finds it waits on that job.
-var goldenGateSteps = []string{"gate:job", "gate"}
+var goldenBaseGateSteps = []string{"gate:job", "gate"}
 
-// goldenLostGateSteps are the steps of the exclusive run of a gate whose job was lost. The wait records when it started, then one look for each poll,
+// goldenBaseLostGateSteps are the steps of the exclusive run of a gate whose job was lost, at the last bump. The wait records when it started, then one look for each poll,
 // with a durable sleep between two looks. The second look proves the loss here.
-var goldenLostGateSteps = []string{"gate:job", "gate", "gate:lost-start", "gate:lost-look.0", "DBOS.sleep", "gate:lost-look.1"}
+var goldenBaseLostGateSteps = []string{"gate:job", "gate", "gate:lost-start", "gate:lost-look.0", "DBOS.sleep", "gate:lost-look.1"}
 
 func TestRunStar_TheStepNamesOfTheWaitForALostGateJobMatchTheGoldenList(t *testing.T) {
 	t.Parallel()
@@ -308,7 +308,7 @@ func TestRunStar_TheStepNamesOfTheWaitForALostGateJobMatchTheGoldenList(t *testi
 	require.NoError(t, err)
 
 	_, child := gateChildSteps(t, engine)
-	assert.Equal(t, goldenLostGateSteps, child, "the steps of the wait for a lost gate job changed: bump the version of the gate module in moduleTable (stepmodules.go) and update the list")
+	assert.Equal(t, goldenLostGateSteps, child, "the steps of the wait for a lost gate job changed: put the change behind a patch and show its marker in the list, or bump the version of the gate module in moduleTable (stepmodules.go) and record the base list")
 }
 
 func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t *testing.T) {
@@ -331,10 +331,10 @@ func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, "star30", stepsVersion)
-	assert.Equal(t, goldenSteps, stepNames(t, engine), "the step names changed: bump the version of the module that owns the step in moduleTable (stepmodules.go) and update the list")
+	assert.Equal(t, goldenSteps, stepNames(t, engine), "the step names changed: put the change behind a patch and show its marker in the list, or bump the version of the module that owns the step in moduleTable (stepmodules.go) and record the base list")
 
 	_, child := gateChildSteps(t, engine)
-	assert.Equal(t, goldenGateSteps, child, "the steps of the gate run changed: bump the version of the gate module in moduleTable (stepmodules.go) and update the list")
+	assert.Equal(t, goldenGateSteps, child, "the steps of the gate run changed: put the change behind a patch and show its marker in the list, or bump the version of the gate module in moduleTable (stepmodules.go) and record the base list")
 }
 
 func TestStrandedError_ARunStoredUnderTheBareVersionNamesTheOlderStepFormat(t *testing.T) {

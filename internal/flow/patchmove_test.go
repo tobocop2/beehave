@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +27,7 @@ func oldProbeFailingSecond() func(*script) (string, error) {
 	}
 }
 
-func TestPatch_AnOpenRunOfAnotherReleaseBuildIsStillRefusedByRunWhenNoModuleChanged(t *testing.T) {
+func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderRunWhenNoModuleChanged(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -40,12 +41,129 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildIsStillRefusedByRunWhenNoModuleChan
 	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
 	h.opts.Version = otherBuild
 	engine := h.engine(t)
+	client := h.client(t, otherBuild)
+	done := runInBackground2(engine, file)
+
+	waitOn(t, waiting[struct{}]{what: "the moved run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
+
+	outcome := receive(t, done)
+
+	require.NoError(t, outcome.err, "the modules are equal, so run moves the open run of the older release build and finishes it")
+	assert.Equal(t, []string{"old", "old", "new"}, seen.all(), "call 1 replays its old step, and call 2 is new code")
+
+	last, found, err := latestRun(engine.ctx, testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, engine.version, last.Status.ApplicationVersion, "the run is stored under this build")
+}
+
+func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderServeWhenNoModuleChanged(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	seen := &probes{}
+
+	h.opts.Modules = probeModules(oldProbe, seen)
+	file := writeFlow(t, probeFlow)
+	interrupted(t, h, file)
+	expireLease(h)
+
+	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
+	h.opts.Version = otherBuild
+	h.engine(t)
+
+	client := h.client(t, otherBuild)
+	done := make(chan runOutcome, 1)
+
+	go func() {
+		result, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		done <- runOutcome{result: result, err: err}
+	}()
+
+	waitOn(t, waiting[struct{}]{what: "the moved run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
+
+	outcome := receive(t, done)
+
+	require.NoError(t, outcome.err, "a client that joins the engine of this build moves the open run of the older release build")
+	assert.Equal(t, []string{"old", "old", "new"}, seen.all())
+}
+
+func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByRunAndNamesTheModuleThatChanged(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	seen := &probes{}
+
+	h.opts.Modules = probeModules(oldProbe, seen)
+	file := writeFlow(t, probeFlow)
+	interrupted(t, h, file)
+	expireLease(h)
+
+	_, err := sqlOf(t, h).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?",
+		versionWithModule(testVersion, moduleCore, coreVersion+1), testRun)
+	require.NoError(t, err)
+
+	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
+	h.opts.Version = otherBuild
+	engine := h.engine(t)
+
+	_, err = runFileWithin(t, engine, file)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, "core module at version")
+	assert.Equal(t, []string{"old"}, seen.all(), "no call ran on the new build")
+}
+
+func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByServeAndNamesTheModuleThatChanged(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	seen := &probes{}
+
+	h.opts.Modules = probeModules(oldProbe, seen)
+	file := writeFlow(t, probeFlow)
+	interrupted(t, h, file)
+	expireLease(h)
+
+	_, err := sqlOf(t, h).ExecContext(t.Context(), "UPDATE workflow_status SET application_version = ? WHERE workflow_uuid = ?",
+		versionWithModule(testVersion, moduleCore, coreVersion+1), testRun)
+	require.NoError(t, err)
+
+	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
+	h.opts.Version = otherBuild
+	h.engine(t)
+
+	_, err = h.client(t, otherBuild).JoinRun(t.Context(), testItem, testProject, file)
+
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, "core module at version")
+	assert.Equal(t, []string{"old"}, seen.all(), "no call ran on the new build")
+}
+
+func TestPatch_AnOpenRunWhoseHolderStillRunsIsNotMovedByRun(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	seen := &probes{}
+
+	h.opts.Modules = probeModules(oldProbe, seen)
+	file := writeFlow(t, probeFlow)
+	interrupted(t, h, file)
+	h.beats.setRenewed(time.Now())
+
+	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
+	h.opts.Version = otherBuild
+	engine := h.engine(t)
 
 	_, err := runFileWithin(t, engine, file)
 
-	require.ErrorIs(t, err, errStranded, "join compares the whole build string, so the patch alone does not let beehave run finish the old run")
-	require.ErrorContains(t, err, "--on-this-build")
-	assert.Equal(t, []string{"old"}, seen.all(), "no call ran on the new build")
+	require.ErrorIs(t, err, errStranded)
+	require.ErrorContains(t, err, "claim lease")
+	assert.Equal(t, []string{"old"}, seen.all())
 }
 
 func TestPatch_ARunThatHoldsAMarkerMovesToAnotherReleaseBuild(t *testing.T) {

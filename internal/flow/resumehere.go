@@ -28,7 +28,7 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 		return c.Resume(item)
 	}
 
-	if err := c.requireMovable(item, last); err != nil {
+	if err := c.requireMovable(context.Background(), item, last); err != nil {
 		return err
 	}
 
@@ -54,7 +54,7 @@ func (c *Client) moveOpen(item string, last run) error {
 }
 
 // requireMovable refuses a run that cannot move to this build: one recorded under another step list, a finished one, one whose holder is alive, and one whose files changed.
-func (c *Client) requireMovable(item string, last run) error {
+func (c *Client) requireMovable(ctx context.Context, item string, last run) error {
 	if err := c.requireSameSteps(item, last); err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (c *Client) requireMovable(item string, last run) error {
 		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
-	if err := c.requireNoLiveHolder(item, last); err != nil {
+	if err := c.requireNoLiveHolder(ctx, item, last); err != nil {
 		return err
 	}
 
@@ -164,12 +164,12 @@ func (c *Client) stepNames(id string) ([]string, error) {
 
 // requireNoLiveHolder refuses an open run whose claim lease has not ended: the build that holds it still runs, and a move would take the run from it.
 // The store keeps the lease, and the engine renews it, so no new signal is needed. A run with no claim, or a client with no lease reader, has no holder to protect.
-func (c *Client) requireNoLiveHolder(item string, last run) error {
+func (c *Client) requireNoLiveHolder(ctx context.Context, item string, last run) error {
 	if last.terminal() || c.give.Beats == nil {
 		return nil
 	}
 
-	owner, ends, err := c.leaseOf(last)
+	owner, ends, err := c.leaseOf(ctx, last)
 	if err != nil || !ends.After(c.give.Clock.now()) {
 		return err
 	}
@@ -184,7 +184,7 @@ func (c *Client) requireNoLiveHolder(item string, last run) error {
 }
 
 // leaseOf returns the owner of the claim of a run and when its lease in the store ends. A run with no claim gives the zero time. A claim with no lease gives an end that is long past.
-func (c *Client) leaseOf(last run) (owner string, ends time.Time, err error) {
+func (c *Client) leaseOf(ctx context.Context, last run) (owner string, ends time.Time, err error) {
 	owner, err = currentOwner(c.flow, c.dir, last.Status.ID)
 	if errors.Is(err, errNoOwner) {
 		return "", time.Time{}, nil
@@ -195,7 +195,7 @@ func (c *Client) leaseOf(last run) (owner string, ends time.Time, err error) {
 		return "", time.Time{}, err
 	}
 
-	ctx, cancel := c.give.limit(context.Background())
+	ctx, cancel := c.give.limit(ctx)
 	defer cancel()
 
 	renewed, err := c.give.Beats.Renewed(ctx, in.Project, owner, in.Item)
