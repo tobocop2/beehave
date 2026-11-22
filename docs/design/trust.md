@@ -129,7 +129,7 @@ The owner posts the ruleset in [`trust/integration-ruleset.json`](trust/integrat
 gh api -X POST repos/tobocop2/beehave/rulesets --input docs/design/trust/integration-ruleset.json
 ```
 
-It protects `integration/**`. It requires a pull request, resolved review threads, the checks `check` and `test` from GitHub Actions, and the statuses `beehave/review` and `beehave/gate`. It requires 0 approvals and has no bypass actor.
+It protects `integration/**`. It requires a pull request, resolved review threads, and the statuses `beehave/review` and `beehave/gate`. GitHub CI runs on pull requests into `main` only, so the ruleset names no GitHub Actions check. It requires 0 approvals and has no bypass actor.
 
 - `beehave/review` and `beehave/gate` name no source. A status that a user token posts has no App to name. GitHub shows the author of each status in the merge box. Without an App, the ruleset cannot restrict the source of these two statuses. The CI lock and the empty credential list of agents take its place.
 - Who can post a status: users with push access, and an Actions token with `statuses: write`. Here that is the owner, the engine with the token of the owner, and an installed App with Commit statuses write (owner step 4). The CI lock rules out the Actions token.
@@ -179,7 +179,7 @@ The default mode on GitLab needs external status checks, which is an Ultimate fe
 
 `tobocop2/beehave` is a public repository of a user account on the free plan. GitHub offers a merge queue for public repositories of an organization, or for private repositories on Enterprise Cloud. So this repository cannot use one.
 
-`merge` is the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: the required statuses, the checks and the resolved threads.
+`merge` is the landing path. It gates the union of the members once and merges each member pinned with `--match-head-commit`. Under the ruleset the forge also checks each member merge: the required statuses and the resolved threads.
 
 A project of an organization can use a merge queue instead. That variant is not built. To get one, the owner moves the repository to an organization. That changes the URLs and the repository access of the token, so it is a decision of the owner.
 
