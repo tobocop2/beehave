@@ -45,10 +45,10 @@ func TestWithBaseOf_ACanceledRunWhoseStoredInputIsNotAnItemInputRefusesTheNewAtt
 	require.NoError(t, dbos.CancelWorkflow(engine.ctx, runID(testItem, 1)))
 	file := writeFlow(t, bodyFlow(joinFlow))
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "read the input of run "+runID(testItem, 1))
 
-	_, err = client.JoinRun(t.Context(), testItem, testProject, file)
+	_, err = client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "read the input of run "+runID(testItem, 1))
 }
 
@@ -60,10 +60,10 @@ func TestRunFile_ARestartedChildOfARoundCutsItsWorktreeAtTheBaseThatItsSpawnGave
 	rig.h.trees = &fakeTrees{dir: rig.dir, bases: bases}
 	engine := rig.h.engine(t)
 
-	_, err := engine.RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"))
+	_, err := engine.RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"), modeOff())
 	require.NoError(t, err)
 
-	_, err = engine.RunFile("21", testProject, flowFile(t, restartedAgentFlow, "Probe.\n"))
+	_, err = engine.RunFile("21", testProject, flowFile(t, restartedAgentFlow, "Probe.\n"), modeOff())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"", "integration/s1", "integration/s1"}, bases.all(), "the round tree, the child, and the restarted child")

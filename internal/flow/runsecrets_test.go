@@ -63,7 +63,7 @@ def main(item):
     p = progress(runs, "note", name = "peek")
     command(name = "log", run = ["log", p[0].value["text"]])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 	require.NoError(t, err)
 
 	ran := h.commands.ranBy(testItem)
@@ -91,7 +91,7 @@ def main(item):
     gather(k, name = "all")
     command(name = "got", run = ["got", m.value])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 	require.NoError(t, err)
 
 	require.Len(t, h.commands.ranBy(testItem), 1)

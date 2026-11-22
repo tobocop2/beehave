@@ -82,7 +82,7 @@ func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing
 	file := t.TempDir() + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    gate(name = \"check\", run = [\"true\"])\n"), 0o600))
 
-	_, err = engine.RunFile("12", "zzz", file)
+	_, err = engine.RunFile("12", "zzz", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, errUnknownProject.Error())
 }
@@ -150,7 +150,7 @@ func TestFlowFactory_TheEngineOfTheRunCommandPicksTheRunnerFromTheUsageTheClaude
 	file := dir + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    agent(model = \"m\", prompt = \"prompts/a.md\", name = \"a\")\n"), 0o600))
 
-	_, err = engine.RunFile("12", "p", file)
+	_, err = engine.RunFile("12", "p", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }

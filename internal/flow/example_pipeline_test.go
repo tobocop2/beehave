@@ -57,7 +57,7 @@ func TestExamplePipeline_AProjectWithAChunkAssigneeFilesEachChunkWithThatPerson(
 
 	h, writer := pipelineHarness(t, map[string]any{"chunk_assignee": "dana"})
 
-	_, err := h.engine(t).RunFile(testItem, testProject, pipelineFlow(t))
+	_, err := h.engine(t).RunFile(testItem, testProject, pipelineFlow(t), modeOff())
 
 	require.NoError(t, err)
 	require.Len(t, writer.assignees, 1)
@@ -70,7 +70,7 @@ func TestExamplePipeline_AProjectWithNoChunkAssigneeFilesTheChunkWithNoAssignee(
 
 	h, writer := pipelineHarness(t, map[string]any{})
 
-	_, err := h.engine(t).RunFile(testItem, testProject, pipelineFlow(t))
+	_, err := h.engine(t).RunFile(testItem, testProject, pipelineFlow(t), modeOff())
 
 	require.NoError(t, err)
 	require.Len(t, writer.assignees, 1)

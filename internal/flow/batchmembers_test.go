@@ -36,7 +36,7 @@ func TestBatchMerge_TheCheckAndTheRunRefuseAMemberWithTheSameText(t *testing.T) 
 			require.Len(t, found, 1)
 			assert.Contains(t, found[0].Text, "merge: "+tc.want)
 
-			_, err := rig.engine(t).RunFile(testItem, testProject, path)
+			_, err := rig.engine(t).RunFile(testItem, testProject, path, modeOff())
 			require.ErrorContains(t, err, tc.want)
 		})
 	}

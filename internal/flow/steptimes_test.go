@@ -42,7 +42,7 @@ func stepsWhileChildRuns(t *testing.T) RunSteps {
 	file := writeFlow(t, waitingParent)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 

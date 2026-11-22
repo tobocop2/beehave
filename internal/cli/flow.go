@@ -426,7 +426,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
-	result, err := client.JoinRun(f.ctx, item, project, file, flow.RunSandbox(cfg.Projects[project].Sandbox))
+	result, err := client.JoinRun(f.ctx, item, project, file, flow.RunSandbox(cfg.Projects[project].RunSandboxMode()))
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
@@ -455,7 +455,7 @@ func (f flowCommands) runOnEngine(stdout, stderr io.Writer, cfg config.Config, o
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, flow.RunSandbox(cfg.Projects[project].Sandbox)))
+	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, flow.RunSandbox(cfg.Projects[project].RunSandboxMode())))
 }
 
 // shutDownWithExitStatus shuts the engine down for beehave run.

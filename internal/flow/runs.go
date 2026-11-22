@@ -33,6 +33,9 @@ var ErrBadItem = errors.New("invalid item")
 // errNoProject is returned when run names no project.
 var errNoProject = errors.New("no project for the item")
 
+// errNoSandboxMode is returned when a run starts with no sandbox mode: the caller must give on or off.
+var errNoSandboxMode = errors.New("the run has no sandbox mode")
+
 // errProjectConflict is returned when an open run of the item belongs to another project.
 var errProjectConflict = errors.New("the item has an open run under another project")
 

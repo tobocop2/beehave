@@ -164,7 +164,7 @@ An unset `sandbox` in a project gives `on`. `sandbox = "off"` stays, as an expli
 
 A step with `sandbox = None` in a project with the sandbox on is refused by `beehave check workflow` and does not start. A step that needs `docker` runs as a `command` step.
 
-The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <run>`, then run `beehave run`. A run that stored no sandbox mode reads the live sandbox mode of its project.
+The engine also refuses such a step at the agent call, before it picks a login. The refusal fails the run, and `beehave resume` refuses it again. To go on, set `sandbox = "off"` in the project, run `beehave cancel <item>`, then run `beehave run <item>`. Every run stores its sandbox mode, on or off, when it starts. Only a run recorded before the mode was stored has none, and it reads the live sandbox mode of its project.
 
 The step fails closed: no sandbox capability, Windows, a CLI below the minimum version or an unreadable version ends the step `not-started`. No adapter falls back to an unsandboxed run.
 

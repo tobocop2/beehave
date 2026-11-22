@@ -30,6 +30,14 @@ func TestProject_OnlyAProjectThatSaysOnRunsTheSandboxByDefault(t *testing.T) {
 	assert.False(t, model.Project{}.SandboxByDefault())
 }
 
+func TestProject_ARunStoresOnOrOffAndAnUnsetKeyStoresOff(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, model.SandboxOn, model.Project{Sandbox: model.SandboxOn}.RunSandboxMode())
+	assert.Equal(t, model.SandboxOff, model.Project{Sandbox: model.SandboxOff}.RunSandboxMode())
+	assert.Equal(t, model.SandboxOff, model.Project{}.RunSandboxMode())
+}
+
 func TestCheckNetwork_AcceptsDomainNamesAndRefusesEverythingElse(t *testing.T) {
 	t.Parallel()
 

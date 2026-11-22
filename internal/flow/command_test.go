@@ -133,7 +133,7 @@ func TestWalk_ASettingThatIsWrongFailsTheStepBeforeItRuns(t *testing.T) {
 				args = setting
 			}
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command("+args+")\n")))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command("+args+")\n")), modeOff())
 
 			require.Error(t, err)
 			assert.Empty(t, h.commands.requests, "the program did not start")
@@ -234,7 +234,7 @@ func TestWalk_AStepThatStoppedOnACodeStaysStoppedOnReplayAndRunsNoMoreThanOnce(t
 	engine := h.engine(t)
 
 	// The release after the last step fails, so the run fails with the record of the stopped step in its history.
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "release")
 
 	h.life.mu.Lock()
@@ -281,7 +281,7 @@ func TestWalk_AReplayBuildsTheSameStdinAndEnvFromTheRecordedResults(t *testing.T
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

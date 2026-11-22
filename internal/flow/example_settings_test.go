@@ -55,7 +55,7 @@ func settingsOf(t *testing.T, vars map[string]any) (string, error) {
 	file := filepath.Join(t.TempDir(), "workflow.star")
 	require.NoError(t, os.WriteFile(file, []byte(renamed+"\ndef main(item):\n    fail(\"S=%r\" % settings(facts()))\n"), 0o600)) //nolint:gosec // the copy of the example file goes to a temporary folder of the test
 
-	_, err = h.engine(t).RunFile(testItem, testProject, file)
+	_, err = h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.Error(t, err)
 
 	_, shown, found := strings.Cut(err.Error(), "S=")

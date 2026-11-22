@@ -80,7 +80,7 @@ func TestMatchBuiltins_RecordNoStep(t *testing.T) {
 
 	h := newHarness(t)
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("paths_outside(allow = [\"a\"], paths = [\"b\"])\nclosing_references(text = \"fixes #1\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("paths_outside(allow = [\"a\"], paths = [\"b\"])\nclosing_references(text = \"fixes #1\")\n")), modeOff())
 
 	require.NoError(t, err)
 	assert.False(t, slices.ContainsFunc(stepNames(t, engine), func(name string) bool {

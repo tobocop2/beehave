@@ -397,7 +397,7 @@ func TestReviewFix_FixRoundThreeResumesTheImplementerOnSonnetAndRoundFourStartsF
 	loop := strings.Replace(libraryLoop(rig.head, ", rounds = 5"), `session = ""`, `session = "implement-session"`, 1)
 	require.NoError(t, os.WriteFile(file, []byte(loop), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	tiers := map[string][]string{}
@@ -426,7 +426,7 @@ func TestReviewFix_TheFirstScopedReviewOfACleanImplementerJudgesTheDiffOfTheImpl
 	rig, file := exampleRig(t, func(int) string { return "approve" })
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, "")), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	require.Len(t, rig.h.agents.requests, 2, "the scoped review and the full review of the one candidate")
@@ -474,7 +474,7 @@ func TestReviewFix_AViolationOfTheLastScopedReviewKeepsTheFullReviewFromACleanAp
 		return result
 	}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// Candidate 1: the scoped review of the implementer, two scoped fixes and reviews, the full review. Its approve is not clean, so candidate 2
@@ -515,7 +515,7 @@ func TestReviewFix_TheFindingsThatTheLastScopedReviewLeftOpenGoToTheFixAfterARed
 		return result
 	}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	// The scoped review of the implementer, two scoped fixes and reviews, the red gate, then the fix of candidate 2, its scoped review and its full review.
@@ -544,7 +544,7 @@ func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t
 		require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, extra)), 0o600))
 
 		loopEngine := rig.h.engine(t)
-		_, err := loopEngine.RunFile(testItem, testProject, file)
+		_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 		require.NoError(t, err, extra)
 		assert.Equal(t, want, rig.models(), extra)
@@ -564,7 +564,7 @@ func TestReviewFix_TheStatusShowsTheLabelOfTheLastReviewWithItsRoundAgainstTheCa
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, `, follow_ups = "forbid", rounds = 4`)), 0o600))
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	info := onlyRun(t, rig.h.client(t, testVersion))
@@ -943,7 +943,7 @@ func runInBackground2(engine *Engine, file string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

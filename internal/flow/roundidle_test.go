@@ -69,7 +69,7 @@ func idlePrior(t *testing.T, engine *Engine, item string, how string) {
 		return
 	}
 
-	_, err := engine.RunFile(item, testProject, file)
+	_, err := engine.RunFile(item, testProject, file, modeOff())
 	if how == "fail" {
 		require.Error(t, err, "the prior run fails")
 	} else {
@@ -85,7 +85,7 @@ func idleRun(t *testing.T, rig *roundRig, engine *Engine, before func(n int, cli
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, rig.file)
+		result, err := engine.RunFile(testItem, testProject, rig.file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

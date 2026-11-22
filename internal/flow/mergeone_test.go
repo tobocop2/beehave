@@ -20,7 +20,7 @@ func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T
 	rig := newBatchRig(t)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", ""))), modeOff())
 	require.NoError(t, err)
 
 	var recorded []string

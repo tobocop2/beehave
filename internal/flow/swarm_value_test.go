@@ -36,7 +36,7 @@ def main(item):
     done = gather(runs, name = "fan")
     command(name = "after", run = ["after"] + [r.item + "=" + r.value["found"][0] + "/" + str(r.value["found"][1]) for r in done.results])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 21=a/7 22=a/7"}, h.commands.ranBy(testItem))
@@ -47,7 +47,7 @@ func TestGatherValue_ATupleAndAFloatAreKept(t *testing.T) {
 
 	h := newHarness(t)
 	file := valueFile(`    return ("a", 2.5, 12345678901234567890)`, "")
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{`after 21:ok:["a", 2.5, 12345678901234567890] 22:ok:["a", 2.5, 12345678901234567890] 23:ok:["a", 2.5, 12345678901234567890]`}, h.commands.ranBy(testItem))
@@ -65,7 +65,7 @@ func TestGatherValue_ARunThatReturnsNothingHasNone(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, valueFile("", "")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, valueFile("", "")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 21:ok:None 22:ok:None 23:ok:None"}, h.commands.ranBy(testItem))
@@ -88,7 +88,7 @@ def main(item):
     e = first_of(runs = runs, name = "fan")
     command(name = "after", run = ["after", e.outcome.item + ":" + str(e.outcome.ok) + ":" + str(e.outcome.value)])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 22:True:found"}, h.commands.ranBy(testItem))
@@ -104,7 +104,7 @@ func TestGatherValue_AFailedChildHasNoValue(t *testing.T) {
 	failing.Store(true)
 	failItem(h, "22", &failing)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, valueFile(`    return "found"`, `fail = "return", `)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, valueFile(`    return "found"`, `fail = "return", `)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 21:ok:found 22:failed:None 23:ok:found"}, h.commands.ranBy(testItem))
@@ -126,7 +126,7 @@ func TestGatherValue_AValueThatIsNotJSONSafeFailsTheChildWithAClearMessage(t *te
 
 			h := newHarness(t)
 			file := strings.Replace(valueFile(tail, `fail = "return", `), `str(r.value)`, `r.error`, 1)
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 			require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestGatherValue_AValueOverTheLimitFailsTheChild(t *testing.T) {
 
 	h := newHarness(t)
 	file := strings.Replace(valueFile(`    return "x" * 70000`, `fail = "return", `), `str(r.value)`, `r.error`, 1)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 

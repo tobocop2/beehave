@@ -113,7 +113,7 @@ func TestHostLoss_TheSshAdapterEndsTheGateVoidAfterTheHostComesBack(t *testing.T
 	h.hosts, h.reading, h.facts = hosts, reading.read, lostFacts(time.Hour)
 	engine := h.engineWith(t, func(e *Engine) { e.deps.Gate = &sshGate{host: host, machine: machine} })
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=beehave-n1`)
 	assert.Equal(t, 2, hosts.proofReads(), "the first read finds the link down and gives no proof, and the second read comes after the host is back")

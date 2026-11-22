@@ -313,7 +313,7 @@ func TestRound_ARoundWhoseItemBaseIsNotItsBaseSettingSpawnsNoChildAndNamesBothBa
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
-	_, err := rig.engine(t).RunFile(testRound, testProject, rig.file)
+	_, err := rig.engine(t).RunFile(testRound, testProject, rig.file, modeOff())
 
 	require.ErrorContains(t, err, "the round item "+testRound+" has the base integration/s1, and the base given to spawn is main")
 	assert.Empty(t, rig.kids.started(), "no child started")

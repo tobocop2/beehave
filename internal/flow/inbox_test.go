@@ -22,7 +22,7 @@ func startRun(t *testing.T, engine *Engine, file string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -177,7 +177,7 @@ func TestRecv_RefusesATopicOrATimeoutThatBreaksTheRule(t *testing.T) {
 
 			h := newHarness(t)
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(test.call)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(test.call)), modeOff())
 
 			require.ErrorContains(t, err, test.want)
 		})
@@ -200,7 +200,7 @@ def main(item):
     gather(k, name = "all")
     command(name = "got", run = ["got", m.value["from"], m.value["job"], m.sender, m.id, sent.id])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"got child x item-21-r1 item-21-r1:send:tell#1 item-12-r1:send:give#1"}, h.commands.ranBy(testItem))
@@ -222,7 +222,7 @@ func TestSend_RefusesATargetThatIsNotTheParentOrAChild(t *testing.T) {
 
 			h := newHarness(t)
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(`send(to = `+test.to+`, topic = "t", value = 1, name = "x")`)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(`send(to = `+test.to+`, topic = "t", value = 1, name = "x")`)), modeOff())
 
 			require.ErrorContains(t, err, test.want)
 			assert.Empty(t, h.commands.ranBy(testItem))
@@ -243,7 +243,7 @@ func TestSend_RefusesABadTopicAValueThatIsNotJSONAndABadCall(t *testing.T) {
 
 			h := newHarness(t)
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(test.call)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(test.call)), modeOff())
 
 			require.ErrorContains(t, err, test.want)
 		})
@@ -283,7 +283,7 @@ def main(item):
     gather(k, name = "all")
     command(name = "got", run = ["got", m.value])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.NoError(t, err)
 	require.Len(t, h.commands.ranBy(testItem), 1)
@@ -318,7 +318,7 @@ func TestClientSend_RefusesAnItemWithNoOpenRun(t *testing.T) {
 	_, err := client.Send(testItem, Outgoing{Topic: "go", Value: text(t, "x")})
 	require.ErrorContains(t, err, "item 12 has no open run. Run beehave status")
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.NoError(t, err)
 
 	_, err = client.Send(testItem, Outgoing{Topic: "go", Value: text(t, "x")})

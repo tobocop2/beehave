@@ -328,7 +328,7 @@ func TestFreeLogin_APlainRunHoldsNoLoginBetweenPhases(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { _, err := engine.RunFile(testItem, testProject, r.file); done <- err }()
+	go func() { _, err := engine.RunFile(testItem, testProject, r.file, modeOff()); done <- err }()
 
 	waitOn(t, condition(func() bool { return picks.loginOf("21") != "" }))
 	close(release)
@@ -403,7 +403,7 @@ func TestFreeLogin_ALoginThatHoldsARunStaysBusyUntilItEnds(t *testing.T) {
 
 	done := make(chan error, 1)
 
-	go func() { _, err := engine.RunFile(testItem, testProject, r.file); done <- err }()
+	go func() { _, err := engine.RunFile(testItem, testProject, r.file, modeOff()); done <- err }()
 
 	waitOn(t, condition(func() bool { return picks.loginOf("23") != "" }))
 	close(release)
@@ -432,7 +432,7 @@ func TestFreeLogin_AResumeKeepsTheRecordedLogins(t *testing.T) {
 
 	crashed, stop := r.crashEngine(t)
 
-	go func() { _, _ = crashed.RunFile(testItem, testProject, r.file) }() //nolint:errcheck // the crash ends the run with an error
+	go func() { _, _ = crashed.RunFile(testItem, testProject, r.file, modeOff()) }() //nolint:errcheck // the crash ends the run with an error
 
 	waitOn(t, condition(func() bool { return len(r.agents.started()) == 2 }))
 	stop()
@@ -448,7 +448,7 @@ func TestFreeLogin_AResumeKeepsTheRecordedLogins(t *testing.T) {
 	resumed := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, resumed.Shutdown()) })
 
-	_, err := resumed.RunFile(testItem, testProject, r.file)
+	_, err := resumed.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	for item, login := range before {

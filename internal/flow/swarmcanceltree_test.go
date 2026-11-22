@@ -66,7 +66,7 @@ func TestCancelTree_EndsTheChildAndTheChildOfThatChild(t *testing.T) {
 			holdInner(h)
 
 			engine := h.engine(t)
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, nestedFlow(c.stop)))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, nestedFlow(c.stop)), modeOff())
 
 			require.NoError(t, err)
 			assert.Contains(t, h.commands.ranBy(testItem), "after "+c.want)

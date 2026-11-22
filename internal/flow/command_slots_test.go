@@ -86,7 +86,7 @@ func runSlotItem(t *testing.T, engine *Engine, item, text string) <-chan error {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(item, testProject, file)
+		_, err := engine.RunFile(item, testProject, file, modeOff())
 		ended <- err
 	}()
 

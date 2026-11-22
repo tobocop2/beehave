@@ -75,7 +75,7 @@ func TestAgentStep_AllowPathsUsesTheRecordedStartWhenTheRunResumesAfterHeadMoved
 
 	rig.crashItemAfterThePhaseEndedArmedBy(t, testItem, file, func(a func()) { arm = a })
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "src/x.go", "the resume measures from the recorded start, not from the moved HEAD")
 }

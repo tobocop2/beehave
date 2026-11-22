@@ -460,7 +460,7 @@ func TestResult_ARunThatCompletedInTheInstantTheEngineStoppedReportsItsResult(t 
 	engine := harness.engine(t)
 	file := writeFlow(t, bodyFlow("command(run = [\"c\"])\n"))
 
-	want, err := engine.RunFile(testItem, testProject, file)
+	want, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	got, err := engine.result(stoppedHandle{}, testItem)

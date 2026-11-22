@@ -87,7 +87,7 @@ func TestSpawnGather_ThreeChildrenSucceedAndTheParentSeesEachResultInOrder(t *te
 	h := newHarness(t)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.NoError(t, err)
 
@@ -115,7 +115,7 @@ func TestSpawnGather_AFailedChildIsDataWithFailReturnAndItsErrorPassesTheRedacto
 	failing.Store(true)
 	failItem(h, "22", &failing)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "return", `)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "return", `)), modeOff())
 
 	require.NoError(t, err, "the parent goes on with the failed child as data")
 
@@ -152,7 +152,7 @@ func TestSpawnGather_FailRaiseCancelsTheOpenChildrenAndRaisesAfterTheStep(t *tes
 	}
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile(`fail = "raise", `)), modeOff())
 
 	require.ErrorContains(t, err, "item 22 did not finish")
 	require.ErrorContains(t, err, errFake.Error())
@@ -233,7 +233,7 @@ func TestSpawnGather_ResumeOfAFailedParentReopensTheMidListChildAndEachOutputIsI
 	client := h.client(t, testVersion)
 	file := writeFlow(t, stopSwarm)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "item 22 did not finish")
 	require.ErrorContains(t, err, "Run beehave resume 12 to reopen item 22 and run the spawn again")
 
@@ -305,7 +305,7 @@ func TestSpawnGather_ResumeOfAFailedParentReopensASiblingThatTheRaiseCancelled(t
 	running.Store(engine)
 	client := h.client(t, testVersion)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, stopSwarm))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, stopSwarm), modeOff())
 	require.ErrorContains(t, err, "item 22 did not finish")
 
 	last, found, err := latestRun(engine.ctx, "23")
@@ -430,7 +430,7 @@ func startOpenRun(t *testing.T, h *harness, engine *Engine, item, project string
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(item, project, file)
+		_, err := engine.RunFile(item, project, file, modeOff())
 		done <- err
 	}()
 
@@ -449,7 +449,7 @@ func TestSpawnGather_SpawnRefusesAnItemWithAnOpenRunAndNamesHowToEndIt(t *testin
 
 	startOpenRun(t, h, engine, "21", testProject)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorContains(t, err, "item 21 has an open run, item-21-r1. Run beehave status to see it, or beehave cancel 21 to end it, then start this item again")
 	assert.Empty(t, h.commands.ranBy("22"), "no child started")
@@ -463,7 +463,7 @@ func TestSpawnGather_SpawnRefusesAnItemWithAnOpenRunUnderAnotherProject(t *testi
 
 	startOpenRun(t, h, engine, "21", "other")
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorIs(t, err, errProjectConflict)
 	require.ErrorContains(t, err, "project other")
@@ -483,10 +483,10 @@ func TestSpawnGather_SpawnRefusesAnItemWhoseLastAttemptFailedAndNamesResume(t *t
 
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.Error(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorIs(t, err, errRunFailed)
 	require.ErrorContains(t, err, "Run beehave resume 21 to continue it from the last finished step")
@@ -501,10 +501,10 @@ func TestSpawnGather_SpawnReusesAChildThatFinishedAndStartsNoSecondAttempt(t *te
 
 	engine := h.engine(t)
 
-	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    command(name = \"w\", run = [\"w\"], stop_on_rc = [2])\n"))
+	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    command(name = \"w\", run = [\"w\"], stop_on_rc = [2])\n"), modeOff())
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, stopSwarm))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, stopSwarm), modeOff())
 
 	require.NoError(t, err)
 	assert.Len(t, h.commands.ranBy("21"), 1, "the finished child did not run again")
@@ -537,7 +537,7 @@ func TestSpawnGather_ARefusedCallNamesTheProblemAndTheFix(t *testing.T) {
 			t.Parallel()
 
 			h := newHarness(t)
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, c.file))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, c.file), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 		})
@@ -550,7 +550,7 @@ func TestSpawnGather_AnEmptyCallReturnsAtOnce(t *testing.T) {
 	h := newHarness(t)
 	flow := bodyFlow("none = gather(spawn(items = []))\ncommand(name = \"after\", run = [\"after\", str(len(none.results))])")
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 0"}, h.commands.ranBy(testItem))
@@ -597,7 +597,7 @@ func TestSpawnGather_FiveChildrenRunAtMostMaxConcurrentAtOnce(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -635,7 +635,7 @@ func TestSpawnGather_CancelOfTheParentWhileItGathersEndsTheChildren(t *testing.T
 	file := writeFlow(t, swarmFile(""))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -749,7 +749,7 @@ func TestSpawnGather_ACallWithNoArgumentsNamesTheMissingOne(t *testing.T) {
 	t.Parallel()
 
 	for call, want := range map[string]string{"spawn(*[])": "spawn: missing argument for items", "gather(*[])": "gather: missing argument for runs"} {
-		_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(call)))
+		_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(call)), modeOff())
 
 		require.ErrorContains(t, err, want)
 	}
@@ -788,7 +788,7 @@ func TestSpawnGather_SpawnReportsAnItemWhoseLoginCannotBePicked(t *testing.T) {
 	h := newHarness(t)
 	h.picker = pickFails{item: "22"}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorContains(t, err, "pick the login of item 22")
 	assert.Empty(t, h.commands.ranBy("21"), "no child started")
@@ -800,7 +800,7 @@ func TestSpawnGather_SpawnReportsAnItemWhoseFieldsCannotBeRead(t *testing.T) {
 	h := newHarness(t)
 	h.items.failFor = "22"
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorContains(t, err, "read the fields of item 22")
 	assert.Empty(t, h.commands.ranBy("21"), "no child started")
@@ -812,7 +812,7 @@ func TestSpawnGather_SpawnReportsAChildTheQueueCannotStart(t *testing.T) {
 	h := newHarness(t)
 	engine := h.engineWith(t, func(e *Engine) { e.itemQueues[1] = nil })
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, swarmFile("")), modeOff())
 
 	require.ErrorContains(t, err, "start the run of item 21")
 }
@@ -885,7 +885,7 @@ func TestSpawnGather_AFailedCancelOfAnOpenChildIsReportedWithItsRun(t *testing.T
 
 	startOpenRun(t, h, engine, "21", testProject)
 
-	_, err := engine.RunFile("22", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
+	_, err := engine.RunFile("22", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.Error(t, err)
 
 	// A file where the folder of the cancel markers belongs makes every marker fail.

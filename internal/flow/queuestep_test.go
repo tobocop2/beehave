@@ -131,7 +131,7 @@ func TestQueue_AnItemOnHoldIsNeverReady(t *testing.T) {
 
 	h, _ := queueHarness(t, []model.Item{held, queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP1)}, queuePull(t, 8, "22", "hold"))
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", hold = "hold"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q", hold = "hold"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:hold:P1:0", "22:hold:P1:8", "23:ready:P1:0", "free=2"}, seenBy(t, h), "a tracker hold and a hold label on the pull request both hold the item")
@@ -153,7 +153,7 @@ def main(item):
     command(name = "after", run = ["after", "stopped" if done.results[0].stopped != None else "ran"])
 `
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"seen ready", "after stopped"}, h.commands.ranBy(testItem), "the row was ready when the call read it")
@@ -202,7 +202,7 @@ func TestQueue_AnItemWithAnOpenRunIsRunning(t *testing.T) {
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	holdChildUntilSeen(h)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, blockedChild))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, blockedChild), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:running:P1:0", "free=1"}, seenBy(t, h))
@@ -225,7 +225,7 @@ def main(item):
     gather(runs, name = "g")
 `
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"2", "1"}, seenBy(t, h), "max_concurrent is 2, and one run is open after the spawn")
@@ -252,7 +252,7 @@ func TestQueue_AFailedLastAttemptIsFailed(t *testing.T) {
 		return nil
 	}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, endedChild))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, endedChild), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:failed:P1:0", "free=2"}, seenBy(t, h))
@@ -263,7 +263,7 @@ func TestQueue_ASucceededItemIsDone(t *testing.T) {
 
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, endedChild))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, endedChild), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:done:P1:0", "free=2"}, seenBy(t, h))
@@ -289,7 +289,7 @@ func TestQueue_AForeignRowWhosePullRequestMergedWithFindingsOpenIsOfferedAgain(t
 	h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	q.states = map[int]string{7: "MERGED"}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 7, openFinding)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 7, openFinding)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:0", "free=2"}, seenBy(t, h), "a merged pull request with findings open brings the row back")
@@ -313,7 +313,7 @@ func TestQueue_AForeignRowThatIsNotOwedAnotherVisitStaysDone(t *testing.T) {
 			h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 			q.states = map[int]string{7: test.state}
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild(test.reason, 7, test.findings)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild(test.reason, 7, test.findings)), modeOff())
 
 			require.NoError(t, err)
 			assert.Equal(t, []string{"21:done:P1:0", "free=2"}, seenBy(t, h))
@@ -327,7 +327,7 @@ func TestQueue_AForeignRowThatRecordedNoPullRequestStaysDoneAndReadsNoState(t *t
 	h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	q.states = map[int]string{0: "MERGED"}
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 0, openFinding)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 0, openFinding)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:done:P1:0", "free=2"}, seenBy(t, h))
@@ -340,7 +340,7 @@ func TestQueue_AFailedReadOfTheRecordedPullRequestFailsTheStepAndReturnsNoGuess(
 	h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 	q.stateErr = errFake
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 7, openFinding)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, foreignChild("foreign", 7, openFinding)), modeOff())
 
 	require.ErrorIs(t, err, errFake)
 	assert.Empty(t, h.commands.ranBy(testItem), "no row reached the file")
@@ -354,7 +354,7 @@ func TestQueue_RowsSortBySeverityThenByItemID(t *testing.T) {
 		queueItem("9", model.SeverityP0), queueItem("11", model.SeverityP1),
 	})
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"9:ready:P0:0", "11:ready:P1:0", "5:ready:P1:0", "30:ready:P2:0", "7:ready:P?:0", "free=2"}, seenBy(t, h),
@@ -374,7 +374,7 @@ func TestQueue_AFailedReadFailsTheStepAndReturnsNoGuess(t *testing.T) {
 			h, q := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
 			set(q)
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
 			require.ErrorIs(t, err, errFake)
 			assert.Empty(t, h.commands.ranBy(testItem), "no row reached the file")
@@ -387,7 +387,7 @@ func TestQueue_APullRequestJoinsItsItemByBranchName(t *testing.T) {
 
 	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1), queueItem("22", model.SeverityP1)}, queuePull(t, 7, "21"), queuePull(t, 8, "feature-x"))
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21:ready:P1:7", "22:ready:P1:0", "free=2"}, seenBy(t, h))
@@ -398,7 +398,7 @@ func TestQueue_ABuildWithNoQueueReaderFailsTheCall(t *testing.T) {
 
 	h := newHarness(t)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, queueFlow(`name = "q"`)), modeOff())
 
 	require.ErrorIs(t, err, errNoQueue)
 }
@@ -424,7 +424,7 @@ func TestQueue_AReplayReturnsTheRecordedRowsNotAFreshRead(t *testing.T) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -492,7 +492,7 @@ def main(item):
     command(name = "after", run = ["after", str(done.results[0].error)])
 `
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Empty(t, h.commands.ranBy("21"), "the item started no step")

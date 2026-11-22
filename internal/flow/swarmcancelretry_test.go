@@ -84,7 +84,7 @@ func TestCancelRetry_EndsTheLatestAttemptOfARetriedChildAndItsChild(t *testing.T
 			failOnceThenHold(h)
 
 			engine := h.engine(t)
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, retriedFlow(c.stop)))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, retriedFlow(c.stop)), modeOff())
 
 			require.NoError(t, err)
 			assert.Contains(t, h.commands.ranBy(testItem), "after "+c.want, "the second attempt of 21 was open, so the call ended it")
@@ -132,7 +132,7 @@ def main(item):
 `
 	engine := h.engine(t)
 	began := time.Now()
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 	took := time.Since(began)
 
 	require.NoError(t, err)

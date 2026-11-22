@@ -30,7 +30,7 @@ func TestFirstOf_RefusesACallThatBreaksItsRules(t *testing.T) {
 			t.Parallel()
 
 			h := newHarness(t)
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.call)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.call)), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 		})
@@ -99,7 +99,7 @@ func TestFirstOf_ASpendThatCannotBeReadFailsTheLook(t *testing.T) {
 def main(item):
     gather(spawn(items = ["21"], entry = "worker", name = "fan"), name = "fan")
 `
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 	require.NoError(t, err)
 
 	armed.Store(true)

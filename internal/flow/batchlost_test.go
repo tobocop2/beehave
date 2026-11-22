@@ -42,7 +42,7 @@ func TestBatchGate_ALostJobWithAProofRerunsOnTheSameCombinedCommitAndLands(t *te
 	rig, hosts := lostBatchRig(t, 1)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed(), "the rerun passed, so the batch lands")
@@ -66,7 +66,7 @@ func TestBatchGate_ASecondProvenLossInOneCallEndsTheCallWithAHostCauseAndBlamesN
 	hosts.proofs = []model.LostProof{{Kind: model.LostStopped}, {Kind: model.LostGone}}
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())), modeOff())
 
 	require.ErrorIs(t, err, batch.ErrGateVoid)
 	assert.Contains(t, err.Error(), "the gate job job-1 was lost on gpu-b and the proof is stopped", "the error names the host and the first proof")
@@ -113,7 +113,7 @@ func TestBatchGate_TwoProvenLossesOnTwoGatesOfOneCallEndTheCallAndBlameNoMember(
 	rig, hosts, file := splitLossBatch(t, 1, 3)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorIs(t, err, batch.ErrGateVoid)
 	requireTwoLossesOfTheCall(t, rig, err)
@@ -245,7 +245,7 @@ func TestBatchGate_AReadOfTheProofThatFailsInTheTimedWaitFailsTheCallAndRecordsN
 	hosts.proofErr = errFake
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.lostBatchBody())), modeOff())
 
 	require.ErrorContains(t, err, "read the proof that the lost job job-1 on host gpu-b can no longer run: ")
 	require.ErrorIs(t, err, errFake)
@@ -360,7 +360,7 @@ func TestBatchGate_AGateRunProgramIsOneStepAndSubmitsNoHostJob(t *testing.T) {
 	rig.h.hosts = &upHosts{started: true}
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", `gate_run = ["check-all"], `))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", `gate_run = ["check-all"], `))), modeOff())
 
 	require.NoError(t, err)
 	assert.Zero(t, rig.gate.submitted(), "a program gate has no host job")

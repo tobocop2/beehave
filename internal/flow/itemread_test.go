@@ -219,7 +219,7 @@ func TestItemRead_AReplayReadsTheRecordedAnswerAndNotTheTrackerAgain(t *testing.
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

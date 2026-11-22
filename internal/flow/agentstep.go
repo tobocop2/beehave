@@ -261,9 +261,7 @@ func (s *script) ready(a *agentArgs, label string) (name, login, prompt string, 
 		return "", "", "", err
 	}
 
-	if a.box, err = a.sandbox.effective(s.runMode()); err != nil {
-		return "", "", "", err
-	}
+	a.box = a.sandbox.effective(s.runMode())
 
 	if login, err = s.loginFor(*a); err != nil {
 		return "", "", "", err

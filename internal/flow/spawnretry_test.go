@@ -56,7 +56,7 @@ func TestSpawnRetries_AChildThatFailsOnceStartsAgainAsItsNextAttemptAndTheRaiseD
 	tries := failTimes(h, "22", 1)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 
 	require.NoError(t, err, "a failure with retries left does not raise")
 	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem))
@@ -87,7 +87,7 @@ def main(item):
     command(name = "after", run = ["after"] + [r.item + ":" + ("ok" if r.ok else "failed") + ":" + str(r.attempts) for r in again.results])
 `
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.NoError(t, err, "the runs that spawn returned stay children of this run after a retry")
 	assert.Equal(t, []string{"after 21:ok:1 22:ok:2"}, h.commands.ranBy(testItem))
@@ -111,7 +111,7 @@ def main(item):
     command(name = "after", run = ["after"] + [r.item + ":" + str(r.attempts) for r in first.results + again.results])
 `
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 22:2 22:2"}, h.commands.ranBy(testItem), "both calls see the two attempts that ran")
@@ -140,7 +140,7 @@ def main(item):
     command(name = "after", run = ["after"] + [r.item + ":" + str(r.attempts) for r in done.results])
 `
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 22:1"}, h.commands.ranBy(testItem))
@@ -186,7 +186,7 @@ func TestSpawnRetries_AFailedChildStartsAgainWhileItsSiblingIsStillOpen(t *testi
 	engine := h.engine(t)
 	running.Store(engine)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem), "21 saw the second attempt of 22 start while it was open")
@@ -198,7 +198,7 @@ func TestSpawnRetries_AChildThatFailsEachAttemptIsAFailedOutcomeAfterItsRetries(
 	h := newHarness(t)
 	tries := failTimes(h, "22", 5)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 21:ok:1 22:failed:2 23:ok:1"}, h.commands.ranBy(testItem))
@@ -228,7 +228,7 @@ func TestSpawnRetries_AStartAgainWhoseLoginCannotBePickedFailsTheParent(t *testi
 	h.picker = secondPickFails{item: "22", picks: &atomic.Int32{}}
 	tries := failTimes(h, "22", 5)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)), modeOff())
 
 	require.ErrorContains(t, err, errFake.Error())
 	assert.Equal(t, int32(1), tries.Load(), "no second attempt started")
@@ -264,7 +264,7 @@ func TestSpawnRetries_ARaiseFiresWhenTheRetriesAreSpent(t *testing.T) {
 	h := newHarness(t)
 	tries := failTimes(h, "22", 5)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 
 	require.ErrorContains(t, err, errFake.Error())
 	assert.Equal(t, int32(2), tries.Load())
@@ -282,7 +282,7 @@ func TestSpawnRetries_AStartAgainThatTheQueueRefusesFailsTheParent(t *testing.T)
 	_, err := dbos.Enqueue[ItemResult](h.client(t, testVersion).flow, nobodyQueue, phaseName, PhaseInput{}, dbos.WithEnqueueWorkflowID(runID("22", 2)), dbos.WithEnqueueApplicationVersion(testVersion))
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "return", `)), modeOff())
 
 	require.ErrorContains(t, err, "start the run of item 22")
 	assert.Equal(t, int32(1), tries.Load(), "the refused start ran no second attempt")
@@ -349,7 +349,7 @@ func TestSpawnRetries_ACrashWhileThePlanOfAStartAgainRunsStartsTheNextAttemptOnc
 	engine := h.engine(t)
 	running.Store(engine)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 	require.Error(t, err, "the crash ends the parent")
 	require.Equal(t, []string{"spawn:fan#1", "gather:fan#1"}, stepNames(t, engine), "the crash cut the plan off before its record")
 
@@ -370,7 +370,7 @@ func TestSpawnRetries_AResumeOfTheParentReopensTheLastAttemptOfARetriedChildOnly
 	tries := failTimes(h, "22", 2)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 	require.ErrorContains(t, err, errFake.Error(), "both attempts of item 22 failed")
 	require.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "gather:fan#1.retry1", "gather:fan#1.1"}, stepNames(t, engine))
 
@@ -417,7 +417,7 @@ func TestSpawnRetries_AResumeThatReopensASiblingCanceledByTheRaiseStartsNoThirdA
 
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)), modeOff())
 	require.ErrorContains(t, err, errFake.Error(), "both attempts of item 22 failed")
 	require.Equal(t, dbos.WorkflowStatusCancelled, runStatus(t, engine, runID("23", 1)), "the raise canceled the open sibling")
 
@@ -494,7 +494,7 @@ def main(item):
     if not r.ok:
         fail(r.error)
 `
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 	require.NoError(t, err)
 
 	for _, tc := range []struct {

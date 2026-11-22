@@ -143,7 +143,7 @@ func TestReviewFix_ALoopWithNoGuardAsksTheForgeNothing(t *testing.T) {
 	rig.h.preflight = spy
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"opus", "opus"}, rig.models(), "the scoped review and the full review of the one candidate")

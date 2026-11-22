@@ -54,7 +54,6 @@ func TestAgentStep_ALeftOutKeywordTakesTheSandboxModeOfTheRun(t *testing.T) {
 	}{
 		"mode on":  {model.SandboxOn, &model.Sandbox{}},
 		"mode off": {model.SandboxOff, nil},
-		"no mode":  {"", nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

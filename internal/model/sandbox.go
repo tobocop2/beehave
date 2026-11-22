@@ -41,6 +41,15 @@ func ParseSandboxMode(text string) (SandboxMode, error) {
 // SandboxByDefault is true when the project file says sandbox = "on". A project that says nothing runs its steps with no sandbox.
 func (p Project) SandboxByDefault() bool { return p.Sandbox == SandboxOn }
 
+// RunSandboxMode is the sandbox mode that a run of the project stores when it starts: on when the project file says sandbox = "on", and off otherwise.
+func (p Project) RunSandboxMode() SandboxMode {
+	if p.SandboxByDefault() {
+		return SandboxOn
+	}
+
+	return SandboxOff
+}
+
 // domainName is a host name for the network list: labels of letters, digits and hyphens, with an optional leading "*." for all subdomains.
 var domainName = regexp.MustCompile(`^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
 

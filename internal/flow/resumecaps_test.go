@@ -128,7 +128,7 @@ command(run = ["done"])
 	engine := rig.h.engine(t)
 	client := rig.h.client(t, testVersion)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "ended as exited (exit 3)")
 	require.Len(t, rig.h.agents.seen(), 2, "round 1 ran, round 2 failed")
 

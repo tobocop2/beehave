@@ -55,7 +55,7 @@ func TestExamplePlanner_ThePlannerReadsTheProgressOfTheWorkersWhileTheyRun(t *te
 
 	rig, file := plannerRig(t)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 
@@ -70,7 +70,7 @@ func TestExamplePlanner_AWorkerThatPublishedLastShowsItsValueToStatus(t *testing
 
 	rig, file := plannerRig(t)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	got, err := rig.h.client(t, testVersion).Published("item-22-r1")
@@ -112,7 +112,7 @@ func runTicking(t *testing.T, h *harness, engine *Engine) error {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, plannerFile)
+		_, err := engine.RunFile(testItem, testProject, plannerFile, modeOff())
 		done <- err
 	}()
 
@@ -341,7 +341,7 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 	ran := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, plannerFile)
+		_, runErr := first.RunFile(testItem, testProject, plannerFile, modeOff())
 		ran <- runErr
 	}()
 

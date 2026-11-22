@@ -34,14 +34,14 @@ type ItemInput struct {
 	Parent string `json:"parent,omitempty"`
 	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. A run that a user started takes the base of the last run of the same item. It is empty when the item has no earlier run, and the item is cut at the base branch of the project.
 	Base string `json:"base,omitempty"`
-	// Sandbox is the sandbox mode of the project when the run started. A run stored with none reads the live sandbox mode of its project, as the engine did before the field existed.
+	// Sandbox is the sandbox mode the run started with, on or off. The start of a run refuses an empty mode, so only a run recorded before the field existed has none, and it reads the live sandbox mode of its project.
 	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
 }
 
 // RunOption is a choice for a run that a caller makes when it starts the run.
 type RunOption func(*ItemInput)
 
-// RunSandbox records the sandbox mode of the project in the input of the run. The caller reads the mode from its own config, never from the engine that serves the run.
+// RunSandbox records the sandbox mode of the run in its input. The caller resolves the mode from its own config, never from the engine that serves the run.
 func RunSandbox(mode model.SandboxMode) RunOption { return func(in *ItemInput) { in.Sandbox = mode } }
 
 // ItemResult is what a finished item workflow reports.

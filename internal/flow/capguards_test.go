@@ -151,7 +151,7 @@ func TestExamples_ACappedAgentStepStopsTheItemWithARefuseThatNamesTheStepAndTheC
 
 			rig, count, file := guardRig(t, guard)
 
-			_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+			_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "REFUSE")
@@ -214,7 +214,7 @@ func TestReviewFix_ACappedReviewStopsTheLoopWithARefuseThatNamesTheCap(t *testin
 	require.NoError(t, os.WriteFile(file, []byte(libraryLoop(rig.head, "")), 0o600))
 
 	loopEngine := rig.h.engine(t)
-	_, err := loopEngine.RunFile(testItem, testProject, file)
+	_, err := loopEngine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "REFUSE")

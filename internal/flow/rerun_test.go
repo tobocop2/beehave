@@ -37,7 +37,7 @@ func crashAndResume(t *testing.T, h *harness, deps Deps, body string) ItemResult
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(body)))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(body)), modeOff())
 	require.Error(t, err, "the crash ends the first run")
 
 	result, err := resumeAndJoin(t, engine, h.client(t, testVersion))
@@ -71,7 +71,7 @@ func TestSpawn_ACrashWhileTheParentWaitsInGatherStartsNoSecondChild(t *testing.T
 
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, spawnFlow))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, spawnFlow), modeOff())
 	require.Error(t, err, "the crash ends the parent")
 
 	before, found, err := latestRun(engine.ctx, "21")

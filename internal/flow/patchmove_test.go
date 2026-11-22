@@ -78,7 +78,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderServeWhenNoModuleChanged(
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		result, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -137,7 +137,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByServeAndNamesTheModuleTh
 	h.opts.Version = otherBuild
 	h.engine(t)
 
-	_, err = h.client(t, otherBuild).JoinRun(t.Context(), testItem, testProject, file)
+	_, err = h.client(t, otherBuild).JoinRun(t.Context(), testItem, testProject, file, modeOff())
 
 	require.ErrorIs(t, err, errStranded)
 	require.ErrorContains(t, err, "core module at version")
@@ -215,7 +215,7 @@ func TestPatch_AFailedRunRewoundByResumeAfterTheChangeKeepsItsOldCallAndTakesThe
 	file := writeFlow(t, failFlow)
 	first := h.engine(t)
 
-	_, err := first.RunFile(testItem, testProject, file)
+	_, err := first.RunFile(testItem, testProject, file, modeOff())
 	require.Error(t, err, "the second call of the old build fails")
 	require.NoError(t, first.Shutdown())
 

@@ -75,7 +75,7 @@ type dryChoice struct {
 	skills            []string
 	// spawnDepth is the max_spawn_depth of the project. 0 means config.DefaultMaxSpawnDepth.
 	spawnDepth int
-	// sandbox is the sandbox mode of the project. The empty mode runs the steps that set no sandbox with none.
+	// sandbox is the sandbox mode that the run stores: off unless WithSandbox gives the mode of a project.
 	sandbox model.SandboxMode
 }
 
@@ -109,7 +109,7 @@ func WithEntry(name string) DryOption { return func(c *dryChoice) { c.entry = na
 
 // chooseDry applies the options of a dry run in order.
 func chooseDry(options []DryOption) dryChoice {
-	var chosen dryChoice
+	chosen := dryChoice{sandbox: model.SandboxOff}
 
 	for _, option := range options {
 		option(&chosen)

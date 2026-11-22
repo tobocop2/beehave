@@ -52,6 +52,9 @@ const (
 
 var errFake = errors.New("fake failure")
 
+// modeOff is the run option of a test run that does not care about the sandbox: the mode of a project with the key unset.
+func modeOff() RunOption { return RunSandbox(model.SandboxOff) }
+
 // fakeAgents records each request and counts the agents in flight, in all and for each login.
 type fakeAgents struct {
 	mu       sync.Mutex
@@ -684,7 +687,7 @@ func (h *harness) flowIs(t *testing.T, text string) {
 
 // Run walks the default workflow file of the harness. It is a helper of the tests: the production engine runs only a file named by the caller.
 func (e *Engine) Run(item, project string) (ItemResult, error) {
-	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName))
+	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName), modeOff())
 }
 
 func newHarness(t *testing.T) *harness {

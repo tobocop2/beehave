@@ -301,7 +301,7 @@ func TestRoundRun_TheStartOfARoundItemReadsNoFieldsFromTheTracker(t *testing.T) 
 
 	h, _ := roundTracker(t)
 
-	_, err := h.engine(t).RunFile(testRound, testProject, writeFlow(t, bodyFlow(`command(run = ["main", item.id])`)))
+	_, err := h.engine(t).RunFile(testRound, testProject, writeFlow(t, bodyFlow(`command(run = ["main", item.id])`)), modeOff())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"main " + testRound}, h.commands.ran(), "main gets the round id as the id of its item")
@@ -325,7 +325,7 @@ func TestRoundRun_ATrackerRefusalOfARealNonNumberItemStillFailsTheRun(t *testing
 
 	h, _ := roundTracker(t)
 
-	_, err := h.engine(t).RunFile("bd-7", testProject, writeFlow(t, bodyFlow(`command(run = ["main"])`)))
+	_, err := h.engine(t).RunFile("bd-7", testProject, writeFlow(t, bodyFlow(`command(run = ["main"])`)), modeOff())
 	require.ErrorContains(t, err, `read the fields of item bd-7: REFUSE: "bd-7" is not an issue number`)
 	assert.Empty(t, h.commands.ran())
 }
@@ -340,7 +340,8 @@ func TestRoundRun_ItemReadOfARoundItemFindsNothingAndAsksNoTracker(t *testing.T)
 			h, r := roundTracker(t)
 
 			_, err := h.engine(t).RunFile(testRound, testProject, writeFlow(t, bodyFlow(`r = item_read(of = "`+of+`", name = "up")
-command(run = [str(r.found), "[" + r.id + "]", str(len(r.fields)), str(len(r.comments))])`)))
+command(run = [str(r.found), "[" + r.id + "]", str(len(r.fields)), str(len(r.comments))])`)), modeOff())
+
 			require.NoError(t, err)
 
 			assert.Equal(t, []string{"False [] 0 0"}, h.commands.ran())

@@ -94,7 +94,7 @@ func TestMerge_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 			t.Parallel()
 
 			rig := newBatchRig(t)
-			_, err := rig.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", c.extra))))
+			_, err := rig.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", c.extra))), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 			assert.Contains(t, err.Error(), "workflow.star:")

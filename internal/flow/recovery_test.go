@@ -33,7 +33,7 @@ func TestRunFile_ASuccessRunOfAnotherItemThatTheLaunchResumedIsNotJoined(t *test
 		return err == nil && len(rows) == 1
 	}))
 
-	_, err := next.RunFile(testItem, testProject, file)
+	_, err := next.RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, storedRuns(t, next), "the item under test starts its own attempt")
@@ -62,7 +62,7 @@ func TestRunFile_ARunThatTheLaunchResumedAndEndedIsNotRunAgain(t *testing.T) {
 		return err == nil && len(rows) == 1
 	}))
 
-	_, err := next.RunFile(testItem, testProject, file)
+	_, err := next.RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the resumed run read the file once")

@@ -116,7 +116,7 @@ func TestExclusivePriority_TheQueuedGateRecordsItsPriority(t *testing.T) {
 			harness.forge.state = test.standing
 			engine := harness.engine(t)
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 			require.NoError(t, err)
 
 			rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(exclusiveName))

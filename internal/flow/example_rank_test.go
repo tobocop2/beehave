@@ -40,7 +40,7 @@ func rankedRows(t *testing.T, items []model.Item, pulls []model.PullRequest, row
 	order := filepath.Join(filepath.Dir(file), "order.star")
 	require.NoError(t, os.WriteFile(order, []byte(source), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, order)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, order, modeOff())
 	require.NoError(t, err)
 
 	ran := rig.h.commands.ranBy(testItem)

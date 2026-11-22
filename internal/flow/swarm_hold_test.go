@@ -78,7 +78,7 @@ func TestFirstOf_ReturnsTheFirstRunThatEndedAndRecordsIt(t *testing.T) {
 	defer close(release)
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, firstFile(`first_of(runs = runs, name = "fan")`)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, firstFile(`first_of(runs = runs, name = "fan")`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after run 22 True None"}, h.commands.ranBy(testItem), "only the run that ended came back")
@@ -99,7 +99,7 @@ def main(item):
     again = first_of(runs = runs, timeout = "1ms", name = "n1")
     command(name = "after", run = ["after", again.kind] + seen)
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after timer 21 22 23"}, h.commands.ranBy(testItem), "one call returns the three ended runs, and a second call finds none left")
@@ -115,7 +115,7 @@ func TestGather_TheDefaultWaitsForEveryRun(t *testing.T) {
 	file := writeFlow(t, swarmFile(""))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -141,7 +141,7 @@ func interruptedAtTheQuestion(t *testing.T, h *harness, file string, release cha
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -180,7 +180,7 @@ def main(item):
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -196,7 +196,7 @@ func TestGather_TheKeywordUntilIsGone(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow("gather([], until = \"any\")")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow("gather([], until = \"any\")")), modeOff())
 
 	require.ErrorContains(t, err, "gather takes no argument until")
 }
@@ -232,7 +232,7 @@ func TestFirstOf_ATurnThatEndsWithNoEventReadsTheRunsAgain(t *testing.T) {
 	file := writeFlow(t, firstFile(`first_of(runs = runs, name = "fan")`))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -318,7 +318,7 @@ func TestFirstOf_TheTimeoutReturnsTheTimerWhileTheRunsAreOpen(t *testing.T) {
 
 	defer close(release)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, firstFile(`first_of(runs = runs, timeout = "1s", name = "fan")`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, firstFile(`first_of(runs = runs, timeout = "1s", name = "fan")`)), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after timer None None None"}, h.commands.ranBy(testItem))
@@ -347,7 +347,7 @@ def main(item):
 	path := writeFlow(t, file)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, path)
+		_, err := engine.RunFile(testItem, testProject, path, modeOff())
 		done <- err
 	}()
 
@@ -377,7 +377,7 @@ def main(item):
     first_of(runs = runs, name = "one")
     first_of(runs = runs, name = "two")
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.ErrorContains(t, err, "every run of first_of was returned by an earlier call")
 }
@@ -386,7 +386,7 @@ func TestFirstOf_ARunThatIsNotAChildOfThisRunIsRefused(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(`first_of(runs = [struct(item = "9", run = "item-9-r1")], name = "x")`)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(`first_of(runs = [struct(item = "9", run = "item-9-r1")], name = "x")`)), modeOff())
 
 	require.Error(t, err)
 }
@@ -405,7 +405,7 @@ def main(item):
     got = first_of(runs = ordered, name = "one")
     command(name = "after", run = ["after", got.run.item] + [r.item for r in got.runs])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after 23 23 22 21"}, h.commands.ranBy(testItem), "a reversed list reverses the order in which the ended runs come, and run is the first of them")
@@ -426,7 +426,7 @@ def main(item):
     command(name = "after", run = ["after"] + seen)
     first_of(runs = twice, name = "two")
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file), modeOff())
 
 	require.ErrorContains(t, err, "every run of first_of was returned by an earlier call")
 	assert.Equal(t, []string{"after 21 22"}, h.commands.ranBy(testItem), "two runs named twice are two events, not four")
@@ -446,7 +446,7 @@ func TestFirstOf_ATopicThatOnlyContainsTheNameIsNotThatTopic(t *testing.T) {
 	path := writeFlow(t, firstFile(`first_of(runs = runs, topics = ["stop"], timeout = "3s", name = "fan")`))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, path)
+		_, err := engine.RunFile(testItem, testProject, path, modeOff())
 		done <- err
 	}()
 

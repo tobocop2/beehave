@@ -164,7 +164,7 @@ func TestStepsVersion_TheStepNamesOfABatchMergeMatchTheGoldenListOfTheStepsVersi
 	rig := newBatchRig(t)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))), modeOff())
 	require.NoError(t, err)
 
 	var batch []string
@@ -196,7 +196,7 @@ func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGolden
 	rig, _ := lostBatchRig(t, 1)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\n"+rig.call("1 3", ""))), modeOff())
 	require.NoError(t, err)
 
 	var batch []string

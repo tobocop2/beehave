@@ -265,7 +265,7 @@ func resumeDuringACancel(t *testing.T, version string, resume func(c *Client) er
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 

@@ -642,7 +642,7 @@ func pinnedInput(item, project, file string, options ...RunOption) (ItemInput, e
 	return in, nil
 }
 
-// check refuses an item that is not an item id, and a missing project.
+// check refuses an item that is not an item id, a missing project, and a run with no sandbox mode.
 func (in ItemInput) check() error {
 	if model.ItemKind(in.Item) == "" {
 		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
@@ -650,6 +650,10 @@ func (in ItemInput) check() error {
 
 	if in.Project == "" {
 		return fmt.Errorf("%w %s: name the project", errNoProject, in.Item)
+	}
+
+	if in.Sandbox == "" {
+		return fmt.Errorf("%w: item %s was not started. The run must store sandbox on or off", errNoSandboxMode, in.Item)
 	}
 
 	return nil

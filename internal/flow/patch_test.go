@@ -109,7 +109,7 @@ func continueOnBuild(t *testing.T, h *harness, first, next []step.Module, answer
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
