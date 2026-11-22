@@ -57,6 +57,50 @@ func TestSessionTap_RemovesAJSONEscapedSecretFromTheTextTheCallsAndWhatItSays(t 
 	assert.Equal(t, []agent.Said{{Text: "the key is [redacted]"}, {Call: true, Text: "Bash: login [redacted]"}}, said)
 }
 
+func TestSessionTap_RemovesAJSONEscapedSecretFromEachFieldThatTheEndOfARunKeeps(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sample  = `pa"ss<w>ord&ABCDEFGH`
+		escaped = `pa\"ss<w>ord&ABCDEFGH`
+	)
+
+	cases := map[string]struct {
+		seen agent.Seen
+		read func(*sessionTap) string
+	}{
+		"denial target": {
+			agent.Seen{Denials: []agent.Denial{{Tool: "Bash", Target: "login " + escaped}}},
+			func(tap *sessionTap) string { return tap.denials[0].Target },
+		},
+		"failure text": {
+			agent.Seen{Failed: "failed with " + escaped},
+			func(tap *sessionTap) string { return tap.failed },
+		},
+		"denial reason": {
+			agent.Seen{Denied: "refused " + escaped},
+			func(tap *sessionTap) string { return tap.denied },
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tap := newSessionTap(claude.New(nil), agent.DefaultPrices(), nil)
+			tap.redact = agent.Redactor(sample)
+
+			tap.mu.Lock()
+			tap.addEnd(test.seen)
+			got := test.read(tap)
+			tap.mu.Unlock()
+
+			assert.Contains(t, got, "[redacted]")
+			assert.NotContains(t, got, "ABCDEFGH")
+		})
+	}
+}
+
 func TestAgents_TheTapOfARunRemovesTheSecretsOfTheEngineFromWhatItKeeps(t *testing.T) {
 	t.Parallel()
 
