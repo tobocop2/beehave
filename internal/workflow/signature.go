@@ -343,7 +343,7 @@ const dataKeyword = "data"
 func commandParams() []Param {
 	return []Param{
 		runParam(),
-		opt("host", KindText), opt("stdin", KindText), ruled("env", KindDict, envRule),
+		opt("host", KindText), opt("stdin", KindText), ruled(envName, KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(nameKeyword, KindText),
 		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
 	}
@@ -352,7 +352,7 @@ func commandParams() []Param {
 // writeParams holds the keywords of the write builtin: the keywords of command that make sense for a program on this machine, and its read-back and undo.
 func writeParams() []Param {
 	return []Param{
-		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled("env", KindDict, envRule),
+		runParam(), words("read_back"), words("undo"), opt("stdin", KindText), ruled(envName, KindDict, envRule),
 		ruled("timeout", KindText, durationRule("timeout")), opt(nameKeyword, KindText),
 		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule),
 	}
@@ -378,7 +378,7 @@ func slotClass() Param { return Param{Name: slotsKeyword, Kind: KindText, AsValu
 // valueSignatures holds the builtins that return text or a struct of facts and start nothing.
 func valueSignatures() map[string][]Param {
 	return map[string][]Param{
-		"env":     {req(nameKeyword, KindText), {Name: "default", Kind: KindText, AsValue: true}},
+		envName:   {{Name: nameKeyword, Kind: KindText, Required: true, Rule: envReadRule}, {Name: "default", Kind: KindText, AsValue: true}},
 		"now":     {},
 		factsName: {},
 		// The two matchers judge text and run no step. They read the dialect of the agent scope and the grammar of the merge guard.
@@ -864,7 +864,7 @@ func (g *graph) closedSet(value syntax.Expr, got Kind, param Param) {
 // with computed members is checked on its literal members, because each rule of a collection judges its members one by one. A value that is
 // not a literal, and a collection with no literal member, is left to the run.
 func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
-	if param.Rule == nil {
+	if param.Rule == nil || (param.Name == envName && g.agentKey(builtin, value)) {
 		return
 	}
 
@@ -881,6 +881,30 @@ func (g *graph) rule(builtin string, value syntax.Expr, param Param) {
 	if err := param.Rule(v); err != nil {
 		g.report(placeOf(syntax.Start(value)), builtin+": "+err.Error()+".")
 	}
+}
+
+// agentKey reports the env dict that names the variable of the SSH agent as a literal key, whatever its value. It returns true when it reported.
+func (g *graph) agentKey(builtin string, value syntax.Expr) bool {
+	for paren, isParen := value.(*syntax.ParenExpr); isParen; paren, isParen = value.(*syntax.ParenExpr) {
+		value = paren.X
+	}
+
+	dict, isDict := value.(*syntax.DictExpr)
+	if !isDict {
+		return false
+	}
+
+	for _, entry := range dict.List {
+		pair := entry.(*syntax.DictEntry) //nolint:errcheck,forcetypeassert // the entries of a dict expression are dict entries
+
+		if name, ok := literal(pair.Key); ok && name == model.SSHAgentVar {
+			g.report(placeOf(syntax.Start(value)), builtin+": "+agentSocketError(name).Error()+".")
+
+			return true
+		}
+	}
+
+	return false
 }
 
 // literalValue is the Starlark value of an expression made of literals only: text, numbers, True, False, None, and lists, tuples and dicts of them.

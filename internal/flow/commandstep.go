@@ -510,6 +510,8 @@ func (s *script) wait(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 // refuseEnv returns an error for a variable that a file cannot read: one of the engine, or a secret by its name or its value.
 func (e *Engine) refuseEnv(name string) error {
 	switch {
+	case workflow.AgentSocketRead(name) != nil:
+		return workflow.AgentSocketRead(name)
 	case workflow.ReservedEnvName(name):
 		return fmt.Errorf("env cannot read `%s`. %s", name, workflow.ReservedEnvAdvice())
 	case workflow.SecretEnv(name, e.env[name]):

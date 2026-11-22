@@ -265,12 +265,12 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 		return notStarted(note)
 	}
 
-	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: append(slices.Clone(g.envOf(env)), "TMPDIR="+tmp)}
+	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: append(withoutSocket(g.envOf(env)), "TMPDIR="+tmp)}
 
 	return execute(ctx, enforcer, plan, command, limit)
 }
 
-// envOf returns env, or the environment that the sandbox was made with when env is nil.
+// envOf returns env, or the environment that the sandbox was made with when env is nil. The caller drops the SSH agent from it.
 func (g gateSandbox) envOf(env []string) []string {
 	if env == nil {
 		return g.environ
@@ -325,7 +325,7 @@ func (g gateSandbox) plan(ctx context.Context, project config.Project, dir strin
 		return sandbox.Plan{}, "beehave cannot find the home folder, so the sandbox cannot deny it. The gate did not run."
 	}
 
-	deny := credentialPaths(home, "", project.SandboxDeny)
+	deny := withSocket(credentialPaths(home, "", project.SandboxDeny), socketOf(g.environ))
 	read := expandAll(project.SandboxRead, home)
 
 	if note := readNote(read, home, deny); note != "" {

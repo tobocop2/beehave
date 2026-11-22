@@ -14,6 +14,7 @@ import (
 // The names of the builtins that the signature table, the table of result fields and the list of builtins all use.
 const (
 	commandName = "command"
+	envName     = "env"
 	factsName   = "facts"
 	gateName    = "gate"
 

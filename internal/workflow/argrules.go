@@ -78,9 +78,33 @@ func envAssignment(key, val starlark.Value) (string, error) {
 		return "", fmt.Errorf("env must hold strings only, and %s is not. Write the value in quotes", key)
 	case ReservedEnvName(name):
 		return "", fmt.Errorf("env cannot set `%s`. %s", name, ReservedEnvAdvice())
+	case name == model.SSHAgentVar:
+		return "", agentSocketError(name)
 	}
 
 	return name + "=" + value, nil
+}
+
+// agentSocketError is the refusal of the SSH agent variable in the env of a call. No step gets the agent of the owner.
+func agentSocketError(name string) error {
+	return fmt.Errorf("env cannot set `%s`. No step gets the SSH agent of the owner. Remove it", name)
+}
+
+// AgentSocketRead returns the refusal of a read of the SSH agent variable by the env builtin, and nil for any other name.
+// With it no workflow value can carry the path of the socket.
+func AgentSocketRead(name string) error {
+	if name != model.SSHAgentVar {
+		return nil
+	}
+
+	return fmt.Errorf("env cannot read `%s`. No step gets the SSH agent of the owner. Remove the call", name)
+}
+
+// envReadRule is the rule of the name argument of the env builtin.
+func envReadRule(v starlark.Value) error {
+	name, _ := starlark.AsString(v) // the unpack check has refused a value that is not text
+
+	return AgentSocketRead(name)
 }
 
 func envRule(v starlark.Value) error {

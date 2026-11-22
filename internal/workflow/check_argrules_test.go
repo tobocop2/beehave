@@ -14,6 +14,11 @@ func TestCheck_RefusesTheArgumentsOfTheRunThatAreText(t *testing.T) {
 		{"command env value", `command(run = ["x"], env = {"A": 1})`, "command: env must hold strings only"},
 		{"command env key", `command(run = ["x"], env = {1: "a"})`, "command: env must hold strings only"},
 		{"command env reserved", `command(run = ["x"], env = {"BEEHAVE_X": "1"})`, "command: env cannot set `BEEHAVE_X`"},
+		{"command env hands back the SSH agent", `command(run = ["x"], env = {"SSH_AUTH_SOCK": "/tmp/agent.sock"})`, "command: env cannot set `SSH_AUTH_SOCK`"},
+		{"command env hands back the SSH agent from the environment", `command(run = ["x"], env = {"SSH_AUTH_SOCK": env("SSH_AUTH_SOCK")})`, "command: env cannot set `SSH_AUTH_SOCK`"},
+		{"env reads the SSH agent", `env("SSH_AUTH_SOCK")`, "env: env cannot read `SSH_AUTH_SOCK`"},
+		{"command passes the SSH agent under another name", `command(run = ["x"], env = {"GIT_SSH_COMMAND": "ssh -o IdentityAgent=" + env("SSH_AUTH_SOCK")})`, "env cannot read `SSH_AUTH_SOCK`"},
+		{"write env hands back the SSH agent", `write(run = ["x"], env = ({"SSH_AUTH_SOCK": str(item)}))`, "write: env cannot set `SSH_AUTH_SOCK`"},
 		{"write env value", `write(run = ["x"], env = {"A": None})`, "write: env must hold strings only"},
 		{"env beside a computed entry", `command(run = ["x"], env = {"A": str(item), "B": 1})`, "command: env must hold strings only"},
 		{"env after a computed entry", `command(run = ["x"], env = {"B": 1, "A": str(item)})`, "command: env must hold strings only"},
@@ -56,6 +61,8 @@ func TestCheck_AcceptsTheArgumentsThatTheRunAccepts(t *testing.T) {
 		"    command(run = [\"x\"], env = {\"A\": \"1\", \"B\": str(item)})\n"+
 		"    command(run = [\"x\"], env = {str(item): 1})\n"+
 		"    write(run = [\"x\"], env = {})\n"+
+		"    command(run = [\"x\"], env = None)\n"+
+		"    command(run = [\"x\"], env = x)\n"+
 		"    sandbox(network = [str(item), \"api.example.org\"])\n"+
 		"    item_create(title = \"t\", key = \"k\", body = \"\")\n"+
 		"    item_create(title = str(item), key = str(item))\n"+

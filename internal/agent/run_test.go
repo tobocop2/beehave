@@ -63,6 +63,7 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 		Env: map[string]string{
 			"PATH": records + ":/bin:/usr/bin", "HOME": home, "LC_ALL": "C",
 			"ANTHROPIC_API_KEY": "leak", "GH_TOKEN": "leak", "CLAUDE_CONFIG_DIR": "/other/login",
+			"SSH_AUTH_SOCK": "/tmp/agent.sock",
 		},
 		Token: token,
 		Log:   log,
@@ -86,6 +87,7 @@ func TestRunner_StartsWithTheAllowlistedEnvironment(t *testing.T) { //nolint:par
 	assert.Contains(t, env, "LC_ALL=C")
 	assert.NotContains(t, env, "ANTHROPIC_API_KEY")
 	assert.NotContains(t, env, "GH_TOKEN")
+	assert.NotContains(t, env, "SSH_AUTH_SOCK", "an unsandboxed step gets no agent socket either")
 	assert.NotContains(t, env, "/other/login")
 }
 
