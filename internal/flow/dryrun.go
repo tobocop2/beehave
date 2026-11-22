@@ -549,12 +549,9 @@ func (dryTrees) Git(dir string) proc.Runner { //nolint:ireturn // the trees cont
 	return dryRunner(dir)
 }
 
-// dryRunner is the git runner of the dry run: the folder is a temporary one that the dry run made, and no global or system git config is read.
+// dryRunner is the git runner of the dry run: the folder is a temporary one that the dry run made. Like every runner of gitexec, it reads no global or system git config.
 func dryRunner(dir string) gitexec.Runner {
-	runner := gitexec.New(dir, 0)
-	runner.Env = []string{"GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"}
-
-	return runner
+	return gitexec.New(dir, 0)
 }
 
 // dryCommands runs no program: each command call exits with code 0 and prints nothing.

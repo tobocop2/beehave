@@ -285,8 +285,8 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.
 // The client of the commands only reads worktrees; it passes the projects so that it knows which have no repository.
-// Every git call sets GIT_TERMINAL_PROMPT=0, so a private repository fails and never waits for a password. A git call in the clone or a worktree is
-// local (see gitexec), so no setting in the clone config can send it to the network. roles is the writers table of the caller, so no worktrees value exists
+// A git call in the clone or a worktree is local and reads no git config of the user (see gitexec), so no setting in the clone config or in a file that
+// an agent wrote can send it to the network or start a program. It sets GIT_TERMINAL_PROMPT=0, so a private repository fails and never waits for a password. roles is the writers table of the caller, so no worktrees value exists
 // without it: a call to a remote of a project with credentials runs as its writer, or is refused when the roles are not loaded, as in the client.
 func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error), roles *writers) worktrees {
 	repos := reposFolder(opts.StateDir)
@@ -294,7 +294,7 @@ func newWorktrees(projects map[string]config.Project, opts flow.Options, forges 
 
 	return worktrees{
 		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles,
-		git: func(dir string) proc.Runner { return noPrompt(found.Runner(dir, proc.DefaultTimeout)) },
+		git: func(dir string) proc.Runner { return found.Runner(dir, proc.DefaultTimeout) },
 	}
 }
 
@@ -305,13 +305,6 @@ func reposFolder(stateDir string) string {
 
 // noPromptEnv is the git setting that fails a call that would ask for a password.
 const noPromptEnv = "GIT_TERMINAL_PROMPT=0"
-
-// noPrompt sets GIT_TERMINAL_PROMPT=0 on the runner.
-func noPrompt(runner gitexec.Runner) proc.Runner { //nolint:ireturn // the worktrees take the runner as the interface
-	runner.Env = []string{noPromptEnv}
-
-	return runner
-}
 
 // localRunner returns the runner of a program of a project with the environment of the process. A git call runs with the hooks of the repository off,
 // with the git of the project (see gitOf), and it is local (see gitexec).

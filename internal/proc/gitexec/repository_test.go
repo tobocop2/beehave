@@ -350,7 +350,7 @@ func TestGitexec_AllowListCoversTheKeysThatCloneAndWorktreeAddWrite(t *testing.T
 	assert.Equal(t, "local@example.com", strings.TrimSpace(identity.Stdout))
 }
 
-func TestGitexec_KeepsTheOwnerGlobalConfig(t *testing.T) { //nolint:paralleltest // t.Setenv changes the git config of the process
+func TestGitexec_ARunReadsNoGlobalConfigButReadConfigReadsTheIdentityOfTheOwner(t *testing.T) { //nolint:paralleltest // t.Setenv changes the git config of the process
 	global := ownerGit(t)
 	l := newEngineLayout(t)
 	l.program(t, "cat")
@@ -362,10 +362,19 @@ func TestGitexec_KeepsTheOwnerGlobalConfig(t *testing.T) { //nolint:paralleltest
 	require.NoError(t, os.WriteFile(filepath.Join(l.tree, "a.txt"), []byte("two\n"), 0o600))
 	require.NoError(t, os.Chtimes(filepath.Join(l.tree, "a.txt"), time.Unix(0, 0), time.Unix(0, 0)))
 
-	out := gitexec.NewRepositories(l.repos).Runner(l.tree, 0).Run(t.Context(), []string{"status", "--porcelain"})
+	plainGit(t, l.tree, "status", "--porcelain")
+	require.True(t, l.ran(), "control: a plain git status runs the filter of the owner global config")
+	require.NoError(t, os.Remove(filepath.Join(l.marks, "ran")))
+
+	runner := gitexec.NewRepositories(l.repos).Runner(l.tree, 0)
+	out := runner.Run(t.Context(), []string{"status", "--porcelain"})
 	require.Zero(t, out.ExitCode, out.Stderr)
 
-	assert.True(t, l.ran(), "the filter of the owner global config runs on an engine call")
+	assert.False(t, l.ran(), "the filter of the owner global config does not run on an engine call")
+
+	identity := runner.ReadConfig(t.Context(), "user.email")
+	assert.Equal(t, "owner@example.com", strings.TrimSpace(identity.Stdout), "the identity of the owner is read as a value")
+	assert.False(t, l.ran(), "reading a value runs no program")
 }
 
 func TestRepositories_AFolderThatNoCloneHoldsARecordOfIsUnknown(t *testing.T) { //nolint:paralleltest // t.Setenv changes the git config of the process
