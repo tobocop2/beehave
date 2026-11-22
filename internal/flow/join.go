@@ -69,7 +69,7 @@ func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item st
 		return nil
 	}
 
-	return c.moveOpen(ctx, item)
+	return c.underProbe(func() error { return c.moveHeld(ctx, item) })
 }
 
 // moveHeld is the move while probe.lock is held. It reads the run again: a run that another mover already put on this build needs no move.
@@ -88,15 +88,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
-	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return err
-	}
-
-	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return canceledNotMoved(item, last, err)
-	}
-
-	return nil
+	return c.cancelAndReopenHeld(item, last) //nolint:contextcheck // see the comment above
 }
 
 // namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
@@ -229,7 +221,7 @@ func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResul
 	defer ticker.Stop()
 
 	for {
-		result, done, err := watch.poll(ctx, handle)
+		result, done, err := watch.poll(handle)
 		if done || err != nil {
 			return result, err
 		}
@@ -242,27 +234,11 @@ func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResul
 	}
 }
 
-// status reads the status of the run. A canceled run may be a run that a move to this build has not reopened yet, so it waits for the move and reads again.
-func (w *engineWatch) status(ctx context.Context, handle dbos.WorkflowHandle[ItemResult]) (dbos.WorkflowStatus, error) {
-	status, err := handle.GetStatus()
-	if err == nil && status.Status == dbos.WorkflowStatusCancelled {
-		if err = waitForMove(ctx, w.dir, moveWait); err == nil {
-			status, err = handle.GetStatus()
-		}
-	}
-
-	if err != nil {
-		return status, fmt.Errorf("item %s: read the status of the run: %w", w.item, err)
-	}
-
-	return status, nil
-}
-
 // poll reads the run once. It returns done with the result when the run ended, and an error when the status cannot be read or no engine holds the state folder for the grace time.
-func (w *engineWatch) poll(ctx context.Context, handle dbos.WorkflowHandle[ItemResult]) (ItemResult, bool, error) {
-	status, err := w.status(ctx, handle)
+func (w *engineWatch) poll(handle dbos.WorkflowHandle[ItemResult]) (ItemResult, bool, error) {
+	status, err := handle.GetStatus()
 	if err != nil {
-		return ItemResult{}, false, err
+		return ItemResult{}, false, fmt.Errorf("item %s: read the status of the run: %w", w.item, err)
 	}
 
 	if (run{Status: status}).terminal() {

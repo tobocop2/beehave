@@ -28,22 +28,34 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 		return c.Resume(item)
 	}
 
-	// DBOS rewinds only a run that ended, so an open run is canceled first, in the move.
-	if !last.terminal() {
-		return c.moveOpen(context.Background(), item)
-	}
-
 	if err := c.requireMovable(context.Background(), item, last); err != nil {
 		return err
 	}
 
-	return c.reopenHere(item, last)
+	// DBOS rewinds only a run that ended, so an open run is canceled first.
+	if last.terminal() {
+		return c.reopenHere(item, last)
+	}
+
+	return c.moveOpen(item, last)
 }
 
-// moveOpen moves the open run of an item to this build. It reads the run, checks it, cancels it and reopens it under one hold of probe.lock, so a second mover waits and a reader of a canceled run waits for the move.
-// When the reopen fails the run stays canceled, and the error says so and how to try again.
-func (c *Client) moveOpen(ctx context.Context, item string) error {
-	return c.underProbe(func() error { return c.moveHeld(ctx, item) })
+// moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between.
+func (c *Client) moveOpen(item string, last run) error {
+	return c.underProbe(func() error { return c.cancelAndReopenHeld(item, last) })
+}
+
+// cancelAndReopenHeld is the move of an open run while probe.lock is held. When the reopen fails the run stays canceled, and the error says so and how to try again.
+func (c *Client) cancelAndReopenHeld(item string, last run) error {
+	if err := c.cancelHeld(item, last); err != nil {
+		return err
+	}
+
+	if err := c.reopenHeld(item, last); err != nil {
+		return canceledNotMoved(item, last, err)
+	}
+
+	return nil
 }
 
 // canceledNotMoved names a run that a move canceled and could not reopen, and how to try again.

@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -136,11 +135,10 @@ func (c *Client) Close() error {
 }
 
 // Status lists every run of every item, oldest first.
-// A canceled run may be a run that a move to this build has not reopened yet, so status waits for the move before it shows one.
 func (c *Client) Status() ([]RunInfo, error) {
-	rows, err := c.listRunsAfterMove()
+	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix, passPrefix), dbos.WithFilterName(itemName, passName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list the runs: %w", err)
 	}
 
 	infos := make([]RunInfo, 0, len(rows))
@@ -155,28 +153,6 @@ func (c *Client) Status() ([]RunInfo, error) {
 	}
 
 	return infos, nil
-}
-
-// listRunsAfterMove is listRuns for a reader that is no part of a move. A canceled run may be a run that a move has not reopened yet, so it waits for the move and reads again.
-func (c *Client) listRunsAfterMove() ([]dbos.WorkflowStatus, error) {
-	rows, err := c.listRuns()
-	if err == nil && slices.ContainsFunc(rows, func(row dbos.WorkflowStatus) bool { return row.Status == dbos.WorkflowStatusCancelled }) {
-		if err = waitForMove(context.Background(), c.dir, moveWait); err == nil {
-			rows, err = c.listRuns()
-		}
-	}
-
-	return rows, err
-}
-
-// listRuns reads every run and pass of every item from the store.
-func (c *Client) listRuns() ([]dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix, passPrefix), dbos.WithFilterName(itemName, passName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
-	if err != nil {
-		return nil, fmt.Errorf("list the runs: %w", err)
-	}
-
-	return rows, nil
 }
 
 // Poll returns the newest review poll that finished, whatever its result: success, error, canceled or too many recovery attempts.
@@ -778,18 +754,6 @@ func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.
 func (c *Client) latest(item string) (run, error) {
 	return latestOf(c.flow, c.version, item)
-}
-
-// latestAfterMove is latest for a reader that is no part of a move. A canceled run may be a run that a move has not reopened yet, so it waits for the move and reads again.
-func (c *Client) latestAfterMove(item string) (run, error) {
-	last, err := c.latest(item)
-	if err == nil && last.Status.Status == dbos.WorkflowStatusCancelled {
-		if err = waitForMove(context.Background(), c.dir, moveWait); err == nil {
-			last, err = c.latest(item)
-		}
-	}
-
-	return last, err
 }
 
 // newest returns the newest run of an item, whatever build started it.
