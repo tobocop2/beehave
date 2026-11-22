@@ -7,11 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 const runPrefix = "item-"
@@ -116,48 +113,15 @@ func latestRun(client dbos.Client, item string) (run, bool, error) {
 	return last, found, nil
 }
 
-// roundBase returns the base of the newest round run of the project, and an empty text when the project has no round run.
-func roundBase(client dbos.Client, project string) (string, error) {
-	rows, err := dbos.ListWorkflows(client, dbos.WithFilterWorkflowIDPrefix(runPrefix+model.KindRound+"/"), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
-	if err != nil {
-		return "", fmt.Errorf("list the round runs of project %s: %w", project, err)
-	}
-
-	return newestBase(rows, project)
-}
-
-// newestBase returns the base of the round run of the project that was made last, and an empty text when there is none.
-func newestBase(rows []dbos.WorkflowStatus, project string) (string, error) {
-	var newest time.Time
-
-	base := ""
-
-	for _, row := range rows {
-		in, err := run{Status: row}.input()
-		if err != nil {
-			return "", err
-		}
-
-		if in.Project != project || !row.CreatedAt.After(newest) {
-			continue
-		}
-
-		newest = row.CreatedAt
-		base, _ = model.RoundBase(in.Item)
-	}
-
-	return base, nil
-}
-
-// withRoundBase gives a run that a user started the base of the round of its project, so the worktree of a restarted item is cut where the children of the round are cut.
-// A round item and a run with an entry keep the base that they have.
-func (in ItemInput) withRoundBase(client dbos.Client) (ItemInput, error) {
-	if in.Entry != "" || model.ItemKind(in.Item) == model.KindRound {
+// withBaseOf gives a run that a user started the base of the last run of the same item, which holds the base that its spawn gave it.
+// An item with no earlier run keeps an empty base, so its worktree is cut at the base branch of the project.
+func (in ItemInput) withBaseOf(last run, found bool) (ItemInput, error) {
+	if !found {
 		return in, nil
 	}
 
-	base, err := roundBase(client, in.Project)
-	in.Base = base
+	before, err := last.input()
+	in.Base = before.Base
 
 	return in, err
 }

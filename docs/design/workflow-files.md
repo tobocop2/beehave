@@ -859,7 +859,7 @@ One workflow written in this form, with five prompt files. The method lives in t
 5. A settle step.
 6. A merge step.
 
-The entry `main` runs the round for a round item, which has the field `id` only. It runs the pipeline for a tracker item, which has a `title`. So `beehave run <item>` on a stopped item starts a new attempt of its pipeline, and the next pass of the round reads that run. The round lands only the children that it started itself, so the owner lands an approved head of such an attempt. The new attempt gets the base of the newest round of the project, so a worktree that someone removed is cut where the children of the round are cut, and the pull request targets the same base.
+The entry `main` runs the round for a round item, which has the field `id` only. It runs the pipeline for a tracker item, which has a `title`. So `beehave run <item>` on a stopped item starts a new attempt of its pipeline, and the next pass of the round reads that run. The round lands only the children that it started itself, so the owner lands an approved head of such an attempt. The new attempt takes the base of the last run of the same item, which the spawn of the round gave. So a worktree that someone removed is cut where the children of the round are cut, and the pull request targets the same base.
 
 #### The review skill of the sweep step of `examples/remediation/`
 

@@ -619,11 +619,6 @@ func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error)
 
 	in.Entry = entry
 
-	in, err = in.withRoundBase(e.ctx)
-	if err != nil {
-		return ItemResult{}, err
-	}
-
 	return e.run(in)
 }
 
@@ -726,6 +721,11 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 
 	if plan.Join != "" {
 		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
+	}
+
+	in, err = in.withBaseOf(last, found)
+	if err != nil {
+		return nil, err
 	}
 
 	return e.start(in, plan.Attempt)

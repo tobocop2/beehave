@@ -55,14 +55,15 @@ grep -count=1 '^plan$' calls.log
 cmp plan-head-1 s1-tip
 grep -count=1 '^board$' remedy-keys.log
 
-# The local branch of the item is gone (a stopped item has no worktree), and the remote branch is back at the tip of the round branch.
+# The local branch of the item is gone (a stopped item has no worktree), and the remote branch is back at the tip of the base branch of the project.
 # The new attempt cuts the branch again at the base of the round, not at the base branch of the project.
 exec sh remove.sh
 
 # The documented command starts a new attempt of the item. It runs the pipeline: the plan agent runs again and the board call passes.
-exec beehaveround run 432 round --workflow flow/workflow.star
-stdout 'item 432 finished'
+# The script keeps the exit status of the run for the later checks, so a wrong base fails the comparison of the head first.
+exec sh restart.sh
 cmp plan-head-2 s1-tip
+grep 'item 432 finished' restart.out
 grep -count=2 '^plan$' calls.log
 grep -count=2 '^board$' remedy-keys.log
 exec beehaveround status
@@ -90,7 +91,9 @@ s1
 -- remove.sh --
 set -e
 git -C state/repos/round branch -D 432
-git --git-dir="$WORK/remote.git" update-ref refs/heads/432 refs/heads/integration/s1
+git --git-dir="$WORK/remote.git" update-ref refs/heads/432 refs/heads/integration/r1
+-- restart.sh --
+beehaveround run 432 round --workflow flow/workflow.star > restart.out 2>&1 || true
 -- mutation.sh --
 exit 0
 -- skill.md --
