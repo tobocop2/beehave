@@ -213,7 +213,7 @@ func TestSend_RefusesATargetThatIsNotTheParentOrAChild(t *testing.T) {
 		"no parent":   {`"parent"`, "item 12 has no parent run"},
 		"other text":  {`"boss"`, `to is "boss". Give "parent"`},
 		"a number":    {`3`, "to is 3. Give"},
-		"no run":      {`struct(item = "21")`, "Give \"parent\", \"item:<id>\", or a run that spawn returned"},
+		"no run":      {`struct(item = "21")`, workflow.SendTargetHint},
 		"not a child": {`struct(item = "21", run = "item-21-r1")`, "run item-21-r1 is not a child of this run"},
 	} {
 		t.Run(name, func(t *testing.T) {

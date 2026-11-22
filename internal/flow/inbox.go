@@ -304,16 +304,25 @@ func (e *Engine) openRunInProject(item, project string) (sendTarget, error) {
 		return sendTarget{}, err
 	}
 
-	held, err := open.project()
-	if err != nil {
+	if err := sameProject(open, item, project); err != nil {
 		return sendTarget{}, err
 	}
 
-	if held != project {
-		return sendTarget{}, fmt.Errorf("%w: item %s has an open run under project %s, and this run is under project %s. A send reaches only an item of its own project", errProjectConflict, item, held, project)
+	return sendTarget{Run: open.Status.ID}, nil
+}
+
+// sameProject refuses an open run that is under another project than the sender.
+func sameProject(open run, item, project string) error {
+	held, err := open.project()
+	if err != nil {
+		return err
 	}
 
-	return sendTarget{Run: open.Status.ID}, nil
+	if held != project {
+		return fmt.Errorf("%w: item %s has an open run under project %s, and this run is under project %s. A send reaches only an item of its own project", errProjectConflict, item, held, project)
+	}
+
+	return nil
 }
 
 // childDestination is the latest attempt of the run that spawn returned, which the to keyword of send names.
@@ -325,7 +334,7 @@ func (s *script) childDestination(to starlark.Value) (spawnedRun, error) {
 	}
 
 	if ref.Run == "" {
-		return spawnedRun{}, fmt.Errorf("to is %s. Give \"parent\", \"item:<id>\", or a run that spawn returned", to)
+		return spawnedRun{}, fmt.Errorf("to is %s. %s", to, workflow.SendTargetHint)
 	}
 
 	live, err := s.liveRuns([]spawnedRun{ref})
@@ -339,7 +348,7 @@ func (s *script) childDestination(to starlark.Value) (spawnedRun, error) {
 // parentRun is the run id of the parent when the to keyword of send is "parent".
 func (s *script) parentRun(text string) (string, error) {
 	if text != workflow.ParentTarget {
-		return "", fmt.Errorf("to is %q. Give \"parent\", \"item:<id>\", or a run that spawn returned", text)
+		return "", fmt.Errorf("to is %q. %s", text, workflow.SendTargetHint)
 	}
 
 	if s.in.Parent == "" {
