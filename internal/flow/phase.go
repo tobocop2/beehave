@@ -192,7 +192,7 @@ func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Res
 // and named receives each new session id that the agent names. said receives each message text and tool call.
 func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInput, data string, lost *LostRun, named func(session string), said func(agent.Said)) AgentRequest {
 	return AgentRequest{
-		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Lost: lost,
+		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Redact: e.redact, Lost: lost,
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
 		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
 		DataFile: data,

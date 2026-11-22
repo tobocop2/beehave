@@ -16,7 +16,7 @@ func TestLogger_RemovesSecretsFromMessagesAttributesErrorsAndGroups(t *testing.T
 
 	var out bytes.Buffer
 
-	log := newLogger(&out).With("scope", "sk-ant-abcdefgh01").WithGroup("g")
+	log := newLogger(&out, runRedactor(nil)).With("scope", "sk-ant-abcdefgh01").WithGroup("g")
 	log.Info("token sk-ant-abcdefgh02", "text", "sk-ant-abcdefgh03", "err", errors.New("sk-ant-abcdefgh04"),
 		"nested", slog.Group("inner", slog.String("k", "sk-ant-abcdefgh05")), "count", 7)
 	log.Debug("below the level sk-ant-abcdefgh06")
@@ -31,7 +31,7 @@ func TestLogger_RemovesSecretsFromMessagesAttributesErrorsAndGroups(t *testing.T
 func TestLogger_EnabledFollowsTheInnerLevel(t *testing.T) {
 	t.Parallel()
 
-	handler := newLogger(&bytes.Buffer{}).Handler()
+	handler := newLogger(&bytes.Buffer{}, runRedactor(nil)).Handler()
 
 	assert.False(t, handler.Enabled(context.Background(), slog.LevelDebug))
 	assert.True(t, handler.Enabled(context.Background(), slog.LevelInfo))

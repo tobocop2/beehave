@@ -58,7 +58,7 @@ No other variable of the caller reaches it. If the login folder is missing, the 
 
 The CLI runs in its own process group through `proc`. A total timeout, an idle timeout or a cancel of the context kills the group. Each write on stdout or stderr resets the idle timeout. When the CLI exits, the group is killed again, so no child outlives the step.
 
-Stdout is the transcript. A line writer redacts each line before it reaches the log: the token value and anything shaped like an `sk-ant-` key. A line longer than 16 MiB is dropped, so a secret is never split across two writes. Stderr keeps a redacted tail of 4 KiB for the result.
+Stdout is the transcript. A line writer redacts each line before it reaches the log: the token value, the redactor of the engine and anything shaped like an `sk-ant-` key. The redactor of the engine holds the values of the environment variables whose name marks a secret, as the [durable loop](durable-loop.md) describes. A value shorter than 8 bytes is not redacted. A line longer than 16 MiB is dropped, so a secret is never split across two writes. Stderr keeps a redacted tail of 4 KiB for the result.
 
 ### Permission flags of the Claude adapter
 

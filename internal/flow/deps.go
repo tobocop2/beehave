@@ -50,6 +50,8 @@ type AgentRequest struct {
 	Named func(session string)
 	// Said receives each message text and tool call of the agent at the output line that holds it, in order, while the run goes on. It may be nil.
 	Said func(agent.Said)
+	// Redact is the redactor of the engine. The runner applies it to the output of the agent.
+	Redact func(string) string
 	// Lost is set for a start that follows an earlier run that named a session: a lost start, or a run that a provider limit stopped. It is nil for any other start.
 	Lost *LostRun
 }

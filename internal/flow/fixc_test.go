@@ -331,7 +331,7 @@ func TestPendingCancels_SkipsAMarkerThatIsNotCompleteAndSaysNothing(t *testing.T
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string]cancelMark{testRun: {ItemInput: ItemInput{Item: testItem, Project: testProject}}}, pending)
@@ -347,7 +347,7 @@ func TestPendingCancels_LogsAndSkipsAMarkerThatCannotBeRead(t *testing.T) {
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Len(t, pending, 1)
@@ -456,7 +456,7 @@ func TestPendingCancels_ReportsAFolderThatCannotBeRead(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, cancelsDir), nil, ownerMode))
 
-	_, err := pendingCancels(dir, newLogger(&bytes.Buffer{}))
+	_, err := pendingCancels(dir, newLogger(&bytes.Buffer{}, runRedactor(nil)))
 
 	require.ErrorContains(t, err, "read the cancel markers")
 }
@@ -465,7 +465,7 @@ func TestForgetDeleted_KeepsTheFilesOfRunsThatCouldNotBeDeleted(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	engine := &Engine{dir: dir, logger: newLogger(&bytes.Buffer{})}
+	engine := &Engine{dir: dir, logger: newLogger(&bytes.Buffer{}, runRedactor(nil))}
 	require.NoError(t, saveOwner(dir, testRun, "owner-12"))
 
 	failure := errors.New("the store refused")
@@ -553,7 +553,7 @@ func TestForget_LogsAFileThatCannotBeRemoved(t *testing.T) {
 
 	var out bytes.Buffer
 
-	engine := &Engine{dir: dir, logger: newLogger(&out)}
+	engine := &Engine{dir: dir, logger: newLogger(&out, runRedactor(nil))}
 	engine.forget(testRun)
 
 	assert.Contains(t, out.String(), "cannot remove the files of a finished run")
@@ -685,7 +685,7 @@ func TestPendingCancels_LogsAndSkipsAMarkerWhoseFileNameIsNotAnEscapedRunId(t *t
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Len(t, pending, 1)

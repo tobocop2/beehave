@@ -14,7 +14,6 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -322,7 +321,7 @@ func (c *Client) Send(item string, msg Outgoing) (string, error) {
 	}
 
 	id := cmp.Or(msg.Key, strings.ToLower(rand.Text()))
-	env := envelope{Topic: msg.Topic, Sender: msg.Sender, ID: id, Value: json.RawMessage(agent.Redactor()(string(msg.Value)))}
+	env := envelope{Topic: msg.Topic, Sender: msg.Sender, ID: id, Value: json.RawMessage(c.redact(string(msg.Value)))}
 
 	return id, dbos.Send(c.flow, last.Status.ID, env, inboxTopic, dbos.WithIdempotencyKey(id))
 }

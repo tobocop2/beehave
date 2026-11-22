@@ -138,7 +138,7 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan, skills []string) agent.Spec {
 	return agent.Spec{
 		Sandbox: box, Skills: skills,
-		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
+		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env, Redact: request.Redact,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
@@ -224,7 +224,7 @@ func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner m
 // tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
 func (a agents) tapOf(adapter agent.Adapter, request flow.AgentRequest) *sessionTap {
 	tap := newSessionTap(adapter, a.prices, request.Named)
-	tap.said = request.Said
+	tap.said, tap.redact = request.Said, request.Redact
 
 	return tap
 }
@@ -584,6 +584,17 @@ type sessionTap struct {
 	named func(session string)
 	// said receives each message text and tool call at the line that holds it, or is nil.
 	said func(agent.Said)
+	// redact removes the secrets of the run from each text that the tap keeps or gives away, after the adapter decoded the line. It is nil for a tap with no secrets.
+	redact func(string) string
+}
+
+// clean returns the text with the secrets of the run removed.
+func (t *sessionTap) clean(text string) string {
+	if t.redact == nil {
+		return text
+	}
+
+	return t.redact(text)
 }
 
 // newSessionTap returns a tap that estimates the cost of a run from the price table, and gives each new session id to named, when named is set.
@@ -611,7 +622,7 @@ func (t *sessionTap) Write(data []byte) (int, error) {
 		}
 
 		if text != "" {
-			t.text = text
+			t.text = t.clean(text)
 		}
 
 		t.see(string(line))
@@ -636,7 +647,7 @@ func (t *sessionTap) see(line string) {
 	}
 
 	seen := t.adapter.Calls(line)
-	t.shell, t.skills = append(t.shell, seen.Shell...), append(t.skills, seen.Skills...)
+	t.shell, t.skills = append(t.shell, t.cleanCalls(seen.Shell)...), append(t.skills, t.cleanCalls(seen.Skills)...)
 	t.speak(seen.Said)
 
 	mark(t.refused, seen.Refused)
@@ -657,8 +668,19 @@ func (t *sessionTap) speak(said []agent.Said) {
 	}
 
 	for _, one := range said {
+		one.Text = t.clean(one.Text)
 		t.said(one)
 	}
+}
+
+// cleanCalls returns the calls with the secrets of the run removed from their text.
+func (t *sessionTap) cleanCalls(calls []agent.Call) []agent.Call {
+	cleaned := make([]agent.Call, len(calls))
+	for i, call := range calls {
+		cleaned[i] = agent.Call{ID: call.ID, Text: t.clean(call.Text)}
+	}
+
+	return cleaned
 }
 
 // mark adds each id to the set.
@@ -672,9 +694,13 @@ func mark(set map[string]bool, ids []string) {
 // provider limit, and the first refusal that no wait cures. The caller holds the lock.
 func (t *sessionTap) addEnd(seen agent.Seen) {
 	t.ended = t.ended || seen.Result
-	t.denials = append(t.denials, seen.Denials...)
-	t.stop, t.failed = cmp.Or(seen.Stop, t.stop), cmp.Or(seen.Failed, t.failed)
-	t.denied = cmp.Or(t.denied, seen.Denied)
+	for _, denial := range seen.Denials {
+		denial.Target = t.clean(denial.Target)
+		t.denials = append(t.denials, denial)
+	}
+
+	t.stop, t.failed = cmp.Or(seen.Stop, t.stop), cmp.Or(t.clean(seen.Failed), t.failed)
+	t.denied = cmp.Or(t.denied, t.clean(seen.Denied))
 
 	if t.limit == nil {
 		t.limit = seen.Limit

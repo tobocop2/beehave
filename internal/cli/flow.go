@@ -661,7 +661,8 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"the outcome and the fields that decide the flow.\n\n" +
 	"Give a run id or an item id with --" + followFlag + " to print the text and the tool calls of each agent phase of the run, in order, as they arrive. " +
 	"An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output again and ends. " +
-	"A tool call reads as the name of the tool and its target. A token shaped like an Anthropic key is removed before a line is stored. Another secret is not. " +
+	"A tool call reads as the name of the tool and its target. Before a line is stored, beehave removes a token shaped like an Anthropic key and the value of each environment variable whose name ends in _KEY or holds TOKEN, SECRET, PASSWORD or CREDENTIAL, in plain, JSON-escaped and URL-escaped form. " +
+	"A value shorter than 8 bytes stays in the output, and beehave logs a warning at start that names its variable. A secret in a variable with another name stays, and so do the tokens of the forge and agent logins, which beehave does not pass to this check yet. " +
 	"A run that waits for an answer keeps the command open. It prints one line with the question."
 
 // errFollowAlone is returned when --follow comes with --json, --item, or no run: it reads the output of one run.

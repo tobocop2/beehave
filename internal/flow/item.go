@@ -322,7 +322,7 @@ func (s *script) waitOwner(question string) (string, error) {
 // waitOwnerUntil is waitOwner with a deadline. A deadline of zero is no deadline. When the deadline passes first, the answer is empty and timedOut is true.
 func (s *script) waitOwnerUntil(question string, deadline time.Duration) (answer string, timedOut bool, err error) {
 	item := s.in.Item
-	if err := show(s.ctx, item, questionKey, question, "its question"); err != nil {
+	if err := show(s.ctx, item, questionKey, s.e.redact(question), "its question"); err != nil {
 		return "", false, err
 	}
 
