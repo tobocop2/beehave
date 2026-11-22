@@ -17,6 +17,23 @@ type runCall struct {
 	where string
 	plain int
 	args  int
+	// empty is true for a RunSandbox call that passes a mode written as the empty text.
+	empty bool
+}
+
+// emptyMode is true when the one argument of a RunSandbox call is the empty text, written as "" or as model.SandboxMode("").
+func emptyMode(args []ast.Expr) bool {
+	if len(args) != 1 {
+		return false
+	}
+
+	if conversion, ok := args[0].(*ast.CallExpr); ok && len(conversion.Args) == 1 {
+		return emptyMode(conversion.Args)
+	}
+
+	literal, ok := args[0].(*ast.BasicLit)
+
+	return ok && literal.Value == `""`
 }
 
 // runCallsIn lists the calls of RunFile and JoinRun in the production files of a folder. RunFile takes (item, project, file), and JoinRun takes a context first.
@@ -56,6 +73,8 @@ func runCallOf(name string, call *ast.CallExpr) []runCall {
 	}
 
 	switch selector.Sel.Name {
+	case "RunSandbox":
+		return []runCall{{where: name + ": RunSandbox", plain: 0, args: len(call.Args), empty: emptyMode(call.Args)}}
 	case "RunFile":
 		return []runCall{{where: name + ": RunFile", plain: 3, args: len(call.Args)}}
 	case "JoinRun":
@@ -71,14 +90,24 @@ func TestRunFileAndJoinRun_EveryProductionCallerPassesTheRunOption(t *testing.T)
 
 	calls := append(runCallsIn(t, "../cli"), runCallsIn(t, "../../cmd/beehave")...)
 
-	var missing []string
+	var missing, empty []string
+
+	runs := 0
 
 	for _, call := range calls {
-		if call.args <= call.plain {
+		switch {
+		case call.empty:
+			empty = append(empty, call.where)
+		case call.plain == 0:
+			// A RunSandbox call is not a run: only its value counts.
+		case call.args <= call.plain:
 			missing = append(missing, call.where)
+		default:
+			runs++
 		}
 	}
 
-	assert.Len(t, calls, 2, "the run command calls RunFile once and JoinRun once")
-	assert.Empty(t, missing, "a caller that leaves the option out starts a run that reads as sandbox off")
+	assert.Equal(t, 2, runs, "the run command calls RunFile once and JoinRun once")
+	assert.Empty(t, missing, "a caller that leaves the option out starts a run that has no mode")
+	assert.Empty(t, empty, "a caller that passes an empty mode starts a run that has no mode")
 }

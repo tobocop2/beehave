@@ -51,9 +51,15 @@ func (s *script) traced(b *starlark.Builtin, kwargs []starlark.Tuple, call func(
 	}
 
 	run, step := workflowID(s.ctx), stepLabel(b.Name(), kwargs)
-	s.e.progress.say("%s step %s started", run, step)
-
 	started := time.Now()
+
+	if err := s.refusedAtCall(b, kwargs); err != nil {
+		s.e.progress.ended(run, step, 0, err)
+
+		return nil, err
+	}
+
+	s.e.progress.say("%s step %s started", run, step)
 	value, err := call()
 	s.e.progress.ended(run, step, time.Since(started).Round(stepClock), err)
 

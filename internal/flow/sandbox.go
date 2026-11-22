@@ -15,6 +15,9 @@ import (
 // sandboxMark is the constructor of the value that the sandbox builtin returns. The sandbox keyword of an agent call takes only such a value, or None.
 const sandboxMark = starlark.String("sandbox")
 
+// sandboxKeyword is the name of the sandbox keyword of an agent call.
+const sandboxKeyword = starlark.String("sandbox")
+
 // recordedSandbox is the name of the output of the render step that holds the sandbox the step runs with.
 const recordedSandbox = "sandbox"
 
@@ -86,7 +89,42 @@ func sandboxFromStruct(value *starlarkstruct.Struct) (sandboxChoice, error) {
 }
 
 // errUnsandboxed is returned for a step that sets sandbox = None in a run whose project has the sandbox on.
-var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start. Set sandbox = "off" in the project, or give the step sandbox(network = [...]), then run beehave run again`)
+var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start, and the run failed. Set sandbox = "off" in the project, or give the step sandbox(network = [...]) in the workflow file. Then run beehave cancel <run>, and run beehave run`)
+
+// runMode returns the sandbox mode of the run: the mode stored with the run. A run recorded before the mode was stored has none, so it reads the live config of the project, as the engine did before.
+func (s *script) runMode() model.SandboxMode {
+	if s.in.Sandbox != "" {
+		return s.in.Sandbox
+	}
+
+	if s.e.deps.SandboxDefault != nil && s.e.deps.SandboxDefault(s.in.Project) {
+		return model.SandboxOn
+	}
+
+	return model.SandboxOff
+}
+
+// refusedAtCall returns the refusal of an agent call before the engine writes the start line of the step. Any other call, and a call that the agent step itself rejects, gives nil.
+func (s *script) refusedAtCall(b *starlark.Builtin, kwargs []starlark.Tuple) error {
+	if b.Name() != builtinAgent {
+		return nil
+	}
+
+	for _, pair := range kwargs {
+		if key, ok := pair[0].(starlark.String); ok && key == sandboxKeyword {
+			choice, err := readSandbox(pair[1])
+			if err != nil {
+				return nil
+			}
+
+			_, err = choice.effective(s.runMode())
+
+			return err
+		}
+	}
+
+	return nil
+}
 
 // effective returns the sandbox the step runs with: the value of the call, or for a call without the keyword the default of the run.
 // The default is a sandbox with no domain and no extra path. nil means no sandbox. A None in a run with the sandbox on is refused.

@@ -34,7 +34,7 @@ type ItemInput struct {
 	Parent string `json:"parent,omitempty"`
 	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. A run that a user started takes the base of the last run of the same item. It is empty when the item has no earlier run, and the item is cut at the base branch of the project.
 	Base string `json:"base,omitempty"`
-	// Sandbox is the sandbox mode of the project when the run started. A run stored with none reads as off, so a resume keeps what the run did before it had the field.
+	// Sandbox is the sandbox mode of the project when the run started. A run stored with none reads the live sandbox mode of its project, as the engine did before the field existed.
 	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
 }
 

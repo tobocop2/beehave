@@ -159,11 +159,85 @@ func TestResume_ARunWithNoRecordedSandboxModeKeepsRunningItsStepsUnsandboxed(t *
 
 	rig := newAgentRig(t)
 	rig.reply("", exited)
+	rig.h.sandboxDefault = func(string) bool { return false }
 
 	_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
 
-	require.NoError(t, err, "a run with no mode reads as off, so the None step starts")
+	require.NoError(t, err, "the live config of the project says off, so the None step starts")
 	assert.Nil(t, sandboxSeen(t, rig))
+}
+
+func TestResume_ARunWithNoRecordedSandboxModeInAProjectWithTheSandboxOnRefusesASandboxNoneStep(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	asked := ""
+	rig.h.sandboxDefault = func(project string) bool { asked = project; return true }
+
+	_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
+
+	require.ErrorContains(t, err, "sets sandbox = None", "an old run reads the live config, which says on")
+	assert.Equal(t, testProject, asked)
+	assert.Empty(t, rig.h.agents.seen())
+}
+
+func TestRun_ARunWithAStoredModeNeverReadsTheLiveConfigOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.sandbox = model.SandboxOff
+	rig.reply("", exited)
+	reads := 0
+	rig.h.sandboxDefault = func(string) bool { reads++; return true }
+
+	_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
+
+	require.NoError(t, err)
+	assert.Zero(t, reads, "the engine reads the live config only for a run with no stored mode")
+	assert.Nil(t, sandboxSeen(t, rig))
+}
+
+func TestRun_TheRefusalOfASandboxNoneStepTellsTheOwnerHowToStartAgain(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{`sandbox = "off"`, "beehave cancel <run>", "beehave run", "the run failed"} {
+		assert.Contains(t, errUnsandboxed.Error(), want)
+	}
+
+	assert.NotContains(t, errUnsandboxed.Error(), "run again", "a failed run refuses beehave run until it is canceled")
+}
+
+func TestRun_TheRunDoesNotPrintAStartLineForAStepThatTheRefusalStopped(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		mode    model.SandboxMode
+		refused bool
+	}{"mode on": {model.SandboxOn, true}, "mode off": {model.SandboxOff, false}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var out bytes.Buffer
+
+			rig := newAgentRig(t)
+			rig.sandbox = test.mode
+			rig.h.opts.Progress = &out
+			rig.reply("", exited)
+
+			_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
+
+			if test.refused {
+				require.Error(t, err)
+				assert.NotContains(t, out.String(), "step agent:a started")
+				assert.Contains(t, out.String(), "step agent:a failed")
+			} else {
+				require.NoError(t, err)
+				assert.Contains(t, out.String(), "step agent:a started")
+			}
+		})
+	}
 }
 
 func TestServe_ARunThatStartedWithTheSandboxOnRefusesASandboxNoneStepAfterARestart(t *testing.T) {
