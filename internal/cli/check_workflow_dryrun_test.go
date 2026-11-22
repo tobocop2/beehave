@@ -35,7 +35,7 @@ func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheRead
 	dir := t.TempDir()
 	writeConfig(t, dir, "projects/code.star", roundProject)
 
-	code, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+	code, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "round/integration", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 
 	require.Equal(t, 3, code, stderr)
 	assert.Empty(t, stderr)

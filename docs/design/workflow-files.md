@@ -859,6 +859,8 @@ One workflow written in this form, with five prompt files. The method lives in t
 5. A settle step.
 6. A merge step.
 
+The entry `main` runs the round for a round item, which has the field `id` only. It runs the pipeline for a tracker item, which has a `title`. So `beehave run <item>` on a stopped item starts a new attempt of its pipeline, and the next pass of the round reads that run. The round lands only the children that it started itself, so the owner lands an approved head of such an attempt.
+
 #### The review skill of the sweep step of `examples/remediation/`
 
 The workflow names no skill. The project names it.
