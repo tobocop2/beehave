@@ -99,3 +99,104 @@ func TestDeadlineNote_AWaitInRecvSaysWhichTopicItWaitsOn(t *testing.T) {
 
 	assert.Equal(t, []string{"waits for a message on topic findings until 2026-11-03T11:00:00Z, 1h0m left"}, progress.NotesAt(now))
 }
+
+// stepNowIs waits until the view of the steps of the test run names the step that runs now.
+func stepNowIs(t *testing.T, client *Client, want string) {
+	t.Helper()
+
+	var last string
+
+	waitOn(t, waiting[struct{}]{what: "the open run to be in " + want, run: runOfClient(t, client), last: func() string { return last }, read: func() (struct{}, bool, error) {
+		view, err := client.Steps(testRun)
+		last = view.Now
+
+		return struct{}{}, err == nil && view.Now == want, nil
+	}})
+}
+
+func TestStatus_ARecvWhoseNameDiffersFromItsTopicShowsTheTopicAndTheName(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, "def main(item):\n    recv(\"findings\", timeout = \"8s\", name = \"await\")\n")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+
+	stepNowIs(t, client, "recv:await#1")
+
+	view, err := client.Steps(testRun)
+	require.NoError(t, err)
+	assert.Equal(t, "findings", view.Receiving, "the topic comes from the record, not from the name of the call")
+	assert.Contains(t, view.Notes(), "waits for a message on topic findings until "+view.Deadline.Format(time.RFC3339))
+
+	require.NoError(t, receive(t, done).err)
+}
+
+func TestStatus_AFirstOfThatWaitsNamesItsCallAsTheStepThatRuns(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, "def main(item):\n    first_of(topics = [\"go\"], timeout = \"8s\", name = \"one\")\n")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+
+	stepNowIs(t, client, "first_of:one#1")
+
+	view, err := client.Steps(testRun)
+	require.NoError(t, err)
+	assert.Empty(t, view.Receiving, "a first_of shows no topic: only a recv call does")
+
+	require.NoError(t, receive(t, done).err)
+}
+
+func TestStatus_AGatherWithATimeoutNamesItsCallAsTheStepThatRuns(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	release := holdItems(h, "21")
+
+	defer close(release)
+
+	h.flowIs(t, `def worker(item):
+    command(name = "w", run = ["w"])
+
+def main(item):
+    gather(spawn(items = ["21"], entry = "worker", name = "fan"), timeout = "8s", name = "fan")
+`)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+
+	stepNowIs(t, client, "gather:fan#1")
+
+	require.NoError(t, receive(t, done).err)
+}
+
+func TestStatus_ARunOfTheCoreModuleBeforeTheTopicIsStrandedOnItsOwnBuild(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, "def main(item):\n    recv(\"findings\", timeout = \"8s\", name = \"await\")\n")
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+
+	done := runInBackground(engine, testItem)
+
+	stepNowIs(t, client, "recv:await#1")
+
+	older := h.client(t, testVersion)
+	older.version = versionWithModule(testVersion, moduleCore, coreVersion-1)
+
+	infos, err := older.Status()
+	require.NoError(t, err)
+	require.Len(t, infos, 1)
+	assert.True(t, infos[0].Stranded, "a build of the module before the topic does not own the run")
+	assert.True(t, infos[0].OlderSteps, "the run has the build version of the client and an older step format")
+
+	require.NoError(t, receive(t, done).err)
+}

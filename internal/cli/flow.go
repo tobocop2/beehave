@@ -648,7 +648,7 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
 	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll and poll_not_scheduled. " +
-	"Each run has the fields id, state, item, project, question, asked, deadline, time_left_seconds, merge, sent_back, closed and stopped. " +
+	"Each run has the fields id, state, item, project, question, asked, deadline, receiving, time_left_seconds, merge, sent_back, closed and stopped. " +
 	"A field with no value is left out. The list reads recorded state only.\n\n" +
 	"The list also shows the figures of each local day from the last --" + daysFlag + " days (default 7, the current day included): the runs that started, the runs that ended as done, failed or canceled, and the spend of those runs with the estimate and unknown marks of the run total. " +
 	"The day is the local day of the clock of this command. A run that spans midnight counts as started on its start day and as ended on its end day. " +
