@@ -112,6 +112,7 @@ func TestStream_ACallThatBreaksARuleAtRunTimeIsRefusedWithTheRule(t *testing.T) 
 		"cursor":  {"c = \"later\"\nstream(w, after = c, timeout = \"1s\")", "not a cursor that stream returned"},
 		"timeout": {"z = \"0s\"\nstream(w, timeout = z)", "must be above zero"},
 		"run":     {"stream(3, timeout = \"1s\")", "run must be one of the runs that spawn returned"},
+		"keyword": {"k = {\"bogus\": 1}\nstream(w, timeout = \"1s\", **k)", "bogus"},
 	}
 
 	for name, c := range cases {

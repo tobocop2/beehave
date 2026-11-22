@@ -1,7 +1,9 @@
 package flow
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
 
 // twoPhaseWorker is a child with two agent calls, so its run has two phases, each with its own stream.
@@ -90,6 +93,74 @@ func TestStreamingOf_ReadsOnlyTheDeadlineRecordOfAStreamThatIsLast(t *testing.T)
 
 	_, waits = streamingOf([]dbos.StepInfo{record("recv:a#1.deadline", window)})
 	assert.False(t, waits, "the deadline of a recv is no wait of a stream")
+}
+
+func TestStream_ARunCanceledBeforeTheDeadlineIsRecordedFailsTheCall(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+	rig.h.agents.gate = make(chan struct{})
+
+	parked, release := make(chan struct{}), make(chan struct{})
+	deps := rig.h.deps()
+	var once sync.Once
+
+	deps.Clock.Reading = func() time.Time {
+		once.Do(func() {
+			close(parked)
+			<-release
+		})
+
+		return time.Now()
+	}
+
+	engine, err := NewEngine(t.Context(), rig.h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+
+	done := startRun(t, engine, flowFile(t, a853Parent(`stream(w, timeout = "8s", name = "peek")`), "Work.\n"))
+
+	receive(t, parked)
+	require.NoError(t, dbos.CancelWorkflow(engine.ctx, testRun))
+	close(release)
+
+	require.ErrorIs(t, receive(t, done).err, dbos.ErrWorkflowCancelled, "the run was canceled, so the step store refuses the record of the deadline")
+	assert.NotContains(t, stepNamesOf(t, engine, testRun), "stream:peek#1.deadline")
+
+	close(rig.h.agents.gate)
+}
+
+func TestStream_ARunCanceledWhileItWaitsForAnEntryFailsTheCall(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+	rig.h.agents.gate = make(chan struct{})
+
+	stopCtx, stop := context.WithCancel(t.Context())
+	engine, err := NewEngine(stopCtx, rig.h.opts, rig.h.deps())
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+
+	done := startRun(t, engine, flowFile(t, a853Parent(`stream(w, timeout = "1h", name = "peek")`), "Work.\n"))
+	stepRecorded(t, engine, "stream:peek#1.deadline")
+
+	stop()
+	require.NoError(t, engine.Shutdown())
+
+	require.ErrorContains(t, receive(t, done).err, "context canceled", "the wait ends with the engine")
+}
+
+func TestStream_AnUnreadablePhaseStreamIsAnError(t *testing.T) {
+	t.Parallel()
+
+	page := streamRead{Entries: []AgentEntry{}}
+	partial, err := fillPage(nil, &page, []string{"item-21-r1-phase"}, workflow.StreamCursor{})
+
+	require.Error(t, err)
+	assert.False(t, partial)
+	assert.Empty(t, page.Entries)
 }
 
 // textPage runs a child whose agent says one entry of each given size, and returns the line that the parent logs about the first read.
