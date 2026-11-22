@@ -53,8 +53,10 @@ How does the cold change the output of a unit, and what does it cost?
 -- expected-calls.log --
 plan
 read cold
+read cold
 judge
 write Output
+read cost
 read cost
 judge
 write Cost

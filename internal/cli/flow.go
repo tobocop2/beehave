@@ -209,7 +209,7 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 	"After a finished or a canceled run, beehave run starts a new run.\n\n" +
 	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
 	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
-	"If that engine stops, the run stays queued and the command exits with code 1: start the engine or run beehave run again.\n\n" +
+	"If that engine stops, the run stays open, and after 10 seconds the command starts its own engine and continues the run.\n\n" +
 	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
 	"If none is under the caps, the step waits for the earliest reset time that is known, then picks again. If no reset time is known, the step fails and says why. " +
 	"With --" + overCapFlag + ", the step takes the runner with the lowest use instead of waiting, and the run records that the runner was over its cap."
@@ -369,7 +369,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 	}
 
 	if running {
-		return f.joinEngine(stdout, stderr, client, item, project, chosen)
+		return f.joinEngine(stdout, stderr, client, cfg, opts, item, project, chosen)
 	}
 
 	if err := client.Close(); err != nil {
@@ -416,12 +416,13 @@ func (f flowCommands) joinLater(stdout, stderr io.Writer, cfg config.Config, opt
 		return err
 	}
 
-	return f.joinEngine(stdout, stderr, client, item, project, file)
+	return f.joinEngine(stdout, stderr, client, cfg, opts, item, project, file)
 }
 
 // joinEngine gives the item to the engine that holds the state folder, waits for the result, and closes the client.
+// When that engine stops before the run ends, the run stays open in the store, and this command runs its own engine for the item: the launch of that engine recovers the run.
 // The run sits in the queue of that engine, so agents.max_concurrent applies to it, and its progress lines go to the log of that engine.
-func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, item, project, file string) error {
+func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, item, project, file string) error {
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
@@ -429,6 +430,12 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, item
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
+		}
+
+		if errors.Is(err, flow.ErrEngineGone) {
+			_, _ = fmt.Fprintf(stderr, "the engine that ran item %s stopped; this command continues the run\n", item)
+
+			return f.ownEngine(stdout, stderr, cfg, opts, item, project, file)
 		}
 
 		return err
@@ -648,7 +655,7 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
 	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll and poll_not_scheduled. " +
-	"Each run has the fields id, state, item, project, question, asked, deadline, receiving, time_left_seconds, merge, sent_back, closed and stopped. " +
+	"Each run has the fields id, state, item, project, question, asked, deadline, receiving, streaming, time_left_seconds, merge, sent_back, closed and stopped. " +
 	"A field with no value is left out. The list reads recorded state only.\n\n" +
 	"The list also shows the figures of each local day from the last --" + daysFlag + " days (default 7, the current day included): the runs that started, the runs that ended as done, failed or canceled, and the spend of those runs with the estimate and unknown marks of the run total. " +
 	"The day is the local day of the clock of this command. A run that spans midnight counts as started on its start day and as ended on its end day. " +

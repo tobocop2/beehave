@@ -20,13 +20,15 @@ const (
 // errOtherBuild is returned when the engine that runs is not this build. It dequeues only runs of its own version, so a run for another build would wait for ever.
 var errOtherBuild = errors.New("the engine that runs is another build")
 
-// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays queued, and the next engine of the same build takes it.
-var ErrEngineGone = errors.New("the engine stopped; the run is queued")
+// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays open, and the next engine of the same build recovers it: beehave run takes over at once.
+var ErrEngineGone = errors.New("the engine stopped before the run ended")
 
 // attemptPlan says what a run call does for an item: join the run with the id Join, or start attempt Attempt.
+// Move is true when the run to join is stored under another build, and the caller moves it to this build first.
 type attemptPlan struct {
 	Join    string
 	Attempt int
+	Move    bool
 }
 
 // planOf decides what a run call does with the latest run of the item. The engine that runs the item and the client that joins it both ask here.
@@ -45,7 +47,7 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 	return attemptPlan{Attempt: last.Attempt + 1}, nil
 }
 
-// joinPlan joins an open run. It refuses a run of another project or another version.
+// joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
 func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
 	held, err := open.project()
 	if err != nil {
@@ -56,11 +58,54 @@ func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
 		return attemptPlan{}, conflictError(in.Item, held, in.Project)
 	}
 
-	if open.Status.ApplicationVersion != version {
-		return attemptPlan{}, strandedError(open, version)
+	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+}
+
+// moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
+// so the run moves only when every module that the run used has the same version here, and the refusal names the module.
+// The read of the run, the check and the move run under probe.lock, so a second mover waits, reads the run on this build and moves nothing.
+func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item string) error {
+	if !plan.Move {
+		return nil
 	}
 
-	return attemptPlan{Join: open.Status.ID}, nil
+	return c.underProbe(func() error { return c.moveHeld(ctx, item) })
+}
+
+// moveHeld is the move while probe.lock is held. It reads the run again: a run that another mover already put on this build needs no move.
+func (c *Client) moveHeld(ctx context.Context, item string) error {
+	last, err := c.newest(item)
+	if err != nil || last.Status.ApplicationVersion == c.version {
+		return err
+	}
+
+	if last.terminal() {
+		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", errWrongState, last.Status.ID, item)
+	}
+
+	if err := c.requireMovable(ctx, item, last); err != nil {
+		return namedVersions(err, last, c.version)
+	}
+
+	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
+	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
+		return err
+	}
+
+	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
+		return canceledNotMoved(item, last, err)
+	}
+
+	return nil
+}
+
+// namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
+func namedVersions(err error, stored run, version string) error {
+	if !errors.Is(err, errStranded) {
+		return err
+	}
+
+	return fmt.Errorf("%w. The run started under version %s and this is %s", err, stored.Status.ApplicationVersion, version)
 }
 
 // EngineRuns reports whether an engine holds the state folder, as beehave serve or another beehave run does.
@@ -78,7 +123,7 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
-// The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays queued.
+// The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
 func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemResult, error) {
 	in, err := pinnedInput(item, project, file)
 	if err != nil {
@@ -93,7 +138,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 		return ItemResult{}, err
 	}
 
-	handle, err := c.planAndHandle(in)
+	handle, err := c.planAndHandle(ctx, in)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -102,7 +147,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 }
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
-func (c *Client) planAndHandle(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	last, found, err := latestRun(c.flow, in.Item)
 	if err != nil {
 		return nil, err
@@ -110,6 +155,10 @@ func (c *Client) planAndHandle(in ItemInput) (dbos.WorkflowHandle[ItemResult], e
 
 	plan, err := planOf(last, found, in, c.version, false)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := c.moveIfOtherBuild(ctx, plan, in.Item); err != nil {
 		return nil, err
 	}
 
@@ -170,11 +219,11 @@ func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[I
 	return handle, nil
 }
 
-// await waits for the result of the run. A run in the queue waits for ever when no engine takes it, so each poll reads the status of the run and checks for an engine. The check holds probe.lock for microseconds and never meets an engine that is starting, so a poll each second is cheap and safe.
+// await waits for the result of the run. A run in the queue waits for ever when no engine takes it, so each poll reads the status of the run and checks for an engine of this build. The check holds probe.lock for microseconds and never meets an engine that is starting, so a poll each second is cheap and safe.
 // The loop runs in the caller, so it ends with ctx and leaves no poller behind.
 func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResult], item string) (ItemResult, error) {
 	poll := cmp.Or(c.give.Clock.Poll, joinPoll)
-	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item}
+	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
 	ticker := time.NewTicker(poll)
 
 	defer ticker.Stop()
@@ -225,15 +274,16 @@ func (o outcome) unwrap(item string) (ItemResult, error) {
 	return o.result, nil
 }
 
-// engineWatch counts how long no engine holds the state folder.
+// engineWatch counts how long no engine holds the state folder. While an engine holds it, the watch asks build whether that engine runs this build.
 type engineWatch struct {
 	dir   string
 	item  string
 	grace time.Duration
 	since time.Time
+	build func() error
 }
 
-// check returns ErrEngineGone, with the next step for the item, when no engine has held the state folder for the whole grace time.
+// check returns ErrEngineGone when no engine has held the state folder for the whole grace time, and the error of build when the engine that holds it runs another build.
 func (w *engineWatch) check() error {
 	running, err := engineRuns(w.dir)
 	if err != nil {
@@ -243,7 +293,7 @@ func (w *engineWatch) check() error {
 	if running {
 		w.since = time.Time{}
 
-		return nil
+		return w.build()
 	}
 
 	if w.since.IsZero() {
@@ -251,7 +301,7 @@ func (w *engineWatch) check() error {
 	}
 
 	if time.Since(w.since) >= w.grace {
-		return fmt.Errorf("%w: start beehave serve or run beehave run %s again", ErrEngineGone, w.item)
+		return ErrEngineGone
 	}
 
 	return nil

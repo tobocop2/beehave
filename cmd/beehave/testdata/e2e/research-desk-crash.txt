@@ -1,0 +1,87 @@
+# The research desk, killed while a claims run reads a page. The tree has three levels: the question run, one source run for each source, and one claims run for each source.
+# The kill comes while the reader of the first source of section 1 runs in its claims run, so the question run and the source run wait in gather.
+# A second beehave run continues the item. After the restart, every run ends once, no child run starts twice, each agent runs once and the report is published once.
+[!exec:jq] skip
+isolate
+! exec bd version
+! exec gh version
+
+rdinit
+rdfakes
+env HOME=$WORK/home
+env RESEARCH_DESK_DIR=$WORK/rd
+env RESEARCH_HOME=$WORK/store
+env SEARCH_API=http://search.test
+env WIKI_API=http://wiki.test
+env RESEARCH_HEADER_FILE=$WORK/home/.research/credential.header
+
+exec beehavereal check workflow rd/workflow.star
+! stdout .
+! stderr .
+
+exec beehavereal item add research-desk cold-cost --title 'Cold and cost' --body-file body.txt
+! exec sh first.sh run cold-cost research-desk --workflow rd/workflow.star &
+# The fake reader writes held when the first claims run asks for it, and waits. The page of the first source was fetched before.
+waitfile held
+kill -KILL
+wait
+cmp held expected-held
+grep -count=1 '^plan$' calls.log
+
+exec beehavereal run cold-cost research-desk --workflow rd/workflow.star &
+waitstatus 'paused: Review the draft report of cold-cost'
+exec beehavereal answer cold-cost approve
+wait
+stdout 'item cold-cost finished'
+
+# The runs are the question run, and for each of the four sources one source run and one claims run. Each is done once, and no run follows them.
+exec beehavereal status
+stdout -count=9 '^item-.*-r1\tdone'
+stdout -count=1 'item-cold-cost-r1\tdone'
+stdout -count=1 'item-research-desk-2-r1\tdone'
+stdout -count=1 'item-research-desk-3-r1\tdone'
+stdout -count=1 'item-research-desk-4-r1\tdone'
+stdout -count=1 'item-research-desk-5-r1\tdone'
+stdout -count=1 'item-research-desk-6-r1\tdone'
+stdout -count=1 'item-research-desk-7-r1\tdone'
+stdout -count=1 'item-research-desk-8-r1\tdone'
+stdout -count=1 'item-research-desk-9-r1\tdone'
+! stdout 'research-desk-10'
+! stdout 'r2\t'
+
+# Each page got one id in the store, so no source run fetched a page twice under another id.
+grep -count=2 '^s' store/cold-cost/sources.tsv
+! grep '^s3' store/cold-cost/sources.tsv
+
+# Each agent ran once, the plan and the sections as in the uncrashed desk. The report was published once, and the page holds the same text.
+cmp calls.log expected-calls.log
+grep -count=1 '^cold-cost-' wiki.log
+cmp store/cold-cost/report.md wiki.page
+
+-- first.sh --
+# The first run exec's beehave, so the kill stops beehave itself.
+exec beehavereal "$@"
+-- hold --
+-- body.txt --
+How does the cold change the output of a unit, and what does it cost?
+-- expected-held --
+read cold
+-- expected-calls.log --
+plan
+read cold
+read cold
+judge
+write Output
+read cost
+read cost
+judge
+write Cost
+abstract
+-- home/.research/credential.header --
+Authorization: Bearer TESTONLY
+-- resp/_search --
+{"results":[{"url":"http://pages.test/page/a"},{"url":"http://pages.test/page/b"}]}
+-- resp/_page_a --
+<p>Winter tests. At -20 C the output fell by 30 percent.</p>
+-- resp/_page_b --
+<p>The unit costs 12 euro per month.</p>

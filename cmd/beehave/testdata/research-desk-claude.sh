@@ -2,7 +2,7 @@
 # The fake claude of the research desk scripts. It names the step from the first words of the shipped prompt and logs the step to calls.log in the work folder.
 # The program holds the work folder in place of @WORK@.
 #   planner: two sections, one about the cold and one about the cost.
-#   reader: the section about the cold gets a true claim and a claim whose quote is not on the page. The section about the cost gets one true claim.
+#   reader: it gets one page. A page that does not hold the topic gives no claims. On the page of the topic, the section about the cold gets a true claim and a claim whose quote is not on the page. The section about the cost gets one true claim.
 #   judge: grades every claim supported, except a claim that says "opposite". The file credulous in the work folder makes it grade that claim supported too.
 #   writer: one paragraph for each claim line, with its marker. The file bad-prose makes the first paragraph state a number that no quote holds.
 #   abstract: one line. The file drift makes it change the page /page/a, so that the quote of the first section left its page.
@@ -21,11 +21,20 @@ case $step in
   read)
     question=$(printf '%s\n' "$prompt" | sed -n '/^## The question/{n;n;p;}')
     case $question in *cold*) topic=cold ;; *) topic=cost ;; esac
+    # With a file hold in the work folder, the first reader is the crash point: it writes held and waits for the kill of the engine.
+    if [ -f "@WORK@/hold" ] && [ ! -f "@WORK@/held" ]; then
+      echo "read $topic" > "@WORK@/held"
+      sleep 5
+      exit 1
+    fi
     echo "read $topic" >> "@WORK@/calls.log"
     page=$(printf '%s\n' "$prompt" | grep -E '^s[0-9]+	' | while IFS="	" read -r id _ path; do
       if { [ "$topic" = cold ] && grep -q 'output fell' "$path"; } || { [ "$topic" = cost ] && grep -q 'euro per month' "$path"; }; then echo "${id#s}"; fi
     done | head -n 1)
-    if [ "$topic" = cold ]; then
+    # The reader gets one page. A page that does not hold the topic gives no claims.
+    if [ -z "$page" ]; then
+      claims='[]'
+    elif [ "$topic" = cold ]; then
       claims=$(jq -c -n --argjson s "$page" '[{text: "Cold cut the output by 30 percent.", source: $s, quote: "At -20 C the output fell by 30 percent."}, {text: "The output fell by 90 percent at -40 C.", source: $s, quote: "At -40 C the output fell by 90 percent."}]')
     else
       claims=$(jq -c -n --argjson s "$page" '[{text: "The unit costs 12 euro per month.", source: $s, quote: "The unit costs 12 euro per month."}]')

@@ -337,7 +337,7 @@ Every other member, and every member whose read failed, is a line of the result 
 
 ### Binary and packages
 
-- The one binary is `examples/remediation/tools/cmd/remedy`. `make build` makes `bin/remedy`. The release archive holds only `beehave`.
+- The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge and the beads claim store to `remedy.Main`, which wires the real git runner.
 - The package `lease` builds the claims over the rows and finds the project of a repository in the config folder, for `cmd/beehave` and `cmd/remedy` alike.
 - A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`.

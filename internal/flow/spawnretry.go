@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/tobocop2/beehave/internal/workflow"
 )
@@ -167,17 +168,17 @@ func (e *Engine) planRestarts(ctx context.Context, in ItemInput, refs []spawnedR
 
 // planRestart plans the next attempt of one failed run. The new attempt keeps the input of the failed one, with the new login.
 func (e *Engine) planRestart(ctx context.Context, in ItemInput, failed spawnedRun, taken []string) (restartPlan, error) {
-	last, _, err := latestRun(e.ctx, failed.Item)
+	input, err := e.latestInput(failed.Item)
 	if err != nil {
 		return restartPlan{}, err
 	}
 
-	input, err := last.input()
+	attempt, err := attemptOfRun(failed)
 	if err != nil {
 		return restartPlan{}, err
 	}
 
-	next, err := e.startOf(ctx, in, failed.Item, runID(failed.Item, last.Attempt+1), taken)
+	next, err := e.startOf(ctx, in, failed.Item, runID(failed.Item, attempt+1), taken)
 	if err != nil {
 		return restartPlan{}, err
 	}
@@ -186,4 +187,25 @@ func (e *Engine) planRestart(ctx context.Context, in ItemInput, failed spawnedRu
 	input.Login = next.Login
 
 	return restartPlan{Run: next, Input: input}, nil
+}
+
+// latestInput reads the input of the latest run of the item.
+func (e *Engine) latestInput(item string) (ItemInput, error) {
+	last, _, err := latestRun(e.ctx, item)
+	if err != nil {
+		return ItemInput{}, err
+	}
+
+	return last.input()
+}
+
+// attemptOfRun returns the attempt number of a spawned run. The next attempt follows the run that failed, not the latest run of the item:
+// the plan of a start again that a resume replays then names the attempt that the resume reopened.
+func attemptOfRun(one spawnedRun) (int, error) {
+	attempt, ok := attemptOf(strings.TrimPrefix(one.Run, runPrefix+one.Item), attemptMarker)
+	if !ok {
+		return 0, fmt.Errorf("run %s is not an attempt of item %s", one.Run, one.Item)
+	}
+
+	return attempt, nil
 }

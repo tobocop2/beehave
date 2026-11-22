@@ -69,6 +69,7 @@ var goldenShapes = map[string][]string{
 		"send: id",
 		"sleep: slept",
 		"spawn: runs",
+		"stream: ended,entries,next",
 		"wait: answer,answers,timed_out",
 		"write: attempts,key,rc,skipped,stderr,stdout",
 	},
@@ -89,7 +90,7 @@ var goldenKinds = map[string][]string{
 	"star30": {
 		"agent", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up",
 		"item_comment", "item_create", "item_read", "item_status", "login", "now",
-		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "wait", "write",
+		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 
@@ -174,8 +175,8 @@ func TestStepsVersion_TheStepNamesOfABatchMergeMatchTheGoldenListOfTheStepsVersi
 		}
 	}
 
-	assert.Equal(t, goldenBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
-	assert.Equal(t, goldenBatchGateSteps, batchGateSteps(t, engine), "the steps of the batch gate changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenBatchGateSteps, batchGateSteps(t, engine)), "the steps of the batch gate changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
 }
 
 // goldenBatchGateSteps are the steps of the run of the project gate of a batch. The step batch_gate:job holds the checkout and the host job,
@@ -206,7 +207,7 @@ func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGolden
 		}
 	}
 
-	assert.Equal(t, goldenLostBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenLostBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
 }
 
 // goldenRunnerFacts holds the fields of each entry of the runners field of the facts result. The shape above lists top-level fields only, so a nested field of a recorded result is pinned here.

@@ -722,16 +722,32 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 		return nil, err
 	}
 
+	return e.startOrJoin(plan, in, last, found)
+}
+
+// startOrJoin does what the plan says: it moves the run of another build to this build and joins it, joins the open run, or starts the next attempt.
+func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found bool) (dbos.WorkflowHandle[ItemResult], error) {
+	if err := e.asClient().moveIfOtherBuild(e.ctx, plan, in.Item); err != nil {
+		return nil, err
+	}
+
 	if plan.Join != "" {
 		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
 	}
 
-	in, err = in.withBaseOf(last, found)
+	in, err := in.withBaseOf(last, found)
 	if err != nil {
 		return nil, err
 	}
 
 	return e.start(in, plan.Attempt)
+}
+
+// asClient returns a client over the store of this engine, so that a move of a run to this build runs the code of beehave resume --on-this-build.
+func (e *Engine) asClient() *Client {
+	give := ReleaseDeps{Lifecycle: e.deps.Lifecycle, Beats: e.deps.Beats, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository, Merge: e.deps.Merge}
+
+	return &Client{flow: e.ctx, version: e.version, dir: e.dir, give: give, logger: e.logger, redact: e.redact}
 }
 
 // resumedByLaunch reports whether the Launch of this engine resumed the run and the run ended since.

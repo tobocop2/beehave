@@ -282,7 +282,7 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 |---|---|
 | `skypilot` | `cloud`, `region` (needs `cloud`), `instance_type`. The cluster name is `build_host`. |
 | `slurm` | The keys of the `ssh` block. `work_root` is refused, because jobs run in the login folder. `build_host` is the ssh alias of the head node. |
-| `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
+| `ssh` | `address`, `user`, `port`, `identity`, `work_root`, `known_hosts` (`strict`, the default, or `accept-new`; a host key that changes is always refused). `build_host` is the ssh alias, so the ssh config of the user applies. The alias holds a letter, then letters, digits, dots and hyphens, with no trailing dot, no `..` and no `.-`, so a gcloud alias such as `rig.us-central1-a.bench` is allowed. |
 
 #### The build_host key
 

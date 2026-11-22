@@ -57,10 +57,10 @@ func TestJoinRun_TwoJoinsOfOneItemMakeOneRun(t *testing.T) {
 	require.NoError(t, err)
 
 	// The run waits for an answer, so it is open while both joins plan. The second join cannot see a finished run and start attempt 2.
-	first, err := client.planAndHandle(in)
+	first, err := client.planAndHandle(t.Context(), in)
 	require.NoError(t, err)
 
-	second, err := client.planAndHandle(in)
+	second, err := client.planAndHandle(t.Context(), in)
 	require.NoError(t, err)
 
 	require.Equal(t, first.GetWorkflowID(), second.GetWorkflowID(), "an open run is joined, so no second attempt starts")
@@ -94,7 +94,7 @@ func TestJoinRun_AStatusThatCannotBeReadStopsTheWait(t *testing.T) {
 	in, err := pinnedInput(testItem, testProject, file)
 	require.NoError(t, err)
 
-	handle, err := client.planAndHandle(in)
+	handle, err := client.planAndHandle(t.Context(), in)
 	require.NoError(t, err)
 	require.NoError(t, client.Close())
 
@@ -273,7 +273,38 @@ func TestJoinRun_AnOpenRunOfAnotherProjectIsRefused(t *testing.T) {
 	require.ErrorIs(t, err, errProjectConflict)
 }
 
-func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheWaiterSaysSo(t *testing.T) {
+func TestJoinRun_AnEngineOfAnotherBuildThatTakesTheFolderDuringTheGraceRefusesTheWaiterAtOnce(t *testing.T) {
+	t.Parallel()
+
+	harness := newHarness(t)
+	engine := harness.engine(t)
+	client := harness.client(t, testVersion)
+	client.give.Clock.Poll = time.Millisecond
+	client.give.Clock.Gone = time.Hour
+
+	require.NoError(t, engine.Shutdown())
+
+	file := writeFlow(t, bodyFlow(joinFlow))
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+		done <- err
+	}()
+
+	waitOn(t, condition(func() bool { return len(rowsOf(t, client, testItem)) == 1 }))
+
+	harness.opts.Version = "v2"
+	harness.engine(t)
+
+	err := receive(t, done)
+
+	require.ErrorIs(t, err, errOtherBuild)
+	require.ErrorContains(t, err, "restart beehave serve")
+	assert.Len(t, rowsOf(t, client, testItem), 1)
+}
+
+func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheJoinReturnsEngineGone(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
@@ -288,7 +319,6 @@ func TestJoinRun_AnEngineThatStopsLeavesTheRunQueuedAndTheWaiterSaysSo(t *testin
 	_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, bodyFlow(joinFlow)))
 
 	require.ErrorIs(t, err, ErrEngineGone)
-	require.ErrorContains(t, err, "start beehave serve or run beehave run 12 again")
 
 	rows := rowsOf(t, client, testItem)
 	require.Len(t, rows, 1)
@@ -364,7 +394,7 @@ func TestPlanOf_TheSamePlanForEveryStateOfTheLatestRun(t *testing.T) {
 		{name: "open", last: open(dbos.WorkflowStatusPending, version), found: true, want: attemptPlan{Join: runID(testItem, 2)}},
 		{name: "queued", last: open(dbos.WorkflowStatusEnqueued, version), found: true, want: attemptPlan{Join: runID(testItem, 2)}},
 		{name: "ended since the launch", last: open(dbos.WorkflowStatusSuccess, version), found: true, resumed: true, want: attemptPlan{Join: runID(testItem, 2)}},
-		{name: "open on another build", last: open(dbos.WorkflowStatusPending, applicationVersion("v0")), found: true, wantErr: errStranded},
+		{name: "open on another build", last: open(dbos.WorkflowStatusPending, applicationVersion("v0")), found: true, want: attemptPlan{Join: runID(testItem, 2), Move: true}},
 	}
 
 	for _, test := range tests {
@@ -399,7 +429,7 @@ func TestJoinRun_AStoreThatIsGoneStopsEveryStepOfTheJoin(t *testing.T) {
 
 	require.ErrorContains(t, closed.sameBuildAsEngine(), "read the version of the engine")
 
-	_, err = closed.planAndHandle(in)
+	_, err = closed.planAndHandle(t.Context(), in)
 	require.ErrorContains(t, err, "list the runs of item 12")
 
 	_, err = closed.handleOf(attemptPlan{Attempt: 1}, in)

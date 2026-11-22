@@ -25,6 +25,7 @@ When an engine already holds the state folder (`beehave serve` or another `beeha
 - The join refuses a build that differs from the version the live engine wrote into the file `engine.version` of the state folder.
 - The joined run gets the default place, because the client sets no severity.
 - Progress lines print in the log of the engine, not in the terminal of the joiner.
+- If the engine stops before the run ends, the run stays open in the store. After the grace time of 10 seconds, the joined `beehave run` starts its own engine for the item, and the launch of that engine recovers the run. When two joined commands do this at once, one takes the state folder and the other joins it.
 
 #### The steps of the item workflow
 
@@ -643,7 +644,15 @@ In every other case the tree stays, and the log says why. One timeout covers all
 Each run pins the build version that started it. `beehave status` lists every run with its state: running, queued, done, stopped, failed or cancelled. Each line of the list starts with the run id.
 
 - A run that a `stop_on_rc` code ended is `stopped`, and the line names the step and the code.
-- A run that another version started shows as stranded and names that version. Every command refuses to change a stranded run, and the refusal names `beehave resume <item> --on-this-build`.
+- A run that another version started shows as stranded and names that version. Every command except `beehave run` and `beehave serve` refuses to change a stranded run, and the refusal names `beehave resume <item> --on-this-build`. `beehave run` and `beehave serve` move an open run of another build when the modules agree, as the next section says.
+
+#### Join of an open run of another build
+
+`beehave run <item>` and `beehave serve` join the open run of an item. When that run is stored under another build, they compare the module versions, as `beehave resume <item> --on-this-build` does, and not the whole build string. A new release with the same module versions needs no command: the run moves and the call joins it.
+
+- The move is the one of `--on-this-build`: the same checks, the same cancel and the same restamp of the run and its phases.
+- If a module that the run used has another version here, the call refuses and names the module, as the table below does. If the claim lease of the run has not ended, the call refuses and names the holder.
+- A run of another project is refused as before.
 
 #### `beehave resume <item> --on-this-build`
 
@@ -666,6 +675,19 @@ The command refuses in these cases:
 
 A stored version that ends in `+star30` stands for every module at version 1. A change to the recorded steps of one builtin bumps the version of its module and no other module, so a run that never used that module still moves. The first build with module versions has a new application version, so an open run of an older build moves only with this command.
 
+#### Change a builtin that old runs replay
+
+A run replays its recorded steps, so a change to the steps of a builtin breaks every run that already passed it. The rules for a contributor:
+
+1. If the change adds, removes or reorders the recorded steps of a builtin, put it behind `dbos.Patch(ctx, "<name>")` and keep the old code in the false branch. Do not raise the module version. `Patch` works with `EnablePatching` set to false, as the DBOS rules require.
+2. Call `Patch` from the body of the builtin, before its first step. Never call it in a step closure: a call with the workflow context inside a step closure passes the guard of DBOS and makes two steps share one step id.
+3. The old code and the new code must be safe in one run, because a run that has not reached the builtin takes the new code.
+4. Raise the module version only for a retirement (a builtin or step kind that no build records), or a change to the input or the output of a step that a replay reads again.
+5. Add one replay test for each patch, in the shape of `internal/flow/patch_test.go`: the old build starts a run and the new build finishes it. A builtin that starts a child workflow has its own test in that shape.
+6. Keep the old branch while any run that predates the patch can replay: an open run, and a failed or cancelled run that `beehave resume` can rewind, because the rewind keeps the steps before the failed one. Retention deletes only finished runs, so a failed or cancelled run stays, and with `agents.retention_days = 0` every run stays. Delete the old branch and call `dbos.DeprecatePatch` only when no such run is left. `DeprecatePatch` records no marker, so a run that survives fails with an unexpected step.
+
+A patch adds a step named `DBOS.patch-<name>` to each run that calls the builtin. It is a step of the engine, so the move of a run to another build never refuses it. The per-run view of `beehave status` folds it into the call. The dry run lists it as a row, as it lists the other `DBOS.` rows. Every golden step list shows the marker, and a test refuses a change to a step sequence that has no marker. A second test keeps a digest of the golden lists for each set of module versions in `internal/flow/goldenbump_test.go`: a changed list under the same module versions breaks it. A bump adds a new digest. A developer can still rewrite the digest of the current versions, but the diff shows that.
+
 #### Progress notes on a run line
 
 A line of the list also shows these facts when the run has them. Each is a tab-separated note after the state.
@@ -677,6 +699,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | `waits for the <kind> limit <window> of login <login> until <time>` | A provider limit holds an agent step of the open run. The step runs again after that time. |
 | `now <step>` | The step that an open run is in. A run that asks a question shows the question in place of the step and, when the `wait` has a `timeout`, `answer by <time>`. |
 | `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |
+| `waits for the agent output of run <run> until <time>` | The open run is in a `stream` call that reads that child run. The time is the end of the wait, with the time left. |
 | `gate pass at <head>` or `gate fail at <head>` | The newest gate result and the head it judged. |
 | The latest label, such as `review 3/24` | The `label` of the latest agent call that has one. The review loop of the library labels its reviews with the count against `rounds * (MAX_INNER + 1)` and its fixes with the count against `rounds * MAX_INNER`. |
 
@@ -690,6 +713,7 @@ Every value is read from the step records, the events and the options of the cli
 - `now`
 - `deadline`
 - `receiving`: the topic that an open run waits on in a `recv` call. It is left out for a run that waits in no `recv`.
+- `streaming`: the id of the child run that an open run waits on in a `stream` call. It is left out for a run that waits in no `stream`.
 - `gate` (`passed`, `head`)
 - `label`: the latest label of the run
 - `cost_usd` on each agent step

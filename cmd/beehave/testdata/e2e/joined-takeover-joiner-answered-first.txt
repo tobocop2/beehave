@@ -1,0 +1,26 @@
+# Row K1, must not change. The joined run is answered before the host run: both finish, as they do at the base.
+isolate
+! exec bd version
+! exec gh version
+
+example review-loop/project.star config/projects/orders.star
+exec beehavereal item add orders ui-1 --title 'UI' --body-file body.txt
+exec beehavereal item add orders base-1 --title 'Base' --body-file body.txt
+
+exec beehavereal run ui-1 orders --workflow flow/wait.star &ui&
+waitstatus 'question of ui-1'
+exec beehavereal run base-1 orders --workflow flow/wait.star &base&
+waitstatus 'question of base-1'
+exec beehavereal answer base-1 done
+wait base
+stdout 'item base-1 finished'
+stderr 'joins the engine that runs'
+exec beehavereal answer ui-1 done
+wait ui
+stdout 'item ui-1 finished'
+
+-- body.txt --
+Wait.
+-- flow/wait.star --
+def main(item):
+    wait(name = "close", question = "question of " + item.id)

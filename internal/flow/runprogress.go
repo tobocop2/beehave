@@ -40,6 +40,8 @@ type RunProgress struct {
 	Sleeping bool `json:"sleeping,omitempty"`
 	// Receiving is the topic that an open run waits on in a recv call. The deadline is the end of that wait. It is empty for a run that waits in no recv call.
 	Receiving string `json:"receiving,omitempty"`
+	// Streaming is the id of the child run that an open run waits on in a stream call. The deadline is the end of that wait. It is empty for a run that waits in no stream call.
+	Streaming string `json:"streaming,omitempty"`
 	// Gate is the last gate result. It is nil for a run that ran no gate.
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Label is the label of the latest agent step that has one, as the workflow wrote it. It is empty for a run with no labeled agent step.
@@ -99,6 +101,8 @@ func (p RunProgress) deadlineNote(now time.Time) string {
 		note = "sleeps until " + p.Deadline.Format(time.RFC3339)
 	case p.Receiving != "":
 		note = "waits for a message on topic " + p.Receiving + " until " + p.Deadline.Format(time.RFC3339)
+	case p.Streaming != "":
+		note = "waits for the agent output of run " + p.Streaming + " until " + p.Deadline.Format(time.RFC3339)
 	}
 
 	if now.IsZero() {
@@ -277,5 +281,11 @@ func (p *RunProgress) takeCallWait(records []dbos.StepInfo) {
 
 	if window, waiting := receivingOf(records); waiting {
 		p.Deadline, p.Receiving = window.Until, window.Topic
+
+		return
+	}
+
+	if window, waiting := streamingOf(records); waiting {
+		p.Deadline, p.Streaming = window.Until, window.Run
 	}
 }

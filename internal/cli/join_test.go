@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,13 +59,66 @@ func TestRun_AJoinThatFailsReportsTheErrorAndClosesTheClient(t *testing.T) {
 
 	rig := newRig(t)
 	rig.steering.running = true
-	rig.steering.joinErr = flow.ErrEngineGone
+	rig.steering.joinErr = errFake
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, flow.ErrEngineGone.Error())
+	assert.Contains(t, stderr, errFake.Error())
 	assert.True(t, rig.steering.closeOK)
+	assert.Zero(t, rig.engines, "a join that fails for another cause starts no engine")
+}
+
+func TestRun_AJoinWhoseEngineStoppedTakesOverTheItemOnItsOwnEngine(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.running = true
+	rig.steering.joinErr = flow.ErrEngineGone
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 finished\n", stdout)
+	assert.Contains(t, stderr, "the engine that ran item 12 stopped; this command continues the run")
+	assert.Equal(t, 1, rig.engines)
+	assert.Equal(t, []string{"12@p"}, rig.runner.items)
+	assert.True(t, rig.steering.closeOK)
+}
+
+func TestRun_ATakeoverThatLosesTheStateFolderJoinsTheEngineThatWonIt(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.running = true
+	rig.steering.joinErrs = []error{flow.ErrEngineGone}
+	rig.engineOf = func() error { return flow.ErrStateBusy }
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, "item 12 finished\n", stdout)
+	assert.Equal(t, 1, strings.Count(stderr, "this command continues the run"))
+	assert.Equal(t, 1, rig.engines, "the takeover tried its own engine once")
+	assert.Len(t, rig.steering.joined, 2, "the first join saw the engine gone, the second joined the engine that won")
+	assert.Empty(t, rig.runner.items)
+}
+
+func TestRun_AJoinWhoseEngineStoppedAndWhoseUserStoppedTheCommandDoesNotTakeOver(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.running = true
+	rig.steering.joinErr = flow.ErrEngineGone
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	code, _, stderr := rig.execute(ctx, "run", "12")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "run beehave run again to continue it")
+	assert.Zero(t, rig.engines)
 }
 
 func TestRun_AJoinThatTheUserStopsSaysHowToContinue(t *testing.T) {

@@ -172,7 +172,7 @@ type landWorld struct {
 	*shipWorld
 
 	repo repoGit
-	// moveAt is the read of the base tip after which another commit lands on main, as a merge by another session does. Zero moves nothing.
+	// moveAt is the read of the base tip after which another commit lands on main, as a merge by another session does. Zero moves nothing, and a negative number moves it at every read.
 	moveAt int
 	reads  int
 }
@@ -185,7 +185,7 @@ func (w *landWorld) BranchRef(ctx context.Context, branch string) (string, bool,
 
 	w.mu.Lock()
 	w.reads++
-	move := w.reads == w.moveAt
+	move := w.reads == w.moveAt || w.moveAt < 0
 	w.mu.Unlock()
 
 	if move {
@@ -421,12 +421,12 @@ func TestExampleMerge_TheRoundLandsThroughTheBatchMergerAndTheGuardsOfTheForgeFa
 
 			switch {
 			case tc.defer1:
-				// A deferral defers the members of its own batch after it. Item 3 is in the next batch, so the deferral of item 1 does not reach it.
+				// A deferral writes nothing and holds nothing, so the row of item 1 stays done and the next pass offers it again, once the base stopped moving.
 				assert.Contains(t, forge.said("1"), "while preparing")
-				assert.Empty(t, one.writes, "a deferred merge writes nothing")
 				assert.Empty(t, heldOf(rig.writer), "a deferred item is not held")
+				assert.Equal(t, []string{fmt.Sprintf("MergePR %d %s", testPull, rig.heads["1"])}, one.writes, "item 1 lands at its pin in the next pass")
 				assert.Equal(t, []string{fmt.Sprintf("MergePR %d %s", testPull, rig.heads["3"])}, three.writes, "item 3 lands at its pin")
-				assert.Equal(t, "README\nthree.txt", rig.mainFiles(t), "item 3 lands and the deferral of item 1 does not reach it")
+				assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t), "both items land: the deferral costs item 1 one pass")
 			case tc.refusal != "":
 				assert.Contains(t, forge.said("1"), tc.refusal)
 				assert.Empty(t, one.writes, "a refused merge writes nothing")
@@ -444,6 +444,30 @@ func TestExampleMerge_TheRoundLandsThroughTheBatchMergerAndTheGuardsOfTheForgeFa
 			}
 		})
 	}
+}
+
+// A deferral writes no row, so a pass that only deferred must not start the next pass at once: the round offers the rows once in each pass that a child ended in, and then waits for the owner.
+func TestExampleMerge_ABaseThatKeepsMovingMakesTheRoundWaitAfterOneLandingPass(t *testing.T) {
+	t.Parallel()
+
+	rig, forge := landingRound(t, nil)
+	forge.worlds["1"].moveAt = -1
+	forge.worlds["3"].moveAt = -1
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+
+	lands := 0
+	for _, name := range stepNames(t, rig.last) {
+		if strings.HasPrefix(name, "command:round-integration-land-") {
+			lands++
+		}
+	}
+
+	assert.Equal(t, 2, lands, "the round offers the deferred rows once in each pass that a child ended in, and then waits")
+	assert.Empty(t, heldOf(rig.writer), "a deferred item is not held")
+	require.Len(t, rig.questions, 1, "the round waits for the owner")
 }
 
 // rejectReviewOf makes the review of the item write the verdict reject in place of the approve of the round rig. The other items keep their approve.

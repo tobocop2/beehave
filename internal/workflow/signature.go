@@ -315,6 +315,7 @@ func signatures() map[string][]Param {
 	maps.Copy(all, itemSignatures())
 	maps.Copy(all, readSignatures())
 	maps.Copy(all, inboxSignatures())
+	maps.Copy(all, streamSignatures())
 
 	return all
 }

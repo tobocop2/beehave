@@ -20,19 +20,6 @@ builds:
       - -s -w
       - -X main.version={{.Version}}
 
-  # The remedy command has no version variable, so it takes no version flag.
-  - id: remedy
-    main: ./examples/remediation/tools/cmd/remedy
-    binary: remedy
-    env:
-      - CGO_ENABLED=0
-    goos: [darwin, linux]
-    goarch: [amd64, arm64]
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w
-
 archives:
   - id: beehave
     formats: [tar.gz]
@@ -44,7 +31,7 @@ checksum:
 release:
   prerelease: auto
 
-# The binaries are not signed, so the cask removes the quarantine attribute of each one.
+# The binary is not signed, so the cask removes its quarantine attribute.
 homebrew_casks:
   - name: beehave
     repository:
@@ -56,11 +43,9 @@ homebrew_casks:
         private_key: "{{ .Env.HOMEBREW_TAP_SSH_KEY }}"
     binaries:
       - beehave
-      - remedy
     hooks:
       post:
         install_steps: |
           on_macos do
             run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/beehave"]
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/remedy"]
           end

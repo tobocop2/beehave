@@ -50,7 +50,9 @@ const (
 // Version 14 adds the first_of step with its deadline step and its look steps, which record every run that ended in the read, and a child run sends an end notice to its parent.
 // Version 15 moves the answers of wait onto the inbox as messages of the topic beehave.answer, and a wait with a timeout and no people records its deadline step.
 // Version 16 records the topic of a recv call with its deadline, in the deadline step.
-const coreVersion = 16
+// Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
+// Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
+const coreVersion = 18
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields
@@ -97,7 +99,8 @@ const gateVersion = 6
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).
 // Version 3 adds the pulls field to the result of queue and the labels field to each of its rows.
 // Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
-const roundVersion = 4
+// Version 5 adds the field value to each row: the value that the last run of a done row returned.
+const roundVersion = 5
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.
@@ -118,7 +121,7 @@ func moduleTable() []stepModule {
 		{
 			name:    moduleCore,
 			version: coreVersion,
-			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", "wait", "write"},
+			kinds:   []string{cancelKind, "command", "earlier_calls", envKeyword, "facts", firstOfKind, gatherKind, "now", progressKind, publishKind, recvKind, sendKind, sleepKind, "spawn", streamKind, "wait", "write"},
 			engine:  []string{kindUndo},
 			retired: []string{retiredWatchKind},
 			steps:   []string{receiveStepName},
