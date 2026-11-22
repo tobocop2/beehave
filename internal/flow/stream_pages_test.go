@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -131,25 +130,44 @@ func TestStream_ARunCanceledBeforeTheDeadlineIsRecordedFailsTheCall(t *testing.T
 	close(rig.h.agents.gate)
 }
 
-func TestStream_ARunCanceledWhileItWaitsForAnEntryFailsTheCall(t *testing.T) {
+func TestStream_AChildThatTheStoreLosesFailsTheReadAndNoLaterStepRuns(t *testing.T) {
 	t.Parallel()
 
 	rig := newAgentRig(t)
 	rig.reply("", exited)
 	rig.h.agents.gate = make(chan struct{})
 
-	stopCtx, stop := context.WithCancel(t.Context())
-	engine, err := NewEngine(stopCtx, rig.h.opts, rig.h.deps())
+	parked, release := make(chan struct{}), make(chan struct{})
+	deps := rig.h.deps()
+
+	var once sync.Once
+
+	deps.Clock.Reading = func() time.Time {
+		once.Do(func() {
+			close(parked)
+			<-release
+		})
+
+		return time.Now()
+	}
+
+	engine, err := NewEngine(t.Context(), rig.h.opts, deps)
 	require.NoError(t, err)
 	require.NoError(t, engine.Launch())
 
-	done := startRun(t, engine, flowFile(t, a853Parent(`stream(w, timeout = "1h", name = "peek")`), "Work.\n"))
-	stepRecorded(t, engine, "stream:peek#1.deadline")
+	done := startRun(t, engine, flowFile(t, a853Parent("stream(w, timeout = \"8s\", name = \"peek\")\ncommand(name = \"after\", run = [\"after\"])"), "Work.\n"))
 
-	stop()
-	require.NoError(t, engine.Shutdown())
+	// The parent is inside the record of the deadline. The store loses the child before the read step looks for it.
+	receive(t, parked)
+	storeExec(t, rig.h, `DELETE FROM workflow_status WHERE workflow_uuid = 'item-21-r1'`)
+	close(release)
 
-	require.ErrorContains(t, receive(t, done).err, "context canceled", "the wait ends with the engine")
+	err = receive(t, done).err
+	close(rig.h.agents.gate)
+
+	require.ErrorIs(t, err, errNoSuchRun, "the read step reports the lost child")
+	require.ErrorContains(t, err, `"item-21-r1"`)
+	assert.Empty(t, rig.h.commands.ranBy(testItem), "the command after stream never runs: the call returns the error of its read")
 }
 
 func TestStream_AnUnreadablePhaseStreamIsAnError(t *testing.T) {
