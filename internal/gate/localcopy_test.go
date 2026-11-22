@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -142,6 +145,127 @@ func TestRun_ALocalGateWithAGateProgramUsesTheToolsThatTheEngineResolvedAtItsSta
 			require.NoError(t, err)
 
 			assert.True(t, result.Passed, "the planted tool does not defeat a job that finds its tools on the PATH: "+result.Report)
+		})
+	}
+}
+
+// localHookCount is the number of times that the planted hooks ran: one line in the file count for each run.
+func localHookCount(t *testing.T, count string) int {
+	t.Helper()
+
+	data, err := os.ReadFile(count) //nolint:gosec // the test reads the file that its hook writes
+	if os.IsNotExist(err) {
+		return 0
+	}
+
+	require.NoError(t, err)
+
+	return strings.Count(string(data), "\n")
+}
+
+func TestRun_ALocalGateWithAGateProgramRunsNoHookThatAGitConfigOfTheUserOrTheCallerNames(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		env  func(dir, hooks string) []string
+	}{
+		{name: "the_global_file", env: func(dir, hooks string) []string {
+			writeIn(t, dir, "global", "[core]\n\thooksPath = "+hooks+"\n")
+
+			return []string{"GIT_CONFIG_GLOBAL=" + filepath.Join(dir, "global"), "GIT_CONFIG_NOSYSTEM=1"}
+		}},
+		{name: "the_file_under_xdg_config_home", env: func(dir, hooks string) []string {
+			writeIn(t, dir, "xdg/git/config", "[core]\n\thooksPath = "+hooks+"\n")
+
+			return []string{"XDG_CONFIG_HOME=" + filepath.Join(dir, "xdg"), "GIT_CONFIG_NOSYSTEM=1"}
+		}},
+		{name: "the_system_file", env: func(dir, hooks string) []string {
+			writeIn(t, dir, "system", "[core]\n\thooksPath = "+hooks+"\n")
+
+			return []string{"GIT_CONFIG_SYSTEM=" + filepath.Join(dir, "system"), "GIT_CONFIG_GLOBAL=/dev/null"}
+		}},
+		{name: "the_config_values_of_the_caller", env: func(_, hooks string) []string {
+			return []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=" + hooks, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+		}},
+		{name: "the_config_parameters_of_the_caller", env: func(_, hooks string) []string {
+			return []string{"GIT_CONFIG_PARAMETERS='core.hookspath'='" + hooks + "'", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+		}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			hooks, count := filepath.Join(dir, "hooks"), filepath.Join(dir, "count")
+			require.NoError(t, os.Mkdir(hooks, 0o750))
+
+			for _, name := range []string{"post-checkout", "reference-transaction"} {
+				require.NoError(t, exectest.Write(filepath.Join(hooks, name), "#!/bin/sh\necho "+name+" >> "+count+"\nexit 0\n"))
+			}
+
+			env := append([]string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home")}, c.env(dir, hooks)...)
+			item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
+
+			// The control: git with this environment runs the planted hook, so the plant is live.
+			control := exec.CommandContext(t.Context(), localTools(t).Git, "clone", "-q", "--", item, filepath.Join(dir, "control")) //nolint:gosec // the test git
+			control.Env = env
+			out, err := control.CombinedOutput()
+			require.NoError(t, err, string(out))
+			ran := localHookCount(t, count)
+			require.Positive(t, ran, "the planted hook does not run for git with this environment")
+
+			result, err := localProgramGateEnv(t, item, localTools(t), env).Run(context.Background(), request)
+			require.NoError(t, err)
+
+			assert.True(t, result.Passed, result.Report)
+			assert.Equal(t, ran, localHookCount(t, count), "a git call of the gate job ran the hook that a git config of the user or the caller names")
+		})
+	}
+}
+
+func TestRun_ALocalGateWithAGateProgramChecksOutTheHeadWithNoAttributesFileOfTheUser(t *testing.T) {
+	t.Parallel()
+
+	// The head code fails the gate when the checkout wrote code.txt with a carriage return, as the attributes file of the user asks.
+	crlf := "case \"$(cat code.txt)\" in *\"$(printf '\\r')\"*) printf 'BAD\\n' > code.txt ;; esac\n"
+
+	cases := []struct {
+		name string
+		file string
+		env  func(dir string) []string
+	}{
+		{name: "the_file_under_xdg_config_home", file: "xdg/git/attributes", env: func(dir string) []string {
+			return []string{"XDG_CONFIG_HOME=" + filepath.Join(dir, "xdg")}
+		}},
+		{name: "the_file_under_the_config_folder_of_home", file: "home/.config/git/attributes", env: func(string) []string { return nil }},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeIn(t, dir, c.file, "code.txt text eol=crlf\n")
+
+			env := slices.Concat([]string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home"), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}, c.env(dir))
+			item, request := localItem(t, programCase{files: map[string]string{"code.sh": crlf}})
+
+			// The control: git with this environment writes code.txt with a carriage return, so the plant is live.
+			control := exec.CommandContext(t.Context(), localTools(t).Git, "clone", "-q", "--", item, filepath.Join(dir, "control")) //nolint:gosec // the test git
+			control.Env = env
+			out, err := control.CombinedOutput()
+			require.NoError(t, err, string(out))
+
+			data, err := os.ReadFile(filepath.Join(dir, "control", "code.txt")) //nolint:gosec // the test reads the clone that it made
+			require.NoError(t, err)
+			require.Contains(t, string(data), "\r", "the planted attributes file does not change the checkout of git with this environment")
+
+			result, err := localProgramGateEnv(t, item, localTools(t), env).Run(context.Background(), request)
+			require.NoError(t, err)
+
+			assert.True(t, result.Passed, "a git call of the gate job read the attributes file of the user: "+result.Report)
 		})
 	}
 }

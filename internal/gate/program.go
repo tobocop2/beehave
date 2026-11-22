@@ -23,18 +23,31 @@ func programFirst(tools Tools) string {
 		`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
 }
 
-// programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot with no replace refs
-// and no config of the machine. The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept
+// programGit is the word that defines the git of a job with a gate program, before its first git call. gpgit runs the resolved git with no replace refs and
+// no config file of the user or the machine: no system or global file, an empty XDG_CONFIG_HOME (gpxdg) and no GIT_CONFIG_COUNT or GIT_CONFIG_PARAMETERS of the caller.
+// gpsrc is the git that reads the repository of the head and the address of the base: gpgit in a local job, and in a host job the git of the host
+// with its config, which holds the credentials of the forge.
+func programGit(local bool) string {
+	src := `gpsrc() { "$gpbin" "$@"; }`
+	if local {
+		src = `gpsrc() { gpgit "$@"; }`
+	}
+
+	return `{ gpgit() ( unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS;` +
+		`GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null XDG_CONFIG_HOME="$gpxdg" GIT_NO_REPLACE_OBJECTS=1 "$gpbin" "$@" ); ` + src + `; }`
+}
+
+// programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot through gpgit (see programGit).
+// The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept
 // in shell variables (a path, a mode and a digest or a link target for each listed file). The final compare uses no git word and no tool through
 // the PATH: it reads the digest, the execute bit and the kind of each file.
 const programShell = `{
 gpfail() { echo "` + programMarker + ` $*"; return 1; }
-gpgit() { GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 "$gpbin" "$@"; }
 gphash() { set -- $("$gpshasum" $gpshaarg "$1"); printf %s "$1"; }
 gpsnapshot() {
 	mkdir -p "$gpsnap/files" && : > "$gpsnap/manifest" || return 1
 	gpgit init -q --bare "$gpsnap/repo.git" || return 1
-	gpgit -C "$gpsnap/repo.git" fetch -q --no-tags -- "$PWD" "$gpsha" || "$gpbin" -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
+	gpgit -C "$gpsnap/repo.git" fetch -q --no-tags -- "$PWD" "$gpsha" || gpsrc -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
 	[ "$(gpgit -C "$gpsnap/repo.git" rev-parse --verify -q "$gpsha^{commit}")" = "$gpsha" ] || return 1
 	gpgit -C "$gpsnap/repo.git" ls-tree -r "$gpsha" -- $gppaths > "$gpsnap/tree.txt" || return 1
 	gpwant=
@@ -51,7 +64,7 @@ gpsnapshot() {
 	gpwantlist=$(printf '%s\n' "$gpwant" | while IFS="$gptab" read -r m p s; do printf '%s\n' "$p"; done | LC_ALL=C "$gpsort")
 }
 gprefuse() {
-	gpgit cat-file -e "$gpsha^{commit}" || "$gpbin" fetch -q --no-tags -- "$gpurl" "$gpsha"
+	gpgit cat-file -e "$gpsha^{commit}" || gpsrc fetch -q --no-tags -- "$gpurl" "$gpsha"
 	mb=$(gpgit merge-base HEAD "$gpsha") && [ -n "$mb" ] || { gpfail "the head has no merge base with the base commit $gpsha, so the gate program cannot be compared"; return 1; }
 	changed=$(gpgit diff-tree -r --no-renames --name-only "$mb" HEAD -- $gppaths) || { gpfail "the gate program of the head cannot be compared with the base commit $gpsha"; return 1; }
 	[ -z "$changed" ] || { gpfail "the head changed the gate program, paths $(printf %s "$changed" | paste -s -d ' ' -). The gate runs the program of the base commit. The owner lands a change of these paths, then the gate runs again"; return 1; }

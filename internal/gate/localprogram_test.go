@@ -51,10 +51,17 @@ func localTools(t *testing.T) Tools {
 func localProgramGateOn(t *testing.T, dir, jobPath string, tools Tools) Gate {
 	t.Helper()
 
+	return localProgramGateEnv(t, dir, tools, []string{"PATH=" + jobPath, "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"})
+}
+
+// localProgramGateEnv is localProgramGate for a job that runs with the environment env and the given tools.
+func localProgramGateEnv(t *testing.T, dir string, tools Tools, env []string) Gate {
+	t.Helper()
+
 	shell := func(ctx context.Context, where, command string) (string, int) {
 		cmd := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // the job text under test
 		cmd.Dir = where
-		cmd.Env = []string{"PATH=" + jobPath, "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+		cmd.Env = env
 		out, err := cmd.CombinedOutput()
 
 		if err == nil {
@@ -158,7 +165,7 @@ func TestRun_ALocalGateWithAGateProgramGivesTheJobTheItemFolderAndAFolderThatItR
 		from, root = source, made
 
 		assert.DirExists(t, made)
-		assert.Contains(t, command, `"$gpbin" clone --no-local -- `+item)
+		assert.Contains(t, command, `gpsrc clone --no-local -- `+item)
 
 		return "", 0
 	})

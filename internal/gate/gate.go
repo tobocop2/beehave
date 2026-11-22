@@ -725,7 +725,7 @@ func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, b
 	var check []string
 
 	if len(project.GateProgram) > 0 {
-		words = slices.Concat([]string{programFirst(src.tools)}, words, programBefore(project, src.cloneURL, clone, baseSHA))
+		words = slices.Concat([]string{programFirst(src.tools), programGit(src.local)}, words, programBefore(project, src.cloneURL, clone, baseSHA))
 		check = []string{programCheck}
 	}
 
@@ -743,16 +743,18 @@ func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, b
 }
 
 // cloneWords are the words that make the clone folder and check out head in it.
-// A job with a gate program runs the git that the first word resolved. A local job copies the objects (--no-local) and drops the address of the clone,
-// so head code finds no path of the repository that it was cloned from.
+// A job with a gate program makes the empty config folder of gpgit, clones with gpsrc and runs every other git call with gpgit (see programGit).
+// A local job copies the objects (--no-local) and drops the address of the clone, so head code finds no path of the repository that it was cloned from.
 func cloneWords(src jobSource, head, clone string, program bool) []string {
-	git := "git"
+	words := cloneFolder(clone)
+	git, from := "git", "git"
 
 	if program {
-		git = `"$gpbin"`
+		git, from = "gpgit", "gpsrc"
+		words = append(words, `mkdir gpxdg && gpxdg="$PWD/gpxdg"`)
 	}
 
-	words := slices.Concat(cloneFolder(clone), []string{git + " clone " + src.copyFlag() + "-- " + model.ShellQuote(src.from) + " tree", "cd tree"})
+	words = append(words, from+" clone "+src.copyFlag()+"-- "+model.ShellQuote(src.from)+" tree", "cd tree")
 
 	if src.local {
 		words = append(words, git+" remote remove origin")
