@@ -277,7 +277,8 @@ func TestRound_ATimeoutReturnsTheStateWaitingWithTheBaseAndThePullRequestAndCuts
 	assert.Equal(t, roundValue{State: "waiting", Base: "main", PR: 9}, value)
 	assert.NotContains(t, strings.Join(stepNames(t, engine), " "), "queue:round-queue-2#", "a timeout ends the round and starts no second pass")
 
-	assert.Empty(t, commandsNamed(rig, cutProgram), "a timeout is a STOP and cuts nothing")}
+	assert.Empty(t, commandsNamed(rig, cutProgram), "a timeout is a STOP and cuts nothing")
+}
 
 func TestRound_AContinueStartsAnotherPassThatAsksTheQueueAgain(t *testing.T) {
 	t.Parallel()

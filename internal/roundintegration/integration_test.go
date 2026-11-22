@@ -163,6 +163,29 @@ func TestRun_WritesNothingWhenTheBodyIsAlreadyTheOneTheMergedPullRequestsGive(t 
 	assert.Empty(t, w.bodies)
 }
 
+func TestRun_TheListOfMergedPullRequestsIsAskedForTheRoundBranch(t *testing.T) {
+	t.Parallel()
+
+	w := &world{found: []model.PullRequest{{Number: 7, State: text("OPEN"), Body: "old"}}}
+
+	_, err := roundintegration.Run(t.Context(), w, request())
+
+	require.NoError(t, err)
+
+	var asked []string
+
+	for _, args := range w.listed {
+		if slices.Contains(args, "merged") {
+			asked = args
+		}
+	}
+
+	require.NotEmpty(t, asked, "the merged list was read")
+	at := slices.Index(asked, "--base")
+	require.GreaterOrEqual(t, at, 0, "the merged list is filtered by a base")
+	assert.Equal(t, round, asked[at+1], "the base is the round branch, so no other pull request of the repository is listed")
+}
+
 func TestRun_AFullListOfMergedPullRequestsIsARefusalAndWritesNothing(t *testing.T) {
 	t.Parallel()
 

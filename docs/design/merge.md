@@ -387,7 +387,7 @@ A bad argument is a refusal. The tool finds the repository from the `origin` rem
 - moves every open pull request on the old base to it,
 - never deletes the old branch. The forge interface has no call that deletes a branch.
 
-A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The trunk is the base branch of the project. The number of the new round is the text after the last dash of the new branch.
+The step has no dry run. The `--dry` flag of the old `remedy cut` has no engine step, and the library keeps the dry path for tests only. The `trunk` argument is required, and the workflow passes the base branch of the project. The number of the new round is the text after the last dash of the new branch.
 
 ### `round_sync`
 
