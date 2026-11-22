@@ -17,6 +17,7 @@ import (
 	"github.com/tobocop2/beehave/internal/batch"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
@@ -589,7 +590,8 @@ func (b *batchBase) Tip(ctx context.Context) (batch.Tip, error) {
 
 // Merge records the intent of the member, then merges through merge.Run with that intent. The intent step comes first, so a merge that the forge
 // made before a crash counts as ours on the replay. A mergeable state that stays UNKNOWN is read again after a durable sleep.
-func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string) (batch.MergeOutcome, error) {
+// The statuses go to the merge run in its settings, and the run posts them after its guards and right before its merge call.
+func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string, statuses []model.CommitStatus) (batch.MergeOutcome, error) {
 	refused, err := b.holdScope(m)
 	if err != nil {
 		return batch.MergeOutcome{}, err
@@ -608,7 +610,7 @@ func (b *batchBase) Merge(ctx context.Context, m batch.Member, prefixTree string
 		return batch.MergeOutcome{Status: batch.StatusRefused, Reason: read.Refused}, nil
 	}
 
-	return b.mergeReads(ctx, m, b.memberSettings(m, prefixTree, &read.Intent))
+	return b.mergeReads(ctx, m, b.memberSettings(m, prefixTree, &read.Intent, statuses))
 }
 
 // recordedIntent is the intent step of the member.
@@ -618,12 +620,12 @@ func (b *batchBase) recordedIntent(m batch.Member) (intentRead, error) {
 	}, dbos.WithStepMaxRetries(stepRetries))
 }
 
-// memberSettings are the settings of the merge of one member. The approval, the tree, the intent and the kept issues are facts about this member only,
-// so the call settings never carry them.
-func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent) MergeSettings {
+// memberSettings are the settings of the merge of one member. The approval, the tree, the intent, the kept issues and the statuses are facts about this
+// member only, so the call settings never carry them.
+func (b *batchBase) memberSettings(m batch.Member, prefixTree string, intent *merge.Intent, statuses []model.CommitStatus) MergeSettings {
 	settings := b.call.settings
 	settings.GatedTree, settings.Intent, settings.Approved, settings.Kept = prefixTree, intent, m.Approved, b.s.owned[m.Item]
-	settings.OwnDraft = m.OwnDraft
+	settings.OwnDraft, settings.Statuses = m.OwnDraft, statuses
 
 	return settings
 }

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // Reasons a member is rejected or deferred.
@@ -109,10 +111,18 @@ type MergeOutcome struct {
 // Merge is idempotent for one member: a replay after a crash calls it again for a member that may be merged already.
 // The wiring makes it so with the intent record of merge.Run (merge.Request.Intent).
 // Tip is read again before each member merge, and the read is a recorded step.
+// Merge posts statuses on the head of the member after every guard of the merge passed and right before the merge call, so a member that a guard rejects
+// or defers carries no status. A replay posts them again, which the forge takes as the same status.
 type Base interface {
 	Tip(ctx context.Context) (Tip, error)
-	Merge(ctx context.Context, m Member, prefixTree string) (MergeOutcome, error)
+	Merge(ctx context.Context, m Member, prefixTree string, statuses []model.CommitStatus) (MergeOutcome, error)
 }
+
+// The contexts of the commit statuses that a green gate posts on the head of each member.
+const (
+	ContextGate   = "beehave/gate"
+	ContextReview = "beehave/review"
+)
 
 // Recorder is the durable step store. Step returns the recorded bytes when the name has a record, and otherwise runs and records them.
 // Step does not record a run that failed, so a replay runs it again.

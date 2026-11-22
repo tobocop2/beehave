@@ -405,6 +405,40 @@ func CheckSyncerFails(r Reporter, target forge.Syncer) {
 	})
 }
 
+// What the fake behind a Statuses serves: the branch that requires a pull request and the statuses StatusGate and StatusReview, and the commit that a status is posted on.
+const (
+	StatusBranch = "integration/round"
+	StatusGate   = "beehave/gate"
+	StatusReview = "beehave/review"
+	StatusCommit = "fedcba9876543210fedcba9876543210fedcba98"
+)
+
+// CheckStatuses runs the rules of a Statuses whose fake accepts a status on StatusCommit and serves a protection of StatusBranch that requires a pull request
+// and the statuses StatusGate and StatusReview.
+func CheckStatuses(r Reporter, target forge.Statuses) {
+	r.Helper()
+
+	c, ctx := check{r: r}, context.Background()
+
+	c.noError(target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess, Description: "the gate passed"}), "PostStatus")
+
+	got, err := target.Protection(ctx, StatusBranch)
+	c.noError(err, "Protection")
+	c.equal(got, model.Protection{PullRequest: true, RequiredStatuses: []string{StatusGate, StatusReview}}, "protection")
+}
+
+// CheckStatusesFails runs both methods of a Statuses whose commands all fail. Each must return an error and never a guess.
+func CheckStatusesFails(r Reporter, target forge.Statuses) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
+		{"PostStatus", func(ctx context.Context) error {
+			return target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess})
+		}},
+		{"Protection", func(ctx context.Context) error { _, err := target.Protection(ctx, StatusBranch); return err }},
+	})
+}
+
 func pick[T, V any](rows []T, field func(T) V) []V {
 	out := make([]V, len(rows))
 	for i, row := range rows {

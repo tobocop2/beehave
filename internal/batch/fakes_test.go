@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"strings"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var errBoom = errors.New("boom")
@@ -43,6 +45,8 @@ type world struct {
 	failHasCommit  error
 	failVersion    error
 	failTip        error
+	// posted lists the statuses that each call of Merge was handed, in order.
+	posted []model.CommitStatus
 
 	store *memory
 }
@@ -133,7 +137,10 @@ func (w *world) HasCommit(_ context.Context, id string) (bool, error) {
 	return !w.missing[id], w.failHasCommit
 }
 
-func (w *world) Merge(_ context.Context, m Member, _ string) (MergeOutcome, error) {
+// Merge records the statuses that the batch hands it for each call, as the merge run posts them before its merge call, then merges the member.
+func (w *world) Merge(_ context.Context, m Member, _ string, statuses []model.CommitStatus) (MergeOutcome, error) {
+	w.posted = append(w.posted, statuses...)
+
 	if w.failMerge != nil && (w.failMergeItem == "" || w.failMergeItem == m.Item) {
 		return MergeOutcome{}, w.failMerge
 	}

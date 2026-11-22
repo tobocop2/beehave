@@ -5,6 +5,7 @@ import (
 
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -30,6 +31,8 @@ type MergeSettings struct {
 	Intent *merge.Intent
 	// Kept are the issues that the owner kept by an answer at the scope check. A closing keyword in a commit message may name them.
 	Kept []int
+	// Statuses are the commit statuses that the merge posts on the head after every guard passed and right before the merge call. Empty posts none.
+	Statuses []model.CommitStatus
 }
 
 // The statuses of a gate step, as the gate package names them.

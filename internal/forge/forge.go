@@ -38,6 +38,14 @@ type Syncer interface {
 	MergeBranch(ctx context.Context, base, head string) (string, error)
 }
 
+// Statuses is the optional side of a forge that posts commit statuses and reads what a branch requires. A forge that lacks it cannot post beehave/review or beehave/gate.
+// PostStatus sets one status on the commit that status.SHA names, a full 40-character commit id. The same status again changes nothing, and a later state replaces an earlier one.
+// Protection reads the pull request rule and the required status contexts that apply to a branch. A failed read is an error, never an empty protection.
+type Statuses interface {
+	PostStatus(ctx context.Context, status model.CommitStatus) error
+	Protection(ctx context.Context, branch string) (model.Protection, error)
+}
+
 // AssigneeReads is the optional side of a forge that reads who holds an issue. A forge that lacks it cannot serve the assignee watch of preflight.
 // IssueAssignees returns the logins that hold the issue. An empty repo is the repository of the forge, and any other repo is read on that repository. A failed read is an error, never an empty list.
 type AssigneeReads interface {
