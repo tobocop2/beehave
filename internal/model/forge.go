@@ -309,3 +309,29 @@ func OrNull(text string) string {
 
 	return text
 }
+
+// StatusState is the state of a commit status. The values are the states that GitHub accepts.
+type StatusState string
+
+// The states a commit status takes.
+const (
+	StatusSuccess StatusState = "success"
+	StatusFailure StatusState = "failure"
+	StatusPending StatusState = "pending"
+	StatusError   StatusState = "error"
+)
+
+// CommitStatus is one status of one commit: Context names the check, State says how it went, and SHA is the full commit id that it stands for.
+// A status belongs to its commit, so a push to a branch leaves the new head with no status.
+type CommitStatus struct {
+	SHA         string      `json:"sha"`
+	Context     string      `json:"context"`
+	State       StatusState `json:"state"`
+	Description string      `json:"description"`
+}
+
+// Protection is what a forge requires of a branch before a pull request merges into it: whether a pull request is required, and the contexts of the statuses.
+type Protection struct {
+	PullRequest      bool
+	RequiredStatuses []string
+}

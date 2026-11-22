@@ -370,6 +370,62 @@ func TestCheckSyncerFails_AcceptsASyncerThatErrorsEverywhereAndFailsOneThatDoesN
 	assert.Contains(t, r.failures, "MergeBranch: want an error from a failed command, got none")
 }
 
+// memStatuses serves the Statuses rules. wrong changes the answers; down fails every call.
+type memStatuses struct {
+	wrong bool
+	down  bool
+}
+
+func (m memStatuses) PostStatus(context.Context, model.CommitStatus) error {
+	if m.down {
+		return errDown
+	}
+
+	return nil
+}
+
+func (m memStatuses) Protection(context.Context, string) (model.Protection, error) {
+	if m.down {
+		return model.Protection{}, errDown
+	}
+
+	if m.wrong {
+		return model.Protection{}, nil
+	}
+
+	return model.Protection{PullRequest: true, RequiredStatuses: []string{forgetest.StatusGate, forgetest.StatusReview}}, nil
+}
+
+func TestCheckStatuses_AcceptsRightAnswersAndFailsWrongOnes(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{wrong: true})
+	assert.Contains(t, r.failures, "protection: got {false []}, want {true [beehave/gate beehave/review]}")
+
+	r = &recorder{}
+	forgetest.CheckStatuses(r, memStatuses{down: true})
+	assert.Contains(t, r.failures, "PostStatus: unexpected error: down")
+	assert.Contains(t, r.failures, "Protection: unexpected error: down")
+}
+
+func TestCheckStatusesFails_AcceptsAStatusesThatErrorsEverywhereAndFailsOneThatDoesNot(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckStatusesFails(r, memStatuses{down: true})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckStatusesFails(r, memStatuses{})
+	assert.Contains(t, r.failures, "PostStatus: want an error from a failed command, got none")
+	assert.Contains(t, r.failures, "Protection: want an error from a failed command, got none")
+}
+
 func TestTestForge_RunsBothSuitesOnAFactory(t *testing.T) {
 	t.Parallel()
 

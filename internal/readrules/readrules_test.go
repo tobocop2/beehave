@@ -124,6 +124,7 @@ var rules = map[string]rule{
 	"internal/flow.treeMaker.Ensure":    {Exempt: doesWork},
 	"internal/forge.Opener.CreatePR":    {Exempt: doesWork},
 	"internal/forge.Syncer.MergeBranch": {Exempt: doesWork},
+	"internal/merge.Poster.Post":        {Exempt: doesWork},
 
 	// The forge writes of a round: the engine calls each one to write, and the error of the call is the result of the write.
 	"internal/flow.rounds.Sync":      {Exempt: doesWork},
@@ -196,6 +197,7 @@ var rules = map[string]rule{
 	"internal/flow.forge.History":                 {Proof: "TestPRHistory_AFailedReadStopsTheStep", Needle: "historyErr"},
 	"internal/forge.Boarder.CardStatus":           {NotHeld: inAdapter},
 	"internal/forge.Syncer.CommitsAhead":          {NotHeld: inAdapter},
+	"internal/forge.Statuses.Protection":          {NotHeld: inAdapter},
 	"internal/forge.ItemReads.Item":               {NotHeld: inAdapter},
 	"internal/forge.Standing.OwnPulls":            {NotHeld: inAdapter},
 	"internal/forge.PullReads.Reviews":            {NotHeld: inAdapter},

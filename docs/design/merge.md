@@ -261,6 +261,19 @@ Before the merge of each member, the recorded step `batch:<name>.scope#<item>` r
 
 A new issue with no owner line makes the run ask the owner. The question lists the new issues and, in the form `(then: #12 #14)`, the issues of the first review. The question and the refusal name the run, so `beehave answer` with the item of the run answers the wait, and the item of the member does not. The accepted answer is `keep #N[, #N ...]`. Any other answer rejects that member with the reason, as the batch rule rejects any member. The other members regate and land. A batch of one lands nothing. A member with no recorded first review has nothing to compare.
 
+### Commit statuses
+
+After a gate passes on a union, the merge of each member carries its commit statuses. The merge run of the member posts them as the `writer` role of the project after every guard passed, and right before its merge call:
+
+- `beehave/gate` with the state `success` on the head of the member. The description names the union commit.
+- `beehave/review` with the state `success` on the head of the member when its `approved` field is true.
+
+A member that a guard rejects or defers gets no status, and so does a member whose base moved before the merge call. A red or void gate posts nothing. A status belongs to one commit, so a new push to a member leaves its new head with no status. beehave keeps no list of the statuses, and the post is not a recorded step: the forge is the record. A resume after a post that worked and a merge that failed posts again and merges. A status with the same context, state and commit replaces the last one, so the second post changes nothing.
+
+A project with no `credentials` key posts none, and the merge says so in a `WARN:` line. A forge that cannot post statuses does the same. A post that the forge refuses stops that member before its merge call, and the member is deferred. The members that merged before it stay merged.
+
+The forge methods are `PostStatus` and `Protection` of `forge.Statuses`. `Protection` reads the pull request rule and the required status contexts of a branch. The `merge` builtin does not read it yet.
+
 ### Splitting a red union
 
 A red union is split in two halves in item order. Each half is gated on the tip that the earlier half left.

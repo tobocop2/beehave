@@ -1118,7 +1118,10 @@ func (p pulls) judged(ctx context.Context, project, item, head string, settings 
 		return merge.Result{}, err
 	}
 
-	return judge(ctx, built, p.request(project, found, item, number, head, settings, rules)), nil
+	req := p.request(project, found, item, number, head, settings, rules)
+	req.Post = posting(found.Project, built.Forge, settings.Statuses)
+
+	return judge(ctx, built, req), nil
 }
 
 // Preflight judges the pull request of the item. A closed pull request counts, so a close is a stop and not a missing pull request.

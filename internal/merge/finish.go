@@ -24,13 +24,32 @@ func (a *attempt) conclude() *refusal {
 		return a.landed(a.merged())
 	}
 
-	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.mergeNow} {
+	for _, step := range []func() *refusal{a.ready, a.unmoved, a.nativeStack, a.post, a.mergeNow} {
 		if stop := step(); stop != nil {
 			return stop
 		}
 	}
 
 	return a.landed(a.merged())
+}
+
+// post posts the commit statuses of the pull request. A post that fails stops the run before the merge call; the cause can pass, so the caller defers.
+// A post that was skipped says why and the merge goes on.
+func (a *attempt) post() *refusal {
+	if a.req.Post == nil {
+		return nil
+	}
+
+	skipped, err := a.req.Post.Post(a.ctx)
+	if err != nil {
+		return transient("REFUSE: " + err.Error())
+	}
+
+	if skipped != "" {
+		a.say("WARN: " + skipped)
+	}
+
+	return nil
 }
 
 // mergeNow queues the merge of a pull request in a native stack and returns Queued, which ends the run. Any other pull request moves its children, then merges directly.

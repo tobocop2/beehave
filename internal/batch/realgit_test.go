@@ -109,7 +109,7 @@ type fixedBase struct {
 
 func (f *fixedBase) Tip(context.Context) (Tip, error) { return f.tip, nil }
 
-func (f *fixedBase) Merge(_ context.Context, m Member, prefixTree string) (MergeOutcome, error) {
+func (f *fixedBase) Merge(_ context.Context, m Member, prefixTree string, _ []model.CommitStatus) (MergeOutcome, error) {
 	f.merged = append(f.merged, m.Item)
 	f.prefix = append(f.prefix, prefixTree)
 	f.tip.Tree = prefixTree

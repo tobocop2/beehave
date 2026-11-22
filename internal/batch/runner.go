@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -270,7 +272,7 @@ func (r *runner) mergeAll(ctx context.Context, u Union) error {
 	expected := r.tip.Tree
 
 	for i, m := range u.Included {
-		then, err := r.mergeOne(ctx, m, expected, u.Prefix[i])
+		then, err := r.mergeOne(ctx, m, expected, u.Prefix[i], statusesOf(m, u.Commit))
 		if err != nil {
 			return err
 		}
@@ -306,8 +308,8 @@ const (
 )
 
 // mergeOne merges a member when the tip holds the expected tree.
-// A tip with another tree stops the call without a merge, and so does an unsettled answer of the forge.
-func (r *runner) mergeOne(ctx context.Context, m Member, expected, prefix string) (next, error) {
+// A tip with another tree stops the call without a merge, and so does an unsettled answer of the forge. The merge posts the statuses right before its merge call.
+func (r *runner) mergeOne(ctx context.Context, m Member, expected, prefix string, statuses []model.CommitStatus) (next, error) {
 	tip, err := r.readTip(ctx)
 	if err != nil {
 		return nextStop, fmt.Errorf("before merging %s: %w", m.Item, err)
@@ -319,7 +321,7 @@ func (r *runner) mergeOne(ctx context.Context, m Member, expected, prefix string
 		return nextStop, nil
 	}
 
-	out, err := r.deps.Base.Merge(ctx, m, prefix)
+	out, err := r.deps.Base.Merge(ctx, m, prefix, statuses)
 	if err != nil {
 		return nextStop, fmt.Errorf("merge %s: %w", m.Item, err)
 	}

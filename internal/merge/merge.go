@@ -156,6 +156,14 @@ type Request struct {
 	Kept []int
 	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
 	Unaudited string
+	// Post posts the commit statuses of the pull request after every guard passed and right before the merge call. Nil posts nothing.
+	Post Poster
+}
+
+// Poster posts the commit statuses of one pull request. Skipped is the reason it posted none, for example a project with no writer.
+// A post that is repeated is harmless: a status with the same context, state and commit replaces the last one at the forge.
+type Poster interface {
+	Post(ctx context.Context) (skipped string, err error)
 }
 
 // Result is the verdict. A Done result merged the pull request. Lines are the lines to show, a refusal last.
