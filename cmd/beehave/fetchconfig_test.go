@@ -318,7 +318,7 @@ func TestWorktrees_TheFirstCloneReachesTheRemoteOverItsOwnTransport(t *testing.T
 	t.Cleanup(server.Close)
 
 	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: server.URL + "/remote.git", BaseBranch: "main"}}}
-	trees := newWorktrees(projects, flow.Options{StateDir: t.TempDir()}, nil)
+	trees := newWorktrees(projects, flow.Options{StateDir: t.TempDir()}, nil, nil)
 
 	_, err := trees.Ensure(t.Context(), "p", "bb-1", "", "")
 

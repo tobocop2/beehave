@@ -178,7 +178,7 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 
 // depsOn builds the deps of the engine over a pool pick and a table of adapters.
 func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
-	trees := table.worktrees(cfg.Projects, opts)
+	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 	folders := &fstree.Folders{}
 	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
@@ -263,7 +263,7 @@ func repositoryOf(projects map[string]config.Project) func(string) bool {
 // The projects tell the worktrees and the release which projects have no repository, so a release never reads git in a plain folder. The forge of the
 // table gives the address at which the release reads the branches of the remote.
 func releaseDeps(cfg config.Config, opts flow.Options, table adapters) flow.ReleaseDeps {
-	trees := newWorktrees(cfg.Projects, opts, table.forge)
+	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 
 	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: trees, Repository: repositoryOf(cfg.Projects), Merge: life}
@@ -283,24 +283,17 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 	}
 }
 
-// worktrees returns the worktrees of the engine. Their calls to a remote run as the writer of a project that has credentials.
-func (a adapters) worktrees(projects map[string]config.Project, opts flow.Options) worktrees {
-	trees := newWorktrees(projects, opts, a.forge)
-	trees.roles = a.writers
-
-	return trees
-}
-
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.
 // The client of the commands only reads worktrees; it passes the projects so that it knows which have no repository.
 // Every git call sets GIT_TERMINAL_PROMPT=0, so a private repository fails and never waits for a password. A git call in the clone or a worktree is
-// local (see gitexec), so no setting in the clone config can send it to the network.
-func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error)) worktrees {
+// local (see gitexec), so no setting in the clone config can send it to the network. roles is the writers table of the caller, so no worktrees value exists
+// without it: a call to a remote of a project with credentials runs as its writer, or is refused when the roles are not loaded, as in the client.
+func newWorktrees(projects map[string]config.Project, opts flow.Options, forges func(model.Project) (forge.Forge, error), roles *writers) worktrees {
 	repos := reposFolder(opts.StateDir)
 	found := gitexec.NewRepositories(repos)
 
 	return worktrees{
-		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges,
+		root: filepath.Join(opts.StateDir, "trees"), repos: repos, projects: projects, forge: forges, roles: roles,
 		git:    func(dir string) proc.Runner { return noPrompt(found.Runner(dir, proc.DefaultTimeout)) },
 		remote: func(dir string) proc.Runner { return noPrompt(gitexec.NewRemote(dir, proc.DefaultTimeout)) },
 	}

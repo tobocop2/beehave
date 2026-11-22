@@ -17,6 +17,26 @@ func TestRoleEnv_HoldsTheNetworkNamesAndTheGivenPairsAndNothingElse(t *testing.T
 	require.NotNil(t, credential.RoleEnv(nil))
 }
 
+func TestHTTPSHost_OnlyAnHTTPSAddressWithAHostAndNoLoginIsServed(t *testing.T) {
+	t.Parallel()
+
+	for address, host := range map[string]string{
+		"https://github.com/o/r.git": "github.com", "https://GitHub.com/o/r": "github.com", "https://git.example.com:8443/o/r": "git.example.com:8443",
+	} {
+		got, err := credential.HTTPSHost(address)
+		require.NoError(t, err, address)
+		require.Equal(t, host, got)
+	}
+
+	for _, address := range []string{
+		"", "/srv/repo", "file:///srv/repo", "http://github.com/o/r", "git://github.com/o/r", "ssh://git@github.com/o/r", "git+ssh://github.com/o/r",
+		"ssh+git://h/o/r", "git@github.com:o/r.git", "github.com:o/r.git", "h:o/r.git", "h.com:o/r.git", "https://user@github.com/o/r", "https:///o/r", "https://:8443/o", "https://a b/c", "%",
+	} {
+		_, err := credential.HTTPSHost(address)
+		require.ErrorContains(t, err, "is not an https:// address", address)
+	}
+}
+
 func TestProbe_RefusesAForbiddenNameOrATokenValueAndPassesAnOrdinaryEnvironment(t *testing.T) {
 	t.Parallel()
 

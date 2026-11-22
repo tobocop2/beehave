@@ -2,6 +2,7 @@ package credential
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -16,6 +17,17 @@ func networkNames() []string {
 		"http_proxy", "https_proxy", "no_proxy", "all_proxy",
 		"SSL_CERT_FILE", "SSL_CERT_DIR",
 	}
+}
+
+// HTTPSHost returns the host, with the port when it has one, of an address that the token of a role can serve. The token serves an https:// address with a
+// host and no login in it. Any other form is an error: an ssh form, git://, http://, file:// and a path.
+func HTTPSHost(address string) (string, error) {
+	u, err := url.Parse(address)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("the writer credential is a token for https, and %q is not an https:// address with a host and no login. Write the address as https://host/path", address)
+	}
+
+	return strings.ToLower(u.Host), nil
 }
 
 // RoleEnv returns the environment of a child that runs as a role: the network names of base and the pairs that the role gives, as NAME=value.

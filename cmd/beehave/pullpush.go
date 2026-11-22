@@ -33,7 +33,7 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		return fmt.Errorf("push %s to the branch %s for item %s: %w", head, branch, item, err)
 	}
 
-	out := p.pusher(project, dir).Run(ctx, pushArgs(remote, branch, head, expect))
+	out := p.pusher(project, dir, remote).Run(ctx, pushArgs(remote, branch, head, expect))
 	if out.ExitCode == 0 {
 		return nil
 	}
@@ -42,13 +42,10 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		head, branch, remote, item, out.ExitCode, strings.TrimSpace(out.Stderr))
 }
 
-// pusher returns the git runner that pushes from the push repository dir: the writer of the project when it has credentials, else the runner of the owner.
-func (p pulls) pusher(project, dir string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
-	if runner, found := p.writers.gitRunner(project, dir, "GIT_DIR="+dir); found {
-		return runner
-	}
-
-	return pushGit(dir)
+// pusher returns the git runner that pushes from the push repository dir to the address remote: the writer of the project when it has credentials, else the
+// runner of the owner (see writers.git).
+func (p pulls) pusher(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
+	return p.writers.git(p.projects, project, dir, remote, func() proc.Runner { return pushGit(dir) }, "GIT_DIR="+dir)
 }
 
 // pushRemote returns the address that the clone of the project came from. A project with no forge is an error.

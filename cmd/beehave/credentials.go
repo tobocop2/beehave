@@ -7,9 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strings"
 
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/config"
@@ -21,13 +19,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
-var (
-	errCredentialsNotLoaded = errors.New("the credentials of the project are not loaded. Start the engine with beehave run")
-	errSSHSource            = errors.New("the writer credential is a token for https, and the source of the project is an ssh address. Write the source as an https address")
-
-	// scpAddress matches the scp-like form of an ssh address, user@host:path.
-	scpAddress = regexp.MustCompile(`^[^/:@]+@[^/:]+:`)
-)
+var errCredentialsNotLoaded = errors.New("the credentials of the project are not loaded. Start the engine with beehave run")
 
 // writerRole is the writer credential of one project, read at engine start: the token, and the empty gh config folder that its calls own.
 type writerRole struct {
@@ -88,10 +80,13 @@ func probe(roles map[string]writerRole, env map[string]string) error {
 	return credential.Probe(agent.LoginEnv(env, agent.Profile{}, ""), tokens...)
 }
 
-// readRole reads the writer token of the project and makes the gh config folder of its role. A source that is an ssh address is refused: the token cannot serve it.
+// readRole reads the writer token of the project and makes the gh config folder of its role. A source that is not an https address is refused: the token
+// serves https only. An empty source is the clone address of the forge, which is https.
 func readRole(ctx context.Context, project model.Project, opts flow.Options) (writerRole, error) {
-	if sshAddress(project.Source) {
-		return writerRole{}, errSSHSource
+	if project.Source != "" {
+		if _, err := credential.HTTPSHost(project.Source); err != nil {
+			return writerRole{}, err
+		}
 	}
 
 	token, err := credential.Load(ctx, project.Credentials[model.RoleWriter], opts.Env)
@@ -102,11 +97,6 @@ func readRole(ctx context.Context, project model.Project, opts flow.Options) (wr
 	dir, err := emptyFolder(filepath.Join(opts.StateDir, "roles", model.SafeName(project.Name), "gh"))
 
 	return writerRole{token: token, configDir: dir}, err
-}
-
-// sshAddress tells whether a git address names the ssh transport, as ssh://host/path or as user@host:path.
-func sshAddress(address string) bool {
-	return strings.HasPrefix(address, "ssh://") || strings.HasPrefix(address, "git+ssh://") || scpAddress.MatchString(address)
 }
 
 // emptyFolder makes the folder dir with mode 0700, and empties it when it exists.
@@ -144,16 +134,35 @@ func (w *writers) runner(project model.Project) (proc.ExecRunner, error) {
 	return forgegithub.RoleRunner(role.token, role.configDir, w.env), nil
 }
 
-// gitRunner returns the git runner for a call in dir that reaches the remote of a project that has credentials. Its environment is built from the allow
-// list, the credential helper of the call and pairs, so no helper, token or ssh agent of the owner reaches git. A project with none gets no runner.
-func (w *writers) gitRunner(project, dir string, pairs ...string) (gitexec.Runner, bool) {
-	role, found := w.of(project)
-	if !found {
-		return gitexec.Runner{}, false
+// refused is the runner of a call that must not run. It runs nothing and returns the reason as the error text of a failed call.
+type refused struct{ err error }
+
+// Run returns a failed result that carries the reason.
+func (r refused) Run(context.Context, []string) model.CommandResult {
+	return model.CommandResult{ExitCode: 1, Stderr: r.err.Error(), SetupErr: r.err}
+}
+
+// git returns the git runner for a call in dir that reaches the address remote of a project. This is the one place that picks the runner of such a call,
+// for the engine and for the client alike. A project with no credentials gets owner. A project with credentials gets the writer: its environment is built
+// from the allow list, the credential helper of the call for the host of remote, and pairs, so no helper, token or ssh agent of the owner reaches git.
+// A project with credentials whose role is not loaded, or whose remote is not an https address, gets a runner that refuses the call.
+func (w *writers) git(projects map[string]config.Project, project, dir, remote string, owner func() proc.Runner, pairs ...string) proc.Runner { //nolint:ireturn // the callers take the interface
+	role, loaded := w.of(project)
+	if _, declared := projects[project].Credentials[model.RoleWriter]; !loaded && !declared {
+		return owner()
+	}
+
+	if !loaded {
+		return refused{err: fmt.Errorf("project %s: %w", project, errCredentialsNotLoaded)}
+	}
+
+	host, err := credential.HTTPSHost(remote)
+	if err != nil {
+		return refused{err: fmt.Errorf("project %s: %w", project, err)}
 	}
 
 	runner := gitexec.NewRemote(dir, proc.DefaultTimeout)
-	runner.Only = gitexec.RoleEnv(role.token, w.env, pairs...)
+	runner.Only = gitexec.RoleEnv(role.token, host, w.env, pairs...)
 
-	return runner, true
+	return runner
 }

@@ -508,7 +508,7 @@ func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *tes
 	t.Parallel()
 
 	state := t.TempDir()
-	trees := newWorktrees(nil, flow.Options{StateDir: state}, nil)
+	trees := newWorktrees(nil, flow.Options{StateDir: state}, nil, nil)
 
 	assert.Equal(t, filepath.Join(state, "trees"), trees.root)
 	assert.Equal(t, filepath.Join(state, "repos"), trees.repos)
@@ -522,7 +522,7 @@ func TestNewWorktrees_RunGitInTheFolderAndKeepTheTreesUnderTheStateFolder(t *tes
 func TestNewWorktrees_EveryGitCallRefusesToPromptForCredentials(t *testing.T) {
 	t.Parallel()
 
-	trees := newWorktrees(nil, flow.Options{StateDir: t.TempDir()}, nil)
+	trees := newWorktrees(nil, flow.Options{StateDir: t.TempDir()}, nil, nil)
 
 	runner, ok := trees.git(t.TempDir()).(gitexec.Runner)
 

@@ -68,7 +68,7 @@ func newRoundRig(t *testing.T) roundRig {
 
 	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: origin, BaseBranch: "main"}}}
 
-	return roundRig{origin: origin, trees: newWorktrees(projects, flow.Options{StateDir: evaluated(t, t.TempDir())}, nil)}
+	return roundRig{origin: origin, trees: newWorktrees(projects, flow.Options{StateDir: evaluated(t, t.TempDir())}, nil, nil)}
 }
 
 func (r roundRig) clone() string { return filepath.Join(r.trees.repos, "p") }

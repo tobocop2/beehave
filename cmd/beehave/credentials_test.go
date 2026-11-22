@@ -209,12 +209,10 @@ func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfT
 	t.Setenv("GITHUB_TOKEN", "owner-github-token")
 	t.Setenv("SSH_AUTH_SOCK", "/owner/agent.sock")
 
-	rig := newPushRig(t)
+	rig := credentialRig(t)
 	seen := filepath.Join(t.TempDir(), "hook-env")
 	hook := "#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"${GIT_CONFIG_GLOBAL:-unset}\" \"${GH_TOKEN:-unset}\" \"${GITHUB_TOKEN:-unset}\" \"${SSH_AUTH_SOCK:-unset}\" \"${BEEHAVE_FORGE_TOKEN:-unset}\" >> " + seen + "\nexit 0\n"
 	require.NoError(t, exectest.Write(filepath.Join(rig.remote, "hooks", "pre-receive"), hook))
-
-	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
 
 	require.NoError(t, rig.pulls.Push(t.Context(), "p", pushItem, pushItem, rig.head, ""))
 
@@ -224,12 +222,14 @@ func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfT
 	assert.Equal(t, rig.head, rig.remoteHead(t))
 }
 
-func TestWritersStart_ASourceInTheFormOfAnSSHAddressIsRefusedAndAnHTTPSOrLocalSourceIsNot(t *testing.T) {
+func TestWritersStart_ASourceOfAProjectWithCredentialsMustBeAnHTTPSAddress(t *testing.T) {
 	t.Parallel()
 
-	for source, refused := range map[string]bool{
-		"git@github.com:o/r.git": true, "ssh://git@github.com/o/r.git": true, "git+ssh://github.com/o/r.git": true,
-		"https://github.com/o/r.git": false, "/srv/repo": false, "": false, "file:///srv/repo": false,
+	for source, accepted := range map[string]bool{
+		"https://github.com/o/r.git": true, "": true,
+		"git@github.com:o/r.git": false, "ssh://git@github.com/o/r.git": false, "git+ssh://github.com/o/r.git": false, "ssh+git://h/o/r": false,
+		"host:path": false, "h.com:o/r.git": false, "git://github.com/o/r.git": false, "http://github.com/o/r.git": false,
+		"file:///srv/repo": false, "/srv/repo": false, "./repo": false,
 	} {
 		cfg, opts := writerHome(t)
 		project := cfg.Projects["p"]
@@ -238,44 +238,83 @@ func TestWritersStart_ASourceInTheFormOfAnSSHAddressIsRefusedAndAnHTTPSOrLocalSo
 
 		err := (&writers{}).start(t.Context(), cfg, opts)
 
-		if refused {
-			require.ErrorIs(t, err, errSSHSource, source)
-			require.ErrorContains(t, err, "project p:")
-		} else {
+		if accepted {
 			require.NoError(t, err, source)
+		} else {
+			require.ErrorContains(t, err, "project p: the writer credential is a token for https", source)
 		}
 	}
 }
 
-func TestWorktrees_AGitCallToTheRemoteOfAProjectWithCredentialsRunsAsTheWriterAndOtherProjectsKeepTheirRunner(t *testing.T) {
+func TestWorktrees_AGitCallToTheRemoteRunsAsTheWriterOnlyForAProjectWithCredentialsAndAnHTTPSAddress(t *testing.T) {
 	t.Parallel()
 
 	owner := &fakeGit{}
-	trees := worktrees{remote: owner.runner, roles: &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath, "HOME": "/owner"}}}
+	loaded := &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath, "HOME": "/owner"}}
+	trees := worktrees{remote: owner.runner, roles: loaded}
 
-	role, isGit := trees.reach("p", "/clone").(gitexec.Runner)
+	role, isGit := trees.reach("p", "/clone", "https://github.com/o/r.git").(gitexec.Runner)
 	require.True(t, isGit, "a project with credentials reaches its remote through the writer runner")
 	assert.Contains(t, role.Only, "GIT_CONFIG_GLOBAL=/dev/null")
 	assert.Contains(t, role.Only, "BEEHAVE_FORGE_TOKEN="+writerToken)
+	assert.Contains(t, role.Only, "BEEHAVE_FORGE_HOST=github.com")
 	assert.NotContains(t, strings.Join(role.Only, "\n"), "HOME=")
 
-	_ = trees.reach("q", "/clone").Run(t.Context(), []string{"fetch"})
+	out := trees.reach("p", "/clone", "git@github.com:o/r.git").Run(t.Context(), []string{"fetch"})
+	assert.Equal(t, 1, out.ExitCode, "a remote that is not https is refused for the writer")
+	assert.Contains(t, out.Stderr, "project p: the writer credential is a token for https")
+
+	_ = trees.reach("q", "/clone", "https://github.com/o/r.git").Run(t.Context(), []string{"fetch"})
 	assert.Len(t, owner.calls, 1, "a project with no credentials keeps the runner of the owner")
 
-	_ = worktrees{remote: owner.runner}.reach("p", "/clone").Run(t.Context(), []string{"fetch"})
-	assert.Len(t, owner.calls, 2, "a table with no writers keeps the runner of the owner")
+	_ = worktrees{remote: owner.runner}.reach("p", "/clone", "/srv/repo").Run(t.Context(), []string{"fetch"})
+	assert.Len(t, owner.calls, 2, "a table with no writers keeps the runner of the owner for a project with no credentials")
 }
 
-func TestAdapters_TheWorktreesOfTheEngineShareTheWritersOfTheTable(t *testing.T) {
+func TestWorktrees_AClientThatHoldsNoWriterRefusesTheRemoteCallOfAProjectWithCredentials(t *testing.T) {
 	t.Parallel()
 
-	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(t.TempDir()), map[string]string{})
-	trees := table.worktrees(map[string]config.Project{}, flow.Options{StateDir: t.TempDir()})
+	cfg, _ := writerHome(t)
+	project := cfg.Projects["p"]
+	project.Source = "https://github.com/o/r.git"
+	cfg.Projects["p"] = project
 
-	assert.Same(t, table.writers, trees.roles)
+	deps := releaseDeps(cfg, flow.Options{StateDir: t.TempDir()}, newAdapters(nil, nil, nil))
+	trees, ok := deps.Trees.(worktrees)
+	require.True(t, ok)
+
+	_, err := trees.Heads(t.Context(), "p")
+	require.ErrorContains(t, err, "the credentials of the project are not loaded")
 }
 
-func TestWorktrees_TheCloneOfAProjectWithCredentialsReachesTheRemoteThroughTheWriterRunner(t *testing.T) {
+func TestWorktrees_EveryWorktreesValueOfTheProgramIsBuiltWithTheWritersAndOnlyReachPicksTheOwnerRunner(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+
+	owners, builders, literals := 0, 0, 0
+
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+
+		text, readErr := os.ReadFile(file) //nolint:gosec // a source file of this package
+		require.NoError(t, readErr)
+
+		owners += strings.Count(string(text), "w.remote(")
+		builders += strings.Count(string(text), "newWorktrees(cfg.Projects, opts, table.forge, table.writers)")
+
+		literals += strings.Count(string(text), "worktrees{")
+	}
+
+	assert.Equal(t, 1, literals, "only the constructor builds the type, so no literal leaves the roles unset")
+	assert.Equal(t, 1, owners, "the runner of the owner is picked in reach only")
+	assert.Equal(t, 2, builders, "the engine and the client both pass the writers of their table")
+}
+
+func TestWorktrees_TheCloneOfAProjectWithCredentialsRunsThroughTheWriterRunnerAndNeverTheOwnerRunner(t *testing.T) {
 	t.Parallel()
 
 	rig := newPushRig(t)
@@ -283,14 +322,45 @@ func TestWorktrees_TheCloneOfAProjectWithCredentialsReachesTheRemoteThroughTheWr
 	trees.roles = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
 	trees.remote = func(string) proc.Runner { panic("the clone used the runner of the owner") }
 
-	clone := filepath.Join(t.TempDir(), "clone")
+	project := rig.pulls.projects["p"]
+	project.Source = "https://nothing.test/o/r.git" // the reserved .test domain never resolves, so git fails and no network is reached
 	require.NoError(t, os.MkdirAll(trees.repos, 0o700))
-	require.NoError(t, trees.clone(t.Context(), rig.pulls.projects["p"], clone))
-	assert.DirExists(t, filepath.Join(clone, ".git"))
+
+	err := trees.clone(t.Context(), project, filepath.Join(t.TempDir(), "clone"))
+	require.ErrorContains(t, err, "git clone in "+trees.repos+" exited with code")
+}
+
+func TestWorktrees_TheReadOfTheBranchesOfAProjectWithCredentialsRunsAsTheWriter(t *testing.T) {
+	t.Parallel()
+
+	rig := credentialRig(t)
+	trees := rig.pulls.trees
+	trees.roles = rig.pulls.writers
+	trees.remote = func(string) proc.Runner { panic("the read used the runner of the owner") }
 
 	heads, err := trees.Heads(t.Context(), "p")
 	require.NoError(t, err)
 	assert.Contains(t, heads, "refs/heads/main")
+}
+
+// credentialRig is a push rig whose project has an https address, which the push repository maps to the local bare remote with url.insteadOf. The writer is
+// loaded for the project, so the calls to the remote run as the writer.
+func credentialRig(t *testing.T) pushRig {
+	t.Helper()
+
+	const address = "https://example.test/o/r.git"
+
+	rig := newPushRig(t)
+	project := rig.pulls.projects["p"]
+	project.Source = address
+	rig.pulls.projects["p"] = project
+	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
+
+	root, dir := pushRepository(rig.pulls.trees.repos, "p")
+	require.NoError(t, openPushRepository(t.Context(), pushGit(dir), root, dir))
+	runGit(t, dir, "config", "url."+rig.remote+".insteadOf", address)
+
+	return rig
 }
 
 func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *testing.T) {
