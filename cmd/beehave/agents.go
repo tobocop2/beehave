@@ -188,8 +188,8 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(request.Forbid, protect)
 
-	box, note := a.boxOf(ctx, request, runner, dir, adapter, guard)
 	folder, unknown := a.configFolder(runner)
+	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
 	skills, missing := a.skillsOf(request, folder)
 
 	if note = cmp.Or(note, unknown, missing); note != "" {
@@ -199,7 +199,10 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	request, resumed := replayOf(request, folder, dir, adapter)
 	tap := a.tapOf(adapter, request)
 
-	result, err := endOf(adapter, folder, dir, tap, a.runCosted(ctx, tap, a.specOf(request, runner, dir, adapter, tap, guard, box, skills), request.Model), request.Forbid, protect)
+	spec := a.specOf(request, runner, dir, adapter, tap, guard, box, skills)
+	spec.ConfigFolder = folder
+
+	result, err := endOf(adapter, folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, box)
 
 	return result, err
@@ -272,8 +275,8 @@ func (a agents) protection(request flow.AgentRequest, dir string) shell.Protecti
 }
 
 // boxOf returns the sandbox plan of a step, or nil when the step has no sandbox. A step that cannot start, for want of its guard, its sandbox or a price to check its cost cap, returns the reason.
-func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (*agent.SandboxPlan, string) {
-	note := cmp.Or(a.unpricedCapNote(adapter, request), noGuardNote(adapter, guard, request.Forbid), a.outputNote(request, runner))
+func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, folder, dir string, adapter agent.Adapter, guard string) (*agent.SandboxPlan, string) {
+	note := cmp.Or(a.unpricedCapNote(adapter, request), noGuardNote(adapter, guard, request.Forbid), a.outputNote(request, folder))
 	if note != "" {
 		return nil, note
 	}
@@ -282,7 +285,7 @@ func (a agents) boxOf(ctx context.Context, request flow.AgentRequest, runner mod
 		return nil, ""
 	}
 
-	plan, note := a.sandboxPlan(ctx, request, runner, dir)
+	plan, note := a.sandboxPlan(ctx, request, folder, dir)
 	if note != "" {
 		return nil, note
 	}

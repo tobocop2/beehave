@@ -185,13 +185,14 @@ func CheckRun(r Reporter, adapter agent.Adapter, dir string, launch ...string) {
 // runFake starts the adapter in dir with the prompt, the token and one variable of the caller that must not reach the CLI.
 func runFake(adapter agent.Adapter, dir string, out io.Writer, change ...func(*agent.Spec)) agent.Result {
 	spec := agent.Spec{
-		Adapter: adapter,
-		Runner:  model.Runner{Name: "suite", Agent: model.Agent("suite"), ConfigDir: dir},
-		Dir:     dir,
-		Prompt:  prompt,
-		Env:     map[string]string{"PATH": dir + ":/bin:/usr/bin", leakName: "leak"},
-		Token:   token,
-		Log:     out,
+		Adapter:      adapter,
+		Runner:       model.Runner{Name: "suite", Agent: model.Agent("suite"), ConfigDir: dir},
+		Dir:          dir,
+		ConfigFolder: dir,
+		Prompt:       prompt,
+		Env:          map[string]string{"PATH": dir + ":/bin:/usr/bin", leakName: "leak"},
+		Token:        token,
+		Log:          out,
 	}
 
 	for _, set := range change {

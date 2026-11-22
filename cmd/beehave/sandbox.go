@@ -26,14 +26,14 @@ import (
 // The folder of the data file is a working directory.
 // The credential paths come from the engine list, the project file and the config folder of the runner. The .env files of the work folder, at any depth
 // and whether or not they exist yet, are denied by a pattern that the CLI matches when the file is used. The commits carry the git identity of the engine at the work folder.
-func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.SandboxPlan, string) {
+func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, folder, dir string) (agent.SandboxPlan, string) {
 	home, err := a.home()
 	if err != nil {
 		return agent.SandboxPlan{}, "beehave cannot find the home folder, so the sandbox cannot deny it. The step did not start."
 	}
 
 	project := a.projects[request.Project]
-	deny, read := credentialPaths(home, runner.ConfigDir, project.SandboxDeny), expandAll(project.SandboxRead, home)
+	deny, read := credentialPaths(home, folder, project.SandboxDeny), expandAll(project.SandboxRead, home)
 	git := gitOf(a.projects, request.Project, a.repos).Runner(dir, proc.DefaultTimeout)
 	closed, err := closedPaths(ctx, git, dir, home)
 	identity := a.identity(ctx, git)
@@ -98,7 +98,7 @@ func linkIn(folder string) string {
 // glob check runs for every step, with or without a sandbox. The credential check runs for a sandboxed step only: there the rule would open a path the
 // sandbox denies. A step with no sandbox can already read every path, and its rule names the one file. Without a home folder the credential paths
 // are not known, and only the glob check runs; a sandboxed step then stops in the plan for want of the home folder.
-func (a agents) outputNote(request flow.AgentRequest, runner model.Runner) string {
+func (a agents) outputNote(request flow.AgentRequest, folder string) string {
 	write := outputWrites(request)
 	if len(write) == 0 {
 		return ""
@@ -107,7 +107,7 @@ func (a agents) outputNote(request flow.AgentRequest, runner model.Runner) strin
 	var deny []string
 
 	if home, err := a.home(); err == nil && request.Sandbox != nil {
-		deny = credentialPaths(home, runner.ConfigDir, a.projects[request.Project].SandboxDeny)
+		deny = credentialPaths(home, folder, a.projects[request.Project].SandboxDeny)
 	}
 
 	return stateNote(deny, write...)

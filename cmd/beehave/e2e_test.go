@@ -351,7 +351,7 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 	protect := protectionOf(request.Protect, a.dir)
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
-		Adapter: adapter, Runner: runner,
+		Adapter: adapter, Runner: runner, ConfigFolder: a.dir,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits, Resume: request.Resume,
 		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
 	})

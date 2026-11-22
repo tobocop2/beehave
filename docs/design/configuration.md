@@ -47,7 +47,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 | --- | --- |
 | `name` | Required. The label of the runner. |
 | `agent` | Required. The agent CLI: `claude` or `opencode`. |
-| `config_dir` | Optional. The config folder of the login. beehave sets `CLAUDE_CONFIG_DIR` to it for a Claude run. `~/` is the home folder. |
+| `config_dir` | Optional. The config folder of the login. beehave sets `CLAUDE_CONFIG_DIR` to it for a Claude run. `~/` is the home folder. An empty `config_dir` means the default folder of the CLI under the home folder (`~/.claude` for Claude). The transcript of a session and the skills of a step come from that folder. A runner with no `config_dir` and no default folder, or whose folder does not exist, does not start. |
 | `keychain` | Optional. The name of the macOS Keychain entry that holds the login token, for a machine with no logged-in profile. |
 
 ### `project(...)`
