@@ -508,7 +508,7 @@ func (e *Engine) startBatchGate(ctx context.Context, in ExclusiveInput) (batchSt
 		return batchStart{}, err
 	}
 
-	job, err := e.deps.Gate.Submit(ctx, in.Project, in.Item, in.BuildHost, "", in.PinBase)
+	job, err := e.deps.Gate.Submit(ctx, in.Project, in.Item, in.BuildHost, "", in.PinBase, "")
 
 	return batchStart{Tree: tree, Job: job}, err
 }

@@ -31,7 +31,7 @@ func (*headGate) Key(context.Context, string, string, string, string, string) (G
 	return GateKey{}, nil
 }
 
-func (g *headGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (g *headGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
 	return GateJob{ID: "job-" + strconv.Itoa(int(g.jobs.Add(1)))}, nil
 }
 

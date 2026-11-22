@@ -36,8 +36,6 @@ type projectGate struct {
 	timeout time.Duration
 	// tip reads the commit that a branch names at a remote. Nil reads it with git ls-remote.
 	tip func(ctx context.Context, remote, branch string) (string, error)
-	// fetch brings the branches of the remote of a project into its clone. Nil fetches nothing.
-	fetch func(ctx context.Context, project string) error
 }
 
 // anchor reads, once, the commit that the base branch names at the source of the project, and makes sure that the clone of the item holds it.
@@ -58,7 +56,7 @@ func (g projectGate) anchor(ctx context.Context, project model.Project, dir, bra
 		return "", fmt.Errorf("read the base branch %q of project %s: %w", branch, project.Name, err)
 	}
 
-	if err := g.hold(ctx, project.Name, dir, sha); err != nil {
+	if err := g.hold(ctx, project.Name, dir, remote, sha); err != nil {
 		return "", fmt.Errorf("the base branch %q of project %s is at %s: %w", branch, project.Name, sha, err)
 	}
 
@@ -82,8 +80,8 @@ func (g projectGate) readTip(ctx context.Context, remote, branch string) (string
 	return sha, err
 }
 
-// hold makes sure that the clone of dir holds the commit sha. It fetches the branches of the remote once when the commit is missing.
-func (g projectGate) hold(ctx context.Context, project, dir, sha string) error {
+// hold makes sure that the clone of dir holds the commit sha. When the commit is missing, it fetches that commit by its id from the remote that gave it, once.
+func (g projectGate) hold(ctx context.Context, project, dir, remote, sha string) error {
 	has := func() error {
 		_, err := g.programs.git(ctx, project, dir, gateTimeout, "git cat-file", "cat-file", "-e", sha+"^{commit}")
 
@@ -91,11 +89,11 @@ func (g projectGate) hold(ctx context.Context, project, dir, sha string) error {
 	}
 
 	err := has()
-	if err == nil || g.fetch == nil {
-		return err
+	if err == nil {
+		return nil
 	}
 
-	if err := g.fetch(ctx, project); err != nil {
+	if _, err := g.programs.git(ctx, project, dir, gateTimeout, "git fetch", "fetch", "--no-tags", "--", remote, sha); err != nil {
 		return fmt.Errorf("fetch the commit: %w", err)
 	}
 
@@ -144,8 +142,9 @@ func gateChecks(checks *gate.Checks) *flow.GateChecks {
 
 // Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
 // A project that builds here has no host job, and its job is empty.
-func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateJob, error) {
-	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase)
+// A baseSHA that Key read is the base commit of the job: Submit reads no tip then, so the key and the job of one gate name the same commit.
+func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase, baseSHA string) (flow.GateJob, error) {
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase, baseSHA)
 	if err != nil {
 		return flow.GateJob{}, err
 	}
@@ -194,7 +193,7 @@ func gateRefusal(projects map[string]config.Project, refusal cli.GateRefusal) fu
 
 // Key reads the key of the gate that Run would start on the worktree of the item.
 func (g projectGate) Key(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateKey, error) {
-	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase)
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase, "")
 	if err != nil {
 		return flow.GateKey{}, err
 	}
@@ -204,7 +203,7 @@ func (g projectGate) Key(ctx context.Context, project, item, cluster, base, pinB
 		return flow.GateKey{}, fmt.Errorf("read the gate key of item %s: %w", item, err)
 	}
 
-	return flow.GateKey{ID: key.ID, Head: key.Head, Tree: key.Tree}, nil
+	return flow.GateKey{ID: key.ID, Head: key.Head, Tree: key.Tree, BaseSHA: request.BaseSHA}, nil
 }
 
 // gateSteps gives the steps of a gate result to the engine.
@@ -243,15 +242,19 @@ func (g projectGate) request(ctx context.Context, project, item, cluster string)
 	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
 }
 
-// requestAt is request for a gate of a head with a base. It reads the commit of the base branch once, here, and the request carries it: the gate never
-// reads the base by its name. The pin file is read from PinBase when it is set, else from Base, else from the base branch of the project.
-func (g projectGate) requestAt(ctx context.Context, project, item, cluster, base, pinBase string) (gate.Request, error) {
+// requestAt is request for a gate of a head with a base. It reads the commit of the base branch here, and the request carries it: the gate never
+// reads the base by its name. A known commit (the one that Key read for this gate) is used and no tip is read. The pin file is read from PinBase
+// when it is set, else from Base, else from the base branch of the project.
+func (g projectGate) requestAt(ctx context.Context, project, item, cluster, base, pinBase, known string) (gate.Request, error) {
 	request, err := g.request(ctx, project, item, cluster)
 	if err != nil {
 		return gate.Request{}, err
 	}
 
-	request.Base, request.PinBase = base, pinBase
+	request.Base, request.PinBase, request.BaseSHA = base, pinBase, known
+	if known != "" {
+		return request, nil
+	}
 
 	request.BaseSHA, err = g.anchor(ctx, request.Project, request.Dir, cmp.Or(pinBase, base, request.Project.BaseBranch))
 	if err != nil {

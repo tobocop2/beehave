@@ -202,7 +202,7 @@ func (*lostOnceGate) Key(context.Context, string, string, string, string, string
 	return GateKey{}, nil
 }
 
-func (g *lostOnceGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (g *lostOnceGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
 	return GateJob{ID: fmt.Sprintf("job-%d", g.submits.Add(1)), Head: gatedHead}, nil
 }
 

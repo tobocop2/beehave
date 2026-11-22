@@ -106,10 +106,34 @@ func TestTip_IgnoresALineOfAnotherRefAndAnEmptyCommit(t *testing.T) {
 func TestTip_RunsTheProgramThatTheLookupGivesWithNoGitConfigOfTheUser(t *testing.T) {
 	t.Parallel()
 
-	env := fakeGit(t, "printf '%s %s\\trefs/heads/main\\n' \"$GIT_CONFIG_GLOBAL\" \"$GIT_CONFIG_NOSYSTEM\"")
+	env := fakeGit(t, "[ \"$GIT_CONFIG_GLOBAL\" = "+os.DevNull+" ] && [ \"$GIT_CONFIG_NOSYSTEM\" = 1 ] && printf '"+fullID+"\\trefs/heads/main\\n'")
 
 	tip, err := tipWith(t.Context(), found(env), "/x", "main", 0)
 
 	require.NoError(t, err)
-	assert.Equal(t, os.DevNull+" 1", tip)
+	assert.Equal(t, fullID, tip)
+}
+
+// fullID is a commit id of 40 hexadecimal digits.
+const fullID = "0123456789abcdef0123456789abcdef01234567"
+
+func TestTip_RefusesAnAnswerThatIsNotAFullCommitIdAndNamesTheBranch(t *testing.T) {
+	t.Parallel()
+
+	for name, answer := range map[string]string{
+		"a short id":      fullID[:7],
+		"one digit short": fullID[:39],
+		"one digit long":  fullID + "0",
+		"upper case":      strings.ToUpper(fullID),
+		"not hexadecimal": strings.Repeat("g", 40),
+		"a ref in the id": "refs/heads/main" + fullID[:25],
+	} {
+		fake := fakeGit(t, "printf '"+answer+"\\trefs/heads/main\\n'")
+
+		_, err := tipWith(t.Context(), found(fake), "/x", "main", 0)
+
+		require.ErrorIs(t, err, ErrNoTip, name)
+		require.ErrorContains(t, err, "refs/heads/main", name)
+		require.ErrorContains(t, err, "not a full commit id", name)
+	}
 }

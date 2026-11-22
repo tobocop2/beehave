@@ -206,6 +206,35 @@ func TestBeforeReview_ATestNameWithATabIsRefusedWithAClearError(t *testing.T) {
 	require.Empty(t, checks.NewTests)
 }
 
+func TestBeforeReview_AHeadWithNoMergeBaseWithTheBaseCommitNamesTheBaseBranchAndTheCommit(t *testing.T) {
+	t.Parallel()
+
+	repo, head := shellRepo(t, "pass a TestOld\n", "pass a TestOld\npass a TestNew\n")
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	absent := strings.Repeat("3", 40)
+
+	require.NoError(t, os.MkdirAll(bin, 0o750))
+	require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), "#!/bin/sh\nexit 0\n"))
+
+	project := model.Project{Name: "demo", Gate: "sh mkreport.sh", TestReport: "reports/*.xml", TestCommand: "sh mkreport.sh"}
+	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", absent)
+	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
+	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
+
+	out, err := job.CombinedOutput()
+	if err != nil {
+		var exit *exec.ExitError
+
+		require.ErrorAs(t, err, &exit, string(out))
+	}
+
+	checks := ReadChecks(string(out))
+
+	require.False(t, checks.Complete)
+	require.Contains(t, checks.Problem, "the head has no merge base with the commit "+absent+" of the base branch main")
+}
+
 func TestBeforeReview_ABaseReportWithATabNameIsNotCachedSoNoLaterRunReadsAPartialList(t *testing.T) {
 	t.Parallel()
 

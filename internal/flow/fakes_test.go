@@ -229,6 +229,8 @@ type fakeGate struct {
 	// pinBases and keyPinBases are the pin bases that Submit and Key were given, in order.
 	pinBases    []string
 	keyPinBases []string
+	// baseSHAs are the base commits that Submit was given, in order.
+	baseSHAs []string
 	// checks is the check record that Run gives a passed result with none, or nil for no record.
 	checks *GateChecks
 }
@@ -287,8 +289,9 @@ func (slowGate) Key(context.Context, string, string, string, string, string) (Ga
 }
 
 // Submit counts the host jobs that it started and gives each one an id.
-func (g *fakeGate) Submit(_ context.Context, _, _, host, base, pinBase string) (GateJob, error) {
+func (g *fakeGate) Submit(_ context.Context, _, _, host, base, pinBase, baseSHA string) (GateJob, error) {
 	g.mu.Lock()
+	g.baseSHAs = append(g.baseSHAs, baseSHA)
 	g.hosts = append(g.hosts, host)
 	g.bases = append(g.bases, base)
 	g.pinBases = append(g.pinBases, pinBase)

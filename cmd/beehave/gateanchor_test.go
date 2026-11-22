@@ -43,11 +43,13 @@ type anchorRig struct {
 
 	// tips is what the read of the tip got: the remote and the branch of each call.
 	tips []string
-	// tip is the answer of the read. fetched counts the fetches. held is the answer of git cat-file: false means that the clone lacks the commit.
-	tip     string
-	tipErr  error
-	held    func(fetched int) bool
-	fetched int
+	// tip is the answer of the read. fetches are the arguments of each git fetch. fetchErr is the answer of git fetch. held is the answer of git cat-file:
+	// false means that the clone lacks the commit.
+	tip      string
+	tipErr   error
+	held     func(fetched int) bool
+	fetches  [][]string
+	fetchErr string
 	// commands are the programs that the gate started.
 	commands []string
 }
@@ -67,11 +69,19 @@ func newAnchorRig(t *testing.T) *anchorRig {
 			case args[0] == "status":
 				return model.CommandResult{}
 			case args[0] == "cat-file":
-				if rig.held(rig.fetched) {
+				if rig.held(len(rig.fetches)) {
 					return model.CommandResult{}
 				}
 
 				return model.CommandResult{ExitCode: 128, Stderr: "fatal: Not a valid object name"}
+			case args[0] == "fetch":
+				rig.fetches = append(rig.fetches, args)
+
+				if rig.fetchErr != "" {
+					return model.CommandResult{ExitCode: 128, Stderr: rig.fetchErr}
+				}
+
+				return model.CommandResult{}
 			}
 
 			return model.CommandResult{Stdout: "head1\ntree1\n"}
@@ -86,11 +96,6 @@ func newAnchorRig(t *testing.T) *anchorRig {
 
 			return rig.tip, rig.tipErr
 		},
-		fetch: func(context.Context, string) error {
-			rig.fetched++
-
-			return nil
-		},
 	}
 
 	return rig
@@ -101,7 +106,7 @@ func TestProjectGate_SubmitReadsTheBaseCommitOnceFromTheSourceAndCarriesItInTheP
 
 	rig := newAnchorRig(t)
 
-	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/src main"}, rig.tips, "one read, at the source of the project, of the base branch of the project")
@@ -118,7 +123,7 @@ func TestProjectGate_TheBranchThatTheBaseCommitIsReadFromIsThePinBaseThenTheBase
 	} {
 		rig := newAnchorRig(t)
 
-		_, err := rig.gate.Submit(t.Context(), "p", "1", "", c.base, c.pinBase)
+		_, err := rig.gate.Submit(t.Context(), "p", "1", "", c.base, c.pinBase, "")
 
 		require.NoError(t, err, name)
 		assert.Equal(t, []string{c.want}, rig.tips, name)
@@ -167,7 +172,7 @@ func TestProjectGate_ABaseBranchThatCannotBeReadFailsTheGateBeforeAnyProgramRuns
 		rig := newAnchorRig(t)
 		rig.tip, rig.tipErr = c.tip, c.err
 
-		_, submitErr := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+		_, submitErr := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 		_, keyErr := rig.gate.Key(t.Context(), "p", "1", "", "", "")
 		_, runErr := rig.gate.Run(t.Context(), "p", "1", "", flow.GateJob{})
 
@@ -185,34 +190,51 @@ func TestProjectGate_ACommitThatTheCloneLacksIsFetchedOnceAndAGateThatStillLacks
 	rig := newAnchorRig(t)
 	rig.held = func(fetched int) bool { return fetched > 0 }
 
-	_, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, rig.fetched)
+	assert.Equal(t, [][]string{{"fetch", "--no-tags", "--", "/src", anchorOld}}, rig.fetches, "one fetch, of the commit by its id, from the source that gave it")
 
 	still := newAnchorRig(t)
 	still.held = func(int) bool { return false }
 
-	_, err = still.gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err = still.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.ErrorContains(t, err, `the base branch "main" of project p is at `+anchorOld)
-	assert.Equal(t, 1, still.fetched)
+	assert.Len(t, still.fetches, 1)
 
 	unfetchable := newAnchorRig(t)
 	unfetchable.held = func(int) bool { return false }
-	unfetchable.gate.fetch = func(context.Context, string) error { return errors.New("offline") }
+	unfetchable.fetchErr = "offline"
 
-	_, err = unfetchable.gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err = unfetchable.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
-	require.ErrorContains(t, err, "fetch the commit: offline")
-
-	none := newAnchorRig(t)
-	none.held = func(int) bool { return false }
-	none.gate.fetch = nil
-
-	_, err = none.gate.Submit(t.Context(), "p", "1", "", "", "")
-
+	require.ErrorContains(t, err, "fetch the commit")
+	require.ErrorContains(t, err, "offline")
 	require.ErrorContains(t, err, `the base branch "main" of project p is at `+anchorOld)
+}
+
+func TestProjectGate_AKeyAndASubmitOfOneGateNameTheSameBaseCommitWhenTheBaseMovesBetweenThem(t *testing.T) {
+	t.Parallel()
+
+	rig := newAnchorRig(t)
+
+	key, err := rig.gate.Key(t.Context(), "p", "1", "", "", "")
+	require.NoError(t, err)
+
+	rig.tip = anchorNew
+
+	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", key.BaseSHA)
+
+	require.NoError(t, err)
+	assert.Equal(t, anchorOld, key.BaseSHA)
+	assert.Equal(t, anchorOld, job.Plan.BaseSHA, "the job takes the commit that the key read, not the tip that moved after it")
+	assert.Equal(t, []string{"/src main"}, rig.tips, "one read of the tip for the whole gate")
+
+	later, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, anchorNew, later.Plan.BaseSHA, "a Submit with no key reads the tip itself")
 }
 
 func TestProjectGate_AProjectWithNoRepositoryHasNoBaseCommitAndReadsNone(t *testing.T) {
@@ -221,7 +243,7 @@ func TestProjectGate_AProjectWithNoRepositoryHasNoBaseCommitAndReadsNone(t *test
 	rig := newAnchorRig(t)
 	rig.gate.projects = localProject()
 
-	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, rig.tips)
@@ -235,7 +257,7 @@ func TestProjectGate_AForgeThatGivesNoCloneURLFailsTheReadAndReadsNoTip(t *testi
 	rig.gate.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Forge: "github", BaseBranch: "main", Gate: "make check", BuildHost: config.LocalHost}}}
 	rig.gate.forge = func(model.Project) (forge.Forge, error) { return nil, errors.New("no forge") }
 
-	_, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.ErrorContains(t, err, "find the repository of project p")
 	assert.Empty(t, rig.tips)
@@ -255,7 +277,7 @@ func TestProjectGate_TheBaseCommitIsTheTipOfTheSourceRepositoryRead_ByGitLsRemot
 	rig.gate.tip = nil
 	rig.gate.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: source, BaseBranch: "main", Gate: "make check", BuildHost: config.LocalHost}}}
 
-	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "")
+	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, tip, job.Plan.BaseSHA)

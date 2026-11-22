@@ -16,7 +16,7 @@ import (
 
 // roundGate is the gate of the engine.
 type roundGate interface {
-	Submit(ctx context.Context, project, item, host, base, _ string) (flow.GateJob, error)
+	Submit(ctx context.Context, project, item, host, base, _, _ string) (flow.GateJob, error)
 	Run(ctx context.Context, project, item, host string, job flow.GateJob) (flow.GateResult, error)
 	Key(ctx context.Context, project, item, host, base, _ string) (flow.GateKey, error)
 }

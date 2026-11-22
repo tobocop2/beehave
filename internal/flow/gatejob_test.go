@@ -47,7 +47,7 @@ func (hostGate) Key(context.Context, string, string, string, string, string) (Ga
 	return GateKey{}, nil
 }
 
-func (g hostGate) Submit(_ context.Context, _, _, host, _, _ string) (GateJob, error) {
+func (g hostGate) Submit(_ context.Context, _, _, host, _, _, _ string) (GateJob, error) {
 	g.mu.Lock()
 	*g.hosts = append(*g.hosts, host)
 	g.mu.Unlock()

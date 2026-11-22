@@ -334,7 +334,7 @@ func TestProjectGate_ASubmittedHostJobIsWaitedOnByItsIDAndNotSubmittedAgain(t *t
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "", "", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, flow.GateJob{ID: "job-1", Head: "abc123", Plan: igate.Plan{Gate: "make check", BuildHost: "cluster", Pins: &igate.PinCheck{}}}, job)
@@ -363,10 +363,10 @@ func TestProjectGate_SubmitRefusesAProjectItCannotFindAndAHostThatRefusesTheJob(
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "unknown", "1", "", "", "")
+	_, err := gate.Submit(t.Context(), "unknown", "1", "", "", "", "")
 	require.ErrorIs(t, err, errUnknownProject)
 
-	_, err = gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err = gate.Submit(t.Context(), "p", "1", "", "", "", "")
 	require.ErrorIs(t, err, errFake)
 }
 
@@ -504,7 +504,7 @@ func TestProjectGate_APinBaseNamesTheBranchThatKeyAndSubmitReadThePinFileAt(t *t
 	_, err := projectGate{projects: projects, programs: programsOf(keyCalls), tip: recordingTip(&keyBranches, anchorOld)}.Key(t.Context(), "p", "1", "", "", "integration/s1")
 	require.NoError(t, err)
 
-	_, err = projectGate{projects: projects, programs: programsOf(submitCalls), tip: recordingTip(&submitBranches, anchorOld)}.Submit(t.Context(), "p", "1", "", "", "integration/s1")
+	_, err = projectGate{projects: projects, programs: programsOf(submitCalls), tip: recordingTip(&submitBranches, anchorOld)}.Submit(t.Context(), "p", "1", "", "", "integration/s1", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"integration/s1"}, keyBranches, "the key reads the tip of the pin base")

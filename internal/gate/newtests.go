@@ -107,7 +107,7 @@ END {
 // revert run apart, each in its own subshell, and a failed step never stops a later one. Then it prints the new-tests check, the revert lines, and
 // last the step marker lines, so all of them sit in the tail of the log. The job exits with the exit code of the head gate.
 // A project with no test_command runs no base suite, so only a cached base report can serve.
-func candidateWord(project model.Project, pins []Pin, baseSHA, clone string) string {
+func candidateWord(project model.Project, pins []Pin, base, baseSHA, clone string) string {
 	cache := model.ShellQuote(filepathDir(clone) + "/" + baseCache)
 	glob := globWord(project.TestReport)
 	before, after := reportChecks(project.TestReport)
@@ -119,7 +119,7 @@ func candidateWord(project model.Project, pins []Pin, baseSHA, clone string) str
 		stepWord("secretrc", `( [ -n "$mb" ] && `+limited(project, `gitleaks git --no-banner --log-opts="$mb..HEAD" .`)+` )`),
 		"cache=" + cache + `; mkdir -p "$cache"`,
 		baseSuite(project, glob),
-		compareWord(glob),
+		compareWord(glob, base, baseSHA),
 		revertRun(project, glob),
 		`cat ../checks.txt ../revert.txt`,
 		closingMarkers(),
@@ -131,10 +131,14 @@ func candidateWord(project model.Project, pins []Pin, baseSHA, clone string) str
 
 // compareWord is the word of the new-tests check. It parses the head report, compares it with the cached base report, writes its lines to
 // ../checks.txt and every new test to ../new.tsv.
-func compareWord(glob string) string {
+// A head with no merge base with the commit gets a message that names the base branch and the commit.
+func compareWord(glob, base, baseSHA string) string {
+	noBase := model.ShellQuote(newTestsError + "the head has no merge base with the commit " + baseSHA + " of the base branch " + base)
+
 	return "{ " + `awk ` + model.ShellQuote(junitAwk) + ` ` + glob + ` > ../head.tsv; jrc=$?; }; ` +
 		`: > ../new.tsv; { if [ "$jrc" -eq ` + badNameExit + ` ]; then echo "` + newTestsError + `a test name in the head report holds a tab or a newline, so the new tests cannot be named"; ` +
 		`elif [ -n "$mb" ] && [ -s "$cache/$mb" ]; then ` + cappedAwk() + `-v out=../new.tsv ` + model.ShellQuote(compareAwk) + ` "$cache/$mb" ../head.tsv; ` +
+		`elif [ -z "$mb" ]; then echo ` + noBase + `; ` +
 		`else echo "` + newTestsError + `no base report for $mb"; fi; } > ../checks.txt`
 }
 

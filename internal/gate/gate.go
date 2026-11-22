@@ -235,11 +235,17 @@ func (g Gate) planned(ctx context.Context, request Request) (Request, Plan) {
 
 // withPins returns the request with the pinned tools of the Plan, and the reason why the pin file cannot be used, or empty.
 // A Plan that has no pin check (no Submit made it) reads the pin file now, from the project of the request.
+// A Plan that holds a pin check of a project with a pin file but no base commit was stored by an earlier build, which read the base by its name:
+// it is void, and never a match, because no commit says which pin file it read.
 func (g Gate) withPins(ctx context.Context, request Request) (Request, string) {
 	check := request.Plan.Pins
 	if check == nil {
 		read := g.pinsOf(ctx, request)
 		check = &read
+	}
+
+	if request.Plan.Pins != nil && check.Void == "" && request.Project.PinFile != "" && request.Plan.BaseSHA == "" {
+		return request, "the plan of this gate has no base commit for the pin file " + request.Project.PinFile + ". An earlier build made it. Run the gate again"
 	}
 
 	request.pins = check.Tools
@@ -675,7 +681,7 @@ func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base,
 
 	// A candidate head runs its steps apart (see candidateWord). A sync head and a landing gate keep the gate command only.
 	if base != "" {
-		return strings.Join(append(words, candidateWord(project, pins, baseSHA, clone)), " && ")
+		return strings.Join(append(words, candidateWord(project, pins, base, baseSHA, clone)), " && ")
 	}
 
 	before, after := reportChecks(project.TestReport)

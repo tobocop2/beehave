@@ -124,10 +124,12 @@ type agents interface {
 
 // GateKey names the gate that Run would start for an item: ID is the same for the same tree, gate command, test report, build host and pins.
 // Head and Tree are the commit and tree id of the item. An empty ID means that no earlier pass may stand in for the gate.
+// BaseSHA is the commit of the base branch that the key read. Submit takes it, so the key and the job of one gate name the same base commit.
 type GateKey struct {
-	ID   string
-	Head string
-	Tree string
+	ID      string
+	Head    string
+	Tree    string
+	BaseSHA string
 }
 
 // GateJob is the host job that a gate started: its id and the head that it judges. A gate with no host job has an empty GateJob.
@@ -142,10 +144,11 @@ type GateJob struct {
 // gate runs the gate of an item. Key reads the key of that gate and starts nothing.
 // Submit starts the host job and returns at once. A base names the base branch of a candidate head: the job then also runs the secret scan and the new-tests check.
 // An empty base is a sync head or a landing gate, and the job runs the gate command only. Key and Submit read the pin file at the pinBase, else at the base, else at the base branch of the project.
+// A baseSHA is the base commit that Key read: Submit uses it and reads no tip. An empty baseSHA makes Submit read the tip itself.
 // A pinBase turns on no candidate check. Run then waits for that job and judges the result; given an empty GateJob it starts the job itself.
 // host is the build host that the run recorded in host_up. An empty host is the default build host of the project.
 type gate interface {
-	Submit(ctx context.Context, project, item, host, base, pinBase string) (GateJob, error)
+	Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string) (GateJob, error)
 	Run(ctx context.Context, project, item, host string, job GateJob) (GateResult, error)
 	Key(ctx context.Context, project, item, host, base, pinBase string) (GateKey, error)
 }

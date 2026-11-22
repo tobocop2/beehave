@@ -227,7 +227,7 @@ func e2eHeadOf(ctx context.Context, dir string) (string, error) {
 // and a revert run in which the new test fails on the base code.
 type e2eGate struct{ dir string }
 
-func (e2eGate) Submit(_ context.Context, _, _, _, base, _ string) (flow.GateJob, error) {
+func (e2eGate) Submit(_ context.Context, _, _, _, base, _, _ string) (flow.GateJob, error) {
 	return flow.GateJob{Plan: gate.Plan{Base: base}}, nil
 }
 

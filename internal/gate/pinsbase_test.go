@@ -198,6 +198,33 @@ func TestSubmit_AGateWithPinsAndNoBaseCommitIsVoidAndNamesTheBase(t *testing.T) 
 	assert.Empty(t, shell.commands)
 }
 
+func TestRun_APlanStoredBeforeTheBaseCommitWasRecordedIsVoidAndNeverAMatch(t *testing.T) {
+	t.Parallel()
+
+	for name, plan := range map[string]gate.Plan{
+		"pins that were read, no base commit": {Gate: "true", BuildHost: "local", Pins: &gate.PinCheck{Tools: []gate.Pin{{Tool: "gofake", Version: "0.0.1"}}}},
+		"the same plan with its base commit":  {Gate: "true", BuildHost: "local", BaseSHA: shaOld, Pins: &gate.PinCheck{Tools: []gate.Pin{{Tool: "gofake", Version: "0.0.1"}}}},
+	} {
+		shell := twoCommits()
+		g := gate.New(shell.run, (&fakeTree{states: []gate.State{clean(headA), clean(headA)}}).read, nil)
+		p := pinnedHostProject()
+		p.BuildHost = "local"
+
+		result, err := g.Run(context.Background(), gate.Request{Project: p, Dir: "/w", Plan: plan})
+
+		require.NoError(t, err, name)
+		assert.Empty(t, shell.commands, "%s: a plan that holds its pins reads no pin file", name)
+
+		if plan.BaseSHA == "" {
+			assert.False(t, result.Passed, name)
+			assert.Contains(t, result.Report, "no base commit for the pin file .tool-versions", name)
+			assert.Equal(t, []gate.Step{step(gate.StepCommand, gate.StatusUnknown)}, result.Steps, name)
+		} else {
+			assert.NotContains(t, result.Report, "no base commit", name)
+		}
+	}
+}
+
 func TestRun_AGateThatReadsThePinFileNowTakesTheBaseCommitFromItsPlan(t *testing.T) {
 	t.Parallel()
 

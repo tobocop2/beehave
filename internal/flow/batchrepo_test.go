@@ -296,7 +296,7 @@ type treeGate struct {
 	blockAt int
 }
 
-func (g *treeGate) Submit(_ context.Context, _, _, _, base, pinBase string) (GateJob, error) {
+func (g *treeGate) Submit(_ context.Context, _, _, _, base, pinBase, _ string) (GateJob, error) {
 	g.mu.Lock()
 	g.submitBases = append(g.submitBases, [2]string{base, pinBase})
 	g.mu.Unlock()
