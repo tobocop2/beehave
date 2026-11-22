@@ -377,7 +377,7 @@ func (w worktrees) BaseTip(ctx context.Context, project, remote, branch string) 
 func (w worktrees) FetchCommit(ctx context.Context, project, remote, sha string) error {
 	return w.inPush(ctx, project, remote, func(clone string, repo pushRepo) error {
 		if _, err := repo.run(ctx, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--", remote, sha); err != nil {
-			return fmt.Errorf("the source must serve a commit by its id (git protocol version 2), or the base branch moved since the read: %w", err)
+			return fmt.Errorf("a fetch by id needs a source that serves a commit by its id (git protocol version 2); if the base moved since the read, run again: %w", err)
 		}
 
 		return w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)

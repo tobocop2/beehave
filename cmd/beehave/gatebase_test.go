@@ -57,6 +57,20 @@ func TestProjectGate_AFetchOfAMissingBaseCommitRunsInThePushRepositoryAndARemote
 	assert.Equal(t, "commit", gitOut(t, rig.tree, "cat-file", "-t", rig.tip), "the clone holds the base commit after the gate")
 }
 
+// The copy into the clone is a fetch from the push repository, not from the source. When it fails, the hint about the source does not belong on it.
+func TestWorktrees_AFailedCopyIntoTheCloneCarriesNoHintAboutTheSource(t *testing.T) {
+	t.Parallel()
+
+	rig := newFetchRig(t)
+	trees := rig.pulls.trees
+	rig.plant(t, "url."+rig.decoy+".insteadOf", rig.remote)
+
+	err := trees.FetchCommit(t.Context(), "p", rig.remote, rig.tip)
+
+	require.ErrorContains(t, err, "which beehave does not allow", "the copy into the clone fails on the clone config")
+	assert.NotContains(t, err.Error(), "a fetch by id needs a source", "the hint names the source, and the copy does not read it")
+}
+
 // The source serves git over smart HTTP, as a forge does. The gate reads the tip and fetches the base commit by its id, which the clone lacks.
 func TestProjectGate_ASourceOverHTTPServesTheBaseCommitByItsId(t *testing.T) {
 	t.Parallel()
@@ -114,7 +128,7 @@ func TestWorktrees_FetchCommitFailsForACommitTheSourceLacksAndForAClonePastTheAl
 }
 
 // A source that speaks protocol version 0 serves only the commits that it advertises. The commit that the base branch moved away from is not
-// advertised, so the fetch by its id fails. The error says that the source must serve a commit by its id, or that the base moved, and keeps git's text.
+// advertised, so the fetch by its id fails. The error says that a fetch by id needs a source that serves a commit by its id, and that a base that moved needs a new run. Git's text follows.
 func TestWorktrees_AFetchByIdThatASourceOfProtocolVersionZeroRefusesSaysThatTheSourceMustServeTheCommitOrTheBaseMoved(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +144,7 @@ func TestWorktrees_AFetchByIdThatASourceOfProtocolVersionZeroRefusesSaysThatTheS
 	err = trees.FetchCommit(t.Context(), "p", rig.remote, moved)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must serve a commit by its id (git protocol version 2), or the base branch moved since the read")
+	assert.Contains(t, err.Error(), "a fetch by id needs a source that serves a commit by its id (git protocol version 2); if the base moved since the read, run again")
 	assert.Contains(t, err.Error(), "unadvertised object", "git's own text follows")
 }
 
