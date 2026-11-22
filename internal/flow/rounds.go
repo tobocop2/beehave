@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -160,20 +161,16 @@ func (s *script) roundSync(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, err
 	}
 
-	return s.durable(roundSyncKind, label, func(ctx context.Context, _ string) (stepResult, error) {
+	return s.durable(roundSyncKind, label, func(ctx context.Context, name string) (stepResult, error) {
 		result, err := s.writes().Sync(ctx, s.in.Project, req)
 
-		return stepResult{Outputs: syncOutputs(result)}, err
+		return s.ended(ctx, name, stepResult{Outputs: syncOutputs(result)}, err)
 	})
 }
 
 // roundLand lands the sync pull request pinned to the gated head and the recorded base tip.
 func (s *script) roundLand(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
-	var req roundsync.LandRequest
-
-	var label string
-
-	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{prKeyword: &req.PR, headKeyword: &req.Head, baseTipKeyword: &req.BaseTip, nameKeyword: &label})
+	req, label, err := landOf(b, args, kwargs)
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +179,21 @@ func (s *script) roundLand(b *starlark.Builtin, args starlark.Tuple, kwargs []st
 		return nil, err
 	}
 
-	return s.durable(roundLandKind, label, func(ctx context.Context, _ string) (stepResult, error) {
+	return s.durable(roundLandKind, label, func(ctx context.Context, name string) (stepResult, error) {
 		result, err := s.writes().Land(ctx, s.in.Project, req)
 
-		return stepResult{Outputs: syncOutputs(result)}, err
+		return s.ended(ctx, name, stepResult{Outputs: syncOutputs(result)}, err)
 	})
+}
+
+// landOf reads the landing that a round_land call names. The pull request must be a number above 0.
+func landOf(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (req roundsync.LandRequest, label string, err error) {
+	err = workflow.Unpack(b.Name(), args, kwargs, map[string]any{prKeyword: &req.PR, headKeyword: &req.Head, baseTipKeyword: &req.BaseTip, nameKeyword: &label})
+	if err != nil {
+		return req, label, err
+	}
+
+	return req, label, aboveZero(b.Name(), prKeyword, req.PR)
 }
 
 // roundCut cuts the next round branch. The step records a refusal of the cut as data, and the workflow decides what it does.
@@ -200,6 +207,10 @@ func (s *script) roundCut(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 		return nil, err
 	}
 
+	if err = cutArguments(b.Name(), req.Cut.OldBase, next, req.Cut.OldPR); err != nil {
+		return nil, err
+	}
+
 	if _, err = s.roundOps(); err != nil {
 		return nil, err
 	}
@@ -207,6 +218,27 @@ func (s *script) roundCut(b *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	req.Cut.NewBase, req.Cut.Roman = next, next[strings.LastIndex(next, "-")+1:]
 
 	return s.durable(roundCutKind, label, s.cutWrite(req))
+}
+
+// aboveZero refuses a number that is not above 0. The error names the builtin and the keyword.
+func aboveZero(builtin, keyword string, number int) error {
+	if number <= 0 {
+		return fmt.Errorf("%s: %s must be a number above 0, got %d", builtin, keyword, number)
+	}
+
+	return nil
+}
+
+// cutArguments refuses a cut that names no old branch, a new branch with no Roman numeral after its last dash, or no pull request.
+func cutArguments(builtin, old, next string, pr int) error {
+	switch {
+	case old == "":
+		return fmt.Errorf("%s: old must name the old round branch, got an empty text", builtin)
+	case next[strings.LastIndex(next, "-")+1:] == "":
+		return fmt.Errorf("%s: new must end in a Roman numeral after a dash, such as round-ii, got %q", builtin, next)
+	}
+
+	return aboveZero(builtin, prKeyword, pr)
 }
 
 // cutWrite is the recorded write of a cut.
@@ -219,8 +251,24 @@ func (s *script) cutWrite(req roundcut.Request) func(context.Context, string) (s
 			recorded.Stopped = refusedStop(name, result.Lines)
 		}
 
+		return s.ended(ctx, name, recorded, err)
+	}
+}
+
+// ended turns the error of a forge write into the end of the item, with the error as the lines of the step, as a tool that exits on code 2 does.
+// The end of the claim or of the run is no answer of the forge: it stays an error and fails the run.
+func (s *script) ended(ctx context.Context, name string, recorded stepResult, err error) (stepResult, error) {
+	if err == nil {
+		return recorded, nil
+	}
+
+	if errors.Is(err, errClaimLost) || errors.Is(err, context.Canceled) || ctx.Err() != nil {
 		return recorded, err
 	}
+
+	recorded.Stopped = refusedStop(name, []string{s.e.redact(err.Error())})
+
+	return recorded, nil
 }
 
 // refusedStop is the stop of a step that the tool refused: it ends the item with the lines of the refusal, as a command that ends on exit code 2 does.
@@ -252,10 +300,10 @@ func (s *script) roundIntegration(b *starlark.Builtin, args starlark.Tuple, kwar
 		return nil, err
 	}
 
-	return s.durable(roundIntegrationKind, label, func(ctx context.Context, _ string) (stepResult, error) {
+	return s.durable(roundIntegrationKind, label, func(ctx context.Context, name string) (stepResult, error) {
 		result, err := s.writes().Integrate(ctx, s.in.Project, req)
 
-		return stepResult{Outputs: map[string]any{numberField: result.PR, stateField: result.State}}, err
+		return s.ended(ctx, name, stepResult{Outputs: map[string]any{numberField: result.PR, stateField: result.State}}, err)
 	})
 }
 
@@ -304,7 +352,7 @@ func (s *script) cardWrite(card model.Card) func(context.Context, string) (stepR
 			recorded.Stopped = refusedStop(name, []string{fmt.Sprintf("the board %d shows %q for card %d after the write; wanted %q", card.Board, shown, card.Number, card.Status)})
 		}
 
-		return recorded, err
+		return s.ended(ctx, name, recorded, err)
 	}
 }
 
@@ -333,6 +381,10 @@ func (s *script) takeOf(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 		return req, label, err
 	}
 
+	if err = takeArguments(b.Name(), req.Request.PR, step); err != nil {
+		return req, label, err
+	}
+
 	if req.Idle, req.Grace, err = hoursOf(idle, grace); err != nil {
 		return req, label, err
 	}
@@ -340,6 +392,15 @@ func (s *script) takeOf(b *starlark.Builtin, args starlark.Tuple, kwargs []starl
 	req.Request.Mode, req.Now = takeover.Mode(step), s.e.deps.Clock.reading()
 
 	return req, label, nil
+}
+
+// takeArguments refuses a take with no pull request above 0 and a step that is not one of the steps of pr_take.
+func takeArguments(builtin string, pr int, step string) error {
+	if !slices.Contains(workflow.TakeSteps(), step) {
+		return fmt.Errorf("%s: step must be one of %s, got %q", builtin, strings.Join(workflow.TakeSteps(), ", "), step)
+	}
+
+	return aboveZero(builtin, prKeyword, pr)
 }
 
 // takeWrite is the recorded write of a take: a refusal of a rule or a guard ends the item with the lines of the step.
@@ -352,7 +413,7 @@ func (s *script) takeWrite(req TakeRequest) func(context.Context, string) (stepR
 			recorded.Stopped = refusedStop(name, result.Lines)
 		}
 
-		return recorded, err
+		return s.ended(ctx, name, recorded, err)
 	}
 }
 

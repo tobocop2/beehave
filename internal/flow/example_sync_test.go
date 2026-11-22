@@ -431,11 +431,8 @@ func TestRoundSync_ALineOrAnExitCodeTheRoundDoesNotKnowStopsTheRun(t *testing.T)
 		want   string
 	}{
 		"unknown_state":         {&syncScript{lines: []string{"state=odd"}}, "the state \"odd\", which the round does not know"},
-		"landing_with_no_state": {&syncScript{lines: []string{"synced"}, land: CommandOutput{RC: 2, Stdout: "REFUSE: the forge refused the merge\n"}}, "REFUSE: the forge refused the merge"},
 		"synced_with_no_head":   {&syncScript{lines: []string{"state=synced branch=" + syncBranch + " pr=7"}}, "the synced result of sync-1 has no head, base_tip"},
 		"conflict_no_source":    {&syncScript{lines: []string{"state=conflict branch=" + syncBranch}}, "the conflict result of sync-1 has no source"},
-		"check_exit_one_empty":  {&syncScript{lines: []string{""}, rc: 1}, "the sync ended with the exit code 1"},
-		"check_not_found":       {&syncScript{lines: []string{""}, rc: 127}, "the sync ended with the exit code 127"},
 		"head_not_in_the_clone": {&syncScript{lines: []string{"state=synced branch=" + syncBranch + " pr=7 head=0123456789abcdef0123456789abcdef01234567 base_tip=abc"}}, "the step sync-checkout-1 could not put the folder"},
 	}
 
@@ -456,7 +453,38 @@ func TestRoundSync_ALineOrAnExitCodeTheRoundDoesNotKnowStopsTheRun(t *testing.T)
 	}
 }
 
-func TestRoundSync_AForgeFailureOfTheCheckEndsTheRunWithTheLineOfTheTool(t *testing.T) {
+// A write of the sync that the forge refuses ends the item with the error of the forge as its lines. The run does not fail.
+func TestRoundSync_AWriteThatTheForgeRefusesEndsTheItemWithTheError(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		script *syncScript
+		want   string
+	}{
+		"landing_with_no_state": {&syncScript{lines: []string{"synced"}, land: CommandOutput{RC: 2, Stdout: "REFUSE: the forge refused the merge\n"}}, "REFUSE: the forge refused the merge"},
+		"check_exit_one_empty":  {&syncScript{lines: []string{""}, rc: 1}, "the sync ended with the exit code 1"},
+		"check_not_found":       {&syncScript{lines: []string{""}, rc: 127}, "the sync ended with the exit code 127"},
+	}
+
+	for name, c := range cases {
+		script, want := c.script, c.want
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRoundRig(t, "")
+			withSync(t, rig, script)
+
+			result, _, err := runSync(t, rig, false)
+
+			require.NoError(t, err)
+			require.NotNil(t, result.Stopped)
+			assert.Contains(t, result.Stopped.Output, want)
+			assert.Empty(t, rig.questions, "the item ends before any wait")
+		})
+	}
+}
+
+func TestRoundSync_AForgeFailureOfTheCheckEndsTheItemWithTheLineOfTheTool(t *testing.T) {
 	t.Parallel()
 
 	rig := newRoundRig(t, "")
@@ -469,10 +497,11 @@ func TestRoundSync_AForgeFailureOfTheCheckEndsTheRunWithTheLineOfTheTool(t *test
 		return previous(request)
 	}
 
-	_, err := rig.run(t)
+	result, err := rig.run(t)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "502")
+	require.NoError(t, err)
+	require.NotNil(t, result.Stopped)
+	assert.Contains(t, result.Stopped.Output, "502")
 }
 
 // itemTerminal reports whether the latest run of the item has ended, or cannot be read.

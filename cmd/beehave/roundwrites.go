@@ -93,20 +93,27 @@ func (r roundWrites) Take(ctx context.Context, project string, req flow.TakeRequ
 		return takeover.Result{}, err
 	}
 
-	config := r.pulls.projects[project]
-
-	runner, err := r.pulls.writers.runner(config.Project)
+	settings, err := r.takeSettings(project, req)
 	if err != nil {
 		return takeover.Result{}, err
 	}
 
-	settings := takeover.Context{
+	return takeover.Run(ctx, built, req.Request, settings)
+}
+
+// takeSettings is the settings of a take. Its gh runs as the writer of the project on its repository: with the token of the writer, or with the login of the owner when the project declares no credentials.
+func (r roundWrites) takeSettings(project string, req flow.TakeRequest) (takeover.Context, error) {
+	config := r.pulls.projects[project]
+
+	runner, err := r.pulls.writers.runner(config.Project)
+	if err != nil {
+		return takeover.Context{}, err
+	}
+	return takeover.Context{
 		Me: req.Me, Idle: req.Idle, Grace: req.Grace, Now: req.Now,
 		Free: claimHeld,
 		Gh:   inRepo{run: runner, repo: config.Repo},
-	}
-
-	return takeover.Run(ctx, built, req.Request, settings)
+	}, nil
 }
 
 // claimHeld is the claim check of a takeover that runs in the engine. The engine writes only while its run holds the claim of the item (runWrites checks it before this call),

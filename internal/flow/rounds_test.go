@@ -277,7 +277,7 @@ func TestPRTakeStep_AnIdleOrGraceThatIsNotANumberOfHoursIsRefusedBeforeAnyWrite(
 	}
 }
 
-func TestRoundSteps_AFailedWriteEndsTheStepWithTheErrorOfTheForge(t *testing.T) {
+func TestRoundSteps_AFailedWriteEndsTheItemWithTheErrorOfTheForgeAsTheLines(t *testing.T) {
 	t.Parallel()
 
 	for name, call := range map[string]string{
@@ -291,9 +291,52 @@ func TestRoundSteps_AFailedWriteEndsTheStepWithTheErrorOfTheForge(t *testing.T) 
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, _, _, err := runRound(t, &spyRounds{err: errForge}, "def main(item):\n    "+call+"\n")
+			_, _, result, err := runRound(t, &spyRounds{err: errForge}, "def main(item):\n    "+call+"\n")
 
-			require.ErrorIs(t, err, errForge)
+			require.NoError(t, err)
+			require.NotNil(t, result.Stopped)
+			assert.Equal(t, 2, result.Stopped.RC)
+			assert.Equal(t, errForge.Error(), result.Stopped.Output)
+			assert.Contains(t, result.Stopped.Step, name2kind[name])
+		})
+	}
+}
+
+// name2kind maps the name of a case of the round writes to the kind of its step.
+var name2kind = map[string]string{
+	"sync": roundSyncKind, "land": roundLandKind, "cut": roundCutKind, "integration": roundIntegrationKind, "board": boardCardKind, "take": prTakeKind,
+}
+
+func TestRoundSteps_AnErrorThatIsTheEndOfTheRunStillFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, err := runRound(t, &spyRounds{err: context.Canceled}, "def main(item):\n    round_sync(base = \"b\", trunk = \"main\")\n")
+
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRoundSteps_AnArgumentThatTheToolRefusedIsRefusedBeforeAnyWriteAndNamesTheArgument(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct{ call, want string }{
+		"land pr zero":      {`round_land(pr = zero, head = "h", base_tip = "t")`, "round_land: pr must be a number above 0"},
+		"cut pr zero":       {`round_cut(old = "round-i", new = "round-ii", pr = zero, trunk = "main")`, "round_cut: pr must be a number above 0"},
+		"cut old empty":     {`round_cut(old = empty, new = "round-ii", pr = 9, trunk = "main")`, "round_cut: old must name the old round branch"},
+		"cut no roman":      {`round_cut(old = "round-i", new = "round-", pr = 9, trunk = "main")`, "round_cut: new must end in a Roman numeral"},
+		"cut new empty":     {`round_cut(old = "round-i", new = empty, pr = 9, trunk = "main")`, "round_cut: new must end in a Roman numeral"},
+		"take pr zero":      {`pr_take(pr = zero, me = "owner", idle = "1", grace = "1", step = "take")`, "pr_take: pr must be a number above 0"},
+		"take other step":   {`pr_take(pr = 7, me = "owner", idle = "1", grace = "1", step = step_name)`, "pr_take: step must be one of apply, take"},
+		"take step is mode": {`pr_take(pr = 7, me = "owner", idle = "1", grace = "1", step = empty)`, "pr_take: step must be one of apply, take"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			spy := &spyRounds{}
+			text := "zero = 0\nempty = \"\"\nstep_name = \"dry\"\ndef main(item):\n    " + tc.call + "\n"
+			_, _, _, err := runRound(t, spy, text)
+
+			require.ErrorContains(t, err, tc.want)
+			assert.Zero(t, spy.callsCount)
 		})
 	}
 }

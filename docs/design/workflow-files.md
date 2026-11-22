@@ -285,7 +285,9 @@ The `parent` argument:
 - `integration_pull` finds the integration pull request, or opens it with the `pr_label` of the project, and writes its body. A `pr` above 0 names the pull request. It returns `number` and `state`.
 - `board_card` names the card by exactly one of `pr` and `issue`, puts it on the board `board`, sets the column `status` and reads the card back. A board that shows another column ends the item with code 2. It returns `status`, the column that the board shows. A project with no board is not an error of the step: the workflow makes no call.
 - `pr_take` runs one step of the takeover of a pull request of somebody else. `step` is `apply` (post the notice) or `take` (take the pull request). `idle` and `grace` are numbers of hours. A refusal of a rule or a guard ends the item with the lines of the step and the code 2. It returns `code` and `lines`.
-- A build with no round writer fails the call. A forge that lacks the write that a step needs fails it with an error that names the write. A dry run shows each write as done and writes nothing.
+- A write that the forge refuses ends the item with the error as its lines and the code 2, as a refusal of the tool does. The loss of the claim and the end of the run are not answers of the forge: they fail the run.
+- A call checks its arguments before any write. `round_land`, `round_cut` and `pr_take` take a `pr` above 0. `round_cut` takes an `old` that is not empty and a `new` that ends in a Roman numeral after a dash. `pr_take` takes a `step` of `apply` or `take`. Each refusal names the argument.
+- A build with no round writer fails the call. A forge that lacks the write that a step needs ends the item with an error that names the write. A dry run shows each write as done and writes nothing.
 
 #### `pr_history`
 
