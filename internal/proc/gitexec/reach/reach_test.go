@@ -13,7 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/reach"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 )
 
 const writerToken = "writer-token"
@@ -47,7 +47,7 @@ func calls(t *testing.T, log string) string {
 func TestRunner_AProjectWithNoCredentialsRunsAsTheOwnerWithItsEnvironmentAndAnyTransport(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	log, _ := fakeGit(t)
 
-	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "ssh://git@example.test/o/r.git", OwnerEnv: []string{"GIT_TERMINAL_PROMPT=0", "GIT_DIR=/x"}}).
+	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "ssh://git@example.test/o/r.git", OwnerEnv: []string{"GIT_TERMINAL_PROMPT=0", "GIT_DIR=/x"}}, nil).
 		Run(t.Context(), []string{"fetch"})
 
 	require.Equal(t, 0, out.ExitCode)
@@ -60,11 +60,10 @@ func TestRunner_AProjectWithLoadedCredentialsRunsAsTheWriterAndNeverAsTheOwner(t
 	out := reach.Runner(reach.Call{
 		Project: "p", Dir: t.TempDir(), Remote: "https://example.test/o/r.git", Declared: true, Loaded: true, Token: writerToken,
 		Base: map[string]string{"PATH": path}, Pairs: []string{"GIT_DIR=/y"},
-		Owner: func(string) proc.Runner {
-			t.Error("the writer call used the runner of the owner")
+	}, func(string) proc.Runner {
+		t.Error("the writer call used the runner of the owner")
 
-			return nil
-		},
+		return nil
 	}).Run(t.Context(), []string{"push"})
 
 	require.Equal(t, 0, out.ExitCode)
@@ -74,7 +73,7 @@ func TestRunner_AProjectWithLoadedCredentialsRunsAsTheWriterAndNeverAsTheOwner(t
 func TestRunner_AProjectWithCredentialsThatTheProcessLacksRefusesTheCallAndRunsNoGit(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	log, _ := fakeGit(t)
 
-	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "https://example.test/o/r.git", Declared: true}).Run(t.Context(), []string{"fetch"})
+	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "https://example.test/o/r.git", Declared: true}, nil).Run(t.Context(), []string{"fetch"})
 
 	assert.Equal(t, 1, out.ExitCode)
 	require.ErrorIs(t, out.SetupErr, reach.ErrNotLoaded)
@@ -84,7 +83,7 @@ func TestRunner_AProjectWithCredentialsThatTheProcessLacksRefusesTheCallAndRunsN
 func TestRunner_AProjectWithLoadedCredentialsRefusesARemoteThatIsNotHTTPSAndRunsNoGit(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	log, _ := fakeGit(t)
 
-	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "ssh://git@example.test/o/r.git", Declared: true, Loaded: true, Token: writerToken}).
+	out := reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "ssh://git@example.test/o/r.git", Declared: true, Loaded: true, Token: writerToken}, nil).
 		Run(t.Context(), []string{"fetch"})
 
 	assert.Equal(t, 1, out.ExitCode)
@@ -98,11 +97,11 @@ func TestRunner_AProjectWithNoCredentialsTakesTheRunnerThatTheCallerSupplies(t *
 	var got string
 
 	want := stubRunner{}
-	supplied := reach.Runner(reach.Call{Project: "p", Dir: "/d", Owner: func(dir string) proc.Runner {
+	supplied := reach.Runner(reach.Call{Project: "p", Dir: "/d"}, func(dir string) proc.Runner {
 		got = dir
 
 		return want
-	}})
+	})
 
 	assert.Equal(t, want, supplied)
 	assert.Equal(t, "/d", got)

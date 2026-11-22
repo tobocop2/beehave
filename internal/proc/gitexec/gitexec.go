@@ -9,19 +9,23 @@ package gitexec
 
 import (
 	"context"
-	"os"
 	"slices"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
 )
 
-// Binary is the name of the git program.
-const Binary = "git"
+// IsGit reports whether name is the name of the git program.
+func IsGit(name string) bool {
+	return name == gitbin.Name
+}
 
-// hooksOff is the setting that points the hooks folder at an empty place.
-const hooksOff = "core.hooksPath=" + os.DevNull
+// Find returns the path of the git program in the search path paths. It builds no runner.
+func Find(paths string) (string, error) {
+	return proc.LookPath(gitbin.Name, paths)
+}
 
 // local returns the environment of a local git call. GIT_ALLOW_PROTOCOL allows the file transport only, and no git config overrides it.
 // GIT_NO_LAZY_FETCH stops the fetch of a missing object from a promisor remote, so a read of a missing object fails. Git 2.45 and later and the
@@ -29,11 +33,6 @@ const hooksOff = "core.hooksPath=" + os.DevNull
 // promisor still fetches, and an upload-pack program in the clone config then runs (the class of #727).
 func local() []string {
 	return []string{"GIT_ALLOW_PROTOCOL=file", "GIT_NO_LAZY_FETCH=1"}
-}
-
-// Args returns args with the setting that turns the hooks off in front of them.
-func Args(args []string) []string {
-	return append([]string{"-c", hooksOff}, args...)
 }
 
 // Runner runs git in a folder with the hooks off. Its fields are those of proc.ExecRunner. Env comes before the local environment, so it cannot widen it.
@@ -55,13 +54,13 @@ func (r Repositories) Runner(dir string, timeout time.Duration) Runner {
 
 // New returns a local runner for git in dir. A zero timeout means no limit.
 func New(dir string, timeout time.Duration) Runner {
-	return Runner{ExecRunner: proc.ExecRunner{Binary: Binary, Dir: dir, Timeout: timeout}}
+	return Runner{ExecRunner: proc.ExecRunner{Binary: gitbin.Name, Dir: dir, Timeout: timeout}}
 }
 
 // Run runs git with the hooks off. A pinned runner runs no git when its folder is unknown, or the config of its clone cannot be listed or holds a
 // setting outside the allow list.
 func (r Runner) Run(ctx context.Context, args []string) model.CommandResult {
-	return r.run(ctx, Args(args))
+	return r.run(ctx, gitbin.Args(args))
 }
 
 // ReadConfig returns the value that the git config of the repository of the runner holds for key, with the refusals of Run. It reads configuration and

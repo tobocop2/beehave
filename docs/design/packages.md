@@ -47,7 +47,7 @@ flowchart TD
         jobwait["host/jobwait<br/>wait states"]
         sandbox["sandbox<br/>enforcer contract, allow-list proxy, Landlock enforcer"]
         credential["credential<br/>forge token loader, role environment, start probe"]
-        reach["reach<br/>the git runner of a call that reaches a remote"]
+        reach["proc/gitexec/reach<br/>the git runner of a call that reaches a remote"]
     end
 
     subgraph L0["Layer 0: foundation"]
@@ -140,7 +140,7 @@ Every package imports `model`. `model` imports no beehave package.
 
 Only `proc` starts a process. `forge` and `agent` call it. `store` reaches it through the runner that the composition root passes in.
 
-`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import, so a second call site does not compile. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
+`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. The name of the git program and the hooks setting sit in `proc/gitexec/internal/gitbin`, which only `proc/gitexec` and the packages below it import. Code outside that tree gets the local runner from `gitexec.New`, or a runner from `proc/gitexec/reach`, and it cannot build any other git runner from the exported names of `gitexec`. A source test in `gitexec` fails on a plain `"git"` literal in a runner, which the compiler cannot refuse. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
 
 ### File locks and whole-file writes
 

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/sandbox"
 	"github.com/tobocop2/beehave/internal/sandbox/enforcers"
@@ -50,7 +49,7 @@ type gitProgram struct {
 // findGit returns the git that the search path paths finds, with the program, its exec path and the libraries that it loads as the paths it reads. Any
 // of them that cannot be found is an error, so the copy never runs with a read set that is unknown.
 func findGit(ctx context.Context, paths string) (gitProgram, error) {
-	binary, err := proc.LookPath(gitexec.Binary, paths)
+	binary, err := gitexec.Find(paths)
 	if err == nil {
 		binary, err = filepath.EvalSymlinks(binary)
 	}

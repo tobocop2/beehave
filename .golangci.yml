@@ -335,12 +335,10 @@ linters:
             - "**/internal/host/**"
             - "**/internal/sandbox/**"
             - "**/internal/credential/**"
-            - "**/internal/reach/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
           allow:
-            - github.com/tobocop2/beehave/internal/reach
             - github.com/tobocop2/beehave/internal/model
             - github.com/tobocop2/beehave/internal/config
             - github.com/tobocop2/beehave/internal/lockfile
@@ -465,7 +463,6 @@ linters:
             - "!**/internal/host/**"
             - "!**/internal/sandbox/**"
             - "!**/internal/credential/**"
-            - "!**/internal/reach/**"
             - "!**/internal/check/**"
             - "!**/internal/batch/**"
             - "!**/internal/claim/**"

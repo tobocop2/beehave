@@ -10,7 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
-	"github.com/tobocop2/beehave/internal/reach/internal/remote"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach/internal/remote"
 )
 
 // ErrNotLoaded is the reason a call is refused when its project declares credentials and the process holds none.
@@ -19,7 +19,7 @@ var ErrNotLoaded = errors.New("the credentials of the project are not loaded. St
 // Call describes a git call in Dir that reaches the address Remote of Project.
 // Declared is true when the project declares writer credentials. Loaded is true when this process holds them, and Token is the writer token then.
 // Base is the environment that the writer call takes its names from, and Pairs are extra NAME=value pairs of the writer call.
-// OwnerEnv is the environment of the call of a project with no credentials. Owner replaces the runner of such a call when it is not nil.
+// OwnerEnv is the environment of the call of a project with no credentials.
 type Call struct {
 	Project  string
 	Dir      string
@@ -30,15 +30,15 @@ type Call struct {
 	Base     map[string]string
 	Pairs    []string
 	OwnerEnv []string
-	Owner    func(dir string) proc.Runner
 }
 
 // Runner returns the git runner for c. A project with no credentials gets the owner. A project with credentials gets the writer: its environment is built
 // from the allow list, the credential helper of the call for the host of the remote, and the pairs, so no helper, token or ssh agent of the owner reaches git.
 // A project with credentials that this process does not hold, or whose remote is not an https address, gets a runner that refuses the call.
-func Runner(c Call) proc.Runner { //nolint:ireturn // the callers take the interface
+// stand replaces the owner runner in a test. Production passes nil.
+func Runner(c Call, stand func(dir string) proc.Runner) proc.Runner { //nolint:ireturn // the callers take the interface
 	if !c.Loaded && !c.Declared {
-		return owner(c)
+		return owner(c, stand)
 	}
 
 	if !c.Loaded {
@@ -56,10 +56,10 @@ func Runner(c Call) proc.Runner { //nolint:ireturn // the callers take the inter
 	return runner
 }
 
-// owner returns the runner of a call that runs with the login of the owner.
-func owner(c Call) proc.Runner { //nolint:ireturn // the callers take the interface
-	if c.Owner != nil {
-		return c.Owner(c.Dir)
+// owner returns the runner of a call that runs with the login of the owner. A non-nil stand replaces it.
+func owner(c Call, stand func(dir string) proc.Runner) proc.Runner { //nolint:ireturn // the callers take the interface
+	if stand != nil {
+		return stand(c.Dir)
 	}
 
 	runner := remote.New(c.Dir, proc.DefaultTimeout)

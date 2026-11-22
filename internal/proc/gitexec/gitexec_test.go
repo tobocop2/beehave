@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
 )
 
 // logGit puts a fake git first on PATH. The fake appends its arguments, one call per line, to the file that the function returns.
@@ -72,10 +73,32 @@ func TestRunner_EveryLocalCallTakesTheFileTransportOnlyAndFetchesNoMissingObject
 	assert.Equal(t, strings.Repeat("allow=file lazy=1\n", 4), calls(t, log)+"\n", "no env of the caller widens a local call, the read of the settings included")
 }
 
+func TestIsGit_AcceptsTheNameOfTheGitProgramOnly(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, gitexec.IsGit("git"))
+	assert.False(t, gitexec.IsGit("gh"))
+	assert.False(t, gitexec.IsGit("/usr/bin/git"))
+}
+
+func TestFind_ReturnsTheGitProgramOfTheSearchPathAndFailsWhenThereIsNone(t *testing.T) {
+	t.Parallel()
+
+	bin := t.TempDir()
+	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), "#!/bin/sh\n"))
+
+	found, err := gitexec.Find(bin)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(bin, "git"), found)
+
+	_, err = gitexec.Find(t.TempDir())
+	require.Error(t, err)
+}
+
 func TestArgs_PutsTheHooksSettingFirstAndKeepsTheArguments(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"-c", "core.hooksPath=/dev/null", "status", "-s"}, gitexec.Args([]string{"status", "-s"}))
+	assert.Equal(t, []string{"-c", "core.hooksPath=/dev/null", "status", "-s"}, gitbin.Args([]string{"status", "-s"}))
 }
 
 func TestReadConfig_DoesNotSetTheHooksPathItReads(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -125,5 +148,5 @@ func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Empty(t, found, "make the runner with gitexec.New or the arguments with gitexec.Args, so the hooks stay off")
+	assert.Empty(t, found, "make the runner with gitexec.New, so the hooks stay off")
 }

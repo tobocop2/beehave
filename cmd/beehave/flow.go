@@ -317,7 +317,7 @@ func noPrompt(runner gitexec.Runner) proc.Runner { //nolint:ireturn // the workt
 // with the git of the project (see gitOf), and it is local (see gitexec).
 func localRunner(projects map[string]config.Project, found gitexec.Repositories) func(project, binary, dir string, timeout time.Duration) proc.Runner {
 	return func(project, binary, dir string, timeout time.Duration) proc.Runner {
-		if binary == gitexec.Binary {
+		if gitexec.IsGit(binary) {
 			return gitOf(projects, project, found).Runner(dir, timeout)
 		}
 

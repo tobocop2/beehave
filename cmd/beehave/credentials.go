@@ -16,7 +16,7 @@ import (
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/reach"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 )
 
 // writerRole is the writer credential of one project, read at engine start: the token, and the empty gh config folder that its calls own.
@@ -140,8 +140,8 @@ func (w *writers) git(projects map[string]config.Project, project, dir, remote s
 
 	return reach.Runner(reach.Call{
 		Project: project, Dir: dir, Remote: remote, Declared: declared, Loaded: loaded, Token: role.token,
-		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv, Owner: owner,
-	})
+		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv,
+	}, owner)
 }
 
 // base returns the environment that a writer call takes its names from. A nil writers holds none.

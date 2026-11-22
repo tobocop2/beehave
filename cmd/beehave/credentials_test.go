@@ -17,7 +17,7 @@ import (
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/reach"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
