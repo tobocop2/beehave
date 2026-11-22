@@ -208,6 +208,8 @@ type Engine struct {
 	keepRuns  bool
 	// overCap is Options.OverCap.
 	overCap bool
+	// serving is true for the engine of beehave serve, which says so for each run with the sandbox off that it starts or resumes.
+	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
 	version     string
@@ -318,7 +320,7 @@ func newEngine(opts Options, deps Deps, state store, held *flock.Flock, registry
 	}
 
 	engine := &Engine{
-		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
+		registry: registry, deps: deps, maxConcurrent: opts.MaxConcurrent, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxRunBudget: opts.MaxRunBudget, maxTreeBudget: opts.MaxTreeBudget, reviewPoll: opts.ReviewPoll, reviewLookbackDays: cmp.Or(opts.ReviewLookbackDays, config.DefaultReviewLookbackDays), retention: opts.Retention, keepRuns: opts.KeepRuns, overCap: opts.OverCap, serving: opts.Mode == ModeServe, setSchedule: (*Engine).schedulePoll, env: opts.Env, version: applicationVersion(opts.Version), dir: state.dir, log: state.log, lock: held, redact: redact, logger: newLogger(state.log, redact),
 		procs: &groups{path: groupsFile(state.dir)}, tickEnd: make(chan struct{}), progress: &progress{out: opts.Progress, redact: redact},
 	}
 	warnShortSecrets(engine.logger, opts.Env)

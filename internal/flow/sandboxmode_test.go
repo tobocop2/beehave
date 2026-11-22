@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -499,6 +500,31 @@ func TestDryRun_AProjectWithTheSandboxOnRefusesASandboxNoneStep(t *testing.T) {
 			} else {
 				require.NoError(t, err, out.String())
 			}
+		})
+	}
+}
+
+func TestServe_AnEngineOfServeSaysTheOffLineForARunThatStoredOffAndAnEngineOfRunSaysNothing(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		mode string
+		line bool
+	}{"serve": {ModeServe, true}, "run": {ModeRun, false}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var out safeBuffer
+
+			rig := newAgentRig(t)
+			rig.h.opts.Mode = test.mode
+			rig.h.opts.Progress = &out
+			rig.reply("", exited)
+
+			_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
+
+			require.NoError(t, err)
+			assert.Equal(t, test.line, strings.Contains(out.String(), "run "+testRun+": "+model.SandboxOffLine), out.String())
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -181,4 +182,43 @@ func TestRun_ARunThatCannotOpenTheClientBuildsNoEngine(t *testing.T) {
 	require.Equal(t, 1, code)
 	assert.Contains(t, stderr, errFake.Error())
 	assert.Zero(t, rig.engines)
+}
+
+func TestRun_ASandboxNoneStepInAProjectWithTheSandboxOnIsRefusedBeforeTheEngineOpens(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	opened := false
+	rig.engineOf = func() error { opened = true; return nil }
+	writeConfig(t, rig.dir, "projects/p.star", "project(sandbox = \"on\")\n")
+	dir := t.TempDir()
+	writeConfig(t, dir, "none.star", "def main(item):\n    agent(prompt = \"p\", model = \"m\", sandbox = None)\n")
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12", "--workflow", filepath.Join(dir, "none.star"))
+
+	require.Equal(t, 1, code, stderr)
+	assert.Contains(t, stderr, "none.star:2:48: sandbox is None, and project p has the sandbox on")
+	assert.False(t, opened)
+	assert.Empty(t, rig.runner.files)
+}
+
+func TestRun_AProjectWithTheSandboxOffPrintsTheOffLineAtTheStartAndOtherProjectsPrintNone(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		project string
+		line    bool
+	}{"off": {"project(sandbox = \"off\")\n", true}, "on": {"project(sandbox = \"on\")\n", false}, "unset": {"project()\n", false}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRig(t)
+			writeConfig(t, rig.dir, "projects/p.star", test.project)
+
+			code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+			require.Equal(t, 0, code, stderr)
+			assert.Equal(t, test.line, strings.Contains(stderr, `item 12: project p has sandbox = "off"`), stderr)
+		})
+	}
 }

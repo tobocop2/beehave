@@ -254,17 +254,37 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	// A folder without a workflow file may still hold an open run, which continues with the file that it pinned. runItem decides.
 	opts.OverCap = overCap
 
+	sayOffLine(cmd.ErrOrStderr(), cfg.Projects[project], args[0])
+
 	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
 }
 
-// refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one.
+// sayOffLine prints the line for a project whose file says sandbox = "off". A project with no sandbox key stores off too, and says nothing.
+func sayOffLine(stderr io.Writer, project config.Project, item string) {
+	if project.Sandbox != model.SandboxOff {
+		return
+	}
+
+	// A failed write to stderr has no recovery.
+	_, _ = fmt.Fprintf(stderr, "item %s: project %s has %s\n", item, project.Name, model.SandboxOffLine)
+}
+
+// refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one,
+// or when the project has the sandbox on and a step sets sandbox = None. The engine refuses the second case at the call too.
 // A run with no file continues a pinned run, which passed this check when it started.
 func refuseNoRepositoryCalls(stderr io.Writer, project config.Project, file string) error {
-	if file == "" || project.HasRepository() {
+	if file == "" {
 		return nil
 	}
 
-	calls := workflow.CheckNoRepository(file, project.Name)
+	var calls []workflow.Diagnostic
+
+	if !project.HasRepository() {
+		calls = workflow.CheckNoRepository(file, project.Name)
+	}
+
+	calls = append(calls, workflow.CheckSandboxNone(file, project.Name, project.RunSandboxMode())...)
+
 	if len(calls) == 0 {
 		return nil
 	}
