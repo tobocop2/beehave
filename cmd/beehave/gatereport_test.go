@@ -68,6 +68,26 @@ func TestGateSandbox_ASandboxedGateStillFailsWhenItsReportHoldsAFailedTest(t *te
 	assert.Contains(t, result.Report, "1 failed of 1 tests")
 }
 
+func TestGateSandbox_EveryReportThatTheGlobMatchesIsCarriedAndNoOtherFileIs(t *testing.T) {
+	t.Parallel()
+
+	repo := repoWithCommit(t)
+	g, project, _ := reportGate(t, "reports/*.xml", func(dir string) {
+		writeReport(t, dir, "reports/a.xml", passingReport)
+		writeReport(t, dir, "reports/b.xml", passingReport)
+		writeReport(t, dir, "reports/a.xml.bak", passingReport)
+		writeReport(t, dir, "reports/sub/c.xml", passingReport)
+		writeReport(t, dir, "build/d.xml", passingReport)
+	})
+
+	result, err := g.Run(t.Context(), gate.Request{Project: project, Dir: repo})
+
+	require.NoError(t, err)
+	assert.True(t, result.Passed, result.Report)
+	assert.Equal(t, []string{"a.xml", "b.xml"}, entriesOf(t, filepath.Join(repo, "reports")))
+	assert.NoDirExists(t, filepath.Join(repo, "build"))
+}
+
 func TestGateSandbox_ATestReportOutsideTheWorkFolderIsRefusedAndRunsNoCommand(t *testing.T) {
 	t.Parallel()
 
