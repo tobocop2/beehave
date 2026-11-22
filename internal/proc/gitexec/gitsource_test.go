@@ -14,9 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// gitRunnerSites returns "file:line" for each place in the Go files of root, outside skip, that makes a runner or a command for the git program. The program
-// is the literal "git", the name ToolGit, or a name that the same folder assigns from one of them.
-func gitRunnerSites(t *testing.T, root, skip string) []string {
+// gitRunnerSites returns "file:line" for each place in the Go files of root that makes a runner or a command for the git program. The program is the literal
+// "git", the name ToolGit, or a name that the same folder assigns from one of them, in the same function or at package level. It does not see a program
+// that comes from a function result, a field, a parameter, a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed
+// ExecRunner literal, or from an assignment in one function to a variable that another function uses.
+func gitRunnerSites(t *testing.T, root string) []string {
 	t.Helper()
 
 	var found []string
@@ -28,7 +30,7 @@ func gitRunnerSites(t *testing.T, root, skip string) []string {
 			return err
 		}
 
-		if entry.IsDir() && (entry.Name() == ".git" || path == skip) {
+		if entry.IsDir() && entry.Name() == ".git" {
 			return filepath.SkipDir
 		}
 
@@ -50,11 +52,40 @@ func gitRunnerSites(t *testing.T, root, skip string) []string {
 func gitRunnerSitesIn(t *testing.T, folder string) []string {
 	t.Helper()
 
+	fset := token.NewFileSet()
+	files, packageLevel := parseFolder(t, fset, folder)
+
+	var found []string
+
+	for _, file := range files {
+		execNames := importNames(file, "os/exec")
+
+		for _, decl := range file.Decls {
+			assigned := scopeOf(decl, packageLevel)
+
+			ast.Inspect(decl, func(node ast.Node) bool {
+				for _, program := range programsOf(node, execNames) {
+					if namesGit(program, assigned, map[string]bool{}) {
+						found = append(found, fset.Position(program.Pos()).String())
+					}
+				}
+
+				return true
+			})
+		}
+	}
+
+	return found
+}
+
+// parseFolder parses the non-test Go files of a folder and returns them with the assignments that sit outside every function.
+func parseFolder(t *testing.T, fset *token.FileSet, folder string) ([]*ast.File, map[string][]ast.Expr) {
+	t.Helper()
+
 	paths, err := filepath.Glob(filepath.Join(folder, "*.go"))
 	require.NoError(t, err)
 
-	fset := token.NewFileSet()
-	assigned := map[string][]ast.Expr{}
+	packageLevel := map[string][]ast.Expr{}
 
 	var files []*ast.File
 
@@ -67,29 +98,56 @@ func gitRunnerSitesIn(t *testing.T, folder string) []string {
 		require.NoError(t, err)
 
 		files = append(files, file)
-		collectAssigned(file, assigned)
-	}
 
-	var found []string
-
-	for _, file := range files {
-		ast.Inspect(file, func(node ast.Node) bool {
-			for _, program := range programsOf(node) {
-				if namesGit(program, assigned, map[string]bool{}) {
-					found = append(found, fset.Position(program.Pos()).String())
-				}
+		for _, decl := range file.Decls {
+			if _, isFunc := decl.(*ast.FuncDecl); !isFunc {
+				collectAssigned(decl, packageLevel)
 			}
-
-			return true
-		})
+		}
 	}
 
-	return found
+	return files, packageLevel
 }
 
-// collectAssigned records, for each name that the file assigns, the expressions that it gets.
-func collectAssigned(file *ast.File, assigned map[string][]ast.Expr) {
-	ast.Inspect(file, func(node ast.Node) bool {
+// scopeOf returns the assignments that a declaration sees: those of the package level, plus its own when it is a function.
+func scopeOf(decl ast.Decl, packageLevel map[string][]ast.Expr) map[string][]ast.Expr {
+	function, isFunc := decl.(*ast.FuncDecl)
+	if !isFunc {
+		return packageLevel
+	}
+
+	local := map[string][]ast.Expr{}
+	collectAssigned(function, local)
+
+	for name, values := range packageLevel {
+		local[name] = append(local[name], values...)
+	}
+
+	return local
+}
+
+// importNames returns the names under which the file imports the package at path.
+func importNames(file *ast.File, path string) map[string]bool {
+	names := map[string]bool{}
+
+	for _, spec := range file.Imports {
+		if spec.Path.Value != `"`+path+`"` {
+			continue
+		}
+
+		if spec.Name != nil {
+			names[spec.Name.Name] = true
+		} else {
+			names[filepath.Base(path)] = true
+		}
+	}
+
+	return names
+}
+
+// collectAssigned records, for each name that the node assigns, the expressions that it gets.
+func collectAssigned(root ast.Node, assigned map[string][]ast.Expr) {
+	ast.Inspect(root, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.AssignStmt:
 			assign(assigned, n.Lhs, n.Rhs)
@@ -120,35 +178,66 @@ func assign(assigned map[string][]ast.Expr, left, right []ast.Expr) {
 }
 
 // programsOf returns the expressions that name the program in a node that makes a runner or a command: the Binary field of an ExecRunner, the first argument
-// of NewExecRunner, the second of GroupCommand and every argument of exec.Command and exec.CommandContext.
-func programsOf(node ast.Node) []ast.Expr {
+// of NewExecRunner, the second of GroupCommand, the first of Command and the second of CommandContext when the call is on a name that imports os/exec.
+func programsOf(node ast.Node, execNames map[string]bool) []ast.Expr {
 	switch n := node.(type) {
 	case *ast.CompositeLit:
-		if selectorName(n.Type) != "ExecRunner" {
-			return nil
-		}
-
-		var programs []ast.Expr
-
-		for _, element := range n.Elts {
-			if pair, ok := element.(*ast.KeyValueExpr); ok && identName(pair.Key) == "Binary" {
-				programs = append(programs, pair.Value)
-			}
-		}
-
-		return programs
+		return binaryOf(n)
 	case *ast.CallExpr:
 		switch selectorName(n.Fun) {
 		case "NewExecRunner":
-			return n.Args[:min(1, len(n.Args))]
+			return argAt(n.Args, 0)
 		case "GroupCommand":
-			return n.Args[min(1, len(n.Args)):min(2, len(n.Args))]
-		case "Command", "CommandContext":
-			return n.Args
+			return argAt(n.Args, 1)
 		}
+
+		return execProgramOf(n, execNames)
 	}
 
 	return nil
+}
+
+// binaryOf returns the value of the Binary field when the literal is an ExecRunner.
+func binaryOf(literal *ast.CompositeLit) []ast.Expr {
+	if selectorName(literal.Type) != "ExecRunner" {
+		return nil
+	}
+
+	var programs []ast.Expr
+
+	for _, element := range literal.Elts {
+		if pair, ok := element.(*ast.KeyValueExpr); ok && identName(pair.Key) == "Binary" {
+			programs = append(programs, pair.Value)
+		}
+	}
+
+	return programs
+}
+
+// execProgramOf returns the program argument of a Command or CommandContext call on a name that imports os/exec.
+func execProgramOf(call *ast.CallExpr, execNames map[string]bool) []ast.Expr {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || !execNames[identName(selector.X)] {
+		return nil
+	}
+
+	switch selector.Sel.Name {
+	case "Command":
+		return argAt(call.Args, 0)
+	case "CommandContext":
+		return argAt(call.Args, 1)
+	}
+
+	return nil
+}
+
+// argAt returns the argument at the index as a slice of one, or nothing when the call has fewer arguments.
+func argAt(args []ast.Expr, index int) []ast.Expr {
+	if index >= len(args) {
+		return nil
+	}
+
+	return args[index : index+1]
 }
 
 // namesGit reports whether the expression is the program git: the literal, ToolGit, or a name that is assigned one of them.
@@ -201,7 +290,7 @@ func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
 	t.Parallel()
 
 	root := filepath.Join("..", "..", "..")
-	found := gitRunnerSites(t, root, filepath.Join(root, "internal", "proc", "gitexec"))
+	found := gitRunnerSites(t, root)
 
 	assert.Empty(t, found, "make the runner with gitexec.New, so the hooks stay off")
 }
@@ -225,20 +314,53 @@ func TestTheGitSourceTestSeesAVariableOrConstantThatHoldsTheGitProgram(t *testin
 			t.Parallel()
 
 			root := t.TempDir()
-			source := "package p\n\nfunc f() {\n" + body + "\n}\n"
+			source := "package p\n\nimport \"os/exec\"\n\nfunc f() {\n" + body + "\n}\n"
 			require.NoError(t, os.WriteFile(filepath.Join(root, "p.go"), []byte(source), 0o600))
 
-			assert.Len(t, gitRunnerSites(t, root, ""), 1)
+			assert.Len(t, gitRunnerSites(t, root), 1)
 		})
 	}
+}
 
-	t.Run("a runner for another program is not reported", func(t *testing.T) {
-		t.Parallel()
+func TestTheGitSourceTestSeesAnAliasedExecPackageAndAPackageLevelName(t *testing.T) {
+	t.Parallel()
 
-		root := t.TempDir()
-		source := "package p\n\nfunc f() {\nname := \"gh\"\n_ = proc.ExecRunner{Binary: name}\n_ = proc.NewExecRunner(\"find\", dir)\n}\n"
-		require.NoError(t, os.WriteFile(filepath.Join(root, "p.go"), []byte(source), 0o600))
+	sources := map[string]string{
+		"an aliased os/exec package": "package p\n\nimport osexec \"os/exec\"\n\nfunc f() {\n_ = osexec.Command(\"git\")\n}\n",
+		"a package level variable":   "package p\n\nvar name = \"git\"\n\nfunc f() {\n_ = proc.NewExecRunner(name, dir)\n}\n",
+	}
 
-		assert.Empty(t, gitRunnerSites(t, root, ""))
-	})
+	for name, source := range sources {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(root, "p.go"), []byte(source), 0o600))
+
+			assert.Len(t, gitRunnerSites(t, root), 1)
+		})
+	}
+}
+
+func TestTheGitSourceTestLeavesOtherProgramsAlone(t *testing.T) {
+	t.Parallel()
+
+	sources := map[string]string{
+		"a runner for another program": "package p\n\nfunc f() {\nname := \"gh\"\n_ = proc.ExecRunner{Binary: name}\n_ = proc.NewExecRunner(\"find\", dir)\n}\n",
+		"git as an argument of another program": "package p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(\"which\", \"git\")\n" +
+			"_ = exec.CommandContext(ctx, \"which\", \"git\")\n}\n",
+		"a Command call that is not os/exec":   "package p\n\nimport \"github.com/spf13/cobra\"\n\nfunc f() {\n_ = cobra.Command(\"git\")\n_ = c.Command(\"git\")\n}\n",
+		"one name for git in another function": "package p\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
+	}
+
+	for name, source := range sources {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(root, "p.go"), []byte(source), 0o600))
+
+			assert.Empty(t, gitRunnerSites(t, root))
+		})
+	}
 }
