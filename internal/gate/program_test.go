@@ -32,6 +32,19 @@ chmod 755 "$d/${rs##*/}"
 	programWeakMakefile = "check:\n\t@mkdir -p reports; printf '<testsuite tests=\"1\"><testcase name=\"t\"/></testsuite>\\n' > reports/j.xml; exit 0\n"
 )
 
+// programLateFile is head code that adds a file to a listed directory during the gate.
+const programLateFile = "mkdir -p scripts/extra.d; printf 'exit 0\\n' > scripts/extra.d/late.sh\n"
+
+// programFakeTool is head code that writes a tool first on the PATH. The tool runs the shell text body.
+func programFakeTool(name, body string) string {
+	return `d=${PATH%%:*}; printf '#!/bin/sh\n` + body + `\n' > "$d/` + name + `"; chmod 755 "$d/` + name + "\"\n"
+}
+
+// programFakeFilter is head code that writes a tool first on the PATH. The tool runs the real tool and hides the file late.sh from its output.
+func programFakeFilter(name string) string {
+	return `d=${PATH%%:*}; real=$(command -v ` + name + `); printf '#!/bin/sh\n%s "$@" | grep -v late.sh\n' "$real" > "$d/` + name + `"; chmod 755 "$d/` + name + "\"\n"
+}
+
 // programCase is one head against the base: the files it writes, the shell it runs in the repository before it commits, a change of the base after the head exists, and the verdict.
 type programCase struct {
 	name   string
@@ -71,6 +84,9 @@ func programCases() []programCase {
 		{name: "execute_bit_removed_during_the_gate_fails", files: map[string]string{"code.sh": "chmod 644 scripts/run.sh\n"}, reason: "gate-program the gate program changed while the gate ran: scripts/run.sh"},
 		{name: "snapshot_folder_rewritten_by_head_code_still_fails", files: map[string]string{"code.sh": "mkdir -p ../snap/files; printf 'strict=0\\n' > ../snap/files/gate.cfg; " + setStrict0 + "\n", "code.txt": bad}, reason: "gate-program the gate program changed while the gate ran: gate.cfg"},
 		{name: "fake_digest_tool_first_on_the_path_still_fails", files: map[string]string{"code.sh": programFakeDigest + setStrict0 + "\n", "code.txt": bad}, reason: "gate-program the gate program changed while the gate ran: gate.cfg"},
+		{name: "fake_readlink_first_on_the_path_still_fails", files: map[string]string{"code.sh": programFakeTool("readlink", "echo check.sh") + "ln -sfn gate.cfg scripts/link\n"}, reason: "gate-program the gate program changed while the gate ran: scripts/link"},
+		{name: "fake_find_first_on_the_path_still_fails", files: map[string]string{"code.sh": programFakeFilter("find") + programLateFile}, reason: "gate-program the gate program changed while the gate ran: scripts/extra.d/late.sh"},
+		{name: "fake_sort_first_on_the_path_still_fails", files: map[string]string{"code.sh": programFakeFilter("sort") + programLateFile}, reason: "gate-program the gate program changed while the gate ran: scripts/extra.d/late.sh"},
 		{name: "base_moved_on_and_head_untouched_runs_the_new_base_program", files: map[string]string{"tests_new.txt": "x\n"}, moved: "printf 'grep -q RULE2 code.txt || { echo no rule2; exit 1; }\\n' >> scripts/check.sh", reason: "no rule2"},
 		{name: "base_moved_harmlessly_and_head_untouched_passes", files: map[string]string{"tests_new.txt": "x\n"}, moved: "printf '# a comment\\n' >> scripts/check.sh", pass: true},
 	}
@@ -241,6 +257,31 @@ func TestProgram_TheSnapshotGitCallsReadNoReplaceRefsAndNoConfigOfTheMachine(t *
 
 	require.NoError(t, err, string(out))
 	require.Equal(t, []string{"one", strings.TrimSpace(shIn(t, repo, "git rev-parse --short=7 HEAD"))}, strings.Fields(string(out)))
+}
+
+func TestProgram_AFakeCatFirstOnThePathDoesNotHideTheReasonOfTheFailedCandidateJob(t *testing.T) {
+	t.Parallel()
+
+	c := programCase{files: map[string]string{"code.sh": programFakeTool("cat", "exit 1") + "printf 'strict=0\\n' > gate.cfg\n", "code.txt": "BAD\n"}}
+	repo, head, tip := programRepo(t, c)
+
+	code, out := runProgramJob(t, programProjectOf(), repo, head, tip, "main")
+
+	require.NotZero(t, code, out)
+	require.Contains(t, out, programMarker+" the gate program changed while the gate ran: gate.cfg")
+}
+
+func TestProgram_ABaseCommitThatOnlyTheSourceHoldsIsFetchedFromTheCloneURL(t *testing.T) {
+	t.Parallel()
+
+	repo, head, _ := programRepo(t, programCase{files: map[string]string{"code.txt": "GOOD more\n"}})
+	shIn(t, repo, "git checkout -q --detach main && printf '# a comment\\n' >> scripts/check.sh && git commit -q -a -m onlyref && git update-ref refs/pull/1/head HEAD && git checkout -q main")
+	tip := shIn(t, repo, "git rev-parse refs/pull/1/head")
+
+	// A file URL sends only the objects that a ref reaches, so the clone lacks the base commit and the job fetches it from the URL.
+	code, out := runProgramJob(t, programProjectOf(), "file://"+repo, head, tip, "")
+
+	require.Zero(t, code, out)
 }
 
 func TestProgram_ABaseCommitThatTheSourceDoesNotHoldFailsTheJobWithTheMarker(t *testing.T) {

@@ -18,14 +18,14 @@ const (
 // programFirst is the word that resolves git and the tools of the final check to absolute paths, before any head command runs.
 // The words of the gate program use these paths and never a tool through the PATH, which head code can write.
 const programFirst = `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` +
-	`gpbin=$(command -v git) && gpfind=$(command -v find) && gpsort=$(command -v sort) && gpreadlink=$(command -v readlink) && ` +
-	`gpshasum=$(command -v sha256sum || command -v shasum) && gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpshasum" && ` +
+	`gpbin=$(command -v git) && gpfind=$(command -v find) && gpsort=$(command -v sort) && gpreadlink=$(command -v readlink) && gpcat=$(command -v cat) && ` +
+	`gpshasum=$(command -v sha256sum || command -v shasum) && gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpcat" "$gpshasum" && ` +
 	`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
 
 // programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot with no replace refs
-// and no config of the machine. The snapshot folder only feeds the overlay: the job deletes it before the first head command, and the final compare
-// reads the values that the job kept in shell variables (a path, a mode and a digest or a link target for each listed file). The final compare
-// uses no git word and no tool through the PATH: it reads the digest, the execute bit and the kind of each file.
+// and no config of the machine. The snapshot folder only feeds the overlay: the final compare never reads it. It reads the values that the job kept
+// in shell variables (a path, a mode and a digest or a link target for each listed file). The final compare uses no git word and no tool through
+// the PATH: it reads the digest, the execute bit and the kind of each file.
 const programShell = `{
 gpfail() { echo "` + programMarker + ` $*"; return 1; }
 gpgit() { GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 "$gpbin" "$@"; }
@@ -116,7 +116,7 @@ func programBefore(project model.Project, cloneURL, clone, baseSHA string) []str
 		words = append(words, "{ gpgit rm -r -q -f --ignore-unmatch -- "+quoted+" && rm -rf -- "+quoted+"; }")
 	}
 
-	return append(words, `{ gprestore || gpfail "the gate program of the base commit cannot be written into the copy"; }`, "rm -rf -- "+snap)
+	return append(words, `{ gprestore || gpfail "the gate program of the base commit cannot be written into the copy"; }`)
 }
 
 // programClosing is the end of the candidate word: the words that run after every head command, the word that prints the logs, and the exit test.
@@ -127,7 +127,7 @@ func programClosing(project model.Project) (words []string, logs, exit string) {
 		return nil, logs, exit
 	}
 
-	return []string{`( ` + programCheck + ` ) > ../program.txt 2>&1; programrc=$?`}, logs + ` ../program.txt`, exit + ` && [ "$programrc" -eq 0 ]`
+	return []string{`( ` + programCheck + ` ) > ../program.txt 2>&1; programrc=$?`}, `"$gpcat" ../checks.txt ../revert.txt ../program.txt`, exit + ` && [ "$programrc" -eq 0 ]`
 }
 
 // programResult is the result of a job that wrote a program marker line, or false when the log holds none.
