@@ -243,16 +243,21 @@ func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 
 	for name, start := range map[string]func(*testing.T, *agentRig, string) error{
 		"run with no option": func(t *testing.T, rig *agentRig, file string) error {
+			t.Helper()
+
 			_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
 
 			return err
 		},
 		"run with an empty mode": func(t *testing.T, rig *agentRig, file string) error {
+			t.Helper()
+
 			_, err := rig.h.engine(t).RunFile(testItem, testProject, file, RunSandbox(""))
 
 			return err
 		},
 		"join with no option": func(t *testing.T, rig *agentRig, file string) error {
+			t.Helper()
 			rig.h.engine(t)
 			_, err := rig.h.client(t, testVersion).JoinRun(t.Context(), testItem, testProject, file)
 
