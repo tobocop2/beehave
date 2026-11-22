@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/gofrs/flock"
 
 	"github.com/tobocop2/beehave/internal/claim"
 	"github.com/tobocop2/beehave/internal/model"
@@ -45,14 +46,105 @@ func (c *Client) moveOpen(item string, last run) error {
 	return c.underProbe(func() error { return c.cancelAndReopenHeld(item, last) })
 }
 
-// cancelAndReopenHeld is the move of an open run while probe.lock is held. When the reopen fails the run stays canceled, and the error says so and how to try again.
-func (c *Client) cancelAndReopenHeld(item string, last run) error {
+// cancelAndReopenHeld is the move of an open run while probe.lock is held. The run and the open runs below it carry the move mark, and move.lock is held, from before the cancel to after the rewind,
+// so a reader reads the run as open (see storeView). When the reopen fails the run stays canceled with no mark, and the error says so and how to try again.
+func (c *Client) cancelAndReopenHeld(item string, last run) (err error) {
+	span, err := c.beginMove(last)
+	if err != nil {
+		return err
+	}
+
+	defer func() { err = errors.Join(err, span.end(err != nil)) }()
+
 	if err := c.cancelHeld(item, last); err != nil {
 		return err
 	}
 
 	if err := c.reopenHeld(item, last); err != nil {
 		return canceledNotMoved(item, last, err)
+	}
+
+	// The run is open again, so no mark may stay on it or on the runs below it.
+	return c.clearMarks(last.Status.ID)
+}
+
+// moveSpan is the hold of move.lock and the marks of a move.
+type moveSpan struct {
+	client *Client
+	root   string
+	lock   *flock.Flock
+}
+
+// beginMove takes move.lock and marks the run and each open run below it with the version that the move goes to, before the cancel. A failure leaves no mark and no lock.
+func (c *Client) beginMove(last run) (*moveSpan, error) {
+	lock := lockFile(c.dir, moveLockName)
+	if err := lock.Lock(); err != nil {
+		return nil, fmt.Errorf("lock %s: %w", moveLockName, err)
+	}
+
+	span := &moveSpan{client: c, root: last.Status.ID, lock: lock}
+
+	below, err := c.openRowsUnder(last.Status.ID)
+	if err == nil {
+		err = c.markMove(append([]dbos.WorkflowStatus{last.Status}, below...))
+	}
+
+	if err != nil {
+		return nil, errors.Join(err, span.end(true))
+	}
+
+	return span, nil
+}
+
+// markMove sets the move mark on each row, with the queue that the cancel takes from the row.
+func (c *Client) markMove(rows []dbos.WorkflowStatus) error {
+	for _, row := range rows {
+		mark := map[string]any{moveAttribute: moveMark{To: c.version, Queue: row.QueueName}}
+		if err := dbos.SetWorkflowAttributes(c.flow, row.ID, mark, dbos.WithMergeAttributes()); err != nil {
+			return fmt.Errorf("mark run %s as moving: %w", row.ID, err)
+		}
+	}
+
+	return nil
+}
+
+// end frees move.lock after it clears the marks when the move failed: a move that succeeded cleared them.
+func (s *moveSpan) end(failed bool) error {
+	var err error
+	if failed {
+		err = s.client.clearMarks(s.root)
+	}
+
+	return errors.Join(err, s.lock.Unlock())
+}
+
+// clearMarks removes the move mark from the run with this id and from every run below it, whatever the mark says. A mover that died leaves its marks, and the next reopen clears them here.
+func (c *Client) clearMarks(id string) error {
+	root, err := c.row(id)
+	if err != nil {
+		return err
+	}
+
+	below, err := c.rowsUnder(id)
+	if err != nil {
+		return err
+	}
+
+	for _, row := range append([]dbos.WorkflowStatus{root}, below...) {
+		if _, marked := moveMarkOf(row); marked {
+			if err := c.clearMark(row.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// clearMark removes the move mark of one run.
+func (c *Client) clearMark(id string) error {
+	if err := dbos.SetWorkflowAttributes(c.flow, id, map[string]any{moveAttribute: nil}, dbos.WithMergeAttributes()); err != nil {
+		return fmt.Errorf("clear the move mark of run %s: %w", id, err)
 	}
 
 	return nil
@@ -242,7 +334,14 @@ func requirePinned(last run) error {
 // reopenHere takes a fresh claim, as Resume does, and rewinds the run and the phases the cancel reached onto this build.
 // probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
 func (c *Client) reopenHere(item string, last run) error {
-	return c.underProbe(func() error { return c.reopenHeld(item, last) })
+	return c.underProbe(func() error {
+		if err := c.reopenHeld(item, last); err != nil {
+			return err
+		}
+
+		// A mover that died after its cancel left its marks, and the reopen clears them.
+		return c.clearMarks(last.Status.ID)
+	})
 }
 
 // reopenHeld takes a fresh claim and rewinds the phases that the cancel reached and the run onto this build. A rewind that fails gives the claim back. The caller holds probe.lock.
