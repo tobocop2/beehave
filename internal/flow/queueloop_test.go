@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -400,6 +402,112 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 		require.True(t, found)
 		assert.Equal(t, 1, last.Attempt, "item %s kept its first attempt", item)
 	}
+}
+
+// sleptOf reads the seconds that the last execution of a sleep call slept, from the record of the call whose name starts with prefix.
+func sleptOf(t *testing.T, records []dbos.StepInfo, prefix string) float64 {
+	t.Helper()
+
+	at := slices.IndexFunc(records, func(step dbos.StepInfo) bool {
+		return strings.HasPrefix(step.StepName, prefix) && !strings.Contains(step.StepName, "/")
+	})
+	require.GreaterOrEqual(t, at, 0, "no record of a call named %s", prefix)
+
+	var result stepResult
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprint(records[at].Output)), &result))
+
+	slept, ok := result.Outputs["slept"].(json.Number)
+	require.True(t, ok, "the record of %s has no slept field: %v", prefix, result.Outputs)
+
+	seconds, err := slept.Float64()
+	require.NoError(t, err)
+
+	return seconds
+}
+
+func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtTheFirstWakeTimeAndStartsEachItemOnce(t *testing.T) {
+	t.Parallel()
+
+	const pause = 8 * time.Second
+
+	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
+	r.h.opts.Env["PAUSE_AFTER_FAILURE"] = pause.String()
+
+	first, stop := r.crashEngine(t)
+	r.agents.setAct(holdsItem21(func() *Engine { return first }))
+
+	ran := make(chan error, 1)
+
+	go func() {
+		_, runErr := first.RunFile(testItem, testProject, r.file)
+		ran <- runErr
+	}()
+
+	// Item 21 failed and item 22 ended, so the pass that starts item 23 sleeps first.
+	var wake time.Time
+
+	waitOn(t, condition(func() bool {
+		steps, err := dbos.GetWorkflowSteps(first.ctx, testRun)
+		if err == nil {
+			wake = sleepDeadline(steps)
+		}
+
+		return !wake.IsZero() && statusOf(t, first, "item-22-r1") == dbos.WorkflowStatusSuccess
+	}))
+	stop()
+	require.NoError(t, first.Shutdown())
+	require.Error(t, receive(t, ran), "the stopped engine ends the run of the first engine")
+
+	client := r.h.client(t, testVersion)
+	records, err := client.records(testRun)
+	require.NoError(t, err)
+	require.Equal(t, wake, sleepDeadline(records), "the engine stopped inside the sleep: its last record is the wake time, and the sleep call has no end record")
+
+	// No engine runs until half the pause is left. A sleep that starts again from the restart sleeps the whole pause.
+	waitOn(t, condition(func() bool { return !time.Now().Before(wake.Add(-pause / 2)) }))
+
+	var (
+		mu     sync.Mutex
+		starts = map[string]time.Time{}
+	)
+
+	r.agents.setAct(func(_ context.Context, item string) error {
+		mu.Lock()
+		defer mu.Unlock()
+
+		starts[item] = time.Now()
+
+		return nil
+	})
+
+	second := r.engine(t)
+	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
+
+	_, err = second.RunFile(testItem, testProject, r.file)
+	require.NoError(t, err)
+
+	mu.Lock()
+	started := starts["23"]
+	mu.Unlock()
+
+	assert.False(t, started.Before(wake), "item 23 started at %s, before the wake time %s", started, wake)
+
+	records, err = client.records(testRun)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, sleptOf(t, records, "sleep:pause-"), (pause / 2).Seconds(), "the resumed run slept only to the first wake time, not the whole pause again")
+	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started())
+
+	for _, item := range []string{"21", "22", "23"} {
+		assert.Equal(t, 1, r.agents.callsOf(item), "the agent of item %s ran once", item)
+	}
+
+	assert.Equal(t, []string{testProject + "|21|hold"}, r.w.statuses, "the failed item was held once")
+	require.Len(t, r.w.notes, 1, "the comment on the failed item was written once")
+	assert.Contains(t, r.w.notes[0], "|21|")
+
+	steps, err := dbos.GetWorkflowSteps(second.ctx, testRun)
+	require.NoError(t, err)
+	assert.Equal(t, 1, countSteps(steps, "sleep:pause-"), "the loop slept once")
 }
 
 func TestQueueLoop_AHeldItemNeverStarts(t *testing.T) {

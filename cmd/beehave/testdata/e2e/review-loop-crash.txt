@@ -1,0 +1,59 @@
+# The review loop of examples/review-loop, killed while the author waits in recv for the first verdict. A second beehave run continues the run.
+# The killed review got the first draft and sent no verdict. After the restart, each draft reaches the reviewer once and each set of notes reaches the
+# author once: the agents see the same messages, in the same order, as in the uncrashed run of review-loop.txt.
+isolate
+! exec bd version
+! exec gh version
+
+example review-loop/workflow.star
+example review-loop/project.star config/projects/review.star
+example review-loop/prompts/draft.md
+example review-loop/prompts/review.md
+example review-loop/prompts/revise.md
+reviewfakes
+
+exec beehavereal item add review note-1 --title 'Release note' --body-file body.txt
+! exec sh first.sh run note-1 review --workflow review-loop/workflow.star &
+# The review agent starts only after the reviewer received the draft, so the author has sent it. The kill also waits until the author started its recv of the verdict.
+waitfile held
+waitline first.err 'item-note-1-r1 step recv:verdict started'
+kill -KILL
+wait
+cmp calls.log expected-before.log
+
+exec beehavereal run note-1 review --workflow review-loop/workflow.star
+stdout 'item note-1 finished'
+
+exec beehavereal status
+stdout 'note-1-r1\tdone'
+
+# The author sent each draft once and received each verdict once.
+exec beehavereal status item-note-1-r1
+stdout -count=1 '^send:draft#1\t'
+stdout -count=1 '^send:draft#2\t'
+! stdout '^send:draft#3\t'
+stdout -count=1 '^recv:verdict#1\t'
+stdout -count=1 '^recv:verdict#2\t'
+! stdout '^recv:verdict#3\t'
+
+cmp held expected-held
+cmp calls.log expected-calls.log
+
+-- first.sh --
+# The first run writes the start of each step to first.err. exec keeps the pid, so the kill stops beehave itself.
+exec beehavereal "$@" 2> first.err
+-- hold --
+-- body.txt --
+Write the release note.
+-- verdicts --
+changes
+approve
+-- expected-before.log --
+draft
+-- expected-held --
+Draft 1.
+-- expected-calls.log --
+draft
+review Draft 1.
+revise Fix round 1.
+review Draft 2.
