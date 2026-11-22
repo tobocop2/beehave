@@ -110,7 +110,7 @@ END {
 func candidateWord(project model.Project, pins []Pin, base, baseSHA, clone string) string {
 	cache := model.ShellQuote(filepathDir(clone) + "/" + baseCache)
 	glob := globWord(project.TestReport)
-	before, after := reportChecks(project.TestReport)
+	before, after := reportChecks(project.TestReport, len(project.GateProgram) > 0)
 	headGate := strings.Join(append(append(before, gateWords(project, pins)...), after...), " && ")
 
 	parts := []string{

@@ -133,7 +133,7 @@ func TestProjectGate_TheEngineResolvesTheToolsOfTheGateProgramJobFromThePathAtIt
 	require.NoError(t, got.toolsErr)
 	assert.Equal(t, tools, got.tools)
 
-	for _, found := range []string{tools.Git, tools.Find, tools.Sort, tools.Readlink, tools.Cat, tools.Digest} {
+	for _, found := range []string{tools.Git, tools.Env, tools.Find, tools.Sort, tools.Readlink, tools.Cat, tools.Digest} {
 		assert.True(t, filepath.IsAbs(found), found)
 	}
 }
@@ -144,7 +144,7 @@ func TestResolveGateTools_TakesShasumWhenThereIsNoSha256sumAndRefusesWhenThereIs
 	tools, err := resolveGateTools("")
 	require.NoError(t, err)
 
-	links := map[string]string{"git": tools.Git, "find": tools.Find, "sort": tools.Sort, "readlink": tools.Readlink, "cat": tools.Cat}
+	links := map[string]string{"git": tools.Git, "env": tools.Env, "find": tools.Find, "sort": tools.Sort, "readlink": tools.Readlink, "cat": tools.Cat}
 	folder := func() string {
 		dir := t.TempDir()
 
@@ -209,7 +209,7 @@ func TestProjectGate_ARunOfAProjectWithAGateProgramRunsTheJobThatClonesTheItemAn
 		}
 	}
 
-	assert.Contains(t, job, `clone --no-local -- /tree`, "the job copies the worktree of the item")
+	assert.Contains(t, job, `clone --template="$gpempty" --no-local -- /tree`, "the job copies the worktree of the item")
 	assert.Contains(t, job, "gpsha="+anchorOld, "the job reads the base commit that the engine read")
 	assert.Contains(t, job, "gpurl=/src", "the job falls back to the source of the project")
 	assert.True(t, strings.HasSuffix(job, "gpcompare"), "the job ends with the final compare")
@@ -232,7 +232,7 @@ func TestProjectGate_ARunOfASandboxedProjectWithAGateProgramRunsTheJobUnderTheEn
 	require.True(t, result.Passed, result.Report)
 
 	require.Len(t, fake.argv, 3)
-	assert.Contains(t, fake.argv[2], "clone --no-local -- "+repo)
+	assert.Contains(t, fake.argv[2], `clone --template="$gpempty" --no-local -- `+repo)
 	assert.Contains(t, fake.plan.Read, repo)
 	assert.Contains(t, fake.plan.Read, "/src")
 }

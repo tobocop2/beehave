@@ -44,7 +44,7 @@ func localTools(t *testing.T) Tools {
 		return ""
 	}
 
-	return Tools{Git: find("git"), Find: find("find"), Sort: find("sort"), Readlink: find("readlink"), Cat: find("cat"), Digest: find("sha256sum", "shasum")}
+	return Tools{Git: find("git"), Env: find("env"), Find: find("find"), Sort: find("sort"), Readlink: find("readlink"), Cat: find("cat"), Digest: find("sha256sum", "shasum")}
 }
 
 // localProgramGateOn is localProgramGate for a job that runs with the PATH jobPath and the given tools.
@@ -165,7 +165,7 @@ func TestRun_ALocalGateWithAGateProgramGivesTheJobTheItemFolderAndAFolderThatItR
 		from, root = source, made
 
 		assert.DirExists(t, made)
-		assert.Contains(t, command, `gpsrc clone --no-local -- `+item)
+		assert.Contains(t, command, `gpsrc clone --template="$gpempty" --no-local -- `+item)
 
 		return "", 0
 	})

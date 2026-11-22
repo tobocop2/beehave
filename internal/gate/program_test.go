@@ -249,7 +249,7 @@ func TestProgram_TheSnapshotGitCallsReadNoReplaceRefsAndNoConfigOfTheMachine(t *
 	machine := filepath.Join(t.TempDir(), "gitconfig")
 	require.NoError(t, os.WriteFile(machine, []byte("[core]\n\tabbrev = 12\n"), 0o600))
 
-	script := "gpbin=$(command -v git); " + programGit(false) + "; " + programShell + "\ngpgit cat-file blob " + blob + "; gpgit rev-parse --short HEAD"
+	script := "gpbin=$(command -v git); gpenv=$(command -v env); " + programGit(false) + "; " + programShell + "\ngpgit cat-file blob " + blob + "; gpgit rev-parse --short HEAD"
 	cmd := exec.CommandContext(t.Context(), "sh", "-c", script) //nolint:gosec // the job text under test
 	cmd.Dir = repo
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin", "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=" + machine}

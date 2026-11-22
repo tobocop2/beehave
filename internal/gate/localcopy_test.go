@@ -163,6 +163,32 @@ func localHookCount(t *testing.T, count string) int {
 	return strings.Count(string(data), "\n")
 }
 
+// localHooks writes, in the folder dir/folder, the hooks post-checkout and reference-transaction, each of which adds a line to the file count of dir.
+// It returns the folder and that file.
+func localHooks(t *testing.T, dir, folder string) (hooks, count string) {
+	t.Helper()
+
+	hooks, count = filepath.Join(dir, folder), filepath.Join(dir, "count")
+	require.NoError(t, os.MkdirAll(hooks, 0o750))
+
+	for _, name := range []string{"post-checkout", "reference-transaction"} {
+		require.NoError(t, exectest.Write(filepath.Join(hooks, name), "#!/bin/sh\necho "+name+" >> "+count+"\nexit 0\n"))
+	}
+
+	return hooks, count
+}
+
+// localControl runs the git of the test with env and args in dir, as the control that shows a plant is live.
+func localControl(t *testing.T, git, dir string, env []string, args ...string) {
+	t.Helper()
+
+	control := exec.CommandContext(t.Context(), git, args...) //nolint:gosec // the test git
+	control.Dir = dir
+	control.Env = env
+	out, err := control.CombinedOutput()
+	require.NoError(t, err, string(out))
+}
+
 func TestRun_ALocalGateWithAGateProgramRunsNoHookThatAGitConfigOfTheUserOrTheCallerNames(t *testing.T) {
 	t.Parallel()
 
@@ -198,12 +224,7 @@ func TestRun_ALocalGateWithAGateProgramRunsNoHookThatAGitConfigOfTheUserOrTheCal
 			t.Parallel()
 
 			dir := t.TempDir()
-			hooks, count := filepath.Join(dir, "hooks"), filepath.Join(dir, "count")
-			require.NoError(t, os.Mkdir(hooks, 0o750))
-
-			for _, name := range []string{"post-checkout", "reference-transaction"} {
-				require.NoError(t, exectest.Write(filepath.Join(hooks, name), "#!/bin/sh\necho "+name+" >> "+count+"\nexit 0\n"))
-			}
+			hooks, count := localHooks(t, dir, "hooks")
 
 			env := append([]string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home")}, c.env(dir, hooks)...)
 			item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
@@ -267,5 +288,126 @@ func TestRun_ALocalGateWithAGateProgramChecksOutTheHeadWithNoAttributesFileOfThe
 
 			assert.True(t, result.Passed, "a git call of the gate job read the attributes file of the user: "+result.Report)
 		})
+	}
+}
+
+func TestRun_ALocalGateWithAGateProgramRunsNoHookOfTheTemplateFolderOfTheCaller(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	_, count := localHooks(t, dir, "template/hooks")
+	env := []string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home"), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TEMPLATE_DIR=" + filepath.Join(dir, "template")}
+	item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
+
+	// The control: git with this environment runs the hook of the template folder, so the plant is live.
+	localControl(t, localTools(t).Git, dir, env, "clone", "-q", "--", item, filepath.Join(dir, "control"))
+	ran := localHookCount(t, count)
+	require.Positive(t, ran, "the hook of the template folder does not run for git with this environment")
+
+	result, err := localProgramGateEnv(t, item, localTools(t), env).Run(context.Background(), request)
+	require.NoError(t, err)
+
+	assert.True(t, result.Passed, result.Report)
+	assert.Equal(t, ran, localHookCount(t, count), "a git call of the gate job ran a hook of the template folder that the caller names")
+}
+
+func TestRun_ALocalGateWithAGateProgramRunsAndCopiesNoHookOfTheDefaultTemplateFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	_, count := localHooks(t, dir, "template/hooks")
+
+	// The git of the machine whose default template folder holds a hook: a git that always has the folder as its template.
+	tools := localTools(t)
+	tools.Git = filepath.Join(dir, "git")
+	require.NoError(t, exectest.Write(tools.Git, "#!/bin/sh\nGIT_TEMPLATE_DIR="+filepath.Join(dir, "template")+" exec "+localTools(t).Git+" \"$@\"\n"))
+
+	env := []string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home"), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	// The head code fails the gate when the copy holds a hook of the template folder.
+	item, request := localItem(t, programCase{files: map[string]string{"code.sh": "[ -e .git/hooks/post-checkout ] && printf 'BAD\\n' > code.txt\nexit 0\n"}})
+
+	// The control: this git runs the hook of its template folder, so the plant is live.
+	localControl(t, tools.Git, dir, env, "clone", "-q", "--", item, filepath.Join(dir, "control"))
+	ran := localHookCount(t, count)
+	require.Positive(t, ran, "the hook of the default template folder does not run")
+
+	result, err := localProgramGateEnv(t, item, tools, env).Run(context.Background(), request)
+	require.NoError(t, err)
+
+	assert.True(t, result.Passed, "the copy holds a hook of the template folder: "+result.Report)
+	assert.Equal(t, ran, localHookCount(t, count), "a git call of the gate job ran a hook of the default template folder")
+}
+
+func TestRun_ALocalGateWithAGateProgramRunsNoFsmonitorThatTheGlobalFileNames(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	count := filepath.Join(dir, "count")
+	monitor := filepath.Join(dir, "monitor")
+	require.NoError(t, exectest.Write(monitor, "#!/bin/sh\necho monitor >> "+count+"\nexit 1\n"))
+	writeIn(t, dir, "global", "[core]\n\tfsmonitor = "+monitor+"\n")
+
+	env := []string{"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home"), "GIT_CONFIG_GLOBAL=" + filepath.Join(dir, "global"), "GIT_CONFIG_NOSYSTEM=1"}
+	item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
+	require.NotEmpty(t, request.Project.TestReport, "the job runs the report word only for a project with a test_report glob")
+
+	// The control: git ls-files with this environment runs the fsmonitor command, so the plant is live.
+	localControl(t, localTools(t).Git, item, env, "ls-files", "--", "reports/*.xml")
+	ran := localHookCount(t, count)
+	require.Positive(t, ran, "the fsmonitor command does not run for git ls-files with this environment")
+
+	result, err := localProgramGateEnv(t, item, localTools(t), env).Run(context.Background(), request)
+	require.NoError(t, err)
+
+	assert.True(t, result.Passed, result.Report)
+	assert.Equal(t, ran, localHookCount(t, count), "a git call of the gate job ran the fsmonitor command that the global file names")
+}
+
+func TestRun_ALocalGateWithAGateProgramStartsEveryGitCallWithTheEnvironmentOfTheJobOnly(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls")
+	require.NoError(t, os.Mkdir(calls, 0o750))
+
+	// The resolved git writes its environment to a new file in calls, then runs the real git.
+	tools := localTools(t)
+	tools.Git = filepath.Join(dir, "git")
+	require.NoError(t, exectest.Write(tools.Git, "#!/bin/sh\n"+tools.Env+" > \"$(/usr/bin/mktemp "+calls+"/env.XXXXXX)\"\nexec "+localTools(t).Git+" \"$@\"\n"))
+
+	env := []string{
+		"PATH=" + localCleanPath, "HOME=" + filepath.Join(dir, "home"), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_TERMINAL_PROMPT=1", "GIT_TEMPLATE_DIR=" + filepath.Join(dir, "template"), "GIT_CONFIG_COUNT=0", "GIT_ASKPASS=/bin/echo", "GIT_ANY=1",
+		"SSH_ASKPASS=/bin/echo", "LD_PRELOAD=/nowhere.so",
+	}
+	item, request := localItem(t, programCase{files: map[string]string{"tests_new.txt": "x\n"}})
+
+	result, err := localProgramGateEnv(t, item, tools, env).Run(context.Background(), request)
+	require.NoError(t, err)
+	require.True(t, result.Passed, result.Report)
+
+	files, err := os.ReadDir(calls)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(files), 8, "the job ran fewer git calls than it has git words")
+
+	want := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0"}
+
+	for _, file := range files {
+		data, err := os.ReadFile(filepath.Join(calls, file.Name())) //nolint:gosec // the test reads the files that its git writes
+		require.NoError(t, err)
+
+		var git []string
+
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if strings.HasPrefix(line, "GIT_") {
+				git = append(git, line)
+			}
+		}
+
+		slices.Sort(git)
+		assert.Equal(t, want, git, "a git call of the gate job got a GIT_ variable that the job does not set")
+		assert.Contains(t, string(data), "XDG_CONFIG_HOME=", "a git call of the gate job reads the config folder of the user")
+		assert.NotContains(t, string(data), "SSH_ASKPASS=", "a git call of the gate job got a variable of the caller that is not on the allow list")
+		assert.NotContains(t, string(data), "LD_PRELOAD=", "a git call of the gate job got a variable of the caller that is not on the allow list")
 	}
 }

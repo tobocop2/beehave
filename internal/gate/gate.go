@@ -734,7 +734,7 @@ func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, b
 		return strings.Join(append(words, candidateWord(project, pins, base, baseSHA, clone)), " && ")
 	}
 
-	before, after := reportChecks(project.TestReport)
+	before, after := reportChecks(project.TestReport, len(project.GateProgram) > 0)
 
 	words = append(words, before...)
 	words = append(words, gateWords(project, pins)...)
@@ -743,24 +743,25 @@ func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, b
 }
 
 // cloneWords are the words that make the clone folder and check out head in it.
-// A job with a gate program makes the empty config folder of gpgit, clones with gpsrc and runs every other git call with gpgit (see programGit).
+// A job with a gate program makes the empty folder of gpgit, clones with gpsrc and the empty folder as its template, so no hook or other file of a
+// template folder reaches the copy, and runs every other git call with gitWord (see programGit).
 // A local job copies the objects (--no-local) and drops the address of the clone, so head code finds no path of the repository that it was cloned from.
 func cloneWords(src jobSource, head, clone string, program bool) []string {
 	words := cloneFolder(clone)
-	git, from := "git", "git"
+	from := "git clone "
 
 	if program {
-		git, from = "gpgit", "gpsrc"
-		words = append(words, `mkdir gpxdg && gpxdg="$PWD/gpxdg"`)
+		from = `gpsrc clone --template="$gpempty" `
+		words = append(words, `mkdir gpempty && gpempty="$PWD/gpempty"`)
 	}
 
-	words = append(words, from+" clone "+src.copyFlag()+"-- "+model.ShellQuote(src.from)+" tree", "cd tree")
+	words = append(words, from+src.copyFlag()+"-- "+model.ShellQuote(src.from)+" tree", "cd tree")
 
 	if src.local {
-		words = append(words, git+" remote remove origin")
+		words = append(words, gitWord(program, "remote remove origin"))
 	}
 
-	return append(words, git+" checkout --detach "+model.ShellQuote(head), `[ "$(`+git+` rev-parse HEAD)" = `+model.ShellQuote(head)+` ]`)
+	return append(words, gitWord(program, "checkout --detach "+model.ShellQuote(head)), `[ "$(`+gitWord(program, "rev-parse HEAD")+`)" = `+model.ShellQuote(head)+` ]`)
 }
 
 // cloneFolder are the words that make the clone folder, enter it, and delete it on exit with the marker line.
@@ -846,12 +847,13 @@ func atoiOr(text string, fallback int) int {
 // reportChecks returns the words of the report checks: the word before the gate refuses a report file that the repository tracks, as such a file
 // would satisfy the count with no test run, and the word after the gate fails when the files that the glob matches hold no test case.
 // Each word writes a marker line first, so the log tells the failed check from a failed gate command. A project with no glob has no check.
-func reportChecks(glob string) (before, after []string) {
+// program says that the job has a gate program, so its git call goes through gpgit (see gitWord).
+func reportChecks(glob string, program bool) (before, after []string) {
 	if glob == "" {
 		return nil, nil
 	}
 
-	tracked := "git ls-files -- " + model.ShellQuote(glob) + " | head -n 1"
+	tracked := gitWord(program, "ls-files -- "+model.ShellQuote(glob)) + " | head -n 1"
 
 	before = []string{`{ [ -z "$(` + tracked + `)" ] || { echo "` + trackedMarker + ` $(` + tracked + `)"; false; }; }`}
 	after = []string{`{ [ "$(cat ` + globWord(glob) + ` 2>/dev/null | grep -c '<testcase')" -gt 0 ] || { echo ` + noTestsMarker + `; false; }; }`}

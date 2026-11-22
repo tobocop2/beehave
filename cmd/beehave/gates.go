@@ -55,7 +55,7 @@ func (g projectGate) withTools(path string) projectGate {
 func resolveGateTools(path string) (gate.Tools, error) {
 	var found []string
 
-	for _, names := range [][]string{{model.ToolGit}, {"find"}, {"sort"}, {"readlink"}, {"cat"}, {"sha256sum", "shasum"}} {
+	for _, names := range [][]string{{model.ToolGit}, {"env"}, {"find"}, {"sort"}, {"readlink"}, {"cat"}, {"sha256sum", "shasum"}} {
 		binary, err := lookFirst(names, path)
 		if err != nil {
 			return gate.Tools{}, fmt.Errorf("find the tool %s for the gate program: %w", strings.Join(names, " or "), err)
@@ -64,7 +64,7 @@ func resolveGateTools(path string) (gate.Tools, error) {
 		found = append(found, binary)
 	}
 
-	return gate.Tools{Git: found[0], Find: found[1], Sort: found[2], Readlink: found[3], Cat: found[4], Digest: found[5]}, nil
+	return gate.Tools{Git: found[0], Env: found[1], Find: found[2], Sort: found[3], Readlink: found[4], Cat: found[5], Digest: found[6]}, nil
 }
 
 // lookFirst returns the first of the programs names that the folders of path hold.
