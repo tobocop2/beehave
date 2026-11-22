@@ -14,7 +14,6 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
@@ -34,8 +33,10 @@ type projectGate struct {
 	forge    func(model.Project) (forge.Forge, error)
 	// timeout is the time that a local gate command may run. Zero means gateTimeout.
 	timeout time.Duration
-	// tip reads the commit that a branch names at a remote. Nil reads it with git ls-remote.
-	tip func(ctx context.Context, remote, branch string) (string, error)
+	// tip reads the commit that a branch names at the address of a project. fetch brings a commit of that address into the clone by its id. Both
+	// reach the address from the push repository of the project, never from the clone, whose config an agent can write.
+	tip   func(ctx context.Context, project, remote, branch string) (string, error)
+	fetch func(ctx context.Context, project, remote, sha string) error
 }
 
 // anchor reads, once, the commit that the base branch names at the source of the project, and makes sure that the clone of the item holds it.
@@ -51,7 +52,7 @@ func (g projectGate) anchor(ctx context.Context, project model.Project, dir, bra
 		return "", fmt.Errorf("find the repository of project %s: %w", project.Name, err)
 	}
 
-	sha, err := g.readTip(ctx, remote, branch)
+	sha, err := g.tip(ctx, project.Name, remote, branch)
 	if err != nil {
 		return "", fmt.Errorf("read the base branch %q of project %s: %w", branch, project.Name, err)
 	}
@@ -61,23 +62,6 @@ func (g projectGate) anchor(ctx context.Context, project model.Project, dir, bra
 	}
 
 	return sha, nil
-}
-
-// readTip reads the commit of the branch at the remote. An answer with no commit is an error.
-func (g projectGate) readTip(ctx context.Context, remote, branch string) (string, error) {
-	read := g.tip
-	if read == nil {
-		read = func(ctx context.Context, remote, branch string) (string, error) {
-			return gitexec.Tip(ctx, remote, branch, gateTimeout)
-		}
-	}
-
-	sha, err := read(ctx, remote, branch)
-	if err == nil && sha == "" {
-		err = gitexec.ErrNoTip
-	}
-
-	return sha, err
 }
 
 // hold makes sure that the clone of dir holds the commit sha. When the commit is missing, it fetches that commit by its id from the remote that gave it, once.
@@ -93,7 +77,7 @@ func (g projectGate) hold(ctx context.Context, project, dir, remote, sha string)
 		return nil
 	}
 
-	if _, err := g.programs.git(ctx, project, dir, gateTimeout, "git fetch", "fetch", "--no-tags", "--", remote, sha); err != nil {
+	if err := g.fetch(ctx, project, remote, sha); err != nil {
 		return fmt.Errorf("fetch the commit: %w", err)
 	}
 

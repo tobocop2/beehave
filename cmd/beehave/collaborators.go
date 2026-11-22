@@ -25,6 +25,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/preflight"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/review"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
@@ -352,6 +353,47 @@ func (w worktrees) Heads(ctx context.Context, project string) (string, error) {
 	}
 
 	return repo.run(ctx, "ls-remote", "--heads", remote)
+}
+
+// BaseTip reads the commit that branch names at remote, the address of the project, with git ls-remote in the push repository. The runner is the one
+// that reach picks, so no setting of the clone config reaches the read, and a project with credentials reads as its writer.
+func (w worktrees) BaseTip(ctx context.Context, project, remote, branch string) (string, error) {
+	var tip string
+
+	err := w.inPush(ctx, project, remote, func(_ string, repo pushRepo) error {
+		listing, err := repo.run(ctx, "ls-remote", "--", remote, gitexec.TipRef(branch))
+		if err == nil {
+			tip, err = gitexec.TipOf(listing, remote, branch)
+		}
+
+		return err
+	})
+
+	return tip, err
+}
+
+// FetchCommit fetches the commit sha by its id from remote into the push repository, then copies it into the clone over the file transport, as
+// fetchBranch does. A source that speaks protocol version 2 serves any commit it holds by its id.
+func (w worktrees) FetchCommit(ctx context.Context, project, remote, sha string) error {
+	return w.inPush(ctx, project, remote, func(clone string, repo pushRepo) error {
+		if _, err := repo.run(ctx, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--", remote, sha); err != nil {
+			return err
+		}
+
+		return w.run(ctx, clone, "fetch", "-q", "--no-tags", "--no-write-fetch-head", repo.dir, sha)
+	})
+}
+
+// inPush runs fn with the clone and the push repository of the project, under the lock of the clone.
+func (w worktrees) inPush(ctx context.Context, project, remote string, fn func(clone string, repo pushRepo) error) error {
+	return cloneLock{repos: w.repos}.hold(ctx, project, func(clone string) error {
+		repo, err := w.openPush(ctx, project, remote)
+		if err != nil {
+			return err
+		}
+
+		return fn(clone, repo)
+	})
 }
 
 // pushRepo is the push repository dir of a project, with the git that runs the calls that reach the remote.

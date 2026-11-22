@@ -16,6 +16,7 @@ import (
 	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 const (
@@ -24,13 +25,13 @@ const (
 )
 
 // fixedTip is a read of a branch tip that gives sha and err for every branch.
-func fixedTip(sha string, err error) func(context.Context, string, string) (string, error) {
-	return func(context.Context, string, string) (string, error) { return sha, err }
+func fixedTip(sha string, err error) func(context.Context, string, string, string) (string, error) {
+	return func(context.Context, string, string, string) (string, error) { return sha, err }
 }
 
 // recordingTip is a read of a branch tip that appends each branch it is asked for to branches and gives sha.
-func recordingTip(branches *[]string, sha string) func(context.Context, string, string) (string, error) {
-	return func(_ context.Context, _, branch string) (string, error) {
+func recordingTip(branches *[]string, sha string) func(context.Context, string, string, string) (string, error) {
+	return func(_ context.Context, _, _, branch string) (string, error) {
 		*branches = append(*branches, branch)
 
 		return sha, nil
@@ -43,13 +44,13 @@ type anchorRig struct {
 
 	// tips is what the read of the tip got: the remote and the branch of each call.
 	tips []string
-	// tip is the answer of the read. fetches are the arguments of each git fetch. fetchErr is the answer of git fetch. held is the answer of git cat-file:
-	// false means that the clone lacks the commit.
+	// tip is the answer of the read. fetches are the project, the remote and the commit of each fetch. fetchErr is the answer of the fetch. held is
+	// the answer of git cat-file: false means that the clone lacks the commit.
 	tip      string
 	tipErr   error
 	held     func(fetched int) bool
-	fetches  [][]string
-	fetchErr string
+	fetches  []string
+	fetchErr error
 	// commands are the programs that the gate started.
 	commands []string
 }
@@ -74,14 +75,6 @@ func newAnchorRig(t *testing.T) *anchorRig {
 				}
 
 				return model.CommandResult{ExitCode: 128, Stderr: "fatal: Not a valid object name"}
-			case args[0] == "fetch":
-				rig.fetches = append(rig.fetches, args)
-
-				if rig.fetchErr != "" {
-					return model.CommandResult{ExitCode: 128, Stderr: rig.fetchErr}
-				}
-
-				return model.CommandResult{}
 			}
 
 			return model.CommandResult{Stdout: "head1\ntree1\n"}
@@ -91,10 +84,15 @@ func newAnchorRig(t *testing.T) *anchorRig {
 	rig.gate = projectGate{
 		projects: projects,
 		programs: programs{trees: treeAt("/tree"), local: local},
-		tip: func(_ context.Context, remote, branch string) (string, error) {
+		tip: func(_ context.Context, _, remote, branch string) (string, error) {
 			rig.tips = append(rig.tips, remote+" "+branch)
 
 			return rig.tip, rig.tipErr
+		},
+		fetch: func(_ context.Context, project, remote, sha string) error {
+			rig.fetches = append(rig.fetches, project+" "+remote+" "+sha)
+
+			return rig.fetchErr
 		},
 	}
 
@@ -168,7 +166,7 @@ func TestProjectGate_ABaseBranchThatCannotBeReadFailsTheGateBeforeAnyProgramRuns
 	for name, c := range map[string]struct {
 		tip string
 		err error
-	}{"the read fails": {"", errors.New("no route")}, "the remote answers no commit": {"", nil}} {
+	}{"the read fails": {"", errors.New("no route")}, "the remote answers no commit": {"", gitexec.ErrNoTip}} {
 		rig := newAnchorRig(t)
 		rig.tip, rig.tipErr = c.tip, c.err
 
@@ -193,7 +191,7 @@ func TestProjectGate_ACommitThatTheCloneLacksIsFetchedOnceAndAGateThatStillLacks
 	_, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
 	require.NoError(t, err)
-	assert.Equal(t, [][]string{{"fetch", "--no-tags", "--", "/src", anchorOld}}, rig.fetches, "one fetch, of the commit by its id, from the source that gave it")
+	assert.Equal(t, []string{"p /src " + anchorOld}, rig.fetches, "one fetch, of the commit by its id, from the source that gave it")
 
 	still := newAnchorRig(t)
 	still.held = func(int) bool { return false }
@@ -205,7 +203,7 @@ func TestProjectGate_ACommitThatTheCloneLacksIsFetchedOnceAndAGateThatStillLacks
 
 	unfetchable := newAnchorRig(t)
 	unfetchable.held = func(int) bool { return false }
-	unfetchable.fetchErr = "offline"
+	unfetchable.fetchErr = errors.New("offline")
 
 	_, err = unfetchable.gate.Submit(t.Context(), "p", "1", "", "", "", "")
 
@@ -261,24 +259,4 @@ func TestProjectGate_AForgeThatGivesNoCloneURLFailsTheReadAndReadsNoTip(t *testi
 
 	require.ErrorContains(t, err, "find the repository of project p")
 	assert.Empty(t, rig.tips)
-}
-
-func TestProjectGate_TheBaseCommitIsTheTipOfTheSourceRepositoryRead_ByGitLsRemote(t *testing.T) {
-	t.Parallel()
-
-	source := t.TempDir()
-	plainGit(t, source, "init", "-q", "-b", "main")
-	plainGit(t, source, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "base")
-
-	tip := strings.TrimSpace(plainGit(t, source, "rev-parse", "main"))
-	require.Len(t, tip, 40)
-
-	rig := newAnchorRig(t)
-	rig.gate.tip = nil
-	rig.gate.projects = map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: source, BaseBranch: "main", Gate: "make check", BuildHost: config.LocalHost}}}
-
-	job, err := rig.gate.Submit(t.Context(), "p", "1", "", "", "", "")
-
-	require.NoError(t, err)
-	assert.Equal(t, tip, job.Plan.BaseSHA)
 }
