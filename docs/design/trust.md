@@ -32,7 +32,7 @@ beehave needs no second account. The engine holds one credential, `writer`, and 
 
 | Mode | Credentials | What the forge requires |
 |---|---|---|
-| Default | `writer` only: a fine-grained token of the owner's own account | `beehave/review` and `beehave/gate` at the head, plus CI. No approval. |
+| Default | `writer` only: a fine-grained token of the owner's own account | `beehave/review` and `beehave/gate` at the head. A pull request into `main` also needs its CI run to pass. A pull request into an integration branch has no Actions check. No approval. |
 | Optional | `writer` and `reviewer`: one bot account | The same, plus one native approval from a non-author. |
 
 In the default mode the independent review verdict is the commit status `beehave/review`. The engine posts it at the reviewed head. The owner is the author of the pull request, so the owner cannot approve it. The owner posts `beehave/review` by hand when needed.

@@ -34,8 +34,8 @@ var releaseTargets = []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux"
 // "git", the name ToolGit, or a variable or constant that the same folder assigns from one of them. The type checker resolves each name to its own object,
 // so a block, a closure parameter or another function does not mix up two names of the same spelling. A Command or CommandContext call counts when it
 // resolves to os/exec, under any import name or through a variable that the folder assigns the function to. Each package is checked as a whole and
-// once for each release target, so a name that two tagged files declare is checked with each declaration; a name that two files outside every release
-// target declare binds only to its first declaration. The imports are stubs, so the walk does not see a program that comes from a function result, a
+// once for each release target, so a name that two tagged files declare is checked with each declaration; a second declaration of a name in a file that no
+// release target builds binds to the first declaration. The imports are stubs, so the walk does not see a program that comes from a function result, a
 // field, a parameter, a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed ExecRunner literal, a package-level
 // name that a function of another folder assigns, or an os/exec function held in a field or returned by a function.
 func gitRunnerSites(t *testing.T, root string) []string {
