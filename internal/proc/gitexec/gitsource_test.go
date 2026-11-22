@@ -4,9 +4,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
-	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,14 +16,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// dotImport is the name that a dot import of a package gets in the import table.
-const dotImport = "."
+// execPackage is the import path of the package whose Command and CommandContext functions start a program.
+const execPackage = "os/exec"
 
 // gitRunnerSites returns "file:line" for each place in the Go files of root that makes a runner or a command for the git program. The program is the literal
-// "git", the name ToolGit, or a name that the same folder assigns from one of them. A package-level name is tainted by an assignment anywhere in the
-// folder; a function local only by an assignment in its own function. It does not see a program that comes from a function result, a field, a parameter,
-// a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed ExecRunner literal, or a package-level name that a
-// function of another folder assigns.
+// "git", the name ToolGit, or a variable or constant that the same folder assigns from one of them. The type checker resolves each name to its own object,
+// so a block, a closure parameter or another function does not mix up two names of the same spelling. A Command or CommandContext call counts when it
+// resolves to os/exec, under any import name. The imports are stubs, so the walk does not see a program that comes from a function result, a field, a
+// parameter, a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed ExecRunner literal, or a package-level name
+// that a function of another folder assigns.
 func gitRunnerSites(t *testing.T, root string) []string {
 	t.Helper()
 
@@ -53,24 +55,26 @@ func gitRunnerSites(t *testing.T, root string) []string {
 	return found
 }
 
-// gitRunnerSitesIn returns the sites of the non-test Go files in one folder.
+// gitRunnerSitesIn returns the sites of the non-test Go files in one folder, one package at a time.
 func gitRunnerSitesIn(t *testing.T, folder string) []string {
 	t.Helper()
 
 	fset := token.NewFileSet()
-	files, packageLevel := parseFolder(t, fset, folder)
 
 	var found []string
 
-	for _, file := range files {
-		execNames := importNames(file, "os/exec")
+	for _, files := range parseFolder(t, fset, folder) {
+		info := typeCheck(fset, files)
+		assigned := map[types.Object][]ast.Expr{}
 
-		for _, decl := range file.Decls {
-			assigned := scopeOf(decl, packageLevel)
+		for _, file := range files {
+			collectAssigned(file, info, assigned)
+		}
 
-			ast.Inspect(decl, func(node ast.Node) bool {
-				for _, program := range programsOf(node, execNames) {
-					if namesGit(program, assigned, map[string]bool{}) {
+		for _, file := range files {
+			ast.Inspect(file, func(node ast.Node) bool {
+				for _, program := range programsOf(node, info) {
+					if namesGit(program, info, assigned, map[types.Object]bool{}) {
 						found = append(found, fset.Position(program.Pos()).String())
 					}
 				}
@@ -83,166 +87,96 @@ func gitRunnerSitesIn(t *testing.T, folder string) []string {
 	return found
 }
 
-// parseFolder parses the non-test Go files of a folder and returns them with the assignments that sit outside every function.
-func parseFolder(t *testing.T, fset *token.FileSet, folder string) ([]*ast.File, map[string][]ast.Expr) {
+// parseFolder parses the non-test Go files of a folder and groups them by package name.
+func parseFolder(t *testing.T, fset *token.FileSet, folder string) map[string][]*ast.File {
 	t.Helper()
 
 	paths, err := filepath.Glob(filepath.Join(folder, "*.go"))
 	require.NoError(t, err)
 
-	packageLevel := map[string][]ast.Expr{}
+	packages := map[string][]*ast.File{}
 
-	var files []*ast.File
-
-	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") {
+	for _, name := range paths {
+		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
 
-		file, err := parser.ParseFile(fset, path, nil, 0)
+		file, err := parser.ParseFile(fset, name, nil, 0)
 		require.NoError(t, err)
 
-		files = append(files, file)
-
-		for _, decl := range file.Decls {
-			function, isFunc := decl.(*ast.FuncDecl)
-			if !isFunc {
-				collectAssigned(decl, packageLevel)
-
-				continue
-			}
-
-			locals := localNames(function)
-			assigned := map[string][]ast.Expr{}
-			collectAssigned(function, assigned)
-
-			for name, values := range assigned {
-				if !locals[name] {
-					packageLevel[name] = append(packageLevel[name], values...)
-				}
-			}
-		}
+		packages[file.Name.Name] = append(packages[file.Name.Name], file)
 	}
 
-	return files, packageLevel
+	return packages
 }
 
-// scopeOf returns the assignments that a declaration sees: those to the package-level names of the whole folder, and in a function those to its own locals,
-// which hide a package-level name of the same spelling.
-func scopeOf(decl ast.Decl, packageLevel map[string][]ast.Expr) map[string][]ast.Expr {
-	function, isFunc := decl.(*ast.FuncDecl)
-	if !isFunc {
-		return packageLevel
-	}
+// typeCheck resolves the names of the files of one package. Every import is a stub, so the checker reports each name it cannot find; the walk reads only
+// the facts that the checker records in spite of those errors.
+func typeCheck(fset *token.FileSet, files []*ast.File) *types.Info {
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	config := types.Config{Importer: stubImporter{}, Error: ignoreError}
 
-	assigned := map[string][]ast.Expr{}
-	collectAssigned(function, assigned)
+	config.Check(files[0].Name.Name, fset, files, info) //nolint:errcheck,gosec // the returned error is the first one that ignoreError drops
 
-	visible := map[string][]ast.Expr{}
-	maps.Copy(visible, packageLevel)
-
-	for name := range localNames(function) {
-		visible[name] = assigned[name]
-	}
-
-	return visible
+	return info
 }
 
-// localNames returns the names that a function declares itself: parameters, results, short declarations, var specs and range variables.
-func localNames(function *ast.FuncDecl) map[string]bool {
-	names := map[string]bool{}
+// ignoreError drops a type error; the stubbed imports cause them.
+func ignoreError(error) {}
 
-	add := func(idents ...*ast.Ident) {
-		for _, ident := range idents {
-			names[ident.Name] = true
+// stubImporter gives each import an empty package, and os/exec the two functions that the walk looks for.
+type stubImporter struct{}
+
+func (stubImporter) Import(importPath string) (*types.Package, error) {
+	pkg := types.NewPackage(importPath, path.Base(importPath))
+
+	if importPath == execPackage {
+		for _, name := range []string{"Command", "CommandContext"} {
+			signature := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+			pkg.Scope().Insert(types.NewFunc(token.NoPos, pkg, name, signature))
 		}
 	}
 
-	ast.Inspect(function, func(node ast.Node) bool {
-		switch n := node.(type) {
-		case *ast.Field:
-			add(n.Names...)
-		case *ast.ValueSpec:
-			add(n.Names...)
-		case *ast.AssignStmt:
-			if n.Tok == token.DEFINE {
-				addIdents(add, n.Lhs)
-			}
-		case *ast.RangeStmt:
-			if n.Tok == token.DEFINE {
-				addIdents(add, []ast.Expr{n.Key, n.Value})
-			}
-		}
+	pkg.MarkComplete()
 
-		return true
-	})
-
-	return names
+	return pkg, nil
 }
 
-// addIdents passes the plain names among the expressions to add.
-func addIdents(add func(...*ast.Ident), exprs []ast.Expr) {
-	for _, expr := range exprs {
-		if ident, ok := expr.(*ast.Ident); ok {
-			add(ident)
-		}
-	}
-}
-
-// importNames returns the names under which the file imports the package at path.
-func importNames(file *ast.File, path string) map[string]bool {
-	names := map[string]bool{}
-
-	for _, spec := range file.Imports {
-		if spec.Path.Value != `"`+path+`"` {
-			continue
-		}
-
-		if spec.Name != nil {
-			names[spec.Name.Name] = true
-		} else {
-			names[filepath.Base(path)] = true
-		}
-	}
-
-	return names
-}
-
-// collectAssigned records, for each name that the node assigns, the expressions that it gets.
-func collectAssigned(root ast.Node, assigned map[string][]ast.Expr) {
+// collectAssigned records, for each variable or constant that the node assigns, the expressions that it gets.
+func collectAssigned(root ast.Node, info *types.Info, assigned map[types.Object][]ast.Expr) {
 	ast.Inspect(root, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.AssignStmt:
-			assign(assigned, n.Lhs, n.Rhs)
+			assign(info, assigned, n.Lhs, n.Rhs)
 		case *ast.ValueSpec:
 			names := make([]ast.Expr, len(n.Names))
 			for i, name := range n.Names {
 				names[i] = name
 			}
 
-			assign(assigned, names, n.Values)
+			assign(info, assigned, names, n.Values)
 		}
 
 		return true
 	})
 }
 
-// assign records each right side under the name on the left at the same place, when both sides have the same length.
-func assign(assigned map[string][]ast.Expr, left, right []ast.Expr) {
+// assign records each right side under the object of the name on the left at the same place, when both sides have the same length.
+func assign(info *types.Info, assigned map[types.Object][]ast.Expr, left, right []ast.Expr) {
 	if len(left) != len(right) {
 		return
 	}
 
 	for i, target := range left {
-		if name := identName(target); name != "" {
-			assigned[name] = append(assigned[name], right[i])
+		if ident, ok := target.(*ast.Ident); ok && info.ObjectOf(ident) != nil {
+			assigned[info.ObjectOf(ident)] = append(assigned[info.ObjectOf(ident)], right[i])
 		}
 	}
 }
 
 // programsOf returns the expressions that name the program in a node that makes a runner or a command: the Binary field of an ExecRunner, the first argument
-// of NewExecRunner, the second of GroupCommand, the first of Command and the second of CommandContext when the call is on a name that imports os/exec.
-func programsOf(node ast.Node, execNames map[string]bool) []ast.Expr {
+// of NewExecRunner, the second of GroupCommand, the first of Command and the second of CommandContext when the call resolves to os/exec.
+func programsOf(node ast.Node, info *types.Info) []ast.Expr {
 	switch n := node.(type) {
 	case *ast.CompositeLit:
 		return binaryOf(n)
@@ -254,7 +188,7 @@ func programsOf(node ast.Node, execNames map[string]bool) []ast.Expr {
 			return argAt(n.Args, 1)
 		}
 
-		return execProgramOf(n, execNames)
+		return execProgramOf(n, info)
 	}
 
 	return nil
@@ -277,22 +211,23 @@ func binaryOf(literal *ast.CompositeLit) []ast.Expr {
 	return programs
 }
 
-// execProgramOf returns the program argument of a Command or CommandContext call on a name that imports os/exec.
-func execProgramOf(call *ast.CallExpr, execNames map[string]bool) []ast.Expr {
-	function := ""
+// execProgramOf returns the program argument of a call that the type checker resolves to Command or CommandContext of os/exec.
+func execProgramOf(call *ast.CallExpr, info *types.Info) []ast.Expr {
+	var callee *ast.Ident
 
 	switch fun := call.Fun.(type) {
 	case *ast.SelectorExpr:
-		if execNames[identName(fun.X)] {
-			function = fun.Sel.Name
-		}
+		callee = fun.Sel
 	case *ast.Ident:
-		if execNames[dotImport] {
-			function = fun.Name
-		}
+		callee = fun
 	}
 
-	switch function {
+	function, ok := info.Uses[callee].(*types.Func)
+	if !ok || function.Pkg() == nil || function.Pkg().Path() != execPackage {
+		return nil
+	}
+
+	switch function.Name() {
 	case "Command":
 		return argAt(call.Args, 0)
 	case "CommandContext":
@@ -311,28 +246,31 @@ func argAt(args []ast.Expr, index int) []ast.Expr {
 	return args[index : index+1]
 }
 
-// namesGit reports whether the expression is the program git: the literal, ToolGit, or a name that is assigned one of them.
-func namesGit(expr ast.Expr, assigned map[string][]ast.Expr, seen map[string]bool) bool {
+// namesGit reports whether the expression is the program git: the literal, ToolGit, or a name whose object is assigned one of them.
+func namesGit(expr ast.Expr, info *types.Info, assigned map[types.Object][]ast.Expr, seen map[types.Object]bool) bool {
 	switch e := expr.(type) {
 	case *ast.BasicLit:
 		return e.Value == `"git"`
 	case *ast.SelectorExpr:
 		return e.Sel.Name == "ToolGit"
 	case *ast.Ident:
-		if e.Name == "ToolGit" {
+		return e.Name == "ToolGit" || objectNamesGit(info.ObjectOf(e), info, assigned, seen)
+	}
+
+	return false
+}
+
+// objectNamesGit reports whether one of the values that the folder assigns to the object is the program git.
+func objectNamesGit(object types.Object, info *types.Info, assigned map[types.Object][]ast.Expr, seen map[types.Object]bool) bool {
+	if object == nil || seen[object] {
+		return false
+	}
+
+	seen[object] = true
+
+	for _, value := range assigned[object] {
+		if namesGit(value, info, assigned, seen) {
 			return true
-		}
-
-		if seen[e.Name] {
-			return false
-		}
-
-		seen[e.Name] = true
-
-		for _, value := range assigned[e.Name] {
-			if namesGit(value, assigned, seen) {
-				return true
-			}
 		}
 	}
 
@@ -410,6 +348,12 @@ func TestTheGitSourceTestSeesAnImportAliasAndAPackageLevelName(t *testing.T) {
 		"a name that one function sets and another runs": {
 			"p.go": "package p\n\nvar name = \"x\"\n\nfunc setup() {\nname = \"git\"\n}\n\n" + use,
 		},
+		"a package level name that an inner block hides before the call": {
+			"p.go": "package p\n\nimport \"os/exec\"\n\nvar name = \"git\"\n\nfunc f() {\nif true {\nname := \"x\"\n_ = name\n}\n_ = exec.Command(name)\n}\n",
+		},
+		"a package level name that a closure parameter hides before the call": {
+			"p.go": "package p\n\nimport \"os/exec\"\n\nvar name = \"git\"\n\nfunc f() {\ng := func(name string) {}\ng(\"x\")\n_ = exec.Command(name)\n}\n",
+		},
 	}
 
 	for name, sources := range folders {
@@ -434,10 +378,13 @@ func TestTheGitSourceTestLeavesOtherProgramsAlone(t *testing.T) {
 		"git as an argument of another program": "package p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(\"which\", \"git\")\n" +
 			"_ = exec.CommandContext(ctx, \"which\", \"git\")\n}\n",
 		"a Command call that is not os/exec":          "package p\n\nimport \"github.com/spf13/cobra\"\n\nfunc f() {\n_ = cobra.Command(\"git\")\n_ = c.Command(\"git\")\n}\n",
+		"a Command function of the package itself":    "package p\n\nfunc Command(name string) {}\n\nfunc f() {\nCommand(\"git\")\n}\n",
 		"one name for git in another function":        "package p\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
 		"a local that hides a package level name":     "package p\n\nvar name = \"git\"\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
 		"a parameter that hides a package level name": "package p\n\nvar name = \"git\"\n\nfunc g(name string) {\n_ = proc.NewExecRunner(name, dir)\n}\n",
 		"a Command function without a dot import":     "package p\n\nfunc f() {\n_ = Command(\"git\")\n}\n",
+		"a local git that another function does not see": "package p\n\nimport \"os/exec\"\n\nvar name = \"gh\"\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\n" +
+			"func g() {\n_ = exec.Command(name)\n}\n",
 	}
 
 	for name, source := range sources {
