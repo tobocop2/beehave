@@ -132,6 +132,8 @@ type fakeSteering struct {
 	joinResult flow.ItemResult
 	joinErr    error
 	joined     []string
+	// joinErrs are the errors of the first calls of JoinRun, one for each call, before joinErr applies.
+	joinErrs []error
 	// joinBlock holds JoinRun until the context ends.
 	joinBlock bool
 	// closeErr is what Close returns.
@@ -162,6 +164,13 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) 
 
 	result := s.joinResult
 	result.Item = item
+
+	if len(s.joinErrs) > 0 {
+		err := s.joinErrs[0]
+		s.joinErrs = s.joinErrs[1:]
+
+		return result, err
+	}
 
 	return result, s.joinErr
 }
