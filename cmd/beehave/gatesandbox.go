@@ -43,10 +43,16 @@ type gateSandbox struct {
 	folders *fstree.Folders
 	// ownGit is true for a command call: git reads the identity of the engine in place of the config file of the owner, which the plan closes.
 	ownGit bool
+	// developer is the developer folder of Apple that the engine found at start, or "" when it found none. A gate plan reads it, and the command env names it.
+	developer string
 }
 
 func newGateSandbox(projects map[string]config.Project, clones cloneLock, folders *fstree.Folders) gateSandbox {
-	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: folders}
+	environ := model.EnvPairs(config.ProcessEnv())
+
+	return gateSandbox{
+		projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: environ, clones: clones, folders: folders, developer: developerFolder(environ),
+	}
 }
 
 // asked returns the sandbox for a command call whose keyword is box: the network list of the call replaces gate_network of the project. A nil box
@@ -321,7 +327,7 @@ func (g gateSandbox) commandEnv(ctx context.Context, env []string, tmp string, g
 		run = append(run, gitVariables(gitIdentity(ctx, git))...)
 	}
 
-	return run
+	return append(run, developerEnv(g.developer, tmp)...)
 }
 
 // gitVariables returns the variables that give git the identity of the engine and no config file of the owner: the plan closes ~/.gitconfig, so git would fail
@@ -415,7 +421,7 @@ func (g gateSandbox) plan(ctx context.Context, project config.Project, dir strin
 		return sandbox.Plan{}, strings.Replace(note, " The step did not start.", "", 1) + " The gate did not run."
 	}
 
-	return planOf(project.GateNetwork, copied.WorkTree, tmp, slices.Concat(commonOf(copied), read), write, readOnly), ""
+	return planOf(project.GateNetwork, copied.WorkTree, tmp, slices.Concat(commonOf(copied), read, developerReads(g.developer)), write, readOnly, g.developer), ""
 }
 
 // protected returns the paths that no gate_allow_write path may reach: the credential paths deny, the closed paths of dir and its shared git folders.
@@ -430,7 +436,7 @@ func protected(ctx context.Context, git projectGit, dir, home string, deny []str
 }
 
 // planOf joins the system paths, the work folder, the temporary folder and the lists of the project into one plan. The work folder is read-only when readOnly is true.
-func planOf(network []string, work, tmp string, read, write []string, readOnly bool) sandbox.Plan {
+func planOf(network []string, work, tmp string, read, write []string, readOnly bool, developer string) sandbox.Plan {
 	own := []string{work, tmp}
 	if readOnly {
 		own = []string{tmp}
@@ -441,5 +447,7 @@ func planOf(network []string, work, tmp string, read, write []string, readOnly b
 		Write:   slices.Concat(sandbox.SystemWrite(), own, write),
 		Network: len(network) > 0,
 		Domains: slices.Clone(network),
+		// The read list holds the developer folder, and the enforcer lets the shims of Apple run when this is set.
+		Developer: developer,
 	}
 }
