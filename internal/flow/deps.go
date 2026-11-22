@@ -309,6 +309,8 @@ type CommandRequest struct {
 	Env []string
 	// TreeStart is the commit that the recorded step made the worktree of a round item at. A worktree that someone removed is made again there. It is empty for any other item.
 	TreeStart string
+	// Sandbox is the sandbox keyword of a command call. A program on this machine with a Sandbox runs under the enforcer of its project, with the network list of the Sandbox. It is nil for a call with no sandbox.
+	Sandbox *model.Sandbox
 }
 
 // CommandOutput is what a program printed and its exit code. A non-zero RC is data, not an error.

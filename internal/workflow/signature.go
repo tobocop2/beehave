@@ -344,7 +344,7 @@ func commandParams() []Param {
 	return []Param{
 		runParam(),
 		opt("host", KindText), opt("stdin", KindText), ruled(envName, KindDict, envRule),
-		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(nameKeyword, KindText),
+		ruled("timeout", KindText, durationRule("timeout")), ruled("stop_on_rc", KindList, stopRule), processCap(), slotClass(), opt(sandboxKeyword, KindAny), opt(nameKeyword, KindText),
 		ruled(retriesKeyword, KindInt, retriesRule), ruled(backoffKeyword, KindText, backoffRule), one(failureKeyword, FailureModes()),
 	}
 }
@@ -618,7 +618,39 @@ func (g *graph) pairs(call *syntax.CallExpr, builtin string, params []Param) {
 func (g *graph) commandPairs(call *syntax.CallExpr, params []Param) {
 	g.hostWithCap(call, params)
 	g.hostWithSlots(call, params)
+	g.sandboxPairs(call, params)
 	g.retrying(call, commandName, params)
+}
+
+// sandboxPairs checks the sandbox keyword of a command call against host, stdin and max_new_processes with the rule of the run. A value that is not a literal is left to the run.
+func (g *graph) sandboxPairs(call *syntax.CallExpr, params []Param) {
+	box := paramArg(call, params, sandboxKeyword)
+	if box == nil || isNone(box) {
+		return
+	}
+
+	host, _ := hostText(paramArg(call, params, "host"))
+
+	var stdin string
+	if arg := paramArg(call, params, "stdin"); arg != nil {
+		stdin, _ = literal(arg)
+	}
+
+	processes := 0
+	if _, isLiteral := capLiteral(paramArg(call, params, "max_new_processes")); isLiteral {
+		processes = 1
+	}
+
+	if err := SandboxWith(host, stdin, processes); err != nil {
+		g.report(placeOf(syntax.Start(box)), commandName+": "+err.Error()+".")
+	}
+}
+
+// isNone reports whether expr is the name None.
+func isNone(expr syntax.Expr) bool {
+	name, ok := expr.(*syntax.Ident)
+
+	return ok && name.Name == noneName
 }
 
 // deadlineMode refuses a gather call that names on_timeout and no timeout, as the run does.

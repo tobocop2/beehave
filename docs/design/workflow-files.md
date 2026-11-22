@@ -686,7 +686,7 @@ A send to a child goes to its latest attempt: the run that `gather` started agai
 
 ### `command`
 
-A `command` step has five settings besides `run`, `timeout`, `host` and `name`: `max_new_processes`, `slots`, `stdin`, `env` and `stop_on_rc`.
+A `command` step has six settings besides `run`, `timeout`, `host` and `name`: `max_new_processes`, `slots`, `stdin`, `env`, `stop_on_rc` and `sandbox`.
 
 The `env` setting of `command` and `write` refuses the name `SSH_AUTH_SOCK` as a key. The check refuses a literal key. The call refuses every other form: a key that the workflow builds, a dict held in a variable and a `**` spread. This refusal is separate from the `env` builtin, which refuses to read the variable.
 
@@ -770,6 +770,18 @@ The returned struct also holds `stderr`, the second output stream of the program
 - `agent` takes no `retries`.
 - `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero or is above 10 minutes, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
 
+#### `sandbox`
+
+`sandbox` runs the program of a `command` step under the sandbox enforcer that the gate uses (Seatbelt on macOS, Landlock on Linux). Use it for a program that runs code an agent wrote, such as `make` or a test run.
+
+- The value is `sandbox(network = [...])` or `None`. A step that leaves the keyword out, or gives `None`, runs with no sandbox. The `sandbox` key of the project does not apply to a `command` step.
+- The plan is the plan of the program gate (see [the program gate](sandbox.md#the-program-gate)). The program reads the system folders, the work folder, the shared git folders and the `sandbox_read` paths. It writes a disposable copy of the work folder, its own temporary folder and the `gate_allow_write` paths. It cannot read the home folder of the owner, so it cannot read the `gh` login, the keychain or `~/.ssh`.
+- The `network` list replaces `gate_network` of the project for this step. The default is no network.
+- Git reads the `user.name` and `user.email` of the engine, from variables of the step, and no config file of the owner. Go and `bd` start and answer: `go env GOCACHE`, `git config user.name` and `bd --version` print their values. `go env GOCACHE` computes the default path from `HOME` and reads no file in the cache. A program that compiles needs the Go folders (the build cache, the module cache and `GOPATH`): the project lists them in `sandbox_read` and `gate_allow_write`, the same two keys that give them to the gate.
+- The step cannot use `sandbox` together with `host`, `stdin` or `max_new_processes`. A sandboxed program gets no input and no process cap.
+- The step is refused, and the program does not run, when the folder of the item is not a clone or a worktree of beehave, or when no enforcer can run here. The output then starts with "beehave sandbox:" and the code is 1.
+- `beehave check workflow` refuses a literal `sandbox` that is not `sandbox(...)` or `None`, and a literal pair with `host`, `stdin` or `max_new_processes`. It prints a note for `sandbox = None`.
+
 #### The environment of the program
 
 The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and no `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
@@ -780,7 +792,7 @@ A `gate` step keeps the environment of the process, except `SSH_AUTH_SOCK`. A ga
 
 `write(run, read_back, undo, stdin, env, timeout, name)` is a `command` step for a program that changes a system outside the run.
 
-- It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc` or `max_new_processes`.
+- It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc`, `max_new_processes` or `sandbox`.
 - The result has the fields `stdout`, `stderr`, `rc`, `attempts`, `key` and `skipped`.
 - It takes `retries` and `backoff` with the rules of `command`, and no `failure`. Each try runs the read-back first, so a try after a write that landed is skipped. All the tries have the same key.
 - A write runs on this machine only.

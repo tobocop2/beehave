@@ -77,6 +77,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `command` | `name` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 18 more |
 | `command` | `retries` | #594: new, a try that fails starts again, up to 10 times; the result has `attempts` | 1: `examples/research-desk/workflow.star` |
 | `command` | `run` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 18 more |
+| `command` | `sandbox` | #381: new, runs the program under the enforcer of the gate | 1: `examples/planner/workflow.star` |
 | `command` | `slots` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `stdin` | unchanged | 9: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 7 more |
 | `command` | `stop_on_rc` | unchanged | 2: `examples/remediation/workflow.star`, `examples/research/workflow.star` |
@@ -202,7 +203,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `recv` | `name` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `timeout` | #588: new, required | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `topic` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
-| `sandbox` | `-` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `sandbox` | `-` | unchanged | 3: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 1 more |
 | `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run, of a child run or of the open run of an item of the project | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
 | `send` | `name` | #588: new | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |

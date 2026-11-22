@@ -61,6 +61,68 @@ func TestCheck_ReportsASandboxValueThatIsNotASandboxCallOrNone(t *testing.T) {
 	}
 }
 
+func TestCheck_AcceptsTheSandboxKeywordOfACommandCall(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`command(run = ["a"], sandbox = sandbox())`,
+		`command(run = ["a"], sandbox = sandbox(network = ["proxy.golang.org"]))`,
+		`command(run = ["a"], sandbox = None, stdin = "x", max_new_processes = 5)`,
+		`command(run = ["a"], sandbox = None, host = "box")`,
+		`command(run = ["a"], sandbox = sandbox(), stdin = str(item))`,
+		`command(run = ["a"], sandbox = sandbox(), host = str(item))`,
+		`command(run = ["a"], sandbox = sandbox(), stdin = "")`,
+	} {
+		assert.Empty(t, problemsOf(t, body), body)
+	}
+}
+
+func TestCheck_ReportsACommandSandboxValueThatIsNotASandboxCallOrNone(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{`"on"`, `True`, `["api.example.org"]`} {
+		got := problemsOf(t, `command(run = ["a"], sandbox = `+value+`)`)
+
+		require.Len(t, got, 1, value)
+		assert.Contains(t, got[0], "sandbox must be sandbox(...) or None, not", value)
+	}
+}
+
+func TestCheck_ReportsACommandSandboxWithAHostAStdinOrAProcessCap(t *testing.T) {
+	t.Parallel()
+
+	for setting, want := range map[string]string{
+		`host = "box"`:             "sandbox cannot be used together with host",
+		`stdin = "x"`:              "sandbox cannot be used together with stdin",
+		`max_new_processes = 5`:    "sandbox cannot be used together with max_new_processes",
+		`host = "box", stdin = ""`: "sandbox cannot be used together with host",
+	} {
+		got := problemsOf(t, `command(run = ["a"], sandbox = sandbox(), `+setting+`)`)
+
+		require.Len(t, got, 1, setting)
+		assert.Contains(t, got[0], want, setting)
+	}
+}
+
+func TestCheck_NotesACommandWithNoSandbox(t *testing.T) {
+	t.Parallel()
+
+	got := notesOf(t, `command(run = ["a"], sandbox = None)`)
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "sandbox is None")
+	assert.Empty(t, notesOf(t, `command(run = ["a"], sandbox = sandbox())`))
+}
+
+func TestSandboxWith_RefusesEachSettingAloneAndAcceptsNone(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, workflow.SandboxWith("", "", 0))
+	require.ErrorContains(t, workflow.SandboxWith("box", "", 0), "host")
+	require.ErrorContains(t, workflow.SandboxWith("", "in", 0), "stdin")
+	require.ErrorContains(t, workflow.SandboxWith("", "", 3), "max_new_processes")
+}
+
 func TestCheck_LeavesANonLiteralSandboxListAndASplatCallToTheRun(t *testing.T) {
 	t.Parallel()
 
