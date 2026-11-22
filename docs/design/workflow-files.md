@@ -59,7 +59,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
 | `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
-| `send` | Safe. It rests on the library. | The send carries an idempotency key made of the run and the step name, and the store inserts one message for a key. |
+| `send` | Safe. It rests on the library. | The send is a recorded step of the library: the insert and the step record commit together, so a resume inserts the message once. |
 | `recv` | Safe. It rests on the library. | The deadline is a recorded step, and the receive is a durable DBOS step. A resume receives the same message. |
 | `wait` | Safe. It rests on the library, and no test in this table stops a wait. | The deadline is the output of a recorded DBOS sleep, and the answer is a durable receive. A resume waits for the same answer. |
 | `sleep` | Safe. It rests on the library. | The wake time is the record of a DBOS sleep. A test stops the engine in the middle of a sleep, and the resumed run sleeps only the time left. |
@@ -647,7 +647,7 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 - `to` is `"parent"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run.
 - `topic` is lowercase letters, digits, `.`, `_` and `-`. A topic that starts with `beehave.` is reserved.
 - `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
-- The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. It is the idempotency key of the send, so a resumed run inserts the message once.
+- The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. The send is a recorded step, so a resumed run inserts the message once.
 
 `send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
 
