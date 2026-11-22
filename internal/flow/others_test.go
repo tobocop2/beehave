@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -74,7 +73,7 @@ func stuckOthers(ctx dbos.Context, _ string) (string, error) {
 		return "", err
 	}
 
-	return dbos.Recv[string](ctx, ownerTopic, time.Minute)
+	return awaitInbox(ctx)
 }
 
 func TestClient_StatusReportsOtherOrchestratorsThatAreNotText(t *testing.T) {

@@ -82,6 +82,19 @@ func TestExamplePush_TheImplementAndTheFixPushTheirHeadsToTheBranchOfTheItemAndT
 		"the implement head goes to the branch of the item with the lease of the clone, and the fix head with the implement head as the lease")
 }
 
+func TestExamplePush_TheFirstPushIsTheHeadOfTheSweepAndNotTheHeadOfTheImplementStep(t *testing.T) {
+	t.Parallel()
+
+	base, file := exampleRig(t, func(int) string { return "approve" })
+	rig := newCommittingRig(t, base, implementMarker, sweepMarker)
+
+	_, err := runPipeline(rig.h.engine(t), file)
+	require.NoError(t, err)
+
+	require.Len(t, rig.heads, 2, "the implement step and the sweep committed")
+	assert.Equal(t, []string{pushOf(rig.heads[1], "")}, rig.h.forge.pushed, "the branch of the item gets the head of the sweep, which holds the commit of the implement step")
+}
+
 func TestExamplePush_ASettleThatCommitsPushesItsHeadLeasedOnTheLoopHeadAndTheItemReportsThatHead(t *testing.T) {
 	t.Parallel()
 
@@ -91,7 +104,7 @@ func TestExamplePush_ASettleThatCommitsPushesItsHeadLeasedOnTheLoopHeadAndTheIte
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "fix all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "fix all"}))
 	outcome := receive(t, done)
 	require.NoError(t, outcome.err)
 

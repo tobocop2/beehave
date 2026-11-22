@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/tobocop2/beehave/internal/agent"
@@ -50,9 +51,11 @@ func (Adapter) Profile() agent.Profile {
 		Args:       []string{"-p", "--output-format", streamJSON, "--verbose", "--allowedTools", bashTool},
 		EditArgs:   []string{"--permission-mode", "acceptEdits"},
 		ConfigVars: []string{"CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"},
+		ConfigHome: ".claude",
 		TokenVar:   "CLAUDE_CODE_OAUTH_TOKEN",
 		ModelFlag:  "--model",
 		Resume:     func(id string) []string { return []string{"--resume", id} },
+		SkillLine:  func(name string) string { return "/" + pluginName + ":" + name },
 		TurnsFlag:  "--max-turns",
 		BudgetFlag: "--max-budget-usd",
 		Sandbox:    true,
@@ -60,9 +63,30 @@ func (Adapter) Profile() agent.Profile {
 	}
 }
 
-// hookSettings is the settings of one run: a PreToolUse hook on the Bash tool.
-type hookSettings struct {
-	Hooks hookEvents `json:"hooks"`
+// attribution is the attribution setting of Claude Code. An empty commit and pr and a false sessionUrl omit the Co-Authored-By trailer of commits, the
+// attribution text of pull requests and the session link. Every Claude Code version reads this form; the value false needs v2.1.281.
+type attribution struct {
+	Commit     string `json:"commit"`
+	PR         string `json:"pr"`
+	SessionURL bool   `json:"sessionUrl"`
+}
+
+// noAttribution is the attribution setting that every launch carries: the commits of an agent have no trailer that names the CLI.
+func noAttribution() *attribution { return &attribution{Commit: "", PR: "", SessionURL: false} }
+
+// noSettingSources is the flag that loads no user, project or local settings file, with an empty value.
+func noSettingSources() []string { return []string{"--setting-sources", ""} }
+
+// guardSettings is the settings of one run with no sandbox: the attribution, a PreToolUse hook on the Bash tool, and the allow rules of the output files.
+type guardSettings struct {
+	Attribution *attribution `json:"attribution,omitempty"`
+	Hooks       *hookEvents  `json:"hooks,omitempty"`
+	Permissions *allowOnly   `json:"permissions,omitempty"`
+}
+
+// allowOnly is the permission rules of a run with no sandbox: allow rules only.
+type allowOnly struct {
+	Allow []string `json:"allow"`
 }
 
 type hookEvents struct {
@@ -80,14 +104,32 @@ type hookHandler struct {
 	OnFailure string `json:"onFailure"`
 }
 
-// Guard returns `--settings` with inline JSON that adds a PreToolUse hook with matcher Bash for this run.
-// Claude Code merges hook entries across settings sources, so no settings file of the user changes.
+// Guard returns `--settings` with inline JSON that adds a PreToolUse hook with matcher Bash for this run, when command is not empty.
+// The empty setting sources load no settings file of the runner, so no skill, hook or plugin of the runner loads; the --settings JSON is the whole
+// settings of the run. The model, the permission mode and the allowed tools reach the CLI as flags, and the login as the variables of the profile.
 // The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
 // "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
-func (Adapter) Guard(command, _ string) agent.Launch {
-	raw, _ := json.Marshal(hookSettings{Hooks: guardHooks(command)}) //nolint:errcheck,errchkjson // a struct of strings always encodes
+// Each file of write is opened to the file tools by the same rules and working directory as in the sandbox.
+// The skills reach the CLI as the plugin folder of the sandbox does, so a run with no sandbox loads them too. Every launch carries noAttribution in the same settings.
+func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launch {
+	settings := guardSettings{Attribution: noAttribution()}
 
-	return agent.Launch{Args: []string{"--settings", string(raw)}}
+	if command != "" {
+		hooks := guardHooks(command)
+		settings.Hooks = &hooks
+	}
+
+	if len(write) > 0 {
+		settings.Permissions = &allowOnly{Allow: outputRules(write)}
+	}
+
+	plugin := skillsPlugin(skills, runDir)
+	args := slices.Concat(noSettingSources(), addDirs(slices.Concat(outputDirs(write), plugin.readDirs())), plugin.args)
+
+	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
+	args = append(args, "--settings", string(raw))
+
+	return agent.Launch{Args: args, Files: plugin.files, Copies: plugin.copies, Hooked: settings.Hooks != nil}
 }
 
 // guardHooks is the PreToolUse hook on the Bash tool that runs command.

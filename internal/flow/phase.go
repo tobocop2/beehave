@@ -49,6 +49,9 @@ type PhaseInput struct {
 	// so a stored phase keeps its form and a replay never reads the current default of the project.
 	Sandbox *model.Sandbox `json:"sandbox,omitempty"`
 
+	// Skills are the skills that the prompt of the step declares. It is left out of a recorded phase for a step that declares none.
+	Skills []string `json:"skills,omitempty"`
+
 	// OutputFile is the file where the agent writes its declared outputs. Outputs names them. Outputs is left out for a call that declares none.
 	OutputFile string   `json:"output_file,omitempty"`
 	Outputs    []string `json:"outputs,omitempty"`
@@ -157,10 +160,10 @@ func (e *Engine) runAgent(ctx, claim context.Context, holder *attempt, in PhaseI
 		return PhaseOutput{}, err
 	}
 
-	saver := e.saveSession(ctx, in)
-	defer saver.finish()
+	named, said, finish := e.watch(ctx, in)
+	defer finish()
 
-	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, saver.name))
+	result, err := e.deps.Agents.Run(agentCtx, e.agentRequest(ctx, holder, in, data, lost, named, said))
 
 	out, err := e.judgePhase(ctx, in, result, err)
 	out.ResumeOf = lost.session()
@@ -186,12 +189,12 @@ func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Res
 }
 
 // agentRequest is the request for the agent of a phase. Its process groups are rows of the attempt holder. data is the data file of the phase,
-// and named receives each new session id that the agent names.
-func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInput, data string, lost *LostRun, named func(session string)) AgentRequest {
+// and named receives each new session id that the agent names. said receives each message text and tool call.
+func (e *Engine) agentRequest(ctx context.Context, holder *attempt, in PhaseInput, data string, lost *LostRun, named func(session string), said func(agent.Said)) AgentRequest {
 	return AgentRequest{
-		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Lost: lost,
+		Item: in.Item, Project: in.Project, Login: in.Login, Started: e.recordGroup(ctx, holder, in), Named: named, Said: said, Redact: e.redact, Lost: lost,
 		Prompt: in.Prompt, Resume: in.Resume, Model: in.Model, Timeout: in.Timeout, IdleTimeout: in.IdleTimeout,
-		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, OutputFile: in.OutputFile, Outputs: in.Outputs,
+		Forbid: in.Forbid, Protect: in.Protect, MaxBudget: in.MaxBudget, NoEdits: in.NoEdits, Sandbox: in.Sandbox, Skills: in.Skills, OutputFile: in.OutputFile, Outputs: in.Outputs,
 		DataFile: data,
 	}
 }
@@ -248,6 +251,17 @@ func phaseOutput(result agent.Result) PhaseOutput {
 // sessionEvent is the key of the event in which a phase saves the session id of its agent while the agent runs. A lost step records no output,
 // and the event outlives the loss. A rewind of the phase drops the event with the agent step that wrote it.
 const sessionEvent = "session"
+
+// watch starts what keeps the output of the agent while it runs: the saver of its session ids and the writer of its stream. named and said give them
+// the ids and the texts, and finish writes what waits and ends both. The caller must call finish once.
+func (e *Engine) watch(ctx context.Context, in PhaseInput) (named func(session string), said func(agent.Said), finish func()) {
+	saver, stream := e.saveSession(ctx, in), e.openStream(ctx, in)
+
+	return saver.name, stream.say, func() {
+		stream.finish()
+		saver.finish()
+	}
+}
 
 // saveSession starts the saver that writes the session ids of the agent as the event of the phase, from the context of the agent step.
 // The library writes the event of a step at once, with no step of its own. Each write is logged. A refused write lets the run go on: a replay of a lost step then starts fresh.

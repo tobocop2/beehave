@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/pool"
@@ -170,29 +171,49 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table, trees)
-	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table)
+	folders := &fstree.Folders{}
+	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
 
 	return flow.Deps{
-		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: picks, Lifecycle: life, Forge: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
+		Agents: newAgents(cfg, opts, trees, table, folders), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: picks, Lifecycle: life, Forge: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
-		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker},
-		Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
-		Batch:  batchHost{pulls: life.pulls, programs: commands, base: trees},
-		Hosts:  hostStop{programs: commands},
-		Queue:  queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
-		Poll:   pollReads{projects: cfg.Projects, pulls: life.pulls},
-		Kept:   table.hostErrors(),
+		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker}, Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
+		Batch: batchHost{pulls: life.pulls, programs: commands, base: trees},
+		Hosts: hostStop{programs: commands},
+		Queue: queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
+		Poll:  pollReads{projects: cfg.Projects, pulls: life.pulls},
+		Kept:  table.hostErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
 		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
 		Repository:     repositoryOf(cfg.Projects),
-		Facts:          factsOf(cfg, table), Slots: slotsOf(cfg.Projects),
+		Facts:          factsOf(cfg, table), Slots: slotsOf(cfg.Projects), SkillLine: skillLineOf(cfg.Runners, table),
+	}
+}
+
+// skillLineOf returns the line that makes the agent CLI of a runner load a skill before its first turn. It is empty for a runner that the config lacks,
+// for a runner whose agent has no adapter, and for an agent CLI with no such line.
+func skillLineOf(runners []model.Runner, table adapters) func(runner, skill string) string {
+	return func(runner, skill string) string {
+		for _, found := range runners {
+			if found.Name != runner {
+				continue
+			}
+
+			if adapter := table.agent(found.Agent); adapter != nil {
+				if line := adapter.Profile().SkillLine; line != nil {
+					return line(skill)
+				}
+			}
+		}
+
+		return ""
 	}
 }
 
 // factsOf returns the project as the config holds it, with the runner facts that the agents of the table give. A project that the config does not hold has no facts.
 func factsOf(cfg config.Config, table adapters) func(string) model.Project {
-	skills := runnerSkills(cfg.Runners, table)
+	loads := runnerSkillLoads(cfg.Runners, table)
 
 	return func(project string) model.Project {
 		found, ok := cfg.Projects[project]
@@ -201,23 +222,23 @@ func factsOf(cfg config.Config, table adapters) func(string) model.Project {
 		}
 
 		facts := found.Project
-		facts.RunnerSkills = skills
+		facts.RunnerSkillLoads = loads
 
 		return facts
 	}
 }
 
-// runnerSkills says for each runner whether its agent CLI reports skill calls. A runner whose agent has no adapter is left out.
-func runnerSkills(runners []model.Runner, table adapters) map[string]bool {
-	skills := make(map[string]bool, len(runners))
+// runnerSkillLoads says for each runner whether its agent CLI has a line that loads a skill before the first turn. A runner whose agent has no adapter is left out.
+func runnerSkillLoads(runners []model.Runner, table adapters) map[string]bool {
+	loads := make(map[string]bool, len(runners))
 
 	for _, runner := range runners {
 		if adapter := table.agent(runner.Agent); adapter != nil {
-			skills[runner.Name] = !adapter.Profile().NoSkillCalls
+			loads[runner.Name] = adapter.Profile().SkillLine != nil
 		}
 	}
 
-	return skills
+	return loads
 }
 
 // repositoryOf tells whether a project has a git repository. A project that the config does not hold counts as one that has it.
@@ -294,10 +315,10 @@ func localRunner(projects map[string]config.Project, found gitexec.Repositories)
 
 // newPrograms runs command steps in the worktree of the item, or on the host of the project.
 // The sandbox of a gate holds the lock of the clone, clones, while it adds or removes the worktree of its copy.
-func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, table adapters) programs {
+func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, table adapters, folders *fstree.Folders) programs {
 	return programs{
 		trees:    trees,
-		sandbox:  newGateSandbox(cfg.Projects, clones),
+		sandbox:  newGateSandbox(cfg.Projects, clones, folders),
 		local:    localRunner(cfg.Projects, gitexec.NewRepositories(clones.repos)),
 		exec:     func(spec proc.ExecRunner) proc.Runner { return spec },
 		hosts:    func(project, cluster string) (host.Host, error) { return buildHostOf(cfg, table, project, cluster) },

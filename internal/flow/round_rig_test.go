@@ -135,7 +135,7 @@ type children struct {
 	mu          sync.Mutex
 	gated       []string
 	reviewed    []string
-	readAt      []string            // the items that were reviewed at the first read of the integration pull request
+	readAt      []string            // the items that were reviewed at the last read of the integration pull request
 	reviewHooks map[string][]func() // the hooks that run when the review of the item has ended
 }
 
@@ -162,17 +162,15 @@ func (c *children) started() []string {
 	return items
 }
 
-// atIntegration records the items that are reviewed now, the first time the round reads the integration pull request.
+// atIntegration records the items that are reviewed now, at each read of the integration pull request, so the record is that of the last read.
 func (c *children) atIntegration() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.readAt == nil {
-		c.readAt = slices.Clone(c.reviewed)
-	}
+	c.readAt = slices.Clone(c.reviewed)
 }
 
-// reviewedAtIntegration returns the items that were reviewed when the round first read the integration pull request.
+// reviewedAtIntegration returns the items that were reviewed when the round last read the integration pull request.
 func (c *children) reviewedAtIntegration() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -460,7 +458,8 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	}
 
 	// Each child reads its own item: the id is the id of the item.
-	rig.h.items.byItem = map[string]map[string]string{}
+	// The item of the round itself has the field id only, as a round item has: the example runs a round for it, and a pipeline for an item with a title.
+	rig.h.items.byItem = map[string]map[string]string{testItem: {"id": testItem}}
 	for _, id := range queued {
 		rig.h.items.byItem[id] = map[string]string{"id": id, "title": "a title", "body": "a body"}
 	}
@@ -572,7 +571,7 @@ func (r *roundRig) answerOnce(t *testing.T, client *Client, owner *answering) {
 	r.deadlines = append(r.deadlines, view.Deadline)
 	r.questions = append(r.questions, infos[at].Question)
 
-	require.NoError(t, client.AnswerAs(testItem, shipOwner, r.answerFor(owner.given)))
+	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: r.answerFor(owner.given)}))
 
 	owner.given++
 	owner.open = true

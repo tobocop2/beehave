@@ -42,34 +42,41 @@ The Change column says how the pair differs from the contract that the five piec
 <!-- contract:target -->
 | Builtin | Keyword | Change | Use |
 |---|---|---|---|
-| `agent` | `-` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
+| `agent` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `allow_paths` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `agent` | `data` | #693: new, a dict that the engine writes to the data file that the prompt names as `data_file` | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `agent` | `edits` | #497: also picks the review queue | 10: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 8 more |
+| `agent` | `edits` | #497: also picks the review queue | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `forbid_commands` | unchanged | 11: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 9 more |
 | `agent` | `idle_timeout` | unchanged | 2: `examples/swarm/workflow.star`, `examples/ticket-pipeline/partition.star` |
-| `agent` | `inputs` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
+| `agent` | `inputs` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `label` | #497: new, a free text for the ledger and the status line | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `max_budget_usd` | unchanged | 1: `examples/swarm/workflow.star` |
-| `agent` | `model` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
-| `agent` | `name` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
+| `agent` | `model` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
+| `agent` | `name` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `output_tries` | unchanged | 3: `examples/remediation/workflow.star`, `examples/research/workflow.star` and 1 more |
-| `agent` | `outputs` | unchanged | 11: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 9 more |
+| `agent` | `outputs` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `pin` | unchanged | 3: `examples/local/workflow.star`, `examples/remediation/workflow.star` and 1 more |
-| `agent` | `prompt` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
+| `agent` | `prompt` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `agent` | `protect_paths` | unchanged | 3: `examples/maintenance/bump.star`, `examples/remediation/workflow.star` and 1 more |
-| `agent` | `resume` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
+| `agent` | `resume` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `runner` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `sandbox` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `agent` | `skill` | #787: new, the skill that the agent CLI loads before the first turn of the model | 1: `examples/remediation/workflow.star` |
 | `agent` | `timeout` | unchanged | 6: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 4 more |
+| `cancel` | `-` | #593: new, cancels one run that spawn returned, with its children | 1: `examples/planner/workflow.star` |
+| `cancel` | `name` | #593: new | 1: `examples/planner/workflow.star` |
+| `cancel` | `run` | #593: new | 1: `examples/planner/workflow.star` |
 | `closing_references` | `-` | #586: new, reads the issues that the pull request of the item closes | 1: `internal/workflow/lib/review_fix.star` |
 | `closing_references` | `text` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
-| `command` | `-` | unchanged | 16: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 14 more |
+| `command` | `-` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
+| `command` | `backoff` | #594: new, the wait before the first retry, which doubles before each later retry | 1: `examples/research-desk/workflow.star` |
 | `command` | `env` | unchanged | 4: `examples/research-desk/workflow.star`, `examples/research/workflow.star` and 2 more |
+| `command` | `failure` | #753: new, `"return"` gives an error of the step as the field `error` of the result, with `rc` -1 | 1: `examples/remediation/workflow.star` |
 | `command` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `max_new_processes` | unchanged | 1: `examples/maintenance/bump.star` |
-| `command` | `name` | unchanged | 16: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 14 more |
-| `command` | `run` | unchanged | 16: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 14 more |
+| `command` | `name` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
+| `command` | `retries` | #594: new, a try that fails starts again, up to 10 times; the result has `attempts` | 1: `examples/research-desk/workflow.star` |
+| `command` | `run` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 15 more |
 | `command` | `slots` | unchanged | 1: `examples/remediation/workflow.star` |
 | `command` | `stdin` | unchanged | 9: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 7 more |
 | `command` | `stop_on_rc` | unchanged | 2: `examples/remediation/workflow.star`, `examples/research/workflow.star` |
@@ -77,10 +84,15 @@ The Change column says how the pair differs from the contract that the five piec
 | `earlier_calls` | `-` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `call` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `earlier_calls` | `name` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
-| `env` | `-` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 15 more |
-| `env` | `default` | unchanged | 10: `examples/approvals/policy.star`, `examples/desk/eval.star` and 8 more |
-| `env` | `name` | unchanged | 17: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 15 more |
+| `env` | `-` | unchanged | 18: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 16 more |
+| `env` | `default` | unchanged | 12: `examples/approvals/policy.star`, `examples/desk/eval.star` and 10 more |
+| `env` | `name` | unchanged | 18: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 16 more |
 | `facts` | `-` | unchanged | 3: `examples/remediation/workflow.star`, `examples/ticket-pipeline/backfill.star` and 1 more |
+| `first_of` | `-` | #591: new, waits for the first of a run that ended, a message and a timeout | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `name` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `runs` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
+| `first_of` | `timeout` | #591: new | 1: `examples/planner/workflow.star` |
+| `first_of` | `topics` | #591: new | 1: `examples/planner/workflow.star` |
 | `gate` | `-` | unchanged | 5: `examples/local/workflow.star`, `examples/maintenance/bump.star` and 3 more |
 | `gate` | `base` | unchanged | 1: `internal/workflow/lib/review_fix.star` |
 | `gate` | `head` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -89,34 +101,35 @@ The Change column says how the pair differs from the contract that the five piec
 | `gate` | `pin_base` | unchanged | 1: `examples/remediation/workflow.star` |
 | `gate` | `run` | unchanged | 2: `examples/remediation/workflow.star`, `examples/research-desk/workflow.star` |
 | `gate` | `timeout` | unchanged | 1: `examples/remediation/workflow.star` |
-| `gather` | `-` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `gather` | `-` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `gather` | `fail` | unchanged | 5: `examples/desk/eval.star`, `examples/desk/workflow.star` and 3 more |
-| `gather` | `name` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
-| `gather` | `runs` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
-| `gather` | `until` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
+| `gather` | `name` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `gather` | `on_timeout` | #593: new, `cancel` or `return` for the runs still open at the deadline | 1: `examples/planner/workflow.star` |
+| `gather` | `runs` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `gather` | `timeout` | #593: new, the deadline of the group | 1: `examples/planner/workflow.star` |
 | `host_teardown` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_teardown` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_comment` | `-` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
+| `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_comment` | `id` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `key` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `name` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_comment` | `text` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `item_create` | `-` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `key` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `name` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_comment` | `text` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
+| `item_create` | `-` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `assignee` | unchanged | 1: `examples/ticket-pipeline/backfill.star` |
-| `item_create` | `body` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `body` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `key` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
-| `item_create` | `name` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `key` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `item_create` | `name` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_create` | `operator` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `parent` | unchanged | 6: `examples/desk/eval.star`, `examples/desk/workflow.star` and 4 more |
+| `item_create` | `parent` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
 | `item_create` | `severity` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_create` | `shared` | unchanged | 1: `examples/remediation/workflow.star` |
-| `item_create` | `title` | unchanged | 7: `examples/desk/eval.star`, `examples/desk/workflow.star` and 5 more |
+| `item_create` | `title` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
 | `item_read` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_read` | `of` | unchanged | 1: `examples/remediation/workflow.star` |
@@ -167,6 +180,15 @@ The Change column says how the pair differs from the contract that the five piec
 | `preflight` | `id` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `preflight` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `preflight` | `own` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `preflight` | `own_draft` | #814: the draft that the run opened is no stop of its loop | 1: `examples/remediation/workflow.star` |
+| `progress` | `-` | #589: new, reads what each child run published under a key, and does not wait | 1: `examples/planner/workflow.star` |
+| `progress` | `key` | #589: new | 1: `examples/planner/workflow.star` |
+| `progress` | `name` | #589: new | 1: `examples/planner/workflow.star` |
+| `progress` | `runs` | #589: new | 1: `examples/planner/workflow.star` |
+| `publish` | `-` | #589: new, sets the value of a key of this run for a parent to read | 1: `examples/planner/workflow.star` |
+| `publish` | `key` | #589: new | 1: `examples/planner/workflow.star` |
+| `publish` | `name` | #589: new | 1: `examples/planner/workflow.star` |
+| `publish` | `value` | #589: new | 1: `examples/planner/workflow.star` |
 | `push` | `-` | #697: new, the engine pushes the head of a step to a branch with a lease | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `push` | `branch` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `push` | `expect` | #697: new | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
@@ -176,13 +198,26 @@ The Change column says how the pair differs from the contract that the five piec
 | `queue` | `hold` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `queue` | `label` | unchanged | 1: `examples/remediation/workflow.star` |
 | `queue` | `name` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
+| `recv` | `-` | #588: new, waits for the next message of a topic on the inbox of the run | 1: `examples/review-loop/workflow.star` |
+| `recv` | `name` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `recv` | `timeout` | #588: new, required | 1: `examples/review-loop/workflow.star` |
+| `recv` | `topic` | #588: new | 1: `examples/review-loop/workflow.star` |
 | `sandbox` | `-` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
-| `spawn` | `-` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `send` | `-` | #588: new, puts a message on the inbox of the parent run or of a child run | 1: `examples/review-loop/workflow.star` |
+| `send` | `name` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `send` | `to` | #588: new, `"parent"` or a run that `spawn` returned | 1: `examples/review-loop/workflow.star` |
+| `send` | `topic` | #588: new | 1: `examples/review-loop/workflow.star` |
+| `send` | `value` | #588: new, a value that encodes as JSON | 1: `examples/review-loop/workflow.star` |
+| `sleep` | `-` | #590: new, a durable sleep that a recovered run does not start again | 1: `examples/queue/workflow.star` |
+| `sleep` | `duration` | #590: new | 1: `examples/queue/workflow.star` |
+| `sleep` | `name` | #590: new | 1: `examples/queue/workflow.star` |
+| `spawn` | `-` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
 | `spawn` | `base` | unchanged | 1: `examples/remediation/workflow.star` |
-| `spawn` | `entry` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
-| `spawn` | `items` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
-| `spawn` | `name` | unchanged | 8: `examples/desk/eval.star`, `examples/desk/workflow.star` and 6 more |
+| `spawn` | `entry` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `items` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `name` | unchanged | 10: `examples/desk/eval.star`, `examples/desk/workflow.star` and 8 more |
+| `spawn` | `retries` | #594: new, `gather` starts a child that failed again as its next attempt; the result of `gather` has `attempts` | 1: `examples/desk/eval.star` |
 | `struct` | `-` | unchanged | 15: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 13 more |
 | `wait` | `-` | unchanged | 10: `examples/approvals/workflow.star`, `examples/desk/eval.star` and 8 more |
 | `wait` | `choices` | unchanged | 4: `examples/approvals/workflow.star`, `examples/maintenance/bump.star` and 2 more |
@@ -193,9 +228,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `wait` | `timeout` | unchanged | 7: `examples/approvals/workflow.star`, `examples/incident/workflow.star` and 5 more |
 | `wait` | `to` | unchanged | 2: `examples/approvals/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `-` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
+| `write` | `backoff` | #594: new, as on `command` | 1: `examples/desk/workflow.star` |
 | `write` | `env` | unchanged | 1: `examples/remediation/workflow.star` |
 | `write` | `name` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `read_back` | unchanged | 1: `examples/desk/workflow.star` |
+| `write` | `retries` | #594: new, as on `command`; each try runs the read-back first | 1: `examples/desk/workflow.star` |
 | `write` | `run` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `stdin` | unchanged | 2: `examples/desk/workflow.star`, `examples/remediation/workflow.star` |
 | `write` | `timeout` | unchanged | 1: `examples/remediation/workflow.star` |

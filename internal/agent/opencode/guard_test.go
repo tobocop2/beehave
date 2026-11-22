@@ -33,7 +33,7 @@ func closedEnv(runDir string) map[string]string {
 func TestGuard_WritesOnePluginAndTheClosedRunEnvironment(t *testing.T) {
 	t.Parallel()
 
-	launch := opencode.New().Guard("/bin/beehave check command", "/run")
+	launch := opencode.New().Guard("/bin/beehave check command", "/run", nil, nil)
 
 	assert.Empty(t, launch.Args)
 	assert.Equal(t, closedEnv("/run"), launch.Env)
@@ -46,7 +46,7 @@ func TestGuard_WritesOnePluginAndTheClosedRunEnvironment(t *testing.T) {
 func TestGuard_DoesNotLetOpenCodePureSwitchOffThePlugin(t *testing.T) {
 	t.Parallel()
 
-	assert.NotContains(t, opencode.New().Guard("g", "/run").Env, "OPENCODE_PURE")
+	assert.NotContains(t, opencode.New().Guard("g", "/run", nil, nil).Env, "OPENCODE_PURE")
 }
 
 func TestSandbox_CarriesTheSameClosedRunLaunchAsGuard(t *testing.T) {
@@ -54,16 +54,47 @@ func TestSandbox_CarriesTheSameClosedRunLaunchAsGuard(t *testing.T) {
 
 	adapter := opencode.New()
 
-	assert.Equal(t, adapter.Guard("g", "/run"), adapter.Sandbox(agent.SandboxPlan{Work: "/w"}, "g", "/run"))
+	assert.Equal(t, adapter.Guard("g", "/run", nil, nil), adapter.Sandbox(agent.SandboxPlan{Work: "/w"}, "g", "/run", nil, nil))
 }
 
 func TestSandbox_WithNoGuardStillClosesTheRunAndWritesNoPlugin(t *testing.T) {
 	t.Parallel()
 
-	launch := opencode.New().Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run")
+	launch := opencode.New().Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run", nil, nil)
 
 	assert.Equal(t, closedEnv("/run"), launch.Env)
 	assert.Empty(t, launch.Files)
+}
+
+func TestGuard_OpensTheFolderOfEachOutputFileThroughTheInlineConfigInEveryMode(t *testing.T) {
+	t.Parallel()
+
+	const want = `{"permission":{"external_directory":{"/state/outputs/7.review/*":"allow"}}}`
+
+	adapter := opencode.New()
+	write := []string{"/state/outputs/7.review/output.json"}
+
+	assert.JSONEq(t, want, adapter.Guard("g", "/run", write, nil).Env["OPENCODE_CONFIG_CONTENT"], "guarded")
+	assert.JSONEq(t, want, adapter.Sandbox(agent.SandboxPlan{Work: "/w"}, "", "/run", write, nil).Env["OPENCODE_CONFIG_CONTENT"], "sandbox")
+
+	open := adapter.Guard("", "/run", write, nil)
+	assert.JSONEq(t, want, open.Env["OPENCODE_CONFIG_CONTENT"], "no guard")
+	assert.NotContains(t, open.Env, "OPENCODE_CONFIG_DIR", "a run with no guard stays open: only the output folder is added")
+	assert.Empty(t, open.Files)
+	assert.NotContains(t, open.Env, "OPENCODE_PERMISSION", "the variable of a step with no edits is not replaced")
+}
+
+func TestGuard_OnlyALaunchWithAGuardCommandIsHooked(t *testing.T) {
+	t.Parallel()
+
+	adapter := opencode.New()
+	plan := agent.SandboxPlan{Work: "/w"}
+
+	assert.Equal(t, agent.Launch{}, adapter.Guard("", "/run", nil, nil), "a step with no guard and no output file adds nothing")
+	assert.False(t, adapter.Guard("", "/run", []string{"/out/file"}, nil).Hooked, "output file, no guard")
+	assert.False(t, adapter.Sandbox(plan, "", "/run", nil, nil).Hooked, "sandbox with no guard")
+	assert.True(t, adapter.Guard("check", "/run", nil, nil).Hooked)
+	assert.True(t, adapter.Sandbox(plan, "check", "/run", nil, nil).Hooked)
 }
 
 func TestGuard_TheGuardCommandStaysOneJavaScriptString(t *testing.T) {
@@ -82,11 +113,11 @@ func TestGuard_TheGuardCommandStaysOneJavaScriptString(t *testing.T) {
 		literal, err := json.Marshal(command)
 		require.NoError(t, err)
 
-		text := opencode.New().Guard(command, "/run").Files[pluginPath]
+		text := opencode.New().Guard(command, "/run", nil, nil).Files[pluginPath]
 
 		assert.Contains(t, text, "const GUARD = "+string(literal)+"\n", command)
 		// The rest of the plugin is the same as for a harmless command, so nothing left the string.
-		plain := opencode.New().Guard("g", "/run").Files[pluginPath]
+		plain := opencode.New().Guard("g", "/run", nil, nil).Files[pluginPath]
 		assert.Equal(t,
 			strings.Replace(plain, `const GUARD = "g"`, "const GUARD = "+string(literal), 1),
 			text, command)
@@ -156,13 +187,13 @@ func decisionProblems(text string) []string {
 func TestGuard_EveryDecisionOfThePluginIsInIt(t *testing.T) {
 	t.Parallel()
 
-	assert.Empty(t, decisionProblems(opencode.New().Guard("g", "/run").Files[pluginPath]))
+	assert.Empty(t, decisionProblems(opencode.New().Guard("g", "/run", nil, nil).Files[pluginPath]))
 }
 
 func TestGuard_AMutantOfThePluginBreaksADecision(t *testing.T) {
 	t.Parallel()
 
-	text := opencode.New().Guard("g", "/run").Files[pluginPath]
+	text := opencode.New().Guard("g", "/run", nil, nil).Files[pluginPath]
 
 	mutants := []struct{ name, from, to string }{
 		{"a failed check passes", `    if (run.status !== 0) return "the check of the command failed"` + "\n", ""},
@@ -188,7 +219,7 @@ func TestGuard_AMutantOfThePluginBreaksADecision(t *testing.T) {
 func TestGuard_TheMarkerPathIsInsideTheRunFolderAndStaysOneJavaScriptString(t *testing.T) {
 	t.Parallel()
 
-	launch := opencode.New().Guard("__LOADED_PATH__", `/run "x"`)
+	launch := opencode.New().Guard("__LOADED_PATH__", `/run "x"`, nil, nil)
 
 	assert.Equal(t, "config/beehave-guard-loaded", launch.Loaded)
 	assert.Contains(t, launch.Files[pluginPath], `const GUARD = "__LOADED_PATH__"`, "the text that a command inserts is not read as a place to fill")

@@ -75,7 +75,7 @@ func answerTheGrace(t *testing.T, rig *agentRig, text string) {
 	client := rig.h.client(t, testVersion)
 	waitOn(t, ownerAsks(t, rig.h))
 	waitOn(t, waiting[struct{}]{what: "the question to name its people", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, askedOf(t, client) != nil, nil }})
-	require.NoError(t, client.AnswerAs(testItem, "alice", text))
+	require.NoError(t, client.Reply(testItem, Reply{From: "alice", Text: text}))
 }
 
 // graceOverEngine launches an engine whose clock moves one hour at each reading, so the wait of the grace period of the example (one hour) is over at its second reading.

@@ -22,7 +22,7 @@ const batchGitTimeout = 10 * time.Minute
 
 // batchIdentity is the author and committer of the union commits. They exist in the object database of the worktree only, and no forge sees them.
 func batchIdentity() []string {
-	return []string{"-c", "user.name=beehave", "-c", "user.email=beehave@localhost"}
+	return []string{"-c", "user.name=" + flow.EngineName, "-c", "user.email=" + flow.EngineEmail}
 }
 
 // batchHost serves merge: git in the worktree of the item, the base tip on the forge, and the intent of a member merge.

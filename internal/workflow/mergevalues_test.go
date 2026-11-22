@@ -122,3 +122,42 @@ func TestOwnerIdentity_RefusesWhatTheRunRefuses(t *testing.T) {
 	assert.Equal(t, []string{"me"}, logins)
 	assert.Equal(t, []string{"a@b"}, emails)
 }
+
+func TestPullRequests_OwnDraftIsTheNumberOfTheDraftOfAMemberAndDefaultsToZero(t *testing.T) {
+	t.Parallel()
+
+	member := func(extra starlark.StringDict) starlark.Value {
+		fields := starlark.StringDict{"item": starlark.String("i"), "head": starlark.String("h")}
+		maps.Copy(fields, extra)
+
+		return starlark.NewList([]starlark.Value{pr(fields)})
+	}
+
+	got, err := workflow.PullRequests(member(nil))
+	require.NoError(t, err)
+	assert.Equal(t, []workflow.PullRequest{{Item: "i", Head: "h"}}, got)
+
+	got, err = workflow.PullRequests(member(starlark.StringDict{"own_draft": starlark.MakeInt(7)}))
+	require.NoError(t, err)
+	assert.Equal(t, []workflow.PullRequest{{Item: "i", Head: "h", OwnDraft: 7}}, got)
+
+	_, err = workflow.PullRequests(member(starlark.StringDict{"own_draft": starlark.MakeInt(0)}))
+	require.ErrorContains(t, err, "own_draft must be the number of a pull request")
+}
+
+func TestOwnDraft_ALeftOutKeywordIsZeroAndAWholeNumberOfOneOrMoreIsTheNumber(t *testing.T) {
+	t.Parallel()
+
+	got, err := workflow.OwnDraft(nil)
+	require.NoError(t, err)
+	assert.Zero(t, got)
+
+	got, err = workflow.OwnDraft(starlark.MakeInt(7))
+	require.NoError(t, err)
+	assert.Equal(t, 7, got)
+
+	for _, bad := range []starlark.Value{starlark.MakeInt(0), starlark.MakeInt(-5), starlark.String("7"), starlark.None, starlark.MakeInt64(1 << 62).Mul(starlark.MakeInt64(8))} {
+		_, err = workflow.OwnDraft(bad)
+		require.ErrorContains(t, err, "own_draft must be the number of a pull request", bad.String())
+	}
+}

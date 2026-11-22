@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `command`, `earlier_calls`, `env`, `facts`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `push`, `queue`, `sandbox`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -44,7 +44,7 @@ DBOS records a step only when the step ends. If the engine stops after the effec
 1. Check first. The step reads the state and sends no second write.
 2. A cited rule. The call is documented to treat a repeat as no change, and a test pins the exact call.
 3. The same value. A repeat sets the value that is set already, and no page states that this is a no-op. The status and comment writes of the `local` tracker use this basis.
-4. The library. DBOS replays the step and not beehave: `spawn` and `wait`.
+4. The library. DBOS replays the step and not beehave: `spawn`, `wait`, `sleep`, `send` and `recv`.
 
 Four cases are not safe today, and a later change fixes each of them.
 
@@ -58,7 +58,11 @@ Four cases are not safe today, and a later change fixes each of them.
 | `push` | Safe. | Git exits 0 when the branch is already at the head, and checks no lease then. A replay of a push that landed passes. |
 | `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
+| `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
+| `send` | Safe. It rests on the library. | The send is a recorded step of the library: the insert and the step record commit together, so a resume inserts the message once. |
+| `recv` | Safe. It rests on the library. | The deadline is a recorded step, and the receive is a durable DBOS step. A resume receives the same message. |
 | `wait` | Safe. It rests on the library, and no test in this table stops a wait. | The deadline is the output of a recorded DBOS sleep, and the answer is a durable receive. A resume waits for the same answer. |
+| `sleep` | Safe. It rests on the library. | The wake time is the record of a DBOS sleep. A test stops the engine in the middle of a sleep, and the resumed run sleeps only the time left. |
 | `write` with `read_back` | Safe. | The read-back runs first and finds a write that is done. |
 | `write` with no `read_back` | Not safe today. The program runs again with the same key. | Neither beehave nor the forge can tell if the outside system dropped the repeat. A later change asks the owner before the repeat. |
 | `write` undo | The undo is a recorded step named `undo:<write step>`. A crash during the undos runs the one that has no record again with the same key. | The undo must be safe when nothing happened (see `undo`). A repeat after the effect depends on the program. |
@@ -70,7 +74,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -88,7 +92,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 `env("<NAME>")` reads a variable of the engine environment. The value is recorded, so a replay sees the value of the first run.
 
 - A name that is not set fails the step and names the variable, unless the call gives `default`, which is then the value.
-- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`.
+- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `OAUTH` and `SSH_AUTH_SOCK` are not secret names.
 
 ### `now`
 
@@ -99,6 +103,17 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 - A workflow has no other clock. A script that needs the time uses `now()`, and passes the text to a command if it must compute with it.
 - `beehave check workflow` refuses a keyword argument to `now`, and the run refuses any argument.
 
+### `sleep`
+
+`sleep(duration, name="")` pauses the run for the duration and returns a struct with one field, `slept`: the seconds that this execution slept.
+
+- `duration` is required text, such as `"90s"` or `"10m"`. It must be above zero. `beehave check workflow` and the run both refuse zero, a negative value, text that is no duration, and a missing duration.
+- The sleep is the durable sleep of the workflow library. The library records the wake time. A run that stops during the sleep and continues later sleeps only the time left, and a wake time in the past ends the sleep at once.
+- The call records the steps `sleep:<name>#<n>/start` (a marker with no value) and `sleep:<name>#<n>`, with the library record `DBOS.sleep` between them. The marker tells the call from the other sleeps of the engine. `beehave status` shows `sleeps until <time>` for a run that is in the sleep.
+- A cancel of the run ends the sleep, as it ends a wait.
+- A dry run sleeps the real duration, as a dry run of `wait` waits its real timeout. Use a short duration in a file that you check with `--dry-run`.
+- `sleep` records `slept` once, so a replay returns the first value. After a stop in the middle of the sleep, `slept` is the time that the second execution slept.
+
 ### `facts`
 
 `facts()` takes no argument and returns the facts of the project of the run as a struct.
@@ -107,11 +122,12 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 | --- | --- |
 | `repo`, `source`, `forge`, `tracker`, `base_branch`, `gate`, `gate_steps`, `build_host` | The project value of that name. |
 | `vars` | Dict. The `vars` of the project file, as written, and frozen. Every setting of a workflow is a key of it. |
-| `runners` | Dict. One entry for each runner of the config, by its name, with the field `reports_skills`: true when the agent CLI of the runner reports skill calls, false for OpenCode. The project file does not set it. A workflow reads it to refuse a step before any agent starts, for example a step that needs a skill. |
+| `runners` | Dict. One entry for each runner of the config, by its name, with the field `loads_skills`: true when the agent CLI has a line that loads a skill before the first turn, false for OpenCode. The project file does not set it. A workflow reads it to refuse a step before any agent starts, for example a step with the `skill` keyword. |
 
 - A fact that the project file leaves out is empty text, an empty list or an empty dict, never a missing field. A key that `vars` leaves out is missing: read it with `facts().vars.get("key", default)`.
 - The call is a recorded step named `facts#<n>`, so a replay returns the facts the run started with and never reads the config again.
 - A workflow passes the struct in the `inputs` of an agent call, and the prompt reads a field as `{{ .facts.<field> }}` and a setting of `vars` as `{{ index .facts.vars "<key>" }}`. The `index` form gives nothing, and no error, for a key that `vars` leaves out. The agent reads no file for it.
+- A prompt declares a skill with the template function `skill`, as `{{ skill "name" }}` or `{{ skill .facts.vars.review_skill }}`. The function renders the plain name. The step gets the skills that its prompt declares, with a sandbox or without one. The step sees only those skills, with a sandbox or without one (see [the skills of a step](sandbox.md#the-skills-of-a-step)). If the runner lacks a declared skill, the step stops before the agent starts. The dry run renders the prompt, so it refuses a name that is no folder name. `beehave check workflow` without `--dry-run` reads no prompt.
 - In a dry run the facts are empty, except `vars`. `beehave check workflow --project <name> --dry-run` gives `vars` the value of that project. Without `--project`, `vars` is an empty dict.
 - `beehave check workflow` refuses a field that `facts()` does not return.
 
@@ -318,7 +334,7 @@ The four steps that post public text (`item_create`, `item_comment`, `pr_comment
 
 ### `preflight`
 
-`preflight(head, base, hold, own, id, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
+`preflight(head, base, hold, own, id, own_draft, name)` reads the pull request of the item `id`, or of the item of the run when `id` is left out. It returns `ok`, `stop`, `code` and `reason`.
 
 It checks, in this order:
 
@@ -327,7 +343,7 @@ It checks, in this order:
 3. The assignees. A login that is not in `own["logins"]` and holds the pull request, or an issue that the pull request body links, gives ASSIGNED, exit code 11. An empty `own` checks no assignee.
 4. The author. An open pull request by a login that is not in `own["logins"]` gives CLAIMED, exit code 10. An empty `own` checks no author.
 5. The `hold` label.
-6. A draft.
+6. A draft. The keyword `own_draft` is the number of a draft that the run opened itself, and that one draft is no stop. A call that leaves it out stops at every draft, so the intake keeps the stop for a pull request that somebody else may rework. The value must be a whole number of 1 or more: the check and the run refuse zero, a negative number and any other type. The loop of the example passes the number that `pr_open` returned, so a draft with another number still stops the loop. The child run returns that number as the field `pr` of its value, and the batch intake of the round passes it, because the pull request stays a draft until the merge marks it ready.
 7. The expected head.
 8. The expected base.
 
@@ -396,20 +412,22 @@ Both builtins match text. They run no command, record no step and need no reposi
 
 `label` keeps the items that carry that tracker label. A call with no `label` keeps every open item. The engine reads no project setting for the choice: the workflow passes it. A workflow that needs a list of item ids keeps the rows whose `item` is in the list.
 
-Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested` and `labels`, the tracker labels of the item. The state:
+Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step` and `stop_reason`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
 | State | When |
 | --- | --- |
 | `running` | The item has an open run. |
 | `failed` | Its last attempt ended without success. |
+| `stopped` | Its last run ended with a stop, the way `beehave status` shows it. The workflow chose the stop, so the row is not `failed`. It is not `ready` and not `done`, and the round starts no run for it. `beehave cancel` does not reach it, because the store records the stop as a finished run. The owner fixes the cause and runs `beehave run <item>`, which starts a new attempt. |
 | `done` | Its last run succeeded, and no other row applies. |
 | `hold` | The tracker holds the item, or its pull request has the label that `hold` names. |
 | `ready` | Otherwise. A held item is never `ready`. |
 
 - A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.
+- The call reads the result of a finished run as `beehave status` does. A result that cannot be read ends the step with an error that names the run and the command `beehave run <item>`. The new run is the last run of the item, and the call reads it in place of the unreadable one.
 - The rows sort by severity, then by item id as byte strings.
 - `pr` is the number of the lowest open pull request whose head branch is the item id, or 0.
-- `free` is the cap of the `items` queue less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
+- `free` is the cap of the `items` queue, the queue of depth 1, less the runs that the library lists on it as pending or enqueued, so the engine keeps no count.
 - `pulls` lists every open pull request of the forge, each with `number`, `branch`, `base`, `author`, `draft`, `title` and `item`. `item` is the open item that the head branch names, or empty. `label` does not filter `pulls`, and an item that `label` leaves out of the rows still joins its pull request.
 - A read of the tracker or the forge that fails ends the step with an error.
 - A project with no forge has no pull requests.
@@ -422,6 +440,8 @@ A run that `spawn` started reads the hold of its item in the tracker again befor
 `merge(prs, base, repo, hold, own, forbid_text, gate_run, integration, hand_off, name)` lands a list of `struct(item, head, approved)` with one gate run on the union tree of the base tip and all heads. It splits the list when the gate is red. A forge with a native merge queue needs no `merge`.
 
 `approved` is an optional bool of each member, and a member that leaves it out is not approved. It applies to that member only: a pull request of an `own` identity merges only when its own member sets `approved = True`. The call has no `approved` of its own, so the approval of one member never reaches another. A value that is not a bool fails the call and names the field.
+
+`own_draft` is an optional int of each member: the number of the draft that the run opened for it. The pull request of a member stays a draft until the merge marks it ready, and the guards of the merge run before that step. The draft guard passes only when the pull request has the number `own_draft`, and the ready step then marks it ready after the guards, as it does for any draft. A member that leaves it out, or a draft with another number, is refused as before. `merge` has no `allow_ready` of its own. The value follows the same rule as `own_draft` of `preflight`: the check and the run refuse zero, a negative number and any other type, and the error names the member. A call with `hand_off` reads no `own_draft`: the call marks each pull request ready itself.
 
 `beehave check workflow` reads each `struct(...)` member of a `prs` list with the parser that the run uses, so a wrong field is a problem before the run. The error names the member and the field, for example ``prs[1]: `approved` of a member of `prs` must be a bool, not string``, and is the same text that the run gives. The check reads the first wrong field of a member. A member that is a literal but not a struct, such as `1`, a dict or a list, is refused. A list, a dict or a struct that a field or a member holds counts as that type, whatever it contains. A value that only the run knows, such as a variable or a call, is left to the run: the check skips that field or that member and still reads the other fields. A file that defines its own `struct` is not read as the builtin.
 
@@ -499,9 +519,17 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
 
-- Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the `items` queue. The queue holds at most `agents.max_concurrent` runs.
+- With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
+- The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
+
+- Each child run executes the function `entry(item)` on the bytes that the parent pinned, as a child workflow of the parent on the items queue of its depth. The queue holds at most `agents.max_concurrent` runs.
+- A run that `spawn` started may call `spawn`. A run that a user started is at depth 0, and each child is one level deeper than its parent. The project key `max_spawn_depth` caps the depth, 3 by default.
+- Each depth has its own queue: `roots` for the runs that `beehave run` starts, `items` for depth 1, then `items.2`, `items.3` and so on. A parent that waits in `gather` holds a slot of its own level only, so its children always find slots.
+- Each queue has the cap `agents.max_concurrent`, and the caps add up: with `max_spawn_depth` 3, at most 4 times `max_concurrent` item runs are open at once. The agent queues still cap the agent steps.
+- At start, the engine registers one queue for each depth up to the highest `max_spawn_depth` of the projects. If a run that can run again (open, canceled or failed) sits deeper, the engine also registers the queues down to the children of that run, which its replay starts again. A project file that lowers the cap does not strand a run on a queue that no worker reads.
+- The tree cost cap `agents.max_tree_budget_usd` sums every level of the tree. `beehave cancel` of the root cancels every level. A cancel of a run in the middle cancels the runs below it, and its parent sees a child that did not finish.
 - A child of a round item is cut at the base of the round item, `round/<base>`. A workflow that has a round base setting passes it as `base`, and `spawn` checks that it equals the base of the round item.
 - A child run that finished with success is reused and does not run again.
 - A cancelled run, or no run, starts the next attempt.
@@ -512,20 +540,69 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 - An item whose last attempt failed.
 - The parent itself.
 - An item that is in `items` twice.
-- A call from a run that `spawn` started.
+- A child that would run deeper than `max_spawn_depth`. The error names the item, the depth and the cap: `item 24 would run at depth 4, and the project has a cap of 3`.
 - A `base` that differs from the base of the round item that calls `spawn`. The error names both bases. An item that is no round item has no base to compare, so `spawn` cuts each child at the `base` of the call. The gate of the child reads the pin file at the same branch.
+
+#### `first_of`
+
+`first_of(runs=None, topics=None, timeout="", name="")` waits for the first of three events and returns `struct(kind, run, outcome, runs, message)`. The call needs at least one of `runs`, `topics` and `timeout`.
+
+- `kind` is `"run"` when a run of `runs` ended, `"message"` when a message came on one of `topics`, and `"timer"` when `timeout` passed first.
+- For `"run"`, `runs` lists every run of the call that ended in the read that found the first one, in the order of the call, each as `struct(item, run, outcome)`. `run` and `outcome` are the first of them: `run` is the run as `spawn` returned it and `outcome` has the fields of a result of `gather`. For `"message"`, `message` is the value of the message. For `"message"` and `"timer"`, `run` and `outcome` are `None` and `runs` is empty.
+- A run that an earlier `first_of` call of this run returned, as `run` or in `runs`, does not win again, so a loop passes the same list on every turn. A call with no topics and no timeout, and no run left, is refused.
+- A run that failed with retries left starts again as in `gather`, and does not end the wait.
+- The topics are user topics. The topic `beehave.child` is reserved: a run of a child sends it to its parent when it ends, and `recv` skips it. The topic `beehave.answer` is reserved: `beehave answer` sends it, and only `wait` reads it.
+- Each turn reads the rows of the runs in the recorded step `first_of:<name>#<n>.look<turn>`, then waits on the inbox. The end notice wakes the parent at once. If the notice does not come, a turn ends after 60 seconds and reads the rows again, so a lost notice costs one minute and never a hang.
+- A timeout is the recorded step `first_of:<name>#<n>.deadline`, as in `gather`. A restart keeps the first deadline.
+- A message on another topic stays in the buffer of the run until a `recv` or a `first_of` call names its topic.
 
 #### `gather`
 
-`gather(runs, fail="return", until="all", name="")` waits for the runs and returns `results`, a list in the order of the call.
-
-- With `until="any"`, the wait ends when at least one run is no longer open, and `results` holds only the runs that ended, in the order of the call. Any other `until` value is refused.
-- A second `until="any"` call on the same list returns an ended run again, so a loop removes the ended runs from its list before the next call.
-- If `fail="raise"` and a run failed, the call waits for every run, as `until="all"` does.
-- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped` and `value`.
+`gather(runs, fail="return", timeout="", on_timeout="", name="")` waits for every run and returns `results`, a list in the order of the call. To wait for the first run that ends, use `first_of`. `gather` has no `until` keyword.
+- If `fail="raise"` and a run failed, the call waits for every run.
+- A run that this run did not spawn is refused with `run <id> is not a child of this run`. `gather` accepts only the runs that a `spawn` call of this run returned, including a run that `spawn` reused because it had finished. The check reads no store: the plan of each `spawn` is a recorded step, so a replay or a fork of this run lists the same runs. The dry run and `beehave check workflow` cannot see this, because the runs exist only at run time.
+- Each result has the fields `item`, `ok`, `error`, `merge`, `sent_back`, `closed`, `stopped`, `cost_usd`, `value`, `attempts` and `open`. `attempts` counts the runs of the item that this call waited for.
+- `cost_usd` is the spend of the child run and of every run below it, in dollars, as the status view counts it. The step reads it once, when the wait ends, and records it with the outcome, so a replay returns the same number.
+- A run of `spawn` with retries left that failed does not end the wait and does not trigger `fail="raise"`. The call records the plan of the next attempts as one step, starts them, and waits again. A replay starts nothing twice.
+- `beehave resume` of a parent reopens only the last attempt of each item. An earlier attempt that a retry replaced stays failed, and the parent goes back to the start of the last attempt.
 - The wait is one recorded step that reads the rows of all the runs, so the record does not depend on the order in which the children end.
 - With `fail="raise"`, the step cancels the runs that are still open when it sees a run that failed, and records all the outcomes. The call then fails with the error of that run.
 - A restart replays `spawn` and `gather` from the records, and each child keeps its own output.
+
+#### `publish` and `progress`
+
+`publish(key, value, name="")` sets the value of a key of this run and returns None. A second call with the same key replaces the value. `progress(runs, key, name="")` reads the value of that key from each run and returns a list in the order of the call. Each element has the fields `item`, `run`, `set` and `value`.
+
+- A key has 1 to 64 characters from `a-z`, `0-9`, `_`, `.` and `-`, and starts with a letter or a digit. A key that starts with `beehave.` is reserved. The check of a workflow file refuses a literal key that breaks the rule, and the run refuses a computed one.
+- A value is a dict with string keys, a list, a tuple, a string, a number, a bool or None, at most 64 KiB as JSON, as the value of a child run is. The engine hides secrets in the value before it stores it.
+- `publish` sets a DBOS event of the run, named `u.<key>`, and the event `beehave.keys`, which lists the keys of the run in the order of their first use. DBOS has no call that lists the events of a run.
+- `progress` does not wait. A run that published nothing under the key reads `set = False` and `value = None`. A published None reads `set = True` and `value = None`.
+- `progress` accepts only the runs that a `spawn` call of this run returned, as `gather` does, and refuses any other run with `run <id> is not a child of this run`.
+- For a child that `gather` started again, `progress` reads the latest attempt, and `run` is the id of that attempt.
+- `progress` reads all the runs in one recorded step, so a replay of the parent returns the values of the first read, even if a child published again since.
+- `beehave status <run id> --events` prints the keys of a run and their last values, one line each, while the run goes on and after it ended. Add `--json` for one JSON list.
+
+#### The deadline of a group
+
+`timeout` is a duration above zero, such as `"10m"`. It sets a deadline on the wait. At the deadline, each run that is still open gets `ok = False` and `error = "deadline"`, and `on_timeout` says what happens to it:
+
+- `"cancel"` (the default when `timeout` is set) cancels the run and its children, as `beehave cancel` does. Its `open` is False.
+- `"return"` leaves the run running. Its `open` is True, and the workflow can wait for it again or cancel it.
+
+A run that ended before the deadline keeps its own outcome. `on_timeout` with no `timeout` is refused, and so is any other value of `on_timeout`.
+
+The deadline is a recorded step, `gather:<name>#<n>.deadline`, before the step of the wait. A parent that restarts during the wait reads the first deadline and does not start a new one. With `"cancel"`, the step of the wait records the outcomes and cancels nothing, and the step `gather:<name>#<n>.cancel` after it cancels the runs that were open. So a crash between a cancel and a record cannot change a `"deadline"` outcome. A deadline is not a failure: `fail="raise"` does not raise for it.
+
+#### `cancel`
+
+`cancel(run, name="")` cancels one run that a `spawn` call of this run returned, with its children, and returns `cancelled`.
+
+- `cancelled` is True when the call ended a run that was open. It is False when the run had already ended, with success or not. The store leaves an ended run as it is.
+- A run that `spawn` reused because it had finished is ended, so `cancel` returns False for it and stops nothing.
+- For a child that `gather` started again, `cancel` ends the latest attempt and its children, and `cancelled` is True only when that attempt was open. A deadline cancels the latest attempts too.
+- A run that this run did not spawn is refused with `run <id> is not a child of this run`.
+- The call is two recorded steps. `cancel:<name>#<n>.open` records whether the run is open. `cancel:<name>#<n>` then cancels it, writing the cancel marker first as `beehave cancel` does, so an engine that stops gives the claim of the run back at its next start. The read is recorded before any cancel, so a cancel step that runs again after a crash still returns True for a run that it ended.
+- `beehave resume` of the parent does not reopen a run that `cancel` or a deadline canceled.
 
 #### The value of a child run
 
@@ -546,7 +623,7 @@ Before this rule, the engine dropped what a spawn entry returned. A spawn entry 
 The retry route for a parent that failed in a `gather` is `beehave resume <parent>`. The resume:
 
 1. Finds the step that started the failed child.
-2. Takes a fresh claim for that child, and reopens it on the `items` queue.
+2. Takes a fresh claim for that child, and reopens it on the items queue of its depth. A child at depth 2 or 3 reopens in the same way, from the failed run at its own level.
 3. Forks the parent from that step.
 
 The resume also reopens each sibling that the raise canceled while it was open, so that no child stays canceled and fails the next `gather`.
@@ -558,6 +635,36 @@ The resume also reopens each sibling that the raise canceled while it was open, 
 - The raise cancels the children of each canceled child, so no phase of a canceled child stays in the queue.
 - A canceled child gives its claim back on the next tick of the engine, not when the `gather` returns. If a resume comes right after the raise, it can ask you to run `beehave resume` again.
 - A failed parent cannot be cancelled, and a new attempt of it is refused until it resumes.
+
+### `send` and `recv`
+
+Each run has one inbox. A run sends a message to its parent or to a child, and a run reads its own inbox by topic.
+
+#### `send`
+
+`send(to, topic, value, name="")` puts a message on the inbox of another run, and returns `id`, the id of the message.
+
+- `to` is `"parent"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run.
+- `topic` is lowercase letters, digits, `.`, `_` and `-`. A topic that starts with `beehave.` is reserved.
+- `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
+- The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. The send is a recorded step, so a resumed run inserts the message once.
+
+`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
+
+A send to a child goes to its latest attempt: the run that `gather` started again last, or the run that `spawn` returned. If that attempt ended, the send is refused with `item <id> has no open run`, as no attempt reads the message. The check is part of the recorded send step, so a replay gives the same answer.
+
+#### `recv`
+
+`recv(topic, timeout, name="")` waits for the next message of the topic on the inbox of the run. It returns `value`, `sender`, `id` and `timed_out`.
+
+- `timeout` is required, such as `"10m"`. When it passes, `timed_out` is true and `value` is None.
+- The messages of one topic come in the order that they arrived. A message of another topic waits for a later `recv` of its topic.
+- The deadline is a recorded step, `recv:<name>#<n>.deadline`, or `recv#<n>.deadline` for a call with no name, so a resumed run waits only the time that is left. The step holds the end time and the topic.
+- While `recv` waits, `beehave status` shows the call as the step that runs now, and the note `waits for a message on topic <topic> until <time>` with the time left. `status --json` has the field `receiving` with the topic, and `deadline`. A `recv` that takes a message that is already in the buffer shows nothing. The same rule names the call of a `first_of` or a `gather` with a timeout (`first_of:<name>#<n>`, `gather:<name>#<n>`) as the step that runs now, in place of the record of its deadline. These two calls show no topic.
+
+#### `beehave send`
+
+`beehave send <item> --topic <topic> <text>` puts a message on the inbox of the open run of the item. `--json <file>` gives the value as a file of JSON in place of the text. The command prints the id of the message. A second send with the same `--key` to the same run inserts nothing, so a repeated send delivers once. The sender of the message is `cli:<user>`.
 
 ### `command`
 
@@ -626,6 +733,23 @@ The returned struct also holds `stderr`, the second output stream of the program
 - The engine records `stderr` in the run database like `stdout`, so a program must not print a secret to either stream.
 - A run recorded before the field existed has no `stderr`. A workflow that reads it fails on a replay of that run.
 
+#### `retries`, `backoff` and `failure`
+
+| Setting | Meaning |
+| --- | --- |
+| `retries` | A whole number from 0 to 10. The default is 0. |
+| `backoff` | The wait before the first retry, a duration above zero such as `"2s"`. The wait doubles before each later retry, and stops at 10 minutes. A `backoff` above 10 minutes is refused. It needs `retries` of 1 or more. With no `backoff`, the first wait is 100 ms and no wait is longer than 5 s. |
+| `failure` | `"raise"` (the default) or `"return"`. |
+
+- A try that exits with a code that is not zero, and not in `stop_on_rc`, starts again until the retries are spent. A code in `stop_on_rc` is never retried.
+- An error of the step, such as a program that cannot start, also starts again. A cancel and a lost host are never retried.
+- The result has the field `attempts`, the number of tries. After the last try, `rc` is the code of that try.
+- The step is one record. A replay reads it and does not retry again. A crash during the retries starts the count again: the resume runs the step from the first try.
+- With `failure = "return"`, an error of the step that is left after the retries becomes the field `error` of the result, with `rc` -1 and empty `stdout` and `stderr`, and the run goes on. The default ends the run with the error. A cancel of the run always ends it.
+- A step with `slots` takes no `retries`, because it runs as a queued host job.
+- `agent` takes no `retries`.
+- `beehave check workflow` refuses a literal `retries` out of range, a `backoff` that is not above zero or is above 10 minutes, a `backoff` with no `retries`, `retries` with `slots`, and a `failure` that is not `"raise"` or `"return"`.
+
 #### The environment of the program
 
 The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
@@ -637,7 +761,8 @@ A `gate` step keeps the environment of the process.
 `write(run, read_back, undo, stdin, env, timeout, name)` is a `command` step for a program that changes a system outside the run.
 
 - It takes `run`, `stdin`, `env` and `timeout` with the rules of `command`. It takes no `host`, `stop_on_rc` or `max_new_processes`.
-- The result has the fields `stdout`, `stderr`, `rc`, `key` and `skipped`.
+- The result has the fields `stdout`, `stderr`, `rc`, `attempts`, `key` and `skipped`.
+- It takes `retries` and `backoff` with the rules of `command`, and no `failure`. Each try runs the read-back first, so a try after a write that landed is skipped. All the tries have the same key.
 - A write runs on this machine only.
 - The program of `run`, `read_back` and `undo` is pinned like the program of a `command`. A script that changes between the first run and a resume is refused. A `read_back` or `undo` list that is not a literal is counted as a dynamic command.
 
@@ -679,10 +804,12 @@ No undo runs:
 
 - An `agent` call must name a `model`. A call without it fails at its line.
 - `resume` of an `agent` call is the session of an earlier agent, such as `impl.session`.
+- `skill` of an `agent` call is the name of a skill folder, such as `"lint-pass"`. The agent CLI loads the skill before the first turn of the model, so the step does not rest on a choice of the model. The adapter puts its own skill-load line first in the prompt: for Claude Code the line is `/beehave-skills:<name>`. The step gets the skill like a skill that its prompt declares. An empty text is no skill. `beehave check workflow` refuses a name that is no folder name. A step with `skill` on a runner whose agent has no skill-load line (OpenCode) does not start: the message names the runner. The dry run gives every runner a line.
 - The call takes a `pin`, a commit id such as `check.head`, and starts only when the head of the worktree equals it.
 - The call takes one free `label`, a text that shows in `beehave status`. A label never changes what the step does. `edits = False` makes the step read-only and puts it on the review queue.
+- A step with `edits = True` in a project with a repository may write `commit_subject` and `commit_body` in its output file. After the read step, the engine commits in the step `<name>/commit`: it stages by name each path that the step changed and commits as `beehave <beehave@localhost>`, the identity of the engine, never the `user.name` and `user.email` of the clone. The step makes no commit when it wrote no subject or changed no path. `commit_subject` is one line of text that is not empty. The engine refuses a message from which `git interpret-trailers --parse` reads a trailer, such as `Co-Authored-By`, as a bad output file, so `output_tries` runs the step again. Git reads no trailer in a last paragraph that mixes a trailer with prose. The engine takes the start mark for each such step, so an untracked file that was there at the start is not staged, and a tracked file that was already changed at the start is staged only when the step changed it further (its content, its executable bit or its link target). If the step crashed after the commit and before its record, the replay finds the commit by its parent, the head that the agent left, and returns that commit as `head_sha` with `committed` true. A commit that the agent makes itself stays in the history.
 - The call takes no `kind`, `lane`, `rounds`, `follow_ups` or `require_skills`. `beehave check workflow` refuses each one by name, for example "agent takes no argument kind".
-- The result of the call has the field `skills`: the list of the skills that the agent called, in the order of the calls. A workflow that needs a skill tests it, for example `"lint-pass" not in implement.skills`, and stops the item itself.
+- The result of the call has the field `skills`: the list of the skills that the agent called, in the order of the calls. The list is a record of what the agent did. To make a step use a skill, use the `skill` keyword, which loads the skill before the first turn. A test of the list does not make the agent call the skill.
 - In a dry run, the fake agent reports each skill that the workflow requires. The dry run reads the syntax tree of the workflow file and of the files it loads, and runs no code. It parses these files again for this: it does not reuse the parse of `beehave check workflow`.
 - A skill is required when an `if` tests a text literal with `in` or `not in` against `<expression>.skills`, and the branch that runs when the skill is missing has a call of `fail(...)` as one of its own statements. Either quote style, `not`, `not not` and parentheses around the test count. The two usual forms are `"x" not in r.skills` with `fail` in the `if` branch, and `"x" in r.skills` with `fail` in the `else` branch. A name that the same function binds only from `<expression>.skills` (`called = r.skills`) counts in place of `<expression>.skills`. Each function is its own scope: a name from another function, a parameter, a loop variable and a name that the function binds again to something else do not count. A test inside a helper function counts.
 - The tested name can also be `<expression>.vars["key"]` with a text literal as the key. The dry run then reports the text that the key holds in the vars of the dry run, and no skill when the key is missing or holds no text.
@@ -734,25 +861,32 @@ One workflow written in this form, with five prompt files. The method lives in t
 5. A settle step.
 6. A merge step.
 
-#### The review skill of the implement step of `examples/remediation/`
+The entry `main` runs the round for a round item, which has the field `id` only. It runs the pipeline for a tracker item, which has a `title`. So `beehave run <item>` on a stopped item starts a new attempt of its pipeline, and the next pass of the round reads that run. The round lands only the children that it started itself, so the owner lands an approved head of such an attempt. The new attempt takes the base of the last run of the same item, which the spawn of the round gave. So a worktree that someone removed is cut where the children of the round are cut, and the pull request targets the same base.
+
+#### The review skill of the sweep step of `examples/remediation/`
 
 The workflow names no skill. The project names it.
 
 - The project file sets `vars.review_skill`: the name of a skill, such as `"your-review-skill"`. A run with no such key, or a value that is not a text that is not blank, is refused before the first agent starts. The message names the key.
-- After the implement step, the example refuses the item when the agent did not call that skill. The message names the skill and the key.
-- The test is `if project.vars["review_skill"] not in implement.skills:` with a `fail` call in its branch, so a dry run reads the key from the vars of the project and reports that skill from its fake agent.
+- The prompts name the skill with `{{ skill .facts.vars.review_skill }}`, so the agent of the step can load it from the config folder of the runner (see [the skills of a step](sandbox.md#the-skills-of-a-step)).
+- The engine starts the review sweep as the step `implement-sweep`, right after the implement step. The step has `skill = project.vars["review_skill"]`, so the agent CLI loads the skill first. No check rests on an agent that chooses to call a skill.
+- The sweep has the runner and the sandbox of the implement step, and it resumes the session of that step. It may edit, and its prompt `prompts/sweep.md` orders it to commit each fix and to write the report again.
+- The engine pushes the head of the sweep, not the head of the implement step. The review loop starts from the sweep.
+- A sweep on a runner with no skill-load line does not start. The message names the runner.
+- The example refuses at the start of the lane, before the plan agent, when the runner that vars.round.steps.implement names has no skill-load line. It reads the fact `runners.<name>.loads_skills`. A step on the pool, with no runner name, is refused at the sweep step, because the pool picks the runner at run time. The dry run with `--project` reads the runners of the config and refuses the same way. `beehave check workflow` without `--dry-run` runs no facts step, so it cannot check a runner. Neither can resolve a runner that the pool picks at run time.
 
 #### The sweep step of `examples/remediation/`
 
 The engine has no cleanup builtin. The project owns the clean command and the workflow runs it as a host command.
 
 - The project file can set `vars.clean_command`: a list of words, such as `["sh", "scripts/clean-lane.sh"]`. A value that is not a list of words that are not blank is refused before the first agent starts. The message names the key.
-- When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`, then `docker volume prune -f` as the step `sweep-prune`. Both run with `host`, so they run on the build host.
-- The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before each of the two `fail` calls of the lane (the skipped review skill and the missing changelog entry).
-- A workflow file cannot catch an error. A lane that a builtin error ends, such as a host that is gone, gets no sweep. A sweep that raises, such as a host lost at the sweep, fails the lane, and the round does not land its head. At a refusal site, a raising sweep replaces the refusal reason with the host error, so the operator reads the host error. A fix needs an engine setting for `command` that returns such a failure as a result. Issue #753 tracks it.
-- With no `vars.clean_command`, the sweep runs the prune only.
-- The sweep does not fail the lane. A failed clean does not skip the prune.
-- The value that the lane returns holds the field `sweep`: one line for each step, `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`, then `prune: rc=<n>`.
+- When a lane ends, the child run calls `sweep`. It runs `vars.clean_command` as the step `sweep-clean`. The step runs with `host`, so it runs on the build host. The sweep runs no other command: a cleanup of docker volumes belongs in `vars.clean_command`.
+- The sweep runs for each end of the lane that returns a value: an approval, a rejection, a hold and a ruling of the owner. It also runs before the `fail` call of the lane for a missing changelog entry.
+- The sweep step uses `failure = "return"`. A sweep step that cannot run, such as a step on a host that is gone, puts its error in the `sweep` field as `clean: rc=-1 error: <text>` and does not fail the lane.
+- A workflow file cannot catch an error. A lane that the error of an earlier builtin ends, such as a host that is gone at the mutation run, gets no sweep. Issue #753 tracks it.
+- With no `vars.clean_command`, the sweep runs no command.
+- The sweep does not fail the lane.
+- The value that the lane returns holds the field `sweep`: the line `clean: rc=<n>` or `clean: not run, vars.clean_command is not set`.
 
 #### The mutation step of `examples/remediation/`
 

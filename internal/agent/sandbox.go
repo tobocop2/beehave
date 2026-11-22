@@ -22,11 +22,12 @@ import (
 // way as DenyWrite, so that the CLI matches them when a file is used and a path that does not exist yet is covered too.
 // ReadDirs lists the folders outside the work folder that the run may read, as working directories that the adapter passes to the CLI. An allow rule does not open a path to the file tools when
 // the CLI blocks reads outside the working directories, so each folder here holds only the files that the run may read.
-// Write lists the files outside the work folder that the shell and the file tools may write, each by its exact path.
 // Identity is the git identity of the engine at the work folder, which the commits of the shell carry.
 // Edits is true for a run that may edit the files of the work folder with the file tools. The runner sets it from Spec.NoEdits.
+// Temp is the short temporary folder of the run, which the runner makes before the launch and removes after it.
 type SandboxPlan struct {
 	Edits             bool
+	Temp              string
 	Work              string
 	GitDirs           []string
 	Read              []string
@@ -35,7 +36,6 @@ type SandboxPlan struct {
 	DenyPatterns      []string
 	DenyWrite         []string
 	DenyWritePatterns []string
-	Write             []string
 	Network           []string
 	Identity          GitIdentity
 }

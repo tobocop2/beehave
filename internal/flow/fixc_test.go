@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -331,7 +331,7 @@ func TestPendingCancels_SkipsAMarkerThatIsNotCompleteAndSaysNothing(t *testing.T
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string]cancelMark{testRun: {ItemInput: ItemInput{Item: testItem, Project: testProject}}}, pending)
@@ -347,7 +347,7 @@ func TestPendingCancels_LogsAndSkipsAMarkerThatCannotBeRead(t *testing.T) {
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Len(t, pending, 1)
@@ -456,7 +456,7 @@ func TestPendingCancels_ReportsAFolderThatCannotBeRead(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, cancelsDir), nil, ownerMode))
 
-	_, err := pendingCancels(dir, newLogger(&bytes.Buffer{}))
+	_, err := pendingCancels(dir, newLogger(&bytes.Buffer{}, runRedactor(nil)))
 
 	require.ErrorContains(t, err, "read the cancel markers")
 }
@@ -465,7 +465,7 @@ func TestForgetDeleted_KeepsTheFilesOfRunsThatCouldNotBeDeleted(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	engine := &Engine{dir: dir, logger: newLogger(&bytes.Buffer{})}
+	engine := &Engine{dir: dir, logger: newLogger(&bytes.Buffer{}, runRedactor(nil))}
 	require.NoError(t, saveOwner(dir, testRun, "owner-12"))
 
 	failure := errors.New("the store refused")
@@ -553,7 +553,7 @@ func TestForget_LogsAFileThatCannotBeRemoved(t *testing.T) {
 
 	var out bytes.Buffer
 
-	engine := &Engine{dir: dir, logger: newLogger(&out)}
+	engine := &Engine{dir: dir, logger: newLogger(&out, runRedactor(nil))}
 	engine.forget(testRun)
 
 	assert.Contains(t, out.String(), "cannot remove the files of a finished run")
@@ -685,7 +685,7 @@ func TestPendingCancels_LogsAndSkipsAMarkerWhoseFileNameIsNotAnEscapedRunId(t *t
 
 	var out bytes.Buffer
 
-	pending, err := pendingCancels(dir, newLogger(&out))
+	pending, err := pendingCancels(dir, newLogger(&out, runRedactor(nil)))
 
 	require.NoError(t, err)
 	assert.Len(t, pending, 1)
@@ -735,14 +735,60 @@ func isClosedErr(done chan error) bool {
 
 // waitsForOwnersLock reports whether a goroutine that the function creator started waits in the lock of a file while it writes a cancel marker.
 func waitsForOwnersLock(creator string) bool {
-	buf := make([]byte, 1<<20)
-	buf = buf[:runtime.Stack(buf, true)]
-
-	for _, stack := range strings.Split(string(buf), "\n\n") {
+	for _, stack := range strings.Split(string(goroutineStacks()), "\n\n") {
 		if strings.Contains(stack, "/internal/flow."+creator+" in goroutine") && strings.Contains(stack, "markRunCancel") && strings.Contains(stack, "(*Flock).Lock") {
 			return true
 		}
 	}
 
 	return false
+}
+
+// goroutineStacks returns the stack of every goroutine of the process, in the format of runtime.Stack, with no size limit.
+func goroutineStacks() []byte {
+	var dump bytes.Buffer
+
+	_ = pprof.Lookup("goroutine").WriteTo(&dump, 2) //nolint:errcheck // a write to a bytes.Buffer cannot fail
+
+	return dump.Bytes()
+}
+
+// parkedForStackDump holds a goroutine in a stack of depth+1 frames that the dump of goroutineStacks must show. It calls parked when it holds.
+func parkedForStackDump(depth int, parked func(), release <-chan struct{}) {
+	if depth > 0 {
+		parkedForStackDump(depth-1, parked, release)
+
+		return
+	}
+
+	parked()
+	<-release
+}
+
+func TestGoroutineStacks_ADumpOfManyGoroutinesIsWhole(t *testing.T) {
+	t.Parallel()
+
+	const (
+		goroutines = 150
+		depth      = 60
+	)
+
+	release := make(chan struct{})
+
+	var holding sync.WaitGroup
+
+	for range goroutines {
+		holding.Add(1)
+
+		go parkedForStackDump(depth, holding.Done, release)
+	}
+
+	holding.Wait()
+
+	defer close(release)
+
+	dump := goroutineStacks()
+
+	assert.Greater(t, len(dump), 1<<20, "the dump is larger than the 1 MiB buffer that a fixed-size dump cut")
+	assert.Equal(t, goroutines*(depth+1), bytes.Count(dump, []byte("flow.parkedForStackDump(")), "a cut dump misses the stacks past its end")
 }

@@ -88,7 +88,7 @@ func TestLaneLayout_APatchRoundsCapOfTwoGivesThreeCandidatesAndThenAsksTheOwner(
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, 3, countCandidates(rig), "two fix rounds need three candidates: the third checks the second fix round, then the owner rules")
@@ -103,7 +103,7 @@ func TestLaneLayout_TheDefaultCapIsSixCandidates(t *testing.T) {
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, 6, countCandidates(rig), "five fix rounds and the candidate that checks the last one")
@@ -247,7 +247,7 @@ func TestLaneLayout_TheSettleLaneIsTheOnlyEditAfterTheLastReviewAndRunsOnce(t *t
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "fix all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "fix all"}))
 	require.NoError(t, receive(t, done).err)
 
 	requests := rig.h.agents.requests
@@ -299,7 +299,7 @@ func TestLaneLayout_AResumeKeepsTheCapOfTheFirstStartWhenTheFixRoundsChange(t *t
 
 	handle := resumeRun(t, engine, rig.h.client(t, testVersion))
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	_, err = resultOfHandle(t, handle)
 	require.NoError(t, err)
 
@@ -340,7 +340,7 @@ func TestLaneLayout_TheLanesOfTheItemAreScopedReviewsAfterFixesAndOneFullReviewF
 		kinds = append(kinds, lane.Label)
 	}
 
-	assert.Equal(t, []string{"", "implement", "review 1/24", "fix 1/18", "review 2/24", "review 3/24"}, kinds,
+	assert.Equal(t, []string{"", "implement", "implement-sweep", "review 1/24", "fix 1/18", "review 2/24", "review 3/24"}, kinds,
 		"a scoped review after the implement and after each fix, then the gate as proof, then one full review of the candidate")
 	assert.Equal(t, 1, rig.h.gate.calls, "the scoped loop runs no gate")
 }

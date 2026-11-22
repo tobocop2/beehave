@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/model"
@@ -63,7 +64,7 @@ func TestSandboxPlan_TheIdentityIsTheGitIdentityOfTheEngineAtTheWorktree(t *test
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 
 	r := newSandboxRig(t)
-	r.f.agents.identity = newAgents(config.Config{}, flow.Options{StateDir: filepath.Dir(filepath.Dir(r.work))}, treeAt(r.work), newAdapters(nil, nil, nil)).identity
+	r.f.agents.identity = newAgents(config.Config{}, flow.Options{StateDir: filepath.Dir(filepath.Dir(r.work))}, treeAt(r.work), newAdapters(nil, nil, nil), nil).identity
 	runGit(t, r.work, "config", "user.email", "worktree@example.com")
 
 	req := request()
@@ -518,8 +519,17 @@ func TestAgents_TheSpecOfAStepCarriesItsSandboxPlan(t *testing.T) {
 
 	plan := &agent.SandboxPlan{Work: "/w"}
 
-	assert.Same(t, plan, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", plan).Sandbox)
-	assert.Nil(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil).Sandbox)
+	assert.Same(t, plan, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", plan, nil).Sandbox)
+	assert.Nil(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, nil).Sandbox)
+}
+
+func TestAgents_TheSpecOfAStepCarriesItsSkills(t *testing.T) {
+	t.Parallel()
+
+	skills := []string{"/login/skills/review"}
+
+	assert.Equal(t, skills, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, skills).Skills, "a step with no sandbox carries them too")
+	assert.Empty(t, agents{}.specOf(request(), model.Runner{}, "", nil, nil, "", nil, nil).Skills)
 }
 
 func TestWithin_ComparesWholeNamesAndNotPrefixes(t *testing.T) {
@@ -543,7 +553,7 @@ func TestWithin_APatternCoversEachMatchAndThePathsBelowItWithoutCase(t *testing.
 func TestNewAgents_FindsTheHomeFolderOfTheOwner(t *testing.T) {
 	t.Parallel()
 
-	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
+	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil), nil)
 
 	home, err := a.home()
 
@@ -589,16 +599,34 @@ func TestSandboxPlan_TheFolderOfTheOutputFileOfTheCallIsAReadDirectoryAndNoSibli
 	require.NoError(t, err)
 
 	plan := r.f.spec.Sandbox
-	assert.Equal(t, []string{filepath.Dir(file)}, plan.ReadDirs, "the folder of the one output file is a working directory of the call")
-	assert.NotContains(t, plan.ReadDirs, sibling, "the folder of another call stays closed")
-	assert.NotContains(t, plan.ReadDirs, outputs, "never the outputs folder")
-	assert.Contains(t, plan.Read, file, "the shell reads the output file")
-	assert.Equal(t, []string{file}, plan.Write, "the write rule stays the exact file")
+	assert.Equal(t, []string{file}, r.f.spec.Write, "the run spec holds the exact output file")
+	assert.NotContains(t, plan.ReadDirs, filepath.Dir(file), "the plan of the sandbox no longer carries the output folder")
 	assert.NotContains(t, plan.DenyWrite, filepath.Dir(file), "the folder of the output file is not read only")
+
+	args := claude.New(nil).Sandbox(*plan, "", t.TempDir(), r.f.spec.Write, nil).Args
+	assert.Contains(t, args, filepath.Dir(file), "the folder of the one output file is a working directory of the call")
+	assert.NotContains(t, args, sibling, "the folder of another call stays closed")
+	assert.NotContains(t, args, outputs, "never the outputs folder")
 
 	req.Outputs = nil
 	_, err = r.f.agents.Run(t.Context(), req)
 	require.NoError(t, err)
-	assert.Empty(t, r.f.spec.Sandbox.ReadDirs, "a call that declares no outputs adds no folder")
-	assert.NotContains(t, r.f.spec.Sandbox.Read, file, "a call that declares no outputs reads no output file")
+	assert.Empty(t, r.f.spec.Write, "a call that declares no outputs opens no output file")
+}
+
+func TestAgentRun_AStepWithNoSandboxHandsItsOutputFileToTheLaunch(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	file := filepath.Join(r.home, ".local", "state", "beehave", "outputs", "7.agent_3Areview_231", "output.json")
+	r.touch(t, file)
+
+	req := request()
+	req.Sandbox, req.OutputFile, req.Outputs = nil, file, []string{"verdict"}
+
+	_, err := r.f.agents.Run(t.Context(), req)
+	require.NoError(t, err)
+
+	assert.Nil(t, r.f.spec.Sandbox, "the step has no sandbox")
+	assert.Equal(t, []string{file}, r.f.spec.Write, "the run spec holds the output file, so every launch opens it")
 }

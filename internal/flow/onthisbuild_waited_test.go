@@ -35,7 +35,7 @@ func waitedRun(t *testing.T, flowText, from string) *harness {
 	done := runInBackground(engine, testItem)
 
 	waitOn(t, ownerAsks(t, harness))
-	require.NoError(t, client.AnswerAs(testItem, from, "go"))
+	require.NoError(t, client.Reply(testItem, Reply{From: from, Text: "go"}))
 	require.Error(t, receive(t, done).err, "the file fails after the wait")
 	require.NoError(t, engine.Shutdown())
 
@@ -72,8 +72,7 @@ func TestClient_ResumeOnThisBuildRefusesAWaitedRunWhoseOnlyCoreStepIsTheReceiveW
 	t.Parallel()
 
 	forms := map[string]struct{ arguments, from string }{
-		"plain wait":            {"", ""},
-		"plain wait, a timeout": {", timeout = \"1h\"", ""},
+		"plain wait": {"", ""},
 	}
 
 	for name, form := range forms {
@@ -99,20 +98,21 @@ func TestClient_ResumeOnThisBuildRefusesAWaitedRunWhoseOnlyCoreStepIsTheReceiveW
 func TestClient_ResumeOnThisBuildRefusesAnAddressedWaitWhenTheCoreModuleChanged(t *testing.T) {
 	t.Parallel()
 
-	forms := map[string]struct{ arguments, step string }{
-		"wait by id":           {", to = [\"ana\"]", "wait:id"},
-		"wait with a deadline": {", to = [\"ana\"], timeout = \"1h\"", "wait:deadline"},
+	forms := map[string]struct{ arguments, from, step string }{
+		"wait by id":                 {", to = [\"ana\"]", "ana", "wait:id"},
+		"wait with a deadline":       {", to = [\"ana\"], timeout = \"1h\"", "ana", "wait:deadline"},
+		"plain wait with a deadline": {", timeout = \"1h\"", "", "wait:deadline"},
 	}
 
 	for name, form := range forms {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			harness := waitedRun(t, waitThenFail(form.arguments), "ana")
+			harness := waitedRun(t, waitThenFail(form.arguments), form.from)
 			other := buildWithModule(harness.client(t, otherBuild), moduleCore, coreVersion+1)
 
 			names := namesOf(t, other)
-			require.Contains(t, names, form.step, "every build records the step of an addressed wait before the receive")
+			require.Contains(t, names, form.step, "the wait records this step before the receive")
 			require.Contains(t, names, "DBOS.recv")
 
 			requireStranded(t, other, "core")

@@ -96,7 +96,7 @@ func e2eFlow(dir, path string) cli.Flow {
 			files := e2eFiles{dir: dir}
 
 			engine, err := flow.NewEngine(ctx, withModules(opts), withBatch(flow.Deps{
-				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)),
+				Agents: e2eAgents{dir: dir, path: path}, Gate: e2eGate{dir: dir}, Logins: e2eLogins{}, Commands: e2eCommands{dir: dir}, Slots: slotsOf(cfg.Projects), Facts: factsOf(cfg, newAdapters(nil, nil, nil)), SkillLine: skillLineOf(cfg.Runners, newAdapters(nil, nil, nil)),
 				Lifecycle: files, Forge: files, Trees: files, Beats: files, Items: files, Preflight: files, Reader: files, Hosts: files,
 			}, dir, cfg))
 			if err != nil {
@@ -162,7 +162,8 @@ func (e2eFiles) ClosingIssues(context.Context, string, string) ([]int, bool, err
 func (e2eFiles) Comment(context.Context, string, string, string, string) (int, error) { return 0, nil }
 
 func (e2eFiles) Open(context.Context, string, string, flow.OpenRequest) (flow.OpenResult, error) {
-	return flow.OpenResult{}, nil
+	// The real forge opens a pull request with a number of 1 or more, and the workflow passes it as own_draft. Standing reads the same pull request.
+	return flow.OpenResult{Number: 1, Created: true}, nil
 }
 
 func (e2eFiles) Push(context.Context, string, string, string, string, string) error { return nil }
@@ -343,19 +344,19 @@ type e2eAgents struct{ dir, path string }
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
 	adapter := newAdapters(nil, nil, nil).agent(claude.Name)
 	runner := model.Runner{Name: request.Login, Agent: claude.Name, ConfigDir: a.dir}
-	request, resumed := replayOf(request, runner, a.dir, adapter)
+	request, resumed := replayOf(request, runner.ConfigDir, a.dir, adapter)
 	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
 	tap := newSessionTap(adapter, agent.DefaultPrices(), request.Named)
 	protect := protectionOf(request.Protect, a.dir)
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
-		Adapter: adapter, Runner: runner,
+		Adapter: adapter, Runner: runner, ConfigFolder: a.dir,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits, Resume: request.Resume,
 		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
 	})
 
-	result, err := endOf(adapter, runner, a.dir, tap, result, request.Forbid, protect)
+	result, err := endOf(adapter, runner.ConfigDir, a.dir, tap, result, request.Forbid, protect)
 	result.Resumed = resumed
 
 	return result, err
@@ -383,7 +384,9 @@ mode=
 resume=
 resumed=
 while [ $# -gt 0 ]; do
-  if [ "$1" = --settings ]; then hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/'); fi
+  if [ "$1" = --settings ]; then
+    case "$2" in *'"command":"'*) hook=$(printf '%s' "$2" | sed 's/.*"command":"\([^"]*\)".*/\1/') ;; esac
+  fi
   if [ "$1" = --permission-mode ]; then mode=$2; fi
   if [ "$1" = --resume ]; then resume=$2; resumed="$1 $2"; fi
   shift
@@ -447,11 +450,23 @@ fi
 if [ "$step" = implement ] || [ "$step" = fix ]; then
   printf '{"report":"# Report\\n","uncaused":"[]"}\n' > "$(field write)"
 fi
+# The sweep step answers its report output and records the first line of the prompt of the example, the line that loads the skill. The line before it is the login line of this harness.
+if [ "$step" = sweep ]; then
+  printf '{"report":"# Report\\n"}\n' > "$(field write)"
+  printf '%s\n' "$prompt" | sed -n 2p >> sweepline.log
+fi
 # The tool calls arrive as assistant lines of the stream, as with the real claude.
 # The fake claude calls the skill that the example requires, so the session reports it.
 # When the file no-skill exists, the fake reports no skill call, as a CLI that does not report them.
+# The result of the call follows on a user line: with the file unknown-skill, the error that the CLI gives for a skill it did not load.
+skill=%SKILL%
 if [ ! -e no-skill ]; then
-  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"%SKILL%"}}]}}'
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_skill","name":"Skill","input":{"skill":"'"$skill"'"}}]}}'
+  if [ -e unknown-skill ]; then
+    echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","is_error":true,"content":"<tool_use_error>Unknown skill: '"$skill"'</tool_use_error>"}]}}'
+  else
+    echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","content":"Launching skill: '"$skill"'"}]}}'
+  fi
 fi
 # The implementer stages everything, the command that the example forbids.
 if [ "$step" = implement ]; then
@@ -489,6 +504,7 @@ func (e2eLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\nwrite={{ .output_file }}\n",
 	"implement": "step=implement\nwrite={{ .output_file }}\n",
+	"sweep":     "step=sweep\nwrite={{ .output_file }}\n",
 	"review":    "step=review\nwrite={{ .output_file }}\nseen={{ .violations }}\n",
 	"fix":       "step=fix\nround={{ .round }}\nwrite={{ .output_file }}\nfound={{ .findings }}\n",
 	"settle":    "step=settle\nwrite={{ .output_file }}\nruling={{ .ruling }}\n",
@@ -655,6 +671,21 @@ func cmdWaitSession(ts *testscript.TestScript, neg bool, args []string) {
 	}))
 }
 
+// cmdWaitLine is "waitline <path> <text>": it waits until a line of the file holds the text. A run that a script starts with its stderr in a file
+// writes the start of each step there, so a kill can wait for a step of one run when the file of an agent of another run comes first.
+func cmdWaitLine(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 2 {
+		ts.Fatalf("usage: waitline <path> <text>")
+	}
+
+	path := ts.MkAbs(args[0])
+	e2eRunWait(ts, neg, e2eWaitingFor(ts, "a line of "+path+" to hold "+args[1], func() bool {
+		text, err := os.ReadFile(filepath.Clean(path))
+
+		return err == nil && slices.ContainsFunc(strings.Split(string(text), "\n"), func(line string) bool { return strings.Contains(line, args[1]) })
+	}))
+}
+
 // cmdWaitStatus is "waitstatus <text>": it runs beehave status until the output holds the text.
 func cmdWaitStatus(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 1 {
@@ -759,13 +790,14 @@ func TestScripts(t *testing.T) {
 		Dir:   "testdata/e2e",
 		Setup: e2eSetup,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus, "waitsession": cmdWaitSession,
+			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus, "waitsession": cmdWaitSession, "waitline": cmdWaitLine,
 			"example": cmdExample, "script": cmdScript, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"swarmfakes": cmdSwarmFakes, "batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude, "deskfakes": cmdDeskFakes, "deskinit": cmdDeskInit,
 			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit, "maintfakes": cmdMaintFakes, "maintinit": cmdMaintInit,
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
+			"reviewfakes": cmdReviewLoopFakes,
 		},
 	})
 }

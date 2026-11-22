@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,10 +63,10 @@ func assertOnlyWriteGrant(t *testing.T, settings outputSettings, file string, cl
 	t.Helper()
 
 	assert.Empty(t, settings.Sandbox.Filesystem.AllowWrite, "no allowWrite entry: the Edit allow rule is the one route")
-	assert.Equal(t, []string{"Edit(/" + file + ")"}, settings.Permissions.Allow, "the one grant is the output file by its exact path")
+	assert.Equal(t, []string{"Read(/" + file + ")", "Edit(/" + file + ")"}, settings.Permissions.Allow, "the one grant is the output file by its exact path, to read and to edit")
 
 	for _, rule := range settings.Permissions.Allow {
-		path := strings.TrimSuffix(strings.TrimPrefix(rule, "Edit(/"), ")")
+		path := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(rule, "Read(/"), "Edit(/"), ")")
 		assert.False(t, strings.ContainsAny(path, `*?[\`), "a write grant holds no glob character: %s", rule)
 
 		for _, other := range closed {
@@ -88,7 +89,7 @@ func TestSandboxPlan_AStepWithOutputsAndNoEditsGetsSettingsThatAllowItsOutputFil
 	require.NotNil(t, r.f.spec.Sandbox)
 	assert.True(t, r.f.spec.NoEdits, "edits stay off")
 
-	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir()).Args)
+	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write, nil).Args)
 
 	assertOnlyWriteGrant(t, settings, file, sibling, file+".tmp", outputs, r.work, filepath.Join(r.work, "a.go"))
 	assert.False(t, within(r.work, sibling), "the sibling is outside the work folder, which the sandbox opens by default")
@@ -105,7 +106,7 @@ func TestSandboxPlan_AStepThatDeclaresNoOutputsOpensNoPathForWrite(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, r.f.spec.Sandbox)
 
-	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir()).Args)
+	settings := settingsOfArgs(t, claude.New(nil).Sandbox(*r.f.spec.Sandbox, "", t.TempDir(), r.f.spec.Write, nil).Args)
 	assert.Empty(t, settings.Sandbox.Filesystem.AllowWrite)
 	assert.Empty(t, settings.Permissions.Allow)
 }
@@ -144,6 +145,61 @@ func TestSandboxPlan_AStateFileWhosePathHoldsAGlobCharacterStopsTheStep(t *testi
 		require.NoError(t, err)
 		assert.Equal(t, agent.OutcomeNotStarted, result.Outcome, "a data file: %s", folder)
 	}
+}
+
+func TestAgentRun_AStepWithNoSandboxAndAnOutputFileWhosePathHoldsAGlobCharacterStops(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+
+	for _, folder := range []string{"st*te", "st?te", "st[a]te", `st\ate`} {
+		req := outputRequest(filepath.Join(r.home, folder, "outputs", "7.json"))
+		req.Sandbox = nil
+
+		result, err := r.f.agents.Run(t.Context(), req)
+
+		require.NoError(t, err)
+		assert.Equal(t, agent.OutcomeNotStarted, result.Outcome, folder)
+		assert.Contains(t, result.Note, "The file "+req.OutputFile+" of the state folder holds a glob character", folder)
+	}
+}
+
+func TestAgentRun_AStepWithNoSandboxStartsWithItsOutputFileInACredentialPath(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	req := outputRequest(filepath.Join(r.home, ".ssh", "outputs", "7.json"))
+	req.Sandbox = nil
+
+	result, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.NotEqual(t, agent.OutcomeNotStarted, result.Outcome, result.Note)
+	assert.Equal(t, []string{req.OutputFile}, r.f.spec.Write)
+}
+
+func TestAgentRun_AStepWithNoSandboxAndNoHomeFolderStillChecksTheGlobCharacterOfItsOutputFile(t *testing.T) {
+	t.Parallel()
+
+	r := newSandboxRig(t)
+	r.f.agents.home = func() (string, error) { return "", errors.New("no home") }
+
+	req := outputRequest(filepath.Join(r.home, "st*te", "outputs", "7.json"))
+	req.Sandbox = nil
+
+	result, err := r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeNotStarted, result.Outcome)
+	assert.Contains(t, result.Note, "holds a glob character")
+
+	req = outputRequest(filepath.Join(r.home, "state", "outputs", "7.json"))
+	req.Sandbox = nil
+
+	result, err = r.f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.NotEqual(t, agent.OutcomeNotStarted, result.Outcome, result.Note)
 }
 
 func TestSandboxPlan_AWorkFolderWhosePathHoldsAGlobCharacterStopsAStepThatMayEdit(t *testing.T) {

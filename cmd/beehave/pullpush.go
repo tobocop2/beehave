@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
@@ -109,7 +110,7 @@ func openPushRepository(ctx context.Context, git proc.Runner, root, dir string) 
 		return fmt.Errorf("make the push repository: %w", err)
 	}
 
-	if err := trustedRoot(root, os.Getuid()); err != nil {
+	if err := fstree.TrustedRoot(root, os.Getuid()); err != nil {
 		return fmt.Errorf("the folder of the push repositories: %w", err)
 	}
 

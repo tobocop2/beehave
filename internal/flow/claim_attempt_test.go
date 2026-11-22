@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -93,6 +94,24 @@ func stopRun(engine *Engine, id string) {
 	a.cancel()
 }
 
+// endFirstAttempt stops the attempt that the engine lists under the run id and returns the outcome of its run.
+// The run reads the store row of the stopped workflow to report its outcome, and a resume that lands before that read opens the row again,
+// so the first attempt would wait for the resumed run. A test resumes only after this returns. A run that gives no outcome fails the test and returns the zero outcome.
+func endFirstAttempt(t *testing.T, engine *Engine, done <-chan runOutcome) runOutcome {
+	t.Helper()
+
+	stopRun(engine, testRun)
+
+	select {
+	case first := <-done:
+		return first
+	case <-time.After(eventTimeout):
+		assert.Fail(t, "the first attempt returns its outcome")
+
+		return runOutcome{}
+	}
+}
+
 func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedRunRunning(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +126,10 @@ func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedR
 
 	earlier := endedOf(engine, testRun)
 
-	var later chan struct{}
+	var (
+		later chan struct{}
+		first runOutcome
+	)
 
 	var armed atomic.Bool
 
@@ -118,8 +140,7 @@ func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedR
 			return
 		}
 
-		stopRun(engine, testRun)
-		assert.Eventually(t, func() bool { return isClosed(earlier) }, soonBound, pollEvery, "the first attempt ends")
+		first = endFirstAttempt(t, engine, done)
 
 		later = resumeAndList(t, engine, client, earlier)
 
@@ -133,7 +154,7 @@ func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedR
 
 	harness.tick(t)
 
-	require.Error(t, receive(t, done).err, "the first attempt ended at its stop")
+	require.Error(t, first.err, "the first attempt ended at its stop")
 	require.NotNil(t, later, "the run resumed while the tracker answered the renewal")
 
 	_, _, reason, _ := engine.holds.distrust(testRun, engine.deps.Clock)
@@ -141,7 +162,7 @@ func TestBeat_ARenewalOfTheEarlierAttemptThatSaysTheClaimIsGoneLeavesTheResumedR
 
 	// The resumed run takes the answer and ends with success: a stop by the answer for the first attempt would end it canceled.
 	waitOn(t, waiting[struct{}]{what: "the resumed run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
-		return struct{}{}, client.Answer(testItem, "yes") == nil, nil
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
 	}})
 	waitOn(t, condition(func() bool {
 		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterWorkflowIDs(testRun))

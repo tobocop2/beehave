@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 
 	got := map[string][]string{
 		"agent":         keysOf(agentOutputs("", "", "", "", "", "", agent.Spend{}, false, false, nil)),
-		"command":       keysOf(commandOutputs("", "", 0)),
+		"command":       keysOf(commandOutputs(CommandOutput{}, 1)),
 		"earlier_calls": keysOf(earlierOutputs(0)),
 		"gate":          keysOf(gateOutputs(true, "", "", "", nil, nil, nil)),
 		"facts":         keysOf(factsOutputs(model.Project{})),
@@ -57,13 +58,19 @@ func TestResultFields_TheOutputsOfEachBuiltinAreTheFieldsOfTheTable(t *testing.T
 		"pr_state":      keysOf(prStateOutputs("")),
 		"pr_history":    keysOf(prHistoryOutputs(nil)),
 		"preflight":     keysOf(preflightOutputs(preflight.Result{})),
+		"recv":          keysOf(recvOutputs(envelope{}, false)),
+		"send":          keysOf(sendOutputs("")),
+		"sleep":         keysOf(sleepOutputs(0)),
 		"wait":          keysOf(answerOutputs("", nil, false)),
-		"write":         keysOf(writeOutputs("", "", 0, "", false)),
+		"write":         keysOf(writeOutputs(CommandOutput{}, 1, "", false)),
 	}
 
 	for builtin, keys := range got {
 		assert.Equal(t, tableOf(t, builtin), keys, builtin)
 	}
+
+	e := &Engine{redact: func(text string) string { return text }}
+	assert.Equal(t, tableOf(t, "command"), keysOf(e.failedOutputs(errors.New("lost"), 1)), "a command whose failure is returned has the fields of any other command")
 }
 
 func batchStruct(t *testing.T, value starlark.Value) *starlarkstruct.Struct {
@@ -84,11 +91,16 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 	landed, err := batchResult(batch.Result{}, batch.Report{}, nil, nil, nil)
 	require.NoError(t, err)
 
+	first, err := firstOfValue(firstChoice{})
+	require.NoError(t, err)
+
 	got := map[string][]string{
-		"merge":  batchStruct(t, landed).AttrNames(),
-		"gather": gathered.AttrNames(),
-		"queue":  queuedValue(queued{}).AttrNames(),
-		"spawn":  runsValue([]spawnedRun{{}}).AttrNames(),
+		"cancel":   cancelValue(cancelOutcome{}).AttrNames(),
+		"first_of": first.AttrNames(),
+		"merge":    batchStruct(t, landed).AttrNames(),
+		"gather":   gathered.AttrNames(),
+		"queue":    queuedValue(queued{}).AttrNames(),
+		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
 	}
 
 	for builtin, names := range got {
@@ -100,7 +112,7 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 func TestResultFields_TheTableHasEveryBuiltinThatReturnsAStruct(t *testing.T) {
 	t.Parallel()
 
-	noStruct := []string{"env", "json", "now", "struct", "sandbox", "paths_outside", "closing_references"}
+	noStruct := []string{"env", "json", "now", "struct", "sandbox", "paths_outside", "closing_references", "publish", "progress"}
 	for _, name := range workflow.Builtins() {
 		_, has := workflow.ResultFields(name)
 		assert.Equal(t, !slices.Contains(noStruct, name), has, name)

@@ -11,11 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// resumeInsideBeat arms a hook that, inside the first renewal of the tick, stops the first attempt, resumes the run and waits for the resumed claim to be trusted.
+// resumeInsideBeat arms a hook that, inside the first renewal of the tick, stops the first attempt, takes its outcome from done into first, resumes the run and waits for the resumed claim to be trusted.
 // It returns the claim row of the resumed run as the hook read it, and a channel that gets the row as the next renewal of the tick finds it:
 // that tick began after the answer of the earlier attempt, and its own renewal of the resumed claim has not changed the row yet.
-func resumeInsideBeat(t *testing.T, harness *harness, engine *Engine, client *Client, earlier chan struct{}) (*claimHold, <-chan claimHold) {
+func resumeInsideBeat(t *testing.T, harness *harness, engine *Engine, client *Client, done <-chan runOutcome, first *runOutcome) (*claimHold, <-chan claimHold) {
 	t.Helper()
+
+	earlier := endedOf(engine, testRun)
 
 	var armed, resumedOnce atomic.Bool
 
@@ -33,8 +35,8 @@ func resumeInsideBeat(t *testing.T, harness *harness, engine *Engine, client *Cl
 			return
 		}
 
-		stopRun(engine, testRun)
-		assert.Eventually(t, func() bool { return isClosed(earlier) }, soonBound, pollEvery, "the first attempt ends")
+		*first = endFirstAttempt(t, engine, done)
+
 		assert.Eventually(t, func() bool { open, err := engine.runOpen(testRun); return err == nil && !open }, soonBound, pollEvery, "the store records the end of the first attempt")
 
 		resumeAndList(t, engine, client, earlier)
@@ -153,10 +155,12 @@ func TestAttempt_AGoodRenewalOfTheEarlierAttemptLeavesTheTrustOfTheResumedClaim(
 	done := runInBackground(engine, testItem)
 	waitOn(t, ownerAsks(t, harness))
 
-	resumed, next := resumeInsideBeat(t, harness, engine, client, endedOf(engine, testRun))
+	var first runOutcome
+
+	resumed, next := resumeInsideBeat(t, harness, engine, client, done, &first)
 
 	harness.tick(t)
-	require.Error(t, receive(t, done).err, "the first attempt ended at its stop")
+	require.Error(t, first.err, "the first attempt ended at its stop")
 
 	require.False(t, resumed.renewed.IsZero(), "the resumed claim was trusted inside the renewal")
 	require.Equal(t, resumed.renewed, receive(t, next).renewed, "the good renewal of the earlier attempt stamped the claim of the resumed run")
@@ -176,10 +180,12 @@ func TestAttempt_AFailedRenewalOfTheEarlierAttemptLeavesTheResumedClaimWithoutAF
 
 	// Only the token of the first take fails; the resumed run renews under its fresh token.
 	harness.beats.fail(testOwner+testItem, "", errFake)
-	resumed, next := resumeInsideBeat(t, harness, engine, client, endedOf(engine, testRun))
+	var first runOutcome
+
+	resumed, next := resumeInsideBeat(t, harness, engine, client, done, &first)
 
 	harness.tick(t)
-	require.Error(t, receive(t, done).err, "the first attempt ended at its stop")
+	require.Error(t, first.err, "the first attempt ended at its stop")
 
 	require.Empty(t, resumed.failure, "the resumed claim held no failure inside the renewal")
 	require.Empty(t, receive(t, next).failure, "the failed renewal of the earlier attempt wrote its failure into the claim of the resumed run")
@@ -210,19 +216,28 @@ func TestAttempt_TheGiveBackOfTheEarlierAttemptKeepsTheTokenThatResumeSavedForTh
 
 	client := harness.client(t, testVersion)
 
+	var (
+		done  <-chan runOutcome
+		first runOutcome
+	)
+
 	resumed := make(chan error, 1)
 
+	// The resume waits for the outcome of the first attempt: the run reads the store row to report it, and a resume that lands first opens the row again.
 	engine := harness.engineWith(t, func(e *Engine) {
-		e.deps.Lifecycle = &resumingLifecycle{lifecycle: e.deps.Lifecycle, resume: func() { resumed <- client.Resume(testItem) }}
+		e.deps.Lifecycle = &resumingLifecycle{lifecycle: e.deps.Lifecycle, resume: func() {
+			first = <-done
+			resumed <- client.Resume(testItem)
+		}}
 	})
 
-	done := runInBackground(engine, testItem)
+	done = runInBackground(engine, testItem)
 	waitOn(t, ownerAsks(t, harness))
 
 	require.NoError(t, client.Cancel(testItem))
 	harness.tick(t)
-	require.Error(t, receive(t, done).err, "the first attempt ended at its cancel")
 	require.NoError(t, receive(t, resumed), "beehave resume took the item once the give-back freed it")
+	require.Error(t, first.err, "the first attempt ended at its cancel")
 
 	// The give-back ends with the removal of the cancel marker.
 	soon(t, func() bool { return !fileExists(cancelPath(engine.dir, testRun)) }, "the give-back of the earlier attempt ends")

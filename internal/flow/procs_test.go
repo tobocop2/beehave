@@ -210,7 +210,7 @@ const procRun = "run-proc"
 func newProcEngine(t *testing.T, agents agents) *Engine {
 	t.Helper()
 
-	engine := &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard)}
+	engine := &Engine{deps: Deps{Agents: agents}, procs: newGroups(t), logger: newLogger(io.Discard, runRedactor(nil))}
 	holdClaim(engine, procRun, claimHold{renewed: time.Now()})
 
 	return engine
@@ -309,7 +309,7 @@ func TestEndGroups_LogsAFileThatCannotBeWritten(t *testing.T) {
 
 	var logged bytes.Buffer
 
-	engine.logger = newLogger(&logged)
+	engine.logger = newLogger(&logged, runRedactor(nil))
 
 	engine.endGroups(&attempt{id: "x"})
 

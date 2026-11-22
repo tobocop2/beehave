@@ -200,7 +200,9 @@ func TestItemWrite_AReplayWritesNothingTwiceAndKeepsTheStepNames(t *testing.T) {
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 	require.NoError(t, receive(t, done).err)
 
 	assert.Len(t, w.created, 1, "the create before the wait ran once")

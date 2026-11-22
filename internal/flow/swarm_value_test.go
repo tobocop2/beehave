@@ -71,7 +71,7 @@ func TestGatherValue_ARunThatReturnsNothingHasNone(t *testing.T) {
 	assert.Equal(t, []string{"after 21:ok:None 22:ok:None 23:ok:None"}, h.commands.ranBy(testItem))
 }
 
-func TestGatherValue_UntilAnyReturnsTheValueOfTheFirstRunThatEnded(t *testing.T) {
+func TestGatherValue_FirstOfReturnsTheValueOfTheRunThatEnded(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -79,10 +79,19 @@ func TestGatherValue_UntilAnyReturnsTheValueOfTheFirstRunThatEnded(t *testing.T)
 
 	defer close(release)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, valueFile(`    return "found"`, `until = "any", `)))
+	file := `def worker(item):
+    command(name = "w", run = ["w"])
+    return "found"
+
+def main(item):
+    runs = spawn(items = ["21", "22", "23"], entry = "worker", name = "fan")
+    e = first_of(runs = runs, name = "fan")
+    command(name = "after", run = ["after", e.outcome.item + ":" + str(e.outcome.ok) + ":" + str(e.outcome.value)])
+`
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, file))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"after 22:ok:found"}, h.commands.ranBy(testItem))
+	assert.Equal(t, []string{"after 22:True:found"}, h.commands.ranBy(testItem))
 }
 
 func TestGatherValue_AFailedChildHasNoValue(t *testing.T) {

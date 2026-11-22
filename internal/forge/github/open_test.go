@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 func TestCreatePR_OpensADraftAndReadsTheNumberFromTheAddress(t *testing.T) {
@@ -91,4 +92,79 @@ func TestUnstack_Refusals(t *testing.T) {
 	err := f.Unstack(context.Background(), 3)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot unstack pull request 3")
+}
+
+const prAddress = "https://github.com/" + repo + "/pull/42\n"
+
+func TestCreatePR_ALabelGoesToTheSameCreateCallAndAnExistingLabelIsNotCreatedAgain(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.Plan(toJSON(t, []fields{{"name": "Made-By-Beehave"}}), "label", "list")
+	run.Plan(prAddress, "pr", "create")
+	f := newForge(t, repo, run)
+
+	number, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Title: "t", Body: "b", Label: "made-by-beehave"})
+	require.NoError(t, err)
+	assert.Equal(t, 42, number)
+	assert.Equal(t, [][]string{
+		{"label", "list", "--repo", repo, "--search", "made-by-beehave", "--json", "name", "--limit", "100"},
+		{"pr", "create", "--draft", "--repo", repo, "--head", "bb-1", "--base", "round-1", "--title", "t", "--body", "b", "--label", "made-by-beehave"},
+	}, run.Calls, "one create call carries the label, and no second write adds it")
+}
+
+func TestCreatePR_ARepositoryWithoutTheLabelGetsItBeforeThePullRequest(t *testing.T) {
+	t.Parallel()
+
+	run := &proctest.Scripted{}
+	run.Plan(toJSON(t, []fields{{"name": "made-by-beehave-old"}}), "label", "list")
+	run.Plan("", "label", "create")
+	run.Plan(prAddress, "pr", "create")
+	f := newForge(t, repo, run)
+
+	_, err := f.CreatePR(context.Background(), model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehave"})
+	require.NoError(t, err)
+	require.Len(t, run.Calls, 3)
+	assert.Equal(t, []string{"label", "create", "made-by-beehave", "--repo", repo}, run.Calls[1])
+	assert.Equal(t, "pr", run.Calls[2][0])
+}
+
+func TestCreatePR_AFailedLabelStepOpensNoPullRequest(t *testing.T) {
+	t.Parallel()
+
+	req := model.NewPull{Head: "bb-1", Base: "round-1", Label: "made-by-beehave"}
+
+	listDown := &proctest.Scripted{}
+	listDown.Plan(prAddress, "pr", "create")
+	_, err := newForge(t, repo, listDown).CreatePR(context.Background(), req)
+	require.Error(t, err, "a list that fails is not read as a repository with no label")
+	assert.Contains(t, err.Error(), "cannot list the labels of "+repo)
+	assert.Len(t, listDown.Calls, 1)
+
+	odd := &proctest.Scripted{}
+	odd.Plan("not json", "label", "list")
+	_, err = newForge(t, repo, odd).CreatePR(context.Background(), req)
+	require.Error(t, err)
+	assert.Len(t, odd.Calls, 1)
+
+	createDown := &proctest.Scripted{}
+	createDown.Plan("[]", "label", "list")
+	_, err = newForge(t, repo, createDown).CreatePR(context.Background(), req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `cannot create the label "made-by-beehave"`)
+	assert.Len(t, createDown.Calls, 2)
+}
+
+func TestClosePR_ClosesWithTheCommentAsOneArgument(t *testing.T) {
+	t.Parallel()
+
+	f, run := fixed(t, "")
+
+	require.NoError(t, f.ClosePR(context.Background(), 690, "--admin replaced"))
+	assert.Equal(t, [][]string{{"pr", "close", "690", "--repo", repo, "--comment", "--admin replaced"}}, run.Calls)
+
+	down, _ := failing(t, "HTTP 502")
+	err := down.ClosePR(context.Background(), 690, "x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot close pull request 690")
 }

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,30 +22,95 @@ import (
 
 // sandboxPlan makes the plan for the sandbox of one run, or returns the reason why the step cannot start with it.
 // The shell may read the work folder, the shared git directories of a linked work tree, the read paths of the project, the data file and the output file of the step, and nothing else under the home folder.
-// Outside the work folder, the agent may write only the output file of a step that declares outputs. The folders of the data file and the output file are its working directories.
+// Outside the work folder, the agent may write only the output file of a step that declares outputs. The run spec carries that file, so every launch opens it, and the adapter adds it to the sandbox.
+// The folder of the data file is a working directory.
 // The credential paths come from the engine list, the project file and the config folder of the runner. The .env files of the work folder, at any depth
 // and whether or not they exist yet, are denied by a pattern that the CLI matches when the file is used. The commits carry the git identity of the engine at the work folder.
-func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string) (agent.SandboxPlan, string) {
+func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, folder, dir string) (agent.SandboxPlan, string) {
 	home, err := a.home()
 	if err != nil {
 		return agent.SandboxPlan{}, "beehave cannot find the home folder, so the sandbox cannot deny it. The step did not start."
 	}
 
 	project := a.projects[request.Project]
-	deny, read := credentialPaths(home, runner.ConfigDir, project.SandboxDeny), expandAll(project.SandboxRead, home)
-
+	deny, read := credentialPaths(home, folder, project.SandboxDeny), expandAll(project.SandboxRead, home)
 	git := gitOf(a.projects, request.Project, a.repos).Runner(dir, proc.DefaultTimeout)
 	closed, err := closedPaths(ctx, git, dir, home)
-	identity, write := a.identity(ctx, git), outputWrites(request)
+	identity := a.identity(ctx, git)
 
-	if note := cmp.Or(refusedNote(err), readNote(read, home, deny), stateNote(deny, slices.Concat([]string{request.DataFile}, write)...), workNote(dir, request.NoEdits), identityNote(identity, dir)); note != "" {
+	if note := cmp.Or(refusedNote(err), readNote(read, home, deny), stateNote(deny, request.DataFile), workNote(dir, request.NoEdits), identityNote(identity, dir)); note != "" {
 		return agent.SandboxPlan{}, note
 	}
 
 	return agent.SandboxPlan{
-		Work: dir, GitDirs: sharedGitDirs(a.repos, dir), Read: slices.Concat(withData(read, request.DataFile), write), ReadDirs: slices.Concat(dataFolder(request.DataFile), folders(write)),
-		Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed, request.DataFile), DenyWritePatterns: hookPatterns(dir), Write: write, Network: request.Sandbox.Network, Identity: identity,
+		Work: dir, GitDirs: sharedGitDirs(a.repos, dir), Read: withData(read, request.DataFile), ReadDirs: dataFolder(request.DataFile),
+		Deny: deny, DenyPatterns: envPatterns(dir), DenyWrite: writeDenies(dir, closed, request.DataFile), DenyWritePatterns: hookPatterns(dir), Network: request.Sandbox.Network, Identity: identity,
 	}, ""
+}
+
+// skillFile is the file that every skill folder holds.
+const skillFile = "SKILL.md"
+
+// skillFolders returns the folder of each skill that the prompt of the step declares, in the skills folder of the config folder of the runner, or why the step cannot start:
+// the runner names no config folder, a folder holds no SKILL.md, or a folder holds a link.
+func skillFolders(names []string, configDir, home string) ([]string, string) {
+	folders := make([]string, 0, len(names))
+
+	for _, name := range names {
+		if configDir == "" {
+			return nil, fmt.Sprintf("the step names the skill %s, and its runner names no config folder to find the skill in. The step did not start. Set the config folder of the runner.", name)
+		}
+
+		folder := filepath.Join(expand(configDir, home), "skills", name)
+		if !isFile(filepath.Join(folder, skillFile)) {
+			return nil, fmt.Sprintf("the step names the skill %s, and %s holds no %s. The step did not start. Install the skill there, or remove it from the prompt.", name, folder, skillFile)
+		}
+
+		if link := linkIn(folder); link != "" {
+			return nil, fmt.Sprintf("the step names the skill %s, and its folder holds the link %s. A copy of the skill would keep the link, and its target can be outside the skill. The step did not start. Replace the link with the file it points to.", name, link)
+		}
+
+		folders = append(folders, folder)
+	}
+
+	return folders, ""
+}
+
+// linkIn returns the first symbolic link inside a skill folder, or "" for none. The folder itself may be a link: the copy reads through it.
+// A folder that cannot be read is left to the copy: it reads the same tree, and its error stops the launch.
+func linkIn(folder string) string {
+	found := ""
+
+	_ = fs.WalkDir(os.DirFS(folder), ".", func(name string, entry fs.DirEntry, _ error) error { //nolint:errcheck // an unreadable folder fails the copy instead
+		if entry != nil && entry.Type()&fs.ModeSymlink != 0 {
+			found = filepath.Join(folder, name)
+
+			return fs.SkipAll
+		}
+
+		return nil
+	})
+
+	return found
+}
+
+// outputNote says why the output file of a step cannot be opened to the file tools, or returns "" when it can. Every launch opens that file by a rule, so the
+// glob check runs for every step, with or without a sandbox. The credential check runs for a sandboxed step only: there the rule would open a path the
+// sandbox denies. A step with no sandbox can already read every path, and its rule names the one file. Without a home folder the credential paths
+// are not known, and only the glob check runs; a sandboxed step then stops in the plan for want of the home folder.
+func (a agents) outputNote(request flow.AgentRequest, folder string) string {
+	write := outputWrites(request)
+	if len(write) == 0 {
+		return ""
+	}
+
+	var deny []string
+
+	if home, err := a.home(); err == nil && request.Sandbox != nil {
+		deny = credentialPaths(home, folder, a.projects[request.Project].SandboxDeny)
+	}
+
+	return stateNote(deny, write...)
 }
 
 // outputWrites returns the output file of a step that declares outputs, the one path of the state folder that the agent writes, or none.
@@ -54,17 +120,6 @@ func outputWrites(request flow.AgentRequest) []string {
 	}
 
 	return []string{request.OutputFile}
-}
-
-// folders returns the folder of each output file as a working directory of the step. The engine gives each call a folder that holds its output file
-// alone, so the file tools can read that file before they write it, and the CLI still blocks the read of every other output file.
-func folders(files []string) []string {
-	out := make([]string, 0, len(files))
-	for _, file := range files {
-		out = append(out, filepath.Dir(file))
-	}
-
-	return out
 }
 
 // gitIdentity returns the user.name and the user.email that the git of the engine reads in the repository of git.

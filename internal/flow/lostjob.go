@@ -215,7 +215,7 @@ func (e *Engine) askLost(ctx dbos.Context, in ExclusiveInput, call string, lost 
 
 // answerThenRead waits for the next answer of the owner, then reads the proof once in the recorded step <call>/lost-ask.<answer>.
 func (e *Engine) answerThenRead(ctx dbos.Context, in ExclusiveInput, call string, lost LostJob, answer int) (lostLook, error) {
-	if _, err := e.waitOwner(ctx, in.Project, in.Item, lostQuestion(lost)); err != nil {
+	if _, err := (&script{e: e, ctx: ctx, in: ItemInput{Project: in.Project, Item: in.Item}}).waitOwner(lostQuestion(lost)); err != nil {
 		return lostLook{}, err
 	}
 

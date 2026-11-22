@@ -40,26 +40,13 @@ write the handoff and stop. Do not start the next step, and do not stop in the m
 
 ## The gate
 
-**The gate steps come from the gate list of the round. You do not choose them.** The list holds every step as
-a name and a command, derived from CI at round start. Your job script runs each step and prints
-`STEP_RESULT name=<name> rc=<n>`.
-**A step you leave out prints `GATE-SKIP <name>: <reason>`, and the final marker says**
-`<MARKER> rc=<n> gate=partial:<count>` (`gate=full` when every step ran). Never report a partial gate as green:
-name the steps that did not run, in the report and in the handoff.
-**A missing tool is verified in the job**: run `command -v <tool>` and the tool's version command, and print both,
-before you skip a step for a missing tool. Run a pinned tool by the path of its pinned version, with the pin read
-from the tree under test. A different version makes the step VOID: print `GATE-VOID <name>: pin <x>, ran <y>`
-and count it with the skips. A void step is not red and not green.
-**One failing test counts once.** The `rc` of the final marker is the number of distinct real reds (a step, or a
-test name). A red that the base tree has too is not counted: print `BASE-RED <name>: base=<n> head=<n>`.
+**Run the tests that the change touches by name, in the work folder.** The engine runs the gate and the mutation run for each candidate. Run no gate step yourself, and write no job script for one. Report the full gate as owed.
 **A result counts only with the number of tests that ran.** Write "10 of 10 runs passed, <n> tests in each run",
 never "10 of 10". A run with 0 tests is not a pass.
-**A mutation run is its own job after the gate**, never a gate step. Start it when the gate steps are done.
 **Before each commit, search the diff for `TODO` and `FIXME`.** Each one that the change adds names its author, as `TODO(name)`.
 **Capture the exit code before any pipe**: `cmd > out 2>&1; rc=$?; grep ... out`. After a pipe, `$?` is the exit code of the last stage.
 **A `while read` loop gives its stdin to every command inside it.** Read the list on fd 3 (`while read -r x <&3; do ...; done 3< list`) or put `</dev/null` on the inner command, and assert the loop count against the input count.
 **A regeneration is evidence for its own tree only.** Compare the output with a fresh tree of the same commit. A regeneration that wrote nothing looks the same as one that wrote identical bytes.
-**A gate that covers only the diff becomes a full run in two cases**: the diff touches a shared foundation (the workflow files, a lockfile, the schema, a widely used helper), or a red has no explanation. Name the trigger in the report. An unfinished full run never blocks a verdict: report it as a named gap.
 
 ## Evidence rules that are not optional
 
@@ -85,7 +72,7 @@ assert the OTHER still comes from the base.
 **Key every snapshot on the FULL PATH, never the basename**, and assert each restored file's blob
 individually against its recorded pre-mutation value, not as a set.
 
-## Shell commands, background jobs and the build host
+## Shell commands and background jobs
 
 **Never pass a script string to a shell.** No `sh -c "..."`, `bash -c "..."` or `zsh -c "..."`, even without
 `rm`. Write the commands to a script file in the scratch directory and run the
@@ -96,12 +83,6 @@ A loop that needs POSIX word splitting goes in a `#!/bin/sh` file, because the i
 `&`). An idle lane is not woken when its own job finishes.
 **Before you end, stop each background command you started, by task id**: a live one wakes you later.
 Wait loops have a timeout. Test commands read `</dev/null`. Report no background commands left.
-**Before EVERY build, check `df` on the build host.** If the free space is under the floor that the rules of the
-project name, wait. A build that starts on a nearly full disk fails partway with void results.
-**Disk is per lane.** Share a compile cache between lanes, never a target directory.
-**Job scripts, bundles and inputs live in a jobs folder of the host** (`jobs/<lane>/` under the work root that the brief names), never in `/tmp`.
-**Name your target directory in the report as soon as you have no further build**, so that the orchestrator deletes it at once, by its literal path.
-**Sweep dangling docker volumes as a backstop.** Report `docker volume ls -qf dangling=true | wc -l`. The sweep prunes volumes that no running container uses, and never images.
 
 ## Compiled code
 
@@ -157,14 +138,12 @@ silently discards other uncommitted edits.
 **Each lane has one item, one worktree, one branch and one pull request.** Never take a second item into the tree you were given, however related it looks. Two items in one tree cannot be reviewed, reverted or merged alone. Never touch the worktree of another lane.
 **An item is the scope of one pull request, not one issue.** **The scope of the item is fixed at the first review.** Until then, fix a defect of the same class that you find on the way on this branch. After it, name the defect in your report so that it becomes a later item.
 **Never merge, never comment on the forge, and never file an issue.** The engine and the orchestrator do these. Name a finding that you will not fix in your report, so that an issue is filed for it.
-{{ if .facts.build_host }}**Run every build, test and lint on the build host.** Never run one on this machine.
-{{ else }}This project has no build host: run builds and tests on this machine.
-{{ end }}
+
 ## Skills
 
-**Invoke each skill that the rules name with the Skill tool, by name.** Reading the file of a skill instead is a skipped step, and a report with no Skill call goes back unread. If the Skill tool answers `unknown skill`, read the skill file and follow it: that answer is about the registry and is never permission to skip the step.
-**Run the skills in order.** `plan-vs-conventions` for a change past one file, `cross-cutting-api-change` for a new variant, field or entry point, then `blast-radius-review` iterated to zero before the gate, with the round count in the report.
-**`blast-radius-review` is the floor of every lane, never the whole answer.** Choose the other skills from what the item is, not from habit: a change of output, of a dependency floor or of a harness each asks for more.
+**Invoke each skill that the rules name with the Skill tool, by name.** Reading the file of a skill instead is a skipped step, and a report with no Skill call goes back unread.
+**Run the skills in order.** `{{ skill "plan-vs-conventions" }}` for a change past one file, `{{ skill "cross-cutting-api-change" }}` for a new variant, field or entry point, then `{{ skill .facts.vars.review_skill }}` iterated to zero before the gate, with the round count in the report.
+**`{{ skill .facts.vars.review_skill }}` is the floor of every lane, never the whole answer.** Choose the other skills from what the item is, not from habit: a change of output, of a dependency floor or of a harness each asks for more.
 **A ruling of the owner binds the item.** Read the rulings file that the run names. Never reverse a ruling: if you think that it is wrong, stop and report it with your evidence.
 
 ## Project rules
@@ -176,7 +155,6 @@ Follow the rules file of the project.
 The run read these facts from the project file at its start. A fact that is empty holds no fact: ask the owner, and do not guess it.
 
 - Repository identity and fork topology: repo `{{ .facts.repo }}`, source `{{ .facts.source }}`, forge `{{ .facts.forge }}`.
-- Build host: `{{ .facts.build_host }}`.
 - Base branch: `{{ .facts.base_branch }}`.
 - The gate is `{{ .facts.gate }}`. The gate list comes from these workflow files:{{ range index .facts.vars "gate_files" }} `{{ . }}`{{ end }}
 - Tracker: `{{ .facts.tracker }}`. Queue to epic:{{ range $queue, $epic := index .facts.vars "epics" }} `{{ $queue }}` is `{{ $epic }}`;{{ end }}

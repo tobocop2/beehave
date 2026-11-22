@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -65,8 +66,37 @@ type fakeAgents struct {
 	err      error
 	// named is the session id that the agent names before it counts as in flight, when it is set.
 	named string
+	// said is what the agent says at each start, before it counts as running.
+	said []agent.Said
 	// hangAt is the number (from 1) of the one agent start that holds until its context ends, so a test stops the engine while that agent runs. 0 holds none.
 	hangAt int
+	// stall is the item whose first stallStarts agent starts each hold for stallFor, or until the context ends, so a test sees that run stalled.
+	// A canceled phase of a fake has no process for the tick to end, so the hold ends on its own and gives the slot of the login back.
+	stall       string
+	stallStarts int
+	stallFor    time.Duration
+}
+
+// sayAll gives each entry of said to the request, as the agent says it.
+func sayAll(request AgentRequest, said []agent.Said) {
+	for _, one := range said {
+		request.Said(one)
+	}
+}
+
+// holdOf is what the start of an agent for item waits on, besides the end of its context. The start at hangAt waits on a nil channel, so only the
+// context ends it. The first stallStarts starts of the stalled item wait for stallFor. Any other start goes on at once. The caller holds mu.
+func (a *fakeAgents) holdOf(item string) <-chan time.Time {
+	switch {
+	case len(a.requests) == a.hangAt:
+		return nil
+	case item == a.stall && a.stallStarts > 0:
+		a.stallStarts--
+
+		return time.After(a.stallFor)
+	default:
+		return time.After(0)
+	}
 }
 
 // Run holds each agent in flight until the test closes gate, when gate is set. It reports pid as the process of the agent, when pid is set.
@@ -96,11 +126,15 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	a.perLogin[request.Login]++
 	a.maxTotal = max(a.maxTotal, a.inFlight)
 	a.maxLogin = max(a.maxLogin, a.perLogin[request.Login])
-	hang := len(a.requests) == a.hangAt
+	hold := a.holdOf(request.Item)
+	said := a.said
 	a.mu.Unlock()
 
-	if hang {
-		<-ctx.Done()
+	sayAll(request, said)
+
+	select {
+	case <-hold:
+	case <-ctx.Done():
 	}
 
 	if a.gate != nil {
@@ -586,6 +620,10 @@ type harness struct {
 	bare bool
 	// mutation is the command that the facts of the run hold as vars.mutation_command. It is nil, and so the vars hold none, unless a test sets it.
 	mutation []string
+	// skillLine is the skill-load line of the adapter of each login. It is nil, and so every login has the line "/fake-skills:<skill>", unless a test sets it.
+	skillLine func(login, skill string) string
+	// noSkillLine leaves Deps.SkillLine nil, as an engine built with no adapter table has it.
+	noSkillLine bool
 	// refuseGate is the refusal of a gate on this machine. It is nil, and so no gate is refused, unless a test sets it.
 	refuseGate func(project string, program bool) error
 	// slots resolves the slot class of a command call. It is nil, and so the build has no slot classes, unless a test sets it.
@@ -603,7 +641,9 @@ type harness struct {
 	overload time.Duration
 	// lostPoll is the sleep between two looks for the proof of a lost gate job. It is a millisecond unless a test sets it.
 	lostPoll time.Duration
-	opts     Options
+	// window is the longest that one turn of first_of waits. It is the default of the engine unless a test sets it.
+	window time.Duration
+	opts   Options
 }
 
 // defaultFlow is the workflow file of a harness that a test does not replace: one agent step.
@@ -667,7 +707,7 @@ func (h *harness) deps() Deps {
 	deps := Deps{
 		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats, Commands: h.commands, Items: h.items, Writer: h.writer, Reader: h.reader,
 		Kept:  []error{errFake},
-		Clock: clock{Tick: h.ticks, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond)},
+		Clock: clock{Tick: h.ticks, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond), Window: h.window},
 	}
 	if h.merge != nil {
 		deps.Merge = h.merge
@@ -691,6 +731,11 @@ func (h *harness) deps() Deps {
 	deps.Facts = h.factsWithMutation()
 	deps.RefuseGate = h.refuseGate
 	deps.Slots = h.slots
+	deps.SkillLine = h.skillLine
+
+	if deps.SkillLine == nil && !h.noSkillLine {
+		deps.SkillLine = func(_, skill string) string { return "/fake-skills:" + skill }
+	}
 
 	if h.picker != nil {
 		deps.Logins = h.picker
@@ -833,7 +878,7 @@ func runOfClient(t *testing.T, client *Client) *runRef {
 	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, database: filepath.Join(client.dir, databaseFile)}
 }
 
-// messagePending says whether a message that the run receives (on the owner topic or the voice topic) waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
+// messagePending says whether a message on the inbox topic of the run waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
 func (r *runRef) messagePending() (bool, error) {
 	db, err := sql.Open("sqlite", r.database+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -844,7 +889,7 @@ func (r *runRef) messagePending() (bool, error) {
 
 	var pending bool
 
-	err = db.QueryRowContext(r.ctx, "SELECT EXISTS (SELECT 1 FROM notifications WHERE destination_uuid = ? AND topic IN (?, ?) AND consumed = 0)", r.id, ownerTopic, voiceTopic).Scan(&pending)
+	err = db.QueryRowContext(r.ctx, "SELECT EXISTS (SELECT 1 FROM notifications WHERE destination_uuid = ? AND topic = ? AND consumed = 0)", r.id, inboxTopic).Scan(&pending)
 
 	return pending, err
 }
@@ -1193,8 +1238,10 @@ type fakeForge struct {
 	noPullAfter  int
 	noPull       bool // reports no pull request after the first noPullAfter reads
 	// notes holds each Comment call as project|item|key|text. writeErr fails it.
-	notes    []string
-	opened   []string // each Open call as project|item|title|body|issue|base|parent
+	notes  []string
+	opened []string // each Open call as project|item|title|body|issue|base|parent
+	// onCreate runs with the item when the first Open call of that item creates its pull request, as the forge makes it: a draft.
+	onCreate func(item string)
 	writeErr error
 	// pushed holds each Push call as project|item|branch|head|expect. pushErr fails it.
 	pushed  []string
@@ -1244,6 +1291,14 @@ func (f *fakeForge) Open(_ context.Context, project, item string, req OpenReques
 	f.opened = append(f.opened, strings.Join([]string{project, item, req.Title, req.Body, strconv.Itoa(req.Issue), req.Base, req.Parent}, "|"))
 
 	out := OpenResult{Number: f.state.Number, Created: len(f.opened) == 1}
+
+	prefix := project + "|" + item + "|"
+	first := !slices.ContainsFunc(f.opened[:len(f.opened)-1], func(call string) bool { return strings.HasPrefix(call, prefix) })
+
+	if first && f.onCreate != nil {
+		f.onCreate(item)
+	}
+
 	if req.Parent != "" {
 		out.Stack = "S_1"
 	}
@@ -1447,4 +1502,31 @@ func (f fakeTrees) Ensure(ctx context.Context, _, item, start, base string) (str
 	}
 
 	return f.dir, f.err
+}
+
+// awaitInbox is the body of a test workflow that waits for a message on its inbox and ends with no result.
+func awaitInbox(ctx dbos.Context) (string, error) {
+	_, err := dbos.Recv[envelope](ctx, inboxTopic, time.Minute)
+
+	return "", err
+}
+
+// sendAnswerEnvelope puts an answer on the inbox of a run, as beehave answer does, with no checks.
+func sendAnswerEnvelope(ctx dbos.Client, run string, v voice) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	return sendEnvelope(ctx, run, envelope{Topic: answerTopic, ID: v.Text, Value: raw})
+}
+
+// sendEnvelope puts an envelope on the inbox of a run, with no checks.
+func sendEnvelope(ctx dbos.Client, run string, env envelope) error {
+	return dbos.Send(ctx, run, env, inboxTopic)
+}
+
+// waiter is a script of the engine that waits as the item workflow does.
+func waiter(engine *Engine) *script {
+	return &script{e: engine, ctx: engine.ctx, in: ItemInput{Project: testProject, Item: testItem}}
 }

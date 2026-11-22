@@ -82,8 +82,8 @@ func TestReviewFix_TheModelOfEachStepComesFromTheProjectFile(t *testing.T) {
 		[3]string{"fix", "m-fix", ""}, [3]string{"design", "m-design", ""},
 	)})
 
-	assert.Equal(t, []string{"m-plan", "m-impl", "m-review", "m-fix", "m-review", "m-fix", "m-review", "m-review", "m-design"}, requestModels(requests),
-		"plan, implement, three scoped reviews with two fixes, the full review, then the design step: each step runs on its own model of the project file")
+	assert.Equal(t, []string{"m-plan", "m-impl", "m-impl", "m-review", "m-fix", "m-review", "m-fix", "m-review", "m-review", "m-design"}, requestModels(requests),
+		"plan, implement, the sweep on the model of the implement step, three scoped reviews with two fixes, the full review, then the design step: each step runs on its own model of the project file")
 }
 
 func TestReviewFix_TheRunnerOfEachStepReachesTheAgentCall(t *testing.T) {
@@ -93,7 +93,7 @@ func TestReviewFix_TheRunnerOfEachStepReachesTheAgentCall(t *testing.T) {
 		[3]string{"implement", "", "r-impl"}, [3]string{"review", "", "r-review"}, [3]string{"design", "", "r-design"},
 	)})
 
-	assert.Equal(t, []string{testLogin, "r-impl", "r-review", testLogin, "r-review", testLogin, "r-review", "r-review", "r-design"}, requestLogins(requests),
+	assert.Equal(t, []string{testLogin, "r-impl", "r-impl", "r-review", testLogin, "r-review", testLogin, "r-review", "r-review", "r-design"}, requestLogins(requests),
 		"a step with a runner runs on it; the plan and the fix name none and keep the pool pick")
 }
 
@@ -126,7 +126,7 @@ func TestReviewFix_TheLimitsComeFromTheProjectFile(t *testing.T) {
 
 	// design_after 1: the design step runs after the first fix of the mechanism, not after the second.
 	requests := loopOfTheExample(t, map[string]any{"steps": distinct, "design_after": json.Number("1")})
-	assert.Equal(t, []string{"m-plan", "m-impl", "m-review", "m-fix", "m-review", "m-design"}, requestModels(requests), "design_after 1")
+	assert.Equal(t, []string{"m-plan", "m-impl", "m-impl", "m-review", "m-fix", "m-review", "m-design"}, requestModels(requests), "design_after 1")
 
 	// void_reruns 1 and void_asks 0: the second void gate has no rerun and no question left.
 	_, _, err := lossyLoopWith(t, 2, 0, ", void_reruns = 1, void_asks = 0")
@@ -216,7 +216,7 @@ func TestRunners_AProjectWithNoStepsRunsEveryStepOnItsDefaultModelAndThePool(t *
 	done := pipelineInBackground(rig.h.engine(t), file)
 
 	waitOn(t, ownerAsks(t, rig.h))
-	require.NoError(t, rig.h.client(t, testVersion).Answer(testItem, "park all"))
+	require.NoError(t, rig.h.client(t, testVersion).Reply(testItem, Reply{Text: "park all"}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Equal(t, append([]string{"opus", "sonnet"}, capModels(2)...), rig.models(), "plan opus, implement sonnet, then the loop on review opus and fix sonnet")

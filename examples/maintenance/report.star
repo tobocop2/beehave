@@ -12,7 +12,7 @@ def report_failed(item, made):
     item_comment(name = "failed", id = item.id, key = "failed", text = "The report script failed with exit code %d." % made.rc)
     item_status(name = "hold", id = item.id, status = STATUS.HOLD)
 
-def publish(item, made, posted):
+def post_report(item, made, posted):
     item_comment(name = "report", id = item.id, key = "report", text = made.stdout + "\n\nPost: " + posted.stdout.strip())
     item_status(name = "close", id = item.id, status = STATUS.CLOSED if posted.rc == 0 else STATUS.HOLD)
 
@@ -21,4 +21,4 @@ def main(item):
     made = sh("report", "report.sh", week)
     if made.rc != 0:
         return report_failed(item, made)
-    publish(item, made, sh("post", "post.sh", week))
+    post_report(item, made, sh("post", "post.sh", week))

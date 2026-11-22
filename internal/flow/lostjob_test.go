@@ -383,7 +383,7 @@ func lostStoppedLog(t *testing.T, hosts *upHosts) (string, error) {
 
 	var logged bytes.Buffer
 
-	engine.logger = newLogger(&logged)
+	engine.logger = newLogger(&logged, runRedactor(nil))
 	engine.deps.Hosts = hosts
 
 	canceled, cancel := dbos.WithCancel(engine.ctx)
@@ -538,7 +538,7 @@ func TestLostJob_ContinueWithNoProofWaitsAgainAndStartsNoGateJob(t *testing.T) {
 	waitOn(t, theLostJobShows(t, h, testItem))
 
 	before := hosts.proofReads()
-	require.NoError(t, h.client(t, testVersion).Answer(testItem, "CONTINUE"))
+	require.NoError(t, h.client(t, testVersion).Reply(testItem, Reply{Text: "CONTINUE"}))
 
 	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool { return slices.Contains(stepNamesOf(t, engine, testRun), "gate:check#1/lost-ask.0") }))
 
@@ -564,11 +564,11 @@ func TestLostJob_EachAnswerReadsTheProofInTheNextNumberedStep(t *testing.T) {
 	before := hosts.proofReads()
 	client := h.client(t, testVersion)
 
-	require.NoError(t, client.Answer(testItem, "CONTINUE"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "CONTINUE"}))
 	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool { return slices.Contains(stepNamesOf(t, engine, testRun), "gate:check#1/lost-ask.0") }))
 	waitOn(t, theLostJobShows(t, h, testItem))
 
-	require.NoError(t, client.Answer(testItem, "CONTINUE"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "CONTINUE"}))
 	waitOn(t, conditionOf(runOfEngine(t, engine), func() bool { return slices.Contains(stepNamesOf(t, engine, testRun), "gate:check#1/lost-ask.1") }))
 
 	steps := stepNamesOf(t, engine, testRun)
@@ -596,7 +596,7 @@ func TestLostJob_ContinueAfterTheHostCameBackReadsTheProofBeforeAnyRerun(t *test
 	before := hosts.proofReads()
 
 	hosts.prove(model.LostProof{Kind: model.LostStopped})
-	require.NoError(t, h.client(t, testVersion).Answer(testItem, "CONTINUE"))
+	require.NoError(t, h.client(t, testVersion).Reply(testItem, Reply{Text: "CONTINUE"}))
 
 	outcome := receive(t, done)
 
@@ -628,7 +628,7 @@ func TestLostJob_AProofReadThatFailsAfterAnAnswerFailsTheGate(t *testing.T) {
 	hosts.mu.Lock()
 	hosts.proofErr = errors.New("the job id is not a unit of this host")
 	hosts.mu.Unlock()
-	require.NoError(t, h.client(t, testVersion).Answer(testItem, "CONTINUE"))
+	require.NoError(t, h.client(t, testVersion).Reply(testItem, Reply{Text: "CONTINUE"}))
 
 	outcome := receive(t, done)
 

@@ -72,7 +72,7 @@ func TestRound_ARoundKilledAfterItsSpawnAndResumedSpawnsNothingAgain(t *testing.
 
 		return struct{}{}, statusErr == nil && slices.ContainsFunc(infos, func(info RunInfo) bool { return info.Question != "" }), nil
 	}})
-	require.NoError(t, client.AnswerAs(testItem, shipOwner, "STOP"))
+	require.NoError(t, client.Reply(testItem, Reply{From: shipOwner, Text: "STOP"}))
 
 	_, err = resultOfHandle(t, handle)
 	require.NoError(t, err)

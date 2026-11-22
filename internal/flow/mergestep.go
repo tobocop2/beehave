@@ -21,7 +21,9 @@ type MergeSettings struct {
 	Emails     []string
 	ForbidText []string
 	Approved   bool
-	Retarget   bool
+	// OwnDraft is the number of the draft that the run opened for the member. The draft guard of the merge accepts that pull request.
+	OwnDraft int
+	Retarget bool
 	// GatedTree is the tree id that the gate recorded for the head. When it is set, the merge compares the tree of the base tip with it.
 	GatedTree string
 	// Intent is the record that merge wrote before the merge. It lets a pull request that is already merged count as done.

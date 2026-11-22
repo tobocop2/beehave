@@ -3,9 +3,63 @@ package flow
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"slices"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
+
+// runRedactor returns the one redactor of an engine or a client. It holds the value of every variable of env whose name marks a secret.
+// The redactor skips a value shorter than agent.MinSecretLen.
+func runRedactor(env map[string]string) func(string) string {
+	var secrets []string
+
+	for _, name := range secretNames(env) {
+		secrets = append(secrets, env[name])
+	}
+
+	return agent.Redactor(secrets...)
+}
+
+// secretNames returns the names of the variables of env that mark a secret and hold a value, sorted.
+func secretNames(env map[string]string) []string {
+	var names []string
+
+	for name, value := range env {
+		if value != "" && workflow.SecretEnv(name, value) {
+			names = append(names, name)
+		}
+	}
+
+	slices.Sort(names)
+
+	return names
+}
+
+// warnShortSecrets logs one warning for each secret variable whose value is too short to redact. The warning names the variable and never the value.
+func warnShortSecrets(logger *slog.Logger, env map[string]string) {
+	for _, name := range secretNames(env) {
+		if len(env[name]) < agent.MinSecretLen {
+			logger.Warn("the value of a secret variable is shorter than the minimum, so beehave does not remove it from the output", "variable", name, "minimum_bytes", agent.MinSecretLen)
+		}
+	}
+}
+
+// redactedCommands runs the programs of command calls and removes the secrets of the run from what they print.
+type redactedCommands struct {
+	inner  commands
+	redact func(string) string
+}
+
+func (c redactedCommands) Run(ctx context.Context, request CommandRequest) (CommandOutput, error) {
+	out, err := c.inner.Run(ctx, request)
+	out.Stdout, out.Stderr = c.redact(out.Stdout), c.redact(out.Stderr)
+
+	return out, err
+}
 
 // scrubbedError is a step error whose text has no secret. It keeps the cause for errors.Is and errors.As.
 type scrubbedError struct {

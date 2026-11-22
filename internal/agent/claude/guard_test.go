@@ -61,7 +61,7 @@ func guardOutcome(t *testing.T, bashCommand string) string {
 	var out bytes.Buffer
 
 	result := agent.Runner{}.Run(context.Background(), agent.Spec{
-		Adapter: claude.New(nil), Runner: model.Runner{Name: "r", Agent: claude.Name, ConfigDir: dir},
+		Adapter: claude.New(nil), Runner: model.Runner{Name: "r", Agent: claude.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: bashCommand + "\n", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Log: &out, Guard: guard,
 	})
 	require.Equal(t, agent.OutcomeExited, result.Outcome, result.Note)
@@ -87,12 +87,12 @@ func TestGuard_TheHookLetsACleanCommandThrough(t *testing.T) {
 func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 	t.Parallel()
 
-	launch := claude.New(nil).Guard("/bin/beehave check command", "/run")
+	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil)
 	got := launch.Args
 
 	assert.Empty(t, launch.Env)
 	assert.Empty(t, launch.Files)
-	require.Len(t, got, 2)
-	assert.Equal(t, "--settings", got[0])
-	assert.JSONEq(t, `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}}`, got[1])
+	require.Len(t, got, 4)
+	assert.Equal(t, "--settings", got[2])
+	assert.JSONEq(t, `{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}}`, got[3])
 }

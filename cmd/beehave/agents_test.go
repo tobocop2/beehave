@@ -25,17 +25,19 @@ import (
 // lineAdapter is an adapter whose output lines are "session=<id>" and "text=<message>".
 type lineAdapter struct{ agent.Adapter }
 
-func (lineAdapter) Guard(command, _ string) agent.Launch {
-	return agent.Launch{Args: []string{"--hook", command}}
+func (lineAdapter) Guard(command, _ string, _, _ []string) agent.Launch {
+	return agent.Launch{Args: []string{"--hook", command}, Hooked: true}
 }
 
 // Profile is the profile of a CLI that caps the dollars of a run itself.
 func (lineAdapter) Profile() agent.Profile { return agent.Profile{BudgetFlag: "--max-budget-usd"} }
 
-// noHookAdapter is an adapter whose CLI has no hook.
+// noHookAdapter is an adapter whose CLI has no hook but whose guard launch still carries a setting, as the Claude Code launch carries the attribution setting.
 type noHookAdapter struct{ lineAdapter }
 
-func (noHookAdapter) Guard(string, string) agent.Launch { return agent.Launch{} }
+func (noHookAdapter) Guard(string, string, []string, []string) agent.Launch {
+	return agent.Launch{Args: []string{"--settings", `{"attribution":{"commit":"","pr":"","sessionUrl":false}}`}}
+}
 
 func (lineAdapter) Line(line string) (string, string) {
 	if id, ok := cutPrefix(line, "session="); ok {
@@ -68,7 +70,7 @@ func (lineAdapter) Calls(line string) agent.Seen {
 	}
 
 	if name, ok := cutPrefix(line, "skill="); ok {
-		seen.Skills = append(seen.Skills, name)
+		seen.Skills, seen.Succeeded = append(seen.Skills, agent.Call{ID: name, Text: name}), append(seen.Succeeded, name)
 	}
 
 	if kind, ok := cutPrefix(line, "stop="); ok {
@@ -1010,7 +1012,7 @@ func TestNewAgents_WiresTheRealRunnerAndTheAdapterTable(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{Runners: []model.Runner{{Name: "x", Agent: model.Agent("none"), ConfigDir: "/login"}}}
-	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
+	a := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt(t.TempDir()), newAdapters(nil, nil, nil), nil)
 
 	got, err := a.Run(t.Context(), flow.AgentRequest{Item: "1", Project: "p", Login: "x", Prompt: "go"})
 
@@ -1257,10 +1259,20 @@ func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {
 	t.Parallel()
 
 	for _, noEdits := range []bool{false, true} {
-		spec := agents{}.specOf(flow.AgentRequest{NoEdits: noEdits}, model.Runner{}, "", nil, nil, "", nil)
+		spec := agents{}.specOf(flow.AgentRequest{NoEdits: noEdits}, model.Runner{}, "", nil, nil, "", nil, nil)
 
 		assert.Equal(t, noEdits, spec.NoEdits, "a step with edits = False starts without the edit mode")
 	}
+}
+
+func TestAgents_TheSpecOfAStepCarriesTheRedactorOfTheEngine(t *testing.T) {
+	t.Parallel()
+
+	request := flow.AgentRequest{Redact: agent.Redactor("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")}
+	spec := agents{}.specOf(request, model.Runner{}, "", nil, nil, "", nil, nil)
+
+	require.NotNil(t, spec.Redact)
+	assert.Equal(t, "key [redacted]", spec.Redact("key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"))
 }
 
 func TestAgents_ARunThatReachedTheBudgetCapKeepsItsSessionTextAndViolations(t *testing.T) {

@@ -38,9 +38,7 @@ func (s *script) sandbox(b *starlark.Builtin, args starlark.Tuple, kwargs []star
 		return nil, err
 	}
 
-	return starlarkstruct.FromKeywords(sandboxMark, []starlark.Tuple{
-		{starlark.String("network"), stringList(box.Network)},
-	}), nil
+	return starlarkstruct.FromKeywords(sandboxMark, []starlark.Tuple{{starlark.String("network"), stringList(box.Network)}}), nil
 }
 
 func stringList(items []string) *starlark.List {

@@ -10,7 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/agent/claude"
 	"github.com/tobocop2/beehave/internal/cli"
+	"github.com/tobocop2/beehave/internal/config"
 )
 
 func runDry(t *testing.T, env map[string]string, args ...string) (int, string, string) {
@@ -33,7 +35,7 @@ func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheRead
 	dir := t.TempDir()
 	writeConfig(t, dir, "projects/code.star", roundProject)
 
-	code, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+	code, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "round/integration", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 
 	require.Equal(t, 3, code, stderr)
 	assert.Empty(t, stderr)
@@ -47,10 +49,23 @@ func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheRead
 func TestCheckWorkflowDryRun_TheRemediationExampleWithNoRoundInTheProjectVarsIsRefused(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, _ := runDry(t, map[string]string{}, "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+	code, stdout, _ := runDry(t, map[string]string{}, "--item", "round/integration", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 
 	require.Equal(t, 1, code, stdout)
 	assert.Contains(t, stdout, "REFUSE: the project vars hold no round.")
+}
+
+func TestCheckWorkflowDryRun_TheDefaultDryRunOfTheRemediationExampleWithATrackerItemWalksThePipeline(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/code.star", roundProject)
+
+	_, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+
+	assert.Empty(t, stderr)
+	assert.NotContains(t, stdout, "host_up:round-host", "a tracker item runs the pipeline, not a round")
+	assert.Contains(t, stdout, "preflight:intake", "the pipeline starts with the intake check of the item")
 }
 
 func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldItsVars(t *testing.T) {
@@ -64,6 +79,24 @@ func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldItsVars(t *testing.T) {
 
 	require.Equal(t, 1, code)
 	assert.Contains(t, stdout, `V={"a": [1]}`)
+}
+
+func TestCheckWorkflowDryRun_ANamedProjectCapsTheDepthOfSpawnAndNoProjectHasTheDefaultCap(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def grand(item):\n    pass\n\ndef child(item):\n    r = gather(spawn(items = [\"22\"], entry = \"grand\")).results[0]\n    if not r.ok:\n        fail(r.error)\n\n"+
+		"def main(item):\n    r = gather(spawn(items = [\"21\"], entry = \"child\")).results[0]\n    if not r.ok:\n        fail(r.error)\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\", max_spawn_depth = 1)\n")
+
+	code, stdout, _ := runDry(t, map[string]string{}, "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 1, code)
+	assert.Contains(t, stdout, "item 22 would run at depth 2, and the project has a cap of 1.")
+
+	code, stdout, _ = runDry(t, map[string]string{}, filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 0, code, stdout)
 }
 
 func TestCheckWorkflowDryRun_APlainRunWithoutTheFlagPrintsNoSteps(t *testing.T) {
@@ -184,4 +217,64 @@ func TestCheckWorkflowDryRun_TheSendBackFlagWalksAFixRoundAfterTheFirstReview(t 
 	code, stdout, _ = runDry(t, map[string]string{}, "--item", "12", "--send-back", file)
 	require.Equal(t, 0, code, stdout)
 	assert.Contains(t, stdout, "agent:fix")
+}
+
+func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldTheRunnersOfTheConfigWithTheirSkillLoads(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    fail(\"R=%r\" % facts().runners)\n")
+	writeConfig(t, dir, "runners.star", "runner(name = \"a\", agent = \"claude\")\nrunner(name = \"o\", agent = \"opencode\")\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n")
+
+	adapters := registry()
+	adapters.Agents[claude.Name] = &config.Entry{LoadsSkills: true}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"check", "workflow", "--dry-run", "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star")}
+	code := cli.Execute(context.Background(), args, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stdout.String(), `R={"a": {"loads_skills": True}, "o": {"loads_skills": False}}`)
+}
+
+func TestCheckWorkflowDryRun_AWorkflowThatRefusesARunnerWithNoSkillLineEndsWithExitOneAndTheRefusal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    for name, runner in facts().runners.items():\n        if not runner[\"loads_skills\"]:\n            fail(\"REFUSE: runner %s has no line that loads a skill before the first turn\" % name)\n")
+	writeConfig(t, dir, "runners.star", "runner(name = \"a\", agent = \"claude\")\nrunner(name = \"o\", agent = \"opencode\")\n")
+	writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\")\n")
+
+	adapters := registry()
+	adapters.Agents[claude.Name] = &config.Entry{LoadsSkills: true}
+
+	var stdout, stderr bytes.Buffer
+
+	args := []string{"check", "workflow", "--dry-run", "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star")}
+	code := cli.Execute(context.Background(), args, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stdout.String(), "REFUSE: runner o has no line that loads a skill before the first turn")
+	assert.NotContains(t, stdout.String(), "runner a has no line")
+
+	withoutRunner := dir + "/without"
+	writeConfig(t, withoutRunner, "workflow.star", "def main(item):\n    pass\n")
+
+	code = cli.Execute(context.Background(), []string{"check", "workflow", "--dry-run", filepath.Join(withoutRunner, "workflow.star")}, cli.BuildInfo{Registry: adapters, Version: "x"}, map[string]string{}, &stdout, &stderr)
+
+	require.Equal(t, 0, code, stdout.String())
+}
+
+func TestCheckWorkflowDryRun_AFirstOfOverASpawnedRunReturnsTheRunThatEnded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def child(item):\n    pass\n\n"+
+		"def main(item):\n    e = first_of(runs = spawn(items = [\"21\"], entry = \"child\"))\n    if e.kind != \"run\" or not e.outcome.ok:\n        fail(\"got \" + e.kind)\n")
+
+	code, stdout, _ := runDry(t, map[string]string{}, filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 0, code, stdout)
 }

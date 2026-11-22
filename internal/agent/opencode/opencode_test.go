@@ -57,7 +57,7 @@ func TestProfile_HasNoSandboxSoASandboxedStepIsRefused(t *testing.T) {
 	dir := t.TempDir()
 
 	result := agent.Runner{}.Run(context.Background(), agent.Spec{
-		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir},
+		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: "p", Env: map[string]string{"PATH": dir}, Sandbox: &agent.SandboxPlan{Work: dir},
 	})
 
@@ -127,7 +127,7 @@ func run(t *testing.T, change func(*agent.Spec)) (agent.Result, string) {
 	var out bytes.Buffer
 
 	spec := agent.Spec{
-		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir},
+		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: "go", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Log: &out,
 	}
 	change(&spec)
@@ -209,7 +209,7 @@ func guardedRun(t *testing.T, script string, change func(*agent.Spec)) agent.Res
 	require.NoError(t, exectest.Write(filepath.Join(dir, "opencode"), script))
 
 	spec := agent.Spec{
-		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir},
+		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: "go", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"}, Guard: "beehave check command",
 	}
 	change(&spec)
@@ -318,7 +318,7 @@ func TestRun_AGuardedRunOnWindowsDoesNotStart(t *testing.T) {
 	dir := t.TempDir()
 
 	result := agent.Runner{OS: "windows"}.Run(context.Background(), agent.Spec{
-		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir},
+		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: "p", Env: map[string]string{"PATH": dir}, Guard: "g",
 	})
 
@@ -339,7 +339,7 @@ func TestRun_ARunThatSetsNoTimeoutEndsAtTheProfileLimitAndNamesTheLikelyCause(t 
 
 		return time.AfterFunc(20*time.Millisecond, fire)
 	}}.Run(context.Background(), agent.Spec{
-		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir},
+		Adapter: opencode.New(), Runner: model.Runner{Name: "r", Agent: opencode.Name, ConfigDir: dir}, ConfigFolder: dir,
 		Dir: dir, Prompt: "p", Env: map[string]string{"PATH": dir + ":/bin:/usr/bin"},
 	})
 
@@ -357,6 +357,11 @@ func TestProfile_PinsTheRecordedVersionAndRefusesWhatItCannotProve(t *testing.T)
 	assert.Equal(t, "3.0.0", p.SupportedBefore)
 	assert.Equal(t, "2.0.0", p.GuardBefore)
 	assert.True(t, p.GuardPosixOnly)
-	assert.True(t, p.NoSkillCalls)
 	assert.Equal(t, time.Hour, p.DefaultTimeout)
+}
+
+func TestProfile_OpenCodeHasNoSkillLine(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, opencode.New().Profile().SkillLine, "OpenCode has no line that loads a skill before the first turn, so a step with the skill keyword does not start on it")
 }

@@ -25,7 +25,7 @@ The keys `timeout` and `idle_timeout` of the `agent` call take a duration text, 
 
 ### The OpenCode adapter and its limits
 
-The adapter starts `opencode run --format json` and reads its event stream. The prompt goes on stdin; no message argument follows `run`. The adapter never passes `--auto`, so a file tool that reaches outside the work folder stays refused.
+The adapter starts `opencode run --format json` and reads its event stream. The prompt goes on stdin; no message argument follows `run`. The adapter never passes `--auto`, so a file tool that reaches outside the work folder stays refused, except the folder of the output file of the step: the launch allows it in the config of the run (`OPENCODE_CONFIG_CONTENT`, `external_directory`).
 
 A step author must know these limits:
 
@@ -33,7 +33,7 @@ A step author must know these limits:
 - **OpenCode 2.x runs with a private server.** From 2.0.0 the runner adds `--standalone`. Without it, OpenCode 2.x sends the run to a shared background service, and a service that another process holds on its port makes the run fail. The 2.x line names the shell tool `shell`.
 - **No `forbid_commands` on OpenCode 2.x.** In a real step on 2.2.5 the guard plugin did not refuse a command that the check forbids: the command ran and wrote its file. A step with `forbid_commands` does not start on 2.0.0 or later, and the note says so. Remove `forbid_commands` from the step, or use OpenCode 1.x.
 - **No sandbox.** A step with a sandbox does not start. Set `sandbox = None` on the step.
-- **No skill proof.** OpenCode reports no skill calls, so the result field `skills` of its steps is an empty list. A workflow that needs a skill stops the item itself when the list lacks it. The fact `runners.<name>.reports_skills` of `facts()` is false for such a runner, so a workflow refuses a step on it before any agent starts.
+- **No skill proof.** OpenCode reports no skill calls, so the result field `skills` of its steps is an empty list. The fact `runners.<name>.loads_skills` of `facts()` is false for such a runner, because OpenCode has no skill-load line. A step with the `skill` keyword does not start on it.
 - **A lost run starts again.** OpenCode keeps all sessions in one database and has no file for one session. The transcript path in the step output names a path that no file holds. The check before a resume finds no file, so a lost OpenCode step starts again from its note and never resumes.
 - **Subagent sessions are not counted.** The calls and the cost of a subagent session of OpenCode do not reach the output stream of the parent run, so the turn cap and the cost cap do not count them. This is from a read of the source of OpenCode 1.19.5.
 - **The turn cap is one call late.** OpenCode shows a tool call on its output when the call ends, so the runner counts a shell call after it ran.
@@ -58,7 +58,7 @@ No other variable of the caller reaches it. If the login folder is missing, the 
 
 The CLI runs in its own process group through `proc`. A total timeout, an idle timeout or a cancel of the context kills the group. Each write on stdout or stderr resets the idle timeout. When the CLI exits, the group is killed again, so no child outlives the step.
 
-Stdout is the transcript. A line writer redacts each line before it reaches the log: the token value and anything shaped like an `sk-ant-` key. A line longer than 16 MiB is dropped, so a secret is never split across two writes. Stderr keeps a redacted tail of 4 KiB for the result.
+Stdout is the transcript. A line writer redacts each line before it reaches the log: the token value, the redactor of the engine and anything shaped like an `sk-ant-` key. The redactor of the engine holds the values of the environment variables whose name marks a secret, as the [durable loop](durable-loop.md) describes. A value shorter than 8 bytes is not redacted. A line longer than 16 MiB is dropped, so a secret is never split across two writes. Stderr keeps a redacted tail of 4 KiB for the result.
 
 ### Permission flags of the Claude adapter
 

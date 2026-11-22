@@ -26,9 +26,13 @@ type ItemInput struct {
 	// A run that `beehave run` started has none: it picks at its first agent step.
 	Login string `json:"login,omitempty"`
 	// Entry is the function of the workflow file that runs the item. It is empty for an item that a user started, which runs main.
-	// A run that spawn started has it set to the entry of the spawn call, and such a run cannot spawn.
+	// A run that spawn started has it set to the entry of the spawn call.
 	Entry string `json:"entry,omitempty"`
-	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. It is empty for any other run, which cuts at the base branch of the project.
+	// Depth is the level of the run below the run a user started, which is at depth 0. Spawn gives its children Depth + 1.
+	Depth int `json:"depth,omitempty"`
+	// Parent is the id of the run that spawned this run, which send(to = "parent") sends to. It is empty for a run that a user started.
+	Parent string `json:"parent,omitempty"`
+	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. A run that a user started takes the base of the last run of the same item. It is empty when the item has no earlier run, and the item is cut at the base branch of the project.
 	Base string `json:"base,omitempty"`
 }
 
@@ -46,6 +50,9 @@ type ItemResult struct {
 	// Value is the JSON text of what the entry function of a run that spawn started returned. It is empty for a run that returned None, and for a run that a user started.
 	Value json.RawMessage `json:"value,omitempty"`
 }
+
+// StoppedOutputLimit is the most characters of the output of a stopping step that a status line or a queue row shows.
+const StoppedOutputLimit = 120
 
 // Stopped is a command step that ended the item: its name, its exit code and what it printed.
 type Stopped struct {
@@ -74,8 +81,23 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 			return result, workErr
 		}
 
-		return result, errors.Join(workErr, e.finish(ctx, a))
+		released := e.finish(ctx, a)
+		e.tellParent(ctx, in)
+
+		return result, errors.Join(workErr, released)
 	})
+}
+
+// tellParent sends the end notice of a run that spawn started to the run that spawned it, after the file and the release ended, as a recorded send.
+// The notice only wakes a first_of of the parent. A send that fails is logged, and the parent finds the end at its next read of the rows.
+func (e *Engine) tellParent(ctx dbos.Context, in ItemInput) {
+	if in.Parent == "" {
+		return
+	}
+
+	if err := endNotice(ctx, in.Parent, workflowID(ctx)); err != nil {
+		e.logger.WarnContext(ctx, "cannot tell the parent run that this run ended; the parent reads the end at its next look", "item", in.Item, "parent", in.Parent, "error", err)
+	}
 }
 
 // claimTake is the claim of a run: its owner token, and when the take began. took is zero when this run did not make the take:
@@ -292,22 +314,23 @@ func (e *Engine) lifecycle(ctx dbos.Context, step model.Step, call func(context.
 
 // waitOwner blocks until the owner answers through beehave answer. The wait holds no queue slot.
 // The findings are the question: status shows them while the run waits.
-func (e *Engine) waitOwner(ctx dbos.Context, project, item, question string) (string, error) {
-	answer, _, err := e.waitOwnerUntil(ctx, project, item, question, 0)
+func (s *script) waitOwner(question string) (string, error) {
+	answer, _, err := s.waitOwnerUntil(question, 0)
 	return answer, err
 }
 
 // waitOwnerUntil is waitOwner with a deadline. A deadline of zero is no deadline. When the deadline passes first, the answer is empty and timedOut is true.
-func (e *Engine) waitOwnerUntil(ctx dbos.Context, project, item, question string, deadline time.Duration) (answer string, timedOut bool, err error) {
-	if err := show(ctx, item, questionKey, question, "its question"); err != nil {
+func (s *script) waitOwnerUntil(question string, deadline time.Duration) (answer string, timedOut bool, err error) {
+	item := s.in.Item
+	if err := show(s.ctx, item, questionKey, s.e.redact(question), "its question"); err != nil {
 		return "", false, err
 	}
 
-	e.announce(ctx, project, item, question)
+	s.e.announce(s.ctx, s.in.Project, item, question)
 
-	answer, timedOut, err = e.receiveAnswer(ctx, deadline)
+	answer, timedOut, err = s.receiveAnswer(deadline)
 	if err == nil {
-		err = dbos.SetEvent(ctx, questionKey, "")
+		err = dbos.SetEvent(s.ctx, questionKey, "")
 	}
 
 	if err != nil {
@@ -326,22 +349,24 @@ func show[T any](ctx dbos.Context, item, key string, value T, what string) error
 	return nil
 }
 
-// receiveAnswer waits for the answer of the owner. With a deadline, one receive ends at the deadline and reports timedOut.
-// With no deadline, a receive that times out starts again.
-func (e *Engine) receiveAnswer(ctx dbos.Context, deadline time.Duration) (answer string, timedOut bool, err error) {
-	if deadline > 0 {
-		answer, err = dbos.Recv[string](ctx, ownerTopic, deadline)
-		if errors.Is(err, context.DeadlineExceeded) {
-			return "", true, nil
-		}
-
-		return answer, false, err
+// receiveAnswer waits for the answer of the owner: the first answer that names no wait. An answer to a wait that names people is not one.
+// The end of the deadline is a recorded step, so a replay waits no longer than the first run did.
+func (s *script) receiveAnswer(deadline time.Duration) (answer string, timedOut bool, err error) {
+	end, err := s.e.endOf(s.ctx, deadline)
+	if err != nil {
+		return "", false, err
 	}
 
 	for {
-		answer, err = dbos.Recv[string](ctx, ownerTopic, e.waitWindow())
-		if !errors.Is(err, context.DeadlineExceeded) {
-			return answer, false, err
+		v, got, late, err := s.nextVoice(end)
+
+		switch {
+		case err != nil:
+			return "", false, err
+		case late:
+			return "", true, nil
+		case got && v.Wait == "":
+			return v.Text, false, nil
 		}
 	}
 }

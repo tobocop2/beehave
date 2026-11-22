@@ -89,9 +89,9 @@ func tsvLine(values ...string) string {
 	return strings.Join(cells, "\t")
 }
 
-// draft refuses a draft unless the owner allowed readying it. A draft skips its checks, so the checks guard judged nothing.
+// draft refuses a draft unless the owner allowed readying it, or the draft is the one that the caller opened. A draft skips its checks, so the checks guard judged nothing.
 func (a *attempt) draft() *refusal {
-	if !*a.view.IsDraft || a.req.AllowReady || a.replayed() {
+	if !*a.view.IsDraft || a.req.AllowReady || (a.req.OwnDraft != 0 && a.req.PR == a.req.OwnDraft) || a.replayed() {
 		return nil
 	}
 

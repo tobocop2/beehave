@@ -257,7 +257,9 @@ func TestRunStar_AReplayIssuesTheSameStepNamesAndRunsNoRecordedStepAgain(t *test
 		done <- runOutcome{result: result, err: err}
 	}()
 
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, next), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, next), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	outcome := receive(t, done)
 
@@ -283,7 +285,7 @@ const goldenFlow = `def main(item):
 // A later change re-keys this list for each module.
 var goldenSteps = []string{
 	"env:HOME#1", "now#1", "facts#1", "pr_comment:b#1", "command:c#1", "scope:g#1", "gate:g#1",
-	"login#1", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1",
+	"login#1", "agent:a#1/start", "agent:a#1/render", "agent:a#1/clear1", "agent:a#1/read1", "agent:a#1/commit",
 	"wait:w#1",
 }
 
@@ -323,7 +325,9 @@ func TestRunStar_TheStepNamesOfEveryBuiltinMatchTheGoldenListOfTheStepsVersion(t
 	done := runInBackground(engine, testItem)
 
 	waitOn(t, ownerAsks(t, h))
-	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the run to take the answer", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Equal(t, "star30", stepsVersion)

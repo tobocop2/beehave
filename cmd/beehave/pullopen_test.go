@@ -485,3 +485,38 @@ func TestPullsOpen_AForgeThatCannotOpenIsAnError(t *testing.T) {
 	_, err := openOver(plainForge{}).Open(t.Context(), "p", "bb-5", flow.OpenRequest{Title: "t", Base: "main"})
 	require.ErrorIs(t, err, errNoOptionalRead)
 }
+
+func labeledOver(f forge.Forge, label string) pulls {
+	project := config.Project{Project: model.Project{PRLabel: label}}
+
+	return pulls{projects: map[string]config.Project{"p": project}, forge: func(model.Project) (forge.Forge, error) { return f, nil }}
+}
+
+func TestPullsOpen_TheDraftOfAnItemCarriesTheLabelOfTheProjectAndAReplayOpensNoSecondOne(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+	req := flow.OpenRequest{Title: "Fix 5", Body: "text", Base: "round-1"}
+
+	first, err := labeledOver(f, "made-by-beehave").Open(t.Context(), "p", "bb-5", req)
+	require.NoError(t, err)
+	assert.True(t, first.Created)
+	require.Len(t, f.created, 1)
+	assert.Equal(t, "made-by-beehave", f.created[0].Label)
+
+	again, err := labeledOver(f, "made-by-beehave").Open(t.Context(), "p", "bb-5", req)
+	require.NoError(t, err)
+	assert.False(t, again.Created, "a replay of the recorded open finds the pull request")
+	assert.Len(t, f.created, 1)
+}
+
+func TestPullsOpen_AProjectLabelOtherThanTheDefaultIsTheLabelOfTheDraft(t *testing.T) {
+	t.Parallel()
+
+	f := newOpenForge()
+
+	_, err := labeledOver(f, "by-the-engine").Open(t.Context(), "p", "bb-6", flow.OpenRequest{Title: "Fix 6", Base: "round-1"})
+	require.NoError(t, err)
+	require.Len(t, f.created, 1)
+	assert.Equal(t, "by-the-engine", f.created[0].Label)
+}

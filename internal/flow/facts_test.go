@@ -134,7 +134,7 @@ func TestFacts_AReplayKeepsTheFactsOfTheFirstRead(t *testing.T) {
 		done <- runOutcome{result: result, err: runErr}
 	}()
 
-	require.NoError(t, h.client(t, testVersion).Answer(testItem, "yes"))
+	require.NoError(t, h.client(t, testVersion).Reply(testItem, Reply{Text: "yes"}))
 
 	outcome := receive(t, done)
 	require.ErrorContains(t, outcome.err, "OWNER ann")

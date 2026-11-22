@@ -107,16 +107,19 @@ type fakeSteering struct {
 	schedules    []flow.ScheduleInfo
 	schedulesErr error
 	// days and daysErr are what Days returns.
-	days      []flow.DayFigures
-	daysErr   error
-	infos     []flow.RunInfo
-	view      flow.RunSteps
-	lanes     flow.ItemLanes
-	err       error
-	pinned    string
-	pinnedErr error
-	calls     []string
-	closeOK   bool
+	days    []flow.DayFigures
+	daysErr error
+	infos   []flow.RunInfo
+	view    flow.RunSteps
+	lanes   flow.ItemLanes
+	// published and publishedErr are what Published returns.
+	published    []flow.PublishedValue
+	publishedErr error
+	err          error
+	pinned       string
+	pinnedErr    error
+	calls        []string
+	closeOK      bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// running is what EngineRuns returns, and runningErr its error.
@@ -133,6 +136,9 @@ type fakeSteering struct {
 	joinBlock bool
 	// closeErr is what Close returns.
 	closeErr error
+	// followed are the entries that Follow emits, and followErr is what it returns.
+	followed  []flow.FollowedEntry
+	followErr error
 }
 
 func (s *fakeSteering) EngineRuns() (bool, error) { return s.running, s.runningErr }
@@ -176,6 +182,12 @@ func (s *fakeSteering) Steps(id string) (flow.RunSteps, error) {
 	return s.view, s.err
 }
 
+func (s *fakeSteering) Published(id string) ([]flow.PublishedValue, error) {
+	s.calls = append(s.calls, "published "+id)
+
+	return s.published, s.publishedErr
+}
+
 func (s *fakeSteering) Poll() (flow.PollOutput, bool, error) {
 	if s.poll == nil {
 		return flow.PollOutput{}, false, s.pollErr
@@ -196,16 +208,25 @@ func (s *fakeSteering) Schedules() ([]flow.ScheduleInfo, error) {
 	return s.schedules, s.schedulesErr
 }
 
-func (s *fakeSteering) Answer(item, text string) error {
-	s.calls = append(s.calls, "answer "+item+" "+text)
+func (s *fakeSteering) Reply(item string, reply flow.Reply) error {
+	call := "answer " + item + " " + reply.Text
+	if reply.From != "" {
+		call = "answer-as " + reply.From + " " + item + " " + reply.Text
+	}
+
+	if reply.Key != "" {
+		call += " key=" + reply.Key
+	}
+
+	s.calls = append(s.calls, call)
 
 	return cmp.Or(s.answerErrs[item], s.err)
 }
 
-func (s *fakeSteering) AnswerAs(item, from, text string) error {
-	s.calls = append(s.calls, "answer-as "+from+" "+item+" "+text)
+func (s *fakeSteering) Send(item string, msg flow.Outgoing) (string, error) {
+	s.calls = append(s.calls, "send "+item+" "+msg.Topic+" "+msg.Key+" "+msg.Sender+" "+string(msg.Value))
 
-	return cmp.Or(s.answerErrs[item], s.err)
+	return "id-1", s.err
 }
 
 func (s *fakeSteering) Resume(item string) error {
@@ -847,6 +868,17 @@ func TestAnswerCommand_TheAsFlagNamesThePersonWhoAnswers(t *testing.T) {
 	require.Equal(t, 0, code, stderr)
 
 	assert.Equal(t, []string{"answer-as ana 12 yes please"}, rig.steering.calls)
+}
+
+func TestAnswerCommand_TheKeyFlagGoesWithTheAnswerOfOneItemAndOfEveryItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "answer", "12", "--key", "k1", "yes")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"answer 12 yes key=k1"}, rig.steering.calls)
 }
 
 func TestStatus_ShowsThePeopleTheChoicesAndWhoAnswered(t *testing.T) {

@@ -1219,7 +1219,7 @@ func (p pulls) request(name string, project config.Project, item string, number 
 	return merge.Request{
 		AuditClosing: names != nil, Names: names, Kept: settings.Kept, Unaudited: unaudited,
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
-		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved,
+		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
 		Queue: true,
 	}

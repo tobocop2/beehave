@@ -14,13 +14,13 @@ func TestWaitVoices_ReportAnEventThatCannotBeShown(t *testing.T) {
 
 	engine := idleEngine(t, newHarness(t))
 
-	_, err := engine.waitVoices(engine.ctx, testProject, testItem, waitPlan{question: "q", asked: Asked{Choices: []string{"a"}}})
+	_, err := waiter(engine).waitVoices(waitPlan{question: "q", asked: Asked{Choices: []string{"a"}}})
 	require.ErrorContains(t, err, "item 12 cannot show who it asks")
 
-	_, err = engine.listen(engine.ctx, testProject, testItem, waitPlan{question: "q", asked: Asked{Choices: []string{"a"}}})
+	_, err = waiter(engine).listen(waitPlan{question: "q", asked: Asked{Choices: []string{"a"}}})
 	require.Error(t, err, "the id of a wait is a recorded step of a run")
 
-	_, err = engine.within(engine.ctx, testItem, time.Hour, nil, &Asked{}, &tally{})
+	_, err = waiter(engine).within(time.Hour, nil, &Asked{}, &tally{})
 	require.Error(t, err, "the end of a deadline is recorded as a step of a run")
 }
 
@@ -60,7 +60,7 @@ func stuckAsk(ctx dbos.Context, _ string) (string, error) {
 		return "", err
 	}
 
-	return dbos.Recv[string](ctx, ownerTopic, time.Minute)
+	return awaitInbox(ctx)
 }
 
 func TestClient_StatusAndAnswerReportAnAskThatIsNotARecord(t *testing.T) {
@@ -91,7 +91,7 @@ func TestClient_StatusAndAnswerReportAnAskThatIsNotARecord(t *testing.T) {
 		return statusErr != nil
 	}))
 
-	require.ErrorContains(t, client.Answer(stuckItemName, "go on"), "read who "+stuckItemID+" asks")
+	require.ErrorContains(t, client.Reply(stuckItemName, Reply{Text: "go on"}), "read who "+stuckItemID+" asks")
 	require.NoError(t, dbos.CancelWorkflow(flowCtx, stuckItemID))
 	require.NoError(t, dbos.Shutdown(flowCtx, shutdownTimeout))
 }
@@ -113,7 +113,7 @@ func TestWait_AVoiceTheWaitRefusesIsDroppedAndAWindowWithNoVoiceReceivesAgain(t 
 	require.NoError(t, err)
 	waitOn(t, windowsEndedBy(runOfEngine(t, engine), before+5))
 
-	require.NoError(t, dbos.Send(client.flow, testRun, voice{From: "zed", Text: "yes"}, voiceTopic))
+	require.NoError(t, sendAnswerEnvelope(client.flow, testRun, voice{From: "zed", Text: "yes"}))
 
 	// The windows that end after the voice show that the run dropped it.
 	before, err = runOfEngine(t, engine).windowsEnded()
@@ -121,6 +121,6 @@ func TestWait_AVoiceTheWaitRefusesIsDroppedAndAWindowWithNoVoiceReceivesAgain(t 
 	waitOn(t, windowsEndedBy(runOfEngine(t, engine), before+3))
 	assert.Empty(t, askedOf(t, client).Heard, "a voice from someone not named counts for nothing")
 
-	require.NoError(t, client.AnswerAs(testItem, "ana", "yes"))
+	require.NoError(t, client.Reply(testItem, Reply{From: "ana", Text: "yes"}))
 	require.NoError(t, receive(t, done).err)
 }

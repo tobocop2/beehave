@@ -13,9 +13,9 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct{ name, call, want string }{
-		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills."},
+		{"agent", `agent("p", "m")`, "3:11 haed is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, commit_subject, commit_body."},
 		{"merge", `merge(name = "n", prs = [struct(item = "1", head = "h")], base = "b", repo = "r")`, "3:11 haed is not a field of the result of merge. It has: merged, rejected, deferred, tip, tree, gates, findings, note, unproven, moved, host_loss, host_losses."},
-		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc."},
+		{"command", `command(["a"])`, "3:11 haed is not a field of the result of command. It has: stdout, stderr, rc, attempts, error."},
 		{"gate", `gate()`, "3:11 haed is not a field of the result of gate. It has: passed, head, tree, report, steps, required, checks, new_tests, revert, host_loss, host_losses."},
 		{"gather", `gather([])`, "3:11 haed is not a field of the result of gather. It has: results."},
 		{"item_comment", `item_comment("1", "t", "k")`, "3:11 haed is not a field of the result of item_comment. It has: id."},
@@ -39,6 +39,14 @@ func TestCheck_ReportsAFieldThatTheResultOfABuiltinDoesNotHave(t *testing.T) {
 			assert.Contains(t, got[0], tc.want)
 		})
 	}
+}
+
+func TestCheck_AcceptsTheCommitMessageFieldsOfAnAgentResult(t *testing.T) {
+	t.Parallel()
+
+	got := checkText(t, "def main(item):\n    a = agent(\"p\", \"m\")\n    command([\"x\", a.commit_subject, a.commit_body])\n")
+
+	assert.Empty(t, got)
 }
 
 func TestCheck_AcceptsEachFieldThatABuiltinReturns(t *testing.T) {
@@ -66,7 +74,7 @@ func TestCheck_AnAgentWithLiteralOutputsHasThemAsFields(t *testing.T) {
 	got := checkText(t, "def main(item):\n    out = agent(\"p\", \"m\", outputs = [\"verdict\"])\n    command([out.verdikt])\n    command([out.verdict])\n")
 
 	require.Len(t, got, 1)
-	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, verdict.")
+	assert.Contains(t, got[0], "3:18 verdikt is not a field of the result of agent. It has: text, session, transcript, head_sha, violations, stop, cost_usd, cost_estimated, cost_unknown, rewrote, committed, skills, commit_subject, commit_body, verdict.")
 }
 
 func TestCheck_AnAgentWhoseOutputsAreNotLiteralHasItsOwnFieldsLeftToTheRun(t *testing.T) {
@@ -187,7 +195,7 @@ func TestCheck_AFieldOfACallThatIsNotTheBuiltinIsLeftToTheRun(t *testing.T) {
 func TestResults_ListsTheBuiltinsWithFixedFields(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"agent", "command", "earlier_calls", "facts", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "spawn", "wait", "write"}, workflow.Results())
+	assert.Equal(t, []string{"agent", "cancel", "command", "earlier_calls", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "item_comment", "item_create", "item_read", "item_status", "merge", "pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "push", "queue", "recv", "send", "sleep", "spawn", "wait", "write"}, workflow.Results())
 }
 
 func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {
@@ -202,5 +210,5 @@ func TestResultFields_ReturnACopyAndNoFieldsForAnotherName(t *testing.T) {
 	fields[0] = "changed"
 
 	again, _ := workflow.ResultFields("command")
-	assert.Equal(t, []string{"stdout", "stderr", "rc"}, again)
+	assert.Equal(t, []string{"stdout", "stderr", "rc", "attempts", "error"}, again)
 }

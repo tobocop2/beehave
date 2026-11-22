@@ -120,6 +120,7 @@ The severity is the field `severity` of the item (`P0` to `P3`, or `P?`). The ru
 - The runs that `spawn` starts get their place from the tracker, in the recorded spawn step, so a replay queues the run with the same place.
 - A phase and a run of `items` have no standing at hand, so they take the place of the severity alone.
 - A run that `beehave resume` continues keeps the place that its row holds.
+- A run that `beehave resume` rewinds keeps every message that was sent to it. A message that a dropped step took is unread again, an unread message stays unread, and a message that a step below the cut took stays taken. The replay takes the oldest message first, by the millisecond that it was sent. Messages sent in the same millisecond have no defined order. A wait that the replay runs again takes the answer that it took before and does not ask again.
 - A run that `beehave resume` rewinds is queued with place 0. The rewind of the library takes no priority, and the queue gives a run with no priority the value 0. Place 0 starts before every place from 1 to 6, so a rewound run starts first, ahead of a P0 item.
 
 #### Turn and budget stops
@@ -419,6 +420,8 @@ If the loop used all its rounds, the `exhausted` field of its result is true. Th
 - With `timeout = "48h"`, the wait ends at the deadline. The `timed_out` field of its result is true, and the `answer` field is empty.
 - `beehave check workflow` and the run refuse a `timeout` of zero or below, because it would read as no deadline. For a wait with no deadline, leave the argument out.
 - DBOS records the deadline of the wait. A run that stops and resumes after the deadline times out at once. A run that resumes before it waits for the time left.
+- If a wait timed out and the run failed, `beehave resume` reopens the wait at its deadline step when only receives and their sleeps lie between the deadline step and the receive that timed out. That means the wait counted nothing. It records a new deadline and waits its whole `timeout` again. This holds for a plain wait, for a wait with people and no voice, and for a wait with choices and no answer.
+- A wait that counted a voice, and a wait with reminders, record a step between the deadline and the receive. `beehave resume` reopens such a wait at the receive that timed out. The wait keeps its old deadline and times out again at once.
 - An answer that arrives after the deadline and before the engine clears the question is kept for the next `wait` of the same run.
 
 **Who answers.** A plain wait takes the first answer from anyone who can run `beehave answer` on the run. A wait can instead set these keywords:
@@ -438,6 +441,10 @@ A person answers with `beehave answer <item> --as ana <text>`. The command refus
 - A text that is not in `choices`.
 
 The engine does not prove the name. It keeps no key store, so anyone who can run `beehave answer` on the run can give any listed name.
+
+**Where answers arrive.** An answer is a message of the reserved topic `beehave.answer` on the inbox of the run, the same inbox that `recv` reads. A `wait` takes the oldest answer of its own. An answer that comes while a `recv` waits for another topic stays in the buffer of the run until a `wait` reads it. A wait with no `to` ignores an answer that names a wait.
+
+**Retry an answer.** Add `--key <key>` to `beehave answer`. The key is the idempotency key of the message. If the run already got an answer with that key, the command sends nothing again. The key of an answer and the key of `beehave send` are separate: the same text on both sends both messages. With no key, each answer gets a new one.
 
 **Counting.**
 
@@ -669,6 +676,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run` or `tree`. The step waits until the cap is raised and beehave restarts. |
 | `waits for the <kind> limit <window> of login <login> until <time>` | A provider limit holds an agent step of the open run. The step runs again after that time. |
 | `now <step>` | The step that an open run is in. A run that asks a question shows the question in place of the step and, when the `wait` has a `timeout`, `answer by <time>`. |
+| `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |
 | `gate pass at <head>` or `gate fail at <head>` | The newest gate result and the head it judged. |
 | The latest label, such as `review 3/24` | The `label` of the latest agent call that has one. The review loop of the library labels its reviews with the count against `rounds * (MAX_INNER + 1)` and its fixes with the count against `rounds * MAX_INNER`. |
 
@@ -681,6 +689,7 @@ Every value is read from the step records, the events and the options of the cli
 - `cap_stop` and `limit_wait`, while a cap or a provider limit holds a step
 - `now`
 - `deadline`
+- `receiving`: the topic that an open run waits on in a `recv` call. It is left out for a run that waits in no `recv`.
 - `gate` (`passed`, `head`)
 - `label`: the latest label of the run
 - `cost_usd` on each agent step
@@ -779,6 +788,24 @@ The label of a lane is the `label` argument of the `agent` call. A label is free
 - The review loop of the library labels its calls with the round, for example `review 3/24` and `fix 2/18`, and `design` for its design step.
 - The run status shows the latest label.
 - A record that an older version wrote has no label.
+
+#### `beehave status <run id or item> --follow`: the output of the agents
+
+`beehave status <run id or item> --follow` prints the text and the tool calls of each agent phase of one run, in order, as they arrive. An item id names its newest run. The command ends when the run ends. On a run that ended, it prints the output of its phases again and ends. `--json` and `--item` do not combine with it, and it needs one run.
+
+**The stream.** The phase writes each message text and each tool call of its agent to the DBOS stream `agent` of the phase workflow, from inside the agent step. The runner reads each output line once. The adapter reports the texts and the calls of the line (`Seen.Said`), the tap of the run gives them to the engine, and a goroutine of the step writes them in order, so a slow store never stops the reading of the agent output. A tool call reads `<tool>: <target>`, for example `Bash: ls`.
+
+**The entry.** An entry holds `seq`, `try`, `kind` (`text` or `call`) and `text`. The text passes the redactor before the write, so a token shaped like an Anthropic key is stored as `[redacted]`. The redactor of the engine also holds the value of each environment variable that the `env` builtin treats as a secret. A name marks a secret when it ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, is `PAT`, `AUTH` or `DSN`, holds `_PAT_` (as in `GH_PAT_OLD`), or holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. A value marks a secret when it holds `scheme://user:password@` with a password that is not empty, anywhere in the text. The engine redacts the whole value. The config has no field that marks a secret, so the name and the value decide. The redactor removes each value in plain, JSON-escaped and URL-escaped form, each line of a value of several lines, and the longest value first. A value shorter than 8 bytes stays in the output, and the engine logs a warning at start that names its variable. A secret in a variable that neither the name nor the value marks is not redacted. The tokens of the forge and agent logins are not passed to the redactor yet.
+
+The engine builds the redactor once at start. These writers use it: the agent stream, the phase text and shell calls that the tap keeps, published and progress values, messages that `send` and `beehave send` store, the question of a wait, the answer that `beehave answer` stores, the stdout and stderr of a `command`, step errors, the progress lines of the terminal and the log file. The client builds the same redactor from the same variables. The runner applies it to the output of the agent after the account token, before the tap reads it. `seq` counts the entries of the phase from 1.
+
+**The cap.** A phase stores at most 4 MiB of text. The entry that passes the cap is replaced by one entry that says the stream was cut, and the phase stores nothing after it.
+
+**A lost run.** A step that a lost run left is run again in the same phase. Its entries go under the next `try`, and the numbers go on. The follow prints a heading line for each phase and each new try. A replay returns the recorded output of the phase, never runs the agent step again, and so writes no entry.
+
+**The read.** The client reads each phase of the run with the DBOS stream read, which ends when the phase is no longer open. A new phase of an open run is found by a look each second. The follow ends only when the run has ended, because a later phase can start after an earlier one ends. A run that waits for an answer keeps it open, so the follow prints one line, `-- waiting for an answer to: <question>`, once for each question. The stream stays in the state folder after the run, so `--follow` on an ended run prints it again. A write that fails is logged once. The agent goes on, and the stream holds the entries before the failure.
+
+A workflow file has no reader of the stream. The `transcript` field of the agent result holds the text of a finished run.
 
 #### Progress lines of `beehave run`
 

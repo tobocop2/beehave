@@ -71,23 +71,23 @@ func TestExampleProfile_AnItemWithNoAcceptanceScriptSaysSo(t *testing.T) {
 	require.NotContains(t, text, "ACCEPTANCE=")
 }
 
-func TestExampleProfile_AProjectWithABuildHostSendsEveryBuildThereAndNeverToThisMachine(t *testing.T) {
+func TestExampleProfile_AProjectWithABuildHostSendsNoCommandThereAndTheEngineRunsTheGate(t *testing.T) {
 	t.Parallel()
 
 	text := implementPrompt(t, model.Project{BuildHost: "rig-1", Forge: "github"}, nil)
 
-	require.Contains(t, text, "Run every build, test and lint on the build host. Never run one on this machine.")
-	require.Contains(t, text, "Build host: `rig-1`.")
+	require.Contains(t, text, "Run the tests that the change touches by name, in the work folder.")
+	require.Contains(t, text, "The engine runs the gate and the mutation run for each candidate.")
+	require.NotContains(t, text, "rig-1")
+	require.NotContains(t, text, "build host")
 	require.Contains(t, text, "Make the first commit when the change is green")
-	require.NotContains(t, text, "has no build host")
 }
 
-func TestExampleProfile_AProjectWithNoBuildHostAndNoForgeBuildsHereAndPushesNothing(t *testing.T) {
+func TestExampleProfile_AProjectWithNoBuildHostAndNoForgePushesNothingAndNamesNoHost(t *testing.T) {
 	t.Parallel()
 
 	text := implementPrompt(t, model.Project{}, nil)
 
-	require.Contains(t, text, "This project has no build host: run builds and tests on this machine.")
 	require.Contains(t, text, "This project has no forge: commit on the branch and push nothing.")
-	require.NotContains(t, text, "Never run one on this machine")
+	require.NotContains(t, text, "build host")
 }

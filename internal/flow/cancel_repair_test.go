@@ -3,7 +3,6 @@ package flow
 import (
 	"database/sql/driver"
 	"fmt"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -106,10 +105,7 @@ func liveJobUnder(t *testing.T, h *harness, parent string) string {
 // blockedIn is true when the goroutine with this id runs a frame whose name holds one of the names.
 func blockedIn(id string, names ...string) func() bool {
 	return func() bool {
-		buf := make([]byte, stackSize)
-		buf = buf[:runtime.Stack(buf, true)]
-
-		for _, stack := range strings.Split(string(buf), "\n\n") {
+		for _, stack := range strings.Split(string(goroutineStacks()), "\n\n") {
 			if strings.HasPrefix(stack, "goroutine "+id+" [") {
 				return slices.ContainsFunc(names, func(name string) bool { return strings.Contains(stack, name) })
 			}

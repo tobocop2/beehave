@@ -175,7 +175,7 @@ func TestCancel_AnUnreadableCancelFolderIsLoggedAndTheTickGoesOn(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, cancelsDir), nil, ownerMode))
 
-	engine := &Engine{dir: dir, logger: newLogger(&logged)}
+	engine := &Engine{dir: dir, logger: newLogger(&logged, runRedactor(nil))}
 
 	engine.giveBackStrayCancels()
 

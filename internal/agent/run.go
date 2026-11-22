@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -47,7 +48,16 @@ const (
 	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
 	runDirMode     = 0o700
 	launchFileMode = 0o600
+	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
+	// keeps the socket paths of the shell under the limit of 104 bytes on macOS, and the path of the CLI home under the limit of cliTempLimit.
+	shortTemp  = "/tmp"
+	tempPrefix = "b"
+	// cliTempLimit is the longest <temporary folder>/claude-<uid> that the CLI keeps as the TMPDIR of the shell. Over it, the CLI sets /tmp/claude-<uid>.
+	cliTempLimit = 44
 )
+
+// userTempName is the name of the folder of the user in the root of the temporary folders. The uid is in base 36 to keep the path short.
+func userTempName(uid int) string { return tempPrefix + strconv.FormatInt(int64(uid), 36) }
 
 var (
 	errTotalTimeout = errors.New("total timeout")
@@ -61,12 +71,14 @@ var (
 // A non-empty Model or Resume adds the model flag or the resume flag of the profile; a profile without that flag refuses the run.
 // A nil Adapter means the agent of the runner has no adapter, and the run does not start.
 type Spec struct {
-	Adapter     Adapter
-	Runner      model.Runner
-	Dir         string
-	Prompt      string
-	Env         map[string]string
-	Token       string
+	Adapter Adapter
+	Runner  model.Runner
+	Dir     string
+	Prompt  string
+	Env     map[string]string
+	Token   string
+	// Redact is the redactor of the engine. The output of the run passes it after the token of the run.
+	Redact      func(string) string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
 	Model       string
@@ -86,6 +98,15 @@ type Spec struct {
 	// Sandbox, when set, confines the shell of the run by the plan. The run does not start if the adapter has no sandbox, the system is Windows or the CLI is too old.
 	// The environment of the CLI then holds no proxy variable and no agent socket, and git reads no global or system config.
 	Sandbox *SandboxPlan
+	// Write lists the files outside the work folder that the file tools of the run may read and write, each by its exact path: the output file of the step.
+	// Every launch opens them, with or without a guard or a sandbox. In a sandbox the shell may write them too.
+	Write []string
+	// Skills lists the folder of each skill that the agent may load, and the name of the folder is the name of the skill. The adapter copies each one into the
+	// run folder, so a run with or without a sandbox loads these skills. A folder here holds no symbolic link: the engine refuses one.
+	Skills []string
+	// ConfigFolder is the config folder that the CLI reads: the config_dir of the runner, else the default folder of the CLI. The caller resolves it.
+	// The run does not start when it is not a folder.
+	ConfigFolder string
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -133,10 +154,14 @@ type Timer interface {
 
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 // Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
+// Temp is the folder in which a sandboxed run gets its own temporary folder; the zero value is /tmp.
+// Folders is the set of the temporary folders that this process made. The runners of one process share one. A runner with none keeps every folder of a live pid, this process included.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
 	Version   func(ctx context.Context, binary string, env []string) (string, error)
 	OS        string
+	Temp      string
+	Folders   *fstree.Folders
 }
 
 // Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
@@ -157,7 +182,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return stalled(execute(ctx, spec, p, idle, r.version()), p)
+	return stalled(execute(ctx, spec, p, idle, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
 }
 
 // stalled adds the StallNote of the profile to a run that a total or idle limit ended.
@@ -202,9 +227,9 @@ func prepare(spec Spec, goos string) (Profile, string) {
 		return p, problem
 	}
 
-	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {
-		return p, fmt.Sprintf("the config_dir %q of runner %s is not a folder, so %s is not started. Log in to the runner first.",
-			spec.Runner.ConfigDir, spec.Runner.Name, p.Binary)
+	if info, err := os.Stat(spec.ConfigFolder); err != nil || !info.IsDir() {
+		return p, fmt.Sprintf("the config folder %q of runner %s is not a folder, so %s is not started. Log in to the runner, or set config_dir.",
+			spec.ConfigFolder, spec.Runner.Name, p.Binary)
 	}
 
 	return p, ""
@@ -238,7 +263,7 @@ func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Ti
 	return func() { timer.Stop() }
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf) Result {
+func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, where tempPlace) Result {
 	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
@@ -251,14 +276,47 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 	defer os.RemoveAll(runDir)
 
+	spec, remove, problem := withTemp(spec, p.Binary, where)
+	if problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
+	defer remove()
+
 	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+}
+
+// tempPlace is where a sandboxed run makes its temporary folder: the root of the folders of the users, and the set of the folders that this process made.
+type tempPlace struct {
+	root    string
+	folders *fstree.Folders
+}
+
+// withTemp returns the spec with a new temporary folder in root for its sandbox, and the function that removes the folder. A spec with no sandbox gets no folder.
+// It returns why it cannot make the folder, or "".
+func withTemp(spec Spec, binary string, where tempPlace) (Spec, func(), string) {
+	root := where.root
+
+	if spec.Sandbox == nil {
+		return spec, func() {}, ""
+	}
+
+	temp, err := where.folders.Make(filepath.Join(root, userTempName(os.Getuid()))) // mode 0700
+	if err != nil {
+		return spec, nil, fmt.Sprintf("cannot make the temporary folder for %s in %s: %v", binary, root, err)
+	}
+
+	plan := *spec.Sandbox
+	plan.Temp, spec.Sandbox = temp, &plan
+
+	return spec, func() { _ = fstree.Remove(temp) }, "" //nolint:errcheck // the run is over; a folder left behind does not change its result
 }
 
 // launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
 func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
 	launch := launchOf(spec, runDir)
 
-	if problem := writeFiles(runDir, launch.Files); problem != "" {
+	if problem := cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies)); problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
@@ -356,18 +414,16 @@ func argsOf(spec Spec, p Profile, launch Launch, later []string) []string {
 }
 
 // launchOf returns what the adapter adds to the start: the sandbox of the spec, or the command guard when the spec has no sandbox.
+// Both carry the files that the spec opens to the file tools and the skills of the spec.
 func launchOf(spec Spec, runDir string) Launch {
-	switch {
-	case spec.Sandbox != nil:
-		plan := *spec.Sandbox
-		plan.Edits = !spec.NoEdits
-
-		return spec.Adapter.Sandbox(plan, spec.Guard, runDir)
-	case spec.Guard != "":
-		return spec.Adapter.Guard(spec.Guard, runDir)
+	if spec.Sandbox == nil {
+		return spec.Adapter.Guard(spec.Guard, runDir, spec.Write, spec.Skills)
 	}
 
-	return Launch{}
+	plan := *spec.Sandbox
+	plan.Edits = !spec.NoEdits
+
+	return spec.Adapter.Sandbox(plan, spec.Guard, runDir, spec.Write, spec.Skills)
 }
 
 // writeFiles writes the files of a launch into runDir. It returns why it cannot, or "" when every file is written.
@@ -386,6 +442,21 @@ func writeFiles(runDir string, files map[string]string) string {
 
 		if err := os.WriteFile(path, []byte(files[name]), launchFileMode); err != nil {
 			return fmt.Sprintf("cannot write the launch file %q: %v", name, err)
+		}
+	}
+
+	return ""
+}
+
+// copyFolders copies each folder of a launch into runDir, at its local path. It returns why it cannot, or "" when every folder is copied.
+func copyFolders(runDir string, copies map[string]string) string {
+	for _, name := range slices.Sorted(maps.Keys(copies)) {
+		if !filepath.IsLocal(name) {
+			return fmt.Sprintf("the launch of the agent puts the copy %q outside its run folder, so the run does not start.", name)
+		}
+
+		if err := os.CopyFS(filepath.Join(runDir, name), os.DirFS(copies[name])); err != nil {
+			return fmt.Sprintf("cannot copy %s into the run folder, so the run does not start: %v", copies[name], err)
 		}
 	}
 
@@ -457,6 +528,7 @@ func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *reda
 	}
 
 	secrets := newRedactor(spec.Token)
+	secrets.next = spec.Redact
 	tail := proc.NewTail(tailBytes)
 
 	return &redactWriter{out: log, redactor: secrets, limit: maxLineBytes},

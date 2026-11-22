@@ -74,18 +74,13 @@ func waitOn(fail func(format string, args ...any), w e2eWaiting) {
 // waitEndedText starts the failure of a wait that sees every run of the script end.
 const waitEndedText = "every run of the script ended and "
 
-// e2eEndBound is the guard of a wait that a script expects to fail. A wait that does not fail on the end of the run fails at this bound with another text.
-const e2eEndBound = 20 * time.Second
-
-// e2eRunWait runs the wait of a script command. With "!" before the command, the script expects the wait to fail on the end of the run, with the status in the text.
+// e2eRunWait runs the wait of a script command. With "!" before the command, the script expects the wait to fail on the end of the run, with the status in the text; a wait that runs to its guard fails the script.
 func e2eRunWait(ts *testscript.TestScript, neg bool, w e2eWaiting) {
 	if !neg {
 		waitOn(ts.Fatalf, w)
 
 		return
 	}
-
-	w.bound = e2eEndBound
 
 	var text string
 

@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -103,17 +104,33 @@ func TestSuperseded_AGateThatHasNoTipIsNotStoppedByAGateThatHasOne(t *testing.T)
 	assert.Zero(t, gated.stopped.Load())
 }
 
-// shiftingForge moves the head of the pull request to a new head at the read that the test names, after it holds that read until the test lets it go.
+// shiftingForge runs a hook before one read of the pull request. The test arms the hook while the gates of the engine read the forge, so mu guards the hook and the count.
 type shiftingForge struct {
 	*fakeForge
-	reads atomic.Int32
-	at    int32
+	mu    sync.Mutex
+	reads int
+	at    int
 	hold  func()
 }
 
+// arm makes the nth read after this call run hold before it answers.
+func (f *shiftingForge) arm(n int, hold func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.at = f.reads + n
+	f.hold = hold
+}
+
 func (f *shiftingForge) Pull(ctx context.Context, project, item string) (review.Standing, error) {
-	if f.reads.Add(1) == f.at {
-		f.hold()
+	f.mu.Lock()
+	f.reads++
+	hold := f.hold
+	fire := f.reads == f.at
+	f.mu.Unlock()
+
+	if fire {
+		hold()
 	}
 
 	return f.fakeForge.Pull(ctx, project, item) //nolint:wrapcheck // a test double
@@ -132,26 +149,27 @@ func TestSuperseded_AGateWhoseReadOfTheHeadIsOldNeverStopsTheGateOfTheCurrentHea
 		return shifting
 	})
 
-	first := queueGate(engine, "A")
+	firstRun, first := queueGateRun(engine, "A")
 
 	waitOn(t, startsReach(t, engine, gated, 1))
+	// The gate starts while the run that queued it can still be at its stop. The stop is recorded after its read, so the count is final only then.
+	waitOn(t, condition(stopRecorded(engine, firstRun)))
 
 	// The reads so far: the tip and the stop of gate A. Gate B reads its tip as read 3 and reads the head again for its stop as read 4.
 	// Before that fourth read the head moves to C, and the gate of head C queues and stops the old gates.
-	var last <-chan gateEnd
+	queuedLast := make(chan (<-chan gateEnd), 1)
 
-	shifting.at = shifting.reads.Load() + 2
-	shifting.hold = func() {
+	shifting.arm(2, func() {
 		setHead(h, "C")
 
-		last = queueGate(engine, "C")
+		queuedLast <- queueGate(engine, "C")
 
 		waitOn(t, condition(func() bool {
 			rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(exclusiveName), dbos.WithFilterStatus(dbos.WorkflowStatusCancelled))
 
 			return err == nil && len(rows) == 2
 		}))
-	}
+	})
 
 	middle := queueGate(engine, "B")
 
@@ -161,7 +179,7 @@ func TestSuperseded_AGateWhoseReadOfTheHeadIsOldNeverStopsTheGateOfTheCurrentHea
 
 	close(gated.release)
 
-	require.NoError(t, receiveEnd(t, engine, gated, last).err, "the old read of gate B did not cancel the gate of the current head")
+	require.NoError(t, receiveEnd(t, engine, gated, receive(t, queuedLast)).err, "the old read of gate B did not cancel the gate of the current head")
 }
 
 // passThenHold passes the first gate and holds every later gate until its context ends.
@@ -212,7 +230,9 @@ func TestSuperseded_AReplayReadsTheHeadAndCancelsTheGatesNoMore(t *testing.T) {
 	done := runInBackground2(engine, file)
 
 	waitOn(t, ownerAsks(t, h))
-	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) { return struct{}{}, client.Answer(testItem, "yes") == nil, nil }})
+	waitOn(t, waiting[struct{}]{what: "the answer to be accepted", run: runOfClient(t, client), read: func() (struct{}, bool, error) {
+		return struct{}{}, client.Reply(testItem, Reply{Text: "yes"}) == nil, nil
+	}})
 
 	require.NoError(t, receive(t, done).err)
 	assert.Len(t, h.forge.asked, reads, "the replay reads the recorded head and asks the forge nothing more")

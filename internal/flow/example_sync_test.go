@@ -241,7 +241,7 @@ func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMe
 	require.NoError(t, err)
 
 	names := stepNames(t, rig.last)
-	order := []string{"command:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
+	order := []string{"command:sync-1#", "gate:sync-gate-1#", "agent:sync-review-1#", "command:sync-land-1#", "command:round-integration-sync-1#", "agent:queue-audit-1#", "spawn:round-spawn-1#"}
 
 	for i := 1; i < len(order); i++ {
 		require.GreaterOrEqual(t, at(names, order[i-1]), 0, "the step %s ran: %v", order[i-1], names)
@@ -622,7 +622,7 @@ func TestRoundSync_AHeldRoundGathersItsOpenRunAndCallsNoSyncInALaterPass(t *test
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "command:sync-2#", "the second pass checks the trunk and is held")
 	assert.NotContains(t, joined, "agent:queue-audit-2#", "the held pass starts no item")
-	assert.Contains(t, joined, "gather:round-gather-2#", "the held pass still gathers the open run")
+	assert.Contains(t, joined, "first_of:round-gather-2#", "the held pass still waits for the open run")
 	assert.NotContains(t, joined, "command:sync-3#", "a later pass of a held round calls no sync")
 	assert.ElementsMatch(t, []string{"1", "2"}, rig.kids.started())
 	require.Len(t, rig.questions, 1)

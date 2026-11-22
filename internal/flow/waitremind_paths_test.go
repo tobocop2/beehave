@@ -47,7 +47,7 @@ func inFlow(t *testing.T, body func(ctx dbos.Context) error) error {
 func sendVoiceSoon(t *testing.T, flowCtx dbos.Context) {
 	t.Helper()
 
-	require.NoError(t, dbos.Send(flowCtx, stuckItemID, voice{Wait: "w", From: "ana", Text: "yes"}, voiceTopic))
+	require.NoError(t, sendAnswerEnvelope(flowCtx, stuckItemID, voice{Wait: "w", From: "ana", Text: "yes"}))
 }
 
 func TestWaitRemind_ADeadlineSoFarAheadThatItsReminderCannotBeShownFailsTheWait(t *testing.T) {
@@ -62,7 +62,7 @@ func TestWaitRemind_ADeadlineSoFarAheadThatItsReminderCannotBeShownFailsTheWait(
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	err = inFlow(t, func(ctx dbos.Context) error {
-		_, withinErr := engine.within(ctx, testItem, 48*time.Hour, []float64{0.9}, &Asked{From: []string{"ana"}}, &tally{})
+		_, withinErr := (&script{e: engine, ctx: ctx, in: ItemInput{Item: testItem}}).within(48*time.Hour, []float64{0.9}, &Asked{From: []string{"ana"}}, &tally{})
 
 		return withinErr
 	})
@@ -79,7 +79,7 @@ func TestWaitRemind_AVoiceThatCannotBeShownFailsTheCount(t *testing.T) {
 		asked := &Asked{Wait: "w", From: []string{"ana"}, Quorum: 1, NextRemind: farOff}
 		plan := schedule{dues: []time.Time{farOff}, end: time.Now().Add(time.Hour)}
 
-		_, err := engine.collectReminding(ctx, testItem, plan, asked, &tally{answers: map[string]string{}})
+		_, err := (&script{e: engine, ctx: ctx, in: ItemInput{Item: testItem}}).collectReminding(plan, asked, &tally{answers: map[string]string{}})
 
 		return err
 	})
@@ -111,7 +111,7 @@ func TestWaitRemind_ACallOutsideARunRecordsNothingAndFails(t *testing.T) {
 	now := time.Now()
 	plan := schedule{dues: []time.Time{now.Add(-time.Hour)}, end: now.Add(time.Hour)}
 
-	_, err := engine.collectReminding(engine.ctx, testItem, plan, &Asked{}, &tally{})
+	_, err := waiter(engine).collectReminding(plan, &Asked{}, &tally{})
 	require.Error(t, err, "the receive needs a run")
 
 	_, err = engine.remindDue(engine.ctx, testItem, plan, &Asked{})

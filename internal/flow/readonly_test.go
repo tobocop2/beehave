@@ -131,7 +131,7 @@ func TestExample_AnApproveFromAReviewThatChangedTheFolderIsNotClean(t *testing.T
 				rig.put(filepath.Join(rig.dir, "edited.txt"), "a shell write of the review")
 				gitIn(t, rig.dir, "add", "edited.txt")
 			}
-		case request.Resume != "":
+		case request.Resume != "" && !isSweep(request):
 			gitIn(t, rig.dir, "rm", "-qf", "edited.txt")
 		}
 
