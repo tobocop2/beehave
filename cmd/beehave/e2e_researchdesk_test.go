@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/rogpeppe/go-internal/testscript"
 )
@@ -37,9 +36,7 @@ func cmdResearchDeskInit(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Fatalf("rdinit: %v", err)
 	}
 
-	// The agent steps keep their own sandbox() from the workflow. The program gates run unsandboxed: the staleness gate fetches every cited page.
-	text := strings.Replace(string(project), `sandbox = "on"`, `sandbox = "off"`, 1)
-	if err := root.WriteFile(filepath.Join("config", "projects", "research-desk.star"), []byte(text), e2eFileMode); err != nil {
+	if err := root.WriteFile(filepath.Join("config", "projects", "research-desk.star"), project, e2eFileMode); err != nil {
 		ts.Fatalf("rdinit: %v", err)
 	}
 }
