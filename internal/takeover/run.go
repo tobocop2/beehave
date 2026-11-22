@@ -442,18 +442,14 @@ func (s *session) mayPost(p plan) error {
 	return nil
 }
 
-// reread reads the comments with the state, the author and the head, and runs the guard and the head check on them.
+// reread reads the comments with the state, the author and the head, and runs the guard on them.
 func (s *session) reread(ctx context.Context) (model.PullRequest, error) {
 	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author", "headRefOid")
 	if err != nil {
 		return model.PullRequest{}, unread(err, "cannot read the comments of #%d.", s.request.PR)
 	}
 
-	if err = s.guard(pr); err != nil {
-		return pr, err
-	}
-
-	return pr, s.stillAt(pr)
+	return pr, s.guard(pr)
 }
 
 // stillAt refuses a pull request whose head is not the head the plan read.
@@ -467,12 +463,23 @@ func (s *session) stillAt(pr model.PullRequest) error {
 }
 
 // posted asks the forge for the notice of ours on the pull request. A read that fails is an error, never "no notice".
+// A pull request with no notice must still be at the head the plan read; one with a notice needs no head check, because nothing is posted.
 func (s *session) posted(ctx context.Context) (*stamp, error) {
 	pr, err := s.reread(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	notice, err := s.noticeOf(pr)
+	if err != nil || notice != nil {
+		return notice, err
+	}
+
+	return nil, s.stillAt(pr)
+}
+
+// noticeOf returns the latest notice of ours among the comments of the pull request.
+func (s *session) noticeOf(pr model.PullRequest) (*stamp, error) {
 	var found activity
 
 	for _, comment := range pr.Comments {
@@ -480,7 +487,7 @@ func (s *session) posted(ctx context.Context) (*stamp, error) {
 			continue
 		}
 
-		if err = found.keepNotice(comment.Body, comment.CreatedAt); err != nil {
+		if err := found.keepNotice(comment.Body, comment.CreatedAt); err != nil {
 			return nil, err
 		}
 	}

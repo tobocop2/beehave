@@ -217,6 +217,19 @@ func TestApply_AHeadThatMovesAfterTheFirstReadGetsNoNoticeAndTheRefusalNamesBoth
 	assert.NotContains(t, s.calls, "post")
 }
 
+func TestApply_AReplayWhereTheNoticeIsPostedAndTheHeadMovedReportsTheNoticeAndGoesOn(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9, notice: 5})
+	s.beforeSecondView = func() { s.pr["headRefOid"] = pushed }
+	got := s.run(t, takeover.ModeApply)
+
+	assert.Zero(t, got.Code)
+	assert.Contains(t, all(got), "notice already posted on #7")
+	assert.NotContains(t, all(got), "moved from")
+	assert.Empty(t, s.posted)
+}
+
 func TestApply_AHeadThatTheSecondReadDoesNotSendGetsNoNotice(t *testing.T) {
 	t.Parallel()
 

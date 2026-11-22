@@ -475,7 +475,7 @@ Every refusal ends the item with the lines of the step and the exit code 2. The 
 
 The notice needs a `CHANGES_REQUESTED` review of ours. It names its basis (assigned to us, or idle) and the grace period. A second notice is never posted: right before the post, `apply` asks the forge for a notice of ours. If one exists, it says so, writes nothing and exits 0.
 
-The same read asks for the state, the author and the head again. If the pull request closed, became ours, or has a head other than the one the plan read, `apply` posts nothing and refuses with code 2. The refusal of a moved head names the old head and the new head. The step result of the workflow carries that code and those lines, and the item ends. The next plan of the item reads the new head.
+The same read asks for the state, the author and the head again. If the pull request closed or became ours, `apply` posts nothing and refuses with code 2. If a notice of ours is already on the pull request, `apply` reports it and exits 0, whatever the head is. If no notice exists and the head is not the one the plan read, `apply` posts nothing and refuses with code 2. The refusal of a moved head names the old head and the new head. The step result of the workflow carries that code and those lines. A stop with code 2 ends the run as stopped. The next plan reads the new head only when the item runs again.
 
 The text of the notice is Markdown in `takeover/text`, read through one `embed` variable.
 
