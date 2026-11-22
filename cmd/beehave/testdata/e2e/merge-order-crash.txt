@@ -24,13 +24,15 @@ wait
 
 cmp merge.log expected-before.log
 
-exec beehavereal run ui-1 orders --workflow merge-order/waiting.star &
-exec beehavereal run base-1 orders --workflow merge-order/dependency.star &
+# The run of ui-1 starts first and owns the engine. The run of base-1 joins it, so base-1 must end before ui-1 does: an engine that stops cancels the runs it hosts.
+exec beehavereal run ui-1 orders --workflow merge-order/waiting.star &ui&
 waitstatus 'ui-1 is merged after base-1'
+exec beehavereal run base-1 orders --workflow merge-order/dependency.star &base&
 waitstatus 'The pull request of base-1 is merged'
-exec beehavereal answer ui-1 done
 exec beehavereal answer base-1 done
-wait
+wait base
+exec beehavereal answer ui-1 done
+wait ui
 
 exec beehavereal status item-base-1-r1
 stdout -count=1 '^send:tell#1\t'

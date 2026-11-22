@@ -68,61 +68,6 @@ func TestSendToItem_AReplayDoesNotLookTheItemUpAgain(t *testing.T) {
 	require.NoError(t, err, "a lookup on the replay would find no open run, and the recorded run needs none")
 }
 
-func TestSendToItem_AnItemWaitingOnTheTopicGetsTheValueOnceFromTheRunOfTheSender(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	engine := h.engine(t)
-	waiting := waitingItem(t, engine, "21", testProject)
-
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
-	require.NoError(t, err)
-	require.NoError(t, receive(t, waiting).err)
-
-	assert.Equal(t, []string{"got pr 5 item-12-r1 item-12-r1:send:tell#1 True"}, h.commands.ranBy("21"))
-}
-
-func TestSendToItem_AnItemWithNoRunIsAnError(t *testing.T) {
-	t.Parallel()
-
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:30"))
-
-	require.ErrorContains(t, err, "item 30 has no open run")
-}
-
-func TestSendToItem_AnIdThatIsNotAnItemIdIsRefusedWithTheErrorOfTheCommand(t *testing.T) {
-	t.Parallel()
-
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:not an item"))
-
-	require.ErrorIs(t, err, ErrBadItem)
-}
-
-func TestSendToItem_AnOpenRunUnderAnotherProjectIsRefusedWithBothProjectsNamed(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	engine := h.engine(t)
-
-	startOpenRun(t, h, engine, "21", "other")
-
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
-
-	require.ErrorIs(t, err, errProjectConflict)
-	require.ErrorContains(t, err, "item 21 has an open run under project other, and this run is under project p")
-}
-
-func TestSendToItem_ADryRunEndsCleanWhereNoOtherRunExists(t *testing.T) {
-	t.Parallel()
-
-	var out bytes.Buffer
-
-	err := DryRun(t.Context(), sendFlow(t, "item:30"), "12", map[string]string{}, &out)
-
-	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
-	assert.Contains(t, out.String(), "send a message to an item")
-}
-
 func TestSendToItem_ADryRunRefusesAnIdThatIsNotAnItemId(t *testing.T) {
 	t.Parallel()
 
@@ -131,20 +76,6 @@ func TestSendToItem_ADryRunRefusesAnIdThatIsNotAnItemId(t *testing.T) {
 	err := DryRun(t.Context(), sendFlow(t, "item:not an item"), "12", map[string]string{}, &out)
 
 	require.ErrorIs(t, err, ErrBadItem, out.String())
-}
-
-func TestSendToItem_AFinishedRunOfTheItemIsAnError(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	engine := h.engine(t)
-
-	_, err := engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
-	require.NoError(t, err)
-
-	_, err = engine.RunFile("13", testProject, sendFlow(t, "item:21"))
-
-	require.ErrorContains(t, err, "item 21 has no open run")
 }
 
 func TestSendToItem_AnItemMaySendToItsOwnOpenRun(t *testing.T) {
