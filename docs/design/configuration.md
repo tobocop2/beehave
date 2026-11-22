@@ -22,6 +22,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 | `max_concurrent` | The global limit on agent processes. | | |
 | `max_review_concurrent` | The same limit for the agent steps with edits = False. | | |
 | `per_login` | The most agent steps that one login runs at once, in each of the two agent queues. The gate and merge queues keep one run for each repository. | Default 1. The least is 1. The most is the lower of `max_concurrent` and `max_review_concurrent`. | `BEEHAVE_AGENTS_PER_LOGIN` |
+| `concurrency` | The mode of the cap of the agents queue: `"static"` or `"adaptive"`. | Default `"static"`: the queue holds `max_concurrent`. Any other value is refused. | `BEEHAVE_AGENTS_CONCURRENCY` |
 | `max_turns` | The cap of turns for one agent run. | 0 means no cap. | |
 | `max_budget_usd` | The cap of dollars for one agent run. | 0 means no cap. | |
 | `max_run_budget_usd` | The cap of dollars for the agent steps of one run in all. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD` |
