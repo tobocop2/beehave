@@ -22,11 +22,6 @@ func IsGit(name string) bool {
 	return name == gitbin.Name
 }
 
-// Find returns the path of the git program in the search path paths. It builds no runner.
-func Find(paths string) (string, error) {
-	return proc.LookPath(gitbin.Name, paths)
-}
-
 // local returns the environment of a local git call. GIT_ALLOW_PROTOCOL allows the file transport only, and no git config overrides it.
 // GIT_NO_LAZY_FETCH stops the fetch of a missing object from a promisor remote, so a read of a missing object fails. Git 2.45 and later and the
 // 2024-05 security releases from 2.39.4 on honor it. An unpatched git older than 2.45 ignores it: no promisor reaches the network, but a file

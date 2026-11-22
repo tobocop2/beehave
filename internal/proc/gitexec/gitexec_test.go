@@ -81,20 +81,6 @@ func TestIsGit_AcceptsTheNameOfTheGitProgramOnly(t *testing.T) {
 	assert.False(t, gitexec.IsGit("/usr/bin/git"))
 }
 
-func TestFind_ReturnsTheGitProgramOfTheSearchPathAndFailsWhenThereIsNone(t *testing.T) {
-	t.Parallel()
-
-	bin := t.TempDir()
-	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), "#!/bin/sh\n"))
-
-	found, err := gitexec.Find(bin)
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(bin, "git"), found)
-
-	_, err = gitexec.Find(t.TempDir())
-	require.Error(t, err)
-}
-
 func TestArgs_PutsTheHooksSettingFirstAndKeepsTheArguments(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +97,7 @@ func TestReadConfig_DoesNotSetTheHooksPathItReads(t *testing.T) { //nolint:paral
 }
 
 // runnerPattern matches the code that makes a runner or a command for the git program.
-var runnerPattern = regexp.MustCompile(`Binary:\s*"git"|NewExecRunner\("git"|GroupCommand\([^,]+,\s*"git"|exec\.Command(Context)?\([^"\n]*"git"`)
+var runnerPattern = regexp.MustCompile(`Binary:\s*("git"|model\.ToolGit)|NewExecRunner\(("git"|model\.ToolGit)|GroupCommand\([^,]+,\s*("git"|model\.ToolGit)|exec\.Command(Context)?\([^"\n]*("git"|model\.ToolGit)`)
 
 // TestTheGitProgramIsNamedOnlyHere fails when code outside this package makes its own runner for git, because that call would run the hooks of the tree.
 func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
