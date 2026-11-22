@@ -204,12 +204,47 @@ func TestApply_APullRequestClosedAfterTheFirstReadGetsNoNotice(t *testing.T) {
 	assert.Empty(t, s.posted)
 }
 
-func TestApply_TheReReadAsksForTheCommentsTheStateAndTheAuthor(t *testing.T) {
+func TestApply_AHeadThatMovesAfterTheFirstReadGetsNoNoticeAndTheRefusalNamesBothHeads(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	s.beforeSecondView = func() { s.pr["headRefOid"] = pushed }
+	got := s.run(t, takeover.ModeApply)
+
+	assert.Equal(t, takeover.CodeGuard, got.Code)
+	assert.Contains(t, all(got), "REFUSE: #7 moved from "+planned+" to "+pushed+" since the plan. Nothing posted.")
+	assert.Empty(t, s.posted)
+	assert.NotContains(t, s.calls, "post")
+}
+
+func TestApply_AHeadThatTheSecondReadDoesNotSendGetsNoNotice(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	s.beforeSecondView = func() { delete(s.pr, "headRefOid") }
+	got := s.run(t, takeover.ModeApply)
+
+	assert.Equal(t, takeover.CodeGuard, got.Code)
+	assert.Contains(t, all(got), "moved from "+planned+" to null since the plan")
+	assert.Empty(t, s.posted)
+}
+
+func TestApply_AHeadThatStaysTheSameGetsTheNotice(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{assignees: []string{"me"}, age: 9})
+	got := s.run(t, takeover.ModeApply)
+
+	assert.Zero(t, got.Code)
+	assert.Len(t, s.posted, 1)
+}
+
+func TestApply_TheReReadAsksForTheCommentsTheStateTheAuthorAndTheHead(t *testing.T) {
 	t.Parallel()
 
 	s := newSetup(spec{assignees: []string{"me"}, age: 9})
 	s.run(t, takeover.ModeApply)
 
 	require.Len(t, s.fields, 2)
-	assert.ElementsMatch(t, []string{"comments", "state", "author"}, s.fields[1])
+	assert.ElementsMatch(t, []string{"comments", "state", "author", "headRefOid"}, s.fields[1])
 }

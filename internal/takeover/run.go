@@ -15,7 +15,7 @@ import (
 
 const (
 	noticePrefix = "Taking over this pull request"
-	fields       = "number,state,isDraft,author,assignees,updatedAt,commits,comments,reviews"
+	fields       = "number,state,isDraft,headRefOid,author,assignees,updatedAt,commits,comments,reviews"
 	ageStep      = 36 * time.Second // the age is kept to two decimals of an hour
 )
 
@@ -54,6 +54,7 @@ type session struct {
 	request Request
 	c       Context
 	lines   []string
+	head    string // the head the plan read
 }
 
 func (s *session) say(lines ...string) { s.lines = append(s.lines, lines...) }
@@ -68,6 +69,8 @@ func (s *session) load(ctx context.Context) (plan, error) {
 	if err = s.guard(pr); err != nil {
 		return plan{}, err
 	}
+
+	s.head = orNull(pr.HeadRefOid)
 
 	rows, err := s.reader.ReviewComments(ctx, s.request.PR)
 	if err != nil {
@@ -439,14 +442,28 @@ func (s *session) mayPost(p plan) error {
 	return nil
 }
 
-// reread reads the comments with the state and the author, and runs the guard on them.
+// reread reads the comments with the state, the author and the head, and runs the guard and the head check on them.
 func (s *session) reread(ctx context.Context) (model.PullRequest, error) {
-	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author")
+	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author", "headRefOid")
 	if err != nil {
 		return model.PullRequest{}, unread(err, "cannot read the comments of #%d.", s.request.PR)
 	}
 
-	return pr, s.guard(pr)
+	if err = s.guard(pr); err != nil {
+		return pr, err
+	}
+
+	return pr, s.stillAt(pr)
+}
+
+// stillAt refuses a pull request whose head is not the head the plan read.
+func (s *session) stillAt(pr model.PullRequest) error {
+	now := orNull(pr.HeadRefOid)
+	if now == s.head {
+		return nil
+	}
+
+	return stop(CodeGuard, fmt.Sprintf("REFUSE: #%d moved from %s to %s since the plan. Nothing posted.", s.request.PR, s.head, now))
 }
 
 // posted asks the forge for the notice of ours on the pull request. A read that fails is an error, never "no notice".
