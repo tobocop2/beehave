@@ -59,6 +59,38 @@ func TestAgent_ASandboxNoneStepInASandboxedRunIsRefusedBeforeItsLoginIsPicked(t 
 	assert.Empty(t, rig.h.agents.seen())
 }
 
+func TestAgent_TheRefusalOfASandboxNoneStepHoldsForItsPositionItsRepeatAndALookalikeName(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		body    string
+		refused bool
+		ran     int
+	}{
+		"a boxed step first, then None": {agentCallText(`sandbox = sandbox(), `) + agentCallText(`sandbox = None, `), true, 1},
+		"None twice":                    {agentCallText(`sandbox = None, `) + agentCallText(`sandbox = None, `), true, 0},
+		"a variable named none_box":     {"none_box = sandbox(network = [])\n" + agentCallText(`sandbox = none_box, `), false, 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newAgentRig(t)
+			rig.sandbox = model.SandboxOn
+			rig.reply("", exited)
+
+			_, err := rig.run(t, bodyFlow(test.body), "x")
+
+			if test.refused {
+				require.ErrorContains(t, err, "sets sandbox = None")
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Len(t, rig.h.agents.seen(), test.ran)
+		})
+	}
+}
+
 func TestRun_AProjectWithSandboxOffRunsASandboxNoneStep(t *testing.T) {
 	t.Parallel()
 
