@@ -337,6 +337,21 @@ func credentialRig(t *testing.T) pushRig {
 	return rig
 }
 
+func TestPushLocal_RunsGitInTheNamedRepositoryWithTheFileTransportOnlyAndNoPrompt(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "calls")
+	script := "#!/bin/sh\necho \"dir=${GIT_DIR-unset} prompt=${GIT_TERMINAL_PROMPT-unset} allow=${GIT_ALLOW_PROTOCOL-unset}\" >> " + log + "\n"
+	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), script))
+	t.Setenv("PATH", strings.Join([]string{bin, "/usr/bin", "/bin"}, string(os.PathListSeparator)))
+
+	dir := t.TempDir()
+	pushLocal(dir).Run(t.Context(), []string{"fetch"})
+
+	got, err := os.ReadFile(log) //nolint:gosec // a file of this test
+	require.NoError(t, err)
+	assert.Equal(t, "dir="+dir+" prompt=0 allow=file", strings.TrimSpace(string(got)))
+}
+
 func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *testing.T) {
 	t.Setenv("GH_TOKEN", "owner-token")
 
