@@ -169,8 +169,8 @@ func writeFake(ts *testscript.TestScript, name string, text []byte) error {
 }
 
 // fakeClaudeSandbox is the start of a fake claude. It answers --version as a CLI that is new enough for the sandbox. It logs one line to sandbox.log for each call:
-// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the exact sandbox settings that Sandbox of the Claude adapter builds, "open" when
-// the settings hold no sandbox. Any other sandbox, such as one that allows unsandboxed commands or runs when the sandbox is unavailable, fails the call.
+// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the sandbox block that Sandbox of the Claude adapter builds, every key and value
+// in place and only the path and domain lists free, and "open" when the settings hold no sandbox. Any other sandbox fails the call.
 const fakeClaudeSandbox = `sandbox_model() {
   sources=unset mcp= tools= settings=
   while [ $# -gt 0 ]; do
