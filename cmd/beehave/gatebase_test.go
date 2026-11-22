@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"net/http"
 	"net/http/cgi" //nolint:gosec // a test serves git http-backend on a loopback server; Go 1.27 is past the httpoxy fix
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,6 +111,82 @@ func TestWorktrees_FetchCommitFailsForACommitTheSourceLacksAndForAClonePastTheAl
 
 	err = trees.FetchCommit(t.Context(), "p", rig.remote, rig.tip)
 	require.ErrorContains(t, err, "which beehave does not allow", "the copy into the clone refuses a clone config past the allow list")
+}
+
+// A source that speaks protocol version 0 serves only the commits that it advertises. The commit that the base branch moved away from is not
+// advertised, so the fetch by its id fails. The error says that the source must serve a commit by its id, or that the base moved, and keeps git's text.
+func TestWorktrees_AFetchByIdThatASourceOfProtocolVersionZeroRefusesSaysThatTheSourceMustServeTheCommitOrTheBaseMoved(t *testing.T) {
+	t.Parallel()
+
+	rig := newFetchRig(t)
+	trees := rig.pulls.trees
+	_, err := trees.BaseTip(t.Context(), "p", rig.remote, "main")
+	require.NoError(t, err, "the read makes the push repository")
+
+	_, dir := pushRepository(trees.repos, "p")
+	runGit(t, dir, "config", "protocol.version", "0")
+
+	moved := strings.TrimSpace(gitOut(t, rig.remote, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit-tree", rig.tip+"^{tree}", "-p", rig.tip, "-m", "moved away"))
+	err = trees.FetchCommit(t.Context(), "p", rig.remote, moved)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must serve a commit by its id (git protocol version 2), or the base branch moved since the read")
+	assert.Contains(t, err.Error(), "unadvertised object", "git's own text follows")
+}
+
+// Two gates of one project read the base tip at once. The read of a tip does not touch the clone, so the second read starts while the first still
+// waits on the source. The source holds each read of its refs until both reads are in flight.
+func TestWorktrees_TwoReadsOfTheBaseTipOfOneProjectReachTheSourceAtTheSameTime(t *testing.T) {
+	t.Parallel()
+
+	gitPath, err := exec.LookPath("git")
+	require.NoError(t, err)
+
+	rig := newFetchRig(t)
+	backend := &cgi.Handler{
+		Path: gitPath, Args: []string{"http-backend"},
+		Env: []string{"GIT_PROJECT_ROOT=" + filepath.Dir(rig.remote), "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"},
+	}
+
+	var (
+		inFlight   atomic.Int32
+		overlapped atomic.Bool
+		both       = make(chan struct{})
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/info/refs") {
+			defer inFlight.Add(-1)
+
+			if inFlight.Add(1) == 2 {
+				overlapped.Store(true)
+				close(both)
+			}
+
+			select {
+			case <-both:
+			case <-time.After(3 * time.Second):
+			}
+		}
+
+		backend.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	source := server.URL + "/" + filepath.Base(rig.remote)
+	reads := make(chan error, 2)
+
+	for range 2 {
+		go func() {
+			_, err := rig.pulls.trees.BaseTip(context.Background(), "p", source, "main")
+			reads <- err
+		}()
+	}
+
+	require.NoError(t, <-reads)
+	require.NoError(t, <-reads)
+
+	assert.True(t, overlapped.Load(), "the second read of the tip waited for the first: both reads were never in flight at the source")
 }
 
 // A project with writer credentials that are not loaded reaches no remote: the read and the fetch take the runner that the credentials choose.
