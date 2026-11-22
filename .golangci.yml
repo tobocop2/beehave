@@ -361,6 +361,7 @@ linters:
             - github.com/tobocop2/beehave/internal/agent
             - github.com/tobocop2/beehave/internal/host
             - github.com/tobocop2/beehave/internal/sandbox
+        # The ci glob stops at the files of internal/ci: the tests of internal/ci/githubactions import that package, and make lint refuses them under ci/**.
         layer-2:
           list-mode: lax
           files:
