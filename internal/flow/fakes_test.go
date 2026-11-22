@@ -891,6 +891,8 @@ type runRef struct {
 	ctx  context.Context
 	flow dbos.Client
 	id   string
+	// dir is the state folder, which holds probe.lock.
+	dir string
 	// database is the file of the workflow store, which holds the messages that were sent to the run.
 	database string
 }
@@ -899,14 +901,14 @@ type runRef struct {
 func runOfEngine(t *testing.T, engine *Engine) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, database: filepath.Join(engine.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: engine.ctx, id: testRun, dir: engine.dir, database: filepath.Join(engine.dir, databaseFile)}
 }
 
 // runOfClient is the test run as a client reads it.
 func runOfClient(t *testing.T, client *Client) *runRef {
 	t.Helper()
 
-	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, database: filepath.Join(client.dir, databaseFile)}
+	return &runRef{ctx: t.Context(), flow: client.flow, id: testRun, dir: client.dir, database: filepath.Join(client.dir, databaseFile)}
 }
 
 // messagePending says whether a message on the inbox topic of the run waits unconsumed. DBOS wakes a receive for such a message at its next one-second poll, so the receive is not parked.
@@ -925,8 +927,29 @@ func (r *runRef) messagePending() (bool, error) {
 	return pending, err
 }
 
-// stalled says why the run can no longer bring the awaited fact, or returns "". The run has ended, or it parks in a receive or a sleep that wakes after the bound of the wait.
+// stalled says why the run can no longer bring the awaited fact, or returns "". The run has ended, or it parks in a receive or a sleep that wakes after the bound of the wait. It reads under probe.lock and returns "" while another holder has it: a move holds it from its cancel to its rewind.
 func (r *runRef) stalled(bound time.Time) string {
+	probe := lockFile(r.dir, probeLockName)
+
+	taken, err := probe.TryLock()
+	if err != nil {
+		return fmt.Sprintf("the probe lock of the run %s cannot be taken: %v", r.id, err)
+	}
+
+	if !taken {
+		return ""
+	}
+
+	why := r.stalledHeld(bound)
+	if err := probe.Unlock(); err != nil {
+		return fmt.Sprintf("the probe lock of the run %s cannot be freed: %v", r.id, err)
+	}
+
+	return why
+}
+
+// stalledHeld is stalled while the caller holds probe.lock.
+func (r *runRef) stalledHeld(bound time.Time) string {
 	rows, err := dbos.ListWorkflows(r.flow, dbos.WithFilterWorkflowIDs(r.id))
 	if err != nil {
 		return fmt.Sprintf("the status of the run %s cannot be read: %v", r.id, err)
