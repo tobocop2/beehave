@@ -59,6 +59,9 @@ type ExclusiveInput struct {
 	// HostKey is the partition of the host queue that holds the build job of the gate. It is set when the gate is queued, so a replay uses the host that the first
 	// run chose even when the project file changed since. It is empty for a gate that runs on this machine. A reopened job goes back to the same partition.
 	HostKey string `json:"host_key,omitempty"`
+	// SlotCount is the count of the slot class of a command call, set when the job is queued. It names the queue of the job, so a replay and a reopen use the queue
+	// that the first run chose even when the host block changed since.
+	SlotCount int `json:"slot_count,omitempty"`
 	// PinBase is the base of the merge call, for a batch gate: the pin file is read at that branch. A gate carries it in Request.
 	PinBase  string         `json:"pin_base,omitempty"`
 	Commit   string         `json:"commit,omitempty"`

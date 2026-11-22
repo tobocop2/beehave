@@ -336,7 +336,8 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 
 // gateRewindTarget returns the queue and the partition that a rewound gate, merge or build job goes back to. A gate or a merge goes to the exclusive queue,
 // in the partition of its project. A build job goes to the host queue, in the partition that it recorded in its input.
-// The host job of a command call with a slot class goes to the queue of its class, in the same partition.
+// The host job of a command call with a slot class goes to the queue of its class and its count, in the same partition. A job whose input holds no count
+// was queued before the count was recorded: it has no queue to go back to, and the rewind refuses it.
 func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err error) {
 	var in ExclusiveInput
 	if err := json.Unmarshal([]byte(fmt.Sprint(row.Input)), &in); err != nil {
@@ -344,7 +345,11 @@ func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err err
 	}
 
 	if row.Name == hostJobName && in.Kind == kindCommand {
-		return slotQueuePrefix + in.Request.SlotClass, in.HostKey, nil
+		if in.SlotCount < 1 {
+			return "", "", fmt.Errorf("the input of %s holds no slot count for the class %q", row.ID, in.Request.SlotClass)
+		}
+
+		return slotQueueName(in.Request.SlotClass, in.SlotCount), in.HostKey, nil
 	}
 
 	if row.Name == hostJobName {

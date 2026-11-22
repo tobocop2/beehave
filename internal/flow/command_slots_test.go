@@ -113,9 +113,9 @@ func TestReopen_ACanceledSlotJobGoesBackToTheQueueOfItsClassInThePartitionOfItsH
 		return dbos.WorkflowStatus{Name: hostJobName, Input: string(text)}
 	}
 
-	queue, partition, err := gateRewindTarget(job(ExclusiveInput{Kind: kindCommand, HostKey: hostKeyPrefix + "box", Request: CommandRequest{SlotClass: "mutation"}}))
+	queue, partition, err := gateRewindTarget(job(ExclusiveInput{Kind: kindCommand, HostKey: hostKeyPrefix + "box", SlotCount: 3, Request: CommandRequest{SlotClass: "mutation"}}))
 	require.NoError(t, err)
-	assert.Equal(t, "slots:mutation", queue)
+	assert.Equal(t, "slots:mutation:3", queue)
 	assert.Equal(t, "host:box", partition)
 
 	queue, partition, err = gateRewindTarget(job(ExclusiveInput{Kind: kindGate, HostKey: hostKeyPrefix + "box"}))
@@ -367,7 +367,7 @@ func TestCommand_ACanceledSlotJobFreesItsSlotAndTheReopenWaitsOnTheQueueOfItsCla
 	rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued))
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, slotQueuePrefix+"mutation", rows[0].QueueName, "the reopened job is back on the queue of its class")
+	assert.Equal(t, slotQueueName("mutation", 1), rows[0].QueueName, "the reopened job is back on the queue of its class")
 	assert.Equal(t, 1, entriesOf(jobs.order(), "start m1"), "the reopened job waits: the slot is held by the other job")
 
 	jobs.let("m2")

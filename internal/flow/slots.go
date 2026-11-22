@@ -28,7 +28,7 @@ func (e *Engine) queueSlotCommand(run dbos.Context, request CommandRequest) (Com
 		return CommandOutput{}, err
 	}
 
-	in := ExclusiveInput{Kind: kindCommand, Run: workflowID(run), RunItem: request.Item, Project: request.Project, Item: request.Item, HostKey: hostKeyPrefix + grant.Host, Request: request}
+	in := ExclusiveInput{Kind: kindCommand, Run: workflowID(run), RunItem: request.Item, Project: request.Project, Item: request.Item, HostKey: hostKeyPrefix + grant.Host, SlotCount: grant.Count, Request: request}
 
 	var out ExclusiveOutput
 
@@ -55,15 +55,21 @@ func (e *Engine) grantOf(request CommandRequest) (SlotGrant, dbos.Queue, error) 
 	return grant, queue, err
 }
 
+// slotQueueName is the name of the queue of a slot class with a count. A queue has one partition concurrency for all its partitions, so the count is part of the
+// name: two hosts with different counts for one class use two queues.
+func slotQueueName(class string, count int) string {
+	return fmt.Sprintf("%s%s:%d", slotQueuePrefix, class, count)
+}
+
 // slotQueue registers the queue of a slot class with its count, and returns it. The queue allows count jobs at once for each host.
-// The registration is saved: a count that the host block changed takes effect at the next call, and a job already queued keeps its place.
+// A count that the host block changed names another queue, so a job already queued keeps its place on the queue that it chose.
 func (e *Engine) slotQueue(class string, count int) (dbos.Queue, error) { //nolint:ireturn // the queue type of the workflow library
 	options := []dbos.QueueOption{dbos.WithPartitionConcurrency(count)}
 	if poll := e.deps.Clock.Poll; poll > 0 {
 		options = append(options, dbos.WithQueueBasePollingInterval(poll))
 	}
 
-	queue, err := dbos.RegisterQueue(e.ctx, slotQueuePrefix+class, options...)
+	queue, err := dbos.RegisterQueue(e.ctx, slotQueueName(class, count), options...)
 	if err != nil {
 		return nil, fmt.Errorf("register the queue of the slot class %q: %w", class, err)
 	}
