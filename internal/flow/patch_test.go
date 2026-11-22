@@ -37,7 +37,7 @@ func (p *probes) all() []string {
 	return append([]string(nil), p.values...)
 }
 
-// probeModules are the modules of one build: the engine module with the builtin now replaced by call, and a module for the extra step kind that the changed call records.
+// probeModules are the modules of one build: the engine module with the builtin now replaced by call.
 func probeModules(call func(s *script) (string, error), seen *probes) []step.Module {
 	engine := StepModule()
 	engine.Builtins = slices.DeleteFunc(engine.Builtins, func(b step.Builtin) bool { return b.Name == "now" })
@@ -58,7 +58,7 @@ func probeModules(call func(s *script) (string, error), seen *probes) []step.Mod
 		},
 	})
 
-	return []step.Module{engine, {Name: "probe", Kinds: []string{"probe_extra"}}}
+	return []step.Module{engine}
 }
 
 // oldProbe is the build before the change: now records one step and returns old.
@@ -72,7 +72,7 @@ func newProbeWithNoPatch(s *script) (string, error) {
 }
 
 func changedProbe(s *script) (string, error) {
-	if _, err := countedStep(s, "probe_extra", "", func(context.Context) (string, error) { return "check", nil }); err != nil {
+	if _, err := countedStep(s, "now", "check", func(context.Context) (string, error) { return "check", nil }); err != nil {
 		return "", err
 	}
 
@@ -145,6 +145,19 @@ func TestPatch_ARunThatStartsOnTheNewBuildTakesTheNewStepsAtEveryCall(t *testing
 
 	require.NoError(t, outcome.err)
 	assert.Equal(t, []string{"new", "new", "new"}, seen.all(), "call 1 is new, its replay answers new from the patch record, call 2 is new")
+
+	names, err := h.client(t, testVersion).stepNames(testRun)
+	require.NoError(t, err)
+	assert.Equal(t, 2, markers(names), "each of the two calls recorded one marker, and the replay of call 1 recorded no third")
+	assert.Equal(t, slices.Index(names, "now:check#1")-1, slices.Index(names, patchMarker), "the marker of call 1 is the step right before the first step of the call")
+}
+
+// patchMarker is the step that DBOS records for the patch of newProbeBehindPatch.
+const patchMarker = "DBOS.patch-now-checks-first"
+
+// markers counts the steps of the patch marker in the recorded step names.
+func markers(names []string) int {
+	return len(names) - len(slices.DeleteFunc(slices.Clone(names), func(name string) bool { return name == patchMarker }))
 }
 
 func TestPatch_AChangedBuiltinWithNoPatchRefusesTheReplayOfARunThatPassedIt(t *testing.T) {
