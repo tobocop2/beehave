@@ -868,6 +868,8 @@ type pulls struct {
 	runners  []string
 	trees    worktrees
 	copier   headCopy
+	// writers gives the push of a project the writer role of that project. A project with none pushes with the login of the owner.
+	writers *writers
 }
 
 // opened is the forge of one project. It passes the optional reads of the merge (trees and failed logs) to the forge when the forge has them:

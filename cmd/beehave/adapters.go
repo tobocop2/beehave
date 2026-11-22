@@ -40,6 +40,8 @@ type adapters struct {
 	hosts    map[model.HostProvider]hostAdapter
 	bd       proc.Runner
 	state    func() (string, error)
+	// writers holds the writer credential of each project. The engine start fills it.
+	writers *writers
 	// diskPoll is how often a job that waits for disk space reads the disk again.
 	diskPoll time.Duration
 }
@@ -149,26 +151,29 @@ const repoKey = "repo"
 // newAdapters returns the table. bd is the command line of beads, for the beads tracker and the claim store.
 // state returns the state folder, for the local tracker and the local claim store. env is the environment of the caller, for the usage read of the agents.
 func newAdapters(bd proc.Runner, state func() (string, error), env map[string]string) adapters {
+	roles := &writers{}
+
 	return adapters{
-		trackers: trackerEntries(bd, state),
+		trackers: trackerEntries(bd, state, roles),
 		claims:   claimsEntries(bd, state),
 		forges: map[model.ForgeName]forgeAdapter{
-			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: newGithubForge},
+			forgegithub.Name: {registration: githubRegistration(forgegithub.Tool), build: func(project model.Project) (forge.Forge, error) { return newGithubForge(roles, project) }},
 		},
 		agents:   agentEntries(env),
 		hosts:    hostEntries(),
 		bd:       bd,
 		state:    state,
+		writers:  roles,
 		diskPoll: defaultDiskPoll,
 	}
 }
 
 // trackerEntries returns the tracker entries.
-func trackerEntries(bd proc.Runner, state func() (string, error)) map[model.TrackerName]trackerAdapter {
+func trackerEntries(bd proc.Runner, state func() (string, error), roles *writers) map[model.TrackerName]trackerAdapter {
 	return map[model.TrackerName]trackerAdapter{
 		local.Tracker:       localTracker(state),
 		beads.Tracker:       {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
-		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(project) }},
+		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(roles, project) }},
 	}
 }
 
@@ -363,8 +368,13 @@ func newBeads(bd proc.Runner, project model.Project) (store.Tracker, error) { //
 	return tracker, nil
 }
 
-func newIssues(project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
-	issues, err := storegithub.New(project.Repo, proc.NewExecRunner("gh", ""))
+func newIssues(roles *writers, project model.Project) (store.Tracker, error) { //nolint:ireturn // the table stores constructors of the contract
+	runner, err := roles.runner(project)
+	if err != nil {
+		return nil, err
+	}
+
+	issues, err := storegithub.New(project.Repo, runner)
 	if err != nil {
 		return nil, err
 	}
@@ -372,8 +382,13 @@ func newIssues(project model.Project) (store.Tracker, error) { //nolint:ireturn 
 	return issues, nil
 }
 
-func newGithubForge(project model.Project) (forge.Forge, error) { //nolint:ireturn // the table stores constructors of the contract
-	gh, err := forgegithub.NewExec(project.Repo)
+func newGithubForge(roles *writers, project model.Project) (forge.Forge, error) { //nolint:ireturn // the table stores constructors of the contract
+	runner, err := roles.runner(project)
+	if err != nil {
+		return nil, err
+	}
+
+	gh, err := forgegithub.New(project.Repo, runner)
 	if err != nil {
 		return nil, err
 	}

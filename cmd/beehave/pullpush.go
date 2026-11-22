@@ -33,13 +33,22 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 		return fmt.Errorf("push %s to the branch %s for item %s: %w", head, branch, item, err)
 	}
 
-	out := pushGit(dir).Run(ctx, pushArgs(remote, branch, head, expect))
+	out := p.pusher(project, dir).Run(ctx, pushArgs(remote, branch, head, expect))
 	if out.ExitCode == 0 {
 		return nil
 	}
 
 	return fmt.Errorf("push %s to the branch %s of %s for item %s: git exited with code %d: %s. Read the branch on the remote: a branch that moved since the last push of the run stops the item",
 		head, branch, remote, item, out.ExitCode, strings.TrimSpace(out.Stderr))
+}
+
+// pusher returns the git runner that pushes from the push repository dir: the writer of the project when it has credentials, else the runner of the owner.
+func (p pulls) pusher(project, dir string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
+	if runner, found := p.writers.pushRunner(project, dir); found {
+		return runner
+	}
+
+	return pushGit(dir)
 }
 
 // pushRemote returns the address that the clone of the project came from. A project with no forge is an error.

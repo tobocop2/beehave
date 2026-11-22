@@ -137,7 +137,12 @@ func stateFolder(dir string) func() (string, error) {
 
 // newEngine builds the engine of the run command.
 func newEngine(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Engine, error) {
-	return flow.NewEngine(ctx, withModules(opts), newDeps(cfg, opts))
+	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env)
+	if err := table.writers.start(ctx, cfg, opts); err != nil {
+		return nil, err
+	}
+
+	return flow.NewEngine(ctx, withModules(opts), newDeps(cfg, opts, table))
 }
 
 // stepModules lists the step modules that the engine runs.
@@ -153,8 +158,8 @@ func withModules(opts flow.Options) flow.Options {
 }
 
 // newDeps builds what the engine of the run command needs. The pool pick reads the usage through the agent entries.
-func newDeps(cfg config.Config, opts flow.Options) flow.Deps {
-	return depsOn(cfg, opts, newLogins(cfg, opts), newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), opts.Env))
+func newDeps(cfg config.Config, opts flow.Options, table adapters) flow.Deps {
+	return depsOn(cfg, opts, newLogins(cfg, opts), table)
 }
 
 // newEngineReading builds the engine with the reader of the usage that the pool pick uses.
@@ -164,6 +169,10 @@ func newEngineReading(ctx context.Context, cfg config.Config, opts flow.Options,
 
 // newEngineOn builds the engine over a table of adapters. A test passes a table with one adapter replaced.
 func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read pool.Reader, table adapters) (*flow.Engine, error) {
+	if err := table.writers.start(ctx, cfg, opts); err != nil {
+		return nil, err
+	}
+
 	return flow.NewEngine(ctx, withModules(opts), depsOn(cfg, opts, loginsReading(cfg, read), table))
 }
 
@@ -270,7 +279,7 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 
 	return itemLife{
 		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
-		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy()},
+		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy(), writers: table.writers},
 	}
 }
 
