@@ -66,12 +66,14 @@ var (
 // A non-empty Model or Resume adds the model flag or the resume flag of the profile; a profile without that flag refuses the run.
 // A nil Adapter means the agent of the runner has no adapter, and the run does not start.
 type Spec struct {
-	Adapter     Adapter
-	Runner      model.Runner
-	Dir         string
-	Prompt      string
-	Env         map[string]string
-	Token       string
+	Adapter Adapter
+	Runner  model.Runner
+	Dir     string
+	Prompt  string
+	Env     map[string]string
+	Token   string
+	// Redact is the redactor of the engine. The output of the run passes it after the token of the run.
+	Redact      func(string) string
 	Timeout     time.Duration
 	IdleTimeout time.Duration
 	Model       string
@@ -508,6 +510,7 @@ func newStreams(spec Spec, cancel context.CancelCauseFunc) (*redactWriter, *reda
 	}
 
 	secrets := newRedactor(spec.Token)
+	secrets.next = spec.Redact
 	tail := proc.NewTail(tailBytes)
 
 	return &redactWriter{out: log, redactor: secrets, limit: maxLineBytes},

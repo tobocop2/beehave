@@ -383,7 +383,7 @@ func lostStoppedLog(t *testing.T, hosts *upHosts) (string, error) {
 
 	var logged bytes.Buffer
 
-	engine.logger = newLogger(&logged)
+	engine.logger = newLogger(&logged, runRedactor(nil))
 	engine.deps.Hosts = hosts
 
 	canceled, cancel := dbos.WithCancel(engine.ctx)

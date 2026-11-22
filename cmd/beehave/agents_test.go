@@ -1265,6 +1265,16 @@ func TestAgents_TheSpecOfAStepCarriesItsEditsSwitch(t *testing.T) {
 	}
 }
 
+func TestAgents_TheSpecOfAStepCarriesTheRedactorOfTheEngine(t *testing.T) {
+	t.Parallel()
+
+	request := flow.AgentRequest{Redact: agent.Redactor("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")}
+	spec := agents{}.specOf(request, model.Runner{}, "", nil, nil, "", nil, nil)
+
+	require.NotNil(t, spec.Redact)
+	assert.Equal(t, "key [redacted]", spec.Redact("key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"))
+}
+
 func TestAgents_ARunThatReachedTheBudgetCapKeepsItsSessionTextAndViolations(t *testing.T) {
 	t.Parallel()
 

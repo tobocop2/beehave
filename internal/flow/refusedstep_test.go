@@ -176,7 +176,7 @@ func newRefusalRig(t *testing.T, body func(e *Engine) dbos.Workflow[int, int]) *
 	t.Cleanup(func() { _ = state.log.Close() })
 
 	rig := &refusalRig{db: sqlOf(t, h), logged: &bytes.Buffer{}}
-	rig.engine = &Engine{logger: newLogger(rig.logged), redact: agent.Redactor()}
+	rig.engine = &Engine{logger: newLogger(rig.logged, runRedactor(nil)), redact: agent.Redactor()}
 
 	rig.ctx, err = dbos.NewContext(t.Context(), dbos.Config{
 		AppName: appName, DatabaseURL: state.url, ApplicationVersion: applicationVersion(testVersion), ExecutorID: executorName,

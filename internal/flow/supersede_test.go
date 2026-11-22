@@ -702,7 +702,7 @@ func TestSuperseded_AStoreThatCannotBeListedLeavesTheOldGatesAloneAndSaysSo(t *t
 
 	var logged bytes.Buffer
 
-	engine.logger = newLogger(&logged)
+	engine.logger = newLogger(&logged, runRedactor(nil))
 
 	stopped := engine.stopSuperseded(t.Context(), ExclusiveInput{Kind: kindGate, Project: testProject, Item: testItem, Tip: "B"})
 

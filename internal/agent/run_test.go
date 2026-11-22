@@ -213,6 +213,16 @@ func TestRunner_RedactsSecretsInTheLogAndTheStderrTail(t *testing.T) { //nolint:
 	assert.NotContains(t, got.Stderr, token)
 }
 
+func TestRunner_RemovesTheValuesOfTheRedactOfTheSpecFromTheLogAndTheStderrTail(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f := newFixture(t, "claude", claude.Name, "planted")
+	f.spec.Redact = agent.Redactor("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "forge-token-0123456789abcdef")
+
+	got := agent.Runner{}.Run(context.Background(), f.spec)
+
+	assert.Equal(t, "aws [redacted]\n", f.log.String())
+	assert.Equal(t, "forge [redacted]\n", got.Stderr)
+}
+
 func TestRunner_ReportsThePidOfTheAgentToOnStartBeforeItEnds(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "fail")
 

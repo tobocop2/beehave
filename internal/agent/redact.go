@@ -15,20 +15,23 @@ const (
 	droppedLine  = DroppedLine + "\n"
 	maxLineBytes = 16 << 20
 	tailBytes    = 4 << 10
+	// MinSecretLen is the shortest secret value that a redactor removes. A shorter value would mask common words.
+	MinSecretLen = 8
 )
 
 var tokenShape = regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{8,}`)
 
-// redactor removes secrets from text: the exact values it holds and any token shaped like an Anthropic key.
+// redactor removes secrets from text: the exact values it holds, any token shaped like an Anthropic key, and then whatever next removes.
 type redactor struct {
 	replacer *strings.Replacer
+	next     func(string) string
 }
 
 func newRedactor(secrets ...string) redactor {
 	var pairs []string
 
 	for _, secret := range secrets {
-		if secret != "" {
+		if len(secret) >= MinSecretLen {
 			pairs = append(pairs, secret, redacted)
 		}
 	}
@@ -37,10 +40,15 @@ func newRedactor(secrets ...string) redactor {
 }
 
 func (r redactor) redact(text string) string {
-	return tokenShape.ReplaceAllString(r.replacer.Replace(text), redacted)
+	text = tokenShape.ReplaceAllString(r.replacer.Replace(text), redacted)
+	if r.next != nil {
+		return r.next(text)
+	}
+
+	return text
 }
 
-// Redactor returns a function that removes the given secrets and any token shaped like an Anthropic key from text. It builds the replacer once.
+// Redactor returns a function that removes the given secrets of MinSecretLen bytes or more and any token shaped like an Anthropic key from text. It builds the replacer once.
 func Redactor(secrets ...string) func(string) string {
 	return newRedactor(secrets...).redact
 }

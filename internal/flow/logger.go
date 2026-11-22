@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-
-	"github.com/tobocop2/beehave/internal/agent"
 )
 
 // redactingHandler removes secrets from the message and the attributes of every record before the inner handler writes it.
@@ -15,9 +13,9 @@ type redactingHandler struct {
 	redact func(string) string
 }
 
-// newLogger returns a logger that writes text records at INFO or above to out, with secrets removed. One redactor serves every record.
-func newLogger(out io.Writer) *slog.Logger {
-	return slog.New(redactingHandler{inner: slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelInfo}), redact: agent.Redactor()})
+// newLogger returns a logger that writes text records at INFO or above to out, with secrets removed. The redactor it gets serves every record.
+func newLogger(out io.Writer, redact func(string) string) *slog.Logger {
+	return slog.New(redactingHandler{inner: slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelInfo}), redact: redact})
 }
 
 func (h redactingHandler) Enabled(ctx context.Context, level slog.Level) bool {

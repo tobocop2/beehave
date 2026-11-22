@@ -5,7 +5,24 @@ import (
 	"errors"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+
+	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/workflow"
 )
+
+// runRedactor returns the one redactor of an engine or a client. It holds the value of every variable of env whose name marks a secret.
+// The redactor skips a value shorter than agent.MinSecretLen.
+func runRedactor(env map[string]string) func(string) string {
+	var secrets []string
+
+	for name, value := range env {
+		if workflow.SecretEnvName(name) {
+			secrets = append(secrets, value)
+		}
+	}
+
+	return agent.Redactor(secrets...)
+}
 
 // scrubbedError is a step error whose text has no secret. It keeps the cause for errors.Is and errors.As.
 type scrubbedError struct {

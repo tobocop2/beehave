@@ -165,7 +165,7 @@ func TestNotify_ACommandThatExitsNonZeroDoesNotFailTheWait(t *testing.T) {
 	h.flowIs(t, notifyPlainWait)
 
 	engine := h.engine(t)
-	engine.logger = newLogger(&logged)
+	engine.logger = newLogger(&logged, runRedactor(nil))
 	client := h.client(t, testVersion)
 	done := runInBackground(engine, testItem)
 

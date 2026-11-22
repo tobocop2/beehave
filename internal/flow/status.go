@@ -95,6 +95,8 @@ type Client struct {
 	log        io.Closer
 	// progress is Options.Progress: a cancel of a canceled run writes there the runs it stopped.
 	progress io.Writer
+	// redact is the one redactor of the client: the log and the messages that send puts on an inbox pass it.
+	redact func(string) string
 }
 
 // OpenClient opens the state folder for the status, answer, resume and cancel commands.
@@ -105,7 +107,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 		return nil, err
 	}
 
-	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, dir: state.dir, give: give, log: state.log, progress: opts.Progress}
+	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, dir: state.dir, give: give, log: state.log, progress: opts.Progress, redact: runRedactor(opts.Env)}
 	if err := client.connect(ctx, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), state.log.Close())
 	}
@@ -115,7 +117,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 
 // connect migrates the store and opens the workflow client on it. The client needs the tables to exist, so a first status on a new folder lists no runs.
 func (c *Client) connect(ctx context.Context, state store) error {
-	c.logger = newLogger(state.log)
+	c.logger = newLogger(state.log, c.redact)
 
 	if err := dbos.Migrate(ctx, state.url, dbos.WithMigrateLogger(c.logger)); err != nil {
 		return err

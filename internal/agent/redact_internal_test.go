@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,8 +13,16 @@ import (
 func TestRedact_RemovesSecretsAndKeyShapedTokens(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "a [redacted] b [redacted]", Redactor("s3cret")("a s3cret b sk-ant-abcdefgh12"))
+	assert.Equal(t, "a [redacted] b [redacted]", Redactor("s3cret-value")("a s3cret-value b sk-ant-abcdefgh12"))
 	assert.Equal(t, "plain", Redactor()("plain"))
+}
+
+func TestRedact_KeepsAValueShorterThanTheFloor(t *testing.T) {
+	t.Parallel()
+
+	short, exact := strings.Repeat("a", MinSecretLen-1), strings.Repeat("b", MinSecretLen)
+
+	assert.Equal(t, "x "+short+" y [redacted]", Redactor(short, exact)("x "+short+" y "+exact))
 }
 
 func TestRedactWriter_DropsALineLongerThanTheLimitAndKeepsTheNext(t *testing.T) {
@@ -21,10 +30,10 @@ func TestRedactWriter_DropsALineLongerThanTheLimitAndKeepsTheNext(t *testing.T) 
 
 	var out bytes.Buffer
 
-	writer := &redactWriter{out: &out, redactor: newRedactor("s3cret"), limit: 10}
+	writer := &redactWriter{out: &out, redactor: newRedactor("s3cret-value"), limit: 10}
 	_, err := writer.Write([]byte("0123456789ab"))
 	require.NoError(t, err)
-	_, err = writer.Write([]byte("cdef s3cret\nnext s3cret\n"))
+	_, err = writer.Write([]byte("cdef s3cret-value\nnext s3cret-value\n"))
 	require.NoError(t, err)
 
 	assert.Equal(t, droppedLine+"next [redacted]\n", out.String())

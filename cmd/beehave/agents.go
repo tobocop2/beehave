@@ -138,7 +138,7 @@ func (a agents) guardFor(forbid []model.FindingKind, protect shell.Protection) s
 func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, tap *sessionTap, guard string, box *agent.SandboxPlan, skills []string) agent.Spec {
 	return agent.Spec{
 		Sandbox: box, Skills: skills,
-		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env,
+		Adapter: adapter, Runner: runner, Dir: dir, Prompt: request.Prompt, Env: a.env, Redact: request.Redact,
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
