@@ -25,6 +25,7 @@ When an engine already holds the state folder (`beehave serve` or another `beeha
 - The join refuses a build that differs from the version the live engine wrote into the file `engine.version` of the state folder.
 - The joined run gets the default place, because the client sets no severity.
 - Progress lines print in the log of the engine, not in the terminal of the joiner.
+- If the engine stops before the run ends, the run stays open in the store. After the grace time of 10 seconds, the joined `beehave run` starts its own engine for the item, and the launch of that engine recovers the run. When two joined commands do this at once, one takes the state folder and the other joins it.
 
 #### The steps of the item workflow
 

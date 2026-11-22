@@ -369,7 +369,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 	}
 
 	if running {
-		return f.joinEngine(stdout, stderr, client, item, project, chosen)
+		return f.joinEngine(stdout, stderr, client, cfg, opts, item, project, chosen)
 	}
 
 	if err := client.Close(); err != nil {
@@ -416,12 +416,13 @@ func (f flowCommands) joinLater(stdout, stderr io.Writer, cfg config.Config, opt
 		return err
 	}
 
-	return f.joinEngine(stdout, stderr, client, item, project, file)
+	return f.joinEngine(stdout, stderr, client, cfg, opts, item, project, file)
 }
 
 // joinEngine gives the item to the engine that holds the state folder, waits for the result, and closes the client.
+// When that engine stops before the run ends, the run stays open in the store, and this command runs its own engine for the item: the launch of that engine recovers the run.
 // The run sits in the queue of that engine, so agents.max_concurrent applies to it, and its progress lines go to the log of that engine.
-func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, item, project, file string) error {
+func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, item, project, file string) error {
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
@@ -429,6 +430,12 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, item
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
+		}
+
+		if errors.Is(err, flow.ErrEngineGone) {
+			_, _ = fmt.Fprintf(stderr, "the engine that ran item %s stopped; this command continues the run\n", item)
+
+			return f.ownEngine(stdout, stderr, cfg, opts, item, project, file)
 		}
 
 		return err

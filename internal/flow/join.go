@@ -20,7 +20,7 @@ const (
 // errOtherBuild is returned when the engine that runs is not this build. It dequeues only runs of its own version, so a run for another build would wait for ever.
 var errOtherBuild = errors.New("the engine that runs is another build")
 
-// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays queued, and the next engine of the same build takes it.
+// ErrEngineGone is returned when the engine that held the state folder stops while a joined run waits. The run stays open, and the next engine of the same build recovers it: beehave run takes over at once.
 var ErrEngineGone = errors.New("the engine stopped; the run is queued")
 
 // attemptPlan says what a run call does for an item: join the run with the id Join, or start attempt Attempt.
