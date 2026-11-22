@@ -24,8 +24,8 @@ grep -count=1 '^4$' store/cold-cost/calls
 grep 'done' store/cold-cost/s1.1/status
 ! exists wiki.log
 
-# The answer goes to the child run of section 2, whose id is the third run of the desk: research-desk-3.
-exec beehavereal answer research-desk-3 2
+# The answer goes to the child run of section 2, whose id is the fifth run of the desk: research-desk-5. The runs before it are section 1 and its two source runs.
+exec beehavereal answer research-desk-5 2
 waitstatus 'paused: The run used all 6 agent calls'
 grep -count=1 '^6$' store/cold-cost/calls
 exec beehavereal cancel cold-cost

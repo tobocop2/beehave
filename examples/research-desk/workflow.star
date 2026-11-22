@@ -1,6 +1,7 @@
 # A research desk: a question comes in, and a report goes to a wiki. The item is the question (its body). The project has no source and no repository.
 #   1. A planner agent splits the question into sections. The plan is saved in the store; a run on an item that has a plan keeps it.
-#   2. One child run for each section (entry `section`): search and fetch by script, a reader agent extracts claims with exact quotes, a script tests
+#   2. One child run for each section (entry `section`). It searches by script, and spawns one grandchild run for each source (entry `source`) that fetches the page.
+#      The tree is three levels deep: the question, the sections, the sources. The default `max_spawn_depth` of 3 allows it. Then a reader agent extracts claims with exact quotes, a script tests
 #      each quote against the page snapshot, a fresh judge agent grades the claims, and a writer agent writes the section from the claims that passed.
 #      The judge also gets one planted false claim. A judge that accepts it is void, and its verdicts are not recorded.
 #      A program gate checks the prose: every paragraph cites a supported claim, and every number is in a cited quote.
@@ -163,6 +164,26 @@ def not_shown(run, n, gen, why):
 def set_status(run, n, gen, status):
     ok("set-status", tool("set-status", "store.sh", ["status", run, str(n), gen, status]))
 
+def fetch_source(item, run, n, gen, k, url):
+    """One grandchild run for one source of a section. The runs go one after the other, so the source ids in the store come in the same order on every run. The page line is the value of the run."""
+    made = item_create(
+        name = "source",
+        title = "%s: section %s, source %d" % (run, n, k),
+        key = "%s-s%s-g%s-u%d" % (run, n, gen, k),
+        body = json.encode({"run": run, "url": url}),
+        parent = item.id,
+    )
+    spawned = spawn([made.id], entry = "source", name = "spawn-source-%d" % k)
+    result = gather(spawned.runs, fail = "return", name = "wait-source-%d" % k).results[0]
+    if not result.ok:
+        fail("REFUSE: source %d of section %s stopped. See the child item %s. %s" % (k, n, made.id, result.error))
+    return result.value
+
+# One source: the entry of a grandchild run. The item body names the run and the address. The run fetches the page and returns the page line.
+def source(item):
+    spec = json.decode(item.body)
+    return ok("fetch", tool("fetch", "fetch.sh", [spec["run"], spec["url"]], retries = 2)).strip()
+
 # One section: the entry of a child run. The item body names the run, the section, the generation, the title and the question.
 def section(item):
     spec = json.decode(item.body)
@@ -174,8 +195,8 @@ def section(item):
     pages = []
     for url in found.splitlines():
         if url.strip() != "":
-            pages.append(ok("fetch", tool("fetch", "fetch.sh", [run, url.strip()], retries = 2)).strip())
-    read = call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": "\n".join(pages)}, ["claims"])
+            pages.append(fetch_source(item, run, n, gen, len(pages) + 1, url.strip()))
+    read =call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": "\n".join(pages)}, ["claims"])
     ok("add-claims", tool("add-claims", "claims.sh", ["add", run, n, gen], stdin = read.claims))
     if int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, n, gen, "quote"])).strip()) == 0:
         set_status(run, n, gen, "empty")
