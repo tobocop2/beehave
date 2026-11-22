@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -744,15 +744,13 @@ func waitsForOwnersLock(creator string) bool {
 	return false
 }
 
-// goroutineStacks returns the stack of every goroutine of the process. The buffer grows until the dump fits: a dump that fills its buffer is cut, and the stacks that it cuts are missing.
+// goroutineStacks returns the stack of every goroutine of the process, in the format of runtime.Stack, with no size limit.
 func goroutineStacks() []byte {
-	for size := 1 << 20; ; size *= 2 {
-		buf := make([]byte, size)
+	var dump bytes.Buffer
 
-		if n := runtime.Stack(buf, true); n < size {
-			return buf[:n]
-		}
-	}
+	_ = pprof.Lookup("goroutine").WriteTo(&dump, 2) //nolint:errcheck // a write to a bytes.Buffer cannot fail
+
+	return dump.Bytes()
 }
 
 // parkedForStackDump holds a goroutine in a stack of depth+1 frames that the dump of goroutineStacks must show. It calls parked when it holds.
@@ -767,7 +765,7 @@ func parkedForStackDump(depth int, parked func(), release <-chan struct{}) {
 	<-release
 }
 
-func TestGoroutineStacks_ADumpLargerThanTheFirstBufferShowsEveryGoroutine(t *testing.T) {
+func TestGoroutineStacks_ADumpOfManyGoroutinesIsWhole(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -791,6 +789,6 @@ func TestGoroutineStacks_ADumpLargerThanTheFirstBufferShowsEveryGoroutine(t *tes
 
 	dump := goroutineStacks()
 
-	require.Greater(t, len(dump), 1<<20, "the dump is larger than the first buffer, so the test needs the growth")
+	assert.Greater(t, len(dump), 1<<20, "the dump is larger than the 1 MiB buffer that a fixed-size dump cut")
 	assert.Equal(t, goroutines*(depth+1), bytes.Count(dump, []byte("flow.parkedForStackDump(")), "a cut dump misses the stacks past its end")
 }
