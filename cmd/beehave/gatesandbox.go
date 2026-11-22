@@ -17,6 +17,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
@@ -108,7 +109,7 @@ func (l cloneLock) of(project string) underLock {
 // is gone. That covers the record that the gate could not name. It returns a line for the output when the copy stays.
 func discard(ctx context.Context, tmp, dir string, clone gateClone) string {
 	note := ""
-	if err := removeTree(tmp); err != nil {
+	if err := fstree.Remove(tmp); err != nil {
 		note = fmt.Sprintf("beehave sandbox: the copy of the gate stays at %s: %v\n", tmp, err)
 	}
 
@@ -196,7 +197,7 @@ func reclaim(root string) error {
 			continue
 		}
 
-		_ = removeTree(path) //nolint:errcheck // best effort; the next caller tries again
+		_ = fstree.Remove(path) //nolint:errcheck // best effort; the next caller tries again
 	}
 
 	return nil
@@ -214,25 +215,6 @@ func ownerAlive(name string) bool {
 	err = syscall.Kill(pid, 0)
 
 	return err == nil || errors.Is(err, syscall.EPERM)
-}
-
-// removeTree removes path with all it holds. When that fails, it gives the owner write and search rights on every folder and tries again, so a gate that
-// left a read-only folder (a module cache is extracted read-only) does not keep the copy.
-func removeTree(path string) error {
-	if os.RemoveAll(path) == nil {
-		return nil
-	}
-
-	//nolint:errcheck // a folder that cannot change mode makes the second removal fail, and that failure is returned
-	_ = filepath.WalkDir(path, func(p string, entry fs.DirEntry, err error) error {
-		if err != nil || !entry.IsDir() {
-			return err
-		}
-
-		return os.Chmod(p, ownerOnly) //nolint:gosec // the folder is inside a copy that beehave removes
-	})
-
-	return os.RemoveAll(path)
 }
 
 // forgetCopies tells the repository of git to forget the worktrees of gate copies whose folder is gone. A gate copy is a worktree whose path lies under root,

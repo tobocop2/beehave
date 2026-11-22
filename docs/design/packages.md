@@ -53,6 +53,7 @@ flowchart TD
         model["model<br/>types, enums, contracts"]
         lockfile["lockfile<br/>file lock opener"]
         atomicfile["atomicfile<br/>whole-file writes"]
+        fstree["fstree<br/>removes a tree with read-only folders"]
         exectest["exectest<br/>writes the programs that tests start"]
     end
 
@@ -137,6 +138,8 @@ Only `proc` starts a process. `forge` and `agent` call it. `store` reaches it th
 File locks come from `github.com/gofrs/flock`. `flow`, `merge` and `store` open every lock through `lockfile.Open`, a layer 0 package. It opens the file for reading and writing, so a folder or a read-only file of that name is refused and not locked. `store` holds the lock of a shared item key, one file for each key in the state folder.
 
 `flow` and `merge` write the cancel marker and the saved check logs through `atomicfile.Write`, a layer 0 package. It writes a temporary file in the same folder, syncs it and renames it over the target. It sets the mode every time.
+
+`agent` removes the temporary folder of a sandboxed run, and `cmd/beehave` removes the copy of a gate, through `fstree.Remove`, a layer 0 package. When a plain removal fails, it gives the owner write rights on every folder and tries again, because the Go command extracts its module cache read-only.
 
 ### The step contract
 

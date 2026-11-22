@@ -18,7 +18,7 @@ import (
 func plan() agent.SandboxPlan {
 	return agent.SandboxPlan{
 		Work: "/work/tree", GitDirs: []string{"/repo/.git"}, Read: []string{"/opt/tools"},
-		Deny: []string{"/home/o/.ssh", "/home/o/.aws"}, Network: []string{"api.example.org"},
+		Deny: []string{"/home/o/.ssh", "/home/o/.aws"}, Network: []string{"api.example.org"}, Temp: "/tmp/bh-1",
 	}
 }
 
@@ -48,7 +48,9 @@ func TestSandbox_AsksTheCLIToScrubCredentialsFromTheEnvironmentOfItsSubprocesses
 
 	launch := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil)
 
-	assert.Equal(t, map[string]string{"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", "CLAUDE_ENV_FILE": "/run/sandbox-env.sh"}, launch.Env)
+	assert.Equal(t, map[string]string{
+		"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", "CLAUDE_ENV_FILE": "/run/sandbox-env.sh", "CLAUDE_CODE_TMPDIR": "/tmp/bh-1",
+	}, launch.Env, "the CLI keeps its temporary files, and the TMPDIR of the shell, in the temporary folder of the run")
 }
 
 func TestSandbox_TheShellReadsTheGitVariablesOfTheEngineFromAnEnvFile(t *testing.T) {
@@ -81,7 +83,7 @@ func TestSandbox_TheShellReadsTheGitVariablesOfTheEngineFromAnEnvFile(t *testing
 	}
 }
 
-func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndNothingElse(t *testing.T) {
+func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndTheHomeFolderAndNothingElse(t *testing.T) {
 	t.Parallel()
 
 	p := plan()
@@ -94,7 +96,69 @@ func TestSandbox_TheEnvFileExportsTheSixGitVariablesAndNothingElse(t *testing.T)
 		"export GIT_COMMITTER_EMAIL=ann@example.com\n" +
 		"export GIT_COMMITTER_NAME=Ann\n" +
 		"export GIT_CONFIG_GLOBAL=/dev/null\n" +
-		"export GIT_CONFIG_NOSYSTEM=1\n"}, launch.Files, "the run folder holds only the env file, and the env file holds no other variable")
+		"export GIT_CONFIG_NOSYSTEM=1\n" +
+		"export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n" +
+		"mkdir -p \"$HOME\"\n"}, launch.Files, "the run folder holds only the env file, and the env file holds no other variable")
+}
+
+// shellHome sources the env file of a run in a POSIX shell whose temporary folder is tmp and returns the HOME that the shell holds afterwards.
+func shellHome(t *testing.T, runDir, tmp string) string {
+	t.Helper()
+
+	envFile := filepath.Join(runDir, "sandbox-env.sh")
+	launch := claude.New(nil).Sandbox(plan(), "", runDir, nil, nil)
+	require.NoError(t, os.MkdirAll(runDir, 0o700))
+	require.NoError(t, os.WriteFile(envFile, []byte(launch.Files["sandbox-env.sh"]), 0o600))
+
+	shell := exec.CommandContext(t.Context(), "sh", "-c", `. "$1" && printf %s "$HOME"`, "sh", envFile) //nolint:gosec // a test sources its own temporary file
+	shell.Env = []string{"PATH=/usr/bin:/bin", "HOME=/Users/owner", "TMPDIR=" + tmp}
+	out, err := shell.Output()
+	require.NoError(t, err)
+
+	return string(out)
+}
+
+func TestSandbox_TheShellGetsANewEmptyHomeFolderOfItsOwnNotTheHomeOfTheOwner(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	first, second := shellHome(t, filepath.Join(t.TempDir(), "run-one"), tmp), shellHome(t, filepath.Join(t.TempDir(), "run-two"), tmp)
+
+	assert.Equal(t, filepath.Join(tmp, "beehave-home-run-one"), first)
+	assert.Equal(t, filepath.Join(tmp, "beehave-home-run-two"), second, "each run has a home folder of its own")
+
+	for _, home := range []string{first, second} {
+		entries, err := os.ReadDir(home)
+		require.NoError(t, err, "the env file makes the folder before the shell runs a command")
+		assert.Empty(t, entries, "the folder starts empty")
+	}
+}
+
+func TestSandbox_TheEnvFileFallsBackToSlashTmpWhenTheShellHasNoTemporaryFolder(t *testing.T) {
+	t.Parallel()
+
+	file := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Files["sandbox-env.sh"]
+
+	assert.Contains(t, file, "export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n", "the fallback text is exactly ${TMPDIR:-/tmp}")
+}
+
+func TestSandbox_TheCLIKeepsTheHomeOfTheOwnerForItsLogin(t *testing.T) {
+	t.Parallel()
+
+	launch := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil)
+
+	assert.NotContains(t, launch.Env, "HOME", "only the shell gets another HOME, through the env file")
+}
+
+func TestGuard_ARunWithNoSandboxGetsNoEnvFileAndNoHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	launch := claude.New(nil).Guard("/bin/beehave check command", "/run", nil, nil)
+
+	assert.NotContains(t, launch.Files, "sandbox-env.sh")
+	assert.NotContains(t, launch.Env, "CLAUDE_ENV_FILE")
+	assert.NotContains(t, launch.Env, "CLAUDE_CODE_TMPDIR")
+	assert.NotContains(t, launch.Env, "HOME")
 }
 
 func TestSandbox_TheSettingsAllowReadingTheEnvFileAndNotTheRunFolder(t *testing.T) {

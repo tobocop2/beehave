@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -47,6 +48,10 @@ const (
 	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
 	runDirMode     = 0o700
 	launchFileMode = 0o600
+	// shortTemp is the folder that holds the temporary folder of a sandboxed run, and tempPrefix starts its name. A short path keeps the socket paths
+	// of the shell under the limit of 104 bytes on macOS.
+	shortTemp  = "/tmp"
+	tempPrefix = "bh-"
 )
 
 var (
@@ -139,10 +144,12 @@ type Timer interface {
 
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 // Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
+// Temp is the folder in which a sandboxed run gets its own temporary folder; the zero value is /tmp.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
 	Version   func(ctx context.Context, binary string, env []string) (string, error)
 	OS        string
+	Temp      string
 }
 
 // Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
@@ -163,7 +170,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return stalled(execute(ctx, spec, p, idle, r.version()), p)
+	return stalled(execute(ctx, spec, p, idle, r.version(), cmp.Or(r.Temp, shortTemp)), p)
 }
 
 // stalled adds the StallNote of the profile to a run that a total or idle limit ended.
@@ -244,7 +251,7 @@ func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Ti
 	return func() { timer.Stop() }
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf) Result {
+func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, tempRoot string) Result {
 	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
@@ -257,7 +264,32 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 	defer os.RemoveAll(runDir)
 
+	spec, remove, problem := withTemp(spec, p.Binary, tempRoot)
+	if problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
+	defer remove()
+
 	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+}
+
+// withTemp returns the spec with a new temporary folder in root for its sandbox, and the function that removes the folder. A spec with no sandbox gets no folder.
+// It returns why it cannot make the folder, or "".
+func withTemp(spec Spec, binary, root string) (Spec, func(), string) {
+	if spec.Sandbox == nil {
+		return spec, func() {}, ""
+	}
+
+	temp, err := os.MkdirTemp(root, tempPrefix) // mode 0700
+	if err != nil {
+		return spec, nil, fmt.Sprintf("cannot make the temporary folder for %s in %s: %v", binary, root, err)
+	}
+
+	plan := *spec.Sandbox
+	plan.Temp, spec.Sandbox = temp, &plan
+
+	return spec, func() { _ = fstree.Remove(temp) }, "" //nolint:errcheck // the run is over; a folder left behind does not change its result
 }
 
 // launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
