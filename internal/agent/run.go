@@ -48,8 +48,8 @@ const (
 	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
 	runDirMode     = 0o700
 	launchFileMode = 0o600
-	// shortTemp is the folder that holds the temporary folder of a sandboxed run, and tempPrefix starts its name. A short path keeps the socket paths
-	// of the shell under the limit of 104 bytes on macOS.
+	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
+	// keeps the socket paths of the shell under the limit of 104 bytes on macOS.
 	shortTemp  = "/tmp"
 	tempPrefix = "bh-"
 )
@@ -284,7 +284,7 @@ func withTemp(spec Spec, binary, root string) (Spec, func(), string) {
 		return spec, func() {}, ""
 	}
 
-	temp, err := os.MkdirTemp(root, tempPrefix) // mode 0700
+	temp, err := fstree.PidFolder(filepath.Join(root, tempPrefix+strconv.Itoa(os.Getuid()))) // mode 0700
 	if err != nil {
 		return spec, nil, fmt.Sprintf("cannot make the temporary folder for %s in %s: %v", binary, root, err)
 	}

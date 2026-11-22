@@ -29,6 +29,24 @@ fi
 exit "$(cat "$here/code")"
 `
 
+// mine is the folder that the runner makes inside root for the temporary folders of the user.
+func mine(root string) string { return filepath.Join(root, "bh-"+strconv.Itoa(os.Getuid())) }
+
+// entriesOf lists the names in dir.
+func entriesOf(t *testing.T, dir string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+
+	return names
+}
+
 // tempFixture returns a fixture whose CLI runs tempScript and exits with code, and the empty folder in which the runner makes the temporary folders.
 func tempFixture(t *testing.T, code string) (*fixture, string) {
 	t.Helper()
@@ -51,12 +69,10 @@ func TestRunner_TheTemporaryFolderOfASandboxedRunIsGoneAfterTheRunWhateverItsExi
 		assert.Equal(t, code, got.ExitCode, name)
 
 		temp := record(t, f.records, "temp")
-		assert.Equal(t, root, filepath.Dir(temp), name+": the CLI gets a folder that the runner made in its root")
-		assert.Regexp(t, `^bh-[0-9]+$`, filepath.Base(temp), name)
+		assert.Equal(t, mine(root), filepath.Dir(temp), name+": the CLI gets a folder that the runner made in the folder of its user")
+		assert.Regexp(t, `^`+strconv.Itoa(os.Getpid())+`-[0-9]+$`, filepath.Base(temp), name)
 
-		entries, err := os.ReadDir(root)
-		require.NoError(t, err)
-		assert.Empty(t, entries, name+": the runner removes the folder and its read-only content when the run ends")
+		assert.Empty(t, entriesOf(t, mine(root)), name+": the runner removes the folder and its read-only content when the run ends")
 	}
 }
 
@@ -83,4 +99,22 @@ func TestRunner_ASandboxedRunWhoseTemporaryFolderCannotBeMadeDoesNotStartTheCLI(
 	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
 	assert.Contains(t, got.Note, "cannot make the temporary folder for claude in "+missing)
 	assert.NoFileExists(t, filepath.Join(f.records, "temp"))
+}
+
+func TestRunner_ARunReclaimsTheTemporaryFolderOfAnEngineThatWasKilledAndKeepsTheOneOfALiveEngine(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f, root := tempFixture(t, "0")
+	f.spec.Sandbox = &agent.SandboxPlan{Work: f.work}
+
+	// The folder of an engine whose process is gone, with a read-only folder in it as the Go command leaves, and the folder of an engine that runs.
+	dead := filepath.Join(mine(root), "999999999-dead")
+	live := filepath.Join(mine(root), strconv.Itoa(os.Getpid())+"-live")
+	require.NoError(t, os.MkdirAll(filepath.Join(dead, "go", "mod"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dead, "go", "mod", "go.mod"), []byte("module m\n"), 0o600))
+	require.NoError(t, exectest.ChmodFolder(filepath.Join(dead, "go", "mod"), 0o500))
+	require.NoError(t, os.Mkdir(live, 0o700))
+
+	got := agent.Runner{Version: seen("2.1.330 (Claude Code)\n"), Temp: root}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Equal(t, []string{filepath.Base(live)}, entriesOf(t, mine(root)))
 }
