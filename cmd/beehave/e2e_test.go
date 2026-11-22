@@ -671,6 +671,21 @@ func cmdWaitSession(ts *testscript.TestScript, neg bool, args []string) {
 	}))
 }
 
+// cmdWaitLine is "waitline <path> <text>": it waits until a line of the file holds the text. A run that a script starts with its stderr in a file
+// writes the start of each step there, so a kill can wait for a step of one run when the file of an agent of another run comes first.
+func cmdWaitLine(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 2 {
+		ts.Fatalf("usage: waitline <path> <text>")
+	}
+
+	path := ts.MkAbs(args[0])
+	e2eRunWait(ts, neg, e2eWaitingFor(ts, "a line of "+path+" to hold "+args[1], func() bool {
+		text, err := os.ReadFile(filepath.Clean(path))
+
+		return err == nil && slices.ContainsFunc(strings.Split(string(text), "\n"), func(line string) bool { return strings.Contains(line, args[1]) })
+	}))
+}
+
 // cmdWaitStatus is "waitstatus <text>": it runs beehave status until the output holds the text.
 func cmdWaitStatus(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 1 {
@@ -775,7 +790,7 @@ func TestScripts(t *testing.T) {
 		Dir:   "testdata/e2e",
 		Setup: e2eSetup,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus, "waitsession": cmdWaitSession,
+			"waitfile": cmdWaitFile, "waitstatus": cmdWaitStatus, "waitsession": cmdWaitSession, "waitline": cmdWaitLine,
 			"example": cmdExample, "script": cmdScript, "subst": cmdSubst, "isolate": isolateFunc(tools), "exitcode": cmdExitCode, "noclaims": cmdNoClaims, "mode": cmdMode,
 			"swarmfakes": cmdSwarmFakes, "batchsetup": cmdBatchSetup, "replace": cmdReplace, "serve": cmdServe, "fakeclaude": cmdFakeClaude, "deskfakes": cmdDeskFakes, "deskinit": cmdDeskInit,
 			"incidentfakes": cmdIncidentFakes, "incidentinit": cmdIncidentInit, "maintfakes": cmdMaintFakes, "maintinit": cmdMaintInit,

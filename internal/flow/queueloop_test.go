@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -402,10 +404,31 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 	}
 }
 
+// sleptOf reads the seconds that the last execution of a sleep call slept, from the record of the call whose name starts with prefix.
+func sleptOf(t *testing.T, records []dbos.StepInfo, prefix string) float64 {
+	t.Helper()
+
+	at := slices.IndexFunc(records, func(step dbos.StepInfo) bool {
+		return strings.HasPrefix(step.StepName, prefix) && !strings.Contains(step.StepName, "/")
+	})
+	require.GreaterOrEqual(t, at, 0, "no record of a call named %s", prefix)
+
+	var result stepResult
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprint(records[at].Output)), &result))
+
+	slept, ok := result.Outputs["slept"].(json.Number)
+	require.True(t, ok, "the record of %s has no slept field: %v", prefix, result.Outputs)
+
+	seconds, err := slept.Float64()
+	require.NoError(t, err)
+
+	return seconds
+}
+
 func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtTheFirstWakeTimeAndStartsEachItemOnce(t *testing.T) {
 	t.Parallel()
 
-	const pause = 4 * time.Second
+	const pause = 8 * time.Second
 
 	r := newLoopRig(t, queueItem("21", model.SeverityP0), queueItem("22", model.SeverityP1), queueItem("23", model.SeverityP2))
 	r.h.opts.Env["PAUSE_AFTER_FAILURE"] = pause.String()
@@ -435,8 +458,13 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	require.NoError(t, first.Shutdown())
 	require.Error(t, receive(t, ran), "the stopped engine ends the run of the first engine")
 
-	// No engine runs until a quarter of the pause is left. A sleep that starts again from the restart ends three quarters of a pause after the first wake time.
-	waitOn(t, condition(func() bool { return !time.Now().Before(wake.Add(-pause / 4)) }))
+	client := r.h.client(t, testVersion)
+	records, err := client.records(testRun)
+	require.NoError(t, err)
+	require.Equal(t, wake, sleepDeadline(records), "the engine stopped inside the sleep: its last record is the wake time, and the sleep call has no end record")
+
+	// No engine runs until half the pause is left. A sleep that starts again from the restart sleeps the whole pause.
+	waitOn(t, condition(func() bool { return !time.Now().Before(wake.Add(-pause / 2)) }))
 
 	var (
 		mu     sync.Mutex
@@ -455,7 +483,7 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	second := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	_, err := second.RunFile(testItem, testProject, r.file)
+	_, err = second.RunFile(testItem, testProject, r.file)
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -463,8 +491,10 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	mu.Unlock()
 
 	assert.False(t, started.Before(wake), "item 23 started at %s, before the wake time %s", started, wake)
-	// The spawn and the start of the agent take about a second after the wake.
-	assert.Less(t, started.Sub(wake), pause/2, "item 23 started at %s, too long after the first wake time %s: the sleep started again", started, wake)
+
+	records, err = client.records(testRun)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, sleptOf(t, records, "sleep:pause-"), (pause / 2).Seconds(), "the resumed run slept only to the first wake time, not the whole pause again")
 	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started())
 
 	for _, item := range []string{"21", "22", "23"} {

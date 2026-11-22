@@ -261,6 +261,29 @@ func inCall(engine *Engine, run, call string) bool {
 	return err == nil && slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return strings.HasPrefix(step.StepName, call) })
 }
 
+// receiving reports whether the records of a run stop inside the inbox wait of a first_of call: after the last read of the runs of the call, the library
+// recorded the deadline of a receive, and nothing records a received message or the end of the call.
+func receiving(steps []dbos.StepInfo, call string) bool {
+	look := -1
+
+	for at, step := range steps {
+		if strings.HasPrefix(step.StepName, call+lookSuffix) {
+			look = at
+		}
+	}
+
+	if look < 0 {
+		return false
+	}
+
+	after := steps[look+1:]
+
+	return hasStep(after, sleepStep) && !hasStep(after, receiveStepName) && !hasStep(steps, call)
+}
+
+// watchOne is the step of the second first_of call of the planner, the call that the crash test stops in.
+const watchOne = "first_of:watch-1#2"
+
 // countName counts the step names that equal name.
 func countName(names []string, name string) int {
 	return len(slices.DeleteFunc(slices.Clone(names), func(one string) bool { return one != name }))
@@ -288,13 +311,22 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 		ran <- runErr
 	}()
 
-	// The worker of 21 ended in watch-0, so the planner waits in watch-1 for the worker of 22 or a stall message.
-	waitOn(t, condition(func() bool { return inCall(first, runID(testItem, 1), "first_of:watch-1#") }))
+	// The worker of 21 ended in watch-0, so the planner waits in the receive of watch-1 for the worker of 22 or a stall message.
+	waitOn(t, condition(func() bool {
+		steps, stepErr := dbos.GetWorkflowSteps(first.ctx, runID(testItem, 1))
+
+		return stepErr == nil && receiving(steps, watchOne)
+	}))
 	stop()
 	require.NoError(t, first.Shutdown())
 	require.Error(t, receive(t, ran), "the stopped engine ends the call of the first engine")
 
-	_, err = h.client(t, testVersion).Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
+	client := h.client(t, testVersion)
+	records, err := client.records(runID(testItem, 1))
+	require.NoError(t, err)
+	require.True(t, receiving(records, watchOne), "the engine stopped in the receive of watch-1: it took no worker end and no message before the stop")
+
+	_, err = client.Send(testItem, Outgoing{Topic: "stall", Key: "stall-22", Value: []byte(`"22"`)})
 	require.NoError(t, err, "the message lands while no engine runs")
 
 	second := h.engine(t)
@@ -313,7 +345,7 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 	assert.Equal(t, 2, last.Attempt, "the planner took the message once, so it gave the task of 22 to one new worker")
 
 	names := stepNamesOf(t, second, runID(testItem, 1))
-	assert.Equal(t, 1, countName(names, "first_of:watch-1#2"), "the call that the stop cut ended once, on the message")
+	assert.Equal(t, 1, countName(names, watchOne), "the call that the stop cut ended once, on the message")
 	assert.Equal(t, 1, countName(names, "cancel:named-22#1"), "the planner canceled the worker of 22 once")
 	assert.False(t, inCall(second, runID(testItem, 1), "first_of:watch-2#"), "no worker was left open, so the planner made no later call")
 	assert.NotContains(t, strings.Join(names, " "), "stalled-", "the message, not the check-in, stalled the worker")

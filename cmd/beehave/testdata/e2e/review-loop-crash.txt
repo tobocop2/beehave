@@ -13,9 +13,10 @@ example review-loop/prompts/revise.md
 reviewfakes
 
 exec beehavereal item add review note-1 --title 'Release note' --body-file body.txt
-! exec beehavereal run note-1 review --workflow review-loop/workflow.star &
-# The review agent starts only after the reviewer received the draft, so the author has sent it, and the next call of the author is the recv of the verdict.
+! exec sh first.sh run note-1 review --workflow review-loop/workflow.star &
+# The review agent starts only after the reviewer received the draft, so the author has sent it. The kill also waits until the author started its recv of the verdict.
 waitfile held
+waitline first.err 'item-note-1-r1 step recv:verdict started'
 kill -KILL
 wait
 cmp calls.log expected-before.log
@@ -38,6 +39,9 @@ stdout -count=1 '^recv:verdict#2\t'
 cmp held expected-held
 cmp calls.log expected-calls.log
 
+-- first.sh --
+# The first run writes the start of each step to first.err. exec keeps the pid, so the kill stops beehave itself.
+exec beehavereal "$@" 2> first.err
 -- hold --
 -- body.txt --
 Write the release note.
