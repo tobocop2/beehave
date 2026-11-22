@@ -119,10 +119,10 @@ func TestExampleBatch_AnApprovedItemLandsWhileItsPullRequestIsStillTheDraftItsRu
 	assert.Empty(t, heldOf(rig.writer), "the item does not stop at its own draft one stage after the loop")
 }
 
-func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateRun(t *testing.T) {
+func TestExampleBatch_ItemsThatAreDoneAtOneQueueReadLandAsOneBatchAndTheSplitHoldsTheRedOne(t *testing.T) {
 	t.Parallel()
 
-	// Item 2 ends alone in pass 1 and is red at the gate. Items 1 and 3 end while the round reads the queue of pass 2, so its gather returns both.
+	// Item 2 ends alone in pass 1 and is red at the gate. Items 1 and 3 end while the round reads the queue of pass 2, which shows all three as done: one batch.
 	rig := newRoundRig(t, "1 2 3")
 	rig.h.opts.MaxConcurrent = 3 // all three children start in pass 1
 	rig.endTogether("1", "3")
@@ -131,7 +131,7 @@ func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateR
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
-	assert.Len(t, rig.gate.ran(), 2, "one gate run for the batch of item 2 and one for the batch of items 1 and 3")
+	assert.Len(t, rig.gate.ran(), 4, "one gate run on the union of the three items, then the gate runs of the split of the red union")
 	assert.Equal(t, []string{testProject + "|2|hold"}, heldOf(rig.writer))
 	assert.Equal(t, []string{testProject + " main 0 1,3"}, rig.host.issueReads(), "one read after the one batch that landed both items; the batch that landed nothing makes no read")
 	assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t))

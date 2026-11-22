@@ -421,12 +421,12 @@ func TestExampleMerge_TheRoundLandsThroughTheBatchMergerAndTheGuardsOfTheForgeFa
 
 			switch {
 			case tc.defer1:
-				// A deferral defers the members of its own batch after it. Item 3 is in the next batch, so the deferral of item 1 does not reach it.
+				// A deferral writes nothing and holds nothing, so the row of item 1 stays done and the next pass offers it again, once the base stopped moving.
 				assert.Contains(t, forge.said("1"), "while preparing")
-				assert.Empty(t, one.writes, "a deferred merge writes nothing")
 				assert.Empty(t, heldOf(rig.writer), "a deferred item is not held")
+				assert.Equal(t, []string{fmt.Sprintf("MergePR %d %s", testPull, rig.heads["1"])}, one.writes, "item 1 lands at its pin in the next pass")
 				assert.Equal(t, []string{fmt.Sprintf("MergePR %d %s", testPull, rig.heads["3"])}, three.writes, "item 3 lands at its pin")
-				assert.Equal(t, "README\nthree.txt", rig.mainFiles(t), "item 3 lands and the deferral of item 1 does not reach it")
+				assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t), "both items land: the deferral costs item 1 one pass")
 			case tc.refusal != "":
 				assert.Contains(t, forge.said("1"), tc.refusal)
 				assert.Empty(t, one.writes, "a refused merge writes nothing")

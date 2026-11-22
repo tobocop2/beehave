@@ -36,6 +36,14 @@ func TestExampleQueue_ThePassStartsWorkInFlightBeforeNewWorkAndThenBySeverity(t 
 	}
 	rig.q.pulls = []model.PullRequest{queuePull(t, 8, "23"), queuePull(t, 9, "11", "hold")}
 
+	// The tracker shows the items to the first pass only, so the test reads the start order of that pass.
+	rig.q.afterFirstRead = func(q *fakeQueue) {
+		q.mu.Lock()
+		defer q.mu.Unlock()
+
+		q.items = nil
+	}
+
 	_, err := rig.run(t)
 	require.NoError(t, err)
 

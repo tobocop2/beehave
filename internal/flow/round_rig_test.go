@@ -228,14 +228,14 @@ func (c *children) afterReview(inner func(AgentRequest) agent.Result) func(Agent
 	}
 }
 
-// servedOnce shows each item of the queue to one read and then drops it, as the tracker does once the round lands the item.
+// servedOnce shows the items of the queue as the tracker does: an item that the round closed is gone, and an item that the round put on hold carries the hold.
 type servedOnce struct {
 	*fakeQueue
 
-	turns *endOrder // told at each read of the open pull requests: only the queue read of the round makes it, one for each pass, and a child run makes none
+	turns  *endOrder // told at each read of the open pull requests: only the queue read of the round makes it, one for each pass, and a child run makes none
+	writer *fakeWriter
 
 	seenMu sync.Mutex
-	seen   map[string]bool
 	reads  int
 }
 
@@ -253,19 +253,35 @@ func (s *servedOnce) OpenPulls(ctx context.Context, project string) ([]model.Pul
 func (s *servedOnce) OpenItems(ctx context.Context, project string) ([]model.Item, error) {
 	all, err := s.fakeQueue.OpenItems(ctx, project)
 
-	s.seenMu.Lock()
-	defer s.seenMu.Unlock()
-
-	var fresh []model.Item
+	var open []model.Item
 
 	for _, item := range all {
-		if !s.seen[item.ID] {
-			s.seen[item.ID] = true
-			fresh = append(fresh, item)
+		status := s.writer.statusOf(item.ID)
+		if status == "closed" {
+			continue
+		}
+
+		item.Hold = item.Hold || status == "hold"
+		open = append(open, item)
+	}
+
+	return open, err
+}
+
+// statusOf returns the last status that the run wrote for the item, or an empty text.
+func (w *fakeWriter) statusOf(item string) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	last := ""
+
+	for _, status := range w.statuses {
+		if parts := strings.Split(status, "|"); len(parts) == 3 && parts[1] == item {
+			last = parts[2]
 		}
 	}
 
-	return fresh, err
+	return last
 }
 
 // roundRig runs the round of the example (the entry main) over the batch rig. The queue lists the items once. Each item gets a child that approves
@@ -464,8 +480,11 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 		rig.h.items.byItem[id] = map[string]string{"id": id, "title": "a title", "body": "a body"}
 	}
 
+	r.writer = newFakeWriter()
+	rig.h.writer = r.writer
+
 	r.q = &fakeQueue{items: rows}
-	rig.h.queue = &servedOnce{fakeQueue: r.q, turns: kids.turns, seen: map[string]bool{}}
+	rig.h.queue = &servedOnce{fakeQueue: r.q, turns: kids.turns, writer: r.writer}
 	kids.turns.ended = func(item string) bool { return itemEnded(r.last, item) }
 	rig.h.reader = &fakeReader{}
 
@@ -486,9 +505,6 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	}
 
 	rig.h.preflight = r.remote
-
-	r.writer = newFakeWriter()
-	rig.h.writer = r.writer
 
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
 		if len(request.Run) > 2 && request.Run[1] == "integration" {

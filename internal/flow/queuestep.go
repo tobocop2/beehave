@@ -255,7 +255,13 @@ func (e *Engine) stateOf(ctx context.Context, item string, last run, found, held
 	case found && last.failed():
 		return rowState{state: queueFailed}, nil
 	case found && last.Status.Status == dbos.WorkflowStatusSuccess:
-		return e.succeededState(ctx, item, last, held)
+		settled, err := e.succeededState(ctx, item, last, held)
+		if err == nil && settled.state == queueDone && held {
+			// A held item is not done: a landing that the round rejected puts the item on hold, and the next pass must not offer it again.
+			settled = rowState{state: queueHold}
+		}
+
+		return settled, err
 	}
 
 	return rowState{state: idleState(held)}, nil

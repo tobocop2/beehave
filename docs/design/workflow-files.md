@@ -420,7 +420,7 @@ Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_req
 | `failed` | Its last attempt ended without success. |
 | `stopped` | Its last run ended with a stop, the way `beehave status` shows it. The workflow chose the stop, so the row is not `failed`. It is not `ready` and not `done`, and the round starts no run for it. `beehave cancel` does not reach it, because the store records the stop as a finished run. The owner fixes the cause and runs `beehave run <item>`, which starts a new attempt. |
 | `done` | Its last run succeeded, and no other row applies. |
-| `hold` | The tracker holds the item, or its pull request has the label that `hold` names. |
+| `hold` | The tracker holds the item, or its pull request has the label that `hold` names. A held item with a succeeded run is `hold`, not `done`, so a landing that the round rejected is offered once. |
 | `ready` | Otherwise. A held item is never `ready`. |
 
 - A run that succeeded is offered again, with the state `ready` or `hold`, when its value holds `reason = "foreign"`, a `pr` number and a non-empty `findings` list, and the forge shows that pull request as merged. The call reads the state of that number and does not look the pull request up again. A read that fails ends the step with an error.

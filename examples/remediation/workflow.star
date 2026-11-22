@@ -1042,9 +1042,9 @@ def listed_rows(q, round_settings):
     listed = round_settings["items"]
     return [r for r in q.rows if len(listed) == 0 or r.item in listed]
 
-def restarted_approvals(q, round_settings):
-    """Returns the approved runs that the queue `q` shows for the rows of the round and that no child of the round returned: a done row whose last run approved a head.
-    The last run of a row is the durable record, so a run that the owner started with `beehave run` counts as a child does. It returns nothing when the round lands nothing."""
+def approved_runs(q, round_settings):
+    """Returns the runs to land from the queue `q`: a done row of the round whose last run approved a head. The last run of a row is the one record, so a run that a child of the round
+    made and a run that the owner started with `beehave run` land the same way. A row on hold is not done, so an item that a rejected landing held is offered once. It returns nothing when the round lands nothing."""
     if not round_settings["merge"]:
         return []
 
@@ -1092,7 +1092,7 @@ def idle_reason(q, round_settings):
 
 def round(item):
     """The round: one entry for the whole round, with one child run (the entry pipeline) for each item. `item` is the round itself, an id that no tracker row uses.
-    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, the cap, round-spawn-<n>, round-gather-<n> (first_of: waits until a run ends and takes every run that ended in the same read) and round-land-<n>. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
+    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, round-land-<n> (the done rows of that read whose last run approved a head, whoever started the run), the cap, round-spawn-<n> and round-gather-<n> (first_of: waits until a run ends, takes every run that ended in the same read and counts its host losses). A child lands in the pass after it ended. A pass that landed starts the next pass at once. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
     A sync that ends with a reason holds the round: the later passes start no sync and no item, and only gather the open runs. With none open, the round waits in round-wait with the reason.
     The host losses hold it too. `seen` is the highest host_losses that a child result, the landing or the sync gate gave: the count of the engine for the tree of the run, and no count of the round.
     At HOST_LOSS_LIMIT or more, and above `acked`, the reason is host-loss. CONTINUE sets `acked` to `seen`, so the round asks again only after a newer loss.
@@ -1107,7 +1107,6 @@ def round(item):
     derive_gate_list(project)
 
     runs = []
-    approved = []
     held = ""
     seen = 0
     acked = 0
@@ -1121,11 +1120,18 @@ def round(item):
             held = synced.reason
             seen = max(seen, synced.host_losses)
 
-        restarted = []
+        landed = False
         if held == "":
             q = queue(name = "round-queue-%d" % n, hold = "hold", label = round_settings["label"])
             queue_audit(item, project, round_settings, n, q)
-            restarted = restarted_approvals(q, round_settings)
+
+            # The round lands from the queue only: the last run of a done row is the one record, whoever started that run. A child lands in the pass after it ended.
+            approved = approved_runs(q, round_settings)
+            landed = len(approved) > 0
+            if landed:
+                seen = max(seen, land(approved, project, round_settings, n))
+                round_integration(project, round_settings, "round-integration-land-%d" % n)
+
             take = ready_items(q, round_settings)
             if len(take) > 0:
                 runs = runs + spawn(items = take, entry = "pipeline", base = round_settings["base"], name = "round-spawn-%d" % n).runs
@@ -1138,19 +1144,9 @@ def round(item):
             for result in ended:
                 if result.ok and result.value != None:
                     seen = max(seen, result.value["host_losses"])
-                    if result.value["approved"]:
-                        approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"], pr = result.value.get("pr", 0)))
 
-        # A run that the round did not start lands with the children of the pass. An item has one last run, so a child that ended in this pass and a row of the queue never name one item twice.
-        approved_items = [a.item for a in approved]
-        approved = approved + [a for a in restarted if a.item not in approved_items]
-
-        if len(approved) > 0:
-            seen = max(seen, land(approved, project, round_settings, n))
-            approved = []
-            round_integration(project, round_settings, "round-integration-land-%d" % n)
-
-        if gathered:
+        # A pass that landed reads the queue again: a landed item is closed, a rejected one is on hold, and the host losses of the landing gate count before the round waits.
+        if gathered or landed:
             continue
 
         # No ready row can move and no child run of this round is open.
