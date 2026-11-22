@@ -18,8 +18,8 @@ example local/prompts/review.md
 example local/prompts/fix.md
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
-# The agent steps keep their own sandbox() from the workflow. The gate runs unsandboxed until #913: a sandboxed gate writes its test_report in a copy that the gate does not read.
-replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+# The sandbox stays on, as in the example. The sandbox reads the folder of the harness wrappers, which lies outside its default read list.
+replace config/projects/local.star 'sandbox = "on",' 'sandbox = "on", sandbox_read = ["'$TOOLS'"],'
 claudemodel fake/claude
 subst fake/claude
 chmod 755 fake/claude
