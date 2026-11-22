@@ -132,6 +132,27 @@ func TestPatch_AWaitDoesNotTakeTheCancelOfAMoveForTheEndOfTheRun(t *testing.T) {
 	assert.Contains(t, run.stalled(time.Now()), "ended with status "+string(dbos.WorkflowStatusCancelled), "a cancel that no move follows is the end of the run")
 }
 
+func TestPatch_AWaitDoesNotTakeTheOpenRunOfAnotherBuildForOneThatParks(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+	run := runOfClient(t, client)
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	require.NotEqual(t, otherBuild, last.Status.ApplicationVersion, "the run is open on the older build, and no move has put it on this build")
+	require.NotEmpty(t, run.parked(time.Now()), "the run sits in a receive window that ends after the bound")
+
+	assert.Empty(t, run.stalled(time.Now()), "the run takes no answer until a move, so the wait does not take it for a stall")
+
+	owner := runOfClient(t, h.client(t, testVersion))
+	assert.Contains(t, owner.stalled(time.Now()), "waits in step", "a wait on the build that started the run still sees it park")
+
+	require.NoError(t, client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem))
+	assert.Empty(t, run.stalled(time.Now()), "the moved run is open on this build")
+}
+
 func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByRunAndNamesTheModuleThatChanged(t *testing.T) {
 	t.Parallel()
 
