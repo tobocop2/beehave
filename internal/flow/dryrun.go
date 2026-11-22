@@ -170,7 +170,7 @@ func dryWalk(ctx context.Context, opts Options, deps Deps, item, file, entry str
 
 	err = engine.Launch() //nolint:contextcheck // the engine owns the context of its runs
 	if err == nil {
-		_, err = engine.runEntry(item, dryProject, file, entry)
+		_, err = engine.runEntry(item, dryProject, file, entry) //nolint:contextcheck // the engine owns the context of its runs
 	}
 
 	return errors.Join(err, engine.Shutdown())

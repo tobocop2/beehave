@@ -608,7 +608,7 @@ func TestLostJob_ContinueAfterTheHostCameBackReadsTheProofBeforeAnyRerun(t *test
 
 	// The calls of the workflow have a colon in their names; the lifecycle steps and the records of the library have none.
 	steps := slices.DeleteFunc(stepNamesOf(t, engine, testRun), func(name string) bool { return !strings.Contains(name, ":") && name != exclusiveName })
-	assert.Equal(t, goldenLostAskSteps, steps, "the steps of the owner wait for a lost gate job changed: the gate steps belong to the gate module and wait:notify to the core module (stepmodules.go)")
+	assert.False(t, unpatchedChange(goldenLostAskSteps, steps), "the steps of the owner wait for a lost gate job changed with no marker: put the change behind a patch. The gate steps belong to the gate module and wait:notify to the core module (stepmodules.go)")
 	assert.EqualValues(t, 1, gateRecordOf(t, engine, testRun, "gate:check#1")[hostLossesKey], "a loss proven after an answer of the owner counts as the first loss of the tree")
 
 	shown, err := dbos.GetEvent[LostJobShown](engine.ctx, testRun, lostJobKey, time.Millisecond)

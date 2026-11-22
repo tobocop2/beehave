@@ -31,7 +31,7 @@ func TestMerge_AMergeOfOnePullRequestTakesTheStepsOfAMergeOfSeveral(t *testing.T
 		}
 	}
 
-	assert.Equal(t, goldenOneMemberSteps, recorded, "one pull request takes the same steps as several, one scope check, one intent and one merge for each member")
+	assert.False(t, unpatchedChange(goldenOneMemberSteps, recorded), "one pull request takes the same steps as several, one scope check, one intent and one merge for each member")
 	assert.Equal(t, []string{"report 1  "}, rig.h.commands.ran(), "the one member is merged and nothing is rejected or deferred")
 	assert.Equal(t, []string{"1"}, rig.merger.landed())
 	assert.Equal(t, "README\none.txt", rig.mainFiles(t), "main holds the one member")

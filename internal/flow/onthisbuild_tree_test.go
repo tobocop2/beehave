@@ -128,7 +128,7 @@ func TestClient_LeaseOfARunThatRecordedNoClaimIsEmpty(t *testing.T) {
 	_, err := sqlOf(t, harness).ExecContext(t.Context(), "UPDATE operation_outputs SET function_name = 'other' WHERE workflow_uuid = ? AND function_name = ?", testRun, string(model.StepClaim))
 	require.NoError(t, err)
 
-	owner, ends, leaseErr := other.leaseOf(mustNewest(t, other))
+	owner, ends, leaseErr := other.leaseOf(t.Context(), mustNewest(t, other))
 
 	require.NoError(t, leaseErr)
 	assert.Empty(t, owner)
@@ -151,7 +151,7 @@ func TestClient_LeaseOfARunWhoseInputCannotBeReadFails(t *testing.T) {
 	last := mustNewest(t, other)
 	last.Status.Input = "not json"
 
-	_, _, err := other.leaseOf(last)
+	_, _, err := other.leaseOf(t.Context(), last)
 
 	require.ErrorContains(t, err, "read the input of run "+testRun)
 }

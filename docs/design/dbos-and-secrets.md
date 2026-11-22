@@ -17,7 +17,8 @@ The state folder is created at 0700 under `umask 077` before DBOS opens `dbos.db
 - an empty Conductor URL and key,
 - no schedule,
 - the JSON serializer,
-- a pinned application version.
+- a pinned application version,
+- `EnablePatching` set to false. `dbos.Patch` works with it false: the flag is deprecated, and it only pins the application version to one fixed name. The [durable loop](durable-loop.md) has the rule for a change to a builtin.
 
 `flow` refuses to start if any `DBOS__*` variable is set.
 
