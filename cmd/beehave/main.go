@@ -55,5 +55,6 @@ func buildInfo(env map[string]string, version string, flow cli.Flow) cli.BuildIn
 		Flow:     flow,
 
 		GateRefusal: enforcers.Refusal,
+		OwnProgram:  ownProgramFor,
 	}
 }

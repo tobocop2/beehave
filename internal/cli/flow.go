@@ -113,6 +113,10 @@ type flowCommands struct {
 	factory  Flow
 	items    map[model.TrackerName]ItemOpener
 	registry config.Adapters
+	// ownProgram builds the effects of the gate command. A nil value leaves the command out.
+	ownProgram OwnProgram
+	// console gives the input of the gate command and says whether the input and the output are a terminal. A nil value reads the process.
+	console Console
 }
 
 func (f flowCommands) add(root *cobra.Command) {
@@ -124,6 +128,10 @@ func (f flowCommands) add(root *cobra.Command) {
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
+	}
+
+	if f.ownProgram != nil {
+		root.AddCommand(f.gateCommand())
 	}
 }
 

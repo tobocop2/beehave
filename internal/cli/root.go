@@ -36,6 +36,10 @@ type BuildInfo struct {
 	Flow Flow
 	// GateRefusal says why a gate does not run here. A nil value reads as: no sandbox enforcer can run here.
 	GateRefusal GateRefusal
+	// OwnProgram builds the effects of the gate command, which judges a pull request with its own gate program. A nil value leaves the command out.
+	OwnProgram OwnProgram
+	// Console gives the input of the gate command and says whether the input and the output are a terminal. A nil value reads the process.
+	Console Console
 }
 
 // newRootCommand builds the command tree. ctx is the context of the commands that call out. env is the process environment, read once by the caller.
@@ -52,7 +56,7 @@ func newRootCommand(ctx context.Context, info BuildInfo, env map[string]string, 
 	root.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
 	root.AddCommand(newCheckCommand(ctx, env, info.Adapters, info.Registry, info.GateRefusal), newDoctorCommand(ctx, env, info.Doctor, info.Registry))
-	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items, registry: info.Registry}
+	commands := flowCommands{ctx: ctx, env: env, version: info.Version, factory: info.Flow, items: info.Items, registry: info.Registry, ownProgram: info.OwnProgram, console: info.Console}
 	commands.add(root)
 	commands.addItems(root)
 
