@@ -47,6 +47,7 @@ flowchart TD
         jobwait["host/jobwait<br/>wait states"]
         sandbox["sandbox<br/>enforcer contract, allow-list proxy, Landlock enforcer"]
         credential["credential<br/>forge token loader, role environment, start probe"]
+        reach["proc/gitexec/reach<br/>the git runner of a call that reaches a remote"]
     end
 
     subgraph L0["Layer 0: foundation"]
@@ -99,6 +100,9 @@ flowchart TD
     credential --> model
     ghforge --> credential
     main --> credential
+    reach --> credential
+    reach --> proc
+    main --> reach
     store --> model
     store --> lockfile
     forge --> model
@@ -136,7 +140,7 @@ Every package imports `model`. `model` imports no beehave package.
 
 Only `proc` starts a process. `forge` and `agent` call it. `store` reaches it through the runner that the composition root passes in.
 
-`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner.
+`proc/gitexec` is the one place that names the git program. Every git call in a tree that beehave manages runs with `core.hooksPath` set to the null device, so a hook in the tree never runs as the owner. The name of the git program and the hooks setting sit in `proc/gitexec/internal/gitbin`, which only `proc/gitexec` and the packages below it import. Code outside that tree gets the local runner from `gitexec.New`, or a runner from `proc/gitexec/reach`, and no exported name of `gitexec` builds any other git runner. The compiler cannot refuse a string, so a runner built with a `"git"` literal, with `model.ToolGit` or with `exec.Command` still compiles. A source test in `gitexec` fails on the first two as a runner `Binary`, in `NewExecRunner` and in `exec.Command`. Review catches any other route, such as a path from `proc.LookPath`. The copy of a head in `cmd/beehave` finds the path of git with `proc.LookPath`, because the sandbox needs the file path to build the read set of upload-pack. `reach` is the one place that builds a git runner that reaches a remote. Its runner type sits in `reach/internal/remote`, which no other package can import. `reach.Runner` picks the writer for a project with credentials and the owner for a project without.
 
 ### File locks and whole-file writes
 

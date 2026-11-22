@@ -59,7 +59,7 @@ func TestProjectGit_AProjectThatTheConfigDoesNotHoldRunsNoGitInAFolderNoCloneKno
 		require.ErrorIs(t, got.SetupErr, gitexec.ErrUnknownRepository, "%s: a project the config does not hold counts as one with a repository", name)
 	}
 
-	got := localRunner(plainProject(), found)("ghost", gitexec.Binary, dir, 0).Run(t.Context(), []string{"rev-parse", "HEAD"})
+	got := localRunner(plainProject(), found)("ghost", "git", dir, 0).Run(t.Context(), []string{"rev-parse", "HEAD"})
 	require.ErrorIs(t, got.SetupErr, gitexec.ErrUnknownRepository, "the project gate head read of a project the config does not hold is pinned")
 }
 

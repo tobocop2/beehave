@@ -56,8 +56,8 @@ type worktrees struct {
 	root     string
 	repos    string
 	projects map[string]config.Project
-	// git runs git in the clone and its worktrees, with the file transport only. remote runs the calls that reach the remote: the first clone, and the
-	// fetch and the read of the branches in the push repository, which reads no setting of the clone config.
+	// git runs git in the clone and its worktrees, with the file transport only. remote replaces the runner of the owner for the calls that reach the
+	// remote of a project with no credentials; nil runs the real one (see reach).
 	git    func(dir string) proc.Runner
 	remote func(dir string) proc.Runner
 	forge  func(model.Project) (forge.Forge, error)
@@ -462,7 +462,7 @@ func (w worktrees) clone(ctx context.Context, project config.Project, dir string
 // reach returns the git runner for a call in dir that reaches the address remote of the project. Every call of the worktrees to a remote picks its runner
 // here, so the engine and the client both run it as the writer of a project that has credentials (see writers.git).
 func (w worktrees) reach(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the worktrees
-	return w.roles.git(w.projects, project, dir, remote, func() proc.Runner { return w.remote(dir) })
+	return w.roles.git(w.projects, project, dir, remote, w.remote, []string{noPromptEnv})
 }
 
 // cloneSource returns what git clones the repository of the project from: its source when the project sets one, else the clone URL of its forge.

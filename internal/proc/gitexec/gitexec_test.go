@@ -13,6 +13,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
 )
 
 // logGit puts a fake git first on PATH. The fake appends its arguments, one call per line, to the file that the function returns.
@@ -72,18 +73,18 @@ func TestRunner_EveryLocalCallTakesTheFileTransportOnlyAndFetchesNoMissingObject
 	assert.Equal(t, strings.Repeat("allow=file lazy=1\n", 4), calls(t, log)+"\n", "no env of the caller widens a local call, the read of the settings included")
 }
 
-func TestNewRemote_ReachesTheRemoteOverTheTransportOfItsAddress(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	log := envGit(t)
+func TestIsGit_AcceptsTheNameOfTheGitProgramOnly(t *testing.T) {
+	t.Parallel()
 
-	gitexec.NewRemote(t.TempDir(), 0).Run(t.Context(), []string{"fetch"})
-
-	assert.Equal(t, "allow=unset lazy=unset", calls(t, log))
+	assert.True(t, gitexec.IsGit("git"))
+	assert.False(t, gitexec.IsGit("gh"))
+	assert.False(t, gitexec.IsGit("/usr/bin/git"))
 }
 
 func TestArgs_PutsTheHooksSettingFirstAndKeepsTheArguments(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"-c", "core.hooksPath=/dev/null", "status", "-s"}, gitexec.Args([]string{"status", "-s"}))
+	assert.Equal(t, []string{"-c", "core.hooksPath=/dev/null", "status", "-s"}, gitbin.Args([]string{"status", "-s"}))
 }
 
 func TestReadConfig_DoesNotSetTheHooksPathItReads(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -96,7 +97,7 @@ func TestReadConfig_DoesNotSetTheHooksPathItReads(t *testing.T) { //nolint:paral
 }
 
 // runnerPattern matches the code that makes a runner or a command for the git program.
-var runnerPattern = regexp.MustCompile(`Binary:\s*"git"|NewExecRunner\("git"|GroupCommand\([^,]+,\s*"git"|exec\.Command(Context)?\([^"\n]*"git"`)
+var runnerPattern = regexp.MustCompile(`Binary:\s*("git"|model\.ToolGit)|NewExecRunner\(("git"|model\.ToolGit)|GroupCommand\([^,]+,\s*("git"|model\.ToolGit)|exec\.Command(Context)?\([^"\n]*("git"|model\.ToolGit)`)
 
 // TestTheGitProgramIsNamedOnlyHere fails when code outside this package makes its own runner for git, because that call would run the hooks of the tree.
 func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
@@ -133,5 +134,5 @@ func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Empty(t, found, "make the runner with gitexec.New or the arguments with gitexec.Args, so the hooks stay off")
+	assert.Empty(t, found, "make the runner with gitexec.New, so the hooks stay off")
 }

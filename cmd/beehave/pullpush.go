@@ -45,7 +45,7 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 // pusher returns the git runner that pushes from the push repository dir to the address remote: the writer of the project when it has credentials, else the
 // runner of the owner (see writers.git).
 func (p pulls) pusher(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
-	return p.writers.git(p.projects, project, dir, remote, func() proc.Runner { return pushGit(dir) }, "GIT_DIR="+dir)
+	return p.writers.git(p.projects, project, dir, remote, nil, pushEnv(dir), "GIT_DIR="+dir)
 }
 
 // pushRemote returns the address that the clone of the project came from. A project with no forge is an error.
@@ -125,11 +125,12 @@ func openPushRepository(ctx context.Context, git proc.Runner, root, dir string) 
 
 // fetchHead opens the push repository dir in root and fetches head from the clone folder onto refs/heads/branch with program as git upload-pack.
 func fetchHead(ctx context.Context, root, dir, folder, program, branch, head string) error {
-	if err := openPushRepository(ctx, pushGit(dir), root, dir); err != nil {
+	git := pushLocal(dir)
+	if err := openPushRepository(ctx, git, root, dir); err != nil {
 		return err
 	}
 
-	out := pushGit(dir).Run(ctx, []string{"fetch", "-q", "--no-tags", "--no-write-fetch-head", "--upload-pack=" + program, folder, "+" + head + ":refs/heads/" + branch})
+	out := git.Run(ctx, []string{"fetch", "-q", "--no-tags", "--no-write-fetch-head", "--upload-pack=" + program, folder, "+" + head + ":refs/heads/" + branch})
 	if out.ExitCode != 0 {
 		return fmt.Errorf("copy %s from the clone: git exited with code %d: %s. The copy reads only the clone folder, so a head that needs an object from outside the clone, "+
 			"through a list of other object stores or a link, is refused", head, out.ExitCode, strings.TrimSpace(out.Stderr))
@@ -138,11 +139,16 @@ func fetchHead(ctx context.Context, root, dir, folder, program, branch, head str
 	return nil
 }
 
-// pushGit runs git in the push repository dir, with the hooks off and no prompt for a password. GIT_DIR names the repository, so git does not look for
-// one in a parent folder. Only the engine writes the push repository, so its runner reaches the remote.
-func pushGit(dir string) proc.Runner { //nolint:ireturn // the runner of the worktrees is the same interface
-	runner := gitexec.NewRemote(dir, proc.DefaultTimeout)
-	runner.Env = []string{"GIT_TERMINAL_PROMPT=0", "GIT_DIR=" + dir}
+// pushEnv returns the environment of a git call in the push repository dir: no prompt for a password, and GIT_DIR names the repository, so git does not
+// look for one in a parent folder.
+func pushEnv(dir string) []string {
+	return []string{noPromptEnv, "GIT_DIR=" + dir}
+}
+
+// pushLocal runs git in the push repository dir with the hooks off and the file transport only: the copy of a head reads the clone folder and no remote.
+func pushLocal(dir string) gitexec.Runner {
+	runner := gitexec.New(dir, proc.DefaultTimeout)
+	runner.Env = pushEnv(dir)
 
 	return runner
 }

@@ -2,25 +2,25 @@
 // that the owner or the project put in a tree never runs as the owner. This package is the one place that names the git binary.
 //
 // A runner from New is local: it allows the file transport only and never fetches a missing object from a promisor remote, so no setting that an agent
-// writes into the git config of a tree can send it to the network with the credential of the owner. Only NewRemote reaches a remote. A runner from
-// Repositories.Runner is local too, and it names the repository of each call from the engine layout and refuses a clone setting outside the allow list.
+// writes into the git config of a tree can send it to the network with the credential of the owner. The package reach builds the runners that reach a remote.
+// A runner from Repositories.Runner is local too, and it names the repository of each call from the engine layout and refuses a clone setting outside the
+// allow list.
 package gitexec
 
 import (
 	"context"
-	"os"
 	"slices"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
 )
 
-// Binary is the name of the git program.
-const Binary = "git"
-
-// hooksOff is the setting that points the hooks folder at an empty place.
-const hooksOff = "core.hooksPath=" + os.DevNull
+// IsGit reports whether name is the name of the git program.
+func IsGit(name string) bool {
+	return name == gitbin.Name
+}
 
 // local returns the environment of a local git call. GIT_ALLOW_PROTOCOL allows the file transport only, and no git config overrides it.
 // GIT_NO_LAZY_FETCH stops the fetch of a missing object from a promisor remote, so a read of a missing object fails. Git 2.45 and later and the
@@ -30,18 +30,12 @@ func local() []string {
 	return []string{"GIT_ALLOW_PROTOCOL=file", "GIT_NO_LAZY_FETCH=1"}
 }
 
-// Args returns args with the setting that turns the hooks off in front of them.
-func Args(args []string) []string {
-	return append([]string{"-c", hooksOff}, args...)
-}
-
 // Runner runs git in a folder with the hooks off. Its fields are those of proc.ExecRunner. Env comes before the local environment, so it cannot widen it.
 type Runner struct {
 	proc.ExecRunner
 
-	remote bool
-	repo   Repository
-	fail   error
+	repo Repository
+	fail error
 }
 
 // Runner returns a local runner for git in the repository of dir. A run sets the repository that Of finds and never one from a file in dir, and it
@@ -55,22 +49,13 @@ func (r Repositories) Runner(dir string, timeout time.Duration) Runner {
 
 // New returns a local runner for git in dir. A zero timeout means no limit.
 func New(dir string, timeout time.Duration) Runner {
-	return Runner{ExecRunner: proc.ExecRunner{Binary: Binary, Dir: dir, Timeout: timeout}}
-}
-
-// NewRemote returns a runner for git in dir that reaches a remote over any transport. Run it only where no agent writes the git config: in a repository
-// that only the engine writes, with --git-dir set, or for a clone into a folder that does not exist yet.
-func NewRemote(dir string, timeout time.Duration) Runner {
-	runner := New(dir, timeout)
-	runner.remote = true
-
-	return runner
+	return Runner{ExecRunner: proc.ExecRunner{Binary: gitbin.Name, Dir: dir, Timeout: timeout}}
 }
 
 // Run runs git with the hooks off. A pinned runner runs no git when its folder is unknown, or the config of its clone cannot be listed or holds a
 // setting outside the allow list.
 func (r Runner) Run(ctx context.Context, args []string) model.CommandResult {
-	return r.run(ctx, Args(args))
+	return r.run(ctx, gitbin.Args(args))
 }
 
 // ReadConfig returns the value that the git config of the repository of the runner holds for key, with the refusals of Run. It reads configuration and
@@ -89,9 +74,7 @@ func (r Runner) run(ctx context.Context, args []string) model.CommandResult {
 	runner := r.ExecRunner
 	runner.Env = append(slices.Clone(r.Env), pin...)
 
-	if !r.remote {
-		runner.Env = append(runner.Env, local()...)
-	}
+	runner.Env = append(runner.Env, local()...)
 
 	return runner.Run(ctx, args)
 }

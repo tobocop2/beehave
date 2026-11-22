@@ -12,6 +12,7 @@ import (
 
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/internal/gitbin"
 )
 
 // exitRefused is the exit code of a pinned call that git did not run: the folder is unknown, the clone config cannot be read, or it holds a setting
@@ -59,7 +60,7 @@ func (r Repository) env() []string {
 // check refuses the repository when its config holds a setting outside the allow list. The listing reads no include and starts no program.
 func (r Repository) check(ctx context.Context, timeout time.Duration) error {
 	config := filepath.Join(r.CommonDir, "config")
-	listing := proc.ExecRunner{Binary: Binary, Dir: r.WorkTree, Timeout: timeout, Env: local()}.
+	listing := proc.ExecRunner{Binary: gitbin.Name, Dir: r.WorkTree, Timeout: timeout, Env: local()}.
 		Run(ctx, []string{"config", "--file", config, "--list", "--name-only", "--null", "--no-includes"})
 
 	if listing.ExitCode != 0 {

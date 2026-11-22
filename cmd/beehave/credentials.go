@@ -16,10 +16,8 @@ import (
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 )
-
-var errCredentialsNotLoaded = errors.New("the credentials of the project are not loaded. Start the engine with beehave run")
 
 // writerRole is the writer credential of one project, read at engine start: the token, and the empty gh config folder that its calls own.
 type writerRole struct {
@@ -128,41 +126,29 @@ func (w *writers) runner(project model.Project) (proc.ExecRunner, error) {
 
 	role, found := w.of(project.Name)
 	if !found {
-		return proc.ExecRunner{}, fmt.Errorf("project %s: %w", project.Name, errCredentialsNotLoaded)
+		return proc.ExecRunner{}, fmt.Errorf("project %s: %w", project.Name, reach.ErrNotLoaded)
 	}
 
 	return forgegithub.RoleRunner(role.token, role.configDir, w.env), nil
 }
 
-// refused is the runner of a call that must not run. It runs nothing and returns the reason as the error text of a failed call.
-type refused struct{ err error }
+// git returns the git runner for a call in dir that reaches the address remote of a project, for the engine and for the client alike. owner is the runner of
+// a project with no credentials, or nil for the runner of the owner with ownerEnv. reach.Runner picks the runner (see there).
+func (w *writers) git(projects map[string]config.Project, project, dir, remote string, owner func(string) proc.Runner, ownerEnv []string, pairs ...string) proc.Runner { //nolint:ireturn // the callers take the interface
+	role, loaded := w.of(project)
+	_, declared := projects[project].Credentials[model.RoleWriter]
 
-// Run returns a failed result that carries the reason.
-func (r refused) Run(context.Context, []string) model.CommandResult {
-	return model.CommandResult{ExitCode: 1, Stderr: r.err.Error(), SetupErr: r.err}
+	return reach.Runner(reach.Call{
+		Project: project, Dir: dir, Remote: remote, Declared: declared, Loaded: loaded, Token: role.token,
+		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv,
+	}, owner)
 }
 
-// git returns the git runner for a call in dir that reaches the address remote of a project. This is the one place that picks the runner of such a call,
-// for the engine and for the client alike. A project with no credentials gets owner. A project with credentials gets the writer: its environment is built
-// from the allow list, the credential helper of the call for the host of remote, and pairs, so no helper, token or ssh agent of the owner reaches git.
-// A project with credentials whose role is not loaded, or whose remote is not an https address, gets a runner that refuses the call.
-func (w *writers) git(projects map[string]config.Project, project, dir, remote string, owner func() proc.Runner, pairs ...string) proc.Runner { //nolint:ireturn // the callers take the interface
-	role, loaded := w.of(project)
-	if _, declared := projects[project].Credentials[model.RoleWriter]; !loaded && !declared {
-		return owner()
+// base returns the environment that a writer call takes its names from. A nil writers holds none.
+func (w *writers) base() map[string]string {
+	if w == nil {
+		return nil
 	}
 
-	if !loaded {
-		return refused{err: fmt.Errorf("project %s: %w", project, errCredentialsNotLoaded)}
-	}
-
-	host, err := credential.HTTPSHost(remote)
-	if err != nil {
-		return refused{err: fmt.Errorf("project %s: %w", project, err)}
-	}
-
-	runner := gitexec.NewRemote(dir, proc.DefaultTimeout)
-	runner.Only = gitexec.RoleEnv(role.token, host, w.env, pairs...)
-
-	return runner
+	return w.env
 }
