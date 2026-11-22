@@ -79,6 +79,12 @@ func (s *script) recv(b *starlark.Builtin, args starlark.Tuple, kwargs []starlar
 	})
 }
 
+// recvWindow is the record of the deadline step of one recv call: the time the wait ends and the topic it waits on. Status reads it while the call waits.
+type recvWindow struct {
+	Until time.Time `json:"until"`
+	Topic string    `json:"topic"`
+}
+
 // recvLimits checks the topic and the timeout of a recv call.
 func recvLimits(topic, timeout string) (time.Duration, error) {
 	if err := workflow.MessageName(topicKeyword, topic); err != nil {
@@ -111,13 +117,13 @@ func (s *script) receive(topic, label string, wait time.Duration) (envelope, boo
 		return got, false, nil
 	}
 
-	deadline, err := runStep(s.e, s.ctx, s.nextName(recvKind, label)+deadlineSuffix, func(context.Context) (time.Time, error) {
-		return s.e.deps.Clock.reading().Add(wait), nil
+	window, err := runStep(s.e, s.ctx, s.nextName(recvKind, label)+deadlineSuffix, func(context.Context) (recvWindow, error) {
+		return recvWindow{Until: s.e.deps.Clock.reading().Add(wait), Topic: topic}, nil
 	})
 
 	got, timedOut := envelope{}, false
 	if err == nil {
-		got, timedOut, err = s.await(topic, deadline)
+		got, timedOut, err = s.await(topic, window.Until)
 	}
 
 	return got, timedOut, err

@@ -675,6 +675,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run` or `tree`. The step waits until the cap is raised and beehave restarts. |
 | `waits for the <kind> limit <window> of login <login> until <time>` | A provider limit holds an agent step of the open run. The step runs again after that time. |
 | `now <step>` | The step that an open run is in. A run that asks a question shows the question in place of the step and, when the `wait` has a `timeout`, `answer by <time>`. |
+| `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |
 | `gate pass at <head>` or `gate fail at <head>` | The newest gate result and the head it judged. |
 | The latest label, such as `review 3/24` | The `label` of the latest agent call that has one. The review loop of the library labels its reviews with the count against `rounds * (MAX_INNER + 1)` and its fixes with the count against `rounds * MAX_INNER`. |
 
@@ -687,6 +688,7 @@ Every value is read from the step records, the events and the options of the cli
 - `cap_stop` and `limit_wait`, while a cap or a provider limit holds a step
 - `now`
 - `deadline`
+- `receiving`: the topic that an open run waits on in a `recv` call. It is left out for a run that waits in no `recv`.
 - `gate` (`passed`, `head`)
 - `label`: the latest label of the run
 - `cost_usd` on each agent step

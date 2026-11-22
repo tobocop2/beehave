@@ -573,7 +573,7 @@ func openChildren(records []dbos.StepInfo) []string {
 // openName names the call that the records belong to, from the first record that carries the name of the call. A gate that waits for its queue has no such record.
 func openName(pending []dbos.StepInfo) string {
 	for _, record := range pending {
-		if base, _, _ := strings.Cut(record.StepName, "/"); callName.MatchString(base) {
+		if base, _, _ := strings.Cut(callOf(record.StepName), "/"); callName.MatchString(base) {
 			return base
 		}
 	}
