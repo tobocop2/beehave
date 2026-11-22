@@ -15,6 +15,7 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 	"github.com/tobocop2/beehave/internal/roundcut"
 	"github.com/tobocop2/beehave/internal/roundintegration"
 	"github.com/tobocop2/beehave/internal/roundsync"
@@ -263,7 +264,7 @@ func TestRoundWrites_ATakeInAProjectWhoseWriterIsNotLoadedFailsBeforeAnyRead(t *
 
 	_, err := roundWrites{pulls: pull}.Take(t.Context(), "p", flow.TakeRequest{})
 
-	require.ErrorIs(t, err, errCredentialsNotLoaded)
+	require.ErrorIs(t, err, reach.ErrNotLoaded)
 }
 
 func TestClaimHeld_PassesBecauseTheEngineWritesOnlyUnderTheClaimOfTheRun(t *testing.T) {
