@@ -62,8 +62,8 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
-github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261120141849-e7cfe7c0ecb5 h1:JHoszFzBYwMAPL/J33QTY+MOxZBikwdr9nn1RdjmxPs=
-github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261120141849-e7cfe7c0ecb5/go.mod h1:Khazi13ysVF4Y7zfsERKk1u99Pu0RIawAoRC5OusAP8=
+github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261122030834-8edc67d95aa0 h1:fRHzvrKVo5Bx0tZcDZjWlubiWE56YwLjEm1nsgtAhOM=
+github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261122030834-8edc67d95aa0/go.mod h1:Khazi13ysVF4Y7zfsERKk1u99Pu0RIawAoRC5OusAP8=
 go.starlark.net v0.0.0-20261021141710-4f4267fb140d h1:wmJ4xTYwnBup3nwA+3OtmpaCwd90YXVyyCHZQoiD0+0=
 go.starlark.net v0.0.0-20261021141710-4f4267fb140d/go.mod h1:Iue6g6iirlfLoVi/DYCi5/x0h/bAOuWF3dULTKpt2Vo=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
