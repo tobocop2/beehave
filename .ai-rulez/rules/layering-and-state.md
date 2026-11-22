@@ -14,7 +14,7 @@ x-ai-rulez:
 
 The engine is under `internal/` (and the one `cmd/beehave` root). A package imports its own layer and lower layers, never a higher one. `depguard` in `.golangci.yml` fails an upward import.
 
-The method tools are under `examples/remediation/tools/`, in the same Go module. A file under `internal/` or `cmd/beehave/` never imports `examples/`. The rule has no exception, test files included; the scripts that run `remedy` are a test under `examples/remediation/tools/cmd/remedy`. A package under `examples/` may import any layer of `internal/`. Only `examples/remediation/tools/cmd/remedy` imports a backend (`forge/github`). The other packages of the tools take a collaborator through an interface, as the engine does. `remedy` is a second binary: `make build` makes `bin/remedy`, and the release archive and the Homebrew cask hold both binaries.
+The method tools are under `examples/remediation/tools/`, in the same Go module. A file under `internal/` or `cmd/beehave/` never imports `examples/`. The rule has no exception, test files included; the scripts that run `remedy` are a test under `examples/remediation/tools/cmd/remedy`. A package under `examples/` may import any layer of `internal/`. Only `examples/remediation/tools/cmd/remedy` imports a backend (`forge/github`). The other packages of the tools take a collaborator through an interface, as the engine does. `remedy` is a second binary: `make remedy` makes `bin/remedy`, and the release archive and the Homebrew cask hold `beehave` only.
 
 | Layer | Packages | Holds |
 |---|---|---|

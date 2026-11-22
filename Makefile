@@ -76,7 +76,7 @@ REMEDY := bin/remedy
 
 DEADCODE_VERSION := golang.org/x/tools/cmd/deadcode@v0.51.0
 
-.PHONY: setup lint-version ai-rulez-version ai-rulez-install contract-tools-install deps deadcode build goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
+.PHONY: setup lint-version ai-rulez-version ai-rulez-install contract-tools-install deps deadcode build remedy goreleaser-install release-snapshot format format-check lint lint-darwin vet vuln test coverage smoke smoke-agent smoke-hook smoke-sandbox mutation mutation-pr \
 	governance-generate governance-validate governance-verify clean check check-darwin
 
 setup:  ## Install the Go tools and generate the agent files
@@ -91,8 +91,10 @@ setup:  ## Install the Go tools and generate the agent files
 	$(MAKE) goreleaser-install
 	$(MAKE) governance-generate
 
-build:  ## Build bin/beehave and bin/remedy
+build: remedy  ## Build bin/beehave and bin/remedy
 	go build -trimpath -o $(BIN) ./cmd/beehave
+
+remedy:  ## Build bin/remedy, the tool of the remediation example (not part of the release)
 	go build -trimpath -o $(REMEDY) ./examples/remediation/tools/cmd/remedy
 
 goreleaser-install:  ## Install goreleaser $(GORELEASER_VERSION) into the Go bin folder
