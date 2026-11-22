@@ -13,13 +13,27 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/exectest"
-	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/flow"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	storegithub "github.com/tobocop2/beehave/internal/store/github"
 )
 
-const writerToken = "writer-token-value"
+const (
+	writerToken = "writer-token-value"
+	// testPath holds git and env on every machine that runs the tests.
+	testPath = "/usr/bin:/bin"
+)
+
+// loosen gives the token file of the home folder the mode 0644, which the loader refuses.
+func loosen(t *testing.T, home string) {
+	t.Helper()
+
+	mode := os.FileMode(0o644)
+	require.NoError(t, os.Chmod(filepath.Join(home, ".config", "beehave", "credentials", "writer.token"), mode))
+}
 
 // writerHome makes a home folder with the writer token file and returns the options of an engine that runs with it and the config of a project that names the file.
 func writerHome(t *testing.T) (config.Config, flow.Options) {
@@ -28,11 +42,11 @@ func writerHome(t *testing.T) (config.Config, flow.Options) {
 	home := evaluated(t, t.TempDir())
 	folder := filepath.Join(home, ".config", "beehave", "credentials")
 	require.NoError(t, os.MkdirAll(folder, 0o700))
-	require.NoError(t, os.Chmod(folder, 0o700))
+	require.NoError(t, exectest.ChmodFolder(folder, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(folder, "writer.token"), []byte(writerToken+"\n"), 0o600))
 
 	project := model.Project{Name: "p", Repo: "o/r", Credentials: map[model.Role]model.Credential{model.RoleWriter: {File: "~/.config/beehave/credentials/writer.token"}}}
-	opts := flow.Options{StateDir: evaluated(t, t.TempDir()), Env: map[string]string{"HOME": home, "PATH": os.Getenv("PATH")}}
+	opts := flow.Options{StateDir: evaluated(t, t.TempDir()), Env: map[string]string{"HOME": home, "PATH": testPath}}
 
 	return config.Config{Projects: map[string]config.Project{"p": {Project: project}}}, opts
 }
@@ -82,7 +96,7 @@ func TestWritersStart_ARefusedCredentialStopsTheStartAndNamesTheProject(t *testi
 	t.Parallel()
 
 	cfg, opts := writerHome(t)
-	require.NoError(t, os.Chmod(filepath.Join(opts.Env["HOME"], ".config", "beehave", "credentials", "writer.token"), 0o644))
+	loosen(t, opts.Env["HOME"])
 
 	err := (&writers{}).start(t.Context(), cfg, opts)
 
@@ -114,8 +128,8 @@ func TestWritersStart_TheProbeRefusesToStartWhenAnAllowedNameHoldsTheWriterToken
 func TestProbe_AChildThatTheEngineStartsDoesNotGetATokenThatThePlantedEnvironmentHolds(t *testing.T) {
 	t.Parallel()
 
-	planted := map[string]string{
-		"PATH": os.Getenv("PATH"), "GH_TOKEN": "planted-gh-token", "GITHUB_TOKEN": "planted-github-token", "GITLAB_TOKEN": "planted-gitlab-token",
+	planted := map[string]string{ //nolint:gosec // G101: the values are planted test strings, not credentials
+		"PATH": testPath, "GH_TOKEN": "planted-gh-token", "GITHUB_TOKEN": "planted-github-token", "GITLAB_TOKEN": "planted-gitlab-token",
 		"GH_ENTERPRISE_TOKEN": "planted-enterprise", "CI_JOB_TOKEN": "planted-ci", "SSH_AUTH_SOCK": "/planted/agent.sock",
 	}
 
@@ -181,7 +195,7 @@ func TestNewEngine_ARefusedCredentialStopsTheEngineBeforeItStarts(t *testing.T) 
 	t.Parallel()
 
 	cfg, opts := writerHome(t)
-	require.NoError(t, os.Chmod(filepath.Join(opts.Env["HOME"], ".config", "beehave", "credentials", "writer.token"), 0o644))
+	loosen(t, opts.Env["HOME"])
 
 	_, err := newEngine(t.Context(), cfg, opts)
 	require.ErrorContains(t, err, "project p: the writer credential")
@@ -200,7 +214,7 @@ func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfT
 	hook := "#!/bin/sh\nprintf '%s|%s|%s|%s|%s\\n' \"${GIT_CONFIG_GLOBAL:-unset}\" \"${GH_TOKEN:-unset}\" \"${GITHUB_TOKEN:-unset}\" \"${SSH_AUTH_SOCK:-unset}\" \"${BEEHAVE_FORGE_TOKEN:-unset}\" >> " + seen + "\nexit 0\n"
 	require.NoError(t, exectest.Write(filepath.Join(rig.remote, "hooks", "pre-receive"), hook))
 
-	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": os.Getenv("PATH")}}
+	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
 
 	require.NoError(t, rig.pulls.Push(t.Context(), "p", pushItem, pushItem, rig.head, ""))
 
@@ -208,6 +222,75 @@ func TestPulls_PushOfAProjectWithCredentialsRunsGitAsTheWriterAndNoCredentialOfT
 	require.NoError(t, err)
 	assert.Equal(t, "/dev/null|unset|unset|unset|"+writerToken, strings.TrimSpace(string(got)))
 	assert.Equal(t, rig.head, rig.remoteHead(t))
+}
+
+func TestWritersStart_ASourceInTheFormOfAnSSHAddressIsRefusedAndAnHTTPSOrLocalSourceIsNot(t *testing.T) {
+	t.Parallel()
+
+	for source, refused := range map[string]bool{
+		"git@github.com:o/r.git": true, "ssh://git@github.com/o/r.git": true, "git+ssh://github.com/o/r.git": true,
+		"https://github.com/o/r.git": false, "/srv/repo": false, "": false, "file:///srv/repo": false,
+	} {
+		cfg, opts := writerHome(t)
+		project := cfg.Projects["p"]
+		project.Source = source
+		cfg.Projects["p"] = project
+
+		err := (&writers{}).start(t.Context(), cfg, opts)
+
+		if refused {
+			require.ErrorIs(t, err, errSSHSource, source)
+			require.ErrorContains(t, err, "project p:")
+		} else {
+			require.NoError(t, err, source)
+		}
+	}
+}
+
+func TestWorktrees_AGitCallToTheRemoteOfAProjectWithCredentialsRunsAsTheWriterAndOtherProjectsKeepTheirRunner(t *testing.T) {
+	t.Parallel()
+
+	owner := &fakeGit{}
+	trees := worktrees{remote: owner.runner, roles: &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath, "HOME": "/owner"}}}
+
+	role, isGit := trees.reach("p", "/clone").(gitexec.Runner)
+	require.True(t, isGit, "a project with credentials reaches its remote through the writer runner")
+	assert.Contains(t, role.Only, "GIT_CONFIG_GLOBAL=/dev/null")
+	assert.Contains(t, role.Only, "BEEHAVE_FORGE_TOKEN="+writerToken)
+	assert.NotContains(t, strings.Join(role.Only, "\n"), "HOME=")
+
+	_ = trees.reach("q", "/clone").Run(t.Context(), []string{"fetch"})
+	assert.Len(t, owner.calls, 1, "a project with no credentials keeps the runner of the owner")
+
+	_ = worktrees{remote: owner.runner}.reach("p", "/clone").Run(t.Context(), []string{"fetch"})
+	assert.Len(t, owner.calls, 2, "a table with no writers keeps the runner of the owner")
+}
+
+func TestAdapters_TheWorktreesOfTheEngineShareTheWritersOfTheTable(t *testing.T) {
+	t.Parallel()
+
+	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(t.TempDir()), map[string]string{})
+	trees := table.worktrees(map[string]config.Project{}, flow.Options{StateDir: t.TempDir()})
+
+	assert.Same(t, table.writers, trees.roles)
+}
+
+func TestWorktrees_TheCloneOfAProjectWithCredentialsReachesTheRemoteThroughTheWriterRunner(t *testing.T) {
+	t.Parallel()
+
+	rig := newPushRig(t)
+	trees := rig.pulls.trees
+	trees.roles = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
+	trees.remote = func(string) proc.Runner { panic("the clone used the runner of the owner") }
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	require.NoError(t, os.MkdirAll(trees.repos, 0o700))
+	require.NoError(t, trees.clone(t.Context(), rig.pulls.projects["p"], clone))
+	assert.DirExists(t, filepath.Join(clone, ".git"))
+
+	heads, err := trees.Heads(t.Context(), "p")
+	require.NoError(t, err)
+	assert.Contains(t, heads, "refs/heads/main")
 }
 
 func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *testing.T) {

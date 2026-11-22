@@ -171,9 +171,11 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 // trackerEntries returns the tracker entries.
 func trackerEntries(bd proc.Runner, state func() (string, error), roles *writers) map[model.TrackerName]trackerAdapter {
 	return map[model.TrackerName]trackerAdapter{
-		local.Tracker:       localTracker(state),
-		beads.Tracker:       {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
-		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newIssues(roles, project) }},
+		local.Tracker: localTracker(state),
+		beads.Tracker: {registration: beadsRegistration(bd), build: func(_ context.Context, project model.Project) (store.Tracker, error) { return newBeads(bd, project) }},
+		storegithub.Tracker: {registration: githubRegistration(storegithub.Tool), build: func(_ context.Context, project model.Project) (store.Tracker, error) {
+			return newIssues(roles, project)
+		}},
 	}
 }
 

@@ -1,7 +1,6 @@
 package gitexec_test
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -15,7 +14,7 @@ import (
 func TestRoleEnv_GitAsksTheCredentialHelperOfTheCallAndTheTokenGoesByTheEnvironment(t *testing.T) {
 	t.Setenv("GIT_ASKPASS", "")
 
-	env := gitexec.RoleEnv("role-token", map[string]string{"PATH": os.Getenv("PATH"), "HOME": "/owner"})
+	env := gitexec.RoleEnv("role-token", map[string]string{"PATH": "/usr/bin:/bin", "HOME": "/owner"})
 	require.NotContains(t, strings.Join(env, "\n"), "HOME=")
 
 	fill := exec.CommandContext(t.Context(), "git", "credential", "fill")

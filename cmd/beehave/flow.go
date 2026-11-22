@@ -178,7 +178,7 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 
 // depsOn builds the deps of the engine over a pool pick and a table of adapters.
 func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
-	trees := newWorktrees(cfg.Projects, opts, table.forge)
+	trees := table.worktrees(cfg.Projects, opts)
 	life := newLife(cfg, table, trees)
 	folders := &fstree.Folders{}
 	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
@@ -281,6 +281,14 @@ func newLife(cfg config.Config, table adapters, trees worktrees) itemLife {
 		leases: leases{projects: cfg.Projects, rows: table.leases, owner: ownerToken},
 		pulls:  pulls{projects: cfg.Projects, forge: table.forge, runners: runners, trees: trees, copier: newHeadCopy(), writers: table.writers},
 	}
+}
+
+// worktrees returns the worktrees of the engine. Their calls to a remote run as the writer of a project that has credentials.
+func (a adapters) worktrees(projects map[string]config.Project, opts flow.Options) worktrees {
+	trees := newWorktrees(projects, opts, a.forge)
+	trees.roles = a.writers
+
+	return trees
 }
 
 // newWorktrees finds item worktrees in the trees folder of the state folder. It adds a missing one from the clone of the project in the repos folder.

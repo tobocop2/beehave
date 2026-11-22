@@ -61,6 +61,8 @@ type worktrees struct {
 	git    func(dir string) proc.Runner
 	remote func(dir string) proc.Runner
 	forge  func(model.Project) (forge.Forge, error)
+	// roles gives a call that reaches the remote of a project the writer role of that project. A project with none reaches it as the owner.
+	roles *writers
 }
 
 // Ensure returns the worktree of the item. An item with no worktree gets one, cut from base on a new branch named for the item.
@@ -361,7 +363,7 @@ type pushRepo struct {
 // push repository.
 func (w worktrees) openPush(ctx context.Context, project string) (pushRepo, error) {
 	root, dir := pushRepository(w.repos, project)
-	repo := pushRepo{git: w.remote(dir), dir: dir}
+	repo := pushRepo{git: w.reach(project, dir), dir: dir}
 
 	return repo, openPushRepository(ctx, repo.git, root, dir)
 }
@@ -453,7 +455,16 @@ func (w worktrees) clone(ctx context.Context, project config.Project, dir string
 		return err
 	}
 
-	return gitExit("clone", w.repos, w.remote(w.repos).Run(ctx, []string{"clone", remote, dir}))
+	return gitExit("clone", w.repos, w.reach(project.Name, w.repos).Run(ctx, []string{"clone", remote, dir}))
+}
+
+// reach returns the git runner for a call in dir that reaches the remote of the project: the writer of the project when it has credentials, else the runner of the owner.
+func (w worktrees) reach(project, dir string) proc.Runner { //nolint:ireturn // both runners are the interface of the worktrees
+	if runner, found := w.roles.gitRunner(project, dir); found {
+		return runner
+	}
+
+	return w.remote(dir)
 }
 
 // cloneSource returns what git clones the repository of the project from: its source when the project sets one, else the clone URL of its forge.

@@ -31,23 +31,34 @@ func (c *credentials) Unpack(v starlark.Value) error {
 	found := credentials{}
 
 	for _, item := range dict.Items() {
-		role, isText := starlark.AsString(item[0])
-		if !isText || model.Role(role) != model.RoleWriter {
-			return fmt.Errorf("the key %s is not a role. The only role is %q", item[0], model.RoleWriter)
+		role, block, err := entry(item[0], item[1])
+		if err != nil {
+			return err
 		}
 
-		held, isBlock := item[1].(*value[model.Credential])
-		if !isBlock {
-			return fmt.Errorf("the role %q got %s, want credential(...)", role, describe(item[1]))
-		}
-
-		held.made.held = true
-		found[model.Role(role)] = *held.block
+		found[role] = block
 	}
 
 	*c = found
 
 	return nil
+}
+
+// entry checks one key and value of the dict and marks the block as held.
+func entry(key, val starlark.Value) (model.Role, model.Credential, error) {
+	role, isText := starlark.AsString(key)
+	if !isText || model.Role(role) != model.RoleWriter {
+		return "", model.Credential{}, fmt.Errorf("the key %s is not a role. The only role is %q", key, model.RoleWriter)
+	}
+
+	held, isBlock := val.(*value[model.Credential])
+	if !isBlock {
+		return "", model.Credential{}, fmt.Errorf("the role %q got %s, want credential(...)", role, describe(val))
+	}
+
+	held.made.held = true
+
+	return model.Role(role), *held.block, nil
 }
 
 // credentialBuiltin makes the credential constructor. It builds a block that the credentials argument of the project call holds.

@@ -44,7 +44,7 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 
 // pusher returns the git runner that pushes from the push repository dir: the writer of the project when it has credentials, else the runner of the owner.
 func (p pulls) pusher(project, dir string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
-	if runner, found := p.writers.pushRunner(project, dir); found {
+	if runner, found := p.writers.gitRunner(project, dir, "GIT_DIR="+dir); found {
 		return runner
 	}
 

@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	homeFolder    = "~/"
-	tokenFolder   = ".config/beehave/credentials"
+	homePrefix    = "~/"
+	storeFolder   = ".config/beehave/credentials"
 	fileMode      = 0o600
 	folderMode    = 0o700
 	commandLimit  = 30 * time.Second
@@ -27,29 +27,33 @@ const (
 )
 
 var (
-	errEmpty   = errors.New("the credential gave an empty token")
+	errEmpty     = errors.New("the credential gave an empty token")
 	errMultiline = errors.New("the credential gave a token of more than one line")
 )
 
 // Load reads the token that the credential names. env is the environment of the engine: it gives the home folder for a file, and the path and home for a command.
 // A file must lie in ~/.config/beehave/credentials, have mode 0600 and belong to the user, in a folder of mode 0700. A command runs once with no shell and sees only PATH, HOME and USER.
 func Load(ctx context.Context, cred model.Credential, env map[string]string) (string, error) {
-	var (
-		token string
-		err   error
-	)
-
-	if len(cred.Command) > 0 {
-		token, err = fromCommand(ctx, cred.Command, env)
-	} else {
-		token, err = fromFile(cred.File, env[homeVariable])
-	}
-
+	text, err := read(ctx, cred, env)
 	if err != nil {
 		return "", err
 	}
 
-	token = strings.TrimSpace(token)
+	return oneLine(text)
+}
+
+// read returns the text that the source of the credential gives.
+func read(ctx context.Context, cred model.Credential, env map[string]string) (string, error) {
+	if len(cred.Command) > 0 {
+		return fromCommand(ctx, cred.Command, env)
+	}
+
+	return fromFile(cred.File, env[homeVariable])
+}
+
+// oneLine returns the trimmed text. It refuses an empty text and a text of more than one line.
+func oneLine(text string) (string, error) {
+	token := strings.TrimSpace(text)
 
 	switch {
 	case token == "":
@@ -81,32 +85,35 @@ func fromFile(path, home string) (string, error) {
 		return "", errors.New("the credential file needs the HOME variable, which is empty")
 	}
 
-	if rest, found := strings.CutPrefix(path, homeFolder); found {
+	if rest, found := strings.CutPrefix(path, homePrefix); found {
 		path = filepath.Join(home, rest)
 	}
-
-	root := filepath.Join(home, tokenFolder)
 
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", fmt.Errorf("the credential file: %w", err)
 	}
 
-	if err = within(root, resolved); err != nil {
+	if err = checkFile(filepath.Join(home, storeFolder), resolved); err != nil {
 		return "", err
 	}
 
-	if err = owned(filepath.Dir(resolved), folderMode, true, os.Getuid()); err != nil {
-		return "", err
-	}
-
-	if err = owned(resolved, fileMode, false, os.Getuid()); err != nil {
-		return "", err
-	}
-
-	text, err := os.ReadFile(resolved) //nolint:gosec // the path is inside the credential folder, checked above
+	text, err := os.ReadFile(resolved)
 
 	return string(text), err //nolint:wrapcheck // the error of the read names the path
+}
+
+// checkFile refuses a file that is not inside the folder root, or a file or folder that has the wrong kind, owner or mode.
+func checkFile(root, resolved string) error {
+	if err := within(root, resolved); err != nil {
+		return err
+	}
+
+	if err := owned(filepath.Dir(resolved), folderMode, true, os.Getuid()); err != nil {
+		return err
+	}
+
+	return owned(resolved, fileMode, false, os.Getuid())
 }
 
 // within refuses a path that is not inside the folder root, after links are resolved.

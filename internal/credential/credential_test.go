@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/credential"
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -20,7 +21,7 @@ func home(t *testing.T) (string, map[string]string) {
 
 	folder := filepath.Join(dir, ".config", "beehave", "credentials")
 	require.NoError(t, os.MkdirAll(folder, 0o700))
-	require.NoError(t, os.Chmod(folder, 0o700))
+	require.NoError(t, exectest.ChmodFolder(folder, 0o700))
 
 	return dir, map[string]string{"HOME": dir, "PATH": "/usr/bin:/bin", "USER": "u"}
 }
@@ -63,10 +64,10 @@ func TestLoad_AFileIsRefusedForItsModeItsPlaceItsOwnerItsKindOrItsText(t *testin
 
 	require.ErrorContains(t, load(path, env), "has mode 644, want 600")
 
-	require.NoError(t, os.Chmod(path, 0o600))
-	require.NoError(t, os.Chmod(filepath.Dir(path), 0o755))
+	require.NoError(t, os.Chmod(path, os.FileMode(0o600)))
+	require.NoError(t, exectest.ChmodFolder(filepath.Dir(path), 0o755))
 	require.ErrorContains(t, load(path, env), "want 700")
-	require.NoError(t, os.Chmod(filepath.Dir(path), 0o700))
+	require.NoError(t, exectest.ChmodFolder(filepath.Dir(path), 0o700))
 
 	outside := filepath.Join(dir, "other.token")
 	require.NoError(t, os.WriteFile(outside, []byte("tok-1"), 0o600))
