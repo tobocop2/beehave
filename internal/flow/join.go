@@ -61,22 +61,64 @@ func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
 	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
 }
 
-// moveIfOtherBuild moves the open run of the plan to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
+// moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
 // so the run moves only when every module that the run used has the same version here, and the refusal names the module.
-func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item string, open run) error {
+// The read of the run, the check and the move run under probe.lock, so a second mover waits, reads the run on this build and moves nothing.
+func (c *Client) moveIfOtherBuild(ctx context.Context, plan attemptPlan, item string) error {
 	if !plan.Move {
 		return nil
 	}
 
-	if err := c.requireMovable(ctx, item, open); err != nil {
-		if errors.Is(err, errStranded) {
-			return fmt.Errorf("%w. The run started under version %s and this is %s", err, open.Status.ApplicationVersion, c.version)
-		}
+	return c.underProbe(func() error { return c.moveHeld(ctx, item) })
+}
 
+// moveHeld is the move while probe.lock is held. It reads the run again: a run that another mover already put on this build needs no move.
+func (c *Client) moveHeld(ctx context.Context, item string) error {
+	last, err := c.newest(item)
+	if err != nil || last.Status.ApplicationVersion == c.version {
 		return err
 	}
 
-	return c.moveOpen(item, open) //nolint:contextcheck // the cancel and the release of a move bound their own work, as beehave resume --on-this-build does with no context
+	if last.terminal() {
+		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", errWrongState, last.Status.ID, item)
+	}
+
+	if err := c.requireMovable(ctx, item, last); err != nil {
+		return namedVersions(err, last, c.version)
+	}
+
+	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
+	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
+		return err
+	}
+
+	return c.reopenHeld(item, last) //nolint:contextcheck // see the comment above
+}
+
+// namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
+func namedVersions(err error, stored run, version string) error {
+	if !errors.Is(err, errStranded) {
+		return err
+	}
+
+	return fmt.Errorf("%w. The run started under version %s and this is %s", err, stored.Status.ApplicationVersion, version)
+}
+
+// reopenHeld takes a fresh claim and rewinds the canceled run onto this build. The caller holds probe.lock.
+func (c *Client) reopenHeld(item string, last run) error {
+	project, owner, err := c.takeClaim(item, last)
+	if err == nil {
+		err = c.rewindHere(last)
+		if err != nil {
+			err = errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
+		}
+	}
+
+	if err != nil {
+		return canceledNotMoved(item, last, err)
+	}
+
+	return nil
 }
 
 // EngineRuns reports whether an engine holds the state folder, as beehave serve or another beehave run does.
@@ -129,7 +171,7 @@ func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.Workflow
 		return nil, err
 	}
 
-	if err := c.moveIfOtherBuild(ctx, plan, in.Item, last); err != nil {
+	if err := c.moveIfOtherBuild(ctx, plan, in.Item); err != nil {
 		return nil, err
 	}
 

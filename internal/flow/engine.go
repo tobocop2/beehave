@@ -727,7 +727,7 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 
 // startOrJoin does what the plan says: it moves the run of another build to this build and joins it, joins the open run, or starts the next attempt.
 func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found bool) (dbos.WorkflowHandle[ItemResult], error) {
-	if err := e.asClient().moveIfOtherBuild(e.ctx, plan, in.Item, last); err != nil {
+	if err := e.asClient().moveIfOtherBuild(e.ctx, plan, in.Item); err != nil {
 		return nil, err
 	}
 

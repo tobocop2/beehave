@@ -47,10 +47,15 @@ func (c *Client) moveOpen(item string, last run) error {
 	}
 
 	if err := c.reopenHere(item, last); err != nil {
-		return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run beehave resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
+		return canceledNotMoved(item, last, err)
 	}
 
 	return nil
+}
+
+// canceledNotMoved names a run that a move canceled and could not reopen, and how to try again.
+func canceledNotMoved(item string, last run, err error) error {
+	return fmt.Errorf("run %s is now canceled and still stored under version %s: %w. Run beehave resume %s --on-this-build again", last.Status.ID, last.Status.ApplicationVersion, err, item)
 }
 
 // requireMovable refuses a run that cannot move to this build: one recorded under another step list, a finished one, one whose holder is alive, and one whose files changed.
@@ -236,20 +241,22 @@ func (c *Client) reopenHere(item string, last run) error {
 		return err
 	}
 
-	restamp := dbos.WithRewindApplicationVersion(c.version)
-
 	// probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
-	err = c.underProbe(func() error {
-		err := c.reopenCanceledPhases(last.Status.ID, restamp)
-		if err == nil {
-			err = c.reopen(last.Status.ID, restamp)
-		}
-
-		return err
-	})
+	err = c.underProbe(func() error { return c.rewindHere(last) })
 	if err != nil {
 		return errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
 	}
 
 	return nil
+}
+
+// rewindHere rewinds the phases that the cancel reached and the run onto this build. The caller holds probe.lock.
+func (c *Client) rewindHere(last run) error {
+	restamp := dbos.WithRewindApplicationVersion(c.version)
+
+	if err := c.reopenCanceledPhases(last.Status.ID, restamp); err != nil {
+		return err
+	}
+
+	return c.reopen(last.Status.ID, restamp)
 }

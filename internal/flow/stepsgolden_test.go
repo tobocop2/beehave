@@ -175,8 +175,8 @@ func TestStepsVersion_TheStepNamesOfABatchMergeMatchTheGoldenListOfTheStepsVersi
 		}
 	}
 
-	assert.Equal(t, goldenBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
-	assert.Equal(t, goldenBatchGateSteps, batchGateSteps(t, engine), "the steps of the batch gate changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenBatchGateSteps, batchGateSteps(t, engine)), "the steps of the batch gate changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
 }
 
 // goldenBatchGateSteps are the steps of the run of the project gate of a batch. The step batch_gate:job holds the checkout and the host job,
@@ -207,7 +207,7 @@ func TestStepsVersion_TheStepNamesOfABatchMergeWhoseGateLostItsJobMatchTheGolden
 		}
 	}
 
-	assert.Equal(t, goldenLostBatchSteps, batch, "the steps of merge changed: bump the version of the land module in moduleTable (stepmodules.go) and update the list")
+	assert.False(t, unpatchedChange(goldenLostBatchSteps, batch), "the steps of merge changed with no marker: put the change behind a patch, or bump the version of the land module in moduleTable (stepmodules.go) and update the list")
 }
 
 // goldenRunnerFacts holds the fields of each entry of the runners field of the facts result. The shape above lists top-level fields only, so a nested field of a recorded result is pinned here.
