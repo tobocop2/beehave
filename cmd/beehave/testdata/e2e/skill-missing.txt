@@ -170,5 +170,5 @@ esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
 -- fake/remedy --
 #!/bin/sh
-# The remedy tool of the round runs only the read-only steps (report and gatelist). Both pass. The forge writes run in the engine, on the forge of the script.
+# The remedy tool of the round runs only the read-only report step, which passes. The gate list is `beehave check gate-list`, which these rounds do not call. The forge writes run in the engine, on the forge of the script.
 exit 0

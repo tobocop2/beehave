@@ -1,4 +1,4 @@
-package gate_test
+package githubactions_test
 
 import (
 	"testing"
@@ -6,7 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/gate"
+	"github.com/tobocop2/beehave/internal/ci"
+	"github.com/tobocop2/beehave/internal/ci/githubactions"
 )
 
 // readOnlyFile is the top of a workflow file whose token of the run can only read.
@@ -42,7 +43,7 @@ func structuralForms() map[string]string {
 		"local composite action":  formUses("./.github/actions/release", ""),
 		"reusable workflow":       formJobs("  rel:\n    uses: o/r/.github/workflows/release.yaml@main\n    secrets: inherit\n"),
 		"local reusable workflow": formJobs("  rel:\n    uses: ./.github/workflows/release.yaml\n"),
-		"shell python":            formStep("      - shell: python\n        run: |\n          import subprocess\n          subprocess.run(['git','push'])\n"),
+		"shell ruby":              formStep("      - shell: ruby {0}\n        run: |\n          system('git push')\n"),
 		"shell pwsh":              formStep("      - shell: pwsh\n        run: git push origin main\n"),
 		"a secret in a step":      formJobs("  s:\n    steps:\n      - env:\n          K: ${{ secrets.KEY }}\n        run: make publish-docs\n"),
 		"a secret in a with":      formJobs("  s:\n    steps:\n      - uses: actions/checkout@v7\n        with:\n          token: ${{ secrets.PAT }}\n"),
@@ -53,7 +54,7 @@ func TestDerive_EveryStructuralFormIsLeftOutOfTheList(t *testing.T) {
 	t.Parallel()
 
 	for name, text := range structuralForms() {
-		got, err := gate.Derive([]gate.File{{Path: "w.yaml", Text: text}})
+		got, err := githubactions.Derive([]ci.File{{Path: "w.yaml", Text: text}})
 
 		require.NoError(t, err, name)
 		commands := make([]string, len(got.Steps))
@@ -96,4 +97,19 @@ func TestDerive_ASetupOrCheckoutActionGivesNoStepAndIsNotRefused(t *testing.T) {
 
 	assert.Len(t, got.Steps, 1)
 	assert.Empty(t, got.Refused)
+}
+
+func TestDerive_AStepThatOnlyMentionsAPublishingCommandIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	for name, text := range map[string]string{
+		"echo of a command":  formRun(`echo "git push is not run here"`),
+		"grep for a command": formRun("grep -r 'npm publish' docs"),
+		"setup action":       formUses("actions/setup-go@v6", "        with:\n          go-version: '1.27'\n"),
+		"other setup action": formUses("actions/setup-ruby@v1", "        with:\n          ruby-version: '3.3'\n"),
+	} {
+		got := derivedAll(t, text)
+
+		assert.Empty(t, got.Refused, name)
+	}
 }

@@ -87,7 +87,7 @@ A `command` step runs code that an agent wrote (`make`, tests, the gate program)
 
 Two rules close it.
 
-- A forge write is not a `command` step. The round writes (`pr_take`, `round_sync`, `round_land`, `integration_pull`, `round_cut`, `board_card`) are engine builtins that run as `writer`. The `remedy` steps that stay (`report`, `gatelist`) only read.
+- A forge write is not a `command` step. The round writes (`pr_take`, `round_sync`, `round_land`, `integration_pull`, `round_cut`, `board_card`) are engine builtins that run as `writer`. The `remedy` step that stays (`report`) and `beehave check gate-list` only read.
 - A `command` step that runs agent-written code sets `sandbox = sandbox()` (see [`sandbox` of `command`](workflow-files.md#sandbox)). It reuses the enforcer of the gate (`cmd/beehave/gatesandbox.go`), and its plan is the plan of the gate: the system folders, the work folder and the `sandbox_read` and `gate_allow_write` paths of the project. The Go folders come only from those two keys, and the home folder of the owner is never granted. A step that leaves `sandbox` out keeps today's behavior.
 
 An unsandboxed `command` step that is left is a limit. Until the sandbox covers it, the ruleset stays unposted while such a step can run agent code.

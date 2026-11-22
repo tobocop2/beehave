@@ -193,6 +193,8 @@ linters:
               desc: only cmd/beehave and the remedy binary import a backend
             - pkg: github.com/tobocop2/beehave/internal/host/ssh
               desc: only cmd/beehave and the remedy binary import a backend
+            - pkg: github.com/tobocop2/beehave/internal/ci/githubactions
+              desc: only cmd/beehave and the remedy binary import a backend
         # depguard reports only the first list that matches a file. A backend that imports another backend is reported by backends-only-in-main
         # when that list comes first, so the no-backend-to-backend lists below enforce the same denial and are never the one that reports.
         no-backend-to-backend-store-beads:
@@ -363,6 +365,7 @@ linters:
           list-mode: lax
           files:
             - "**/internal/check/shell/**"
+            - "**/internal/ci/*.go"
             - "**/internal/batch/**"
             - "**/internal/claim/**"
             - "**/internal/gate/**"
@@ -385,6 +388,7 @@ linters:
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
+            - github.com/tobocop2/beehave/internal/ci$
             - github.com/tobocop2/beehave/internal/batch
             - github.com/tobocop2/beehave/internal/claim
             - github.com/tobocop2/beehave/internal/gate
@@ -394,6 +398,20 @@ linters:
             - github.com/tobocop2/beehave/internal/pool
             - github.com/tobocop2/beehave/internal/preflight
             - github.com/tobocop2/beehave/internal/workflow
+        # The CI reader is an adapter: it imports the shared CI types and the shell reader, and no engine package.
+        # Only cmd/beehave imports it (backends-only-in-main).
+        ci-reader:
+          list-mode: lax
+          files:
+            - "**/internal/ci/githubactions/**"
+          deny:
+            - pkg: github.com/tobocop2/beehave/internal
+              desc: the CI reader imports the model, the shell reader and the CI types only
+          allow:
+            - github.com/tobocop2/beehave/internal/model
+            - github.com/tobocop2/beehave/internal/check/shell
+            - github.com/tobocop2/beehave/internal/ci$
+            - github.com/tobocop2/beehave/internal/ci/githubactions
         layer-step:
           list-mode: lax
           files:
@@ -482,6 +500,7 @@ linters:
             - "!**/internal/roundintegration/**"
             - "!**/internal/takeover/**"
             - "!**/internal/check/**"
+            - "!**/internal/ci/**"
             - "!**/internal/batch/**"
             - "!**/internal/claim/**"
             - "!**/internal/gate/**"
