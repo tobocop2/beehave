@@ -169,15 +169,30 @@ func writeFake(ts *testscript.TestScript, name string, text []byte) error {
 }
 
 // fakeClaudeSandbox is the start of a fake claude. It answers --version as a CLI that is new enough for the sandbox. It logs one line to sandbox.log for each call:
-// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the settings that Sandbox of the Claude adapter builds, "open" when they hold no sandbox.
-// A call that holds a sandbox object with no isolation flags fails, as the engine never starts one. A step that asks for a sandbox and gets none logs "open".
-const fakeClaudeSandbox = `if [ "$1" = --version ]; then echo "2.1.290 (Claude Code)"; exit 0; fi
-case " $* " in
-  *'--setting-sources'*'--strict-mcp-config'*'--disallowedTools WebFetch WebSearch'*'"sandbox":{"enabled":true'*)
-    echo "sandboxed domains=$(printf '%s' "$*" | sed -n 's/.*"allowedDomains":\[\([^]]*\)\].*/\1/p')" >> @WORK@/sandbox.log ;;
-  *'"sandbox":{'*) echo "the fake claude: a sandbox setting without the isolation flags" >&2; exit 1 ;;
-  *) echo open >> @WORK@/sandbox.log ;;
-esac
+// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the exact sandbox settings that Sandbox of the Claude adapter builds, "open" when
+// the settings hold no sandbox. Any other sandbox, such as one that allows unsandboxed commands or runs when the sandbox is unavailable, fails the call.
+const fakeClaudeSandbox = `sandbox_model() {
+  sources=unset mcp= tools= settings=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --setting-sources) sources=x$2 ;;
+      --strict-mcp-config) mcp=yes ;;
+      --disallowedTools) tools="$2 $3" ;;
+      --settings) settings=$2 ;;
+    esac
+    shift
+  done
+  case $settings in *'"sandbox":'*) ;; *) echo open >> @WORK@/sandbox.log; return ;; esac
+  block='"sandbox":\{"enabled":true,"failIfUnavailable":true,"allowUnsandboxedCommands":false,"filesystem":\{"denyRead":\["~/"[^]]*\],"allowRead":\[[^]]*\],"denyWrite":\[[^]]*\]\},"network":\{"allowedDomains":\[[^]]*\],"strictAllowlist":true\}\},"permissions":\{"blockReadsOutsideWorkingDirectories":true,.*"deny":\["WebFetch","WebSearch"'
+  if [ "$sources" = x ] && [ "$mcp" = yes ] && [ "$tools" = "WebFetch WebSearch" ] && printf '%s' "$settings" | grep -Eq "$block"; then
+    echo "sandboxed domains=$(printf '%s' "$settings" | sed -n 's/.*"allowedDomains":\[\([^]]*\)\].*/\1/p')" >> @WORK@/sandbox.log
+    return
+  fi
+  echo "the fake claude: the sandbox settings differ from the ones of the Claude adapter: $settings" >&2
+  exit 1
+}
+if [ "$1" = --version ]; then echo "2.1.290 (Claude Code)"; exit 0; fi
+sandbox_model "$@"
 `
 
 // withSandboxModel returns the text of a fake program with fakeClaudeSandbox after its first line.

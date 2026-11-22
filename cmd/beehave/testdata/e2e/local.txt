@@ -18,7 +18,7 @@ example local/prompts/review.md
 example local/prompts/fix.md
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
-# The agent steps keep their own sandbox() from the workflow. The gate of this script runs on the host, because the sandbox of a gate has its own tests.
+# The agent steps keep their own sandbox() from the workflow. The gate runs unsandboxed: a sandboxed gate writes its test_report in a copy that the gate does not read.
 replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 claudemodel fake/claude
 subst fake/claude

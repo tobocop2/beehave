@@ -6,7 +6,7 @@ project(
     tracker = "github",           # "github" or "beads"; the loop reads its open items. For "beads", add beads = beads(prefix = "...").
     forge = "github",
     sandbox = "on",               # the implement step lists the hosts that its shell reaches; the gate runs under a sandbox enforcer
-    base_branch = "main",        # the variable BASE of the run names the integration branch that receives the pull requests
+    base_branch = "main",         # the variable BASE of the run names the integration branch that receives the pull requests
     gate = "make check",
     test_report = "reports/*.xml",  # the JUnit XML files that the gate writes; a gate that exits 0 with no test fails
 )

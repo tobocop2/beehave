@@ -37,7 +37,7 @@ func cmdResearchDeskInit(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Fatalf("rdinit: %v", err)
 	}
 
-	// The agent steps keep their own sandbox() from the workflow. The program gates run on the host here, because the sandbox of a gate has its own tests.
+	// The agent steps keep their own sandbox() from the workflow. The program gates run unsandboxed: the staleness gate fetches every cited page.
 	text := strings.Replace(string(project), `sandbox = "on"`, `sandbox = "off"`, 1)
 	if err := root.WriteFile(filepath.Join("config", "projects", "research-desk.star"), []byte(text), e2eFileMode); err != nil {
 		ts.Fatalf("rdinit: %v", err)

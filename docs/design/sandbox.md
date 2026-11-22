@@ -218,6 +218,8 @@ The enforcer lets the command:
 - write the work folder, its own temporary folder (the command gets it as `TMPDIR`) and the `gate_allow_write` paths;
 - connect to the `gate_network` domains through one local allow-list proxy.
 
+If the gate starts a tool that is installed under the home folder, such as a mise shim or a program in `~/go/bin`, list the folder of that tool in `sandbox_read`.
+
 The kernel limits a TCP connection by port only. The enforcer lets the command connect to the port of the proxy, on any address, and to no other port. The command can connect to no unix socket outside its plan. The enforcer does not limit UDP.
 
 The first line of the output of the gate is the plan. The report of the gate step records it, and a replay reads the recorded result.
