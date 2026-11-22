@@ -161,6 +161,27 @@ func TestRunSecrets_TheRequestOfAnAgentPhaseCarriesTheRedactorOfTheEngine(t *tes
 	assert.Equal(t, "key [redacted]", request.Redact("key "+plantedAWS))
 }
 
+func TestRunSecrets_PersonalTokenConnectionStringAuthAndUrlPasswordAreRemoved(t *testing.T) {
+	t.Parallel()
+
+	const (
+		pat  = "fakepat-0123456789abcdefghijklmnopqrstuv"
+		dsn  = "https://fakedsnkey0123456789abcdef@o1.example.test/42"
+		auth = "fakeauth-0123456789abcdefghijklmnopqrstuv"
+		url  = "postgres://app:fakepassword0123456789@db.example.test:5432/app" //nolint:gosec // a fake password planted to test the redactor
+		sock = "/private/tmp/com.example.fake-agent/agent.0123456789abcdef"
+	)
+
+	redact := runRedactor(map[string]string{"GH_PAT": pat, "SENTRY_DSN": dsn, "SERVICE_AUTH": auth, "DATABASE_URL": url, "SSH_AUTH_SOCK": sock})
+	got := redact(strings.Join([]string{pat, dsn, auth, url, sock}, " "))
+
+	for _, planted := range []string{pat, dsn, auth, url} {
+		assert.NotContains(t, got, planted)
+	}
+
+	assert.Contains(t, got, sock, "SSH_AUTH_SOCK is a path, not a secret")
+}
+
 func TestRunSecrets_AValueShorterThanTheFloorStaysInTheText(t *testing.T) {
 	t.Parallel()
 
