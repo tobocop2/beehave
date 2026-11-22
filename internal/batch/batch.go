@@ -120,8 +120,8 @@ type Base interface {
 
 // The contexts of the commit statuses that a green gate posts on the head of each member.
 const (
-	ContextGate   = "beehave/gate"
-	ContextReview = "beehave/review"
+	ContextGate   = model.ContextGate
+	ContextReview = model.ContextReview
 )
 
 // Recorder is the durable step store. Step returns the recorded bytes when the name has a record, and otherwise runs and records them.

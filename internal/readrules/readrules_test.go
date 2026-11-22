@@ -55,6 +55,7 @@ var rules = map[string]rule{
 	"internal/merge.Reads.BranchRef":          {Proof: mergeProof, Needle: "BranchRef"},
 	"internal/merge.Closings.ClosingRefs":     {Proof: mergeProof, Needle: "closing references"},
 	"internal/merge.Approvals.Reviews":        {Proof: mergeProof, Needle: "Reviews"},
+	"internal/merge.Protections.Protection":   {Proof: "TestRun_AFailedReadOfTheProtectionDefersAProjectWithCredentials", Needle: "err"},
 	"internal/merge.Ancestry.Compare":         {Proof: "TestRun_AnAncestryThatCannotBeReadFailsTheItem", Needle: "ancestryErr"},
 	"internal/batch.ProofReads.Compare":       {Proof: batchProof, Needle: "compareErr"},
 	"internal/batch.ProofReads.CommitTree":    {Proof: batchProof, Needle: "treeErr"},

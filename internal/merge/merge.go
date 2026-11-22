@@ -156,6 +156,10 @@ type Request struct {
 	Kept []int
 	// Unaudited is the line to show when AuditClosing is false, so the owner sees why no audit ran. Empty shows nothing.
 	Unaudited string
+	// Credentialed is true when the project declares a writer credential. Such a merge needs a base whose protection requires the gate, the review and a pull request.
+	// ForgeName names the forge in the refusal for a forge that cannot read the protection.
+	Credentialed bool
+	ForgeName    string
 	// Post posts the commit statuses of the pull request after every guard passed and right before the merge call. Nil posts nothing.
 	Post Poster
 }
@@ -237,7 +241,7 @@ func (a *attempt) say(lines ...string) {
 // guards lists the guards in the order they run. The own-work guard reads the pull request, so it comes first.
 func guards() []func(*attempt) *refusal {
 	return []func(*attempt) *refusal{
-		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
+		(*attempt).ownWork, (*attempt).settings, (*attempt).pin, (*attempt).protected, (*attempt).start, (*attempt).intended, (*attempt).state, (*attempt).held, (*attempt).closing, (*attempt).orphans, (*attempt).checks,
 		(*attempt).wholeFileList, (*attempt).workflowScope, (*attempt).reviews, (*attempt).reviewed, (*attempt).provable, (*attempt).attribution, (*attempt).authors, (*attempt).draft,
 	}
 }

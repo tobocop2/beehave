@@ -23,6 +23,8 @@ type statusShip struct {
 	*shipForge
 
 	postErr error
+	// protection is what the base of the fake forge requires.
+	protection model.Protection
 }
 
 func (f statusShip) PostStatus(_ context.Context, status model.CommitStatus) error {
@@ -36,7 +38,7 @@ func (f statusShip) PostStatus(_ context.Context, status model.CommitStatus) err
 }
 
 func (f statusShip) Protection(context.Context, string) (model.Protection, error) {
-	return model.Protection{}, nil
+	return f.protection, nil
 }
 
 var gateStatus = model.CommitStatus{SHA: gated, Context: "beehave/gate", State: model.StatusSuccess, Description: "d"}
@@ -49,12 +51,17 @@ func statusMerge(t *testing.T, withWriter bool, over map[string]any, postErr err
 	settings.Statuses = []model.CommitStatus{gateStatus}
 
 	project := p.projects["p"]
+	protection := model.Protection{}
+
 	if withWriter {
 		project.Credentials = map[model.Role]model.Credential{model.RoleWriter: {}}
+		protection = model.Protection{PullRequest: true, RequiredStatuses: []string{model.ContextGate, model.ContextReview}}
 	}
 
 	p.projects = map[string]config.Project{"p": project}
-	p.forge = func(model.Project) (forge.Forge, error) { return statusShip{shipForge: f, postErr: postErr}, nil }
+	p.forge = func(model.Project) (forge.Forge, error) {
+		return statusShip{shipForge: f, postErr: postErr, protection: protection}, nil
+	}
 
 	return p, f, settings
 }

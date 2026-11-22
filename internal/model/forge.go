@@ -310,6 +310,12 @@ func OrNull(text string) string {
 	return text
 }
 
+// The contexts of the commit statuses that a base must require before a merge: the gate on the head, and the review of the head.
+const (
+	ContextGate   = "beehave/gate"
+	ContextReview = "beehave/review"
+)
+
 // StatusState is the state of a commit status. The values are the states that GitHub accepts.
 type StatusState string
 

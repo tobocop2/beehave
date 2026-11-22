@@ -974,6 +974,16 @@ func (o opened) AutoMergePR(ctx context.Context, pr int, sha string) error {
 	return queue.AutoMergePR(ctx, pr, sha)
 }
 
+// Protection reads what the forge requires of a branch, when the forge can. A forge that cannot returns merge.ErrNoProtectionRead.
+func (o opened) Protection(ctx context.Context, branch string) (model.Protection, error) {
+	reads, ok := o.Forge.(forge.Statuses)
+	if !ok {
+		return model.Protection{}, merge.ErrNoProtectionRead
+	}
+
+	return reads.Protection(ctx, branch)
+}
+
 // DisableAutoMergePR turns off the queued merge of a pull request, when the forge can queue one. A forge that cannot is an error.
 func (o opened) DisableAutoMergePR(ctx context.Context, pr int) error {
 	queue, ok := o.Forge.(merge.Queuer)
@@ -1292,7 +1302,7 @@ func (p pulls) request(name string, project config.Project, item string, number 
 		PR: number, Gated: head, Repo: settings.Repo, Base: settings.Base, Runners: p.runners,
 		OwnLogins: settings.Logins, OwnEmails: settings.Emails, Approved: settings.Approved, OwnDraft: settings.OwnDraft,
 		Hold: settings.Hold, ForbidText: rules, Retarget: settings.Retarget, GatedTree: settings.GatedTree, Intent: settings.Intent,
-		Queue: true,
+		Queue: true, Credentialed: project.HasWriter(), ForgeName: string(project.Forge),
 	}
 }
 
