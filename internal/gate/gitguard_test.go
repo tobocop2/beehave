@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -86,13 +87,12 @@ func failingGitPath(t *testing.T) (string, string) {
 
 	dir, marker := t.TempDir(), filepath.Join(t.TempDir(), "calls")
 	script := "#!/bin/sh\necho \"$*\" >> " + marker + "\nexit 97\n"
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o700)) //nolint:gosec // a test fake that must be executable
+	require.NoError(t, exectest.Write(filepath.Join(dir, "git"), script))
 
 	return dir, marker
 }
 
-// plantedJob runs the job of a local gate with a failing git first on its PATH, after word is planted in the job text after the clone is entered.
-// It returns the calls that the failing git recorded.
+// plantedJob runs a local gate job with a failing git first on its PATH and word planted after the clone is entered, and returns the recorded calls.
 func plantedJob(t *testing.T, word string) string {
 	t.Helper()
 
@@ -132,6 +132,7 @@ func plantedJob(t *testing.T, word string) string {
 func TestGitGuard_AGitOnThePathThatFailsSeesNoCallOfTheJobItself(t *testing.T) {
 	t.Parallel()
 
+	assert.Equal(t, "status\n", plantedJob(t, "git status"), "the failing git is first on the PATH of the job")
 	assert.Empty(t, plantedJob(t, ""), "the job calls git only through its allow-listed start")
 }
 
