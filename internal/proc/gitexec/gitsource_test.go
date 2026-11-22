@@ -206,7 +206,7 @@ func TestTheGitProgramIsNamedOnlyHere(t *testing.T) {
 	assert.Empty(t, found, "make the runner with gitexec.New, so the hooks stay off")
 }
 
-func TestTheGitSourceTestSeesEveryRouteThatNamesTheGitProgram(t *testing.T) {
+func TestTheGitSourceTestSeesAVariableOrConstantThatHoldsTheGitProgram(t *testing.T) {
 	t.Parallel()
 
 	routes := map[string]string{
