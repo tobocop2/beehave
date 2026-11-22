@@ -54,6 +54,22 @@ func TestRunner_AProjectWithNoCredentialsRunsAsTheOwnerWithItsEnvironmentAndAnyT
 	assert.Equal(t, "-c core.hooksPath=/dev/null fetch owner=owner-token writer=unset allow=unset dir=/x prompt=0", calls(t, log))
 }
 
+func TestRunner_ACallOfTheOwnerStartsWithNoConfigFileAndNoGitVariableOfTheProcess(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "calls")
+	script := "#!/bin/sh\necho \"global=${GIT_CONFIG_GLOBAL-unset} system=${GIT_CONFIG_NOSYSTEM-unset} ssh=${GIT_SSH_COMMAND-unset} count=${GIT_CONFIG_COUNT-unset} sock=${SSH_AUTH_SOCK-unset}\" >> " + log + "\n"
+	require.NoError(t, exectest.Write(filepath.Join(bin, "git"), script))
+	t.Setenv("PATH", strings.Join([]string{bin, "/usr/bin", "/bin"}, string(os.PathListSeparator)))
+	t.Setenv("GIT_SSH_COMMAND", "evil")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", "/home/owner/.gitconfig")
+	t.Setenv("SSH_AUTH_SOCK", "/agent.sock")
+
+	reach.Runner(reach.Call{Project: "p", Dir: t.TempDir(), Remote: "ssh://git@example.test/o/r.git"}, nil).Run(t.Context(), []string{"fetch"})
+
+	assert.Equal(t, "global=/dev/null system=1 ssh=unset count=unset sock=/agent.sock", calls(t, log))
+}
+
 func TestRunner_AProjectWithLoadedCredentialsRunsAsTheWriterAndNeverAsTheOwner(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	log, path := fakeGit(t)
 

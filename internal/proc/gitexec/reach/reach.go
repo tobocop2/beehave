@@ -19,7 +19,7 @@ var ErrNotLoaded = errors.New("the credentials of the project are not loaded. St
 // Call describes a git call in Dir that reaches the address Remote of Project.
 // Declared is true when the project declares writer credentials. Loaded is true when this process holds them, and Token is the writer token then.
 // Base is the environment that the writer call takes its names from, and Pairs are extra NAME=value pairs of the writer call.
-// OwnerEnv is the environment of the call of a project with no credentials.
+// OwnerEnv is the environment of the call of a project with no credentials, and Login holds the credential settings of the owner that the call takes with it.
 type Call struct {
 	Project  string
 	Dir      string
@@ -30,6 +30,7 @@ type Call struct {
 	Base     map[string]string
 	Pairs    []string
 	OwnerEnv []string
+	Login    gitexec.OwnerLogin
 }
 
 // Runner returns the git runner for c. A project with no credentials gets the owner. A project with credentials gets the writer: its environment is built
@@ -63,7 +64,9 @@ func owner(c Call, stand func(dir string) proc.Runner) proc.Runner { //nolint:ir
 	}
 
 	runner := remote.New(c.Dir, proc.DefaultTimeout)
-	runner.Env = c.OwnerEnv
+	runner.ExecRunner = c.Login.Start(runner.ExecRunner, c.OwnerEnv...)
+
+	runner.Settings = c.Login.Settings()
 
 	return runner
 }

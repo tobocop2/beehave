@@ -45,10 +45,15 @@ func kept(userConfig bool) []string {
 
 // base returns the variables of the process that a git call keeps (see kept).
 func base(userConfig bool) []string {
+	return keep(kept(userConfig))
+}
+
+// keep returns the variables of the process whose names are in names.
+func keep(names []string) []string {
 	var env []string
 
 	for _, pair := range (&exec.Cmd{}).Environ() {
-		if name, _, _ := strings.Cut(pair, "="); slices.Contains(kept(userConfig), name) {
+		if name, _, _ := strings.Cut(pair, "="); slices.Contains(names, name) {
 			env = append(env, pair)
 		}
 	}
@@ -112,7 +117,7 @@ func (r Runner) Run(ctx context.Context, args []string) model.CommandResult {
 // the config of the user, for the identity and the hooks folder: git config prints a value and starts no program, so a command in that config never runs.
 // The hooks setting must not reach it, so it does not use Args.
 func (r Runner) ReadConfig(ctx context.Context, key string) model.CommandResult {
-	return r.run(ctx, []string{"config", "--get", key}, true)
+	return r.run(ctx, []string{configCommand, "--get", key}, true)
 }
 
 // run runs git with args in the repository of the runner. userConfig keeps the config of the user for the call (see local).

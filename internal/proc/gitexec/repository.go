@@ -59,7 +59,7 @@ func (r Repository) env() []string {
 func (r Repository) check(ctx context.Context, timeout time.Duration) error {
 	config := filepath.Join(r.CommonDir, "config")
 	listing := start(New(r.WorkTree, timeout).ExecRunner, false).
-		Run(ctx, []string{"config", "--file", config, "--list", "--name-only", "--null", "--no-includes"})
+		Run(ctx, []string{configCommand, "--file", config, "--list", "--name-only", "--null", "--no-includes"})
 
 	if listing.ExitCode != 0 {
 		return fmt.Errorf("read the git settings of %s: %s", filepath.Dir(r.CommonDir), strings.TrimSpace(listing.Stderr))
