@@ -11,31 +11,43 @@ const (
 	// programMarker starts the line that the job writes when it refuses a head or fails the final check of the gate program. The reason follows.
 	programMarker = "beehave-gate-program"
 
-	// programCheck is the word that compares the gate paths with the snapshot after the last head command.
+	// programCheck is the word that compares the gate paths with the base commit after the last head command.
 	programCheck = "gpcompare"
 )
 
-// programFirst is the word that resolves git to one absolute path, before any head command runs. The words of the gate program use it and never git through the PATH.
-const programFirst = `gpbin=$(command -v git) && case $gpbin in /*) ;; *) false ;; esac`
+// programFirst is the word that resolves git and the tools of the final check to absolute paths, before any head command runs.
+// The words of the gate program use these paths and never a tool through the PATH, which head code can write.
+const programFirst = `gpabs() { for t in "$@"; do case $t in /*) ;; *) return 1 ;; esac; done; }; ` +
+	`gpbin=$(command -v git) && gpfind=$(command -v find) && gpsort=$(command -v sort) && gpreadlink=$(command -v readlink) && ` +
+	`gpshasum=$(command -v sha256sum || command -v shasum) && gpabs "$gpbin" "$gpfind" "$gpsort" "$gpreadlink" "$gpshasum" && ` +
+	`case $gpshasum in */shasum) gpshaarg='-a 256' ;; *) gpshaarg= ;; esac`
 
-// programShell defines the shell functions of the gate program. Git reads only the private repository of the snapshot, with no replace refs
-// and no config of the machine. The final compare uses no git word: it reads bytes, the execute bit and the kind of each file.
+// programShell defines the shell functions of the gate program. Git reads the private repository of the snapshot with no replace refs
+// and no config of the machine. The snapshot folder only feeds the overlay: the job deletes it before the first head command, and the final compare
+// reads the values that the job kept in shell variables (a path, a mode and a digest or a link target for each listed file). The final compare
+// uses no git word and no tool through the PATH: it reads the digest, the execute bit and the kind of each file.
 const programShell = `{
 gpfail() { echo "` + programMarker + ` $*"; return 1; }
 gpgit() { GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 "$gpbin" "$@"; }
+gphash() { set -- $("$gpshasum" $gpshaarg "$1"); printf %s "$1"; }
 gpsnapshot() {
 	mkdir -p "$gpsnap/files" && : > "$gpsnap/manifest" || return 1
-	"$gpbin" init -q --bare "$gpsnap/repo.git" && "$gpbin" -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
+	gpgit init -q --bare "$gpsnap/repo.git" || return 1
+	gpgit -C "$gpsnap/repo.git" fetch -q --no-tags -- "$PWD" "$gpsha" || "$gpbin" -C "$gpsnap/repo.git" fetch -q --no-tags -- "$gpurl" "$gpsha" || return 1
 	[ "$(gpgit -C "$gpsnap/repo.git" rev-parse --verify -q "$gpsha^{commit}")" = "$gpsha" ] || return 1
 	gpgit -C "$gpsnap/repo.git" ls-tree -r "$gpsha" -- $gppaths > "$gpsnap/tree.txt" || return 1
+	gpwant=
 	while IFS= read -r line; do
 		meta=${line%%"$gptab"*}; path=${line#*"$gptab"}
 		case $path in \"*) return 1 ;; esac
 		set -- $meta
 		[ "$2" = blob ] || return 1
 		mkdir -p "$(dirname -- "$gpsnap/files/$path")" && gpgit -C "$gpsnap/repo.git" cat-file blob "$3" > "$gpsnap/files/$path" || return 1
+		case $1 in 120000) sum=$(cat -- "$gpsnap/files/$path") ;; *) sum=$(gphash "$gpsnap/files/$path") ;; esac
+		gpwant="${gpwant}${gpwant:+$gpnl}$1$gptab$path$gptab$sum"
 		printf '%s\t%s\n' "$1" "$path" >> "$gpsnap/manifest"
 	done < "$gpsnap/tree.txt"
+	gpwantlist=$(printf '%s\n' "$gpwant" | while IFS="$gptab" read -r m p s; do printf '%s\n' "$p"; done | LC_ALL=C "$gpsort")
 }
 gprefuse() {
 	gpgit cat-file -e "$gpsha^{commit}" || "$gpbin" fetch -q --no-tags -- "$gpurl" "$gpsha"
@@ -54,42 +66,46 @@ gprestore() {
 	done < "$gpsnap/manifest"
 }
 gpmode() {
-	has=0; [ -n "$(find -P "$2" -maxdepth 0 -perm -100)" ] && has=1
+	has=0; [ -n "$("$gpfind" -P "$2" -maxdepth 0 -perm -100)" ] && has=1
 	want=0; [ "$1" = 100755 ] && want=1
 	[ "$has" = "$want" ]
 }
 gpentry() {
 	case $1 in
-	120000) [ -L "$2" ] && [ "$(readlink -- "$2")" = "$(cat -- "$gpsnap/files/$2")" ] ;;
-	*) [ -f "$2" ] && [ ! -L "$2" ] && cmp -s -- "$gpsnap/files/$2" "$2" && gpmode "$1" "$2" ;;
+	120000) [ -L "$2" ] && [ "$("$gpreadlink" -- "$2")" = "$3" ] ;;
+	*) [ -f "$2" ] && [ ! -L "$2" ] && [ "$(gphash "$2")" = "$3" ] && gpmode "$1" "$2" ;;
 	esac
 }
 gplist() {
-	: > "$gpsnap/disk.txt"
+	gpdisk=
 	for p in $gppaths; do
 		q=${p%/}
-		[ -n "$(find -P "$(dirname -- "$q")" -maxdepth 1 -name "$(basename -- "$q")")" ] || continue
-		[ -z "$(find -P "$q" ! -type f ! -type l ! -type d)" ] || { gpfail "$p holds a file that is not a regular file, a link or a folder"; return 1; }
-		find -P "$q" ! -type d >> "$gpsnap/disk.txt"
+		case $q in */*) d=${q%/*}; b=${q##*/} ;; *) d=.; b=$q ;; esac
+		[ -n "$("$gpfind" -P "$d" -maxdepth 1 -name "$b")" ] || continue
+		[ -z "$("$gpfind" -P "$q" ! -type f ! -type l ! -type d)" ] || { gpfail "$p holds a file that is not a regular file, a link or a folder"; return 1; }
+		found=$("$gpfind" -P "$q" ! -type d)
+		[ -z "$found" ] || gpdisk="${gpdisk}${gpdisk:+$gpnl}$found"
 	done
-	LC_ALL=C sort "$gpsnap/disk.txt" > "$gpsnap/disk.sorted"
-	cut -f2- "$gpsnap/manifest" | LC_ALL=C sort > "$gpsnap/want.sorted"
+	gpdisk=$(printf '%s\n' "$gpdisk" | LC_ALL=C "$gpsort")
+}
+gpdiff() {
+	printf '%s\n' "$1" | while IFS= read -r l; do case "$gpnl$2$gpnl" in *"$gpnl$l$gpnl"*) ;; *) printf '%s ' "$l" ;; esac; done
 }
 gpcompare() {
 	gplist || return 1
-	cmp -s "$gpsnap/disk.sorted" "$gpsnap/want.sorted" || { gpfail "the gate program changed while the gate ran: $(LC_ALL=C comm -3 "$gpsnap/disk.sorted" "$gpsnap/want.sorted" | tr -d '\t' | head -n 5 | tr '\n' ' ')"; return 1; }
-	while IFS="$gptab" read -r mode path; do
-		gpentry "$mode" "$path" || { gpfail "the gate program changed while the gate ran: $path"; return 1; }
-	done < "$gpsnap/manifest"
+	[ "$gpdisk" = "$gpwantlist" ] || { gpfail "the gate program changed while the gate ran: $(gpdiff "$gpdisk" "$gpwantlist")$(gpdiff "$gpwantlist" "$gpdisk")"; return 1; }
+	bad=$(printf '%s\n' "$gpwant" | while IFS="$gptab" read -r mode path sum; do gpentry "$mode" "$path" "$sum" || { printf %s "$path"; break; }; done)
+	[ -z "$bad" ] || { gpfail "the gate program changed while the gate ran: $bad"; return 1; }
 }
 }`
 
 // programBefore are the words after the checkout and before any head command: the values of the gate program, the functions, the snapshot of the
-// listed paths at the base commit, the refusal of a head that changed them, and the overlay that puts the base files in the copy.
+// listed paths at the base commit, the refusal of a head that changed them, the overlay that puts the base files in the copy, and the deletion of the snapshot.
 func programBefore(project model.Project, cloneURL, clone, baseSHA string) []string {
+	snap := model.ShellQuote(clone + "/snap")
 	words := []string{
-		"gpsnap=" + model.ShellQuote(clone+"/snap") + "; gpsha=" + model.ShellQuote(baseSHA) + "; gpurl=" + model.ShellQuote(cloneURL) +
-			"; gppaths=" + model.ShellQuote(strings.Join(project.GateProgram, " ")) + `; gptab=$(printf '\t')`,
+		"gpsnap=" + snap + "; gpsha=" + model.ShellQuote(baseSHA) + "; gpurl=" + model.ShellQuote(cloneURL) +
+			"; gppaths=" + model.ShellQuote(strings.Join(project.GateProgram, " ")) + `; gptab=$(printf '\t'); gpnl=$(printf '\nx'); gpnl=${gpnl%x}`,
 		programShell,
 		`{ gpsnapshot || gpfail "the base commit ` + baseSHA + ` cannot be read, so the gate program cannot be copied from it"; }`,
 		`gprefuse`,
@@ -100,7 +116,7 @@ func programBefore(project model.Project, cloneURL, clone, baseSHA string) []str
 		words = append(words, "{ gpgit rm -r -q -f --ignore-unmatch -- "+quoted+" && rm -rf -- "+quoted+"; }")
 	}
 
-	return append(words, `{ gprestore || gpfail "the gate program of the base commit cannot be written into the copy"; }`)
+	return append(words, `{ gprestore || gpfail "the gate program of the base commit cannot be written into the copy"; }`, "rm -rf -- "+snap)
 }
 
 // programClosing is the end of the candidate word: the words that run after every head command, the word that prints the logs, and the exit test.

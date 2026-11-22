@@ -139,7 +139,7 @@ func (r Request) anchor() string { return cmp.Or(r.BaseSHA, r.Plan.BaseSHA) }
 // needBase refuses a candidate head that has no base commit: its job could not name the base that it judges the head against.
 func (r Request) needBase() error {
 	if (r.Base != "" || len(r.Project.GateProgram) > 0) && r.anchor() == "" {
-		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, r.pinBase(), r.Project.Name)
+		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, cmp.Or(r.Base, r.Project.BaseBranch), r.Project.Name)
 	}
 
 	return nil

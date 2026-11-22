@@ -16,9 +16,18 @@ import (
 const (
 	programCheckScript = `mkdir -p reports
 printf '<testsuite tests="1"><testcase name="t"/></testsuite>\n' > reports/j.xml
+[ -x scripts/run.sh ] || { echo "scripts/run.sh is not executable"; exit 1; }
+[ -L scripts/link ] || { echo "scripts/link is not a link"; exit 1; }
 [ -f code.sh ] && sh code.sh
 for f in scripts/extra.d/*.sh scripts/sub/*.sh; do [ -f "$f" ] && . "$f"; done
 if grep -q '^strict=1$' gate.cfg; then grep -q GOOD code.txt || { echo "code.txt is not GOOD"; exit 1; }; fi
+`
+	// programFakeDigest is head code that writes a digest tool first on the PATH. The tool prints the digest of the base gate.cfg for gate.cfg and runs the real tool for any other file.
+	programFakeDigest = `d=${PATH%%:*}; rs=$(command -v sha256sum || command -v shasum)
+case $rs in */shasum) ra='-a 256' ;; *) ra= ;; esac
+h=$($rs $ra gate.cfg | { read -r x y; printf %s "$x"; })
+printf '#!/bin/sh\nfor a; do f=$a; done\n[ "$f" = gate.cfg ] && { echo "%s  gate.cfg"; exit 0; }\nexec %s "$@"\n' "$h" "$rs" > "$d/${rs##*/}"
+chmod 755 "$d/${rs##*/}"
 `
 	programWeakMakefile = "check:\n\t@mkdir -p reports; printf '<testsuite tests=\"1\"><testcase name=\"t\"/></testsuite>\\n' > reports/j.xml; exit 0\n"
 )
@@ -56,6 +65,12 @@ func programCases() []programCase {
 		{name: "replace_ref_then_edit_fails", files: map[string]string{"code.sh": "b=$(git rev-parse HEAD:gate.cfg); n=$(printf 'strict=0\\n' | git hash-object -w --stdin); git replace -f $b $n; " + setStrict0 + "\n", "code.txt": bad}},
 		{name: "fifo_in_a_listed_directory_fails_and_does_not_hang", files: map[string]string{"code.sh": "mkfifo scripts/pipe\n"}, reason: "not a regular file"},
 		{name: "nested_repository_in_a_listed_directory_fails", files: map[string]string{"code.txt": bad}, setup: "mkdir -p scripts/sub && (cd scripts/sub && git init -q -b main . && printf 'exit 0\\n' > z.sh && git add z.sh && git commit -q -m s)"},
+		{name: "good_head_passes_with_an_executable_script_and_a_link_in_the_base", files: map[string]string{"tests_new.txt": "x\n"}, pass: true},
+		{name: "link_retargeted_during_the_gate_fails", files: map[string]string{"code.sh": "ln -sfn gate.cfg scripts/link\n"}, reason: "gate-program the gate program changed while the gate ran: scripts/link"},
+		{name: "link_replaced_by_a_regular_copy_during_the_gate_fails", files: map[string]string{"code.sh": "rm scripts/link; cp scripts/check.sh scripts/link\n"}, reason: "gate-program the gate program changed while the gate ran: scripts/link"},
+		{name: "execute_bit_removed_during_the_gate_fails", files: map[string]string{"code.sh": "chmod 644 scripts/run.sh\n"}, reason: "gate-program the gate program changed while the gate ran: scripts/run.sh"},
+		{name: "snapshot_folder_rewritten_by_head_code_still_fails", files: map[string]string{"code.sh": "mkdir -p ../snap/files; printf 'strict=0\\n' > ../snap/files/gate.cfg; " + setStrict0 + "\n", "code.txt": bad}, reason: "gate-program the gate program changed while the gate ran: gate.cfg"},
+		{name: "fake_digest_tool_first_on_the_path_still_fails", files: map[string]string{"code.sh": programFakeDigest + setStrict0 + "\n", "code.txt": bad}, reason: "gate-program the gate program changed while the gate ran: gate.cfg"},
 		{name: "base_moved_on_and_head_untouched_runs_the_new_base_program", files: map[string]string{"tests_new.txt": "x\n"}, moved: "printf 'grep -q RULE2 code.txt || { echo no rule2; exit 1; }\\n' >> scripts/check.sh", reason: "no rule2"},
 		{name: "base_moved_harmlessly_and_head_untouched_passes", files: map[string]string{"tests_new.txt": "x\n"}, moved: "printf '# a comment\\n' >> scripts/check.sh", pass: true},
 	}
@@ -103,6 +118,8 @@ func programRepo(t *testing.T, c programCase) (repo, head, tip string) {
 	writeIn(t, repo, "scripts/check.sh", programCheckScript)
 	writeIn(t, repo, "gate.cfg", "strict=1\n")
 	writeIn(t, repo, "code.txt", "GOOD\n")
+	writeIn(t, repo, "scripts/run.sh", "exit 0\n")
+	shIn(t, repo, "chmod 755 scripts/run.sh && ln -s check.sh scripts/link")
 	shIn(t, repo, "git add .gitignore Makefile scripts gate.cfg code.txt && git commit -q -m base")
 	shIn(t, repo, "git checkout -q -b feature")
 
@@ -202,6 +219,28 @@ func TestProgram_AJobWithNoGateProgramRunsTheHeadProgramAsBefore(t *testing.T) {
 	code, out := runProgramJob(t, project, repo, head, tip, "")
 
 	require.Zero(t, code, out)
+}
+
+func TestProgram_TheSnapshotGitCallsReadNoReplaceRefsAndNoConfigOfTheMachine(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	shIn(t, repo, "git init -q -b main . && printf 'one\\n' > a.txt && git add a.txt && git commit -q -m one")
+	blob := shIn(t, repo, "git rev-parse HEAD:a.txt")
+	other := shIn(t, repo, "printf 'two\\n' | git hash-object -w --stdin")
+	shIn(t, repo, "git replace "+blob+" "+other)
+
+	machine := filepath.Join(t.TempDir(), "gitconfig")
+	require.NoError(t, os.WriteFile(machine, []byte("[core]\n\tabbrev = 12\n"), 0o600))
+
+	script := "gpbin=$(command -v git); " + programShell + "\ngpgit cat-file blob " + blob + "; gpgit rev-parse --short HEAD"
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", script) //nolint:gosec // the job text under test
+	cmd.Dir = repo
+	cmd.Env = []string{"PATH=/usr/bin:/bin:/opt/homebrew/bin", "HOME=" + t.TempDir(), "GIT_CONFIG_GLOBAL=" + machine}
+	out, err := cmd.CombinedOutput()
+
+	require.NoError(t, err, string(out))
+	require.Equal(t, []string{"one", strings.TrimSpace(shIn(t, repo, "git rev-parse --short=7 HEAD"))}, strings.Fields(string(out)))
 }
 
 func TestProgram_ABaseCommitThatTheSourceDoesNotHoldFailsTheJobWithTheMarker(t *testing.T) {

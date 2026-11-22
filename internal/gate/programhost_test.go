@@ -2,6 +2,7 @@ package gate_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,12 +29,16 @@ func TestRun_AHostGateWithAGateProgramPutsTheProgramWordsInTheJob(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
 
-	command := remote.submitted[0].Command
-	assert.Contains(t, command, "gppaths='Makefile scripts/'")
-	assert.Contains(t, command, "gpsha="+tipSHA)
-	assert.Contains(t, command, "gpgit rm -r -q -f --ignore-unmatch -- Makefile && rm -rf -- Makefile")
-	assert.Contains(t, command, "gpgit rm -r -q -f --ignore-unmatch -- scripts/ && rm -rf -- scripts/")
-	assert.True(t, len(command) > len("gpcompare") && command[len(command)-len("gpcompare"):] == "gpcompare", "the final check is the last word")
+	words := strings.Split(remote.submitted[0].Command, " && ")
+	fields := strings.Split(strings.ReplaceAll(remote.submitted[0].Command, " && ", "; "), "; ")
+
+	assert.Contains(t, fields, "gppaths='Makefile scripts/'")
+	assert.Contains(t, fields, "gpsha="+tipSHA)
+	assert.Contains(t, words, "{ gpgit rm -r -q -f --ignore-unmatch -- Makefile")
+	assert.Contains(t, words, "rm -rf -- Makefile; }")
+	assert.Contains(t, words, "{ gpgit rm -r -q -f --ignore-unmatch -- scripts/")
+	assert.Contains(t, words, "rm -rf -- scripts/; }")
+	assert.Equal(t, "gpcompare", words[len(words)-1], "the final check is the last word")
 }
 
 func TestRun_AHostGateWithNoGateProgramHasNoProgramWords(t *testing.T) {
@@ -45,7 +50,14 @@ func TestRun_AHostGateWithNoGateProgramHasNoProgramWords(t *testing.T) {
 	_, err := g.Run(context.Background(), hostRequest(hostProject()))
 	require.NoError(t, err)
 	require.Len(t, remote.submitted, 1)
-	assert.NotContains(t, remote.submitted[0].Command, "gp")
+	words := strings.Split(remote.submitted[0].Command, " && ")
+
+	assert.NotContains(t, words, "gprefuse")
+	assert.NotContains(t, words, "gpcompare")
+
+	for _, word := range words {
+		assert.False(t, strings.HasPrefix(word, "gpsnap=") || strings.HasPrefix(word, "gpabs"), word)
+	}
 }
 
 func TestRun_AHostGateWithAGateProgramAndNoBaseCommitStartsNoJob(t *testing.T) {
