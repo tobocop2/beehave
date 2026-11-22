@@ -129,6 +129,29 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T
 	assert.Empty(t, f.spec.Guard)
 }
 
+func TestRunner_AResumedStepThatDeclaresASkillGetsThePluginFolderOfAFirstLaunch(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	first := newFixture(t, "claude", claude.Name, "")
+	first.spec.Skills = []string{filepath.Join(first.config, "skills", "review")}
+	require.NoError(t, os.MkdirAll(first.spec.Skills[0], 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(first.spec.Skills[0], "SKILL.md"), []byte("review\n"), 0o600))
+
+	require.Equal(t, agent.OutcomeExited, agent.Runner{}.Run(context.Background(), first.spec).Outcome)
+
+	resumed := newFixture(t, "claude", claude.Name, "")
+	resumed.spec.Skills = first.spec.Skills
+	resumed.spec.Resume = "sess-1"
+
+	require.Equal(t, agent.OutcomeExited, agent.Runner{}.Run(context.Background(), resumed.spec).Outcome)
+
+	for name, args := range map[string]string{"first": record(t, first.records, "args"), "resumed": record(t, resumed.records, "args")} {
+		assert.Contains(t, args, "--setting-sources  --add-dir ", name)
+		assert.Contains(t, args, "--plugin-dir ", name)
+	}
+
+	assert.Contains(t, record(t, resumed.records, "args"), "--resume sess-1")
+	assert.NotContains(t, record(t, first.records, "args"), "--resume")
+}
+
 func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "")
 	f.spec.Adapter = noFlags{f.spec.Adapter}
