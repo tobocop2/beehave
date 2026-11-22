@@ -90,8 +90,8 @@ func TestExampleBoard_ABoardCommandThatExitsWithTwoStopsTheRunAtTheLaneStart(t *
 	result, err := runPipeline(rig.h.engine(t), file)
 
 	require.NoError(t, err)
-	require.NotNil(t, result.Stopped, "a stop_on_rc code ends the item")
-	assert.Equal(t, "command:board-started#1", result.Stopped.Step)
+	require.NotNil(t, result.Stopped, "a card that shows another column ends the item")
+	assert.Equal(t, "board_card:board-started#1", result.Stopped.Step)
 	assert.Equal(t, 2, result.Stopped.RC)
 	assert.Len(t, rig.h.agents.requests, 3, "only the plan, the implement and the sweep agents ran: the run stops before the review loop")
 }

@@ -316,6 +316,7 @@ func signatures() map[string][]Param {
 	maps.Copy(all, readSignatures())
 	maps.Copy(all, inboxSignatures())
 	maps.Copy(all, streamSignatures())
+	maps.Copy(all, roundSignatures())
 
 	return all
 }
@@ -452,6 +453,23 @@ func itemSignatures() map[string][]Param {
 		prOpenName:     {filled("title"), filled("base"), opt("body", KindText), opt("issue", KindInt), opt("parent", KindText), forbidText(), opt("integration", KindBool), label},
 		preflightName:  {opt("head", KindText), opt("base", KindText), opt("hold", KindText), ruled("own", KindDict, ownRule), opt("id", KindText), {Name: "own_draft", Kind: KindInt, AsValue: true, Rule: ownDraftRule}, label},
 		pushName:       {filled("branch"), filled("head"), opt("expect", KindText), label},
+	}
+}
+
+// TakeSteps lists the steps of pr_take: the notice that asks the author for an answer, and the take after the grace period.
+func TakeSteps() []string { return []string{"apply", "take"} }
+
+// roundSignatures holds the builtins that write the forge for a round.
+func roundSignatures() map[string][]Param {
+	label := opt(nameKeyword, KindText)
+
+	return map[string][]Param{
+		roundSyncName:        {filled("base"), filled("trunk"), label},
+		roundLandName:        {req("pr", KindInt), filled("head"), filled("base_tip"), label},
+		roundCutName:         {filled("old"), filled("new"), req("pr", KindInt), filled("trunk"), label},
+		roundIntegrationName: {filled("base"), filled("into"), opt("pr", KindInt), label},
+		boardCardName:        {req("board", KindInt), filled("status"), opt("owner", KindText), opt("pr", KindInt), opt("issue", KindInt), label},
+		prTakeName:           {req("pr", KindInt), filled("me"), filled("idle"), filled("grace"), {Name: "step", Kind: KindText, Required: true, Values: TakeSteps()}, label},
 	}
 }
 

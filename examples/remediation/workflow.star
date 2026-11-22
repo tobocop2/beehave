@@ -721,12 +721,10 @@ def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
     No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands. `author` is the author of the pull request, from the queue row.
     1. A review agent posts the findings as a changes-requested review. The notice is refused until the review is on the pull request.
-    2. The tool posts the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
+    2. The engine step pr_take posts, as the writer, the notice that asks the author for an answer, and refuses when the pull request is not stale (IDLE_HOURS) or is ours.
     3. The grace period (GRACE_HOURS) is a clock rule: the author has that long to answer KEEP or RELEASE. KEEP stops the item. RELEASE or no answer when the time is over goes on to the take.
-    4. The tool takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the tool, and a person reads the replies.
-    The run of the item holds the claim, so the take writes none. A refusal of the tool (exit code 2) ends the item with the lines it printed."""
-    base = ["remedy", "take", pr, "--me", round_settings["owner"], "--idle", IDLE_HOURS, "--grace", GRACE_HOURS, "--item", item.id]
-
+    4. The step pr_take takes the pull request only when no one forbade it. It checks the clock itself as a second guard, and a take with replies that carry neither token is refused: the item then holds with the reason of the step, and a person reads the replies.
+    The run of the item holds the claim, so the take writes none. A refusal of the step (code 2) ends the item with the lines it showed."""
     agent(
         name = "take-review",
         prompt = "prompts/take_review.md",
@@ -738,7 +736,7 @@ def take_over(item, pr, author, project, round_settings):
         inputs = {"item": item, "pr": pr, "facts": project},
     )
 
-    command(name = "take-notice", run = base + ["--apply"], stop_on_rc = [2])
+    pr_take(name = "take-notice", pr = int(pr), me = round_settings["owner"], idle = IDLE_HOURS, grace = GRACE_HOURS, step = "apply")
 
     grace = wait(
         "The notice is on pull request %s. Answer KEEP to keep it, or RELEASE to hand it over. With no answer in %s hours, it is taken." % (pr, GRACE_HOURS),
@@ -751,7 +749,7 @@ def take_over(item, pr, author, project, round_settings):
     if grace.answer == "KEEP":
         return
 
-    command(name = "take-claim", run = base + ["--take"], stop_on_rc = [2])
+    pr_take(name = "take-claim", pr = int(pr), me = round_settings["owner"], idle = IDLE_HOURS, grace = GRACE_HOURS, step = "take")
 
 def foreign_followup(recorded, project):
     """Files one follow-up issue for the findings that a foreign review left open, once the reviewed pull request merged, and returns its id. It returns "" when it files nothing.
@@ -793,18 +791,7 @@ def record_merge(id, head, base):
     )
     item_status(name = "closed-" + id, id = id, status = "closed")
 
-def line_fields(text):
-    """Returns the `name=value` words of the line of a tool as a dict. A word with no `=` is left out."""
-    fields = {}
-    for word in text.split():
-        pair = word.split("=", 1)
-        if len(pair) == 2:
-            fields[pair[0]] = pair[1]
-
-    return fields
-
-# The fields that each state of a line of `remedy sync` must carry. The round acts on these states only.
-# A line with no state reads as current: the tool prints a state on every exit 0, and a dry run prints nothing.
+# The fields that each state of a result of round_sync must carry. The round acts on these states only.
 SYNC_FIELDS = {
     "current": [],
     "synced": ["branch", "pr", "head", "base_tip"],
@@ -812,7 +799,7 @@ SYNC_FIELDS = {
     "refused": [],
 }
 
-# The states of `remedy sync land` after which the pass goes on. A moved base or a moved head lands nothing, and the next pass syncs again.
+# The states of round_land after which the pass goes on. A moved base or a moved head lands nothing, and the next pass syncs again.
 SYNC_LAND_STATES = ["landed", "stale", "head-moved"]
 
 # Each reason that ends a pass before its queue audit, with what the owner does before the answer CONTINUE.
@@ -828,23 +815,19 @@ def sync_end(reason, host_losses = 0):
     """The end of a sync: the reason that holds the round, or an empty text, and the highest host_losses that a gate of the sync read."""
     return struct(reason = reason, host_losses = host_losses)
 
-def sync_check(name, run):
-    """Runs one check of `remedy sync` as the command step `name` and returns the fields of its line, with the state set.
-    Exit code 2 (a forge failure or a bad argument) stops the round with the line of the tool. Any other exit code but 0, a state the round does not know, or a field that its state needs and lacks, stops the run."""
-    out = command(name = name, run = run, stop_on_rc = [2])
-    if out.rc != 0:
-        fail("REFUSE: the check %s ended with the exit code %d and the line %r. Check the remedy tool of the round, then run the round again." % (name, out.rc, out.stdout))
-
-    fields = line_fields(out.stdout)
-    state = fields.get("state", "current")
+def sync_check(name, round_settings, project):
+    """Runs one check of the trunk with the engine step round_sync `name`, as the writer, and returns the fields of its result as a dict, with the state set.
+    A forge failure ends the run with the error of the step. A state the round does not know, or a field that its state needs and lacks, stops the run."""
+    out = round_sync(name = name, base = round_settings["base"], trunk = project.base_branch)
+    fields = {"state": out.state, "branch": out.branch, "source": out.source, "pr": str(out.number) if out.number else "", "head": out.head, "base_tip": out.base_tip}
+    state = fields["state"]
     if state not in SYNC_FIELDS:
-        fail("REFUSE: the line of %s has the state %r, which the round does not know. Check the remedy tool of the round, then run the round again." % (name, state))
+        fail("REFUSE: the result of %s has the state %r, which the round does not know. Check the round, then run it again." % (name, state))
 
     missing = [key for key in SYNC_FIELDS[state] if fields.get(key, "") == ""]
     if missing:
-        fail("REFUSE: the %s line of %s has no %s. The fields are %r. Check the remedy tool of the round, then run the round again." % (state, name, ", ".join(missing), fields))
+        fail("REFUSE: the %s result of %s has no %s. The fields are %r. Check the round, then run it again." % (state, name, ", ".join(missing), fields))
 
-    fields["state"] = state
     return fields
 
 def sync_land(item, project, round_settings, line, n):
@@ -891,11 +874,11 @@ def sync_land(item, project, round_settings, line, n):
     if review.verdict != "approve":
         return sync_end("sync-review", losses)
 
-    landed = line_fields(command(name = "sync-land-%d" % n, run = ["remedy", "sync", "land", "--pr", line["pr"], "--head", head, "--base-tip", line["base_tip"]]).stdout)
-    if landed.get("state", "") not in SYNC_LAND_STATES:
-        fail("REFUSE: the landing of the sync pull request %s gave the fields %r. Read the pull request. %s" % (line["pr"], landed, restart_steps(item)))
+    landed = round_land(name = "sync-land-%d" % n, pr = int(line["pr"]), head = head, base_tip = line["base_tip"])
+    if landed.state not in SYNC_LAND_STATES:
+        fail("REFUSE: the landing of the sync pull request %s gave the state %r. Read the pull request. %s" % (line["pr"], landed.state, restart_steps(item)))
 
-    if landed["state"] == "landed":
+    if landed.state == "landed":
         round_integration(project, round_settings, "round-integration-sync-%d" % n)
 
     return sync_end("", losses)
@@ -903,8 +886,7 @@ def sync_land(item, project, round_settings, line, n):
 def sync_trunk(item, project, round_settings, n):
     """Merges a moved trunk into the round branch at the start of pass `n`, before its queue audit. Returns sync_end: a reason of SYNC_REASONS that ends the pass, or an empty reason, and the host_losses that its gate read.
     A conflict gets one agent step, sync-resolve-<n>, on the sync branch, the push of its head by the engine, and then one more check. The tool merges the forge side and writes no checkout."""
-    run = ["remedy", "sync", "--base", round_settings["base"], "--trunk", project.base_branch]
-    line = sync_check("sync-%d" % n, run)
+    line = sync_check("sync-%d" % n, round_settings, project)
 
     if line["state"] == "conflict":
         resolve = agent(
@@ -923,7 +905,7 @@ def sync_trunk(item, project, round_settings, n):
         # A resolve that made no commit ends on the head it started on, which is not a commit of the sync branch, so a push of it would move the branch off its commits.
         if resolve.committed:
             push(name = "push-sync-%d" % n, branch = line["branch"], head = resolve.head_sha, expect = "")
-        line = sync_check("sync-again-%d" % n, run)
+        line = sync_check("sync-again-%d" % n, round_settings, project)
 
     state = line["state"]
     if state == "conflict":
@@ -956,29 +938,19 @@ def round_question(reason, seen, idle):
 
 def round_integration(project, round_settings, name = "round-integration"):
     """Finds or creates the integration pull request from the round branch into the trunk, and returns its number and state. `name` is the name of the step.
-    The tool `remedy integration` uses vars.round.integration_pr when it is not 0, and prints `pr=<n> state=<state>`. The tool makes the whole body again from the pull requests merged into the round branch, so a merge of an item or of a sync is never missing from it.
+    The engine step integration_pull, run as the writer, uses vars.round.integration_pr when it is not 0, and returns `number` and `state`. The step makes the whole body again from the pull requests merged into the round branch, so a merge of an item or of a sync is never missing from it.
     The round runs it after each landing of items (round-integration-land-<n>), after each landing of a sync (round-integration-sync-<n>) and when the round has nothing to move."""
-    out = command(
-        name = name,
-        run = ["remedy", "integration", "--base", round_settings["base"], "--into", project.base_branch, "--pr", str(round_settings["integration_pr"])],
-        stop_on_rc = [2],
-    )
-    fields = line_fields(out.stdout)
+    out = integration_pull(name = name, base = round_settings["base"], into = project.base_branch, pr = int(round_settings["integration_pr"]))
+    if out.number <= 0:
+        fail("REFUSE: the step %s gave no pull request number. The state is %r" % (name, out.state))
 
-    if not fields.get("pr", "").isdigit():
-        fail("REFUSE: the line of round-integration has no `pr=<n>` figure. The line is %r" % out.stdout)
-
-    return struct(pr = int(fields["pr"]), merged = fields.get("state", "") == "MERGED")
+    return struct(pr = out.number, merged = out.state == "MERGED")
 
 def next_round(project, round_settings, pr):
     """Cuts the next round after the integration pull request `pr` of the old round merged. vars.round.next_base names the new round branch. vars.round.base is the old one.
     `pr` is the number that round_integration returned, so a round with vars.round.integration_pr 0 cuts with the pull request that the tool found.
-    The cut tool refuses while the integration pull request is not merged (exit code 2), so no round starts before the one before it ended."""
-    command(
-        name = "round-cut",
-        run = ["remedy", "cut", "--old", round_settings["base"], "--new", round_settings["next_base"], "--pr", str(pr), "--trunk", project.base_branch],
-        stop_on_rc = [2],
-    )
+    The engine step round_cut, run as the writer, refuses while the integration pull request is not merged and ends the item with its lines, so no round starts before the one before it ended."""
+    round_cut(name = "round-cut", old = round_settings["base"], new = round_settings["next_base"], pr = int(pr), trunk = project.base_branch)
 
 def record_base_reds(round_settings):
     """Writes the one record of the known base reds: the reds of vars.round.base_reds, the time and the tip of the base. Each new write replaces the file, so the file holds one record.
@@ -1193,19 +1165,18 @@ def finish(item):
 def _move_card(project, stage, pr = 0, issue = 0):
     """Moves the card to the column that `vars.board` of the project names for `stage` ("started" or "merged"), and reads it back.
     `issue` names the issue card of a landed item, and `pr` the pull request of the item of the run. A project with no `vars.board` makes no call.
-    The `remedy board` command puts the card on the board, sets the column and reads the card back. Exit code 2 (a refusal, or a read-back that shows another column) stops the run."""
+    The engine step board_card, run as the writer, puts the card on the board, sets the column and reads the card back. A read-back that shows another column stops the run."""
     board = project.vars.get("board")
     if board == None:
         return
 
-    card = ["--issue", str(issue)] if issue != 0 else ["--pr", str(pr)]
-    owner = ["--owner", board["owner"]] if board.get("owner", "") != "" else []
+    owner = board.get("owner", "")
+    name = "board-" + stage + ("-" + str(issue) if issue != 0 else "")
 
-    command(
-        name = "board-" + stage + ("-" + str(issue) if issue != 0 else ""),
-        run = ["remedy", "board", "--board", str(board["number"]), "--status", board[stage]] + owner + card,
-        stop_on_rc = [2],
-    )
+    if issue != 0:
+        board_card(name = name, board = int(board["number"]), status = board[stage], owner = owner, issue = issue)
+    else:
+        board_card(name = name, board = int(board["number"]), status = board[stage], owner = owner, pr = pr)
 
 def item_value(item, head, approved, reason, host_losses, pr = 0):
     """The value that a child run returns to the round: the item, the head it reached, whether the review approved it, why not when it did not,

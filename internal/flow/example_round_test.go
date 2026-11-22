@@ -71,7 +71,7 @@ func TestRound_AnIntegrationLineWithNoPullRequestNumberStopsTheRun(t *testing.T)
 	_, err := rig.run(t)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no `pr=<n>` figure")
+	assert.Contains(t, err.Error(), "gave no pull request number")
 }
 
 func TestRound_TheNextRoundIsCutFromTheOldBaseAndTheIntegrationPullRequestOnceItMerged(t *testing.T) {

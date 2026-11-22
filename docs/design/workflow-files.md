@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -56,6 +56,12 @@ Four cases are not safe today, and a later change fixes each of them.
 | `pr_comment` | Safe. | The forge reads the comments of the pull request first and finds the key. |
 | `pr_open` | Safe. It opens no second pull request, and `created` is false. | The forge looks for an open pull request on the branch first. |
 | `push` | Safe. | Git exits 0 when the branch is already at the head, and checks no lease then. A replay of a push that landed passes. |
+| `round_sync` | Safe. | The step reads the trunk, the round branch and the open sync pull request first. A merge that is done shows no new commit, and an open sync pull request is found, not opened again. |
+| `round_land` | Safe. | The merge is pinned to the head that the gate ran on. A pull request that is merged reads as a landing that is done. |
+| `round_cut` | Safe. | The step reads the new branch first and makes it only when it is missing. A pull request that already targets the new branch is not moved again. |
+| `integration_pull` | Safe. | The step finds the open integration pull request first, and writes a body that it builds again from the merged pull requests, so a repeat writes the same body. |
+| `board_card` | Safe. | The same card with the same column changes nothing on the board. |
+| `pr_take` | Safe. | The notice step reads the comments first and posts no second notice. The take step claims a pull request that it already holds without a change. |
 | `merge`: each member | Safe. | The step `batch:<name>.intent#<item>` is recorded before the merge of the member. The forge shows the pull request as merged at the gated head, so the step counts it as done. |
 | `spawn` | Safe. It rests on the library. | The child run has a fixed workflow id, and DBOS returns the recorded child for it. A test stops the parent while it waits in `gather`, after `spawn` returned, and shows one child run with the same id after the resume. No test reaches the window inside the start call, between the child row and the record of it in the parent. |
 | `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
@@ -266,6 +272,20 @@ The `parent` argument:
 - A branch that moved since the lease is refused with an error that names the branch, and the item stops.
 - An empty `branch` or `head` is refused before the push. So is a project with no clone, and a project with no forge, which pushes nothing.
 - In a dry run the push writes nothing and returns `head`.
+
+#### Forge writes of a round
+
+`round_sync(base, trunk, name)`, `round_land(pr, head, base_tip, name)`, `round_cut(old, new, pr, trunk, name)`, `integration_pull(base, into, pr, name)`, `board_card(board, status, owner, pr, issue, name)` and `pr_take(pr, me, idle, grace, step, name)` are the writes of a round to the forge. The engine runs each one as the writer role of the project. A command step runs as the owner, so none of these is a command.
+
+- The engine process runs the write with the credentials of the writer role (`credentials`). The step passes no token, and no program of the workflow folder runs. A project with no credentials runs the write with the login of the owner, as `pr_open` does.
+- The run must hold a trusted claim on the item. A run that lost its claim writes nothing and stops with the loss.
+- `round_sync` returns `state`, which is `current`, `synced`, `conflict` or `refused`, with `branch`, `source`, `number`, `head`, `base_tip` and `reason` set as the state needs them, and the empty text or 0 for the others. It opens the sync pull request with the `pr_label` of the project.
+- `round_land` returns the same fields. Its `state` is `landed`, `stale` or `head-moved`. A stale or moved landing merges nothing, and the workflow decides what the round does next.
+- `round_cut` returns `lines`. A cut that the step refuses (the integration pull request is not merged, or a branch is in the way) ends the item with those lines and the code 2.
+- `integration_pull` finds the integration pull request, or opens it with the `pr_label` of the project, and writes its body. A `pr` above 0 names the pull request. It returns `number` and `state`.
+- `board_card` names the card by exactly one of `pr` and `issue`, puts it on the board `board`, sets the column `status` and reads the card back. A board that shows another column ends the item with code 2. It returns `status`, the column that the board shows. A project with no board is not an error of the step: the workflow makes no call.
+- `pr_take` runs one step of the takeover of a pull request of somebody else. `step` is `apply` (post the notice) or `take` (take the pull request). `idle` and `grace` are numbers of hours. A refusal of a rule or a guard ends the item with the lines of the step and the code 2. It returns `code` and `lines`.
+- A build with no round writer fails the call. A forge that lacks the write that a step needs fails it with an error that names the write. A dry run shows each write as done and writes nothing.
 
 #### `pr_history`
 

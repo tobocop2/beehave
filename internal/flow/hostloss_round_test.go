@@ -81,7 +81,7 @@ func TestRound_FiveHostLossesOfOneRoundOneOnALandingGateHoldTheRoundForTheOwner(
 	assert.Contains(t, joined, "wait:round-wait#")
 	assert.NotContains(t, joined, "queue:round-queue-3#", "the pass after the landing is held, so it starts no item")
 	assert.NotContains(t, joined, "agent:queue-audit-3#")
-	assert.NotContains(t, joined, "command:sync-3#", "the held round starts no sync")
+	assert.NotContains(t, joined, "round_sync:sync-3#", "the held round starts no sync")
 }
 
 func TestRound_AHostLossOnTheSyncGateRerunsAndIsNeverSyncRed(t *testing.T) {
@@ -152,7 +152,7 @@ func TestRound_AnAnswerToTheHostLossHoldWaitsAgainOnlyAfterANewLoss(t *testing.T
 	names := stepNames(t, rig.last)
 	assert.GreaterOrEqual(t, at(names, "gate:sync-gate-4#"), 0, "the sync gate of the pass after the first answer ran and lost")
 	assert.Equal(t, -1, at(names, "gate:sync-gate-4-host-1#"), "a sync gate at the limit is not run again")
-	assert.GreaterOrEqual(t, at(names, "command:sync-5#"), 0, "after the second answer the round goes on")
+	assert.GreaterOrEqual(t, at(names, "round_sync:sync-5#"), 0, "after the second answer the round goes on")
 }
 
 func TestRound_AChildThatStoppedOnTheHostLossLimitHoldsTheRoundAndLandsNothing(t *testing.T) {

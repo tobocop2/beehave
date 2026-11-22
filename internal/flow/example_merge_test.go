@@ -460,7 +460,7 @@ func TestExampleMerge_ABaseThatKeepsMovingMakesTheRoundWaitAfterOneLandingPass(t
 
 	lands := 0
 	for _, name := range stepNames(t, rig.last) {
-		if strings.HasPrefix(name, "command:round-integration-land-") {
+		if strings.HasPrefix(name, "integration_pull:round-integration-land-") {
 			lands++
 		}
 	}

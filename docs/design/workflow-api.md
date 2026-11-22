@@ -12,7 +12,7 @@ Every builtin and every keyword that the engine registers has one use in `exampl
 
 A second test checks that `workflow.Builtins` and the registry hold the same builtins.
 
-A use counts only when an entry reaches it. The entries are the code at the top of each file, the functions `main` and `finish` of each file that runs (a file that another file loads does not run), and each function that the keyword `entry` of a call lists. The keyword `entry` lists a string, a parameter that a call fills with a string, or a variable: a variable lists the strings of the values that it is bound to. A function is reached when reached code reads its name, in a call or as a value. The test binds each name with the resolver of `go.starlark.net`, as `beehave check workflow` does. A keyword of a call, an attribute, a local variable and a string are no reads. A function that no entry reaches gives no use. One exception stays: `pr_state` (all its keywords) and `item_create.shared` are used only by `foreign_followup` of the remediation example. No entry calls it while the engine refuses every foreign pull request, and #438 wires it in. The test names these pairs and fails when an entry reaches one of them, so the exception ends with #438.
+A use counts only when an entry reaches it. The entries are the code at the top of each file, the functions `main` and `finish` of each file that runs (a file that another file loads does not run), and each function that the keyword `entry` of a call lists. The keyword `entry` lists a string, a parameter that a call fills with a string, or a variable: a variable lists the strings of the values that it is bound to. A function is reached when reached code reads its name, in a call or as a value. The test binds each name with the resolver of `go.starlark.net`, as `beehave check workflow` does. A keyword of a call, an attribute, a local variable and a string are no reads. A function that no entry reaches gives no use. One exception stays: `pr_state` (all its keywords) and `item_create.shared` are used only by `foreign_followup` of the remediation example, and `pr_take` (all its keywords) only by `take_over` of the same file. No entry calls them while the engine refuses every foreign pull request, and #438 wires it in. The test names these pairs and fails when an entry reaches one of them, so the exception ends with #438.
 
 Two more tests read this page. One checks that the Use column of each row gives the count of files and the first two files of the calls, and that the Change column holds `unchanged` or `#<number>: <text>`. The other checks that the table of `facts()` holds the ten fields that the check of workflow files and the `facts` struct hold.
 
@@ -63,6 +63,13 @@ The Change column says how the pair differs from the contract that the five piec
 | `agent` | `sandbox` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `agent` | `skill` | #787: new, the skill that the agent CLI loads before the first turn of the model | 1: `examples/remediation/workflow.star` |
 | `agent` | `timeout` | unchanged | 6: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 4 more |
+| `board_card` | `-` | #381: new, the engine puts a pull request or an issue on the project board and reads the column back, as the writer | 1: `examples/remediation/workflow.star` |
+| `board_card` | `board` | #381: new | 1: `examples/remediation/workflow.star` |
+| `board_card` | `issue` | #381: new | 1: `examples/remediation/workflow.star` |
+| `board_card` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `board_card` | `owner` | #381: new | 1: `examples/remediation/workflow.star` |
+| `board_card` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
+| `board_card` | `status` | #381: new | 1: `examples/remediation/workflow.star` |
 | `cancel` | `-` | #593: new, cancels one run that spawn returned, with its children | 2: `examples/planner/workflow.star`, `examples/supervisor/workflow.star` |
 | `cancel` | `name` | #593: new | 2: `examples/planner/workflow.star`, `examples/supervisor/workflow.star` |
 | `cancel` | `run` | #593: new | 2: `examples/planner/workflow.star`, `examples/supervisor/workflow.star` |
@@ -114,6 +121,11 @@ The Change column says how the pair differs from the contract that the five piec
 | `host_up` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `host` | unchanged | 1: `examples/remediation/workflow.star` |
 | `host_up` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
+| `integration_pull` | `-` | #381: new, the engine finds or opens the integration pull request and writes its body, as the writer | 1: `examples/remediation/workflow.star` |
+| `integration_pull` | `base` | #381: new | 1: `examples/remediation/workflow.star` |
+| `integration_pull` | `into` | #381: new | 1: `examples/remediation/workflow.star` |
+| `integration_pull` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `integration_pull` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
 | `item_comment` | `-` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
 | `item_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `item_comment` | `id` | unchanged | 14: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 12 more |
@@ -174,6 +186,13 @@ The Change column says how the pair differs from the contract that the five piec
 | `pr_state` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_state` | `name` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_state` | `pr` | unchanged | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `-` | #381: new, the engine posts the notice for a pull request of somebody else, or takes it, as the writer | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `grace` | #381: new | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `idle` | #381: new | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `me` | #381: new | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
+| `pr_take` | `step` | #381: new, `apply` posts the notice and `take` takes the pull request | 1: `examples/remediation/workflow.star` |
 | `preflight` | `-` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `preflight` | `base` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `preflight` | `head` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
@@ -203,6 +222,21 @@ The Change column says how the pair differs from the contract that the five piec
 | `recv` | `name` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `timeout` | #588: new, required | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
 | `recv` | `topic` | #588: new | 2: `examples/merge-order/waiting.star`, `examples/review-loop/workflow.star` |
+| `round_cut` | `-` | #381: new, the engine cuts the next round branch as the writer and moves the open pull requests to it | 1: `examples/remediation/workflow.star` |
+| `round_cut` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_cut` | `new` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_cut` | `old` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_cut` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_cut` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_land` | `-` | #381: new, the engine lands the sync pull request pinned to the gated head, as the writer | 1: `examples/remediation/workflow.star` |
+| `round_land` | `base_tip` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_land` | `head` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_land` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_land` | `pr` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_sync` | `-` | #381: new, the engine merges the trunk into the round branch through a sync branch, as the writer | 1: `examples/remediation/workflow.star` |
+| `round_sync` | `base` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_sync` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
+| `round_sync` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
 | `sandbox` | `-` | unchanged | 3: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 1 more |
 | `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run, of a child run or of the open run of an item of the project | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |

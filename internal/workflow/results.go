@@ -21,28 +21,35 @@ const (
 	earlierCallsName = "earlier_calls"
 	writeName        = "write"
 
-	hostTeardownName = "host_teardown"
-	hostUpName       = "host_up"
-	reasonField      = "reason"
-	stateField       = "state"
-	waitName         = "wait"
-	sleepName        = "sleep"
-	mergeName        = "merge"
-	preflightName    = "preflight"
-	queueName        = "queue"
-	itemCommentName  = "item_comment"
-	itemCreateName   = "item_create"
-	itemReadName     = "item_read"
-	itemStatusName   = "item_status"
-	prCommentName    = "pr_comment"
-	prOpenName       = "pr_open"
-	prStateName      = "pr_state"
-	pushName         = "push"
-	prHistoryName    = "pr_history"
-	revertField      = "revert"
-	numberField      = "number"
-	statusField      = "status"
-	attemptsField    = "attempts"
+	hostTeardownName     = "host_teardown"
+	hostUpName           = "host_up"
+	reasonField          = "reason"
+	stateField           = "state"
+	headField            = "head"
+	waitName             = "wait"
+	sleepName            = "sleep"
+	mergeName            = "merge"
+	preflightName        = "preflight"
+	queueName            = "queue"
+	itemCommentName      = "item_comment"
+	itemCreateName       = "item_create"
+	itemReadName         = "item_read"
+	itemStatusName       = "item_status"
+	prCommentName        = "pr_comment"
+	prOpenName           = "pr_open"
+	prStateName          = "pr_state"
+	pushName             = "push"
+	prHistoryName        = "pr_history"
+	prTakeName           = "pr_take"
+	boardCardName        = "board_card"
+	roundSyncName        = "round_sync"
+	roundLandName        = "round_land"
+	roundCutName         = "round_cut"
+	roundIntegrationName = "integration_pull"
+	revertField          = "revert"
+	numberField          = "number"
+	statusField          = "status"
+	attemptsField        = "attempts"
 )
 
 // resultFields holds the fields of the struct that each builtin returns. The run builds the fields of each result in one function per builtin,
@@ -64,7 +71,7 @@ func resultFields() map[string][]string {
 		waitName:         {"answer", "answers", "timed_out"},
 		writeName:        {"stdout", "stderr", "rc", "key", "skipped", attemptsField},
 	}
-	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields()} {
+	for _, group := range []map[string][]string{swarmResultFields(), gateResultFields(), trackerResultFields(), factsResultFields(), inboxResultFields(), streamResultFields(), roundResultFields()} {
 		maps.Copy(fields, group)
 	}
 
@@ -79,7 +86,7 @@ func swarmResultFields() map[string][]string {
 // gateResultFields holds the fields of the gate builtin.
 func gateResultFields() map[string][]string {
 	return map[string][]string{
-		gateName: {"passed", "head", treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses"},
+		gateName: {"passed", headField, treeKeyword, "report", "steps", "required", "checks", "new_tests", revertField, "host_loss", "host_losses"},
 	}
 }
 
@@ -98,8 +105,23 @@ func trackerResultFields() map[string][]string {
 		prCommentName:   {numberField},
 		prOpenName:      {numberField, "created", "stack"},
 		prStateName:     {stateField},
-		pushName:        {"head"},
+		pushName:        {headField},
 		prHistoryName:   {"pulls"},
+	}
+}
+
+// roundResultFields holds the fields of the builtins that write the forge for a round: the sync of the trunk, the landing of a sync, the cut of the next round,
+// the integration pull request, a project card and the take of a pull request.
+func roundResultFields() map[string][]string {
+	sync := []string{stateField, "branch", "source", numberField, headField, "base_tip", reasonField}
+
+	return map[string][]string{
+		roundSyncName:        sync,
+		roundLandName:        sync,
+		roundCutName:         {"lines"},
+		roundIntegrationName: {numberField, stateField},
+		boardCardName:        {statusField},
+		prTakeName:           {"code", "lines"},
 	}
 }
 

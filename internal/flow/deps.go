@@ -354,6 +354,8 @@ type Deps struct {
 	Trees     treeMaker
 	Beats     beats
 	Merge     merger
+	// Rounds serves the builtins that write the forge for a round (round_sync, round_land, round_cut, integration_pull, board_card and pr_take). A nil Rounds means the build cannot run them: a call fails.
+	Rounds rounds
 	// Preflight serves preflight. A nil Preflight means the build cannot run it: a preflight call fails.
 	Preflight preflighter
 	Commands  commands

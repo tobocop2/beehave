@@ -335,6 +335,10 @@ linters:
             - "**/internal/host/**"
             - "**/internal/sandbox/**"
             - "**/internal/credential/**"
+            - "**/internal/roundsync/**"
+            - "**/internal/roundcut/**"
+            - "**/internal/roundintegration/**"
+            - "**/internal/takeover/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -345,6 +349,10 @@ linters:
             - github.com/tobocop2/beehave/internal/fstree
             - github.com/tobocop2/beehave/internal/exectest
             - github.com/tobocop2/beehave/internal/credential
+            - github.com/tobocop2/beehave/internal/roundsync
+            - github.com/tobocop2/beehave/internal/roundcut
+            - github.com/tobocop2/beehave/internal/roundintegration
+            - github.com/tobocop2/beehave/internal/takeover
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
             - github.com/tobocop2/beehave/internal/proc
@@ -444,6 +452,10 @@ linters:
             - github.com/tobocop2/beehave/internal/workflow
             - github.com/tobocop2/beehave/internal/step
             - github.com/tobocop2/beehave/internal/flow
+            - github.com/tobocop2/beehave/internal/roundsync
+            - github.com/tobocop2/beehave/internal/roundcut
+            - github.com/tobocop2/beehave/internal/roundintegration
+            - github.com/tobocop2/beehave/internal/takeover
         unlisted-package:
           list-mode: lax
           files:
@@ -463,6 +475,10 @@ linters:
             - "!**/internal/host/**"
             - "!**/internal/sandbox/**"
             - "!**/internal/credential/**"
+            - "!**/internal/roundsync/**"
+            - "!**/internal/roundcut/**"
+            - "!**/internal/roundintegration/**"
+            - "!**/internal/takeover/**"
             - "!**/internal/check/**"
             - "!**/internal/batch/**"
             - "!**/internal/claim/**"
