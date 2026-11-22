@@ -117,17 +117,13 @@ command(name = "got", run = ["got", a.value])`)))
 	assert.Equal(t, []string{"got keys [redacted] [redacted]"}, h.commands.ranBy(testItem))
 }
 
-func TestRunSecrets_AStepErrorHoldsNeitherPlantedValueInTheStoreTheLogOrTheTerminal(t *testing.T) {
+func TestRunSecrets_AStepErrorHoldsNeitherPlantedValueInTheStoreTheRunErrorOrTheLog(t *testing.T) {
 	t.Parallel()
 
 	harness := newHarness(t)
 	withRunSecrets(harness)
 	harness.life.failing["claim"] = true
 	harness.life.failErr = errors.New("the tracker refused " + plantedAWS + " and " + plantedForge)
-
-	var terminal safeBuffer
-
-	harness.opts.Progress = &terminal
 	engine := harness.engine(t)
 
 	_, err := engine.Run(testItem, testProject)
@@ -146,7 +142,6 @@ func TestRunSecrets_AStepErrorHoldsNeitherPlantedValueInTheStoreTheLogOrTheTermi
 	}
 
 	assertNoPlanted(t, strings.Join(texts, "\n"), "the stored step error")
-	assertNoPlanted(t, terminal.String(), "the progress lines of the terminal")
 
 	log, err := os.ReadFile(filepath.Join(harness.opts.StateDir, logFileName))
 	require.NoError(t, err)

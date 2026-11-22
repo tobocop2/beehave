@@ -2,8 +2,12 @@ package agent
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
+	"maps"
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -27,16 +31,62 @@ type redactor struct {
 	next     func(string) string
 }
 
+// newRedactor holds each secret of MinSecretLen bytes or more in four forms: as it is, JSON-escaped (with and without the escape of <, > and &), and URL-escaped.
+// A secret of several lines is also held one line at a time. The replacer tries the longest form first, in a fixed order, so a secret that starts another one never leaves a suffix.
 func newRedactor(secrets ...string) redactor {
-	var pairs []string
+	forms := map[string]bool{}
 
 	for _, secret := range secrets {
-		if len(secret) >= MinSecretLen {
-			pairs = append(pairs, secret, redacted)
+		for _, part := range parts(secret) {
+			for _, form := range []string{part, jsonText(part, true), jsonText(part, false), url.QueryEscape(part), url.PathEscape(part)} {
+				forms[form] = true
+			}
 		}
 	}
 
+	ordered := slices.Sorted(maps.Keys(forms))
+	slices.SortStableFunc(ordered, func(a, b string) int { return len(b) - len(a) })
+
+	var pairs []string //nolint:prealloc // the list is built once at start
+
+	for _, form := range ordered {
+		pairs = append(pairs, form, redacted)
+	}
+
 	return redactor{replacer: strings.NewReplacer(pairs...)}
+}
+
+// parts returns the text of a secret that a redactor must find: the whole secret, and each line of a secret of several lines. A part shorter than MinSecretLen is left out.
+func parts(secret string) []string {
+	var found []string
+
+	if len(secret) >= MinSecretLen {
+		found = append(found, secret)
+	}
+
+	if !strings.Contains(secret, "\n") {
+		return found
+	}
+
+	for line := range strings.Lines(secret) {
+		if line = strings.TrimSpace(line); len(line) >= MinSecretLen {
+			found = append(found, line)
+		}
+	}
+
+	return found
+}
+
+// jsonText returns the text as it stands inside a JSON string. escapeHTML says whether <, > and & become \u escapes.
+func jsonText(text string, escapeHTML bool) string {
+	var out bytes.Buffer
+
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(escapeHTML)
+
+	_ = encoder.Encode(text) //nolint:errcheck,errchkjson // a string always encodes
+
+	return strings.TrimSuffix(strings.TrimSuffix(out.String(), "\n"), `"`)[1:]
 }
 
 func (r redactor) redact(text string) string {

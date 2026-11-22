@@ -25,6 +25,49 @@ func TestRedact_KeepsAValueShorterThanTheFloor(t *testing.T) {
 	assert.Equal(t, "x "+short+" y [redacted]", Redactor(short, exact)("x "+short+" y "+exact))
 }
 
+func TestRedact_RemovesTheJSONEscapedAndTheURLEscapedFormsOfASecret(t *testing.T) {
+	t.Parallel()
+
+	const sample = `pa"ss<w>ord&AB/CD`
+
+	redact := Redactor(sample)
+	forms := map[string]string{
+		"raw":       sample,
+		"json":      `pa\"ss<w>ord&AB/CD`,
+		"json_html": `pa\"ss` + `<` + `w` + `>` + `ord` + `&` + `AB/CD`,
+		"url_query": `pa%22ss%3Cw%3Eord%26AB%2FCD`,
+		"url_path":  `pa%22ss%3Cw%3Eord&AB%2FCD`,
+	}
+
+	for name, form := range forms {
+		assert.Equal(t, "a [redacted] b", redact("a "+form+" b"), name)
+	}
+
+	assert.Equal(t, "https://h/?p=[redacted]&x=1", redact("https://h/?p="+forms["url_query"]+"&x=1"))
+}
+
+func TestRedact_RemovesEachLineOfAMultiLineSecretAndItsJSONForm(t *testing.T) {
+	t.Parallel()
+
+	const pem = "-----BEGIN KEY-----\nMIIEvQIBADANBgkqhkiG9w0B\nAQEFAASCBKcwggSjAgEAAoIB\n-----END KEY-----"
+
+	redact := Redactor(pem)
+
+	assert.Equal(t, "[redacted]\n[redacted]\n[redacted]\n", redact("MIIEvQIBADANBgkqhkiG9w0B\nAQEFAASCBKcwggSjAgEAAoIB\n-----END KEY-----\n"), "a line writer sees one line at a time")
+	assert.JSONEq(t, `{"k":"[redacted]"}`, redact(`{"k":"`+strings.ReplaceAll(pem, "\n", `\n`)+`"}`), "the whole key in a JSON line")
+}
+
+func TestRedact_RemovesTheLongerSecretFirstWhateverTheOrderOfTheValues(t *testing.T) {
+	t.Parallel()
+
+	const short, long = "SECRETAB", "SECRETAB-SUFFIXSECRET"
+
+	for range 50 {
+		assert.Equal(t, "[redacted]", Redactor(short, long)(long))
+		assert.Equal(t, "[redacted]", Redactor(long, short)(long))
+	}
+}
+
 func TestRedactWriter_DropsALineLongerThanTheLimitAndKeepsTheNext(t *testing.T) {
 	t.Parallel()
 
