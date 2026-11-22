@@ -246,6 +246,18 @@ func TestSpawnRetries_ThePlanOfAStartAgainReportsAStoppedEngine(t *testing.T) {
 	require.Error(t, err, "the plan reads the latest run of the item")
 }
 
+func TestSpawnRetries_ThePlanOfAStartAgainRefusesARunThatIsNoAttemptOfItsItem(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	enqueueRun(t, h.client(t, testVersion), runID("21", 1), ItemInput{Item: "21", Project: testProject}, testVersion)
+
+	_, err := engine.planRestarts(t.Context(), ItemInput{Item: testItem, Project: testProject}, []spawnedRun{{Item: "21", Run: runID("22", 1), Retries: 1}}, []int{0})
+
+	require.ErrorContains(t, err, "run "+runID("22", 1)+" is not an attempt of item 21")
+}
+
 func TestSpawnRetries_ARaiseFiresWhenTheRetriesAreSpent(t *testing.T) {
 	t.Parallel()
 
@@ -376,6 +388,48 @@ func TestSpawnRetries_AResumeOfTheParentReopensTheLastAttemptOfARetriedChildOnly
 	assert.Equal(t, 3, h.life.takes["22"], "one claim for each attempt and one for the reopen")
 	h.life.mu.Unlock()
 	assert.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "gather:fan#1.retry1", "gather:fan#1.1", "command:after#1"}, stepNames(t, engine))
+}
+
+func TestSpawnRetries_AResumeThatReopensASiblingCanceledByTheRaiseStartsNoThirdAttemptOfARetriedChild(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	var tries, siblings atomic.Int32
+
+	// Item 23 stays open until the raise cancels it, so the second attempt of item 22 fails while a sibling is open, as on a loaded host.
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		switch request.Item {
+		case "22":
+			if tries.Add(1) <= 2 {
+				return errFake
+			}
+		case "23":
+			if siblings.Add(1) == 1 {
+				<-ctx.Done()
+
+				return ctx.Err()
+			}
+		}
+
+		return nil
+	}
+
+	engine := h.engine(t)
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, retryFile(`fail = "raise", `)))
+	require.ErrorContains(t, err, errFake.Error(), "both attempts of item 22 failed")
+	require.Equal(t, dbos.WorkflowStatusCancelled, runStatus(t, engine, runID("23", 1)), "the raise canceled the open sibling")
+
+	// The resume rewinds the parent to the start of the sibling, before the plan of the second attempt, so the plan of the start again runs a second time.
+	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
+	require.NoError(t, err)
+
+	last, _, err := latestRun(engine.ctx, "22")
+	require.NoError(t, err)
+	assert.Equal(t, 2, last.Attempt, "the resume reopened the second attempt and started no third")
+	assert.Equal(t, int32(3), tries.Load(), "only the reopened attempt ran again")
+	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem))
 }
 
 func TestSpawnRetries_OnlyAnItemRunIdNamesAnItem(t *testing.T) {
