@@ -27,7 +27,7 @@ type target struct {
 	goos, goarch string
 }
 
-// releaseTargets are the operating systems and architectures that .goreleaser.yaml builds.
+// releaseTargets are the operating systems and architectures that .goreleaser.yaml builds, all with cgo off.
 var releaseTargets = []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}}
 
 // gitRunnerSites returns "file:line" for each place in the Go files of root that makes a runner or a command for the git program. The program is the literal
@@ -95,7 +95,7 @@ func buildGroups(t *testing.T, fset *token.FileSet, files []*ast.File) [][]*ast.
 
 	for _, target := range releaseTargets {
 		context := build.Default
-		context.GOOS, context.GOARCH = target.goos, target.goarch
+		context.GOOS, context.GOARCH, context.CgoEnabled = target.goos, target.goarch, false
 		groups = append(groups, filesFor(t, fset, files, &context))
 	}
 
@@ -447,6 +447,11 @@ func TestTheGitSourceTestSeesAnImportAliasAndAPackageLevelName(t *testing.T) {
 			"b.go": "//go:build linux\n\npackage p\n\nvar name = \"git\"\n",
 			"c.go": "package p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(name)\n}\n",
 		},
+		"a package level name that the file without cgo sets": {
+			"a.go": "//go:build cgo\n\npackage p\n\nvar name = \"x\"\n",
+			"b.go": "//go:build !cgo\n\npackage p\n\nvar name = \"git\"\n",
+			"c.go": "package p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(name)\n}\n",
+		},
 		"a runner in a file that no release target builds": {"p.go": "//go:build windows\n\npackage p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(\"git\")\n}\n"},
 		"a local that holds exec.Command":                  {"p.go": "package p\n\nimport \"os/exec\"\n\nfunc f() {\nrun := exec.Command\n_ = run(\"git\")\n}\n"},
 		"a package level variable that holds exec.Command": {"p.go": "package p\n\nimport \"os/exec\"\n\nvar run = exec.Command\n\nfunc f() {\n_ = run(\"git\")\n}\n"},
@@ -481,6 +486,7 @@ func TestTheGitSourceTestLeavesOtherProgramsAlone(t *testing.T) {
 		"a parameter that hides a package level name":                 "package p\n\nvar name = \"git\"\n\nfunc g(name string) {\n_ = proc.NewExecRunner(name, dir)\n}\n",
 		"a Command function without a dot import":                     "package p\n\nfunc f() {\n_ = Command(\"git\")\n}\n",
 		"a local that holds a Command function of the package itself": "package p\n\nfunc Command(name string) {}\n\nfunc f() {\nrun := Command\nrun(\"git\")\n}\n",
+		"two variables that hold each other":                          "package p\n\nvar first, second func(string)\n\nfunc f() {\nfirst = second\nsecond = first\nfirst(\"git\")\n}\n",
 		"a local that holds exec.Command and runs another program":    "package p\n\nimport \"os/exec\"\n\nfunc f() {\nrun := exec.Command\n_ = run(\"gh\", \"git\")\n}\n",
 		"a local git that another function does not see": "package p\n\nimport \"os/exec\"\n\nvar name = \"gh\"\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\n" +
 			"func g() {\n_ = exec.Command(name)\n}\n",
