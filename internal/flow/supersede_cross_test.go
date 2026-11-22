@@ -189,7 +189,7 @@ func (g *passThenHold) Key(context.Context, string, string, string, string, stri
 	return GateKey{}, nil
 }
 
-func (*passThenHold) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (*passThenHold) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
 	return GateJob{}, nil
 }
 

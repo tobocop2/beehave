@@ -36,6 +36,8 @@ type Plan struct {
 	Pins       *PinCheck        `json:"pins,omitempty"`
 	// Base is the base branch of a candidate head, or empty for a sync head and a landing gate.
 	Base string `json:"base,omitempty"`
+	// BaseSHA is the commit that the base branch named when the engine read it for the gate. The pin reads and the host job use it. A project with no repository has none.
+	BaseSHA string `json:"base_sha,omitempty"`
 }
 
 // PlanOf is the plan of the project as it is now. It holds no pin check: Submit adds it.

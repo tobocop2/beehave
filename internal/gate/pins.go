@@ -27,13 +27,24 @@ type PinCheck struct {
 	Void  string `json:"void,omitempty"`
 }
 
-// readPins reads the pin file as it is at the base commit, origin/<base branch>, and not as it is in the tree of the lane: a lane must not be able to edit its own pins.
+// pinText reads the file at the base commit of the request, by its SHA, and not by a branch name that a lane could move. It returns the text and the exit code of git.
+// A request with no base commit reads nothing: the code is non-zero and the text says so, so the gate fails closed.
+func (g Gate) pinText(ctx context.Context, request Request, file string) (string, int) {
+	sha := request.anchor()
+	if sha == "" {
+		return "the base commit of the branch " + request.pinBase() + " is not known", 1
+	}
+
+	return g.shell(ctx, request.Dir, "git show "+model.ShellQuote(sha+":"+file))
+}
+
+// readPins reads the pin file as it is at the base commit, the SHA that the engine read for the base branch, and not as it is in the tree of the lane: a lane must not be able to edit its own pins.
 // The format is the one of .tool-versions: one tool and its version on each line, a # starts a comment.
 // A file that is absent at the base commit, a line without a version, a name that is not a program name, or a file with no line is an error.
-func (g Gate) readPins(ctx context.Context, dir, base, file string) ([]Pin, error) {
-	data, code := g.shell(ctx, dir, "git show "+model.ShellQuote("origin/"+base+":"+file))
+func (g Gate) readPins(ctx context.Context, request Request, file string) ([]Pin, error) {
+	data, code := g.pinText(ctx, request, file)
 	if code != 0 {
-		return nil, fmt.Errorf("the pin file %s cannot be read at origin/%s (exit code %d): %s", file, base, code, model.FirstLine(data))
+		return nil, fmt.Errorf("the pin file %s cannot be read at the base commit %s of the branch %s (exit code %d): %s", file, request.anchor(), request.pinBase(), code, model.FirstLine(data))
 	}
 
 	pins, err := parsePins(file, data)
@@ -85,7 +96,7 @@ func (g Gate) pinsOf(ctx context.Context, request Request) PinCheck {
 		return PinCheck{}
 	}
 
-	pins, err := g.readPins(ctx, request.Dir, request.pinBase(), request.Project.PinFile)
+	pins, err := g.readPins(ctx, request, request.Project.PinFile)
 	if err != nil {
 		return PinCheck{Void: err.Error()}
 	}

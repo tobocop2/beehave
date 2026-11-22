@@ -347,7 +347,7 @@ func (e *Engine) startProjectGate(ctx context.Context, request CommandRequest) (
 		return start, err
 	}
 
-	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase)
+	start.Job, err = e.deps.Gate.Submit(ctx, request.Project, request.Item, request.BuildHost, request.Base, request.PinBase, start.Key.BaseSHA)
 	start.Required = e.requiredOf(start.Job, request.Project)
 
 	return start, err

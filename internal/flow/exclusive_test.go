@@ -16,7 +16,7 @@ type slowGate struct {
 	release chan struct{}
 }
 
-func (slowGate) Submit(context.Context, string, string, string, string, string) (GateJob, error) {
+func (slowGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
 	return GateJob{}, nil
 }
 

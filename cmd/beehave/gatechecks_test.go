@@ -26,8 +26,14 @@ func candidateChecks(t *testing.T, log string) flow.GateChecks {
 	t.Helper()
 
 	hosted := &loggedHost{fakeHost: fakeHost{state: model.JobSucceeded}, log: log}
+	projects := clusterProject()
+	repo := projects["p"]
+	repo.Source = "/repo"
+	projects["p"] = repo
+
 	gate := projectGate{
-		projects: clusterProject(),
+		tip:      fixedTip(anchorOld, nil),
+		projects: projects,
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
@@ -36,7 +42,7 @@ func candidateChecks(t *testing.T, log string) flow.GateChecks {
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "", "main", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "", "main", "", "")
 	require.NoError(t, err)
 
 	got, err := gate.Run(t.Context(), "p", "1", "", job)

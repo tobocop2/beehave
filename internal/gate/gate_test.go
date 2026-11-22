@@ -107,8 +107,11 @@ func project(buildHost string) model.Project {
 
 const cloneURL = "https://github.com/owner/name.git"
 
+// tipSHA is the commit that the engine read for the base branch in the tests.
+const tipSHA = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd"
+
 func hostRequest(project model.Project) gate.Request {
-	return gate.Request{Project: project, Dir: "/w", CloneURL: cloneURL}
+	return gate.Request{Project: project, Dir: "/w", CloneURL: cloneURL, BaseSHA: tipSHA}
 }
 
 // withNoPins is the plan of a project with no pin file, as Submit records it: a pin check that holds nothing.
@@ -277,7 +280,10 @@ func TestSubmit_AHostGateStartsItsJobForTheHeadOfTheTreeAndDoesNotWait(t *testin
 	got, err := g.Submit(context.Background(), hostRequest(project("gpu-a")))
 
 	require.NoError(t, err)
-	assert.Equal(t, gate.Job{ID: "job-7", Head: headA, Plan: withNoPins(gate.PlanOf(project("gpu-a")))}, got)
+	want := withNoPins(gate.PlanOf(project("gpu-a")))
+	want.BaseSHA = tipSHA
+
+	assert.Equal(t, gate.Job{ID: "job-7", Head: headA, Plan: want}, got)
 	assert.Len(t, remote.submitted, 1)
 	assert.Empty(t, remote.waited)
 }

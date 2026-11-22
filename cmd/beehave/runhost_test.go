@@ -59,7 +59,7 @@ func TestProjectGate_AGateOfARunThatChoseAHostSubmitsAndWaitsOnThatHost(t *testi
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "", "")
 	require.NoError(t, err)
 
 	_, err = gate.Run(t.Context(), "p", "1", "gpu-b", job)
@@ -83,11 +83,11 @@ func TestProjectGate_AGateOfARunThatChoseNoHostUsesTheDefaultAndAnUndeclaredHost
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "p", "1", "", "", "")
+	_, err := gate.Submit(t.Context(), "p", "1", "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"gpu"}, asked.asked())
 
-	_, err = gate.Submit(t.Context(), "p", "1", "rogue", "", "")
+	_, err = gate.Submit(t.Context(), "p", "1", "rogue", "", "", "")
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	assert.Len(t, asked.asked(), 1, "a refused host starts no job")
 }
@@ -110,7 +110,7 @@ func TestProjectGate_AResumedRunWhoseRecordedHostLeftTheProjectFileIsRefusedAndS
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	_, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "")
+	_, err := gate.Submit(t.Context(), "p", "1", "gpu-b", "", "", "")
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	require.ErrorContains(t, err, "use one of gpu")
 
