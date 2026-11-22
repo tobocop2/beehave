@@ -41,7 +41,7 @@ func (p pulls) History(ctx context.Context, project, item string) ([]model.Prior
 
 // historyRows lists the pull requests on the branch of the item and adds, by number, those whose title or body names the item as a whole run.
 func historyRows(ctx context.Context, built forge.Forge, item string) ([]model.PullRequest, error) {
-	rows, err := built.PRList(ctx, historyListLimit, "--state", "all", "--head", item, "--json", historyFields)
+	rows, err := built.PRList(ctx, historyListLimit, "--state", "all", "--head", model.ItemBranch(item), "--json", historyFields)
 	if err != nil {
 		return nil, fmt.Errorf("list the pull requests on the branch of item %s: %w", item, err)
 	}

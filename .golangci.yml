@@ -368,6 +368,7 @@ linters:
             - "**/internal/gate/**"
             - "**/internal/lease/**"
             - "**/internal/merge/**"
+            - "**/internal/ownprogram/**"
             - "**/internal/review/**"
             - "**/internal/pool/**"
             - "**/internal/preflight/**"
@@ -382,6 +383,7 @@ linters:
             - github.com/tobocop2/beehave/internal/atomicfile
             - github.com/tobocop2/beehave/internal/fstree
             - github.com/tobocop2/beehave/internal/exectest
+            - github.com/tobocop2/beehave/internal/ownprogram
             - github.com/tobocop2/beehave/internal/check/shell
             - github.com/tobocop2/beehave/internal/batch
             - github.com/tobocop2/beehave/internal/claim
@@ -485,6 +487,7 @@ linters:
             - "!**/internal/gate/**"
             - "!**/internal/lease/**"
             - "!**/internal/merge/**"
+            - "!**/internal/ownprogram/**"
             - "!**/internal/review/**"
             - "!**/internal/pool/**"
             - "!**/internal/preflight/**"

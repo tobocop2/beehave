@@ -52,6 +52,9 @@ type Item struct {
 	Labels []string
 }
 
+// ItemBranch is the branch of the item with id: the engine names the branch of an item for the item.
+func ItemBranch(id string) string { return id }
+
 // Line returns the item as one line of unit-separated columns.
 func (i Item) Line() string {
 	hold := "0"

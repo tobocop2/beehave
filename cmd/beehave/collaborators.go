@@ -487,11 +487,12 @@ func (w worktrees) addArgs(ctx context.Context, clone, dir, item, revision strin
 		return []string{gitWorktree, gitAdd, "--force", "--detach", dir, revision}
 	}
 
-	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + item}).ExitCode == 0 {
-		return []string{gitWorktree, gitAdd, dir, item}
+	branch := model.ItemBranch(item)
+	if w.git(clone).Run(ctx, []string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}).ExitCode == 0 {
+		return []string{gitWorktree, gitAdd, dir, branch}
 	}
 
-	return []string{gitWorktree, gitAdd, "-b", item, dir, revision}
+	return []string{gitWorktree, gitAdd, "-b", branch, dir, revision}
 }
 
 // clone makes the clone of the repository of the project in dir, unless it is there. The clone comes from the source of the project, or else from its forge.
@@ -1081,7 +1082,7 @@ func (p pulls) numberOf(ctx context.Context, built opened, item string) (opened,
 
 // listed returns the number of the one pull request in the state on the branch of the item, or 0 when there is none.
 func listed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
-	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	rows, err := built.PRList(ctx, pullListLimit, "--head", model.ItemBranch(item), "--state", state, "--json", "number")
 	if err != nil {
 		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
 	}
@@ -1278,7 +1279,7 @@ func mention(item string) string {
 // newestListed returns the number of the newest pull request in the state on the branch of the item, or 0 when there is none.
 // A branch that was closed and opened again has many closed pull requests, and only the last one tells where the item stands. The forge lists the newest first.
 func newestListed(ctx context.Context, built forge.Forge, item, state string) (int, error) {
-	rows, err := built.PRList(ctx, pullListLimit, "--head", item, "--state", state, "--json", "number")
+	rows, err := built.PRList(ctx, pullListLimit, "--head", model.ItemBranch(item), "--state", state, "--json", "number")
 	if err != nil {
 		return 0, fmt.Errorf("find the pull request of item %s: %w", item, err)
 	}

@@ -146,7 +146,7 @@ func openPulls(pulls []model.PullRequest, items []model.Item) []openPull {
 		branch := model.Deref(pull.HeadRefName)
 		named := ""
 
-		if slices.ContainsFunc(items, func(item model.Item) bool { return item.ID == branch }) {
+		if slices.ContainsFunc(items, func(item model.Item) bool { return model.ItemBranch(item.ID) == branch }) {
 			named = branch
 		}
 
