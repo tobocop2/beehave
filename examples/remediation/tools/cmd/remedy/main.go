@@ -9,14 +9,10 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/roundintegration"
 )
 
 // The GitHub forge gives the closing references; without this line a drift would fall back to the body parse.
 var _ scope.Listing = (*forgegithub.Forge)(nil)
-
-// The integration subcommand opens a pull request and writes a body, so the GitHub forge must have both calls.
-var _ roundintegration.Forge = (*forgegithub.Forge)(nil)
 
 func main() {
 	claims := remedy.OpenClaims(openClaims(config.ProcessEnv(), proc.NewExecRunner("bd", "")))

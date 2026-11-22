@@ -34,7 +34,7 @@ func commandsNamed(rig *roundRig, first string) []string {
 func integrationState(rig *roundRig, state string) {
 	previous := rig.h.commands.reply
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 1 && request.Run[1] == "integration" {
+		if request.Run[0] == integrationProgram {
 			return CommandOutput{Stdout: "pr=9 state=" + state + "\n"}, nil
 		}
 
@@ -52,7 +52,7 @@ func TestRound_TheRoundAsksTheToolForTheIntegrationPullRequestFromTheRoundBaseIn
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"remedy integration --base integration --into main --pr 9"}, commandsNamed(rig, "remedy integration"))
+	assert.Equal(t, []string{"integration_pull --base integration --into main --pr 9"}, commandsNamed(rig, integrationProgram))
 }
 
 func TestRound_AnIntegrationLineWithNoPullRequestNumberStopsTheRun(t *testing.T) {
@@ -61,7 +61,7 @@ func TestRound_AnIntegrationLineWithNoPullRequestNumberStopsTheRun(t *testing.T)
 	rig := newRoundRig(t, "")
 	previous := rig.h.commands.reply
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 1 && request.Run[1] == "integration" {
+		if request.Run[0] == integrationProgram {
 			return CommandOutput{Stdout: "garbage\n"}, nil
 		}
 
@@ -87,7 +87,7 @@ func TestRound_TheNextRoundIsCutFromTheOldBaseAndTheIntegrationPullRequestOnceIt
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Contains(t, commandsNamed(rig, "remedy"), "remedy cut --old integration --new round-v --pr 9 --trunk main")
+	assert.Equal(t, []string{"round_cut --old integration --new round-v --pr 9 --trunk main"}, commandsNamed(rig, cutProgram))
 }
 
 // vars.round.integration_pr 0 lets the tool find the integration pull request, so the cut takes the number that the tool printed.
@@ -103,7 +103,7 @@ func TestRound_ARoundWithNoIntegrationNumberCutsWithTheNumberThatTheToolFound(t 
 	_, err := rig.run(t)
 
 	require.NoError(t, err)
-	assert.Contains(t, commandsNamed(rig, "remedy"), "remedy cut --old integration --new round-v --pr 9 --trunk main")
+	assert.Equal(t, []string{"round_cut --old integration --new round-v --pr 9 --trunk main"}, commandsNamed(rig, cutProgram))
 }
 
 func TestRound_AStopFromTheOwnerCutsNoNextRoundEvenWhenTheIntegrationPullRequestMerged(t *testing.T) {
@@ -117,9 +117,7 @@ func TestRound_AStopFromTheOwnerCutsNoNextRoundEvenWhenTheIntegrationPullRequest
 
 	require.NoError(t, err)
 
-	for _, line := range commandsNamed(rig, "remedy") {
-		assert.NotContains(t, line, "remedy cut")
-	}
+	assert.Empty(t, commandsNamed(rig, cutProgram))
 }
 
 func TestRound_TheCutOfTheNextRoundThatTheToolRefusesEndsTheRunWithItsReason(t *testing.T) {
@@ -132,7 +130,7 @@ func TestRound_TheCutOfTheNextRoundThatTheToolRefusesEndsTheRunWithItsReason(t *
 
 	previous := rig.h.commands.reply
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 1 && request.Run[1] == "cut" {
+		if request.Run[0] == cutProgram {
 			return CommandOutput{RC: 2, Stdout: "REFUSE: pull request 9 is not merged"}, nil
 		}
 
@@ -210,7 +208,7 @@ func TestRound_ANoChildIsOpenBeforeTheRoundReadsTheIntegrationPullRequestAndWait
 
 	require.NoError(t, err)
 
-	require.NotEmpty(t, commandsNamed(rig, "remedy integration"), "the round reached its integration read")
+	require.NotEmpty(t, commandsNamed(rig, integrationProgram), "the round reached its integration read")
 	assert.Equal(t, []string{"1", "3"}, rig.kids.started())
 	assert.ElementsMatch(t, rig.kids.started(), rig.kids.reviewedAtIntegration(), "every child had ended its review before the round asks the owner")
 }
@@ -279,10 +277,7 @@ func TestRound_ATimeoutReturnsTheStateWaitingWithTheBaseAndThePullRequestAndCuts
 	assert.Equal(t, roundValue{State: "waiting", Base: "main", PR: 9}, value)
 	assert.NotContains(t, strings.Join(stepNames(t, engine), " "), "queue:round-queue-2#", "a timeout ends the round and starts no second pass")
 
-	for _, line := range commandsNamed(rig, "remedy") {
-		assert.NotContains(t, line, "remedy cut", "a timeout is a STOP and cuts nothing")
-	}
-}
+	assert.Empty(t, commandsNamed(rig, cutProgram), "a timeout is a STOP and cuts nothing")}
 
 func TestRound_AContinueStartsAnotherPassThatAsksTheQueueAgain(t *testing.T) {
 	t.Parallel()

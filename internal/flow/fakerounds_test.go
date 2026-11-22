@@ -14,13 +14,22 @@ import (
 	"github.com/tobocop2/beehave/internal/takeover"
 )
 
-// fakeRounds is the round writer of a test. It runs no forge: each call is written as the remedy line it replaces and goes to the fake commands, whose reply says what the
+// fakeRounds is the round writer of a test. It runs no forge: each call is written as the line of the engine step or of the remedy tool that it stands for, and goes to the fake commands, whose reply says what the
 // forge answers. So a test scripts one answer for the round and reads one list of calls. A reply with exit code 2 is a refusal.
 type fakeRounds struct{ commands *fakeCommands }
 
-// ask records the call as the line of the tool and returns the answer of the fake commands.
-func (f fakeRounds) ask(ctx context.Context, words ...string) (CommandOutput, error) {
-	return f.commands.Run(ctx, CommandRequest{Run: append([]string{"remedy"}, words...)})
+// The programs of the lines that the fake writes for the engine steps of the round.
+const (
+	syncProgram        = "round_sync"
+	landProgram        = "round_land"
+	cutProgram         = "round_cut"
+	integrationProgram = "integration_pull"
+	remedyProgram      = "remedy"
+)
+
+// ask records the call as the line of the program and returns the answer of the fake commands.
+func (f fakeRounds) ask(ctx context.Context, program string, words ...string) (CommandOutput, error) {
+	return f.commands.Run(ctx, CommandRequest{Run: append([]string{program}, words...)})
 }
 
 // lineFields reads the name=value words of a line.
@@ -37,13 +46,13 @@ func lineFields(line string) map[string]string {
 }
 
 func (f fakeRounds) Sync(ctx context.Context, _ string, req roundsync.Request) (roundsync.Result, error) {
-	out, err := f.ask(ctx, "sync", "--base", req.Base, "--trunk", req.Trunk)
+	out, err := f.ask(ctx, syncProgram, "--base", req.Base, "--trunk", req.Trunk)
 
 	return syncResult(out, err)
 }
 
 func (f fakeRounds) Land(ctx context.Context, _ string, req roundsync.LandRequest) (roundsync.Result, error) {
-	out, err := f.ask(ctx, "sync", "land", "--pr", strconv.Itoa(req.PR), "--head", req.Head, "--base-tip", req.BaseTip)
+	out, err := f.ask(ctx, landProgram, "--pr", strconv.Itoa(req.PR), "--head", req.Head, "--base-tip", req.BaseTip)
 
 	return syncResult(out, err)
 }
@@ -88,7 +97,7 @@ func cmpOr(value, fallback string) string {
 }
 
 func (f fakeRounds) Cut(ctx context.Context, _ string, req roundcut.Request) (roundcut.Result, error) {
-	out, err := f.ask(ctx, "cut", "--old", req.Cut.OldBase, "--new", req.Cut.NewBase, "--pr", strconv.Itoa(req.Cut.OldPR), "--trunk", req.Cut.Trunk)
+	out, err := f.ask(ctx, cutProgram, "--old", req.Cut.OldBase, "--new", req.Cut.NewBase, "--pr", strconv.Itoa(req.Cut.OldPR), "--trunk", req.Cut.Trunk)
 	if err != nil {
 		return roundcut.Result{}, err
 	}
@@ -101,7 +110,7 @@ func (f fakeRounds) Cut(ctx context.Context, _ string, req roundcut.Request) (ro
 }
 
 func (f fakeRounds) Integrate(ctx context.Context, _ string, req roundintegration.Request) (roundintegration.Result, error) {
-	out, err := f.ask(ctx, "integration", "--base", req.Base, "--into", req.Into, "--pr", strconv.Itoa(req.PR))
+	out, err := f.ask(ctx, integrationProgram, "--base", req.Base, "--into", req.Into, "--pr", strconv.Itoa(req.PR))
 	if err != nil {
 		return roundintegration.Result{}, err
 	}
@@ -128,7 +137,7 @@ func (f fakeRounds) Place(ctx context.Context, _ string, card model.Card) (strin
 		words = append(words, "--issue", strconv.Itoa(card.Number))
 	}
 
-	out, err := f.ask(ctx, words...)
+	out, err := f.ask(ctx, remedyProgram, words...)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +160,7 @@ func (f fakeRounds) Take(ctx context.Context, _ string, req TakeRequest) (takeov
 	case takeover.ModeDry:
 	}
 
-	out, err := f.ask(ctx, words...)
+	out, err := f.ask(ctx, remedyProgram, words...)
 	if err != nil {
 		return takeover.Result{}, err
 	}

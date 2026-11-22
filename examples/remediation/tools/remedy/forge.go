@@ -9,9 +9,6 @@ import (
 // errNoOrigin says that the working folder has no origin remote that names a repository.
 var errNoOrigin = errors.New("cannot read the origin remote of the working folder")
 
-// errNoIntegrator says that the forge cannot open a pull request or write a body.
-var errNoIntegrator = errors.New("the forge cannot open a pull request or write its body")
-
 // originRepo is the owner and name of the repository that the origin remote of the working folder names.
 func originRepo(ctx context.Context, deps Deps) (string, error) {
 	remote := deps.Git.Run(ctx, []string{"remote", "get-url", "origin"})

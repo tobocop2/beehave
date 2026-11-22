@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,7 +70,7 @@ func roundCalls(h *harness, _ *fakeWriter) []string {
 	var calls []string
 
 	for _, request := range h.commands.requests {
-		if len(request.Run) > 0 && request.Run[0] == "remedy" {
+		if len(request.Run) > 0 && slices.Contains([]string{remedyProgram, syncProgram, landProgram, cutProgram, integrationProgram}, request.Run[0]) {
 			calls = append(calls, strings.Join(request.Run, " "))
 		}
 	}

@@ -65,7 +65,7 @@ func TestWorkflow_EveryRemedySubcommandOfTheExampleIsInTheCommandTable(t *testin
 func TestWorkflow_ASubcommandThatIsNotInTheTableFailsTheComparison(t *testing.T) {
 	t.Parallel()
 
-	unknown := unknownSubcommands(t, "command(run = [\"remedy\", \"bake\"])\ngate(run = [\"remedy\", \"cut\"])\n")
+	unknown := unknownSubcommands(t, "command(run = [\"remedy\", \"bake\"])\ngate(run = [\"remedy\", \"size\"])\n")
 
 	assert.Equal(t, []string{"bake"}, unknown)
 }
@@ -73,9 +73,9 @@ func TestWorkflow_ASubcommandThatIsNotInTheTableFailsTheComparison(t *testing.T)
 func TestWorkflow_RemedyBehindAPathIsFound(t *testing.T) {
 	t.Parallel()
 
-	got := subcommands(t, "command(run = [\"bin/remedy\", \"bake\"])\ncommand(run = [\"/usr/local/bin/remedy\", \"cut\"])\ncommand(run = [\"notremedy\", \"bake\"])\n")
+	got := subcommands(t, "command(run = [\"bin/remedy\", \"bake\"])\ncommand(run = [\"/usr/local/bin/remedy\", \"size\"])\ncommand(run = [\"notremedy\", \"bake\"])\n")
 
-	assert.Equal(t, []string{"bake", "cut"}, got)
+	assert.Equal(t, []string{"bake", "size"}, got)
 }
 
 func TestWorkflow_SubcommandsAreReadFromCommandAndGateCalls(t *testing.T) {
@@ -83,7 +83,7 @@ func TestWorkflow_SubcommandsAreReadFromCommandAndGateCalls(t *testing.T) {
 
 	src := `
 def main(item):
-    command(name = "cut", run = ["remedy", "cut", "--old", "a", "--new", "b-II", "--pr", "3"])
+    command(name = "size", run = ["remedy", "size", "brief.md"])
     gate(name = "check", run = ["remedy", "audit", "present", "tip", "base"])
     command(name = "other", run = ["make", "check"])
     gate(name = "plain")
@@ -93,5 +93,5 @@ def main(item):
 
 	got := subcommands(t, src)
 
-	assert.True(t, slices.Equal([]string{"cut", "audit", "bake"}, got), "got %v", got)
+	assert.True(t, slices.Equal([]string{"size", "audit", "bake"}, got), "got %v", got)
 }

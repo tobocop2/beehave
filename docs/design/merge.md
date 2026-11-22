@@ -49,7 +49,7 @@ The `github` backend reads a log with `gh run view --job <number> --log-failed`.
 - `NeedsCommit` is true for a blocking finding. It is also true for any open finding when the `Policy` sets `NoFollowUps`.
 - `Standing.Compare` lets a review of an earlier commit stand for a head that holds the same tree.
 
-The round cut and the merge audit are not part of the engine. They live in `examples/remediation/tools/` and run through the `remedy` binary. See [Remediation tools](#remediation-tools).
+The round cut is the engine step `round_cut`. The merge audit is not part of the engine. It lives in `examples/remediation/tools/` and runs through the `remedy` binary. See [Remediation tools](#remediation-tools).
 
 ### Own work merges only after another step approved it
 
@@ -362,7 +362,7 @@ Every other member, and every member whose read failed, is a line of the result 
 - The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge and the beads claim store to `remedy.Main`, which wires the real git runner.
 - The package `lease` builds the claims over the rows and finds the project of a repository in the config folder, for `cmd/beehave` and `cmd/remedy` alike.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `gatelist`, `audit`, `papers`). The forge writes of a round (`sync`, `sync land`, `cut`, `integration`, `board` and `take`) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. They call the same packages (`roundsync`, `roundcut`, `roundintegration`, `takeover`) as the subcommands. The subcommands stay for a person at a terminal, who runs them with the login of that person.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `gatelist`, `audit`, `papers`). The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut or the integration pull request. `board` and `take` stay in the tool for a person at a terminal, who runs them with the login of that person.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
@@ -378,20 +378,20 @@ Each subcommand follows the exit codes of beehave:
 
 A bad argument is a refusal. The tool finds the repository from the `origin` remote of its working folder.
 
-### `remedy cut`
+### `round_cut`
 
-`remedy cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]` runs `roundcut`. It:
+`round_cut(old = <branch>, new = <branch>, pr = <number>, trunk = <branch>)` runs `roundcut`. It:
 
 - refuses unless the integration pull request is merged,
 - makes or resumes the new base only at the trunk tip,
 - moves every open pull request on the old base to it,
 - never deletes the old branch. The forge interface has no call that deletes a branch.
 
-A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The trunk is `main` when `--trunk` is not given. The number of the new round is the text after the last dash of the new branch.
+A dry run takes the same path and prints `WOULD:` lines, and it makes no write call. The trunk is the base branch of the project. The number of the new round is the text after the last dash of the new branch.
 
-### `remedy sync`
+### `round_sync`
 
-`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the engine steps `round_sync` and `integration_pull` use the `pr_label` of the project (`made-by-beehave` when the project sets none). The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`round_sync(base = <branch>, trunk = <branch>)` runs `roundsync`. The pull request that it opens carries the `pr_label` of the project (`made-by-beehave` when the project sets none). The step `integration_pull` labels the integration pull request the same way. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|
@@ -404,13 +404,13 @@ GitHub's merges endpoint (`POST /repos/{owner}/{repo}/merges`) makes a merge com
 
 The forge does each merge, so no checkout is written, and the round branch is never rebased. A repeat call finds the branch, the merge and the pull request. A base that moved after the branch was cut is merged into the branch, so the gated head holds every commit that the landing keeps. Any other failure of the forge is exit code 2.
 
-`remedy sync land --pr <number> --head <sha> --base-tip <sha>` merges the pull request with a merge commit pinned to `--head`. It lands only when the base is still at `--base-tip`. A moved base is `state=stale` and a moved head is `state=head-moved`. Both are exit code 2 and write nothing. A landing prints `state=landed`.
+`round_land(pr = <number>, head = <sha>, base_tip = <sha>)` merges the pull request with a merge commit pinned to `head`. It lands only when the base is still at `base_tip`. A moved base is `state=stale` and a moved head is `state=head-moved`. Both are exit code 2 and write nothing. A landing prints `state=landed`.
 
-GitHub does not merge a draft: `gh pr merge` on one exits 1 with `GraphQL: Pull Request is still a draft (mergePullRequest)` (measured on a scratch repository with gh 2.101.0). The sync opens its pull request as a draft. The landing marks the draft ready only after the base and head checks pass, then merges it pinned to `--head`.
+GitHub does not merge a draft: `gh pr merge` on one exits 1 with `GraphQL: Pull Request is still a draft (mergePullRequest)` (measured on a scratch repository with gh 2.101.0). The sync opens its pull request as a draft. The landing marks the draft ready only after the base and head checks pass, then merges it pinned to `head`.
 
 When the merge fails, or the tool gets SIGINT during the merge, the landing makes the pull request a draft again. That call runs on a context that the SIGINT does not end, with its own limit of 30 seconds. If that call fails, its failure is part of the error of the landing. A sync that finds the open pull request of its sync branch ready makes it a draft before any merge into that branch. If the draft call fails, the sync stops before the merge.
 
-A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `remedy sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. Once the sync holds its own open pull request, it closes every other open sync pull request into the round base, not only older ones, matched by the branch prefix `sync/<base>/`, with a comment that names the pull request that replaces it. A repeat call closes what a failed close left open. A failed close or a failed list is exit code 2 with the error of the forge. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
+A kill of the landing, or a SIGINT during the ready call, can leave the sync pull request ready on a head that passed its gate and review. The stop of a round and a step timeout kill the group of the tool with SIGKILL, which no process can catch. No error line says that the pull request is still ready. It stays ready until a `round_sync` on the same sync branch makes it a draft. A sync for a newer trunk tip cuts a new sync branch and does not read the old pull request. Once the sync holds its own open pull request, it closes every other open sync pull request into the round base, not only older ones, matched by the branch prefix `sync/<base>/`, with a comment that names the pull request that replaces it. A repeat call closes what a failed close left open. A failed close or a failed list is exit code 2 with the error of the forge. A person who merges the ready pull request merges that gated head. A person who marks the pull request ready by hand can also merge it.
 
 #### The sync step of the round
 

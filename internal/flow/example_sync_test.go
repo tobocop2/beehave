@@ -30,7 +30,7 @@ const syncRoundBase = "integration"
 // syncBranch is the sync branch that the fake tool names.
 const syncBranch = "sync/integration/abcd1234"
 
-// syncScript is the fake `remedy sync` of a round: each check call takes the next line, and the last line repeats. land is the line and the exit code of `remedy sync land`.
+// syncScript is the fake of the engine steps round_sync and round_land: each check call takes the next line, and the last line repeats. land is the line and the exit code of the landing.
 type syncScript struct {
 	lines  []string
 	land   CommandOutput
@@ -51,11 +51,14 @@ func (s *syncScript) syncedLine() string {
 
 // isSync reports whether the request is a call of the sync tool, and whether it is the landing.
 func isSync(request CommandRequest) (bool, bool) {
-	if len(request.Run) < 2 || request.Run[0] != "remedy" || request.Run[1] != "sync" {
+	switch request.Run[0] {
+	case syncProgram:
+		return true, false
+	case landProgram:
+		return true, true
+	default:
 		return false, false
 	}
-
-	return true, len(request.Run) > 2 && request.Run[2] == "land"
 }
 
 // syncGate is the gate of the round rig that records the base of each gate of the round itself and can make that gate red.
@@ -217,17 +220,9 @@ func at(names []string, prefix string) int {
 	return slices.IndexFunc(names, func(name string) bool { return strings.HasPrefix(name, prefix) })
 }
 
-// syncLands returns the landing calls of the sync tool, words joined by a space.
+// syncLands returns the landing calls of the round, words joined by a space.
 func syncLands(rig *roundRig) []string {
-	var lands []string
-
-	for _, line := range commandsNamed(rig, "remedy") {
-		if strings.HasPrefix(line, "remedy sync land") {
-			lands = append(lands, line)
-		}
-	}
-
-	return lands
+	return commandsNamed(rig, landProgram)
 }
 
 func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMergedHeadBeforeTheNextItemStarts(t *testing.T) {
@@ -248,8 +243,8 @@ func TestRoundSync_AMovedTrunkLandsThroughTheSyncPullRequestWhoseGateRunsOnTheMe
 		assert.Less(t, at(names, order[i-1]), at(names, order[i]), "%s comes before %s", order[i-1], order[i])
 	}
 
-	assert.Equal(t, []string{"remedy sync --base integration --trunk main"}, commandsNamed(rig, "remedy sync --base")[:1], "the round base, then the trunk")
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_sync --base integration --trunk main"}, commandsNamed(rig, syncProgram)[:1], "the round base, then the trunk")
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 	require.NotEmpty(t, recorder.roundBases())
 	assert.Empty(t, recorder.roundBases()[0], "the gate of the sync head runs the gate command only, with no base")
 }
@@ -280,7 +275,7 @@ func TestRoundSync_ASyncedLineLandsWhateverTheOrderOfItsFieldsAndKeepsAnEqualSig
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"git fetch origin sync/a=b"}, commandsNamed(rig, "git fetch origin"))
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 }
 
 func TestRoundSync_AConflictThatTheAgentDoesNotResolveStopsTheRoundInRoundWaitWithTheReason(t *testing.T) {
@@ -574,7 +569,7 @@ func TestRoundSync_AConflictThatTheAgentResolvesIsGatedReviewedAndLandedInTheSam
 	assert.Contains(t, rig.h.forge.pushed[0], "|"+syncBranch+"|", "the push goes to the sync branch that the line names")
 	assert.True(t, strings.HasSuffix(rig.h.forge.pushed[0], "|"), "the first push of the sync branch leases the head that the clone saw")
 
-	assert.Equal(t, []string{"remedy sync land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
+	assert.Equal(t, []string{"round_land --pr 7 --head " + script.head + " --base-tip " + script.tip}, syncLands(rig))
 	assert.Equal(t, []string{""}, recorder.roundBases())
 	require.Len(t, rig.questions, 1)
 	assert.NotContains(t, rig.questions[0], "sync-")
