@@ -99,6 +99,22 @@ func TestDerive_ASetupOrCheckoutActionGivesNoStepAndIsNotRefused(t *testing.T) {
 	assert.Empty(t, got.Refused)
 }
 
+func TestDerive_ASetupActionPathThatIsNotOneSetupActionIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for name, action := range map[string]string{
+		"a path under a setup action":    "actions/setup-go/sub/dir@v1",
+		"a setup action with no name":    "actions/setup-@v1",
+		"a path under a checkout action": "actions/checkout/sub@v4",
+		"a setup action of another org":  "actionsx/setup-go@v1",
+	} {
+		got := derivedAll(t, formUses(action, ""))
+
+		require.Len(t, got.Refused, 1, name)
+		assert.Contains(t, got.Refused[0].Reason, "neither a checkout nor a setup", name)
+	}
+}
+
 func TestDerive_AStepThatOnlyMentionsAPublishingCommandIsNotRefused(t *testing.T) {
 	t.Parallel()
 
