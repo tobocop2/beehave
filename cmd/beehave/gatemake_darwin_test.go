@@ -24,17 +24,15 @@ func TestGateSandbox_MakeRunsUnderTheRealEnforcer(t *testing.T) {
 		t.Skipf("no Seatbelt enforcer here: %v", err)
 	}
 
-	if _, err := exec.LookPath("xcrun"); err != nil {
-		t.Skipf("no xcrun here: %v", err)
+	if err := exec.CommandContext(t.Context(), "xcrun", "-f", "make").Run(); err != nil {
+		t.Skipf("xcrun finds no make here: %v", err)
 	}
 
 	box := newGateSandbox(sandboxedProject(model.SandboxOn, config.LocalHost), cloneLock{repos: t.TempDir()}, nil)
 	box.enforcer = func(string) (sandbox.Enforcer, error) { return enforcer, nil }
 	box.home = func() (string, error) { return t.TempDir(), nil }
 
-	if box.developer == "" {
-		t.Skip("xcode-select names no developer folder here")
-	}
+	require.NotEmpty(t, box.developer, "xcrun finds make, so xcode-select names the developer folder")
 
 	dir := repoWithCommit(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "Makefile"), []byte("check:\n\t@echo make-ran\n"), 0o600))

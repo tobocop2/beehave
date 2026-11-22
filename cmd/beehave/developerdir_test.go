@@ -16,6 +16,8 @@ func TestDeveloperReads_AFolderInABundleOpensTheBundleAndEveryFolderOpensThePref
 	assert.Equal(t, []string{"/Applications/Xcode.app/Contents/Developer", "/Applications/Xcode.app", xcodePreferences},
 		developerReads("/Applications/Xcode.app/Contents/Developer"))
 	assert.Equal(t, []string{"/Library/Developer/CommandLineTools", xcodePreferences}, developerReads("/Library/Developer/CommandLineTools"))
+	assert.Equal(t, []string{"/opt/Xcode.appx/Developer", xcodePreferences}, developerReads("/opt/Xcode.appx/Developer"), "a name that only holds .app is no bundle")
+	assert.Equal(t, []string{"/a.app/Contents/Developer", "/a.app", xcodePreferences}, developerReads("/a.app/Contents/Developer"), "the nearest bundle above the folder")
 	assert.Nil(t, developerReads(""), "no developer folder opens nothing")
 }
 
