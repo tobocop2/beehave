@@ -507,7 +507,7 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	rig.h.preflight = r.remote
 
 	rig.h.commands.reply = func(request CommandRequest) (CommandOutput, error) {
-		if len(request.Run) > 2 && request.Run[1] == "integration" {
+		if request.Run[0] == integrationProgram {
 			kids.atIntegration()
 
 			return CommandOutput{Stdout: "pr=9 state=OPEN\n"}, nil

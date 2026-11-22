@@ -13,7 +13,6 @@ import (
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/roundcut"
 	"github.com/tobocop2/beehave/internal/takeover"
 )
 
@@ -24,10 +23,9 @@ const (
 	ExitRefused = 2
 )
 
-// Forge is the forge of every subcommand: the calls of the round cut, the calls of the takeover and the body read of the scope check and of the first review row.
+// Forge is the forge of every subcommand: the calls of the takeover and the body read of the scope check and of the first review row.
 // A forge that also has the closing-reference read of scope.Listing gives both of them the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
 type Forge interface {
-	roundcut.Forge
 	takeover.Reader
 	scope.BodyReader
 }
@@ -73,7 +71,7 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.star reads it.
 func commands() []command {
-	return slices.Concat(roundCommands(), mergeCommands(), syncCommands(), briefCommands(), ledgerCommands(), boardCommands(), papersCommands(), spendCommands(), gateCommands())
+	return slices.Concat(mergeCommands(), briefCommands(), ledgerCommands(), boardCommands(), papersCommands(), spendCommands(), gateCommands())
 }
 
 // ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.
@@ -126,24 +124,6 @@ func briefCommands() []command {
 			usage:   sizeSyntax,
 			summary: "size the reading of a brief in tokens, warn about big files and refuse a reading above the budget",
 			run:     sizeCommand,
-		},
-	}
-}
-
-// roundCommands are the subcommands that cut a round and keep its integration pull request.
-func roundCommands() []command {
-	return []command{
-		{
-			name:    "cut",
-			usage:   "cut --old <branch> --new <branch> --pr <number> [--trunk <branch>] [--dry]",
-			summary: "cut the next round branch after the integration pull request merged",
-			run:     cutCommand,
-		},
-		{
-			name:    "integration",
-			usage:   integrationSyntax,
-			summary: "find the integration pull request of the round, or open it, add a row for each pull request merged into the round branch, and print `pr=<n> state=<state>`",
-			run:     integrationCommand,
 		},
 	}
 }

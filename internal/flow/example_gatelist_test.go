@@ -61,7 +61,7 @@ func TestExampleProfile_AMapThatDoesNotMatchTheCICommandsStopsTheRoundBeforeItsF
 	require.NotNil(t, result.Stopped)
 	assert.Equal(t, 2, result.Stopped.RC)
 	assert.Contains(t, result.Stopped.Output, "unmapped ship:test")
-	assert.Empty(t, commandsNamed(rig, "remedy sync"), "no pass ran after the refusal")
+	assert.Empty(t, commandsNamed(rig, syncProgram), "no pass ran after the refusal")
 }
 
 func TestExampleProfile_AProjectWithGateFilesAndNoGateStepsStopsTheRound(t *testing.T) {
@@ -74,7 +74,7 @@ func TestExampleProfile_AProjectWithGateFilesAndNoGateStepsStopsTheRound(t *test
 
 	require.ErrorContains(t, err, "REFUSE: vars.gate_files is set, but the project has no gate_steps")
 	assert.Empty(t, commandsNamed(rig, "remedy gatelist"), "the derive does not run")
-	assert.Empty(t, commandsNamed(rig, "remedy sync"), "no pass ran after the refusal")
+	assert.Empty(t, commandsNamed(rig, syncProgram), "no pass ran after the refusal")
 }
 
 func TestExampleProfile_AGateMapOfTheWrongFormIsRefused(t *testing.T) {

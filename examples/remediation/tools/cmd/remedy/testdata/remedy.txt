@@ -1,6 +1,9 @@
 # The remedy tool runs in the test binary. It follows the exit codes of beehave.
 exec remedy --help
-stdout '^  cut --old'
+stdout '^  size '
+! stdout '^  cut '
+! stdout '^  integration '
+! stdout '^  sync '
 stdout '^  audit authored'
 
 # An unknown command is a refusal: exit code 2.
@@ -12,6 +15,14 @@ cd tree
 exec remedy audit authored HEAD..HEAD
 stdout 'AUD_AUTHORED_DONE'
 
-# A cut with no origin remote is a refusal.
-! exec remedy cut --old staging/r-I --new staging/r-II --pr 1
+# A read of the forge with no origin remote is a refusal.
+! exec remedy recount --pr 1
 stderr 'cannot read the origin remote'
+
+# The subcommands that the engine runs as steps are not in the tool.
+! exec remedy cut --old staging/r-I --new staging/r-II --pr 1
+stderr 'unknown command "cut"'
+! exec remedy integration --base staging/r-I --into main
+stderr 'unknown command "integration"'
+! exec remedy sync --base staging/r-I
+stderr 'unknown command "sync"'
