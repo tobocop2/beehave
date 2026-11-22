@@ -391,19 +391,15 @@ The burn record reads the transcript of the orchestrator. It counts the main thr
 - A transcript line whose `message` or `usage` is not an object is skipped, and so is a line with `NaN` or `Infinity`.
 - A transcript key matches by exact case.
 
-### The papers check
+### The glob dialect
 
-The papers check lists the source paths that a revision range changes. A lane of proof and papers changes none. A range that starts with `-` is refused, so git never reads it as an option.
-
-The globs use the same `github.com/bmatcuk/doublestar/v4` dialect as [`allow_paths`](#the-setting-allow_paths). A pattern has three forms that `fnmatch` does not have:
+The globs of [`allow_paths`](#the-setting-allow_paths) use the `github.com/bmatcuk/doublestar/v4` dialect. A pattern has three forms that `fnmatch` does not have:
 
 - `[!x]` and `[^x]` negate a set.
 - `{a,b}` chooses between patterns, so a literal brace is `\{` or `\}`.
 - `\` escapes the next character, so a literal backslash is `\\` and `\*` is a literal star.
 
 A pattern that does not parse is a refusal that names the pattern. Examples are an unclosed `[` or `{`, a lone `[!` and a trailing `\`.
-
-The package `papers` declares its own `runner` interface for git, so it does not import `forge`.
 
 ### The author check
 
