@@ -64,17 +64,19 @@ exec beehaveround answer round/integration/s1 --as agent STOP
 wait
 stdout 'finished'
 
-# The sync landed, the child ran each step once, the engine asked for its pull request on the round branch, and the landing merged it into the round branch.
+# The sync landed, the child ran each step once, and the landing merged its pull request into the round branch. The forge opened three pull requests: the sync into the round branch,
+# the integration of the round into the trunk, and the child on the round branch.
 grep -count=1 '^sync_review$' calls.log
 grep -count=1 '^plan$' calls.log
 grep -count=1 '^implement$' calls.log
 grep -count=2 '^review$' calls.log
-grep -count=1 '^sync land ' remedy.log
-grep -count=1 '^MergePR ' forge/calls.log
+grep -count=2 '^MergePR ' forge/calls.log
 grep -count=1 '^integration/s1$' forge/opened-1
-# The child branch starts at the tip of the round branch after the sync land, not at the trunk branch.
-exec git --git-dir=remote.git rev-parse 432^
-cmp stdout s1-after-sync
+grep -count=1 '^integration/r1$' forge/opened-2
+grep -count=1 '^integration/s1$' forge/opened-3
+# The child branch starts at the tip of the round branch after the sync land, not at the trunk branch: its parent holds the commit that the trunk moved.
+exec git --git-dir=remote.git show 432^:moved.txt
+stdout '^moved$'
 exec git --git-dir=remote.git show integration/s1:432.txt
 stdout '^432$'
 exec git --git-dir=remote.git show integration/s1:moved.txt
@@ -176,25 +178,5 @@ esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
 -- fake/remedy --
 #!/bin/sh
-# The remedy tool of the round. Its first sync finds the moved trunk; every later call finds nothing to do.
-key=$1
-[ "$1" = sync ] && [ "$2" = land ] && key=sync-land
-echo "$*" >> @WORK@/remedy.log
-echo "$key" >> @WORK@/remedy-keys.log
-n=$(grep -c "^$key\$" @WORK@/remedy-keys.log)
-git="git --git-dir=@WORK@/remote.git"
-case $key in
-  sync)
-    if [ "$n" = 1 ]; then
-      echo "state=synced branch=sync/s1 pr=7 head=$($git rev-parse refs/heads/sync/s1) base_tip=$($git rev-parse refs/heads/integration/s1)"
-    else
-      echo "state=current"
-    fi
-    ;;
-  sync-land)
-    $git update-ref refs/heads/integration/s1 refs/heads/sync/s1
-    $git rev-parse refs/heads/integration/s1 > @WORK@/s1-after-sync
-    echo "state=landed"
-    ;;
-  integration) echo "pr=3 state=OPEN" ;;
-esac
+# The remedy tool of the round runs only the read-only steps (report and gatelist). Both pass. The forge writes run in the engine, on the forge of the script.
+exit 0
