@@ -76,7 +76,10 @@ func runCandidateOf(t *testing.T, project model.Project, root, repo, head string
 		require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), fmt.Sprintf("#!/bin/sh\nexit %d\n", scan)))
 	}
 
-	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main")
+	baseTip, err := exec.CommandContext(t.Context(), "git", "-C", repo, "rev-parse", "main").Output() //nolint:gosec // test helper
+	require.NoError(t, err)
+
+	command := hostCommand(project, nil, repo, head, root+"/beehave-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 
@@ -144,7 +147,7 @@ func TestBeforeReview_TheJobExitsWithTheExitOfTheHeadGate(t *testing.T) {
 	t.Parallel()
 
 	project := model.Project{Name: "demo", Gate: "false", TestReport: "r/*.xml"}
-	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehave-gate-demo-abc", "main")
+	command := hostCommand(project, nil, "/nowhere", "abc", "/tmp/beehave-gate-demo-abc", "main", "0123456789abcdef0123456789abcdef01234567")
 
 	require.Contains(t, command, `[ "$headrc" -eq 0 ]`)
 	require.Contains(t, command, stepMarker+" "+stepHeadGate+" rc=$headrc")

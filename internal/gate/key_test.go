@@ -16,7 +16,7 @@ import (
 func keyOf(t *testing.T, state gate.State, shell *fakeShell, p model.Project) gate.Key {
 	t.Helper()
 
-	key, err := build(shell, &fakeTree{states: []gate.State{state}}, &fakeRemote{}).Key(context.Background(), gate.Request{Project: p, Dir: "/w"})
+	key, err := build(shell, &fakeTree{states: []gate.State{state}}, &fakeRemote{}).Key(context.Background(), gate.Request{Project: p, Dir: "/w", BaseSHA: tipSHA})
 	require.NoError(t, err)
 
 	return key
@@ -93,7 +93,7 @@ func keyWith(t *testing.T, shell func(context.Context, string, string) (string, 
 	state := gate.State{Head: headA, Tree: "t1", Clean: true}
 	remote := &fakeRemote{}
 
-	key, err := gate.New(shell, (&fakeTree{states: []gate.State{state}}).read, func(model.Project) (gate.Remote, error) { return remote, nil }).Key(context.Background(), gate.Request{Project: p, Dir: "/w"})
+	key, err := gate.New(shell, (&fakeTree{states: []gate.State{state}}).read, func(model.Project) (gate.Remote, error) { return remote, nil }).Key(context.Background(), gate.Request{Project: p, Dir: "/w", BaseSHA: tipSHA})
 	require.NoError(t, err)
 
 	return key

@@ -71,7 +71,7 @@ func pinnedAt(t *testing.T, pins string, tools map[string]string, testReport str
 	g := gate.New(shell, tree.read, nil)
 	p := model.Project{Name: "demo", Gate: "make check", BuildHost: "local", BaseBranch: "main", PinFile: ".tool-versions", TestReport: testReport}
 
-	result, err := g.Run(context.Background(), gate.Request{Project: p, Dir: dir})
+	result, err := g.Run(context.Background(), gate.Request{Project: p, Dir: dir, BaseSHA: tipSHA})
 	require.NoError(t, err)
 
 	_, statErr := os.Stat(filepath.Join(dir, "ran"))
@@ -89,7 +89,7 @@ func TestPins_ThePinFileIsReadFromTheBaseCommitAndNotFromTheTree(t *testing.T) {
 
 	assert.False(t, ran)
 	assert.False(t, result.Passed)
-	assert.Equal(t, "git show origin/main:.tool-versions", commands[0])
+	assert.Equal(t, "git show "+tipSHA+":.tool-versions", commands[0])
 	assert.Contains(t, result.Report, "pins version 1.27.3")
 }
 
@@ -187,7 +187,7 @@ func TestPins_AMissingPinFileVoidsTheStep(t *testing.T) {
 	g := gate.New(func(context.Context, string, string) (string, int) { return "fatal: no such path", 128 }, (&fakeTree{states: []gate.State{clean(headA), clean(headA)}}).read, nil)
 	p := model.Project{Name: "demo", Gate: "make check", BuildHost: "local", BaseBranch: "main", PinFile: "absent"}
 
-	result, err := g.Run(context.Background(), gate.Request{Project: p, Dir: t.TempDir()})
+	result, err := g.Run(context.Background(), gate.Request{Project: p, Dir: t.TempDir(), BaseSHA: tipSHA})
 
 	require.NoError(t, err)
 	assert.Equal(t, []gate.Step{step(gate.StepCommand, gate.StatusUnknown)}, result.Steps)

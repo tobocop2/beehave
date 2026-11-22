@@ -107,14 +107,14 @@ END {
 // revert run apart, each in its own subshell, and a failed step never stops a later one. Then it prints the new-tests check, the revert lines, and
 // last the step marker lines, so all of them sit in the tail of the log. The job exits with the exit code of the head gate.
 // A project with no test_command runs no base suite, so only a cached base report can serve.
-func candidateWord(project model.Project, pins []Pin, base, clone string) string {
+func candidateWord(project model.Project, pins []Pin, baseSHA, clone string) string {
 	cache := model.ShellQuote(filepathDir(clone) + "/" + baseCache)
 	glob := globWord(project.TestReport)
 	before, after := reportChecks(project.TestReport)
 	headGate := strings.Join(append(append(before, gateWords(project, pins)...), after...), " && ")
 
 	parts := []string{
-		`mb=$(git merge-base HEAD ` + model.ShellQuote("origin/"+base) + ` 2>/dev/null)`,
+		`mb=$(git merge-base HEAD ` + model.ShellQuote(baseSHA) + ` 2>/dev/null)`,
 		stepWord("headrc", "( "+headGate+" )"),
 		stepWord("secretrc", `( [ -n "$mb" ] && `+limited(project, `gitleaks git --no-banner --log-opts="$mb..HEAD" .`)+` )`),
 		"cache=" + cache + `; mkdir -p "$cache"`,

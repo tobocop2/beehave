@@ -14,6 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/model"
+	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
 // gateTimeout is the time that the gate command of a project may run on this machine.
@@ -33,6 +34,72 @@ type projectGate struct {
 	forge    func(model.Project) (forge.Forge, error)
 	// timeout is the time that a local gate command may run. Zero means gateTimeout.
 	timeout time.Duration
+	// tip reads the commit that a branch names at a remote. Nil reads it with git ls-remote.
+	tip func(ctx context.Context, remote, branch string) (string, error)
+	// fetch brings the branches of the remote of a project into its clone. Nil fetches nothing.
+	fetch func(ctx context.Context, project string) error
+}
+
+// anchor reads, once, the commit that the base branch names at the source of the project, and makes sure that the clone of the item holds it.
+// The source is the repository that the project names, which no agent has a worktree in, and not a ref of the clone, which an agent can move.
+// A project with no repository has no base commit. A base branch that has no commit, or a commit that the clone cannot hold, is an error that names the base.
+func (g projectGate) anchor(ctx context.Context, project model.Project, dir, branch string) (string, error) {
+	if !project.HasRepository() {
+		return "", nil
+	}
+
+	remote, err := cloneSource(project, g.forge)
+	if err != nil {
+		return "", fmt.Errorf("find the repository of project %s: %w", project.Name, err)
+	}
+
+	sha, err := g.readTip(ctx, remote, branch)
+	if err != nil {
+		return "", fmt.Errorf("read the base branch %q of project %s: %w", branch, project.Name, err)
+	}
+
+	if err := g.hold(ctx, project.Name, dir, sha); err != nil {
+		return "", fmt.Errorf("the base branch %q of project %s is at %s: %w", branch, project.Name, sha, err)
+	}
+
+	return sha, nil
+}
+
+// readTip reads the commit of the branch at the remote. An answer with no commit is an error.
+func (g projectGate) readTip(ctx context.Context, remote, branch string) (string, error) {
+	read := g.tip
+	if read == nil {
+		read = func(ctx context.Context, remote, branch string) (string, error) {
+			return gitexec.Tip(ctx, remote, branch, gateTimeout)
+		}
+	}
+
+	sha, err := read(ctx, remote, branch)
+	if err == nil && sha == "" {
+		err = gitexec.ErrNoTip
+	}
+
+	return sha, err
+}
+
+// hold makes sure that the clone of dir holds the commit sha. It fetches the branches of the remote once when the commit is missing.
+func (g projectGate) hold(ctx context.Context, project, dir, sha string) error {
+	has := func() error {
+		_, err := g.programs.git(ctx, project, dir, gateTimeout, "git cat-file", "cat-file", "-e", sha+"^{commit}")
+
+		return err
+	}
+
+	err := has()
+	if err == nil || g.fetch == nil {
+		return err
+	}
+
+	if err := g.fetch(ctx, project); err != nil {
+		return fmt.Errorf("fetch the commit: %w", err)
+	}
+
+	return has()
 }
 
 // Run runs the gate of the project on the worktree of the item. internal/gate refuses a tree with uncommitted changes,
@@ -45,6 +112,13 @@ func (g projectGate) Run(ctx context.Context, project, item, cluster string, job
 	}
 
 	request.Resume, request.ResumeHead, request.Plan = model.JobID(job.ID), job.Head, job.Plan
+
+	// A plan that holds no pin check was made by no Submit, so this Run reads the pin file and reads the base commit for it. Any other plan holds the commit.
+	if job.Plan.Pins == nil {
+		if request.BaseSHA, err = g.anchor(ctx, request.Project, request.Dir, request.Project.BaseBranch); err != nil {
+			return flow.GateResult{}, fmt.Errorf("run the gate of item %s: %w", item, err)
+		}
+	}
 
 	result, err := g.gate(project).Run(ctx, request)
 	if err != nil {
@@ -71,12 +145,10 @@ func gateChecks(checks *gate.Checks) *flow.GateChecks {
 // Submit starts the host job of the gate of the project and returns at once, so the engine can record the job before it waits.
 // A project that builds here has no host job, and its job is empty.
 func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateJob, error) {
-	request, err := g.request(ctx, project, item, cluster)
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase)
 	if err != nil {
 		return flow.GateJob{}, err
 	}
-
-	request.Base, request.PinBase = base, pinBase
 
 	job, err := g.gate(project).Submit(ctx, request)
 	if err != nil {
@@ -122,12 +194,10 @@ func gateRefusal(projects map[string]config.Project, refusal cli.GateRefusal) fu
 
 // Key reads the key of the gate that Run would start on the worktree of the item.
 func (g projectGate) Key(ctx context.Context, project, item, cluster, base, pinBase string) (flow.GateKey, error) {
-	request, err := g.request(ctx, project, item, cluster)
+	request, err := g.requestAt(ctx, project, item, cluster, base, pinBase)
 	if err != nil {
 		return flow.GateKey{}, err
 	}
-
-	request.Base, request.PinBase = base, pinBase
 
 	key, err := gate.New(g.shellFor(project), g.treeOf(project), nil).Key(ctx, request)
 	if err != nil {
@@ -171,6 +241,24 @@ func (g projectGate) request(ctx context.Context, project, item, cluster string)
 	}
 
 	return gate.Request{Project: found.Project, Dir: dir, CloneURL: url}, nil
+}
+
+// requestAt is request for a gate of a head with a base. It reads the commit of the base branch once, here, and the request carries it: the gate never
+// reads the base by its name. The pin file is read from PinBase when it is set, else from Base, else from the base branch of the project.
+func (g projectGate) requestAt(ctx context.Context, project, item, cluster, base, pinBase string) (gate.Request, error) {
+	request, err := g.request(ctx, project, item, cluster)
+	if err != nil {
+		return gate.Request{}, err
+	}
+
+	request.Base, request.PinBase = base, pinBase
+
+	request.BaseSHA, err = g.anchor(ctx, request.Project, request.Dir, cmp.Or(pinBase, base, request.Project.BaseBranch))
+	if err != nil {
+		return gate.Request{}, err
+	}
+
+	return request, nil
 }
 
 // onCluster returns the project with the cluster of the run as its build host.

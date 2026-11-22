@@ -11,7 +11,7 @@ import (
 )
 
 // Key names the gate that a request would run: the project (name, repository and the whole host definition), the tree it judges, the command, the test report,
-// the build host, the pin file and, for a local gate, the version that each pinned tool reports on this machine.
+// the build host, the pin file, the base commit that the engine read and, for a local gate, the version that each pinned tool reports on this machine.
 // Two requests with the same ID run the same gate on the same tree, so a pass of one is a pass of the other.
 // Head and Tree are the commit of the tree and its tree id. An empty ID means that no earlier pass may stand in for this gate.
 type Key struct {
@@ -39,7 +39,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, pinned)
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, pinned, request.anchor())
 
 	return key, nil
 }
@@ -110,7 +110,7 @@ func (g Gate) pins(ctx context.Context, request Request) (string, bool) {
 		return "", true
 	}
 
-	data, code := g.shell(ctx, request.Dir, "git show "+model.ShellQuote("origin/"+request.pinBase()+":"+file))
+	data, code := g.pinText(ctx, request, file)
 
 	return data, code == 0
 }

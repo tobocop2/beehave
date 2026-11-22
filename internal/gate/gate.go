@@ -59,6 +59,9 @@ var ErrNoHead = errors.New("the resumed gate job has no head")
 // ErrNoCloneURL is the cause when a host gate has no URL to clone the repository from.
 var ErrNoCloneURL = errors.New("the host gate has no clone URL")
 
+// ErrNoBase is the cause when a host gate of a candidate head has no base commit, so the job could not name the base it judges the head against.
+var ErrNoBase = errors.New("the host gate has no base commit")
+
 // ErrCloneOutsideRoot is the cause when the clone folder of a host gate would not be directly below the work root of the host.
 var ErrCloneOutsideRoot = errors.New("the clone folder is not below the work root of the host")
 
@@ -119,6 +122,9 @@ type Request struct {
 	// PinBase is the branch that the pin file is read from, for a sync head or a landing gate. It turns on no candidate check.
 	// When both are set, PinBase wins over Base for the pin file, and Base still turns on the checks.
 	PinBase string
+	// BaseSHA is the commit that the base branch named when the engine read it for this gate. Every read of the base in the gate uses it, never the branch name.
+	// A project with no repository has none. A Run that has a Plan takes it from the Plan.
+	BaseSHA string
 
 	// pins are the pinned tools that the probe in front of each gate command checks. Run and Submit read them from the pin file at the base commit.
 	pins []Pin
@@ -126,6 +132,18 @@ type Request struct {
 
 // pinBase is the branch that the pin file is read from: the PinBase of the request, the base of a candidate head, or the base branch of the project.
 func (r Request) pinBase() string { return cmp.Or(r.PinBase, r.Base, r.Project.BaseBranch) }
+
+// anchor is the base commit of the gate: the SHA of the request, else the one that the Plan recorded.
+func (r Request) anchor() string { return cmp.Or(r.BaseSHA, r.Plan.BaseSHA) }
+
+// needBase refuses a candidate head that has no base commit: its job could not name the base that it judges the head against.
+func (r Request) needBase() error {
+	if r.Base != "" && r.anchor() == "" {
+		return fmt.Errorf("%w: the base branch %s of project %s has no commit to judge the head against", ErrNoBase, r.Base, r.Project.Name)
+	}
+
+	return nil
+}
 
 // Gate runs gates.
 type Gate struct {
@@ -210,7 +228,7 @@ func (g Gate) planned(ctx context.Context, request Request) (Request, Plan) {
 	request.pins = check.Tools
 
 	plan := PlanOf(request.Project)
-	plan.Pins, plan.Base = &check, request.Base
+	plan.Pins, plan.Base, plan.BaseSHA = &check, request.Base, request.anchor()
 
 	return request, plan
 }
@@ -578,6 +596,10 @@ func job(ctx context.Context, host Remote, request Request, head string) (model.
 			return "", "", fmt.Errorf("%w: project %s has no repository URL to clone on %s", ErrNoCloneURL, request.Project.Name, request.Project.BuildHost)
 		}
 
+		if err := request.needBase(); err != nil {
+			return "", "", err
+		}
+
 		id, err := submit(ctx, host, request, head)
 
 		return id, head, err
@@ -598,7 +620,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base)})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor())})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}
@@ -648,12 +670,12 @@ func plainWord(word string) bool {
 // ends the job with exit status 124 and the trap still writes the marker and deletes the clone. The config load refuses a limit that the wrap
 // cannot write.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
-func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base string) string {
+func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
 	words := cloneWords(cloneURL, head, clone)
 
 	// A candidate head runs its steps apart (see candidateWord). A sync head and a landing gate keep the gate command only.
 	if base != "" {
-		return strings.Join(append(words, candidateWord(project, pins, base, clone)), " && ")
+		return strings.Join(append(words, candidateWord(project, pins, baseSHA, clone)), " && ")
 	}
 
 	before, after := reportChecks(project.TestReport)

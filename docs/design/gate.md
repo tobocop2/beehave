@@ -159,7 +159,7 @@ The job of a candidate runs its steps apart, each in its own subshell, and a fai
 | `base-suite` | Runs `test_command` on the merge base when the host has no cached report for that commit. |
 | `revert-run` | Runs the new tests on the base code, when the head has new tests. See "The revert run". |
 
-The merge base is the merge base of the head and `origin/<base>`. The host keeps one parsed base report for each merge base commit, in a folder outside the clone. The job writes each file under a temporary name and renames it, so no reader sees a partial file.
+The merge base is the merge base of the head and the base commit that the engine read for the gate. The host keeps one parsed base report for each merge base commit, in a folder outside the clone. The job writes each file under a temporary name and renames it, so no reader sees a partial file.
 
 After the steps, the job compares the head report with the base report per test, by `classname` and `name`. A subtest is its own test. The reader is `awk` only. The job prints:
 
@@ -207,7 +207,7 @@ The optional project key `gate_program` lists the repository paths that hold the
 
 A gate that passes with the wrong tool proves nothing about the pinned tool. The optional project key `pin_file` names a file in the format of `.tool-versions`: one tool and its exact version on each line. A `#` starts a comment. The path is relative and has no `..`. The config refuses any other path.
 
-beehave reads the file at the base commit, `origin/<base_branch>` (`git show`), not in the work tree of the lane. So a lane cannot edit its own pins. A gate call with a `base`, the branch that the head merges into, reads the file at `origin/<base>` instead, so a child of a round gates with the pins of its round base. The gate key holds the pin text that it read.
+beehave reads the file at the base commit (`git show <commit>:<file>`), not in the work tree of the lane. So a lane cannot edit its own pins. The engine reads the base commit once for each gate: the tip of the base branch at the source of the project (`git ls-remote`, with the git program at its absolute path). The commit goes into the plan of the gate and into the host job, and every later read of the base uses it, never the branch name. A lane can move `origin/<base_branch>` in the clone, and it cannot move the source. A gate call with a `base`, the branch that the head merges into, reads the tip of that branch instead, so a child of a round gates with the pins of its round base. If the engine cannot read the base commit, the gate fails and the error names the base branch. The gate key holds the base commit and the pin text that it read.
 
 A gate call with a `pin_base` reads the file at `origin/<pin_base>` and turns on no candidate check: `base` does both, and `pin_base` only the first. A call with both reads the file at `pin_base` and runs the checks of `base`. The sync gate of a round sets `pin_base` to the round base. The landing gate of a `merge` call reads the file at the `base` of the call, with no candidate check. So a round that changes a pinned tool on its round base gates its sync head and its landing union with the new tools, as its children do.
 

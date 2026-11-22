@@ -159,7 +159,10 @@ func TestBeforeReview_ARevertRunThatFailsBesideAPassingHeadGateRecordsBothExitsA
 	bin := t.TempDir()
 	require.NoError(t, exectest.Write(filepath.Join(bin, "gitleaks"), "#!/bin/sh\nexit 0\n"))
 
-	command := hostCommand(revertProject(), nil, repo, head, t.TempDir()+"/beehave-gate-demo-"+head, "main")
+	baseTip, err := exec.CommandContext(t.Context(), "git", "-C", repo, "rev-parse", "main").Output() //nolint:gosec // test helper
+	require.NoError(t, err)
+
+	command := hostCommand(revertProject(), nil, repo, head, t.TempDir()+"/beehave-gate-demo-"+head, "main", strings.TrimSpace(string(baseTip)))
 	job := exec.CommandContext(t.Context(), "sh", "-c", command) //nolint:gosec // the job text under test
 	job.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + t.TempDir()}
 	out, err := job.CombinedOutput()

@@ -26,8 +26,14 @@ func candidateChecks(t *testing.T, log string) flow.GateChecks {
 	t.Helper()
 
 	hosted := &loggedHost{fakeHost: fakeHost{state: model.JobSucceeded}, log: log}
+	projects := clusterProject()
+	repo := projects["p"]
+	repo.Source = "/repo"
+	projects["p"] = repo
+
 	gate := projectGate{
-		projects: clusterProject(),
+		tip:      fixedTip(anchorOld, nil),
+		projects: projects,
 		programs: programs{
 			trees: treeAt("/tree"),
 			local: gateRunner(&gateCalls{}, model.CommandResult{Stdout: "abc123"}, model.CommandResult{}),
