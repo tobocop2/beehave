@@ -562,8 +562,14 @@ func TestServe_TheEngineSaysTheOffLineAtItsStartForAnOpenRunThatStoredOffAndForN
 
 	for name, test := range map[string]struct {
 		stored model.SandboxMode
+		live   bool
 		lines  int
-	}{"a stored off": {model.SandboxOff, 1}, "a stored on": {model.SandboxOn, 0}, "an empty record": {"", 0}} {
+	}{
+		"a stored off":                      {model.SandboxOff, true, 1},
+		"a stored on":                       {model.SandboxOn, false, 0},
+		"an empty record in an off project": {"", false, 1},
+		"an empty record in an on project":  {"", true, 0},
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -575,6 +581,8 @@ func TestServe_TheEngineSaysTheOffLineAtItsStartForAnOpenRunThatStoredOffAndForN
 			} else {
 				interrupted(t, h, file, RunSandbox(test.stored))
 			}
+
+			h.sandboxDefault = func(string) bool { return test.live }
 
 			var out safeBuffer
 
@@ -641,28 +649,52 @@ func TestServe_ARunStartedAfterTheEngineStartedSaysNoOffLineNeitherItsChildNorAJ
 	assert.Zero(t, offLines(out.String()), out.String())
 }
 
-func TestOpenRunSandbox_ReadsTheStoredModeOfTheOpenRunOnly(t *testing.T) {
+func TestOpenRun_ReadsTheModeAndFileOfTheOpenRunOnly(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 	client := h.client(t, testVersion)
+	live := func(string) bool { return true }
 
-	_, open, err := client.OpenRunSandbox(testItem)
+	open, err := client.OpenRun(testItem, live)
 	require.NoError(t, err)
-	assert.False(t, open, "an item with no run has no open run")
+	assert.Equal(t, OpenRun{}, open, "an item with no run has no open run")
 
-	interrupted(t, h, askingFlow(t), RunSandbox(model.SandboxOn))
+	file := askingFlow(t)
+	interrupted(t, h, file, RunSandbox(model.SandboxOff))
 
-	mode, open, err := client.OpenRunSandbox(testItem)
+	open, err = client.OpenRun(testItem, live)
 	require.NoError(t, err)
-	assert.True(t, open)
-	assert.Equal(t, model.SandboxOn, mode)
+	assert.Equal(t, OpenRun{Open: true, File: file, Sandbox: model.SandboxOff}, open, "the stored mode wins over the live default")
 
 	require.NoError(t, client.Cancel(testItem))
 
-	_, open, err = client.OpenRunSandbox(testItem)
+	open, err = client.OpenRun(testItem, live)
 	require.NoError(t, err)
-	assert.False(t, open, "a run that ended is not open")
+	assert.False(t, open.Open, "a run that ended is not open")
+}
+
+func TestOpenRun_AnOldRecordUsesTheLiveDefaultOfItsProject(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	interruptedOldRecord(t, h, askingFlow(t))
+
+	client := h.client(t, testVersion)
+
+	for live, want := range map[bool]model.SandboxMode{true: model.SandboxOn, false: model.SandboxOff} {
+		open, err := client.OpenRun(testItem, func(project string) bool {
+			assert.Equal(t, testProject, project)
+
+			return live
+		})
+		require.NoError(t, err)
+		assert.Equal(t, want, open.Sandbox)
+	}
+
+	open, err := client.OpenRun(testItem, nil)
+	require.NoError(t, err)
+	assert.Equal(t, model.SandboxOff, open.Sandbox, "no live default means off")
 }
 
 func TestServe_AnEngineThatCannotListItsOpenRunsFailsItsLaunch(t *testing.T) {

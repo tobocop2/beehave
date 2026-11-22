@@ -728,32 +728,27 @@ func (c *Client) giveBack(a *attempt) error {
 	return forgetAttempt(c.dir, a.id, owner)
 }
 
-// PinnedFile returns the workflow file of the open run of the item. It is empty when the item has no open run, or when the open run uses no file.
+// OpenRun is what the store holds about the open run of an item: its pinned workflow file and the sandbox mode that it uses.
+type OpenRun struct {
+	// Open is false when the item has no open run. File and Sandbox are then empty.
+	Open bool
+	// File is the workflow file that the run pinned. It is empty when the run uses no file.
+	File string
+	// Sandbox is the mode that the run uses, as ItemInput.UsedSandbox says.
+	Sandbox model.SandboxMode
+}
+
+// OpenRun returns the open run of the item. live is the live default of a project, which a run recorded before the mode existed uses.
 // It reads the store and launches nothing.
-func (c *Client) PinnedFile(item string) (string, error) {
-	in, _, err := c.openInput(item)
-
-	return in.File, err
-}
-
-// OpenRunSandbox returns the sandbox mode that the open run of the item stored, and whether the item has an open run. It reads the store and launches nothing.
-// A run recorded before the mode existed returns the empty mode.
-func (c *Client) OpenRunSandbox(item string) (model.SandboxMode, bool, error) {
-	in, open, err := c.openInput(item)
-
-	return in.Sandbox, open, err
-}
-
-// openInput returns the input of the open run of the item, and whether the item has an open run.
-func (c *Client) openInput(item string) (ItemInput, bool, error) {
+func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, error) {
 	last, found, err := latestRun(c.flow, item)
 	if err != nil || !found || last.terminal() {
-		return ItemInput{}, false, err
+		return OpenRun{}, err
 	}
 
 	in, err := last.input()
 
-	return in, true, err
+	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(live)}, err
 }
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.

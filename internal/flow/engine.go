@@ -208,7 +208,7 @@ type Engine struct {
 	keepRuns  bool
 	// overCap is Options.OverCap.
 	overCap bool
-	// serving is true for the engine of beehave serve, which says so for each run with the sandbox off that it starts or resumes.
+	// serving is true for the engine of beehave serve, which says the off line once at its start for each open run that it resumes with the sandbox off.
 	serving bool
 	// setSchedule sets or deletes the schedule of the review poll at launch. A test replaces it to fail the call.
 	setSchedule func(*Engine) error
@@ -527,8 +527,8 @@ func (e *Engine) Launch() error {
 	return nil
 }
 
-// sayResumedOff writes the off line for each open run whose stored sandbox mode is off. Only the engine of beehave serve says it, once at its start,
-// before it launches and resumes these runs. A run with no stored mode, or with the mode on, gets no line.
+// sayResumedOff writes the off line for each open run that uses the sandbox mode off. Only the engine of beehave serve says it, once at its start,
+// before it launches and resumes these runs. A run with no stored mode uses the live default of its project.
 func (e *Engine) sayResumedOff() error {
 	if !e.serving {
 		return nil
@@ -540,7 +540,7 @@ func (e *Engine) sayResumedOff() error {
 	}
 
 	for _, row := range open {
-		if in, err := (run{Status: row}).input(); err == nil && in.Sandbox == model.SandboxOff {
+		if in, err := (run{Status: row}).input(); err == nil && in.UsedSandbox(e.deps.SandboxDefault) == model.SandboxOff {
 			e.progress.say("run %s: %s", row.ID, model.SandboxOffLine)
 		}
 	}

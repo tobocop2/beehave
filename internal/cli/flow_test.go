@@ -127,7 +127,7 @@ type fakeSteering struct {
 	err          error
 	pinned       string
 	pinnedErr    error
-	// openMode, openRun and openErr are what OpenRunSandbox returns.
+	// openMode, openRun and openErr are what OpenRun returns besides the pinned file.
 	openMode model.SandboxMode
 	openRun  bool
 	openErr  error
@@ -196,10 +196,17 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, 
 	return result, s.joinErr
 }
 
-func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
+// OpenRun returns the open run that the test set: a pinned file, or openRun with the stored mode openMode. The mode is the one that the real function gives.
+func (s *fakeSteering) OpenRun(_ string, live func(string) bool) (flow.OpenRun, error) {
+	if err := cmp.Or(s.pinnedErr, s.openErr); err != nil {
+		return flow.OpenRun{}, err
+	}
 
-func (s *fakeSteering) OpenRunSandbox(string) (model.SandboxMode, bool, error) {
-	return s.openMode, s.openRun, s.openErr
+	if !s.openRun && s.pinned == "" {
+		return flow.OpenRun{}, nil
+	}
+
+	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live)}, nil
 }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }

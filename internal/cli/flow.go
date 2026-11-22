@@ -61,8 +61,6 @@ type Reading interface {
 	Schedules() ([]flow.ScheduleInfo, error)
 	// Days sums the runs that started or ended since the given time by local day, in the time zone of that time.
 	Days(since time.Time) ([]flow.DayFigures, error)
-	// PinnedFile returns the workflow file of the open run of the item, or an empty name.
-	PinnedFile(item string) (string, error)
 }
 
 // Steering reads and steers runs without running any.
@@ -70,8 +68,8 @@ type Steering interface {
 	Reading
 	Messaging
 	Resume(item string) error
-	// OpenRunSandbox returns the sandbox mode that the open run of the item stored, and whether the item has an open run.
-	OpenRunSandbox(item string) (model.SandboxMode, bool, error)
+	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses. live is the live default of a project.
+	OpenRun(item string, live func(project string) bool) (flow.OpenRun, error)
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
 	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
@@ -261,14 +259,10 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 
 // sayOffLine prints the line for a run that uses the sandbox mode off. An open run continues with the mode that it stored.
 // A new run uses the mode of its project, and the line names the project file: a project with no sandbox key stores off too, and says nothing.
-func sayOffLine(stderr io.Writer, client Steering, project config.Project, item string) error {
-	mode, open, err := client.OpenRunSandbox(item)
-	if err != nil {
-		return err
-	}
-
-	off := mode == model.SandboxOff
-	if !open {
+// The mode of an open run is the one that the store returns, which already holds the live default for a run recorded before the mode existed.
+func sayOffLine(stderr io.Writer, open flow.OpenRun, project config.Project, item string) {
+	off := open.Sandbox == model.SandboxOff
+	if !open.Open {
 		off = project.Sandbox == model.SandboxOff
 	}
 
@@ -276,8 +270,6 @@ func sayOffLine(stderr io.Writer, client Steering, project config.Project, item 
 		// A failed write to stderr has no recovery.
 		_, _ = fmt.Fprintf(stderr, "item %s: project %s has %s\n", item, project.Name, model.SandboxOffLine)
 	}
-
-	return nil
 }
 
 // refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one,
@@ -389,7 +381,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 		return err
 	}
 
-	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg.Projects[project], item, file)
+	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, project, item, file)
 	if err != nil {
 		return errors.Join(err, client.Close())
 	}
@@ -421,23 +413,21 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
 // It says the off line when the run uses the sandbox mode off.
-func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, project config.Project, item, file string) (string, bool, error) {
-	pinned, err := f.openRunFile(stdout, client, item)
+func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, project, item, file string) (string, bool, error) {
+	open, err := f.openRun(stdout, client, cfg, item)
 	if err != nil {
 		return "", false, err
 	}
 
-	if file == "" && pinned == "" {
+	if file == "" && open.File == "" {
 		return "", false, missingWorkflow()
 	}
 
-	if err := sayOffLine(stderr, client, project, item); err != nil {
-		return "", false, err
-	}
+	sayOffLine(stderr, open, cfg.Projects[project], item)
 
 	running, err := client.EngineRuns()
 
-	return cmp.Or(file, pinned), running, err
+	return cmp.Or(file, open.File), running, err
 }
 
 // joinLater opens a new client and joins the engine that holds the state folder.
@@ -549,18 +539,18 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 	return nil
 }
 
-// openRunFile returns the file that the open run of the item pinned, or an empty name. It says which file the run continues with.
-// beehave run ignores --workflow when it joins an open run.
-func (f flowCommands) openRunFile(stdout io.Writer, client Steering, item string) (string, error) {
-	pinned, err := client.PinnedFile(item)
-	if err != nil || pinned == "" {
-		return "", err
+// openRun returns the open run of the item. It says which file the run continues with.
+// beehave run ignores --workflow when it joins an open run. A run recorded before the mode existed uses the live default of its project.
+func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, item string) (flow.OpenRun, error) {
+	open, err := client.OpenRun(item, func(project string) bool { return cfg.Projects[project].SandboxByDefault() })
+	if err != nil || open.File == "" {
+		return open, err
 	}
 
 	// A failed write to stdout has no recovery.
-	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, pinned)
+	_, _ = fmt.Fprintf(stdout, "item %s continues its open run with its pinned file %s\n", item, open.File)
 
-	return pinned, nil
+	return open, nil
 }
 
 // endNote says why a run ended before the merge: a send back or a close. It is empty for any other end.
