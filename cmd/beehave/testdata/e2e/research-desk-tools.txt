@@ -42,6 +42,14 @@ exec sh rd/tools/cites.sh $WORK/store r1 2 1
 ! exec sh rd/tools/search.sh nothing 3
 ! stdout .
 
+# Each try of a section generation gets the next number, and a whole number of the section is needed.
+exec sh rd/tools/store.sh try r1 2 1
+stdout '^1$'
+exec sh rd/tools/store.sh try r1 2 1
+stdout '^2$'
+! exec sh rd/tools/store.sh try r1 x 1
+stderr 'N must be a whole number'
+
 # A fetch refuses an address with user information, the 172.16 range and a bracketed address.
 ! exec sh rd/tools/fetch.sh r1 http://x@127.0.0.1/page
 stderr 'private network'

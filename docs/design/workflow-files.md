@@ -1030,8 +1030,8 @@ The ops API (`OPS_API`) is the one part that the example does not ship. `example
 A research desk. The item is a question, and the result is one report page on a wiki.
 
 1. A planner agent splits the question into sections. The plan is kept in a store of plain files (`tools/store.sh`), so a run on an item that has a plan keeps it.
-2. One child run for each section searches and fetches by script, and a reader agent extracts claims with exact quotes. `tools/claims.sh` tests each quote against the page snapshot. It refuses a quote that holds a newline or a tab, because the snapshot is searched line by line.
-3. A fresh judge agent grades the claims. It also gets one planted false claim: a judge that accepts it is void, and no verdict is recorded.
+2. For each section, the question run searches by script and spawns one source run for each source. A source run fetches the page and spawns a claims run. A claims run is a reader agent that extracts claims with exact quotes. `tools/claims.sh` tests each quote against the page snapshot. It refuses a quote that holds a newline or a tab, because the snapshot is searched line by line. Each run gathers the runs it spawned, so the tree is three levels deep: the question, the sources, the claims. The default `max_spawn_depth` of 3 allows it.
+3. A fresh judge agent in the question run grades the claims of all the sources. It also gets one planted false claim: a judge that accepts it is void, and no verdict is recorded.
 4. A writer agent writes the section from the supported claims.
 5. The program gate `tools/cites.sh` needs a cite of a supported claim in every paragraph, and a whole number of a cited quote for every number.
 6. An abstract agent follows.

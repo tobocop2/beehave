@@ -4,7 +4,8 @@
 #   put-plan                 save the plan from the standard input (a JSON array of title and question). It keeps an earlier plan.
 #   get-plan                 print n, title and question of each section, tab separated. Exit 1 when the run has no plan.
 #   gen N                    print the newest generation of section N (1 when it has none)
-#   bump-gen N               start the next generation of section N with the note on the standard input, and print it
+#   try N GEN                count one try of a generation of section N, and print the number of the try
+#   bump-gen N             start the next generation of section N with the note on the standard input, and print it
 #   note N                   print the note of the newest generation of section N
 #   status N GEN [STATUS]    print the status of a generation, or set it
 #   take-call MAX            count one agent call. Exit 2 when MAX calls (or the raised cap) are used.
@@ -40,6 +41,15 @@ case $verb in
     n=$1
     uint "$n" || die "N must be a whole number"
     cat "$dir/gen.$n" 2>/dev/null || echo 1
+    ;;
+  try)
+    # The number of this try of a section generation. A section that did not finish starts its source runs again as new items, so each try has its own claims.
+    n=$1
+    uint "$n" || die "N must be a whole number"
+    mkdir -p "$(section_dir "$run" "$n" "$2")"
+    count=$(cat "$(section_dir "$run" "$n" "$2")/try" 2>/dev/null || echo 0)
+    echo $((count + 1)) > "$(section_dir "$run" "$n" "$2")/try"
+    echo $((count + 1))
     ;;
   bump-gen)
     n=$1

@@ -1,7 +1,6 @@
 #!/bin/sh
 # The stand-in for curl in the research desk scripts. The program holds the work folder in place of @WORK@.
 # It logs its arguments to curl.log. A GET of a path answers with the file resp/<path>, where each slash is an underscore. It writes the answer to the file of -o, or to the standard output.
-# The file hold in the work folder makes the first GET of /page/b wait (see below), for a test that kills the engine at a fetch.
 # The search server answers /search with resp/_search. The pages are under /page/. The wiki is /pages/<key>:
 # a PUT keeps the file of --data-binary as resp/_pages_<key> and logs the key to wiki.log, and a GET reads it back. The file resp/wiki.corrupt makes the read-back differ.
 url=
@@ -27,12 +26,6 @@ done
 printf '%s\n' "$*" >> "@WORK@/curl.log"
 path=$(printf '%s' "$url" | sed -e 's#^[a-z]*://[^/]*##' -e 's#?.*##')
 key=$(printf '%s' "$path" | sed -e 's#/#_#g')
-# With a file hold in the work folder, the first GET of /page/b is the crash point: it writes held and waits for the kill of the engine.
-if [ -f "@WORK@/hold" ] && [ ! -f "@WORK@/held" ] && [ "$path" = /page/b ]; then
-  echo "$path" > "@WORK@/held"
-  sleep 30
-  exit 1
-fi
 if [ -e "@WORK@/resp/$key.fail" ]; then
   echo boom >&2
   exit 22

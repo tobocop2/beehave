@@ -1,8 +1,9 @@
 # A research desk: a question comes in, and a report goes to a wiki. The item is the question (its body). The project has no source and no repository.
 #   1. A planner agent splits the question into sections. The plan is saved in the store; a run on an item that has a plan keeps it.
-#   2. One child run for each section (entry `section`). It searches by script, and spawns one grandchild run for each source (entry `source`) that fetches the page.
-#      The tree is three levels deep: the question, the sections, the sources. The default `max_spawn_depth` of 3 allows it. Then a reader agent extracts claims with exact quotes, a script tests
-#      each quote against the page snapshot, a fresh judge agent grades the claims, and a writer agent writes the section from the claims that passed.
+#   2. For each section the question run searches by script and spawns one run for each source (entry `source`). A source run fetches the page and spawns a claims run (entry `claims`):
+#      a reader agent extracts claims with exact quotes, and a script tests each quote against the page snapshot. Each level gathers the runs it spawned.
+#      The tree is three levels deep: the question, the sources, the claims. The default `max_spawn_depth` of 3 allows it.
+#      Then the question run gets the claims of all the sources: a fresh judge agent grades them, and a writer agent writes the section from the claims that passed.
 #      The judge also gets one planted false claim. A judge that accepts it is void, and its verdicts are not recorded.
 #      A program gate checks the prose: every paragraph cites a supported claim, and every number is in a cited quote.
 #   3. An abstract agent writes the abstract of the sections.
@@ -117,21 +118,30 @@ def main(item):
     item_status(name = "close", id = item.id, status = ITEM_CLOSED)
 
 def run_section(item, run, n, gen):
-    """One child run for the generation of a section. A generation that is done is not run again, so a restart keeps the finished sections."""
+    """The generation of a section. The question run searches, spawns one source run for each source and gathers them, then judges and writes. A generation that is done is not run again, so a restart keeps the finished sections."""
     if tool("status-%d-%s" % (n, gen), "store.sh", ["status", run, str(n), gen]).stdout.strip() == "done":
         return
     title_question = [line for line in plan_lines(run) if line[0] == str(n)][0]
-    made = item_create(
-        name = "section",
-        title = "%s: %s" % (run, title_question[1]),
-        key = "%s-s%d-g%s" % (run, n, gen),
-        body = json.encode({"run": run, "n": n, "gen": gen, "title": title_question[1], "question": title_question[2]}),
-        parent = item.id,
-    )
-    spawned = spawn([made.id], entry = "section", name = "spawn-%d-%s" % (n, gen))
-    result = gather(spawned.runs, fail = "return", name = "wait-%d-%s" % (n, gen)).results[0]
-    if not result.ok:
-        fail("REFUSE: section %d stopped. See the child item %s. %s" % (n, made.id, result.error))
+    title = title_question[1]
+    question = title_question[2]
+    ok("reset", tool("reset", "claims.sh", ["reset", run, str(n), gen]))
+    attempt = ok("try", tool("try", "store.sh", ["try", run, str(n), gen])).strip()
+    found = ok("search", tool("search", "search.sh", [question, str(MAX_SOURCES)]))
+    urls = [url.strip() for url in found.splitlines() if url.strip() != ""]
+    # The source runs go one after the other, so the source ids and the claim ids in the store come in the same order on every run.
+    for k, url in enumerate(urls):
+        made = item_create(
+            name = "source",
+            title = "%s: section %d, source %d" % (run, n, k + 1),
+            key = "%s-s%d-g%s-t%s-u%d" % (run, n, gen, attempt, k + 1),
+            body = json.encode({"run": run, "n": n, "gen": gen, "try": attempt, "k": k + 1, "question": question, "url": url}),
+            parent = item.id,
+        )
+        spawned = spawn([made.id], entry = "source", name = "spawn-source-%d-%s-%d" % (n, gen, k + 1))
+        result = gather(spawned.runs, fail = "return", name = "wait-source-%d-%s-%d" % (n, gen, k + 1)).results[0]
+        if not result.ok:
+            fail("REFUSE: source %d of section %d stopped. See the child item %s. %s" % (k + 1, n, made.id, result.error))
+    judge_and_write(run, str(n), gen, title, question)
 
 def write_abstract(item, run):
     text = ok("sections-text", tool("sections-text", "store.sh", ["sections-text", run]))
@@ -164,40 +174,34 @@ def not_shown(run, n, gen, why):
 def set_status(run, n, gen, status):
     ok("set-status", tool("set-status", "store.sh", ["status", run, str(n), gen, status]))
 
-def fetch_source(item, run, n, gen, k, url):
-    """One grandchild run for one source of a section. The runs go one after the other, so the source ids in the store come in the same order on every run. The page line is the value of the run."""
-    made = item_create(
-        name = "source",
-        title = "%s: section %s, source %d" % (run, n, k),
-        key = "%s-s%s-g%s-u%d" % (run, n, gen, k),
-        body = json.encode({"run": run, "url": url}),
-        parent = item.id,
-    )
-    spawned = spawn([made.id], entry = "source", name = "spawn-source-%d" % k)
-    result = gather(spawned.runs, fail = "return", name = "wait-source-%d" % k).results[0]
-    if not result.ok:
-        fail("REFUSE: source %d of section %s stopped. See the child item %s. %s" % (k, n, made.id, result.error))
-    return result.value
-
-# One source: the entry of a grandchild run. The item body names the run and the address. The run fetches the page and returns the page line.
+# One source: the entry of a child run of the question run. The item body names the run, the section, the generation, the source number, the question and the address.
+# The run fetches the page, spawns one claims run for it, and gathers it. The run returns the number of claims that kept their quote.
 def source(item):
     spec = json.decode(item.body)
-    return ok("fetch", tool("fetch", "fetch.sh", [spec["run"], spec["url"]], retries = 2)).strip()
+    page = ok("fetch", tool("fetch", "fetch.sh", [spec["run"], spec["url"]], retries = 2)).strip()
+    made = item_create(
+        name = "claims",
+        title = "%s: section %d, source %d, claims" % (spec["run"], spec["n"], spec["k"]),
+        key = "%s-s%d-g%s-t%s-u%d-claims" % (spec["run"], spec["n"], spec["gen"], spec["try"], spec["k"]),
+        body = json.encode({"run": spec["run"], "n": spec["n"], "gen": spec["gen"], "question": spec["question"], "page": page}),
+        parent = item.id,
+    )
+    spawned = spawn([made.id], entry = "claims", name = "spawn-claims")
+    result = gather(spawned.runs, fail = "return", name = "wait-claims").results[0]
+    if not result.ok:
+        fail("REFUSE: the claims of source %d stopped. See the child item %s. %s" % (spec["k"], made.id, result.error))
+    return result.value
 
-# One section: the entry of a child run. The item body names the run, the section, the generation, the title and the question.
-def section(item):
+# The claims of one source: the entry of a grandchild run, two levels below the question run. A reader agent extracts claims with exact quotes from the page,
+# and a script tests each quote against the snapshot. The run returns the number of claims that kept their quote.
+def claims(item):
     spec = json.decode(item.body)
     run = spec["run"]
-    n = str(spec["n"])
-    gen = spec["gen"]
-    ok("reset", tool("reset", "claims.sh", ["reset", run, n, gen]))
-    found = ok("search", tool("search", "search.sh", [spec["question"], str(MAX_SOURCES)]))
-    pages = []
-    for url in found.splitlines():
-        if url.strip() != "":
-            pages.append(fetch_source(item, run, n, gen, len(pages) + 1, url.strip()))
-    read =call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": "\n".join(pages)}, ["claims"])
-    ok("add-claims", tool("add-claims", "claims.sh", ["add", run, n, gen], stdin = read.claims))
+    read = call_agent(run, "read", "prompts/read.md", {"question": spec["question"], "pages": spec["page"]}, ["claims"])
+    ok("add-claims", tool("add-claims", "claims.sh", ["add", run, str(spec["n"]), spec["gen"]], stdin = read.claims))
+    return int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, str(spec["n"]), spec["gen"], "quote"])).strip())
+
+def judge_and_write(run, n, gen, title, question):
     if int(ok("count-quotes", tool("count-quotes", "claims.sh", ["count", run, n, gen, "quote"])).strip()) == 0:
         set_status(run, n, gen, "empty")
         return not_shown(run, n, gen, "no claim had a quote that the pages hold.")
@@ -214,7 +218,7 @@ def section(item):
         return not_shown(run, n, gen, "no claim passed the judge.")
     supported = ok("supported", tool("supported", "claims.sh", ["supported", run, n, gen]))
     note = ok("note", tool("note", "store.sh", ["note", run, n])).strip()
-    written = call_agent(run, "write", "prompts/write.md", {"title": spec["title"], "question": spec["question"], "claims": supported, "note": note}, ["prose"])
+    written = call_agent(run, "write", "prompts/write.md", {"title": title, "question": question, "claims": supported, "note": note}, ["prose"])
     ok("save-prose", tool("save-prose", "save-prose.sh", [run, n, gen], stdin = written.prose))
     cites = program_gate("cites", "cites.sh", [run, n, gen])
     if not cites.passed:
