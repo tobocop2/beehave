@@ -194,6 +194,29 @@ func TestExampleBatch_EachMemberMergesAtThePinOfItsChild(t *testing.T) {
 	assert.Equal(t, []string{rig.heads["1"], rig.heads["3"]}, rig.merger.pinned(), "each member merges at its pin")
 }
 
+// When the intake stops every approved item, no merge call runs. The stops hold the items, which changes their rows, so the next pass reads the queue before the round waits.
+func TestExampleBatch_APassThatStopsEveryItemAtTheIntakeReadsTheQueueAgainBeforeTheRoundWaits(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.pushAfterReviews("1", strings.Repeat("e", 40))
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "no item reaches the merge")
+	assert.Equal(t, []string{testProject + "|1|hold"}, heldOf(rig.writer))
+
+	reads := 0
+	for _, name := range stepNames(t, rig.last) {
+		if strings.HasPrefix(name, "queue:round-queue-") {
+			reads++
+		}
+	}
+
+	assert.Equal(t, 3, reads, "the pass that held the item is followed by a pass that reads the queue, and then the round waits")
+}
+
 func TestExampleBatch_AMissingBranchIsReportedAndTheOtherItemLands(t *testing.T) {
 	t.Parallel()
 

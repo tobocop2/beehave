@@ -446,7 +446,7 @@ func TestExampleMerge_TheRoundLandsThroughTheBatchMergerAndTheGuardsOfTheForgeFa
 	}
 }
 
-// A deferral writes no row, so a pass that only deferred must not start the next pass at once: the round waits for the owner, and the batch runs once.
+// A deferral writes no row, so a pass that only deferred must not start the next pass at once: the round offers the rows once in each pass that a child ended in, and then waits for the owner.
 func TestExampleMerge_ABaseThatKeepsMovingMakesTheRoundWaitAfterOneLandingPass(t *testing.T) {
 	t.Parallel()
 
