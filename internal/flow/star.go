@@ -36,10 +36,6 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login, treeStart string
 
 	e.progress.say("run %s workflow %s item %s", workflowID(ctx), in.File, in.Item)
 
-	if e.serving && in.Sandbox == model.SandboxOff {
-		e.progress.say("run %s: %s", workflowID(ctx), model.SandboxOffLine)
-	}
-
 	fields, err := runStep(e, ctx, "item", func(c context.Context) (map[string]string, error) {
 		return e.itemFields(c, in.Project, in.Item)
 	})

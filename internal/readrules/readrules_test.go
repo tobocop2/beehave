@@ -149,6 +149,7 @@ var rules = map[string]rule{
 	"internal/cli.Reading.Poll":                   {NotHeld: noEngine},
 	"internal/cli.Reading.PollNotScheduled":       {NotHeld: noEngine},
 	"internal/cli.Reading.PinnedFile":             {NotHeld: noEngine},
+	"internal/cli.Steering.OpenRunSandbox":        {NotHeld: noEngine},
 	"internal/cli.ItemStore.Item":                 {NotHeld: noEngine},
 	"internal/cli.ItemStore.OpenItems":            {NotHeld: noEngine},
 	"internal/flow.batchHost.Issues":              {NotHeld: inAdapter},

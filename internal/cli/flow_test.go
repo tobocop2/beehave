@@ -127,8 +127,12 @@ type fakeSteering struct {
 	err          error
 	pinned       string
 	pinnedErr    error
-	calls        []string
-	closeOK      bool
+	// openMode, openRun and openErr are what OpenRunSandbox returns.
+	openMode model.SandboxMode
+	openRun  bool
+	openErr  error
+	calls    []string
+	closeOK  bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// running is what EngineRuns returns, and runningErr its error.
@@ -193,6 +197,10 @@ func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, 
 }
 
 func (s *fakeSteering) PinnedFile(string) (string, error) { return s.pinned, s.pinnedErr }
+
+func (s *fakeSteering) OpenRunSandbox(string) (model.SandboxMode, bool, error) {
+	return s.openMode, s.openRun, s.openErr
+}
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }
 

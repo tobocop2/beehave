@@ -70,6 +70,8 @@ type Steering interface {
 	Reading
 	Messaging
 	Resume(item string) error
+	// OpenRunSandbox returns the sandbox mode that the open run of the item stored, and whether the item has an open run.
+	OpenRunSandbox(item string) (model.SandboxMode, bool, error)
 	// EngineRuns reports whether an engine holds the state folder.
 	EngineRuns() (bool, error)
 	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
@@ -254,29 +256,33 @@ func (f flowCommands) run(cmd *cobra.Command, args []string, flag, workflowFile 
 	// A folder without a workflow file may still hold an open run, which continues with the file that it pinned. runItem decides.
 	opts.OverCap = overCap
 
-	sayOffLine(cmd.ErrOrStderr(), cfg.Projects[project], args[0])
-
 	return f.runItem(cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, opts, args[0], project, file)
 }
 
-// sayOffLine prints the line for a project whose file says sandbox = "off". A project with no sandbox key stores off too, and says nothing.
-func sayOffLine(stderr io.Writer, project config.Project, item string) {
-	if project.Sandbox != model.SandboxOff {
-		return
+// sayOffLine prints the line for a run that uses the sandbox mode off. An open run continues with the mode that it stored.
+// A new run uses the mode of its project, and the line names the project file: a project with no sandbox key stores off too, and says nothing.
+func sayOffLine(stderr io.Writer, client Steering, project config.Project, item string) error {
+	mode, open, err := client.OpenRunSandbox(item)
+	if err != nil {
+		return err
 	}
 
-	// A failed write to stderr has no recovery.
-	_, _ = fmt.Fprintf(stderr, "item %s: project %s has %s\n", item, project.Name, model.SandboxOffLine)
+	off := mode == model.SandboxOff
+	if !open {
+		off = project.Sandbox == model.SandboxOff
+	}
+
+	if off {
+		// A failed write to stderr has no recovery.
+		_, _ = fmt.Fprintf(stderr, "item %s: project %s has %s\n", item, project.Name, model.SandboxOffLine)
+	}
+
+	return nil
 }
 
 // refuseNoRepositoryCalls refuses the file before any step runs when the project has no repository and the file calls a builtin that needs one,
 // or when the project has the sandbox on and a step sets sandbox = None. The engine refuses the second case at the call too.
-// A run with no file continues a pinned run, which passed this check when it started.
 func refuseNoRepositoryCalls(stderr io.Writer, project config.Project, file string) error {
-	if file == "" {
-		return nil
-	}
-
 	var calls []workflow.Diagnostic
 
 	if !project.HasRepository() {
@@ -383,7 +389,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 		return err
 	}
 
-	chosen, running, err := f.chooseRunFile(stdout, client, item, file)
+	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg.Projects[project], item, file)
 	if err != nil {
 		return errors.Join(err, client.Close())
 	}
@@ -414,7 +420,8 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 }
 
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
-func (f flowCommands) chooseRunFile(stdout io.Writer, client Steering, item, file string) (string, bool, error) {
+// It says the off line when the run uses the sandbox mode off.
+func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, project config.Project, item, file string) (string, bool, error) {
 	pinned, err := f.openRunFile(stdout, client, item)
 	if err != nil {
 		return "", false, err
@@ -422,6 +429,10 @@ func (f flowCommands) chooseRunFile(stdout io.Writer, client Steering, item, fil
 
 	if file == "" && pinned == "" {
 		return "", false, missingWorkflow()
+	}
+
+	if err := sayOffLine(stderr, client, project, item); err != nil {
+		return "", false, err
 	}
 
 	running, err := client.EngineRuns()

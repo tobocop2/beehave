@@ -731,14 +731,29 @@ func (c *Client) giveBack(a *attempt) error {
 // PinnedFile returns the workflow file of the open run of the item. It is empty when the item has no open run, or when the open run uses no file.
 // It reads the store and launches nothing.
 func (c *Client) PinnedFile(item string) (string, error) {
+	in, _, err := c.openInput(item)
+
+	return in.File, err
+}
+
+// OpenRunSandbox returns the sandbox mode that the open run of the item stored, and whether the item has an open run. It reads the store and launches nothing.
+// A run recorded before the mode existed returns the empty mode.
+func (c *Client) OpenRunSandbox(item string) (model.SandboxMode, bool, error) {
+	in, open, err := c.openInput(item)
+
+	return in.Sandbox, open, err
+}
+
+// openInput returns the input of the open run of the item, and whether the item has an open run.
+func (c *Client) openInput(item string) (ItemInput, bool, error) {
 	last, found, err := latestRun(c.flow, item)
 	if err != nil || !found || last.terminal() {
-		return "", err
+		return ItemInput{}, false, err
 	}
 
 	in, err := last.input()
 
-	return in.File, err
+	return in, true, err
 }
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.

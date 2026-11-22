@@ -514,11 +514,36 @@ func (e *Engine) Launch() error {
 
 	e.launched = time.Now()
 
+	if err := e.sayResumedOff(); err != nil {
+		return err
+	}
+
 	if err := e.launchAndSchedule(); err != nil {
 		return err
 	}
 
 	e.tidy()
+
+	return nil
+}
+
+// sayResumedOff writes the off line for each open run whose stored sandbox mode is off. Only the engine of beehave serve says it, once at its start,
+// before it launches and resumes these runs. A run with no stored mode, or with the mode on, gets no line.
+func (e *Engine) sayResumedOff() error {
+	if !e.serving {
+		return nil
+	}
+
+	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
+	if err != nil {
+		return fmt.Errorf("list the open runs: %w", err)
+	}
+
+	for _, row := range open {
+		if in, err := (run{Status: row}).input(); err == nil && in.Sandbox == model.SandboxOff {
+			e.progress.say("run %s: %s", row.ID, model.SandboxOffLine)
+		}
+	}
 
 	return nil
 }

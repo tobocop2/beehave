@@ -504,27 +504,180 @@ func TestDryRun_AProjectWithTheSandboxOnRefusesASandboxNoneStep(t *testing.T) {
 	}
 }
 
-func TestServe_AnEngineOfServeSaysTheOffLineForARunThatStoredOffAndAnEngineOfRunSaysNothing(t *testing.T) {
+// offLines counts the off lines in the progress text.
+func offLines(text string) int { return strings.Count(text, model.SandboxOffLine) }
+
+// launchMode builds and launches an engine of the given mode over the harness. Its progress goes to out. stop ends it as a crash would.
+func launchMode(t *testing.T, h *harness, mode string, out *safeBuffer) (engine *Engine, stop func()) {
+	t.Helper()
+
+	opts := h.opts
+	opts.Mode, opts.Progress = mode, out
+
+	stopCtx, cancel := context.WithCancel(t.Context())
+	engine, err := NewEngine(stopCtx, opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, engine.Launch())
+
+	return engine, func() {
+		cancel()
+		require.NoError(t, engine.Shutdown())
+	}
+}
+
+// askingFlow is a workflow file that stops at a question, so its run stays open.
+func askingFlow(t *testing.T) string {
+	t.Helper()
+
+	return writeFlow(t, bodyFlow("wait(name = \"ask\", question = \"go?\")\n"))
+}
+
+// interruptedOldRecord starts a run with no stored sandbox mode, as an older build did, until it asks its question, then stops the engine.
+func interruptedOldRecord(t *testing.T, h *harness, file string) {
+	t.Helper()
+
+	var out safeBuffer
+
+	engine, stop := launchMode(t, h, ModeRun, &out)
+	client := h.client(t, testVersion)
+
+	in, err := pinnedInput(testItem, testProject, file)
+	require.NoError(t, err)
+	require.Empty(t, in.Sandbox)
+
+	_, err = engine.joinOrStart(in)
+	require.NoError(t, err)
+
+	waitOn(t, waiting[struct{}]{what: "the run to show a question", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) {
+		rows, err := client.Status()
+
+		return struct{}{}, err == nil && len(rows) == 1 && rows[0].Question != "", nil
+	}})
+
+	stop()
+}
+
+func TestServe_TheEngineSaysTheOffLineAtItsStartForAnOpenRunThatStoredOffAndForNoOtherRun(t *testing.T) {
 	t.Parallel()
 
 	for name, test := range map[string]struct {
-		mode string
-		line bool
-	}{"serve": {ModeServe, true}, "run": {ModeRun, false}} {
+		stored model.SandboxMode
+		lines  int
+	}{"a stored off": {model.SandboxOff, 1}, "a stored on": {model.SandboxOn, 0}, "an empty record": {"", 0}} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
+			h := newHarness(t)
+			file := askingFlow(t)
+
+			if test.stored == "" {
+				interruptedOldRecord(t, h, file)
+			} else {
+				interrupted(t, h, file, RunSandbox(test.stored))
+			}
+
 			var out safeBuffer
 
-			rig := newAgentRig(t)
-			rig.h.opts.Mode = test.mode
-			rig.h.opts.Progress = &out
-			rig.reply("", exited)
+			_, stop := launchMode(t, h, ModeServe, &out)
+			stop()
 
-			_, err := rig.run(t, agentFlow(`sandbox = None, `), "x")
-
-			require.NoError(t, err)
-			assert.Equal(t, test.line, strings.Contains(out.String(), "run "+testRun+": "+model.SandboxOffLine), out.String())
+			assert.Equal(t, test.lines, offLines(out.String()), out.String())
 		})
 	}
+}
+
+func TestServe_AnEngineOfRunSaysNoOffLineWhenItResumesARunThatStoredOff(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	interrupted(t, h, askingFlow(t), RunSandbox(model.SandboxOff))
+
+	var out safeBuffer
+
+	_, stop := launchMode(t, h, ModeRun, &out)
+	stop()
+
+	assert.Zero(t, offLines(out.String()), out.String())
+}
+
+func TestServe_EachRestartSaysTheOffLineOnceForTheRunItResumes(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	interrupted(t, h, askingFlow(t), RunSandbox(model.SandboxOff))
+
+	for range 2 {
+		var out safeBuffer
+
+		_, stop := launchMode(t, h, ModeServe, &out)
+		stop()
+
+		assert.Equal(t, 1, offLines(out.String()), out.String())
+	}
+}
+
+func TestServe_ARunStartedAfterTheEngineStartedSaysNoOffLineNeitherItsChildNorAJoinedRun(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	var out safeBuffer
+
+	engine, stop := launchMode(t, h, ModeServe, &out)
+	spawner := "def worker(item):\n    command(name = \"w\", run = [\"w\"])\n\ndef main(item):\n    gather(spawn(items = [\"21\"], entry = \"worker\"))\n"
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, spawner), RunSandbox(model.SandboxOff))
+	require.NoError(t, err)
+
+	// A project with the key unset runs with the mode off until the default flips, and a joined run of it stores off too.
+	_, err = h.client(t, testVersion).JoinRun(t.Context(), "23", testProject, writeFlow(t, bodyFlow("command(name = \"w\", run = [\"w\"])\n")), RunSandbox(model.SandboxOff))
+	require.NoError(t, err)
+
+	assert.Equal(t, model.SandboxOff, storedInput(t, h.client(t, testVersion), "21").Sandbox, "the child stores off")
+	assert.Equal(t, model.SandboxOff, storedInput(t, h.client(t, testVersion), "23").Sandbox, "the joined run stores off")
+
+	stop()
+
+	assert.Zero(t, offLines(out.String()), out.String())
+}
+
+func TestOpenRunSandbox_ReadsTheStoredModeOfTheOpenRunOnly(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	client := h.client(t, testVersion)
+
+	_, open, err := client.OpenRunSandbox(testItem)
+	require.NoError(t, err)
+	assert.False(t, open, "an item with no run has no open run")
+
+	interrupted(t, h, askingFlow(t), RunSandbox(model.SandboxOn))
+
+	mode, open, err := client.OpenRunSandbox(testItem)
+	require.NoError(t, err)
+	assert.True(t, open)
+	assert.Equal(t, model.SandboxOn, mode)
+
+	require.NoError(t, client.Cancel(testItem))
+
+	_, open, err = client.OpenRunSandbox(testItem)
+	require.NoError(t, err)
+	assert.False(t, open, "a run that ended is not open")
+}
+
+func TestServe_AnEngineThatCannotListItsOpenRunsFailsItsLaunch(t *testing.T) {
+	t.Parallel()
+
+	var out safeBuffer
+
+	h := newHarness(t)
+	opts := h.opts
+	opts.Mode, opts.Progress = ModeServe, &out
+
+	engine, err := NewEngine(t.Context(), opts, h.deps())
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	require.ErrorContains(t, engine.sayResumedOff(), "list the open runs")
+	require.ErrorContains(t, engine.Launch(), "list the open runs", "the launch of the engine fails with it")
 }

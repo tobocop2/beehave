@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 const oneCommandFile = "def main(item):\n    command(name = \"a\", run = [\"true\"])\n"
@@ -221,4 +223,45 @@ func TestRun_AProjectWithTheSandboxOffPrintsTheOffLineAtTheStartAndOtherProjects
 			assert.Equal(t, test.line, strings.Contains(stderr, `item 12: project p has sandbox = "off"`), stderr)
 		})
 	}
+}
+
+func TestRun_AnOpenRunPrintsTheOffLineFromItsStoredModeNotFromTheProjectFile(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		project string
+		stored  model.SandboxMode
+		line    bool
+	}{
+		"stored on, project off":    {"project(sandbox = \"off\")\n", model.SandboxOn, false},
+		"stored off, project on":    {"project(sandbox = \"on\")\n", model.SandboxOff, true},
+		"stored off, project unset": {"project()\n", model.SandboxOff, true},
+		"no stored mode":            {"project(sandbox = \"off\")\n", "", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRig(t)
+			writeConfig(t, rig.dir, "projects/p.star", test.project)
+			rig.steering.openRun, rig.steering.openMode = true, test.stored
+
+			code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+			require.Equal(t, 0, code, stderr)
+			assert.Equal(t, test.line, strings.Contains(stderr, model.SandboxOffLine), stderr)
+		})
+	}
+}
+
+func TestRun_AFailureToReadTheStoredModeOfTheOpenRunStopsTheCommandBeforeAnyEngineOpens(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.openErr = errors.New("the store is locked")
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "the store is locked")
+	assert.Empty(t, rig.runner.files)
 }
