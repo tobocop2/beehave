@@ -208,8 +208,14 @@ func TestAgents_ConfigFolderOfACLIWithNoDefaultFolderNeedsNoHomeFolder(t *testin
 	t.Parallel()
 
 	noHome := agents{home: func() (string, error) { return "", os.ErrNotExist }, adapter: func(model.Agent) agent.Adapter { return resumeAdapter{} }}
-	folder, note := noHome.configFolder(model.Runner{Name: "main", Agent: model.Agent("fake")})
+	runner := model.Runner{Name: "main", Agent: model.Agent("fake")}
+	folder, note := noHome.configFolder(runner, resumeAdapter{})
 
 	assert.Empty(t, folder)
 	assert.Empty(t, note)
+
+	folder, note = noHome.configFolder(runner, nil)
+
+	assert.Empty(t, folder, "an agent with no adapter has no default folder")
+	assert.Empty(t, note, "its run is refused where the adapter is missing, not here")
 }

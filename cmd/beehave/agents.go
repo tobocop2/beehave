@@ -188,24 +188,37 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	adapter, protect := a.adapter(runner.Agent), a.protection(request, dir)
 	guard := a.guardFor(request.Forbid, protect)
 
-	folder, unknown := a.configFolder(runner)
-	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
-	skills, missing := a.skillsOf(request, folder)
-
-	if note = cmp.Or(note, unknown, missing); note != "" {
+	ready, note := a.readyOf(ctx, request, runner, dir, adapter, guard)
+	if note != "" {
 		return agent.Result{Outcome: agent.OutcomeNotStarted, Note: note}, nil
 	}
 
-	request, resumed := replayOf(request, folder, dir, adapter)
+	request, resumed := replayOf(request, ready.folder, dir, adapter)
 	tap := a.tapOf(adapter, request)
 
-	spec := a.specOf(request, runner, dir, adapter, tap, guard, box, skills)
-	spec.ConfigFolder = folder
+	spec := a.specOf(request, runner, dir, adapter, tap, guard, ready.box, ready.skills)
+	spec.ConfigFolder = ready.folder
 
-	result, err := endOf(adapter, folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
-	result.Resumed, result.Denials = resumed, markClosed(result.Denials, box)
+	result, err := endOf(adapter, ready.folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
+	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
 	return result, err
+}
+
+// stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan and its skill folders.
+type stepReady struct {
+	folder string
+	box    *agent.SandboxPlan
+	skills []string
+}
+
+// readyOf returns what the step needs before it starts, or the reason why it cannot start: its config folder, its sandbox or its skills cannot be made.
+func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (stepReady, string) {
+	folder, unknown := a.configFolder(runner, adapter)
+	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
+	skills, missing := a.skillsOf(request, folder)
+
+	return stepReady{folder: folder, box: box, skills: skills}, cmp.Or(note, unknown, missing)
 }
 
 // tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
@@ -308,9 +321,14 @@ func (a agents) skillsOf(request flow.AgentRequest, folder string) ([]string, st
 	return skillFolders(request.Skills, folder, home)
 }
 
-// configFolder returns the config folder of the runner as its CLI reads it, or the reason why the step cannot start. It is empty for a CLI with no default folder.
-func (a agents) configFolder(runner model.Runner) (string, string) {
-	rel := a.adapter(runner.Agent).Profile().ConfigHome
+// configFolder returns the config folder of the runner as its CLI reads it, or the reason why the step cannot start.
+// It is empty for a CLI with no default folder. An agent with no adapter (a nil adapter) has no CLI, and prepare refuses its run.
+func (a agents) configFolder(runner model.Runner, adapter agent.Adapter) (string, string) {
+	rel := ""
+	if adapter != nil {
+		rel = adapter.Profile().ConfigHome
+	}
+
 	if runner.ConfigDir != "" || rel == "" {
 		return runner.ConfigDir, ""
 	}
