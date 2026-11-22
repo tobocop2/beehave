@@ -101,7 +101,7 @@ An unsandboxed `command` step that is left is a limit. Until the sandbox covers 
 | The gate step | A gate under the sandbox of the project gets no `SSH_AUTH_SOCK`, and the plan refuses a read or write path that holds the socket. A gate with no sandbox keeps the variable and runs as the owner. That is a limit. |
 | The OpenCode launch | It has the same `HOME` as the Claude launch (`internal/agent/opencode/guard.go`) and the same allow-list, so it has the same channels. They are not measured. |
 | The token file of the `file` source | An unsandboxed step can read it. This is a limit, closed the same way. The sandbox denies `~/.config/beehave`. |
-| The git credential helper of the owner | An unsandboxed step reads `~/.gitconfig`. The engine sets `GIT_CONFIG_GLOBAL=/dev/null` for its own forge git calls. The token of a call is readable by the same user while the call runs (`ps eww`). This is a limit. |
+| The git credential helper of the owner | An unsandboxed step reads `~/.gitconfig`. The engine sets `GIT_CONFIG_GLOBAL=/dev/null` for its own git calls in a clone or a worktree and for its forge calls of a project with credentials. The token of a call is readable by the same user while the call runs (`ps eww`). This is a limit. |
 | The start check | It sees the environment that the engine builds. It cannot see files, so it checks the environment channel only. |
 
 ### The CI lock
