@@ -104,6 +104,7 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 		"gather":   gathered.AttrNames(),
 		"queue":    queuedRows.AttrNames(),
 		"spawn":    runsValue([]spawnedRun{{}}).AttrNames(),
+		"stream":   streamValue(streamRead{}).AttrNames(),
 	}
 
 	for builtin, names := range got {

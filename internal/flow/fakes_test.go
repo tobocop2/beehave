@@ -68,6 +68,10 @@ type fakeAgents struct {
 	named string
 	// said is what the agent says at each start, before it counts as running.
 	said []agent.Said
+	// startSaid replaces said for the start with that number, from 1: the first start says startSaid[0]. A start past the list says said.
+	startSaid [][]agent.Said
+	// lastWords is what the agent says after the test closes gate. The agent then goes on until its context ends, as an agent that works on.
+	lastWords []agent.Said
 	// hangAt is the number (from 1) of the one agent start that holds until its context ends, so a test stops the engine while that agent runs. 0 holds none.
 	hangAt int
 	// stall is the item whose first stallStarts agent starts each hold for stallFor, or until the context ends, so a test sees that run stalled.
@@ -128,6 +132,10 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	a.maxLogin = max(a.maxLogin, a.perLogin[request.Login])
 	hold := a.holdOf(request.Item)
 	said := a.said
+	if n := len(a.requests); n <= len(a.startSaid) {
+		said = a.startSaid[n-1]
+	}
+
 	a.mu.Unlock()
 
 	sayAll(request, said)
@@ -137,12 +145,7 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	case <-ctx.Done():
 	}
 
-	if a.gate != nil {
-		select {
-		case <-a.gate:
-		case <-ctx.Done():
-		}
-	}
+	a.holdAtGate(ctx, request)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -155,6 +158,23 @@ func (a *fakeAgents) Run(ctx context.Context, request AgentRequest) (agent.Resul
 	}
 
 	return agent.Result{Outcome: agent.OutcomeExited}, a.err
+}
+
+// holdAtGate holds the agent until the test closes gate. It then says lastWords, and goes on until its context ends when there are any.
+func (a *fakeAgents) holdAtGate(ctx context.Context, request AgentRequest) {
+	if a.gate == nil {
+		return
+	}
+
+	select {
+	case <-a.gate:
+		sayAll(request, a.lastWords)
+
+		if len(a.lastWords) > 0 {
+			<-ctx.Done()
+		}
+	case <-ctx.Done():
+	}
 }
 
 // running counts the agents in flight now.
