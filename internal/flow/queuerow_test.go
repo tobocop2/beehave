@@ -292,6 +292,26 @@ func TestQueue_ARunThatAUserStartedAndThatReturnsAValueOfNoKindKeepsNoValueAndSt
 	assert.Equal(t, []string{"21|done|none"}, seenBy(t, h))
 }
 
+func TestQueue_AHeldItemWithASucceededRunIsAHoldRowAndAnItemThatIsNotHeldIsDone(t *testing.T) {
+	t.Parallel()
+
+	held := queueItem("21", model.SeverityP1)
+	held.Hold = true
+
+	h, _ := queueHarness(t, []model.Item{held, queueItem("22", model.SeverityP1)})
+	engine := h.engine(t)
+
+	for _, item := range []string{"21", "22"} {
+		_, err := engine.RunFile(item, testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True}\n"))
+		require.NoError(t, err)
+	}
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{`21|hold|none`, `22|done|{"approved":_True}`}, seenBy(t, h), "a rejected landing holds the item, so the row is hold and carries no value to land")
+}
+
 func TestQueue_ARowWhoseRecordedValueIsNotJSONFailsTheCall(t *testing.T) {
 	t.Parallel()
 

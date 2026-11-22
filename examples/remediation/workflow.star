@@ -631,9 +631,10 @@ def land(approved, project, round_settings, n):
     Each entry of `approved` has an item id, the full SHA that the review approved, and the verdict of the child run (`approved`). Each member of the batch carries that verdict, so our own pull request
     lands only on the approval of its own review, and the approval of one member never reaches another. The setting vars.round.merge, the stops before the work and the guards are those of the pipeline of one item.
     The branch of each pull request has the id of its item. Each item that the batch merged is recorded with record_merge.
-    Returns the host_losses of the batch call, the count of the engine for the tree of the run. It is 0 when the pass lands nothing."""
+    Returns host_losses, the count of the engine for the tree of the run (0 when the pass lands nothing), and moved, which is true when an item merged or was put on hold.
+    A deferred item writes nothing, so a pass that only deferred has moved false and the round waits."""
     if not round_settings["merge"]:
-        return 0
+        return struct(host_losses = 0, moved = False)
 
     base = round_settings["base"]
     prs = []
@@ -666,7 +667,7 @@ def land(approved, project, round_settings, n):
         item_status(name = "stop-hold-" + skipped.item, id = skipped.item, status = "hold")
 
     if len(prs) == 0:
-        return 0
+        return struct(host_losses = 0, moved = len(stopped) > 0)
 
     if round_settings["hand_off"]:
         # The owner merges: the call marks each pull request ready at its reviewed head, tells the owner, and waits until each one is merged, closed or a draft again.
@@ -714,7 +715,7 @@ def land(approved, project, round_settings, n):
         if not accepted.passed:
             fail("REFUSE: the batch landed, but the acceptance script %s failed on %s. Read its output, then fix the round branch by hand:\n%s" % (round_settings["acceptance"], base, accepted.report))
 
-    return out.host_losses
+    return struct(host_losses = out.host_losses, moved = len(stopped) > 0 or len(out.merged) > 0 or len(out.rejected) > 0)
 
 def take_over(item, pr, author, project, round_settings):
     """Takes over the pull request `pr` of somebody else, in this order: the review, the notice, the grace period, the take.
@@ -1051,7 +1052,7 @@ def approved_runs(q, round_settings):
     found = []
     for r in listed_rows(q, round_settings):
         value = r.value
-        if r.state == "done" and type(value) == "dict" and value.get("approved") == True and value.get("head", "") != "":
+        if type(value) == "dict" and value.get("approved") == True and value.get("head", "") != "":
             found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0)))
 
     return found
@@ -1092,7 +1093,7 @@ def idle_reason(q, round_settings):
 
 def round(item):
     """The round: one entry for the whole round, with one child run (the entry pipeline) for each item. `item` is the round itself, an id that no tracker row uses.
-    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, round-land-<n> (the done rows of that read whose last run approved a head, whoever started the run), the cap, round-spawn-<n> and round-gather-<n> (first_of: waits until a run ends, takes every run that ended in the same read and counts its host losses). A child lands in the pass after it ended. A pass that landed starts the next pass at once. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
+    A pass is sync-<n> (sync_trunk), round-queue-<n>, queue-audit-<n> on the rows of that read, round-land-<n> (the done rows of that read whose last run approved a head, whoever started the run), the cap, round-spawn-<n> and round-gather-<n> (first_of: waits until a run ends, takes every run that ended in the same read and counts its host losses). A child lands in the pass after it ended. A pass that merged or held an item starts the next pass at once; a pass that only deferred waits. The round never returns while a child run is open, but a step that stops the run, such as an exit code 2 of a sync check, ends it with the open runs.
     A sync that ends with a reason holds the round: the later passes start no sync and no item, and only gather the open runs. With none open, the round waits in round-wait with the reason.
     The host losses hold it too. `seen` is the highest host_losses that a child result, the landing or the sync gate gave: the count of the engine for the tree of the run, and no count of the round.
     At HOST_LOSS_LIMIT or more, and above `acked`, the reason is host-loss. CONTINUE sets `acked` to `seen`, so the round asks again only after a newer loss.
@@ -1127,9 +1128,10 @@ def round(item):
 
             # The round lands from the queue only: the last run of a done row is the one record, whoever started that run. A child lands in the pass after it ended.
             approved = approved_runs(q, round_settings)
-            landed = len(approved) > 0
-            if landed:
-                seen = max(seen, land(approved, project, round_settings, n))
+            if len(approved) > 0:
+                landing = land(approved, project, round_settings, n)
+                seen = max(seen, landing.host_losses)
+                landed = landing.moved
                 round_integration(project, round_settings, "round-integration-land-%d" % n)
 
             take = ready_items(q, round_settings)
@@ -1145,7 +1147,8 @@ def round(item):
                 if result.ok and result.value != None:
                     seen = max(seen, result.value["host_losses"])
 
-        # A pass that landed reads the queue again: a landed item is closed, a rejected one is on hold, and the host losses of the landing gate count before the round waits.
+        # A pass that merged or held an item reads the queue again: a merged item is closed, a rejected one is on hold, and the host losses of the landing gate count before the round waits.
+        # A pass that only deferred changed no row, so the round waits.
         if gathered or landed:
             continue
 
