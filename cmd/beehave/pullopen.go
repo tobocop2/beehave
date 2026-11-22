@@ -33,7 +33,7 @@ func (p pulls) Open(ctx context.Context, project, item string, req flow.OpenRequ
 	}
 
 	want.Label = p.projects[project].PRLabel
-	number, created, err := openedPull(ctx, built, opener, want, req.Issue, line)
+	number, created, err := openedPull(ctx, built, opener, item, want, req.Issue, line)
 	if err != nil {
 		return flow.OpenResult{}, err
 	}
@@ -68,7 +68,7 @@ func wantedPull(ctx context.Context, built forge.Forge, item string, req flow.Op
 
 	base := req.Base
 	if parent != 0 {
-		base = req.Parent
+		base = model.ItemBranch(req.Parent)
 	}
 
 	line, err = closingLine(ctx, built, req.Issue, base)
@@ -76,7 +76,7 @@ func wantedPull(ctx context.Context, built forge.Forge, item string, req flow.Op
 		return 0, model.NewPull{}, "", err
 	}
 
-	return parent, model.NewPull{Head: item, Base: base, Title: req.Title, Body: joinLine(req.Body, line)}, line, nil
+	return parent, model.NewPull{Head: model.ItemBranch(item), Base: base, Title: req.Title, Body: joinLine(req.Body, line)}, line, nil
 }
 
 // parentPull returns the number of the open pull request of the parent item, 0 for no parent or one that merged, and an error for a parent with no pull request.
@@ -134,10 +134,10 @@ func joinLine(text, line string) string {
 	return text + "\n\n" + line
 }
 
-// openedPull returns the open pull request on the branch, and whether this call opened it. A new pull request gets the wanted body.
+// openedPull returns the open pull request on the branch of the item, and whether this call opened it. A new pull request gets the wanted body.
 // An open pull request keeps its base, its title and its body; only its closing line is set.
-func openedPull(ctx context.Context, built forge.Forge, opener forge.Opener, want model.NewPull, issue int, line string) (number int, created bool, err error) {
-	number, err = listed(ctx, built, want.Head, "open")
+func openedPull(ctx context.Context, built forge.Forge, opener forge.Opener, item string, want model.NewPull, issue int, line string) (number int, created bool, err error) {
+	number, err = listed(ctx, built, item, "open")
 	if err != nil {
 		return 0, false, err
 	}
