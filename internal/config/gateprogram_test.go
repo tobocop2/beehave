@@ -80,9 +80,76 @@ func TestLoadFolder_AGateProgramEntryThatNamesTheRootIsRefusedAndNamed(t *testin
 func TestLoadFolder_AGateProgramEntryInTheGitFolderIsRefusedAndNamed(t *testing.T) {
 	t.Parallel()
 
-	for _, entry := range []string{".git", ".git/", ".git/hooks/"} {
-		require.Contains(t, refusedProgram(t, `gate_program = ["`+entry+`"]`), "inside the git folder", entry)
+	for _, entry := range []string{".git", ".git/", ".git/hooks/", "a/.git/x"} {
+		message := refusedProgram(t, `gate_program = ["`+entry+`"]`)
+
+		require.Contains(t, message, `"`+entry+`"`)
+		require.Contains(t, message, "`.git` component", entry)
 	}
+}
+
+func TestLoadFolder_AGateProgramEntryWithAGitComponentInAnyCaseIsRefusedAndNamed(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range []string{".GIT/hooks", ".Git", "a/.gIT/"} {
+		message := refusedProgram(t, `gate_program = ["`+entry+`"]`)
+
+		require.Contains(t, message, `"`+entry+`"`)
+		require.Contains(t, message, "`.git` component", entry)
+	}
+
+	project, problems := loadProjectText(t, call(goodProject+`, gate_program = [".gitignore", ".github/", "git/"]`))
+
+	require.Empty(t, problems, "a name that only starts with .git is no git folder")
+	require.Len(t, project.GateProgram, 3)
+}
+
+func TestLoadFolder_AGateProgramEntryWithASpaceIsRefusedAndNamed(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range []string{"Makefile ", " Makefile", "scripts/ ", "my file"} {
+		message := refusedProgram(t, `gate_program = ["`+entry+`"]`)
+
+		require.Contains(t, message, `"`+entry+`"`)
+		require.Contains(t, message, "outside A-Z", entry)
+	}
+}
+
+func TestLoadFolder_AGateProgramEntryWithAControlCharacterIsRefusedAndNamed(t *testing.T) {
+	t.Parallel()
+
+	for _, entry := range []string{`a\n`, `a\t`, `a\x00b`} {
+		message := refusedProgram(t, `gate_program = ["`+entry+`"]`)
+
+		require.Contains(t, message, "outside A-Z", entry)
+	}
+}
+
+func TestLoadFolder_AGateProgramEntryWithANonASCIICharacterIsRefusedAndNamed(t *testing.T) {
+	t.Parallel()
+
+	const (
+		cyrillicA     = rune(0x430)
+		divisionSlash = rune(0x2215)
+		zeroWidth     = rune(0x200b)
+		acuteE        = rune(0xe9)
+	)
+
+	for _, entry := range []string{"M" + string(cyrillicA) + "kefile", "a" + string(divisionSlash) + "b", "a" + string(zeroWidth) + "b", "caf" + string(acuteE)} {
+		message := refusedProgram(t, `gate_program = ["`+entry+`"]`)
+
+		require.Contains(t, message, "outside A-Z", entry)
+		require.Contains(t, message, "non-ASCII", entry)
+	}
+}
+
+func TestLoadFolder_AGateProgramEntryWithEveryPortableCharacterIsLoaded(t *testing.T) {
+	t.Parallel()
+
+	project, problems := loadProjectText(t, call(goodProject+`, gate_program = ["Ab_c-9.d/E-f.sh", "x/"]`))
+
+	require.Empty(t, problems)
+	require.Len(t, project.GateProgram, 2)
 }
 
 func TestLoadFolder_AGateProgramEntryThatIsNotAPlainPathIsRefusedAndNamed(t *testing.T) {
@@ -110,6 +177,22 @@ func TestLoadFolder_AGateProgramEntryInsideADirectoryEntryIsRefusedAndNamed(t *t
 
 	outer := refusedProgram(t, `gate_program = ["a/b/c.sh", "a/"]`)
 	require.Contains(t, outer, `entry "a/b/c.sh" is inside entry "a/"`)
+}
+
+func TestLoadFolder_AGateProgramEntryInsideAnEntryWithNoTrailingSlashIsRefusedAndNamed(t *testing.T) {
+	t.Parallel()
+
+	for _, line := range []struct{ list, inner, outer string }{
+		{`"scripts", "scripts/x"`, "scripts/x", "scripts"},
+		{`"scripts/x", "scripts"`, "scripts/x", "scripts"},
+		{`"a", "a/b"`, "a/b", "a"},
+		{`"a/b/", "a"`, "a/b/", "a"},
+		{`"a", "a/b/c/"`, "a/b/c/", "a"},
+	} {
+		message := refusedProgram(t, `gate_program = [`+line.list+`]`)
+
+		require.Contains(t, message, `entry "`+line.inner+`" is inside entry "`+line.outer+`"`, line.list)
+	}
 }
 
 func TestLoadFolder_AGateProgramNextToADirectoryOfALongerNameIsNotInsideIt(t *testing.T) {

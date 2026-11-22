@@ -121,7 +121,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 
 | Field | Kind |
 | --- | --- |
-| `repo`, `source`, `forge`, `tracker`, `base_branch`, `gate`, `gate_steps`, `gate_program`, `build_host` | The project value of that name. |
+| `repo`, `source`, `forge`, `tracker`, `base_branch`, `gate`, `gate_steps`, `build_host` | The project value of that name. |
 | `vars` | Dict. The `vars` of the project file, as written, and frozen. Every setting of a workflow is a key of it. |
 | `runners` | Dict. One entry for each runner of the config, by its name, with the field `loads_skills`: true when the agent CLI has a line that loads a skill before the first turn, false for OpenCode. The project file does not set it. A workflow reads it to refuse a step before any agent starts, for example a step with the `skill` keyword. |
 

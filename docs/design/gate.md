@@ -201,7 +201,7 @@ Three states, one owner: `internal/gate` sets `pass`, `fail` and `unknown`.
 
 ### Gate program
 
-The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate is to take its program from the base and its code from the head. The key is read and shown in `facts().gate_program`. The gate does not use it yet, so an empty or a set list changes no verdict. See `configuration.md` for the rules that the config checks.
+The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate is to take its program from the base and its code from the head. The config reads the key. The gate does not use it yet, so an empty or a set list changes no verdict. See `configuration.md` for the rules that the config checks.
 
 ### Pinned tools
 

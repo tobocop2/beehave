@@ -432,23 +432,33 @@ func gateProgramEntry(at syntax.Position, entry string) error {
 		return refuseAt(at, "`gate_program` entry %q starts with a colon, which git reads as a pathspec magic. Name the path itself.", entry)
 	case strings.ContainsAny(entry, gateProgramGlobMeta):
 		return refuseAt(at, "`gate_program` entry %q holds a glob character. Name the path itself, and end a directory with `/`.", entry)
+	case strings.IndexFunc(entry, notPortablePathRune) >= 0:
+		return refuseAt(at, "`gate_program` entry %q holds a character outside A-Z, a-z, 0-9, `.`, `_`, `-` and `/` (a space, a control character or a non-ASCII character). Use only those characters.", entry)
 	}
 
 	return gateProgramLocation(at, entry)
 }
 
-// gateProgramLocation refuses an entry that is absolute, outside the work tree, the root, the git folder or not in plain form.
+// notPortablePathRune reports whether a rune is outside the portable path set: A-Z, a-z, 0-9, ".", "_", "-" and "/".
+func notPortablePathRune(r rune) bool {
+	letter := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+	digit := r >= '0' && r <= '9'
+
+	return !letter && !digit && r != '.' && r != '_' && r != '-' && r != '/'
+}
+
+// gateProgramLocation refuses an entry that is absolute, outside the work tree, the root, in the git folder or not in plain form.
 func gateProgramLocation(at syntax.Position, entry string) error {
 	name := strings.TrimSuffix(entry, "/")
-	first, _, _ := strings.Cut(name, "/")
+	parts := strings.Split(name, "/")
 
 	switch {
-	case strings.HasPrefix(entry, "/") || slices.Contains(strings.Split(name, "/"), ".."):
+	case strings.HasPrefix(entry, "/") || slices.Contains(parts, ".."):
 		return refuseAt(at, "`gate_program` entry %q is absolute or leaves the work tree. Use a relative path with no `..`.", entry)
 	case name == ".":
 		return refuseAt(at, "`gate_program` entry %q names the whole repository. List the files and the directories of the gate program.", entry)
-	case first == ".git":
-		return refuseAt(at, "`gate_program` entry %q is inside the git folder. Name a path of the work tree.", entry)
+	case slices.ContainsFunc(parts, func(part string) bool { return strings.EqualFold(part, ".git") }):
+		return refuseAt(at, "`gate_program` entry %q has a `.git` component, in any case, which is the git folder. Name a path of the work tree.", entry)
 	case path.Clean(name) != name:
 		return refuseAt(at, "`gate_program` entry %q is not a plain path. Write it with no `.` segment, no double slash and one trailing slash at most.", entry)
 	}
@@ -456,16 +466,16 @@ func gateProgramLocation(at syntax.Position, entry string) error {
 	return nil
 }
 
-// gateProgramPair refuses two entries that name the same path, or one that lies inside a directory entry of the other.
+// gateProgramPair refuses two entries that name the same path, or one whose path components start with the components of the other.
 func gateProgramPair(at syntax.Position, first, second string) error {
 	one, two := strings.TrimSuffix(first, "/"), strings.TrimSuffix(second, "/")
 
 	switch {
 	case one == two:
 		return refuseAt(at, "`gate_program` names %q twice, as %q and %q. Keep one entry.", one, first, second)
-	case strings.HasSuffix(first, "/") && strings.HasPrefix(two, one+"/"):
+	case strings.HasPrefix(two, one+"/"):
 		return refuseAt(at, "`gate_program` entry %q is inside entry %q. Remove the inner entry.", second, first)
-	case strings.HasSuffix(second, "/") && strings.HasPrefix(one, two+"/"):
+	case strings.HasPrefix(one, two+"/"):
 		return refuseAt(at, "`gate_program` entry %q is inside entry %q. Remove the inner entry.", first, second)
 	}
 

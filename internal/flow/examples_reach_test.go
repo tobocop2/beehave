@@ -563,7 +563,7 @@ func TestExamples_TheFactsTableOfTheContractHoldsTheFieldsOfTheFactsStruct(t *te
 
 	checked, ok := workflow.ResultFields("facts")
 	require.True(t, ok, "the check of workflow files knows the fields of facts")
-	assert.Len(t, table, 11, "the contract lists the eleven fields of facts")
+	assert.Len(t, table, 10, "the contract lists the ten fields of facts")
 
 	built := slices.Sorted(maps.Keys(factsOutputs(model.Project{})))
 

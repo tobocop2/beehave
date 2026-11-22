@@ -79,16 +79,6 @@ func TestFacts_ALineOfAGateListShowsTheNamesOfTheListAndAGateStringShowsNone(t *
 	assert.Equal(t, "make check", plain["gate"])
 }
 
-func TestFacts_TheGateProgramOfTheProjectIsInTheFactsAndAProjectWithNoneShowsAnEmptyList(t *testing.T) {
-	t.Parallel()
-
-	listed := factsOutputs(model.Project{GateProgram: []string{"Makefile", "scripts/"}})
-	none := factsOutputs(model.Project{})
-
-	assert.Equal(t, []string{"Makefile", "scripts/"}, listed["gate_program"])
-	assert.Equal(t, []string{}, none["gate_program"])
-}
-
 func TestGateStep_AGateProgramThatExitsWithAFailureGivesAStepThatFails(t *testing.T) {
 	t.Parallel()
 

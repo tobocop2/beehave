@@ -16,7 +16,6 @@ import (
 // A change behind a patch leaves the base lists alone, so it needs no new entry.
 var goldenRecorded = map[string]string{
 	"core18.agent15.tracker2.forge6.land9.gate6.host1.round5": "87c995bf3380115401d3164685d0c9c00a088e12c1c8132d8bb5c513b744b4a9",
-	"core19.agent15.tracker2.forge6.land9.gate6.host1.round5": "1cb7cacb0830487ca68699544e0dc58f26c9727404afceccf95cb48ed3de092a",
 }
 
 // goldenDigest is the digest of the base lists, the shapes and the kinds. It covers each golden list of the step tests, not only the lists of goldenFlow.
