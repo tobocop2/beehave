@@ -27,19 +27,8 @@ func TestReplies_AnOrdinaryReplyRefusesAndPrintsEveryReplyBlock(t *testing.T) {
 	assert.Contains(t, text, "(review COMMENTED):\nhm\n")
 	assert.Contains(t, text, "(review comment on a.go):\nline\n")
 	assert.Contains(t, text, "--- end of replies ---")
-	assert.Equal(t, "PROCEED only if the intent plainly allows it, by re-running: --take --reply-read", last(got))
+	assert.Equal(t, "PROCEED only if the intent plainly allows it: ask for a reply of RELEASE on the pull request, or take it by hand.", last(got))
 	assert.Zero(t, s.count("free"))
-}
-
-func TestReplies_AReadReplyLetsTheTakeGoOnWithANote(t *testing.T) {
-	t.Parallel()
-
-	s := newSetup(spec{age: 9, notice: 5, reply: "still looking at this", replyAge: 2})
-	got := s.run(t, takeover.ModeTake, readReplies)
-
-	assert.Equal(t, 0, got.Code)
-	assert.Contains(t, got.Lines, "note: 1 replies landed after the notice, were read, and did not forbid this take.")
-	assert.Equal(t, 1, s.count("free"))
 }
 
 func TestReplies_AReplyWithoutABodyIsRead(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 
 const (
 	noticePrefix = "Taking over this pull request"
-	fields       = "number,state,isDraft,author,assignees,updatedAt,headRefOid,commits,comments,reviews"
+	fields       = "number,state,isDraft,author,assignees,updatedAt,commits,comments,reviews"
 	ageStep      = 36 * time.Second // the age is kept to two decimals of an hour
 )
 
@@ -96,7 +96,7 @@ func (s *session) run(ctx context.Context) error {
 	return nil
 }
 
-// guard refuses a pull request that is not open, is ours, or has moved from the head the caller works on.
+// guard refuses a pull request that is not open or is ours.
 func (s *session) guard(pr model.PullRequest) error {
 	number := s.request.PR
 
@@ -106,26 +106,6 @@ func (s *session) guard(pr model.PullRequest) error {
 
 	if pr.Author.Login == s.c.Me {
 		return stop(CodeGuard, fmt.Sprintf("REFUSE: #%d is yours. Your own work needs an independent verdict, not a claim.", number))
-	}
-
-	return s.checkHead(pr)
-}
-
-// checkHead refuses a head that is not the one the caller works on. With no head named, any head passes.
-func (s *session) checkHead(pr model.PullRequest) error {
-	number := s.request.PR
-
-	want := s.request.HeadWant
-	if want == "" {
-		return nil
-	}
-
-	if pr.HeadRefOid == nil || *pr.HeadRefOid == "" {
-		return stop(CodeGuard, fmt.Sprintf("REFUSE: cannot read the head of #%d from the forge.", number))
-	}
-
-	if *pr.HeadRefOid != want {
-		return stop(CodeRule, fmt.Sprintf("REFUSE: the head of #%d is %s, not %s. The author pushed. Start from the new head.", number, *pr.HeadRefOid, want))
 	}
 
 	return nil
@@ -459,9 +439,9 @@ func (s *session) mayPost(p plan) error {
 	return nil
 }
 
-// reread reads the comments with the state, the author and the head, and runs the guard on them.
+// reread reads the comments with the state and the author, and runs the guard on them.
 func (s *session) reread(ctx context.Context) (model.PullRequest, error) {
-	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author", "headRefOid")
+	pr, err := s.reader.PRView(ctx, s.request.PR, "comments", "state", "author")
 	if err != nil {
 		return model.PullRequest{}, unread(err, "cannot read the comments of #%d.", s.request.PR)
 	}
@@ -594,20 +574,14 @@ func (s *session) busy(p plan) error {
 		"        If that somebody is handing it over, they can reply RELEASE.")
 }
 
-// settle refuses replies that the caller did not read.
+// settle refuses a take when replies landed after the notice and none of them is KEEP or RELEASE.
 func (s *session) settle(p plan, noticed stamp) error {
 	newer := p.after(noticed)
 	if newer == 0 {
 		return nil
 	}
 
-	if !s.request.ReplyRead {
-		return s.printReplies(p, noticed, newer)
-	}
-
-	s.say(fmt.Sprintf("note: %d replies landed after the notice, were read, and did not forbid this take.", newer))
-
-	return nil
+	return s.printReplies(p, noticed, newer)
 }
 
 // after counts the stamps that are later than the notice.
@@ -689,7 +663,7 @@ func (s *session) printReplies(p plan, noticed stamp, newer int) error {
 
 	lines = append(lines, "--- end of replies ---",
 		"STOP if the intent is to keep it: an objection, a claim of ownership, a push, or a request to wait.",
-		"PROCEED only if the intent plainly allows it, by re-running: --take --reply-read")
+		"PROCEED only if the intent plainly allows it: ask for a reply of RELEASE on the pull request, or take it by hand.")
 
 	return stop(CodeRule, lines...)
 }

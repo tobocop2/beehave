@@ -204,24 +204,12 @@ func TestApply_APullRequestClosedAfterTheFirstReadGetsNoNotice(t *testing.T) {
 	assert.Empty(t, s.posted)
 }
 
-func TestApply_TheReReadAsksForTheCommentsTheStateTheAuthorAndTheHead(t *testing.T) {
+func TestApply_TheReReadAsksForTheCommentsTheStateAndTheAuthor(t *testing.T) {
 	t.Parallel()
 
 	s := newSetup(spec{assignees: []string{"me"}, age: 9})
 	s.run(t, takeover.ModeApply)
 
 	require.Len(t, s.fields, 2)
-	assert.ElementsMatch(t, []string{"comments", "state", "author", "headRefOid"}, s.fields[1])
-}
-
-func TestApply_AHeadThatMovesAfterTheFirstReadGetsNoNotice(t *testing.T) {
-	t.Parallel()
-
-	s := newSetup(spec{assignees: []string{"me"}, age: 9})
-	s.beforeSecondView = func() { s.pr["headRefOid"] = "bbb" }
-	got := s.run(t, takeover.ModeApply, head("aaa"))
-
-	assert.Equal(t, takeover.CodeRule, got.Code)
-	assert.Contains(t, all(got), "The author pushed")
-	assert.Empty(t, s.posted)
+	assert.ElementsMatch(t, []string{"comments", "state", "author"}, s.fields[1])
 }

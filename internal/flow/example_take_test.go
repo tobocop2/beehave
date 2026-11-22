@@ -170,7 +170,6 @@ func TestExampleTake_ARefusalOfTheTakeForRepliesWithNoTokenHoldsTheItem(t *testi
 	require.NotNil(t, outcome.result.Stopped)
 	assert.Equal(t, 2, outcome.result.Stopped.RC)
 	assert.Contains(t, outcome.result.Stopped.Output, "none used KEEP or RELEASE")
-	assert.NotContains(t, rig.h.commands.requests[1].Run, "--reply-read", "no step of the workflow says the replies were read")
 }
 
 func TestExampleTake_TheIdleAndGraceHoursAreOne(t *testing.T) {

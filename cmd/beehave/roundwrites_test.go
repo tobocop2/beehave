@@ -244,6 +244,21 @@ func TestRoundWrites_TheGhOfATakeInAProjectWithNoCredentialsRunsAsTheLoginOfTheO
 	assert.Equal(t, "owner-token", settings.Gh.Run(t.Context(), []string{"pr", "view"}).Stdout)
 }
 
+func TestRoundWrites_TheSettingsOfATakeCarryTheNameTheHoursAndTheClockOfTheRequest(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.October, 23, 12, 0, 0, 0, time.UTC)
+	req := flow.TakeRequest{Request: takeover.Request{PR: 7, Mode: takeover.ModeTake}, Me: "owner", Idle: 3 * time.Hour, Grace: 90 * time.Minute, Now: now}
+
+	settings, err := roundWrites{pulls: roundPulls(&roundForge{}, "")}.takeSettings("p", req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "owner", settings.Me)
+	assert.Equal(t, 3*time.Hour, settings.Idle)
+	assert.Equal(t, 90*time.Minute, settings.Grace)
+	assert.Equal(t, now, settings.Now)
+}
+
 func TestRoundWrites_ATakeReadsThePullRequestThroughTheForgeOfTheProject(t *testing.T) {
 	t.Parallel()
 

@@ -464,7 +464,7 @@ A line that marks a finding is exit code 1. A range that git cannot read is a re
 | `apply` | Posts the notice |
 | `take` | Checks the notice, the grace period and the replies |
 
-Every refusal ends the item with exit code 2. `me` is an argument, so the step keeps no state.
+Every refusal ends the item with the lines of the step and the exit code 2. The `code` that the step returns tells the two kinds apart: 2 for a guard (a pull request that is not open, or is ours) and 3 for a rule. `me` is an argument, so the step keeps no state.
 
 #### Rules for every step
 

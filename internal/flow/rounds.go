@@ -310,6 +310,9 @@ func (s *script) roundIntegration(b *starlark.Builtin, args starlark.Tuple, kwar
 // errCardArguments says that a board_card call names the card by exactly one of pr and issue.
 var errCardArguments = errors.New("board_card takes exactly one of pr and issue, as a number above 0")
 
+// errCardStatus says that a board_card call names no column.
+var errCardStatus = errors.New("board_card takes a status that is not blank")
+
 // boardCard puts the pull request or the issue on the project board, sets its column and reads the card back. A board that shows another column is an error.
 func (s *script) boardCard(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) { //nolint:ireturn // the builtin contract of starlark-go
 	card, label, err := cardOf(b, args, kwargs)
@@ -335,6 +338,10 @@ func cardOf(b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (
 
 	if (pr > 0) == (issue > 0) || card.Board <= 0 {
 		return card, label, errCardArguments
+	}
+
+	if strings.TrimSpace(card.Status) == "" {
+		return card, label, errCardStatus
 	}
 
 	card.Number, card.Pull = max(pr, issue), pr > 0

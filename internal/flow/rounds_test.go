@@ -221,6 +221,25 @@ func TestBoardCardStep_ACallThatNamesBothOrNeitherOfPrAndIssueIsRefusedBeforeAny
 	}
 }
 
+func TestBoardCardStep_ABlankStatusIsRefusedBeforeAnyWrite(t *testing.T) {
+	t.Parallel()
+
+	for name, call := range map[string]string{
+		"spaces":     `board_card(board = 3, status = " ", pr = 7)`,
+		"whitespace": `board_card(board = 3, status = "\t\n", issue = 5)`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			spy := &spyRounds{}
+			_, _, _, err := runRound(t, spy, "def main(item):\n    "+call+"\n")
+
+			require.ErrorIs(t, err, errCardStatus)
+			assert.Zero(t, spy.callsCount)
+		})
+	}
+}
+
 func TestPRTakeStep_TheStepPicksTheModeAndTheHoursBecomeDurations(t *testing.T) {
 	t.Parallel()
 
