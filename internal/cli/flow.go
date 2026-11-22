@@ -38,7 +38,7 @@ var errInterrupted = errors.New("stopped before the item finished: run beehave r
 // Runner is the engine that the run command drives. Call Launch, then Run, then Shutdown.
 type Runner interface {
 	Launch() error
-	RunFile(item, project, file string) (flow.ItemResult, error)
+	RunFile(item, project, file string, options ...flow.RunOption) (flow.ItemResult, error)
 	Shutdown() error
 }
 
@@ -75,7 +75,7 @@ type Steering interface {
 	// Engine reports whether an engine holds the state folder, and what that engine says about itself.
 	Engine() (flow.EngineInfo, bool, error)
 	// JoinRun gives the item to the engine that holds the state folder and waits for its result.
-	JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error)
+	JoinRun(ctx context.Context, item, project, file string, options ...flow.RunOption) (flow.ItemResult, error)
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
 	ResumeOnThisBuild(item string) error
 	Canceling
@@ -426,7 +426,7 @@ func (f flowCommands) joinEngine(stdout, stderr io.Writer, client Steering, cfg 
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintf(stderr, "item %s joins the engine that runs: its progress shows in the log of that engine\n", item)
 
-	result, err := client.JoinRun(f.ctx, item, project, file)
+	result, err := client.JoinRun(f.ctx, item, project, file, flow.RunSandbox(cfg.Projects[project].Sandbox))
 	if err = errors.Join(err, client.Close()); err != nil {
 		if f.ctx.Err() != nil {
 			return errInterrupted
@@ -455,7 +455,7 @@ func (f flowCommands) runOnEngine(stdout, stderr io.Writer, cfg config.Config, o
 		return errors.Join(err, engine.Shutdown())
 	}
 
-	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file))
+	return shutDownWithExitStatus(engine, stderr, f.continueOrStart(stdout, engine, item, project, file, flow.RunSandbox(cfg.Projects[project].Sandbox)))
 }
 
 // shutDownWithExitStatus shuts the engine down for beehave run.
@@ -498,8 +498,8 @@ func sayStoppedAtOnce(stderr io.Writer, what string) {
 	_, _ = fmt.Fprintf(stderr, "%s: stopped at once; %s\n", commandName, what)
 }
 
-func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string) error {
-	result, err := f.await(engine, item, project, file)
+func (f flowCommands) continueOrStart(stdout io.Writer, engine Runner, item, project, file string, sandbox flow.RunOption) error {
+	result, err := f.await(engine, item, project, file, sandbox)
 	if err != nil {
 		return err
 	}
@@ -567,7 +567,7 @@ func printResult(stdout io.Writer, item string, result flow.ItemResult) {
 }
 
 // await runs the item and waits for its result. An interrupt of the command ends the wait.
-func (f flowCommands) await(engine Runner, item, project, file string) (flow.ItemResult, error) {
+func (f flowCommands) await(engine Runner, item, project, file string, sandbox flow.RunOption) (flow.ItemResult, error) {
 	type outcome struct {
 		result flow.ItemResult
 		err    error
@@ -576,7 +576,7 @@ func (f flowCommands) await(engine Runner, item, project, file string) (flow.Ite
 	done := make(chan outcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(item, project, file)
+		result, err := engine.RunFile(item, project, file, sandbox)
 		done <- outcome{result: result, err: err}
 	}()
 

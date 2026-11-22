@@ -85,22 +85,22 @@ func sandboxFromStruct(value *starlarkstruct.Struct) (sandboxChoice, error) {
 	return sandboxChoice{set: true, box: box}, err
 }
 
-// effective returns the sandbox the step runs with: the value of the call, or for a call without the keyword the default of the project.
-// The default is a sandbox with no domain and no extra path. nil means no sandbox.
-func (c sandboxChoice) effective(projectDefault bool) *model.Sandbox {
+// errUnsandboxed is returned for a step that sets sandbox = None in a run whose project has the sandbox on.
+var errUnsandboxed = errors.New(`the step sets sandbox = None, and the project runs its agent steps in the sandbox. The step did not start. Set sandbox = "off" in the project, or give the step sandbox(network = [...]), then run beehave run again`)
+
+// effective returns the sandbox the step runs with: the value of the call, or for a call without the keyword the default of the run.
+// The default is a sandbox with no domain and no extra path. nil means no sandbox. A None in a run with the sandbox on is refused.
+func (c sandboxChoice) effective(mode model.SandboxMode) (*model.Sandbox, error) {
 	switch {
+	case c.set && c.box == nil && mode == model.SandboxOn:
+		return nil, errUnsandboxed
 	case c.set:
-		return c.box
-	case projectDefault:
-		return &model.Sandbox{}
+		return c.box, nil
+	case mode == model.SandboxOn:
+		return &model.Sandbox{}, nil
 	}
 
-	return nil
-}
-
-// sandboxDefault reports whether the project of the run sets the sandbox on by default. A build that sets no default gives false.
-func (s *script) sandboxDefault() bool {
-	return s.e.deps.SandboxDefault != nil && s.e.deps.SandboxDefault(s.in.Project)
+	return nil, nil //nolint:nilnil // a call with no sandbox and no default runs with no sandbox
 }
 
 // recordedOutputFile is the name of the output of the render step that holds the output file that the recorded prompt names.

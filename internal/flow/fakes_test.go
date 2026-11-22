@@ -630,8 +630,6 @@ type harness struct {
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
 	others    *fakeOthers // nil unless a test sets it
-	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
-	sandboxDefault func(project string) bool
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
 	repository func(project string) bool
 	// facts is the project of a run as the config holds it. It is nil, and so every project has no facts, unless a test sets it.
@@ -746,7 +744,6 @@ func (h *harness) deps() Deps {
 		deps.Others = h.others
 	}
 
-	deps.SandboxDefault = h.sandboxDefault
 	deps.Repository = h.repository
 	deps.Facts = h.factsWithMutation()
 	deps.RefuseGate = h.refuseGate

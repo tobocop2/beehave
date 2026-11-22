@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/beehave/internal/cli"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
@@ -41,7 +42,9 @@ type fakeRunner struct {
 	mu                sync.Mutex
 	items             []string
 	files             []string
-	shutdowns         int
+	// sandboxes lists the sandbox mode that each RunFile call recorded.
+	sandboxes []model.SandboxMode
+	shutdowns int
 	// launched is closed by Launch. started is closed by the first Shutdown. slow holds Shutdown until it is closed.
 	launched, started, slow chan struct{}
 	// shutdownErr is what Shutdown returns.
@@ -56,8 +59,14 @@ func (r *fakeRunner) Launch() error {
 	return r.launchErr
 }
 
-func (r *fakeRunner) RunFile(item, project, file string) (flow.ItemResult, error) {
+func (r *fakeRunner) RunFile(item, project, file string, options ...flow.RunOption) (flow.ItemResult, error) {
+	var in flow.ItemInput
+	for _, option := range options {
+		option(&in)
+	}
+
 	r.mu.Lock()
+	r.sandboxes = append(r.sandboxes, in.Sandbox)
 	r.items = append(r.items, item+"@"+project)
 	r.files = append(r.files, item+"@"+project+" "+file)
 	r.mu.Unlock()
@@ -132,6 +141,8 @@ type fakeSteering struct {
 	joinResult flow.ItemResult
 	joinErr    error
 	joined     []string
+	// joinedSandboxes lists the sandbox mode that each JoinRun call recorded.
+	joinedSandboxes []model.SandboxMode
 	// joinErrs are the errors of the first calls of JoinRun, one for each call, before joinErr applies.
 	joinErrs []error
 	// joinBlock holds JoinRun until the context ends.
@@ -153,7 +164,13 @@ func (s *fakeSteering) Engine() (flow.EngineInfo, bool, error) {
 	return s.engine, s.running, s.runningErr
 }
 
-func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string) (flow.ItemResult, error) {
+func (s *fakeSteering) JoinRun(ctx context.Context, item, project, file string, options ...flow.RunOption) (flow.ItemResult, error) {
+	var in flow.ItemInput
+	for _, option := range options {
+		option(&in)
+	}
+
+	s.joinedSandboxes = append(s.joinedSandboxes, in.Sandbox)
 	s.joined = append(s.joined, item+"@"+project+" "+file)
 
 	if s.joinBlock {

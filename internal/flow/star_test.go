@@ -181,7 +181,7 @@ func stepNames(t *testing.T, engine *Engine) []string {
 }
 
 // interrupted runs the file until it waits for the owner, then stops the engine as a crash would.
-func interrupted(t *testing.T, h *harness, file string) {
+func interrupted(t *testing.T, h *harness, file string, options ...RunOption) {
 	t.Helper()
 
 	stopCtx, stop := context.WithCancel(t.Context())
@@ -194,7 +194,7 @@ func interrupted(t *testing.T, h *harness, file string) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, options...)
 		ended <- runErr
 	}()
 

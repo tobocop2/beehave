@@ -60,6 +60,8 @@ type agentRig struct {
 	head string
 	// project is the project facts of the run. The example rig fills it, and a test changes a field before the run starts.
 	project model.Project
+	// sandbox is the sandbox mode that run records. It is empty, and so off, unless a test sets it.
+	sandbox model.SandboxMode
 
 	mu     sync.Mutex
 	failed []error
@@ -111,7 +113,7 @@ func flowFile(t *testing.T, flow, prompt string) string {
 func (r *agentRig) run(t *testing.T, flow, prompt string) (ItemResult, error) {
 	t.Helper()
 
-	result, err := r.h.engine(t).RunFile(testItem, testProject, flowFile(t, flow, prompt))
+	result, err := r.h.engine(t).RunFile(testItem, testProject, flowFile(t, flow, prompt), RunSandbox(r.sandbox))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestRun_AnEngineThatHoldsTheStateFolderGetsTheItemAndNoOwnEngineOpens(t *testing.T) {
@@ -27,6 +28,35 @@ func TestRun_AnEngineThatHoldsTheStateFolderGetsTheItemAndNoOwnEngineOpens(t *te
 	assert.Zero(t, rig.engines, "a joined run builds no engine")
 	assert.Empty(t, rig.runner.items)
 	assert.True(t, rig.steering.closeOK)
+}
+
+func sandboxedProject() string {
+	return strings.Replace(validProject, `test_report = "r.xml")`, `test_report = "r.xml", sandbox = "on")`, 1)
+}
+
+func TestRun_AJoinCarriesTheSandboxModeOfTheProjectOfTheClient(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "projects/p.star", sandboxedProject())
+	rig.steering.running = true
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []model.SandboxMode{model.SandboxOn}, rig.steering.joinedSandboxes)
+}
+
+func TestRun_AnOwnEngineRunCarriesTheSandboxModeOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	writeConfig(t, rig.dir, "projects/p.star", sandboxedProject())
+
+	code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []model.SandboxMode{model.SandboxOn}, rig.runner.sandboxes)
 }
 
 func TestRun_NoEngineOnTheStateFolderMeansNoJoin(t *testing.T) {

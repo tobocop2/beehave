@@ -59,9 +59,9 @@ func sandboxProblem(spec Spec, p Profile, goos string) string {
 
 	switch {
 	case !p.Sandbox:
-		return p.Binary + " has no sandbox, so a step with the sandbox on does not start. Set sandbox = None on the step to run it with no sandbox."
+		return p.Binary + " has no sandbox, so a step with the sandbox on does not start. Set sandbox = \"off\" in the project, or use a Claude runner for the step."
 	case goos == "windows":
-		return p.Binary + " runs commands with no sandbox on Windows, so a step with the sandbox on does not start. Set sandbox = None on the step to run it with no sandbox."
+		return p.Binary + " runs commands with no sandbox on Windows, so a step with the sandbox on does not start. Set sandbox = \"off\" in the project to run it with no sandbox."
 	}
 
 	return ""
@@ -85,7 +85,7 @@ func versionNeeds(spec Spec, p Profile) []versionNeed {
 	var needs []versionNeed
 
 	if spec.Sandbox != nil {
-		needs = append(needs, versionNeed{p.MinVersion, "the sandbox", "the sandbox is not started", "set sandbox = None on the step to run it with no sandbox"})
+		needs = append(needs, versionNeed{p.MinVersion, "the sandbox", "the sandbox is not started", `set sandbox = "off" in the project to run it with no sandbox`})
 	}
 
 	return needs

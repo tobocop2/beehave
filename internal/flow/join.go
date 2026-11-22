@@ -124,8 +124,8 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 // JoinRun gives the item to the engine that holds the state folder and waits for its result.
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
 // The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays open.
-func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemResult, error) {
-	in, err := pinnedInput(item, project, file)
+func (c *Client) JoinRun(ctx context.Context, item, project, file string, options ...RunOption) (ItemResult, error) {
+	in, err := pinnedInput(item, project, file, options...)
 	if err != nil {
 		return ItemResult{}, err
 	}

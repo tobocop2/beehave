@@ -261,6 +261,10 @@ func (s *script) ready(a *agentArgs, label string) (name, login, prompt string, 
 		return "", "", "", err
 	}
 
+	if a.box, err = a.sandbox.effective(s.in.Sandbox); err != nil {
+		return "", "", "", err
+	}
+
 	if login, err = s.loginFor(*a); err != nil {
 		return "", "", "", err
 	}
@@ -358,12 +362,12 @@ func (s *script) renderStep(a agentArgs, login string) func(context.Context) (st
 
 		a.skills = skills
 
-		return stepResult{Note: prompt, Outputs: a.recordOutputs(head, login, s.sandboxDefault())}, nil
+		return stepResult{Note: prompt, Outputs: a.recordOutputs(head, login)}, nil
 	}
 }
 
 // recordOutputs is the record of the render step: the output file, the start commit, the login, the label and model when set, the sandbox, the skills of the prompt, and the data and its file.
-func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[string]any {
+func (a agentArgs) recordOutputs(head, login string) map[string]any {
 	outputs := map[string]any{recordedOutputFile: a.file, recordedStartHead: head, recordedLogin: login}
 	if a.label != "" {
 		outputs[recordedLabel] = a.label
@@ -373,7 +377,7 @@ func (a agentArgs) recordOutputs(head, login string, sandboxDefault bool) map[st
 		outputs[recordedModel] = a.model
 	}
 
-	maps.Copy(outputs, recordSandbox(a.sandbox.effective(sandboxDefault)))
+	maps.Copy(outputs, recordSandbox(a.box))
 	maps.Copy(outputs, recordSkills(a.skills))
 	maps.Copy(outputs, recordData(promptData{File: a.dataFile, Text: a.record}))
 
