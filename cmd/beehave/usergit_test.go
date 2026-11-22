@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,6 +50,42 @@ func monitorRuns(t *testing.T, ran string) int {
 	require.NoError(t, err)
 
 	return strings.Count(string(data), "run")
+}
+
+// TestEngineGit_ACommitIsUnsignedAndRunsNoSigningProgramOfTheUserGlobalConfig pins the unsigned commits of the engine: a gpg.program that an agent writes into
+// the global config must not run, so the commit.gpgsign of the owner does not apply to a commit in an item worktree.
+func TestEngineGit_ACommitIsUnsignedAndRunsNoSigningProgramOfTheUserGlobalConfig(t *testing.T) {
+	remote := filepath.Join(evaluated(t, t.TempDir()), "remote.git")
+	runGit(t, repoWithCommit(t), "clone", "-q", "--bare", ".", remote)
+
+	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: remote, BaseBranch: "main", Forge: forgegithub.Name}}}
+	trees := newWorktrees(projects, flow.Options{StateDir: evaluated(t, t.TempDir())}, nil, nil)
+
+	home := evaluated(t, t.TempDir())
+	ran := filepath.Join(evaluated(t, t.TempDir()), "signed")
+	signer := filepath.Join(home, "signer")
+	require.NoError(t, exectest.Write(signer, "#!/bin/sh\necho run >> "+ran+"\nexit 1\n"))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = "+signer+"\n"), 0o600))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	require.NoError(t, os.Unsetenv("GIT_CONFIG_GLOBAL"))
+
+	tree, err := trees.Ensure(t.Context(), "p", pushItem, "", "")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(tree, "new.txt"), []byte("x\n"), 0o600))
+
+	plain := exec.CommandContext(t.Context(), "git", "-C", tree, "-c", "user.name=e", "-c", "user.email=e@example.com", "commit", "--allow-empty", "-q", "-m", "x") //nolint:gosec // a test runs git on its own temporary folder
+	require.Error(t, plain.Run(), "control: a plain commit asks the planted signer to sign, and the signer fails")
+	require.Equal(t, 1, monitorRuns(t, ran), "control: a plain commit runs the planted signer")
+
+	git := trees.Git(tree)
+	require.Zero(t, git.Run(t.Context(), []string{"add", "new.txt"}).ExitCode)
+	out := git.Run(t.Context(), []string{"-c", "user.name=e", "-c", "user.email=e@example.com", "commit", "-q", "-m", "x"})
+
+	assert.Zero(t, out.ExitCode, out.Stderr)
+	assert.Equal(t, 1, monitorRuns(t, ran), "the engine commit ran the signing program of the user config")
+	assert.NotContains(t, git.Run(t.Context(), []string{"cat-file", "-p", "HEAD"}).Stdout, "gpgsig", "the engine commit is unsigned")
 }
 
 func TestEngineGit_NoCallOnAnItemWorktreeRunsTheFsmonitorOfTheUserGlobalConfig(t *testing.T) { //nolint:paralleltest // t.Setenv changes the git config of the process

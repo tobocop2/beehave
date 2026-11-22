@@ -102,8 +102,8 @@ func TestReadConfig_KeepsTheConfigFilesOfTheOwnerAndNothingElse(t *testing.T) {
 	assert.Subset(t, found[0], []string{"GIT_CONFIG_GLOBAL=/dev/null", "XDG_CONFIG_HOME=/dev/null"}, "the listing of the settings reads no config of the user")
 }
 
-// TestTheGitCallsOfThisPackageStartInOnePlace fails when a function of this package other than New builds the runner of a git call. Such a call would
-// not start from the kept variables and the empty config of the user.
+// TestTheGitCallsOfThisPackageStartInOnePlace fails when a function of this package other than New builds the runner of a git call, or runs the embedded
+// runner without start. Such a call would not start from the kept variables and the empty config of the user.
 func TestTheGitCallsOfThisPackageStartInOnePlace(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +127,7 @@ func TestTheGitCallsOfThisPackageStartInOnePlace(t *testing.T) {
 			}
 
 			ast.Inspect(fn, func(node ast.Node) bool {
-				if lit, ok := node.(*ast.CompositeLit); ok && strings.HasSuffix(typeText(lit.Type), "ExecRunner") {
+				if bypassesStart(node) {
 					found = append(found, file+": "+fn.Name.Name)
 				}
 
@@ -137,6 +137,20 @@ func TestTheGitCallsOfThisPackageStartInOnePlace(t *testing.T) {
 	}
 
 	assert.Empty(t, found, "build the runner of a git call with New, and start it with start")
+}
+
+// bypassesStart reports whether a node builds an ExecRunner, or calls a method of the embedded runner, as in r.ExecRunner.Run(ctx, args).
+func bypassesStart(node ast.Node) bool {
+	switch typed := node.(type) {
+	case *ast.CompositeLit:
+		return strings.HasSuffix(typeText(typed.Type), "ExecRunner")
+	case *ast.CallExpr:
+		call, ok := typed.Fun.(*ast.SelectorExpr)
+
+		return ok && strings.HasSuffix(typeText(call.X), ".ExecRunner")
+	}
+
+	return false
 }
 
 // typeText returns the dotted name that a type expression holds.
