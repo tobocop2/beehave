@@ -38,6 +38,8 @@ type RunProgress struct {
 	Deadline time.Time `json:"deadline,omitzero"`
 	// Sleeping is true when the deadline is the wake time of a sleep call and not the end of a wait.
 	Sleeping bool `json:"sleeping,omitempty"`
+	// Receiving is the topic that an open run waits on in a recv call. The deadline is the end of that wait. It is empty for a run that waits in no recv call.
+	Receiving string `json:"receiving,omitempty"`
 	// Gate is the last gate result. It is nil for a run that ran no gate.
 	Gate *GateSeen `json:"gate,omitempty"`
 	// Label is the label of the latest agent step that has one, as the workflow wrote it. It is empty for a run with no labeled agent step.
@@ -91,8 +93,12 @@ func (p RunProgress) stopNotes() []string {
 // deadlineNote is the note of the deadline of a wait, with the time left when now is set.
 func (p RunProgress) deadlineNote(now time.Time) string {
 	note := "answer by " + p.Deadline.Format(time.RFC3339)
-	if p.Sleeping {
+
+	switch {
+	case p.Sleeping:
 		note = "sleeps until " + p.Deadline.Format(time.RFC3339)
+	case p.Receiving != "":
+		note = "waits for a message on topic " + p.Receiving + " until " + p.Deadline.Format(time.RFC3339)
 	}
 
 	if now.IsZero() {
@@ -257,7 +263,19 @@ func (p *RunProgress) takeDeadline(row dbos.WorkflowStatus, records []dbos.StepI
 	p.Deadline = deadlineFor(row, records, question)
 
 	if p.Deadline.IsZero() && !(run{Status: row}).terminal() {
-		p.Deadline = sleepDeadline(records)
-		p.Sleeping = !p.Deadline.IsZero()
+		p.takeCallWait(records)
+	}
+}
+
+// takeCallWait sets the deadline of the sleep call or of the recv call that an open run is in.
+func (p *RunProgress) takeCallWait(records []dbos.StepInfo) {
+	if p.Deadline = sleepDeadline(records); !p.Deadline.IsZero() {
+		p.Sleeping = true
+
+		return
+	}
+
+	if window, waiting := receivingOf(records); waiting {
+		p.Deadline, p.Receiving = window.Until, window.Topic
 	}
 }
