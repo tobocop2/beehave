@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/roundcut"
 	trackerstore "github.com/tobocop2/beehave/internal/store"
 )
 
@@ -337,6 +338,59 @@ func TestClaimWrites_AStepThatRunsAProgramAfterTheLeaseLapsedWithNoTickNeverRuns
 	}
 }
 
+func TestClaimWrites_ARoundWriteAfterTheLeaseLapsedWithNoTickWritesNothing(t *testing.T) {
+	t.Parallel()
+
+	for _, w := range stepWrites() {
+		if !strings.HasPrefix(w.name, "round_") && w.name != "integration_pull" && w.name != "board_card" && w.name != "pr_take" {
+			continue
+		}
+
+		for name, lapsed := range map[string]bool{"the_claim_is_trusted": false, "the_lease_lapsed": true} {
+			t.Run(w.name+"/"+name, func(t *testing.T) {
+				t.Parallel()
+
+				written, err := roundWriteAfterLapse(t, w, lapsed)
+
+				if !lapsed {
+					require.NoError(t, err)
+					assert.Len(t, written, 1, "control: with the claim trusted, the write reaches the round writer")
+
+					return
+				}
+
+				require.ErrorIs(t, err, errClaimLost)
+				assert.Empty(t, written, "the write reads the claim at its start: the context of the run is still live, so only that read sees the lapse")
+			})
+		}
+	}
+}
+
+// roundWriteAfterLapse runs the round write after a command that moves the lease clock past the trust limit when lapsed is true. It returns the calls that the round writer got.
+func roundWriteAfterLapse(t *testing.T, w stepWrite, lapsed bool) ([]string, error) {
+	t.Helper()
+
+	h := newHarness(t)
+	clk := &leaseClock{now: time.Unix(1_000_000, 0)}
+	h.commands.before = func(_ context.Context, request CommandRequest) error {
+		if request.Run[0] == lapseCommand {
+			clk.advance(trustLimit)
+		}
+
+		return nil
+	}
+	engine := launchedWith(t, h, func(deps *Deps) { clk.install(&deps.Clock) })
+
+	before := `command(name = "before", run = ["keep"])`
+	if lapsed {
+		before = `command(name = "before", run = ["` + lapseCommand + `"])`
+	}
+
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(before+"\n"+w.call)), modeOff())
+
+	return w.written(h, nil), err
+}
+
 // lapsedStep runs call after a command that moves the lease clock past the trust limit when lapsed is true. No tick runs, so the context of the run stays live.
 func lapsedStep(t *testing.T, call string, lapsed bool) {
 	t.Helper()
@@ -421,6 +475,57 @@ func TestClaimWrites_ALossWhileTheMergeRunsCancelsTheContextOfTheMerge(t *testin
 	_, err = handle.GetResult()
 	require.NoError(t, err)
 	require.Error(t, run.finish())
+}
+
+// holdCut is a round writer whose cut waits for the end of its context, and tells the test which context it got.
+type holdCut struct {
+	rounds
+
+	got chan context.Context
+}
+
+func (h holdCut) Cut(ctx context.Context, _ string, _ roundcut.Request) (roundcut.Result, error) {
+	h.got <- ctx
+
+	<-ctx.Done()
+
+	return roundcut.Result{}, ctx.Err()
+}
+
+func TestClaimWrites_ALossWhileARoundWriteRunsCancelsTheContextOfTheWrite(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	hold := holdCut{got: make(chan context.Context, 1)}
+	h.rounds = hold
+	engine := launchedWith(t, h, func(*Deps) {})
+	ended := make(chan error, 1)
+	file := writeFlow(t, bodyFlow(`round_cut(old = "round-i", new = "round-ii", pr = 9, trunk = "main", name = "rc")`))
+
+	go func() {
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
+		ended <- err
+	}()
+
+	var writeCtx context.Context
+
+	select {
+	case writeCtx = <-hold.got:
+	case err := <-ended:
+		require.Fail(t, "the run ended before the cut", "%v", err)
+	case <-time.After(10 * time.Second):
+		require.Fail(t, "the cut never started")
+	}
+
+	loseClaim(engine, runID(testItem, 1), "a test lost the claim")
+
+	select {
+	case <-writeCtx.Done():
+	case <-time.After(10 * time.Second):
+		require.Fail(t, "the cut kept running after the claim was lost: it runs under a context that the claim does not own")
+	}
+
+	require.Error(t, <-ended)
 }
 
 func TestClaimWrites_AMergeWhileTheRunHoldsItsClaimLands(t *testing.T) {
