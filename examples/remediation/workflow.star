@@ -22,7 +22,7 @@ STEP_DEFAULTS = {
 # The steps that review_fix takes. The other steps of STEP_DEFAULTS are agent calls of this file.
 LOOP_STEPS = ["implement", "review", "fix", "fix_late", "design"]
 
-# A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the tool as flags.
+# A pull request is stale after this many hours with no push, comment, review or answer from the author. The same values are the idle threshold and the grace period that the take-over passes to the step pr_take.
 IDLE_HOURS = "1"
 GRACE_HOURS = "1"
 

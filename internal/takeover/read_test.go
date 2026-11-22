@@ -123,13 +123,11 @@ func TestTake_APushAfterTheNoticeRefusesBeforeAnyReplyBlockPrints(t *testing.T) 
 
 	commit := obj{"authors": []obj{login("them")}, "committedDate": ago(1), "messageHeadline": "wip"}
 
-	for name, mutate := range map[string][]func(*takeover.Request){"unread": nil, "read": {readReplies}} {
-		s := newSetup(spec{age: 9, notice: 5, reply: "one moment", replyAge: 3, commits: []obj{commit}})
-		got := s.run(t, takeover.ModeTake, mutate...)
+	s := newSetup(spec{age: 9, notice: 5, reply: "one moment", replyAge: 3, commits: []obj{commit}})
+	got := s.run(t, takeover.ModeTake)
 
-		assert.Equal(t, takeover.CodeRule, got.Code, name)
-		assert.Contains(t, all(got), "somebody pushed 1 commit(s)", name)
-		assert.NotContains(t, all(got), "replies after", name)
-		assert.Zero(t, s.count("free"), name)
-	}
+	assert.Equal(t, takeover.CodeRule, got.Code)
+	assert.Contains(t, all(got), "somebody pushed 1 commit(s)")
+	assert.NotContains(t, all(got), "replies after")
+	assert.Zero(t, s.count("free"))
 }

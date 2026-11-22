@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -210,42 +209,6 @@ func TestHostBlocks_AProjectWithABeadsBlockAndAHostBlockHoldsAndReadsBoth(t *tes
 
 	require.NoError(t, err)
 	assert.NotNil(t, tracker)
-}
-
-// The remedy binary may not import the host packages, so it repeats their blocks. Its test reads the same files against its copy.
-// Here the files are read against the blocks of the real adapters, so a key that one side adds or drops fails one of the two tests.
-func TestHostBlocks_TheHostFilesOfTheRemedyBinaryHoldTheKeysOfEachRealBlock(t *testing.T) {
-	t.Parallel()
-
-	files := filepath.Join("..", "..", "examples", "remediation", "tools", "cmd", "remedy", "testdata", "hosts")
-
-	cfg, problems := config.LoadFolder(files, nil, newAdapters(beadstest.NewBd(t), nil, nil).registry())
-
-	require.Empty(t, problems)
-	require.Len(t, cfg.Projects, 3)
-
-	for name, project := range cfg.Projects {
-		declared := newAdapters(nil, nil, nil).registry().Hosts[project.Host.Provider].Block
-
-		var want []string
-
-		for _, arg := range declared.Args {
-			want = append(want, arg.Key)
-		}
-
-		slices.Sort(want)
-
-		var got []string
-
-		for _, part := range strings.Fields(strings.Trim(project.Host.Block.String(), "{}")) {
-			key, _, _ := strings.Cut(part, "=")
-			got = append(got, key)
-		}
-
-		slices.Sort(got)
-
-		assert.Equal(t, want, got, name)
-	}
 }
 
 func TestHostBlocks_TheRegistryDeclaresOneBlockForEachHostAdapter(t *testing.T) {

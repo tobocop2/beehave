@@ -93,7 +93,7 @@ func newSetup(s spec) *setup {
 	return &setup{
 		idle: time.Hour, grace: time.Hour, gh: listing(),
 		pr: obj{
-			"number": 7, "state": "OPEN", "author": login(author), "assignees": assignees, "headRefOid": "aaa",
+			"number": 7, "state": "OPEN", "author": login(author), "assignees": assignees,
 			"commits": s.commits, "comments": comments,
 			"reviews": []obj{{"author": login("me"), "state": state, "submittedAt": "2020-01-01T00:00:00Z", "body": "x"}},
 		},

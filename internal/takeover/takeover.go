@@ -38,13 +38,10 @@ const (
 	ModeTake  Mode = "take"
 )
 
-// Request is what the caller asked for. HeadWant is the head the caller works on; an empty one is not checked.
-// ReplyRead says the caller read the replies that landed after the notice.
+// Request is what the caller asked for: the pull request and the step of the takeover.
 type Request struct {
-	PR        int
-	Mode      Mode
-	ReplyRead bool
-	HeadWant  string
+	PR   int
+	Mode Mode
 }
 
 // Context is the settings of the round and the calls of the takeover. The caller passes the clock as Now.

@@ -170,7 +170,6 @@ func TestExampleTake_ARefusalOfTheTakeForRepliesWithNoTokenHoldsTheItem(t *testi
 	require.NotNil(t, outcome.result.Stopped)
 	assert.Equal(t, 2, outcome.result.Stopped.RC)
 	assert.Contains(t, outcome.result.Stopped.Output, "none used KEEP or RELEASE")
-	assert.NotContains(t, rig.h.commands.requests[1].Run, "--reply-read", "no step of the workflow says the replies were read")
 }
 
 func TestExampleTake_TheIdleAndGraceHoursAreOne(t *testing.T) {
@@ -183,7 +182,7 @@ func TestExampleTake_TheIdleAndGraceHoursAreOne(t *testing.T) {
 	require.NoError(t, receive(t, done).err)
 
 	first := strings.Join(rig.h.commands.requests[0].Run, " ")
-	assert.Equal(t, "remedy take 7 --me owner --idle 1 --grace 1 --apply", first)
+	assert.Equal(t, "pr_take 7 --me owner --idle 1 --grace 1 --apply", first)
 	assert.True(t, strings.HasSuffix(strings.Join(rig.h.commands.requests[1].Run, " "), "--take"), "the take is the last word of the call")
 }
 

@@ -221,6 +221,25 @@ func TestBoardCardStep_ACallThatNamesBothOrNeitherOfPrAndIssueIsRefusedBeforeAny
 	}
 }
 
+func TestBoardCardStep_ABlankStatusIsRefusedBeforeAnyWrite(t *testing.T) {
+	t.Parallel()
+
+	for name, call := range map[string]string{
+		"spaces":     `board_card(board = 3, status = " ", pr = 7)`,
+		"whitespace": `board_card(board = 3, status = "\t\n", issue = 5)`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			spy := &spyRounds{}
+			_, _, _, err := runRound(t, spy, "def main(item):\n    "+call+"\n")
+
+			require.ErrorIs(t, err, errCardStatus)
+			assert.Zero(t, spy.callsCount)
+		})
+	}
+}
+
 func TestPRTakeStep_TheStepPicksTheModeAndTheHoursBecomeDurations(t *testing.T) {
 	t.Parallel()
 
@@ -241,6 +260,21 @@ func TestPRTakeStep_TheStepPicksTheModeAndTheHoursBecomeDurations(t *testing.T) 
 			assert.Equal(t, []string{"0"}, seenBy(t, h))
 		})
 	}
+}
+
+func TestPRTakeStep_TheTakeCarriesTheReadingOfTheClockOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	spy := &spyRounds{take: takeover.Result{Lines: []string{"ok"}}}
+	fixed := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	h := newHarness(t)
+	h.rounds = spy
+	h.reading = func() time.Time { return fixed }
+
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, roundCall(`pr_take(pr = 7, me = "owner", idle = "1", grace = "1", step = "apply")`, "code")), modeOff())
+
+	require.NoError(t, err)
+	assert.Equal(t, fixed, spy.takeReq.Now, "the ages of the takeover are read against the clock of the run")
 }
 
 func TestPRTakeStep_ARefusalOfTheTakeEndsTheItemWithItsLines(t *testing.T) {

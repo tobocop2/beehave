@@ -10,8 +10,6 @@ import (
 	"github.com/tobocop2/beehave/internal/takeover"
 )
 
-func readReplies(r *takeover.Request) { r.ReplyRead = true }
-
 func TestTake_AssignedNotIdleNoticeAgedOutStillRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -131,10 +129,10 @@ func TestTake_TheAgeSitsOnTheIdleBoundary(t *testing.T) {
 	t.Parallel()
 
 	atBoundary := newSetup(spec{age: 1, notice: 5})
-	assert.Equal(t, 0, atBoundary.run(t, takeover.ModeTake, readReplies).Code)
+	assert.NotContains(t, all(atBoundary.run(t, takeover.ModeTake)), "idle threshold")
 
 	inside := newSetup(spec{age: 0.99, notice: 5})
-	assert.Equal(t, takeover.CodeRule, inside.run(t, takeover.ModeTake, readReplies).Code)
+	assert.Contains(t, all(inside.run(t, takeover.ModeTake)), "idle threshold")
 }
 
 func TestDry_TheAgeIsRoundedToTwoDecimalsBeforeItIsCompared(t *testing.T) {

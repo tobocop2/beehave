@@ -12,8 +12,8 @@ import (
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
 	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 // The exit codes of every subcommand.
@@ -23,11 +23,11 @@ const (
 	ExitRefused = 2
 )
 
-// Forge is the forge of every subcommand: the calls of the takeover and the body read of the scope check and of the first review row.
+// Forge is the forge of every subcommand: the title and body read of the recount, and the body read of the scope check and of the first review row.
 // A forge that also has the closing-reference read of scope.Listing gives both of them the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
 type Forge interface {
-	takeover.Reader
 	scope.BodyReader
+	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 }
 
 // Book is the lane ledger of the subcommands: the reads and the write of admission, and the reads of the scope check.
@@ -36,24 +36,15 @@ type Book interface {
 	scope.Records
 }
 
-// Claims is the claim store of beehave: the one call of the claim that the takeover needs.
-// EnsureFree refuses when another owner holds the item, and writes nothing. The tools write no claim: the run of an item in the engine holds it.
-type Claims interface {
-	EnsureFree(ctx context.Context, owner, item string) error
-}
-
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
-// Git runs git in Dir, the working folder. Gh runs gh in the same folder for a take, which assigns the pull request and its closing issues. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
-// Claims opens the claim store of the project that owns the repository. A step opens it only when it reads the claim, after the guards that need no store.
+// Git runs git in Dir, the working folder. Forge opens the forge of the repository that the origin remote of Dir names. Now gives the time.
 // Book opens the lane ledger in the state folder that the --state flag of a subcommand names.
 type Deps struct {
-	Git    proc.Runner
-	Gh     proc.Runner
-	Dir    string
-	Forge  func(repo string) (Forge, error)
-	Now    func() time.Time
-	Claims func(repo string) (Claims, error)
-	Book   func(dir string) Book
+	Git   proc.Runner
+	Dir   string
+	Forge func(repo string) (Forge, error)
+	Now   func() time.Time
+	Book  func(dir string) Book
 }
 
 // streams are the two outputs of a run.
@@ -71,7 +62,7 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.star reads it.
 func commands() []command {
-	return slices.Concat(mergeCommands(), briefCommands(), ledgerCommands(), boardCommands(), papersCommands(), spendCommands(), gateCommands())
+	return slices.Concat(mergeCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
 }
 
 // ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.
@@ -98,18 +89,6 @@ func ledgerCommands() []command {
 	}
 }
 
-// boardCommands are the subcommands that move a card on the project board.
-func boardCommands() []command {
-	return []command{
-		{
-			name:    "board",
-			usage:   boardSyntax,
-			summary: "put the pull request or issue on a GitHub Project board, set its status column, and refuse when the read-back shows another column",
-			run:     boardCommand,
-		},
-	}
-}
-
 // briefCommands are the subcommands that judge a lane and its brief before the lane starts.
 func briefCommands() []command {
 	return []command{
@@ -128,7 +107,7 @@ func briefCommands() []command {
 	}
 }
 
-// mergeCommands are the subcommands that audit merges and decide a takeover.
+// mergeCommands are the subcommands that audit merges.
 func mergeCommands() []command {
 	return []command{
 		{
@@ -136,12 +115,6 @@ func mergeCommands() []command {
 			usage:   "audit authored <span> | audit present <tip> <base>",
 			summary: "read the merges of a range for content that no pull request diff shows",
 			run:     auditCommand,
-		},
-		{
-			name:    "take",
-			usage:   takeSyntax,
-			summary: "decide whether to take a pull request of somebody else: a dry read, --apply posts the notice, --take checks the grace period",
-			run:     takeCommand,
 		},
 	}
 }
