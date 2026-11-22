@@ -94,6 +94,8 @@ The tap gives each new session id to the request at the line that holds it, so t
 - A Bash call counts at any depth of a line.
 - A call of a sub-agent counts too. Claude Code forwards the `tool_use` blocks of sub-agents in the stream; they carry `parent_tool_use_id`.
 
+The entries that the adapter reads go to the durable stream `agent` of the phase, redacted. The workflow builtin `stream` reads that stream for a child run, with the reader of `beehave status --follow` (see [`stream`](workflow-files.md#stream)).
+
 The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules and the job check](#shell-rules-and-the-job-check)).
 
 ### How the adapter reads a provider limit
