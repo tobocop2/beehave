@@ -36,6 +36,15 @@ func TestExampleQueue_ThePassStartsWorkInFlightBeforeNewWorkAndThenBySeverity(t 
 	}
 	rig.q.pulls = []model.PullRequest{queuePull(t, 8, "23"), queuePull(t, 9, "11", "hold")}
 
+	// The tracker stops showing the items after the first read, so the test reads the start order of pass 1 only. Without the hook the real tracker keeps every item open,
+	// and pass 2 starts item 21 in the slot that the first child freed: the test would then read a second pass as well.
+	rig.q.afterFirstRead = func(q *fakeQueue) {
+		q.mu.Lock()
+		defer q.mu.Unlock()
+
+		q.items = nil
+	}
+
 	_, err := rig.run(t)
 	require.NoError(t, err)
 

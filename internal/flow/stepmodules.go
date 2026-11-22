@@ -98,7 +98,8 @@ const gateVersion = 6
 // No builtin records that step, so a move to this build compares the round module for every run of a round item (requireSameRoundModule).
 // Version 3 adds the pulls field to the result of queue and the labels field to each of its rows.
 // Version 4 adds the state stopped and the fields stop_step and stop_reason to each row.
-const roundVersion = 4
+// Version 5 adds the field value to each row: the value that the last run of a done row returned.
+const roundVersion = 5
 
 // stepModule is one module of the table: its version, the step kinds that it records, and the whole step names that it records with no kind in front.
 // The kinds are the kinds of its builtins. The engine kinds are kinds that the engine records for a builtin of the module, under a name that no builtin has.

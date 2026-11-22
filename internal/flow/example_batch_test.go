@@ -119,10 +119,10 @@ func TestExampleBatch_AnApprovedItemLandsWhileItsPullRequestIsStillTheDraftItsRu
 	assert.Empty(t, heldOf(rig.writer), "the item does not stop at its own draft one stage after the loop")
 }
 
-func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateRun(t *testing.T) {
+func TestExampleBatch_ItemsThatAreDoneAtOneQueueReadLandAsOneBatchAndTheSplitHoldsTheRedOne(t *testing.T) {
 	t.Parallel()
 
-	// Item 2 ends alone in pass 1 and is red at the gate. Items 1 and 3 end while the round reads the queue of pass 2, so its gather returns both.
+	// Item 2 ends alone in pass 1 and is red at the gate. Items 1 and 3 end while the round reads the queue of pass 2, which shows all three as done: one batch.
 	rig := newRoundRig(t, "1 2 3")
 	rig.h.opts.MaxConcurrent = 3 // all three children start in pass 1
 	rig.endTogether("1", "3")
@@ -131,7 +131,7 @@ func TestExampleBatch_TwoItemsThatEndInOneReadOfGatherLandAsOneBatchWithOneGateR
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
-	assert.Len(t, rig.gate.ran(), 2, "one gate run for the batch of item 2 and one for the batch of items 1 and 3")
+	assert.Len(t, rig.gate.ran(), 4, "one gate run on the union of the three items, then the gate runs of the split of the red union")
 	assert.Equal(t, []string{testProject + "|2|hold"}, heldOf(rig.writer))
 	assert.Equal(t, []string{testProject + " main 0 1,3"}, rig.host.issueReads(), "one read after the one batch that landed both items; the batch that landed nothing makes no read")
 	assert.Equal(t, "README\none.txt\nthree.txt", rig.mainFiles(t))
@@ -192,6 +192,29 @@ func TestExampleBatch_EachMemberMergesAtThePinOfItsChild(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{rig.heads["1"], rig.heads["3"]}, rig.merger.pinned(), "each member merges at its pin")
+}
+
+// When the intake stops every approved item, no merge call runs. The stops hold the items, which changes their rows, so the next pass reads the queue before the round waits.
+func TestExampleBatch_APassThatStopsEveryItemAtTheIntakeReadsTheQueueAgainBeforeTheRoundWaits(t *testing.T) {
+	t.Parallel()
+
+	rig := newRoundRig(t, "1")
+	rig.pushAfterReviews("1", strings.Repeat("e", 40))
+
+	_, err := rig.run(t)
+
+	require.NoError(t, err)
+	assert.Empty(t, rig.merger.landed(), "no item reaches the merge")
+	assert.Equal(t, []string{testProject + "|1|hold"}, heldOf(rig.writer))
+
+	reads := 0
+	for _, name := range stepNames(t, rig.last) {
+		if strings.HasPrefix(name, "queue:round-queue-") {
+			reads++
+		}
+	}
+
+	assert.Equal(t, 3, reads, "the pass that held the item is followed by a pass that reads the queue, and then the round waits")
 }
 
 func TestExampleBatch_AMissingBranchIsReportedAndTheOtherItemLands(t *testing.T) {

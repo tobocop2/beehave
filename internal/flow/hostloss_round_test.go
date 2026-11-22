@@ -79,9 +79,9 @@ func TestRound_FiveHostLossesOfOneRoundOneOnALandingGateHoldTheRoundForTheOwner(
 
 	joined := strings.Join(stepNames(t, rig.last), " ")
 	assert.Contains(t, joined, "wait:round-wait#")
-	assert.NotContains(t, joined, "queue:round-queue-2#", "the held round starts no item")
-	assert.NotContains(t, joined, "agent:queue-audit-2#")
-	assert.NotContains(t, joined, "command:sync-2#", "the held round starts no sync")
+	assert.NotContains(t, joined, "queue:round-queue-3#", "the pass after the landing is held, so it starts no item")
+	assert.NotContains(t, joined, "agent:queue-audit-3#")
+	assert.NotContains(t, joined, "command:sync-3#", "the held round starts no sync")
 }
 
 func TestRound_AHostLossOnTheSyncGateRerunsAndIsNeverSyncRed(t *testing.T) {
@@ -135,10 +135,10 @@ func TestRound_AnAnswerToTheHostLossHoldWaitsAgainOnlyAfterANewLoss(t *testing.T
 
 	rig := newRoundRig(t, "1")
 	rig.answers = []string{"CONTINUE", "CONTINUE", "STOP"}
-	withSync(t, rig, &syncScript{lines: []string{"state=current", "synced", "state=current"}})
+	withSync(t, rig, &syncScript{lines: []string{"state=current", "state=current", "synced", "state=current"}})
 	rig.setRound("base", "main") // the pull request of the child has the base main
 
-	// The gate of the round loses its first wait (the landing in pass 1) and its third wait (the sync gate of pass 2).
+	// The gate of the round loses its first wait (the landing in pass 2) and its third wait (the sync gate of the first pass after the answer). The second wait is the rerun of the landing.
 	rig.gate.loseAt = []int{1, 3}
 
 	runLosing(t, rig, map[string]int{"1": 4})
@@ -150,8 +150,9 @@ func TestRound_AnAnswerToTheHostLossHoldWaitsAgainOnlyAfterANewLoss(t *testing.T
 	assert.NotContains(t, rig.questions[2], "sync-")
 
 	names := stepNames(t, rig.last)
-	assert.Equal(t, -1, at(names, "gate:sync-gate-2-host-1#"), "a sync gate at the limit is not run again")
-	assert.GreaterOrEqual(t, at(names, "command:sync-3#"), 0, "after the answer the round goes on")
+	assert.GreaterOrEqual(t, at(names, "gate:sync-gate-4#"), 0, "the sync gate of the pass after the first answer ran and lost")
+	assert.Equal(t, -1, at(names, "gate:sync-gate-4-host-1#"), "a sync gate at the limit is not run again")
+	assert.GreaterOrEqual(t, at(names, "command:sync-5#"), 0, "after the second answer the round goes on")
 }
 
 func TestRound_AChildThatStoppedOnTheHostLossLimitHoldsTheRoundAndLandsNothing(t *testing.T) {
