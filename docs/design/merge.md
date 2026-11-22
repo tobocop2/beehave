@@ -340,7 +340,7 @@ Every other member, and every member whose read failed, is a line of the result 
 - The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge and the beads claim store to `remedy.Main`, which wires the real git runner.
 - The package `lease` builds the claims over the rows and finds the project of a repository in the config folder, for `cmd/beehave` and `cmd/remedy` alike.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `gatelist`, `audit`, `papers`). The forge writes of a round (`sync`, `sync land`, `cut`, `integration`, `board` and `take`) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. They call the same packages (`roundsync`, `roundcut`, `roundintegration`, `takeover`) as the subcommands. The subcommands stay for a person at a terminal, who runs them with the login of that person.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
@@ -369,7 +369,7 @@ A dry run takes the same path and prints `WOULD:` lines, and it makes no write c
 
 ### `remedy sync`
 
-`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the sync and integration pull requests always use the default label `made-by-beehave`, and a custom `pr_label` reaches only item drafts. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the engine steps `round_sync` and `integration_pull` use the `pr_label` of the project (`made-by-beehave` when the project sets none). The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|
@@ -396,16 +396,16 @@ The round of `examples/remediation/workflow.star` runs the sync at the start of 
 
 | Step | What it does |
 |---|---|
-| `sync-<n>` | Runs `remedy sync --base <round base> --trunk <base_branch>`. Exit code 2 stops the round with the line of the tool. |
+| `sync-<n>` | The engine step `round_sync` with the round base and `base_branch`, run as the writer. A forge failure ends the run with its error. |
 | `sync-resolve-<n>` | Runs only on `conflict`. One agent step (`prompts/sync.md`) merges `source` into the sync branch, resolves, commits the merge commit and pushes. |
-| `sync-again-<n>` | Runs `remedy sync` again after the agent. A second `conflict` ends the pass. |
+| `sync-again-<n>` | Runs `round_sync` again after the agent. A second `conflict` ends the pass. |
 | `sync-fetch-<n>`, `sync-checkout-<n>` | Put the folder of the round at the head of a `synced` line, so the gate and the review read that head. |
 | `sync-gate-<n>` | The gate with no base: the gate command only, with no new-tests check and no mutation step. |
 | `sync-gate-<n>-host-<k>` | Runs only when `sync-gate-<n>` is void with a host cause (the engine proved a lost host job). The gate runs again, k from 1, until the engine counts 5 host losses in the tree of the run. |
 | `sync-review-<n>` | A read-only review (`prompts/sync_review.md`) pinned to the gated head. It writes the verdict `approve` or `changes`. |
-| `sync-land-<n>` | Runs `remedy sync land` pinned to the gated head and the base tip of the line. `stale` and `head-moved` land nothing, and the next pass syncs again. |
+| `sync-land-<n>` | The engine step `round_land`, pinned to the gated head and the base tip of the line. `stale` and `head-moved` land nothing, and the next pass syncs again. |
 
-A line with no `state` reads as `current`: the tool prints a state on every exit 0, and a dry run prints nothing. Any other exit code but 0 and 2, a state that the round does not know, or a line that lacks a field that its state needs, stops the run.
+A dry run shows the trunk as `current`. A state that the round does not know, or a result that lacks a field that its state needs, stops the run.
 
 Five results hold the round. Each has a reason:
 

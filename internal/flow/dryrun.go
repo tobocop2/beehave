@@ -23,8 +23,12 @@ import (
 	"github.com/tobocop2/beehave/internal/proc"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/review"
+	"github.com/tobocop2/beehave/internal/roundcut"
+	"github.com/tobocop2/beehave/internal/roundintegration"
+	"github.com/tobocop2/beehave/internal/roundsync"
 	"github.com/tobocop2/beehave/internal/step"
 	trackerstore "github.com/tobocop2/beehave/internal/store"
+	"github.com/tobocop2/beehave/internal/takeover"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -229,7 +233,7 @@ func dryDeps(tree, head, item string, chosen dryChoice) Deps {
 
 	return Deps{
 		Agents: agents, Gate: newDryGate(tree, head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
-		Forge: dryForge{head: head}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
+		Forge: dryForge{head: head}, Rounds: dryRounds{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots, SkillLine: drySkillLine,
 		Facts: func(string) model.Project {
 			return model.Project{Source: tree, Vars: chosen.vars, MaxSpawnDepth: chosen.spawnDepth, RunnerSkillLoads: chosen.runnerSkillLoads}
@@ -493,6 +497,34 @@ func (dryForge) Push(context.Context, string, string, string, string, string) er
 // History shows an item with no earlier pull request.
 func (dryForge) History(context.Context, string, string) ([]model.PriorPull, error) {
 	return nil, nil
+}
+
+// dryRounds shows every forge write of a round as done and writes nothing: the trunk is current, a landing lands, a cut is done, the integration pull request is the open dry-run
+// pull request, a card shows the column that was asked for and a take passes.
+type dryRounds struct{}
+
+func (dryRounds) Sync(context.Context, string, roundsync.Request) (roundsync.Result, error) {
+	return roundsync.Result{State: roundsync.Current}, nil
+}
+
+func (dryRounds) Land(_ context.Context, _ string, req roundsync.LandRequest) (roundsync.Result, error) {
+	return roundsync.Result{State: roundsync.Landed, PR: req.PR, Head: req.Head, BaseTip: req.BaseTip}, nil
+}
+
+func (dryRounds) Cut(context.Context, string, roundcut.Request) (roundcut.Result, error) {
+	return roundcut.Result{Stop: roundcut.Done}, nil
+}
+
+func (dryRounds) Integrate(context.Context, string, roundintegration.Request) (roundintegration.Result, error) {
+	return roundintegration.Result{PR: dryPull, State: roundintegration.StateOpen}, nil
+}
+
+func (dryRounds) Place(_ context.Context, _ string, card model.Card) (string, error) {
+	return card.Status, nil
+}
+
+func (dryRounds) Take(context.Context, string, TakeRequest) (takeover.Result, error) {
+	return takeover.Result{}, nil
 }
 
 type dryTrees struct{ dir string }

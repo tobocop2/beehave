@@ -1,6 +1,6 @@
 # An item of a round ends stopped, and the owner starts it again with `beehave run <item>`, the command that the pause text names.
 # The run of a tracker item runs the pipeline of the example, not a round. The round's next pass reads the new run: the row was stopped and is done.
-# The first card call of the board refuses (exit code 2), so the item stops after its draft. The second call passes.
+# The first card call of the board reads the card back in another column (the file board-wrong of the forge folder), so the engine step board_card stops the item after its draft. The second call passes.
 isolate
 
 exec git init -q -b main seed
@@ -36,6 +36,7 @@ exec git config --file home/.gitconfig user.email e2e@example.com
 cp base forge/base
 cp base forge/closing-ok
 cp base forge/open-on-create
+cp wrong forge/board-wrong
 
 cp runners.star config/runners.star
 subst fake/claude fake/remedy config/projects/round.star config/runners.star
@@ -46,14 +47,14 @@ exec beehaveround item add round round/integration/s1 --title 'The round' --body
 exec beehaveround item add round 432 --title 'The child' --body-file child.txt
 
 exec beehaveround run round/integration/s1 round --workflow flow/workflow.star &
-waitstatus 'Listed item 432 stopped at command:board'
+waitstatus 'Listed item 432 stopped at board_card:board-started'
 
 # The round started the pipeline of item 432 once, and the board refused the card.
 exec beehaveround status
 stdout 'item-432-r1	stopped'
 grep -count=1 '^plan$' calls.log
 cmp plan-head-1 s1-tip
-grep -count=1 '^board$' remedy-keys.log
+grep -count=1 '^PlaceCard$' forge/board-calls
 
 # The local branch of the item is gone (a stopped item has no worktree), and the remote branch is back at the tip of the base branch of the project.
 # The new attempt cuts the branch again at the base of the round, not at the base branch of the project.
@@ -65,7 +66,7 @@ exec sh restart.sh
 cmp plan-head-2 s1-tip
 grep 'item 432 finished' restart.out
 grep -count=2 '^plan$' calls.log
-grep -count=2 '^board$' remedy-keys.log
+grep -count=2 '^PlaceCard$' forge/board-calls
 exec beehaveround status
 stdout 'item-432-r2	done'
 
@@ -88,6 +89,8 @@ check: ; @mkdir -p reports && echo '<testsuite tests="1"><testcase name="t"/></t
 reports/
 -- s1.txt --
 s1
+-- wrong --
+Todo
 -- remove.sh --
 set -e
 git -C state/repos/round branch -D 432
@@ -183,18 +186,5 @@ esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
 -- fake/remedy --
 #!/bin/sh
-# The remedy tool of the round. Its sync finds nothing to do. Its first board call refuses the card with exit code 2.
-key=$1
-echo "$*" >> @WORK@/remedy.log
-echo "$key" >> @WORK@/remedy-keys.log
-n=$(grep -c "^$key\$" @WORK@/remedy-keys.log)
-case $key in
-  sync) echo "state=current" ;;
-  integration) echo "pr=3 state=OPEN" ;;
-  board)
-    if [ "$n" = 1 ]; then
-      echo "the card is not in the column In Progress"
-      exit 2
-    fi
-    ;;
-esac
+# The remedy tool of the round runs only the read-only steps (report and gatelist). Both pass. The forge writes run in the engine, on the forge of the script.
+exit 0

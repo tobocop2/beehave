@@ -124,8 +124,32 @@ var rules = map[string]rule{
 	"internal/flow.treeMaker.Ensure":    {Exempt: doesWork},
 	"internal/forge.Opener.CreatePR":    {Exempt: doesWork},
 	"internal/forge.Syncer.MergeBranch": {Exempt: doesWork},
-	"internal/sandbox.Enforcer.Run":     {Exempt: doesWork},
-	"internal/store.Writer.Create":      {Exempt: doesWork},
+
+	// The forge writes of a round: the engine calls each one to write, and the error of the call is the result of the write.
+	"internal/flow.rounds.Sync":      {Exempt: doesWork},
+	"internal/flow.rounds.Land":      {Exempt: doesWork},
+	"internal/flow.rounds.Cut":       {Exempt: doesWork},
+	"internal/flow.rounds.Integrate": {Exempt: doesWork},
+	"internal/flow.rounds.Place":     {Exempt: doesWork},
+	"internal/flow.rounds.Take":      {Exempt: doesWork},
+
+	// The reads of the round logic that moved from the remedy tool to the packages of the engine. Each package has failure tests for its calls; this test does not prove them.
+	"internal/roundcut.Forge.PRView":           {NotHeld: inAdapter},
+	"internal/roundcut.Forge.PRList":           {NotHeld: inAdapter},
+	"internal/roundcut.Forge.BranchRef":        {NotHeld: inAdapter},
+	"internal/roundintegration.Forge.PRView":   {NotHeld: inAdapter},
+	"internal/roundintegration.Forge.PRList":   {NotHeld: inAdapter},
+	"internal/roundintegration.Forge.CreatePR": {Exempt: doesWork},
+	"internal/roundsync.Forge.PRView":          {NotHeld: inAdapter},
+	"internal/roundsync.Forge.PRList":          {NotHeld: inAdapter},
+	"internal/roundsync.Forge.BranchRef":       {NotHeld: inAdapter},
+	"internal/roundsync.Forge.CreatePR":        {Exempt: doesWork},
+	"internal/roundsync.Forge.CommitsAhead":    {NotHeld: inAdapter},
+	"internal/roundsync.Forge.MergeBranch":     {Exempt: doesWork},
+	"internal/takeover.Reader.PRView":          {NotHeld: inAdapter},
+	"internal/takeover.Reader.ReviewComments":  {NotHeld: inAdapter},
+	"internal/sandbox.Enforcer.Run":            {Exempt: doesWork},
+	"internal/store.Writer.Create":             {Exempt: doesWork},
 
 	// Reads with no failed-read case at the consumer in this test. Each method has its own entry, so a new method on one of these interfaces fails the test.
 	"internal/batch.Git.Version":                  {NotHeld: inAdapter},

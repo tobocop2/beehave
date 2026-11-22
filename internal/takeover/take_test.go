@@ -7,8 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
+	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 func readReplies(r *takeover.Request) { r.ReplyRead = true }
@@ -228,7 +227,7 @@ func TestPlan_ATimeThatIsNotAUTCStampIsRefused(t *testing.T) {
 		s.pr["comments"] = []obj{{"author": login("them"), "createdAt": text, "body": "x"}}
 		_, err := s.try(takeover.ModeDry)
 
-		var refusal *check.Refusal
+		var refusal *takeover.Refusal
 
 		require.ErrorAs(t, err, &refusal, text)
 		assert.Equal(t, "cannot read the time '"+text+"' as a UTC timestamp.", refusal.Message)

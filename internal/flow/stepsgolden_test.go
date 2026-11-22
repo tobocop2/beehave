@@ -44,6 +44,7 @@ func resultShape(t *testing.T) []string {
 var goldenShapes = map[string][]string{
 	"star30": {
 		"agent: commit_body,commit_subject,committed,cost_estimated,cost_unknown,cost_usd,head_sha,rewrote,session,skills,stop,text,transcript,violations",
+		"board_card: status",
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
@@ -53,6 +54,7 @@ var goldenShapes = map[string][]string{
 		"gather: results",
 		"host_teardown: down,reason",
 		"host_up: host,started",
+		"integration_pull: number,state",
 		"item_comment: id",
 		"item_create: created,id",
 		"item_read: comments,fields,found,id,parent",
@@ -62,10 +64,14 @@ var goldenShapes = map[string][]string{
 		"pr_history: pulls",
 		"pr_open: created,number,stack",
 		"pr_state: state",
+		"pr_take: code,lines",
 		"preflight: code,ok,reason,stop",
 		"push: head",
 		"queue: free,pulls,rows",
 		"recv: id,sender,timed_out,value",
+		"round_cut: lines",
+		"round_land: base_tip,branch,head,number,reason,source,state",
+		"round_sync: base_tip,branch,head,number,reason,source,state",
 		"send: id",
 		"sleep: slept",
 		"spawn: runs",
@@ -88,9 +94,9 @@ func TestStepsVersion_TheShapeOfTheRecordedResultsIsTheGoldenShapeOfTheVersion(t
 // the table is the one the engine checks every step name against. A builtin with no result fields is in it too.
 var goldenKinds = map[string][]string{
 	"star30": {
-		"agent", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up",
+		"agent", "board_card", "cancel", "command", "earlier_calls", "env", "facts", "first_of", "gate", "gather", "host_teardown", "host_up", "integration_pull",
 		"item_comment", "item_create", "item_read", "item_status", "login", "now",
-		"pr_comment", "pr_history", "pr_open", "pr_state", "preflight", "progress", "publish", "push", "queue", "recv", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
+		"pr_comment", "pr_history", "pr_open", "pr_state", "pr_take", "preflight", "progress", "publish", "push", "queue", "recv", "round_cut", "round_land", "round_sync", "scope", "send", "sleep", "spawn", "stream", "wait", "write",
 	},
 }
 

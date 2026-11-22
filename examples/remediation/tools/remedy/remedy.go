@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/examples/remediation/tools/roundcut"
 	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
-	"github.com/tobocop2/beehave/examples/remediation/tools/takeover"
 	"github.com/tobocop2/beehave/internal/proc"
+	"github.com/tobocop2/beehave/internal/roundcut"
+	"github.com/tobocop2/beehave/internal/takeover"
 )
 
 // The exit codes of every subcommand.

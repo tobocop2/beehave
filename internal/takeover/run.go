@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/check"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -33,7 +32,7 @@ func (h *halt) Error() string { return strings.Join(h.lines, "\n") }
 func stop(code int, lines ...string) *halt { return &halt{code: code, lines: lines} }
 
 func unread(cause error, format string, args ...any) error {
-	return errors.Join(&check.Refusal{Message: fmt.Sprintf(format, args...)}, cause)
+	return errors.Join(&Refusal{Message: fmt.Sprintf(format, args...)}, cause)
 }
 
 // Run runs one step of the takeover. A refusal of a rule is a Result with a code; a read that fails is an error.
@@ -154,7 +153,7 @@ func parseStamp(text string) (stamp, bool, error) {
 
 	at, err := time.Parse(time.RFC3339, text)
 	if err != nil {
-		return stamp{}, false, &check.Refusal{Message: fmt.Sprintf("cannot read the time '%s' as a UTC timestamp.", text)}
+		return stamp{}, false, &Refusal{Message: fmt.Sprintf("cannot read the time '%s' as a UTC timestamp.", text)}
 	}
 
 	return stamp{at: at, text: text}, true, nil

@@ -69,6 +69,14 @@ func TestDepsOn_ARunWithNoStoredModeReadsTheSandboxKeyOfItsProject(t *testing.T)
 	require.False(t, deps.SandboxDefault("missing"), "a project the config lacks is off")
 }
 
+func TestDepsOn_TheEngineWritesTheForgeForARoundThroughTheRoundWriterOfTheBuild(t *testing.T) {
+	t.Parallel()
+
+	deps := depsOn(config.Config{}, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
+
+	require.IsType(t, roundWrites{}, deps.Rounds, "the engine writes the forge for a round as the writer role, so the build sets the writer of the rounds")
+}
+
 func TestDepsOn_TheEngineGetsTheSkillLineOfTheAgentOfEachRunner(t *testing.T) {
 	t.Parallel()
 

@@ -170,25 +170,5 @@ esac
 echo '{"type":"result","subtype":"success","session_id":"s1","result":"done"}'
 -- fake/remedy --
 #!/bin/sh
-# The remedy tool of the round. Its first sync finds the moved trunk; every later call finds nothing to do.
-key=$1
-[ "$1" = sync ] && [ "$2" = land ] && key=sync-land
-echo "$*" >> @WORK@/remedy.log
-echo "$key" >> @WORK@/remedy-keys.log
-n=$(grep -c "^$key\$" @WORK@/remedy-keys.log)
-git="git --git-dir=@WORK@/remote.git"
-case $key in
-  sync)
-    if [ "$n" = 1 ]; then
-      echo "state=synced branch=sync/s1 pr=7 head=$($git rev-parse refs/heads/sync/s1) base_tip=$($git rev-parse refs/heads/integration/s1)"
-    else
-      echo "state=current"
-    fi
-    ;;
-  sync-land)
-    $git update-ref refs/heads/integration/s1 refs/heads/sync/s1
-    $git rev-parse refs/heads/integration/s1 > @WORK@/s1-after-sync
-    echo "state=landed"
-    ;;
-  integration) echo "pr=3 state=OPEN" ;;
-esac
+# The remedy tool of the round runs only the read-only steps (report and gatelist). Both pass. The forge writes run in the engine, on the forge of the script.
+exit 0

@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tobocop2/beehave/examples/remediation/tools/roundcut"
+	"github.com/tobocop2/beehave/internal/roundcut"
 )
 
 // defaultTrunk is the trunk branch when --trunk is not given.
