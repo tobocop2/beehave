@@ -40,6 +40,8 @@ type Project struct {
 	// Notify is the program and its arguments that the engine runs when a wait for the owner opens. Empty means no notice.
 	Notify  []string
 	PinFile string
+	// GateProgram lists the repository paths that hold the program of the gate: files, and directories that end in a slash. Empty means the gate runs as it always did.
+	GateProgram []string
 	// PRLabel is the label that every pull request opened by the engine carries. The config fills it, so it is never empty for a loaded project.
 	PRLabel   string
 	BuildHost string
