@@ -18,6 +18,7 @@ def clerk(item, case_text):
         model = CLERK_MODEL,
         edits = False,
         forbid_commands = READ_ONLY_FORBIDDEN,
+        sandbox = sandbox(),
         inputs = {"case": case_text, "intents": json.encode(sorted(POLICY.keys()))},
         outputs = CLERK_OUTPUTS,
         timeout = CLERK_TIMEOUT,

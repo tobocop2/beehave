@@ -181,4 +181,6 @@ func writeFakes(ts *testscript.TestScript, command string, fakes map[string]stri
 			ts.Fatalf("%s: %v", command, err)
 		}
 	}
+
+	sandboxHome(ts)
 }

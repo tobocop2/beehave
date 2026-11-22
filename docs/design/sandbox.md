@@ -33,9 +33,10 @@ The sandbox loads no settings file, so the agent sees no skill of the runner. Th
 
 The work folder, the temporary folder and the shared git directory of a linked work tree are writable. No other path is. A step has no keyword that opens one.
 
-- `sandbox = None` turns the sandbox off for the step. `beehave check workflow` prints a note for each such step.
+- `sandbox = None` turns the sandbox off for the step. `beehave check workflow` prints a note for each such step, and in a project with the sandbox on it is a problem.
 - A step that leaves out `sandbox` takes the default of the project.
-- A step that needs `docker`, or another tool that the sandbox blocks, sets `sandbox = None`.
+- A step that needs `docker`, or another tool that the sandbox blocks, runs as a `command` step. A project whose agent steps all need such a tool sets `sandbox = "off"`.
+- Each example under `examples/` states its `sandbox` in its project file. The example gives each agent step `sandbox(network = [...])` with the hosts that the step calls, or `sandbox()` for a step that calls none. A project that sets `sandbox = "off"` says why in a comment.
 
 The project file also takes these keys. Each path is absolute or starts with `~/`.
 
@@ -203,7 +204,7 @@ The step ends as `not-started`, with a note, when:
 
 A Claude Code that does not know a sandbox key ignores it and exits with code 0, so the minimum version is the only guard.
 
-No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = None` on purpose.
+No adapter falls back to a run with no sandbox. The adapter profile has a `Sandbox` capability and a `MinVersion`. An adapter without the capability refuses a sandboxed step, and the owner sets `sandbox = "off"` in the project on purpose.
 
 ## The gate under the sandbox
 
@@ -216,6 +217,8 @@ The enforcer lets the command:
 - read the system folders, the work folder, the shared git directories of a linked work tree and the `sandbox_read` paths, and nothing else under the home folder;
 - write the work folder, its own temporary folder (the command gets it as `TMPDIR`) and the `gate_allow_write` paths;
 - connect to the `gate_network` domains through one local allow-list proxy.
+
+If the gate starts a tool that is installed under the home folder, such as a mise shim or a program in `~/go/bin`, list the folder of that tool in `sandbox_read`.
 
 The kernel limits a TCP connection by port only. The enforcer lets the command connect to the port of the proxy, on any address, and to no other port. The command can connect to no unix socket outside its plan. The enforcer does not limit UDP.
 

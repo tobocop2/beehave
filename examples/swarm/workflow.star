@@ -40,6 +40,8 @@ def run_step(name, prompt, inputs):
         prompt = prompt,
         model = MODEL,
         forbid_commands = FORBIDDEN,
+        # The shell pushes the branch and opens the pull request, so it reaches the forge and nothing else.
+        sandbox = sandbox(network = ["github.com", "api.github.com"]),
         inputs = inputs,
         idle_timeout = IDLE_TIMEOUT,
         max_budget_usd = 6,

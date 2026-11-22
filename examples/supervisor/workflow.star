@@ -9,7 +9,7 @@ WATCH = env("WATCH", default = "5s")
 
 def worker(item):
     """One worker run. Its agent step edits nothing."""
-    agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, inputs = {"item": item})
+    agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, sandbox = sandbox(), inputs = {"item": item})
     return {"stage": "done"}
 
 def main(item):

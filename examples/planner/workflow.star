@@ -16,7 +16,7 @@ DEADLINE = env("DEADLINE", default = "1h")
 def worker(item):
     """One worker run. It publishes a progress value before and after its agent step."""
     publish(KEY, {"stage": "started"}, name = "started")
-    work = agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, inputs = {"item": item})
+    work = agent(name = "work", prompt = "prompts/work.md", model = MODEL, edits = False, sandbox = sandbox(), inputs = {"item": item})
     publish(KEY, {"stage": "done", "cost": work.cost_usd}, name = "done")
     return {"stage": "done"}
 

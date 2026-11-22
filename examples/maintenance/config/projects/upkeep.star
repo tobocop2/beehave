@@ -5,6 +5,7 @@ project(
     base_branch = "main",
     gate = "true",
     test_report = "reports/*.xml",
+    sandbox = "on",  # the report workflow runs no agent step
 )
 
 # One project for each repository of repos.tsv, for example <config folder>/projects/api.star:
@@ -13,6 +14,7 @@ project(
 #     repo = "acme/api",       # the origin of each worktree is GitHub, so the push reaches the real repository
 #     forge = "github",
 #     base_branch = "main",
+#     sandbox = "off",         # the update step runs `go get` and `npm update`, and a sandboxed step cannot download modules (#850)
 #     gate = "go test ./...",  # the test command of the repository
 #     test_report = "reports/*.xml",
 # )

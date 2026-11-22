@@ -18,6 +18,9 @@ example local/prompts/review.md
 example local/prompts/fix.md
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The agent steps keep their own sandbox() from the workflow. The gate runs unsandboxed until #913: a sandboxed gate writes its test_report in a copy that the gate does not read.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
+claudemodel fake/claude
 subst fake/claude
 chmod 755 fake/claude
 
@@ -36,6 +39,10 @@ stdout 'add-greeting-r1\tdone'
 
 # The steps ran in order: one plan, one implement, two reviews and one fix between them.
 cmp calls.log expected-calls.log
+
+# Each of the five agent calls started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep -count=5 '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
 
 # The run is done, so the claim row is free. The harness runs under umask 000, so the file is private only because the store asks for 0600.
 noclaims local

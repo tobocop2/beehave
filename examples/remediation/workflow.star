@@ -1411,6 +1411,8 @@ def _lane(item, project, round_settings):
             model = _model(round_settings, "settle"),
             runner = _runner(round_settings, "settle"),
             outputs = ["parked"],
+            # The settle step edits the item worktree and calls no host: the engine pushes its head.
+            sandbox = sandbox(),
             inputs = {"ruling": ruling.answer, "facts": project},
             **scope
         )

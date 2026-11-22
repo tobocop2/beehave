@@ -71,4 +71,6 @@ func cmdResearchDeskFakes(ts *testscript.TestScript, _ bool, args []string) {
 			ts.Fatalf("rdfakes: %v", err)
 		}
 	}
+
+	sandboxHome(ts)
 }

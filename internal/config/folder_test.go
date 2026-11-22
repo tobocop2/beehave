@@ -88,7 +88,7 @@ func TestLoadFolder_TheLocalExampleProjectLoads(t *testing.T) { //nolint:paralle
 
 	require.Empty(t, problems)
 	require.Equal(t, model.Project{
-		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
+		Name: "p", Tracker: "local", Claims: "local", Source: filepath.Join(home, "work/your-repo"), Tools: []string{"git"}, BaseBranch: "main", Sandbox: model.SandboxOn, Gate: "make check", TestReport: "reports/*.xml", BuildHost: "local", PRLabel: "made-by-beehave", MaxSpawnDepth: config.DefaultMaxSpawnDepth,
 	}, project.Project)
 }
 

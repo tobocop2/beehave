@@ -157,8 +157,104 @@ func openRoot(ts *testscript.TestScript, parent, folder string) *os.Root {
 }
 
 // writeFake writes a fake program of the script into its work folder, with the work folder in place of the marker.
+// A fake named claude also models the sandbox of the real CLI (see withSandboxModel).
 func writeFake(ts *testscript.TestScript, name string, text []byte) error {
-	return exectest.Write(filepath.Join(ts.Getenv("WORK"), name), strings.ReplaceAll(string(text), e2eWorkMarker, ts.Getenv("WORK")))
+	body := string(text)
+
+	if filepath.Base(name) == "claude" {
+		body = withSandboxModel(body)
+	}
+
+	return exectest.Write(filepath.Join(ts.Getenv("WORK"), name), strings.ReplaceAll(body, e2eWorkMarker, ts.Getenv("WORK")))
+}
+
+// fakeClaudeSandbox is the start of a fake claude. It answers --version as a CLI that is new enough for the sandbox. It logs one line to sandbox.log for each call:
+// "sandboxed domains=<allowedDomains>" when the arguments hold the flags and the sandbox block that Sandbox of the Claude adapter builds, every key and value
+// in place and only the path and domain lists free, and "open" when the settings hold no sandbox. Any other sandbox fails the call.
+const fakeClaudeSandbox = `sandbox_model() {
+  sources=unset mcp= tools= settings=
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --setting-sources) sources=x$2 ;;
+      --strict-mcp-config) mcp=yes ;;
+      --disallowedTools) tools="$2 $3" ;;
+      --settings) settings=$2 ;;
+    esac
+    shift
+  done
+  case $settings in *'"sandbox":'*) ;; *) echo open >> @WORK@/sandbox.log; return ;; esac
+  block='"sandbox":\{"enabled":true,"failIfUnavailable":true,"allowUnsandboxedCommands":false,"filesystem":\{"denyRead":\["~/"[^]]*\],"allowRead":\[[^]]*\],"denyWrite":\[[^]]*\]\},"network":\{"allowedDomains":\[[^]]*\],"strictAllowlist":true\}\},"permissions":\{"blockReadsOutsideWorkingDirectories":true,.*"deny":\["WebFetch","WebSearch"'
+  if [ "$sources" = x ] && [ "$mcp" = yes ] && [ "$tools" = "WebFetch WebSearch" ] && printf '%s' "$settings" | grep -Eq "$block"; then
+    echo "sandboxed domains=$(printf '%s' "$settings" | sed -n 's/.*"allowedDomains":\[\([^]]*\)\].*/\1/p')" >> @WORK@/sandbox.log
+    return
+  fi
+  echo "the fake claude: the sandbox settings differ from the ones of the Claude adapter: $settings" >&2
+  exit 1
+}
+if [ "$1" = --version ]; then echo "2.1.290 (Claude Code)"; exit 0; fi
+sandbox_model "$@"
+`
+
+// withSandboxModel returns the text of a fake program with fakeClaudeSandbox after its first line.
+func withSandboxModel(text string) string {
+	first, rest, _ := strings.Cut(text, "\n")
+
+	return first + "\n" + fakeClaudeSandbox + rest
+}
+
+// cmdClaudeModel is "claudemodel <file>": it gives a fake claude that the script wrote itself the sandbox model and the sandbox home, as writeFake does.
+func cmdClaudeModel(ts *testscript.TestScript, _ bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: claudemodel <file>")
+	}
+
+	work := openRoot(ts, ts.Getenv("WORK"), "")
+	defer work.Close()
+
+	text, err := work.ReadFile(args[0])
+	if err != nil {
+		ts.Fatalf("claudemodel: %v", err)
+	}
+
+	if err := work.WriteFile(args[0], []byte(withSandboxModel(string(text))), e2eFileMode); err != nil {
+		ts.Fatalf("claudemodel: %v", err)
+	}
+
+	sandboxHome(ts)
+}
+
+// sandboxHome gives the script what a sandboxed step needs of a user machine: a home folder with a global git identity, as the sandbox refuses to start without
+// one, and a login folder for the runners that is not the work folder, because the login folder is a credential path and the state folder lies in the work folder.
+func sandboxHome(ts *testscript.TestScript) {
+	work := ts.Getenv("WORK")
+	home, login := filepath.Join(work, "home"), filepath.Join(work, "login")
+
+	for _, folder := range []string{home, login} {
+		if err := os.MkdirAll(folder, e2eFolderMode); err != nil {
+			ts.Fatalf("sandbox home: %v", err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[user]\n\tname = e2e\n\temail = e2e@example.com\n"), e2eFileMode); err != nil {
+		ts.Fatalf("sandbox home: %v", err)
+	}
+
+	ts.Setenv("HOME", home)
+
+	root := openRoot(ts, work, "")
+	defer root.Close()
+
+	runners := filepath.Join("config", "runners.star")
+
+	text, err := root.ReadFile(runners)
+	if err != nil {
+		return // a script that writes its runners later names the login folder itself
+	}
+
+	moved := strings.ReplaceAll(string(text), `config_dir = "`+work+`"`, `config_dir = "`+login+`"`)
+	if err := root.WriteFile(runners, []byte(moved), e2eFileMode); err != nil {
+		ts.Fatalf("sandbox home: %v", err)
+	}
 }
 
 // cmdSubst is "subst <file>...": it replaces @WORK@ in each file with the work folder of the script.

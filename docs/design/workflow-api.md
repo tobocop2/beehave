@@ -60,7 +60,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `agent` | `protect_paths` | unchanged | 3: `examples/maintenance/bump.star`, `examples/remediation/workflow.star` and 1 more |
 | `agent` | `resume` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
 | `agent` | `runner` | unchanged | 2: `examples/remediation/workflow.star`, `internal/workflow/lib/review_fix.star` |
-| `agent` | `sandbox` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `agent` | `sandbox` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
 | `agent` | `skill` | #787: new, the skill that the agent CLI loads before the first turn of the model | 1: `examples/remediation/workflow.star` |
 | `agent` | `timeout` | unchanged | 6: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 4 more |
 | `board_card` | `-` | #381: new, the engine puts a pull request or an issue on the project board and reads the column back, as the writer | 1: `examples/remediation/workflow.star` |
@@ -237,8 +237,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `round_sync` | `base` | #381: new | 1: `examples/remediation/workflow.star` |
 | `round_sync` | `name` | #381: new | 1: `examples/remediation/workflow.star` |
 | `round_sync` | `trunk` | #381: new | 1: `examples/remediation/workflow.star` |
-| `sandbox` | `-` | unchanged | 3: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 1 more |
-| `sandbox` | `network` | unchanged | 2: `examples/queue/workflow.star`, `examples/remediation/workflow.star` |
+| `sandbox` | `-` | unchanged | 12: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 10 more |
+| `sandbox` | `network` | unchanged | 3: `examples/queue/workflow.star`, `examples/remediation/workflow.star` and 1 more |
 | `send` | `-` | #588: new, puts a message on the inbox of the parent run, of a child run or of the open run of an item of the project | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
 | `send` | `name` | #588: new | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |
 | `send` | `to` | #854: `"item:<id>"` added to `"parent"` and a run that `spawn` returned | 2: `examples/merge-order/dependency.star`, `examples/review-loop/workflow.star` |

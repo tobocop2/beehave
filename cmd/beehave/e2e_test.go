@@ -527,6 +527,7 @@ const e2eProject = `project(
     base_branch = "main",
     gate = "true",
     test_report = "r.xml",
+    sandbox = "off",
     build_host = "build",
     host = host(provider = "ssh", disk_floor_gb = 50, slots = {"mutation": 1}, ssh = ssh(address = "10.0.0.5")),
     vars = {
@@ -797,7 +798,7 @@ func TestScripts(t *testing.T) {
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
-			"reviewfakes": cmdReviewLoopFakes,
+			"reviewfakes": cmdReviewLoopFakes, "claudemodel": cmdClaudeModel,
 		},
 	})
 }

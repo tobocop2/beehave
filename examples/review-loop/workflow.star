@@ -24,6 +24,7 @@ def reviewer(item):
             model = MODEL,
             outputs = ["verdict", "notes"],
             edits = False,
+            sandbox = sandbox(),
             inputs = {"item": item, "draft": got.value},
         )
         capped(review, "review")
@@ -35,7 +36,7 @@ def main(item):
     made = item_create(name = "reviewer", key = "reviewer", title = "Review: " + item.title, body = item.body, parent = item.id)
     child = spawn(items = [made.id], entry = "reviewer", name = "reviewer")
 
-    first = agent(name = "draft", prompt = "prompts/draft.md", model = MODEL, outputs = ["draft"], edits = False, inputs = {"item": item})
+    first = agent(name = "draft", prompt = "prompts/draft.md", model = MODEL, outputs = ["draft"], edits = False, sandbox = sandbox(), inputs = {"item": item})
     capped(first, "draft")
     text = first.draft
     verdict = ""
@@ -54,6 +55,7 @@ def main(item):
             model = MODEL,
             outputs = ["draft"],
             edits = False,
+            sandbox = sandbox(),
             inputs = {"item": item, "draft": text, "notes": reply.value["notes"]},
         )
         capped(revise, "revise")

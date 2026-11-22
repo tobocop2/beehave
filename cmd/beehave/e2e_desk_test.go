@@ -93,4 +93,6 @@ func cmdDeskFakes(ts *testscript.TestScript, _ bool, args []string) {
 			ts.Fatalf("deskfakes: %v", err)
 		}
 	}
+
+	sandboxHome(ts)
 }

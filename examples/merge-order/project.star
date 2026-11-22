@@ -1,4 +1,6 @@
 # The project file for examples/merge-order. Copy it to <config folder>/projects/<name>.star.
 # The project has no tracker, no forge and no source. Its items are in local.db.
 
-project()
+# The workflows run no agent step, so the setting changes nothing here.
+
+project(sandbox = "on")

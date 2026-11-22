@@ -12,6 +12,8 @@ exec git -C origin checkout -q main
 
 example local/project.star config/projects/local.star
 replace config/projects/local.star '~/work/your-repo' $WORK/origin
+# The script tests the round, not the sandbox, so its project keeps the sandbox off as it did before the example set it.
+replace config/projects/local.star 'sandbox = "on"' 'sandbox = "off"'
 replace config/projects/local.star '"make check"' '"sh '$WORK'/gate.sh"'
 subst gate.sh
 subst flow/round.star
