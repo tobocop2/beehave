@@ -74,6 +74,9 @@ type attribution struct {
 // noAttribution is the attribution setting that every launch carries: the commits of an agent have no trailer that names the CLI.
 func noAttribution() *attribution { return &attribution{Commit: "", PR: "", SessionURL: false} }
 
+// noSettingSources is the flag that loads no user, project or local settings file, with an empty value.
+func noSettingSources() []string { return []string{"--setting-sources", ""} }
+
 // guardSettings is the settings of one run with no sandbox: the attribution, a PreToolUse hook on the Bash tool, and the allow rules of the output files.
 type guardSettings struct {
 	Attribution *attribution `json:"attribution,omitempty"`
@@ -102,7 +105,8 @@ type hookHandler struct {
 }
 
 // Guard returns `--settings` with inline JSON that adds a PreToolUse hook with matcher Bash for this run, when command is not empty.
-// Claude Code merges hook entries across settings sources, so no settings file of the user changes.
+// The empty setting sources load no settings file of the runner, so no skill, hook or plugin of the runner loads; the --settings JSON is the whole
+// settings of the run. The model, the permission mode and the allowed tools reach the CLI as flags, and the login as the variables of the profile.
 // The hook gets the call as JSON on stdin and blocks the call when it exits with code 2.
 // "onFailure":"block" makes any other failure of the hook (cannot start, other exit code, timeout) block the call too. Claude Code v2.1.295 is the first version that knows the key.
 // Each file of write is opened to the file tools by the same rules and working directory as in the sandbox.
@@ -120,7 +124,7 @@ func (Adapter) Guard(command, runDir string, write, skills []string) agent.Launc
 	}
 
 	plugin := skillsPlugin(skills, runDir)
-	args := slices.Concat(addDirs(slices.Concat(outputDirs(write), plugin.readDirs())), plugin.args)
+	args := slices.Concat(noSettingSources(), addDirs(slices.Concat(outputDirs(write), plugin.readDirs())), plugin.args)
 
 	raw, _ := json.Marshal(settings) //nolint:errcheck,errchkjson // a struct of strings always encodes
 	args = append(args, "--settings", string(raw))

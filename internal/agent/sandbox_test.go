@@ -101,7 +101,7 @@ func TestRunner_ARunWithNoSandboxGetsNoSandboxArguments(t *testing.T) { //nolint
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.NotContains(t, record(t, f.records, "args"), "--setting-sources")
+	assert.Contains(t, record(t, f.records, "args"), "--setting-sources  --settings", "the settings of the runner load no skill")
 	assert.NotContains(t, record(t, f.records, "args"), "--strict-mcp-config")
 }
 
@@ -115,7 +115,7 @@ func TestRunner_ARunWithNoSandboxLoadsTheSkillsOfItsSpec(t *testing.T) { //nolin
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.Contains(t, record(t, f.records, "args"), "--plugin-dir ")
-	assert.NotContains(t, record(t, f.records, "args"), "--setting-sources", "the run has no sandbox")
+	assert.Contains(t, record(t, f.records, "args"), "--setting-sources  --add-dir", "the run has no sandbox, and the runner's own skills stay unloaded")
 }
 
 func TestRunner_ASandboxedRunLoadsTheSkillsOfItsSpec(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process

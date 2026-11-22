@@ -25,7 +25,7 @@ import (
 const token = "tok-secret-value"
 
 // attributionArgs is the settings argument that every Claude Code launch ends with.
-const attributionArgs = ` --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`
+const attributionArgs = ` --setting-sources  --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`
 
 type fixture struct {
 	records string
@@ -106,7 +106,7 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --settings `+
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --setting-sources  --settings `+
 		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`,
 		record(t, f.records, "args"))
 
@@ -123,10 +123,33 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
-	assert.Contains(t, record(t, f.records, "args"), "--add-dir /state/outputs/7.review --settings ")
+	assert.Contains(t, record(t, f.records, "args"), "--setting-sources  --add-dir /state/outputs/7.review --settings ")
 	assert.Contains(t, record(t, f.records, "args"), "Edit(//state/outputs/7.review/output.json)")
 	assert.Nil(t, f.spec.Sandbox)
 	assert.Empty(t, f.spec.Guard)
+}
+
+func TestRunner_AResumedStepThatDeclaresASkillGetsThePluginFolderOfAFirstLaunch(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	first := newFixture(t, "claude", claude.Name, "")
+	first.spec.Skills = []string{filepath.Join(first.config, "skills", "review")}
+	require.NoError(t, os.MkdirAll(first.spec.Skills[0], 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(first.spec.Skills[0], "SKILL.md"), []byte("review\n"), 0o600))
+
+	require.Equal(t, agent.OutcomeExited, agent.Runner{}.Run(context.Background(), first.spec).Outcome)
+
+	resumed := newFixture(t, "claude", claude.Name, "")
+	resumed.spec.Skills = first.spec.Skills
+	resumed.spec.Resume = "sess-1"
+
+	require.Equal(t, agent.OutcomeExited, agent.Runner{}.Run(context.Background(), resumed.spec).Outcome)
+
+	for name, args := range map[string]string{"first": record(t, first.records, "args"), "resumed": record(t, resumed.records, "args")} {
+		assert.Contains(t, args, "--setting-sources  --add-dir ", name)
+		assert.Contains(t, args, "--plugin-dir ", name)
+	}
+
+	assert.Contains(t, record(t, resumed.records, "args"), "--resume sess-1")
+	assert.NotContains(t, record(t, first.records, "args"), "--resume")
 }
 
 func TestRunner_RefusesAModelOrAResumeThatTheCLIHasNoFlagFor(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -168,7 +191,7 @@ func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { /
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --setting-sources  --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
 	assert.NotContains(t, record(t, f.records, "args"), "--permission-mode")
 }
 

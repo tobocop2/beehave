@@ -102,7 +102,7 @@ func (Adapter) Sandbox(plan agent.SandboxPlan, guard, runDir string, write, skil
 
 	return agent.Launch{
 		Args: slices.Concat(
-			[]string{"--setting-sources", "", "--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"},
+			noSettingSources(), []string{"--strict-mcp-config", "--disallowedTools", "WebFetch", "WebSearch"},
 			addDirs(plan.ReadDirs), skills.args, []string{"--settings", string(raw)},
 		),
 		Env:    map[string]string{subprocessScrub: "1", envFileVar: envPath, tempVar: plan.Temp},
