@@ -129,18 +129,52 @@ func runTicking(t *testing.T, h *harness, engine *Engine) error {
 	}
 }
 
+// runHasStatus waits until the run has the status, or until ctx ends.
+func runHasStatus(ctx context.Context, engine *Engine, run string, want dbos.WorkflowStatusType) error {
+	tick := time.NewTicker(pollEvery)
+	defer tick.Stop()
+
+	for {
+		rows, err := engine.rowsOf([]spawnedRun{{Run: run}})
+		if err != nil {
+			return err
+		}
+
+		if rows[run].Status == want {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
+}
+
 func TestExamplePlanner_AStalledWorkerIsCanceledAndItsTaskGoesToANewWorker(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	// The worker of 21 does not stall, so it ends well before the check-in, even on a slow host. The worker of 22 holds past the check-in.
+	// The planner starts its first watch only after the worker of 21 has ended, so that worker ends before the check-in however slow the host is.
+	// The first worker of 22 holds until the cancel ends its context, so the check-in always finds it open.
 	// Both workers run as the same login. With one agent for each login, the stalled worker of 22 could take that agent before the worker of 21 and hold it
-	// past the check-in. Two agents for each login give each first worker its own agent, so 21 ends before the check-in in every order of the two starts.
+	// until the cancel. Two agents for each login give each first worker its own agent.
 	h.opts.Env = map[string]string{"TASKS": "21 22", "CHECK_IN": "3s", "DEADLINE": "1h"}
 	h.opts.PerLogin = 2
-	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 1, 5*time.Second
+	h.agents.stall, h.agents.stallStarts, h.agents.stallFor = "22", 1, time.Hour
 
-	engine := h.engine(t)
+	var engine *Engine
+
+	h.commands.before = func(ctx context.Context, request CommandRequest) error {
+		if request.Run[0] == "echo" && strings.Contains(request.Run[1], "while the workers run") {
+			return runHasStatus(ctx, engine, "item-21-r1", dbos.WorkflowStatusSuccess)
+		}
+
+		return ctx.Err()
+	}
+
+	engine = h.engine(t)
 	err := runTicking(t, h, engine)
 
 	require.NoError(t, err)

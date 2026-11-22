@@ -13,9 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stackSize is the size of the buffer that holds the stacks of every goroutine.
-const stackSize = 1 << 22
-
 var errNoOldGate = errors.New("the stop of the old gates canceled no gate")
 
 // goroutineID reads the id of the calling goroutine from the first line of its stack.
@@ -30,10 +27,7 @@ func goroutineID() string {
 // waitsForTheStoreLock is true when the goroutine with this id runs the DBOS cancel and waits to begin a write transaction.
 func waitsForTheStoreLock(id string) func() bool {
 	return func() bool {
-		buf := make([]byte, stackSize)
-		buf = buf[:runtime.Stack(buf, true)]
-
-		for _, stack := range strings.Split(string(buf), "\n\n") {
+		for _, stack := range strings.Split(string(goroutineStacks()), "\n\n") {
 			if strings.HasPrefix(stack, "goroutine "+id+" [") {
 				return strings.Contains(stack, "sysdb.(*SysDB).CancelWorkflows") && strings.Contains(stack, "database/sql.(*DB).BeginTx")
 			}
