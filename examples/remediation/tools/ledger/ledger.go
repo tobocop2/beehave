@@ -655,21 +655,6 @@ func (l *Ledger) Closes(key string) ([]string, error) {
 	return issues, err
 }
 
-// OwnerAdds returns the issues the owner approved for key.
-func (l *Ledger) OwnerAdds(key string) ([]string, error) {
-	rows, err := l.keyRows(key)
-
-	var issues []string
-
-	for _, row := range rows {
-		if Kind(row.kind) == KindOwnerAdd {
-			issues = append(issues, row.lane)
-		}
-	}
-
-	return issues, err
-}
-
 // Since returns the whole days from the latest row of the kind under key to now, and whether the key has such a row.
 func (l *Ledger) Since(key string, kind Kind, now time.Time) (int, bool, error) {
 	rows, err := l.keyRows(key)
