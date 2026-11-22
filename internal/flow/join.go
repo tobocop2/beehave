@@ -88,15 +88,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
-	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return err
-	}
-
-	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return canceledNotMoved(item, last, err)
-	}
-
-	return nil
+	return c.cancelAndReopenHeld(item, last) //nolint:contextcheck // see the comment above
 }
 
 // namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.

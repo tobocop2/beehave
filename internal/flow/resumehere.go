@@ -40,13 +40,18 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 	return c.moveOpen(item, last)
 }
 
-// moveOpen cancels an open run and reopens it on this build. When the reopen fails the run stays canceled, and the error says so and how to try again.
+// moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between.
 func (c *Client) moveOpen(item string, last run) error {
-	if err := c.cancelRun(item, last); err != nil {
+	return c.underProbe(func() error { return c.cancelAndReopenHeld(item, last) })
+}
+
+// cancelAndReopenHeld is the move of an open run while probe.lock is held. When the reopen fails the run stays canceled, and the error says so and how to try again.
+func (c *Client) cancelAndReopenHeld(item string, last run) error {
+	if err := c.cancelHeld(item, last); err != nil {
 		return err
 	}
 
-	if err := c.reopenHere(item, last); err != nil {
+	if err := c.reopenHeld(item, last); err != nil {
 		return canceledNotMoved(item, last, err)
 	}
 

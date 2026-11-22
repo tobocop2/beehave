@@ -431,6 +431,8 @@ type fakeLifecycle struct {
 	failErr error
 	// onClaim, when set, runs at the start of each Claim: a test uses it to move the clock during the take.
 	onClaim func()
+	// onRelease, when set, runs at the start of each Release: a test uses it to act at the end of a cancel.
+	onRelease func()
 	// hang makes Release wait for its context to end, and expired counts the releases that the context ended.
 	hang    bool
 	expired int
@@ -499,6 +501,10 @@ func (l *fakeLifecycle) Claim(_ context.Context, project, item string) (string, 
 }
 
 func (l *fakeLifecycle) Release(ctx context.Context, project, item, owner string) error {
+	if l.onRelease != nil {
+		l.onRelease()
+	}
+
 	l.mu.Lock()
 	l.released = append(l.released, owner)
 	l.mu.Unlock()
