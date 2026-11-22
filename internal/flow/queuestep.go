@@ -60,6 +60,8 @@ type queueRow struct {
 	Labels           []string `json:"labels"`
 	StopStep         string   `json:"stop_step"`
 	StopReason       string   `json:"stop_reason"`
+	// Value is the JSON value that the last run of a done row returned, whoever started it. It is empty on any other row and for a run that returned none.
+	Value json.RawMessage `json:"value,omitempty"`
 }
 
 // openPull is one open pull request of the forge, as the queue step records it. Item is the open item that its head branch names, or empty when it names none.
@@ -108,7 +110,7 @@ func (s *script) queue(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, err
 	}
 
-	return queuedValue(got), nil
+	return queuedValue(got)
 }
 
 // readQueue reads the tracker and the forge, then the runs of each item, and sorts the rows by severity and item id.
@@ -241,6 +243,7 @@ func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull) (q
 type rowState struct {
 	state   string
 	stopped *Stopped
+	value   json.RawMessage
 }
 
 // stateOf is the state of an item from its last run, if it has one. A run that succeeded is done, or stopped when its result records a stop, unless it is owed another visit.
@@ -279,7 +282,7 @@ func (e *Engine) succeededState(ctx context.Context, item string, last run, held
 		return rowState{state: idleState(held)}, nil
 	}
 
-	return rowState{state: queueDone}, nil
+	return rowState{state: queueDone, value: result.Value}, nil
 }
 
 // idleState is the state of an item with no run to settle: hold, or ready.
@@ -335,7 +338,7 @@ func foreignRecordOf(result ItemResult) (foreignRecord, bool) {
 func rowWith(item model.Item, pull joinedPull, settled rowState) queueRow {
 	row := queueRow{
 		Item: item.ID, State: settled.state, Severity: string(item.Severity), PR: pull.number,
-		Parent: item.Parent, Author: pull.author, ChangesRequested: pull.changesRequested, Labels: append([]string{}, item.Labels...),
+		Parent: item.Parent, Author: pull.author, ChangesRequested: pull.changesRequested, Labels: append([]string{}, item.Labels...), Value: settled.value,
 	}
 
 	if settled.stopped != nil {
@@ -355,13 +358,19 @@ func (e *Engine) freeSlots() (int, error) {
 	return max(0, e.maxConcurrent-len(open)), nil
 }
 
-// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity, pr, parent, author, changes_requested, labels, stop_step and stop_reason;
+// queuedValue makes the struct that queue returns: rows, a list of structs with the fields item, state, severity, pr, parent, author, changes_requested, labels, stop_step, stop_reason and value;
 // free; and pulls, a list of structs with the fields number, branch, base, author, draft, title and item.
-func queuedValue(got queued) *starlarkstruct.Struct {
+func queuedValue(got queued) (*starlarkstruct.Struct, error) {
 	rows := make([]starlark.Value, len(got.Rows))
 
 	for i, row := range got.Rows {
+		value, err := valueOf(row.Value)
+		if err != nil {
+			return nil, fmt.Errorf("read the value of the last run of item %s: %w", row.Item, err)
+		}
+
 		rows[i] = starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"value":  value,
 			itemName: starlark.String(row.Item), stateField: starlark.String(row.State), severityField: starlark.String(row.Severity), "pr": starlark.MakeInt(row.PR),
 			parentKeyword: starlark.String(row.Parent), "author": starlark.String(row.Author), "changes_requested": starlark.Bool(row.ChangesRequested),
 			"labels": textList(row.Labels), "stop_step": starlark.String(row.StopStep), "stop_reason": starlark.String(row.StopReason),
@@ -370,7 +379,7 @@ func queuedValue(got queued) *starlarkstruct.Struct {
 
 	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 		"rows": starlark.NewList(rows), "free": starlark.MakeInt(got.Free), pullsField: openPullsValue(got.Pulls),
-	})
+	}), nil
 }
 
 // openPullsValue makes the list of open pull requests that queue returns.

@@ -110,12 +110,15 @@ func (s *script) main(thread *starlark.Thread, sources *workflow.Sources, fields
 	}
 
 	returned, err := starlark.Call(thread, main, starlark.Tuple{itemArg(fields)}, nil)
-	if err != nil || s.in.Entry == "" {
+	if err != nil {
 		return err
 	}
 
-	// Only a run that spawn started keeps what its entry returns: a parent reads it from gather. The main of a run that a user started returns nothing to read.
-	s.value, err = returnedValue(s.in.Entry, returned)
+	s.value, err = returnedValue(cmp.Or(s.in.Entry, defaultEntry), returned)
+	if s.in.Entry == "" {
+		// A run that a user started keeps the value that its main returns, so the queue shows it. A value that cannot be kept is dropped and never fails the run.
+		return nil
+	}
 
 	return err
 }

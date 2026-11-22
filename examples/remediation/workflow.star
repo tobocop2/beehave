@@ -1035,9 +1035,26 @@ def queue_audit(item, project, round_settings, n, q):
 def ready_items(q, round_settings):
     """Returns the ids of the rows of the queue `q` that this pass may start, in the order of the rank rule, up to the free slots and vars.round.lane_cap.
     The queue read applies vars.round.label. The item list vars.round.items is applied here, to the rows."""
+    return [r.item for r in rank(listed_rows(q, round_settings), round_settings["owner"])][:min(q.free, round_settings["lane_cap"])]
+
+def listed_rows(q, round_settings):
+    """Returns the rows of the queue `q` that the round handles: every row, or the rows of vars.round.items."""
     listed = round_settings["items"]
-    rows = [r for r in q.rows if len(listed) == 0 or r.item in listed]
-    return [r.item for r in rank(rows, round_settings["owner"])][:min(q.free, round_settings["lane_cap"])]
+    return [r for r in q.rows if len(listed) == 0 or r.item in listed]
+
+def restarted_approvals(q, round_settings):
+    """Returns the approved runs that the queue `q` shows for the rows of the round and that no child of the round returned: a done row whose last run approved a head.
+    The last run of a row is the durable record, so a run that the owner started with `beehave run` counts as a child does. It returns nothing when the round lands nothing."""
+    if not round_settings["merge"]:
+        return []
+
+    found = []
+    for r in listed_rows(q, round_settings):
+        value = r.value
+        if r.state == "done" and type(value) == "dict" and value.get("approved") == True and value.get("head", "") != "":
+            found.append(struct(item = r.item, head = value["head"], approved = True, pr = value.get("pr", 0)))
+
+    return found
 
 # Each reason that a listed item does not move, by the state of its row, with the step of the owner. missing is an item with no row. A ready row shows here only when the items queue has no free slot.
 ITEM_CLAUSES = {
@@ -1104,14 +1121,17 @@ def round(item):
             held = synced.reason
             seen = max(seen, synced.host_losses)
 
+        restarted = []
         if held == "":
             q = queue(name = "round-queue-%d" % n, hold = "hold", label = round_settings["label"])
             queue_audit(item, project, round_settings, n, q)
+            restarted = restarted_approvals(q, round_settings)
             take = ready_items(q, round_settings)
             if len(take) > 0:
                 runs = runs + spawn(items = take, entry = "pipeline", base = round_settings["base"], name = "round-spawn-%d" % n).runs
 
-        if len(runs) > 0:
+        gathered = len(runs) > 0
+        if gathered:
             ended = [e.outcome for e in first_of(runs = runs, name = "round-gather-%d" % n).runs]
             ended_items = [e.item for e in ended]
             runs = [r for r in runs if r.item not in ended_items]
@@ -1121,11 +1141,16 @@ def round(item):
                     if result.value["approved"]:
                         approved.append(struct(item = result.item, head = result.value["head"], approved = result.value["approved"], pr = result.value.get("pr", 0)))
 
-            if len(approved) > 0:
-                seen = max(seen, land(approved, project, round_settings, n))
-                approved = []
-                round_integration(project, round_settings, "round-integration-land-%d" % n)
+        # A run that the round did not start lands with the children of the pass. An item has one last run, so a child that ended in this pass and a row of the queue never name one item twice.
+        approved_items = [a.item for a in approved]
+        approved = approved + [a for a in restarted if a.item not in approved_items]
 
+        if len(approved) > 0:
+            seen = max(seen, land(approved, project, round_settings, n))
+            approved = []
+            round_integration(project, round_settings, "round-integration-land-%d" % n)
+
+        if gathered:
             continue
 
         # No ready row can move and no child run of this round is open.

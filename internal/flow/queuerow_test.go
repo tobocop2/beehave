@@ -255,3 +255,47 @@ func TestQueue_AStoppedRowNamesTheStepAndTheReasonOfTheStop(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21|command:lint#1|base-moved", "22||"}, seenBy(t, h), "the stopped row names the step and the output of the stop; a row that is not stopped names neither")
 }
+
+// valueFlow prints the state and the value of each row, with none when the value is None.
+const valueFlow = `def main(item):
+    q = queue(name = "q")
+    command(name = "seen", run = ["seen"] + [r.item + "|" + r.state + "|" + (str(r.value).replace(" ", "_") if r.value != None else "none") for r in q.rows])
+`
+
+func TestQueue_ADoneRowCarriesTheValueOfARunThatAUserStarted(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
+	engine := h.engine(t)
+
+	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return {\"approved\": True, \"head\": \"abc\"}\n"))
+	require.NoError(t, err)
+
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{`21|done|{"approved":_True,_"head":_"abc"}`}, seenBy(t, h), "the row shows what the run of the owner returned")
+}
+
+func TestQueue_ARunThatAUserStartedAndThatReturnsAValueOfNoKindKeepsNoValueAndStillSucceeds(t *testing.T) {
+	t.Parallel()
+
+	h, _ := queueHarness(t, []model.Item{queueItem("21", model.SeverityP1)})
+	engine := h.engine(t)
+
+	_, err := engine.RunFile("21", testProject, writeFlow(t, "def main(item):\n    return struct(a = 1)\n"))
+	require.NoError(t, err, "a struct is no value that a run keeps, and it never fails a run that a user started")
+
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, valueFlow))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"21|done|none"}, seenBy(t, h))
+}
+
+func TestQueue_ARowWhoseRecordedValueIsNotJSONFailsTheCall(t *testing.T) {
+	t.Parallel()
+
+	_, err := queuedValue(queued{Rows: []queueRow{{Item: "21", Value: json.RawMessage("{")}}})
+
+	require.ErrorContains(t, err, "read the value of the last run of item 21")
+}

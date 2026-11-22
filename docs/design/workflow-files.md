@@ -412,7 +412,7 @@ Both builtins match text. They run no command, record no step and need no reposi
 
 `label` keeps the items that carry that tracker label. A call with no `label` keeps every open item. The engine reads no project setting for the choice: the workflow passes it. A workflow that needs a list of item ids keeps the rows whose `item` is in the list.
 
-Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step` and `stop_reason`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
+Each row has `item`, `state`, `severity`, `pr`, `parent`, `author`, `changes_requested`, `labels`, the tracker labels of the item, `stop_step`, `stop_reason` and `value`. A `done` row carries in `value` what its last run returned, whoever started that run; it is None on any other row. The round of the remediation example reads it to land an approved run that the owner started with `beehave run`. A `stopped` row names the step that ended its run in `stop_step` and the start of what that step printed in `stop_reason`; both are empty on any other row. The state:
 
 | State | When |
 | --- | --- |
@@ -614,7 +614,7 @@ The deadline is a recorded step, `gather:<name>#<n>.deadline`, before the step o
 - The engine counts the bytes while it converts the value, and stops at the limit. A value that shares one list many times is therefore refused before it is built.
 - `beehave status --json` does not show the value, because a value can be 64 KiB. Read it with `gather`.
 - The value is part of the recorded result of the child run, so a parent that restarts reads the same value. The child writes nothing outside the worktree to report what it found.
-- A run that a user started keeps no value: its `main` return is ignored.
+- A run that a user started keeps the value that its `main` returns, so the `queue` row of a done item shows it (`value`). A value that the run cannot keep is dropped, and it never fails the run.
 
 Before this rule, the engine dropped what a spawn entry returned. A spawn entry that still ends with `return command(...)` or `return struct(...)` now fails its child. Check each entry that `spawn` names: return a safe value or None, or remove the return.
 
