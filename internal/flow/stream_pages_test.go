@@ -127,7 +127,9 @@ func TestStream_ARunCanceledBeforeTheDeadlineIsRecordedFailsTheCall(t *testing.T
 	require.ErrorIs(t, receive(t, done).err, dbos.ErrWorkflowCancelled, "the run was canceled, so the step store refuses the record of the deadline")
 	assert.NotContains(t, stepNamesOf(t, engine, testRun), "stream:peek#1.deadline")
 
+	// The child still holds the gate. It ends before the test folder goes.
 	close(rig.h.agents.gate)
+	require.NoError(t, runHasStatus(t.Context(), engine, "item-21-r1", dbos.WorkflowStatusSuccess))
 }
 
 func TestStream_AChildThatTheStoreLosesFailsTheReadAndNoLaterStepRuns(t *testing.T) {
