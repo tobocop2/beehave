@@ -84,7 +84,7 @@ func runRound(t *testing.T, spy *spyRounds, text string) (*harness, *Engine, Ite
 	h := newHarness(t)
 	h.rounds = spy
 	engine := h.engine(t)
-	result, err := engine.RunFile(testItem, testProject, writeFlow(t, text))
+	result, err := engine.RunFile(testItem, testProject, writeFlow(t, text), modeOff())
 
 	return h, engine, result, err
 }
@@ -339,7 +339,7 @@ func TestRoundSteps_ABuildWithNoRoundWriterFailsTheCall(t *testing.T) {
 			engine := h.engine(t)
 			engine.deps.Rounds = nil
 
-			_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    "+call+"\n"))
+			_, err := engine.RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    "+call+"\n"), modeOff())
 
 			require.ErrorIs(t, err, errNoRounds)
 		})
