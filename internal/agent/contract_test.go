@@ -34,7 +34,7 @@ func TestRunner_AStepWithNoEditsStartsWithTheNoEditArgumentsAndVariables(t *test
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, `-p --tools read,bash --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
+	assert.Equal(t, `-p --tools read,bash --setting-sources  --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
 	assert.Contains(t, record(t, f.records, "env"), `AGENT_PERMISSION={"edit":"deny"}`)
 }
 

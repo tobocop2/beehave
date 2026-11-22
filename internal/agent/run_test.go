@@ -25,7 +25,7 @@ import (
 const token = "tok-secret-value"
 
 // attributionArgs is the settings argument that every Claude Code launch ends with.
-const attributionArgs = ` --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`
+const attributionArgs = ` --setting-sources  --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`
 
 type fixture struct {
 	records string
@@ -106,7 +106,7 @@ func TestRunner_AGuardAddsTheHookArgumentsOfTheAdapterAndNoGuardAddsNone(t *test
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --settings `+
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --permission-mode acceptEdits --setting-sources  --settings `+
 		`{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"beehave check command","onFailure":"block"}]}]}}`,
 		record(t, f.records, "args"))
 
@@ -123,7 +123,7 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFile(t *testing.T
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
-	assert.Contains(t, record(t, f.records, "args"), "--add-dir /state/outputs/7.review --settings ")
+	assert.Contains(t, record(t, f.records, "args"), "--setting-sources  --add-dir /state/outputs/7.review --settings ")
 	assert.Contains(t, record(t, f.records, "args"), "Edit(//state/outputs/7.review/output.json)")
 	assert.Nil(t, f.spec.Sandbox)
 	assert.Empty(t, f.spec.Guard)
@@ -168,7 +168,7 @@ func TestRunner_AStepWithNoEditsStartsWithoutThePermissionMode(t *testing.T) { /
 	got := agent.Runner{}.Run(context.Background(), f.spec)
 
 	assert.Equal(t, agent.OutcomeExited, got.Outcome)
-	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
+	assert.Equal(t, `-p --output-format stream-json --verbose --allowedTools Bash --setting-sources  --settings {"attribution":{"commit":"","pr":"","sessionUrl":false}}`, record(t, f.records, "args"))
 	assert.NotContains(t, record(t, f.records, "args"), "--permission-mode")
 }
 

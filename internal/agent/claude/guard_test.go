@@ -92,7 +92,7 @@ func TestGuard_AddsOneBashHookWithTheSettingsFlag(t *testing.T) {
 
 	assert.Empty(t, launch.Env)
 	assert.Empty(t, launch.Files)
-	require.Len(t, got, 2)
-	assert.Equal(t, "--settings", got[0])
-	assert.JSONEq(t, `{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}}`, got[1])
+	require.Len(t, got, 4)
+	assert.Equal(t, "--settings", got[2])
+	assert.JSONEq(t, `{"attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"/bin/beehave check command","onFailure":"block"}]}]}}`, got[3])
 }

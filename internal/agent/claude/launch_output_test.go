@@ -30,8 +30,8 @@ func TestLaunch_AStepWithNoSandboxOpensItsOutputFileToTheFileTools(t *testing.T)
 
 	args := claude.New(nil).Guard("/bin/beehave check command", "/run", []string{outputFile}, nil).Args
 
-	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[:2], "the folder of the one output file is a working directory")
-	assert.Equal(t, "--settings", args[2])
+	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[2:4], "the folder of the one output file is a working directory")
+	assert.Equal(t, "--settings", args[4])
 	assert.Equal(t, []string{"Read(//state/outputs/7.review/output.json)", "Edit(//state/outputs/7.review/output.json)"}, allowRules(t, args))
 	assert.Contains(t, args[len(args)-1], `"matcher":"Bash"`, "the hook stays in the same settings")
 }
@@ -41,7 +41,7 @@ func TestLaunch_AStepWithNoGuardAndNoSandboxStillOpensItsOutputFileToTheFileTool
 
 	args := claude.New(nil).Guard("", "/run", []string{outputFile}, nil).Args
 
-	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[:2])
+	assert.Equal(t, []string{"--add-dir", "/state/outputs/7.review"}, args[2:4])
 	assert.Equal(t, []string{"Read(//state/outputs/7.review/output.json)", "Edit(//state/outputs/7.review/output.json)"}, allowRules(t, args))
 	assert.NotContains(t, args[len(args)-1], "hooks", "no guard, so no hook")
 }
@@ -51,7 +51,7 @@ func TestLaunch_AStepWithNoOutputFileAndNoGuardAddsOnlyTheAttributionSetting(t *
 
 	launch := claude.New(nil).Guard("", "/run", nil, nil)
 
-	assert.Equal(t, []string{"--settings", `{"attribution":{"commit":"","pr":"","sessionUrl":false}}`}, launch.Args)
+	assert.Equal(t, []string{"--setting-sources", "", "--settings", `{"attribution":{"commit":"","pr":"","sessionUrl":false}}`}, launch.Args)
 	assert.Empty(t, launch.Env)
 	assert.Empty(t, launch.Files)
 }

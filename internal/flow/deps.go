@@ -37,7 +37,7 @@ type AgentRequest struct {
 	NoEdits bool
 	// Sandbox is the sandbox the shell of the step runs in, or nil for none.
 	Sandbox *model.Sandbox
-	// Skills are the skills that the prompt of the step declares, each by the name of its folder in the config folder of the runner. The agent gets these, with or without a sandbox. Only a sandboxed step is limited to them: an unsandboxed run also loads the skills of the settings of its runner.
+	// Skills are the skills that the prompt of the step declares, each by the name of its folder in the config folder of the runner. The agent gets these, with or without a sandbox.
 	Skills []string
 	// OutputFile is the file where the agent writes its declared outputs as a JSON object. Outputs names them. Outputs is empty for a call that declares none.
 	OutputFile string
