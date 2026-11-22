@@ -61,6 +61,8 @@ func TestCheck_AcceptsTheArgumentsThatTheRunAccepts(t *testing.T) {
 		"    command(run = [\"x\"], env = {\"A\": \"1\", \"B\": str(item)})\n"+
 		"    command(run = [\"x\"], env = {str(item): 1})\n"+
 		"    write(run = [\"x\"], env = {})\n"+
+		"    command(run = [\"x\"], env = None)\n"+
+		"    command(run = [\"x\"], env = x)\n"+
 		"    sandbox(network = [str(item), \"api.example.org\"])\n"+
 		"    item_create(title = \"t\", key = \"k\", body = \"\")\n"+
 		"    item_create(title = str(item), key = str(item))\n"+
