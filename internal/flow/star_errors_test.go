@@ -24,6 +24,7 @@ func TestBuiltins_ABadCallIsRefusedAtItsPositionAndRunsNothing(t *testing.T) {
 		{"command env is not a dict", `command(run = ["x"], env = "A=b" + "")`, "env must be a dict of strings"},
 		{"command env value is not text", `command(run = ["x"], env = {"A": 1})`, "env must hold strings only"},
 		{"command env name is reserved", `command(run = ["x"], env = {"BEEHAVE_STATE_DIR": "b"})`, "env cannot set `BEEHAVE_STATE_DIR`"},
+		{"command env hands back the SSH agent", `command(run = ["x"], env = {"SSH_AUTH_SOCK": "/tmp/agent.sock"})`, "env cannot set `SSH_AUTH_SOCK`"},
 		{"command host with env", `command(run = ["x"], host = "h", env = {"A": "b"})`, "stdin and env cannot be used together with host"},
 		{"command stop code is not a number", `command(run = ["x"], stop_on_rc = ["a"])`, "stop_on_rc must hold whole numbers"},
 		{"command stop codes are not a list", `command(run = ["x"], stop_on_rc = 3)`, "stop_on_rc must be a list"},

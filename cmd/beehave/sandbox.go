@@ -33,7 +33,7 @@ func (a agents) sandboxPlan(ctx context.Context, request flow.AgentRequest, fold
 	}
 
 	project := a.projects[request.Project]
-	deny, read := withSocket(credentialPaths(home, folder, project.SandboxDeny), a.env["SSH_AUTH_SOCK"]), expandAll(project.SandboxRead, home)
+	deny, read := withSocket(credentialPaths(home, folder, project.SandboxDeny), a.env[model.SSHAgentVar]), expandAll(project.SandboxRead, home)
 	git := gitOf(a.projects, request.Project, a.repos).Runner(dir, proc.DefaultTimeout)
 	closed, err := closedPaths(ctx, git, dir, home)
 	identity := a.identity(ctx, git)
@@ -350,13 +350,36 @@ func credentialPaths(home, configDir string, extra []string) []string {
 	return slices.Compact(paths)
 }
 
-// withSocket returns the deny paths with the socket of the SSH agent of the engine added. A socket is a file, so the deny list covers it. An empty socket adds nothing.
+// withSocket returns the deny paths with the socket of the SSH agent of the engine added. A socket is a file, so the deny list covers it.
+// A socket that is a link adds the link and its target. An empty socket adds nothing.
 func withSocket(deny []string, socket string) []string {
 	if socket == "" {
 		return deny
 	}
 
-	return slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(deny), socket))))
+	paths := append(slices.Clone(deny), socket)
+
+	if target, err := filepath.EvalSymlinks(socket); err == nil {
+		paths = append(paths, target)
+	}
+
+	return slices.Compact(slices.Sorted(slices.Values(paths)))
+}
+
+// withoutSocket returns env without the variable of the SSH agent.
+func withoutSocket(env []string) []string {
+	return slices.DeleteFunc(slices.Clone(env), func(pair string) bool { return strings.HasPrefix(pair, model.SSHAgentVar+"=") })
+}
+
+// socketOf returns the socket that env names, or "" when it names none.
+func socketOf(env []string) string {
+	for _, pair := range env {
+		if socket, found := strings.CutPrefix(pair, model.SSHAgentVar+"="); found {
+			return socket
+		}
+	}
+
+	return ""
 }
 
 // homeCredentials returns the paths of the engine credential list under home. A pattern with a * stands for the paths that match it.

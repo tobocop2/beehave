@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// SSHAgentVar is the variable that holds the socket of the SSH agent of the owner. No step gets it.
+const SSHAgentVar = "SSH_AUTH_SOCK"
+
 // Sandbox is the sandbox setting of one agent step as the run records it. A step with no sandbox records no value (nil), and a record
 // without the value replays as a step with no sandbox. Network lists the domains that the shell may reach.
 type Sandbox struct {

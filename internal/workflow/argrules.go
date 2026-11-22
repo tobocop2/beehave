@@ -78,9 +78,16 @@ func envAssignment(key, val starlark.Value) (string, error) {
 		return "", fmt.Errorf("env must hold strings only, and %s is not. Write the value in quotes", key)
 	case ReservedEnvName(name):
 		return "", fmt.Errorf("env cannot set `%s`. %s", name, ReservedEnvAdvice())
+	case name == model.SSHAgentVar:
+		return "", agentSocketError(name)
 	}
 
 	return name + "=" + value, nil
+}
+
+// agentSocketError is the refusal of the SSH agent variable in the env of a call. No step gets the agent of the owner.
+func agentSocketError(name string) error {
+	return fmt.Errorf("env cannot set `%s`. No step gets the SSH agent of the owner. Remove it", name)
 }
 
 func envRule(v starlark.Value) error {

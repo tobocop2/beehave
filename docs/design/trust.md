@@ -94,8 +94,10 @@ An unsandboxed `command` step that is left is a limit. Until the sandbox covers 
 
 | Channel | Mechanism or limit |
 |---|---|
-| `SSH_AUTH_SOCK` variable | No allow-list (agent, `command`, usage reader) holds it. |
-| The agent socket, a file | A sandboxed step: the engine adds the path of its own `SSH_AUTH_SOCK` to the deny list of the plan, and `~/.ssh` is denied. An unsandboxed step can find the socket. This is a limit. The sandbox default closes it, because a project with the sandbox on refuses an unsandboxed step. |
+| `SSH_AUTH_SOCK` variable | No allow-list (agent, `command`, usage reader) holds it, `env` refuses the name in a `command` or `write` call, and a sandboxed gate drops it. Keys that the agent holds are out of reach. A step keeps `HOME`, so `ssh` still finds a key file in `~/.ssh`. That is a limit for an unsandboxed step. A sandboxed step denies `~/.ssh`. |
+| The agent socket, a file | A sandboxed step: the engine adds the path of its own `SSH_AUTH_SOCK` to the deny list of the plan, with the target when the socket is a link, and `~/.ssh` is denied. Whether the deny of a file also stops a connect to a Unix socket is not measured (`make smoke-sandbox` is owed). An unsandboxed step can find the socket. This is a limit. The sandbox default closes it, because a project with the sandbox on refuses an unsandboxed step. |
+| The gate step | A gate under the sandbox of the project gets no `SSH_AUTH_SOCK`, and the plan refuses a read or write path that holds the socket. A gate with no sandbox keeps the variable and runs as the owner. That is a limit. |
+| The OpenCode launch | It has the same `HOME` as the Claude launch (`internal/agent/opencode/guard.go`) and the same allow-list, so it has the same channels. They are not measured. |
 | The token file of the `file` source | An unsandboxed step can read it. This is a limit, closed the same way. The sandbox denies `~/.config/beehave`. |
 | The git credential helper of the owner | An unsandboxed step reads `~/.gitconfig`. The engine sets `GIT_CONFIG_GLOBAL=/dev/null` for its own forge git calls. The token of a call is readable by the same user while the call runs (`ps eww`). This is a limit. |
 | The start check | It sees the environment that the engine builds. It cannot see files, so it checks the environment channel only. |
