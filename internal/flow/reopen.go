@@ -291,6 +291,7 @@ func (c *Client) childClaim(row dbos.WorkflowStatus) (ItemInput, string, error) 
 }
 
 // rewind drops the history of the run from one step on and queues the run again. A phase goes back to the queue of its kind, in the partition of its login.
+// The rewind keeps every message: a message that a dropped step took is unread again, and an unread message stays.
 func (c *Client) rewind(id string, from int, opts ...dbos.RewindWorkflowOption) error {
 	row, err := c.row(id)
 	if err != nil {
@@ -303,7 +304,7 @@ func (c *Client) rewind(id string, from int, opts ...dbos.RewindWorkflowOption) 
 	}
 
 	// A rewind keeps the application version of the run. Only the caller that passed the pin check adds the option that restamps the run.
-	_, err = dbos.RewindWorkflow[any](c.flow, id, append(append(queued, dbos.WithRewindStartStep(uint(from))), opts...)...)
+	_, err = dbos.RewindWorkflow[any](c.flow, id, append(append(queued, dbos.WithRewindStartStep(uint(from)), dbos.WithRewindKeepMessages()), opts...)...)
 
 	return err
 }

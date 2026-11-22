@@ -120,6 +120,7 @@ The severity is the field `severity` of the item (`P0` to `P3`, or `P?`). The ru
 - The runs that `spawn` starts get their place from the tracker, in the recorded spawn step, so a replay queues the run with the same place.
 - A phase and a run of `items` have no standing at hand, so they take the place of the severity alone.
 - A run that `beehave resume` continues keeps the place that its row holds.
+- A run that `beehave resume` rewinds keeps every message that was sent to it. A message that a dropped step took is unread again, an unread message stays unread, and a message that a step below the cut took stays taken. The replay takes the oldest message first, by the millisecond that it was sent. Messages sent in the same millisecond have no defined order. A wait that the replay runs again takes the answer that it took before and does not ask again.
 - A run that `beehave resume` rewinds is queued with place 0. The rewind of the library takes no priority, and the queue gives a run with no priority the value 0. Place 0 starts before every place from 1 to 6, so a rewound run starts first, ahead of a P0 item.
 
 #### Turn and budget stops
