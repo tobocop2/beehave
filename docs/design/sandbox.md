@@ -274,7 +274,11 @@ Apple deprecated `sandbox-exec`, and every macOS still has it. The check of the 
 
 The gate never runs unconfined.
 
-The Apple tools in `/usr/bin` (`git`, `make`, `clang` and the others of Xcode) are shims that ask `xcrun` for the real tool. `xcrun` reads the Xcode or Command Line Tools folder and writes a cache file in the per-user system temporary folder, a path that no plan opens. So the enforcer refuses a shim with a message before it starts. A gate command on macOS uses the same tool from another folder, such as the one that Homebrew installs. If it needs the libraries of that tool, they go in `sandbox_read`.
+The Apple tools in `/usr/bin` (`git`, `make`, `clang` and the others of Xcode) are shims that ask `xcrun` for the real tool. `xcrun` reads the developer folder of Xcode or the Command Line Tools and keeps a cache file.
+
+At start, the engine runs `xcode-select -p` once with its own environment, before any head code runs. A `DEVELOPER_DIR` in that environment wins. A gate plan then holds, read-only, the developer folder, the `.app` bundle that holds it (Xcode) and `/Library/Preferences/com.apple.dt.Xcode.plist`. The profile has no preference rule: the plan opens a file, and no preference domain. The gate command gets `DEVELOPER_DIR` set to that folder and `xcrun_db` set to a file in its own temporary folder, after the inherited environment, so a request environment cannot change them. The cache then lives and ends with the temporary folder, and the plan opens no new write. The plan covers gate commands only; an agent step runs no shim of Apple.
+
+If `xcode-select` names no folder, the plan holds none, and the enforcer refuses a shim with a message before it starts. A gate command then uses the same tool from another folder, such as the one that Homebrew installs, with the libraries of that tool in `sandbox_read`. If the license of Xcode is not accepted, the gate fails with the license message, as it does outside the sandbox.
 
 A change under `internal/sandbox/seatbelt` must pass `make check-darwin` on a Mac before it merges, because `make check` runs on Linux and does not compile the macOS code.
 

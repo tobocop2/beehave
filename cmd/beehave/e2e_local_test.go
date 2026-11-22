@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -296,23 +295,15 @@ func writeTools(t *testing.T) string {
 
 		require.NoError(t, err)
 
-		wrapper := "#!/bin/sh\nexec " + realTool(name, found) + " \"$@\"\n"
-		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapper))
+		require.NoError(t, exectest.Write(filepath.Join(tools, name), wrapperText(found)))
 	}
 
 	return tools
 }
 
-// realTool is the program that a wrapper runs. On macOS /usr/bin/make is a shim that asks xcrun for the real make, and a sandbox cannot run xcrun,
-// so the wrapper runs the program that xcrun names. Every other tool, and a machine where xcrun fails, runs the program that LookPath found.
-func realTool(name, found string) string {
-	if runtime.GOOS == "darwin" && name == "make" {
-		if out, err := exec.CommandContext(context.Background(), "xcrun", "-f", "make").Output(); err == nil {
-			return strings.TrimSpace(string(out))
-		}
-	}
-
-	return found
+// wrapperText is the script of a wrapper: it runs the program at found, by its full path, with the arguments of the caller.
+func wrapperText(found string) string {
+	return "#!/bin/sh\nexec \"" + found + "\" \"$@\"\n"
 }
 
 // cmdIsolate sets PATH to the fake claude of the script (the folder fake), the beehave commands and the wrappers in tools, and TOOLS to the folder of the wrappers.
