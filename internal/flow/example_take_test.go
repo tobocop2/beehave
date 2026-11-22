@@ -27,7 +27,7 @@ func runTake(engine *Engine, file string) <-chan runOutcome {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		in, err := pinnedInput(testItem, testProject, file)
+		in, err := pinnedInput(testItem, testProject, file, modeOff())
 		if err != nil {
 			done <- runOutcome{err: err}
 

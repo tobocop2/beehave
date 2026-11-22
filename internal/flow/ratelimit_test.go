@@ -388,7 +388,7 @@ func TestRateLimit_TheTreeSumCountsTheFailedAgentRunOfAChildRun(t *testing.T) {
 
 	engine := rig.h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, capFile(t, treeFlow))
+	_, err := engine.RunFile(testItem, testProject, capFile(t, treeFlow), modeOff())
 	require.NoError(t, err, "the root run ends: the gather reports the child run that failed")
 
 	child, err := runAndBelowSpend(engine.ctx, childRun)
@@ -561,7 +561,7 @@ agent(model = "m", prompt = "prompts/a.md", name = "b")
 
 	engine := rig.h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "neither the agent nor the usage read gives a reset time")
 
 	client := rig.h.client(t, testVersion)

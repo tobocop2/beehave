@@ -365,7 +365,7 @@ func TestExclusiveHost_AReopenReportsABuildJobThatIsGone(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -418,7 +418,7 @@ func TestExclusiveHost_ACancelWithNoEngineCancelsTheBuildJobOfTheGate(t *testing
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 

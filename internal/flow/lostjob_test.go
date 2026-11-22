@@ -119,7 +119,7 @@ func TestLostJob_AProofEndsTheWaitAsAVoidGateWithTheHostLoss(t *testing.T) {
 	hosts.proofs = []model.LostProof{{Note: "the link is down"}, {Note: "the link is down"}, {Kind: model.LostStopped}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown", "unknown"] proof=stopped host=gpu-b job=job-1 report=the gate job was lost on gpu-b and the proof is stopped`)
 	assert.Equal(t, 3, hosts.proofReads(), "the third look proves")
@@ -148,7 +148,7 @@ func TestLostJob_AProvedLossOfAGateWithNoListGivesTheOneStepOfItsCommandAsUnknow
 	hosts.proofs = []model.LostProof{{Kind: model.LostGone}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, `GATE passed=False steps=["unknown"] proof=gone host=gpu-b job=job-1`, "a gate with no list is still void, not red")
 }
@@ -364,7 +364,7 @@ func TestLostJob_AProofReadThatFailsFailsTheGate(t *testing.T) {
 	h, hosts, _ := lostHarness(t, time.Hour)
 	hosts.proofErr = errors.New("the job id is not a unit of this host")
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(lostGateBody)), modeOff())
 
 	require.ErrorContains(t, err, "read the proof that the lost job job-1 on host gpu-b can no longer run: the job id is not a unit of this host")
 	assert.Equal(t, 1, hosts.proofReads(), "a read that fails ends the wait")

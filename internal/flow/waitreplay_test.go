@@ -24,7 +24,7 @@ func interruptedAfterTheDeadlineIsRecorded(t *testing.T, h *harness, file string
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -66,7 +66,7 @@ func resumedWithDeadlineAt(t *testing.T, offset time.Duration) error {
 	done := make(chan error, 1)
 
 	go func() {
-		_, runErr := next.RunFile(testItem, testProject, file)
+		_, runErr := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runErr
 	}()
 
@@ -147,7 +147,7 @@ func TestWait_ARecordedWaitWithoutTimedOutReplays(t *testing.T) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

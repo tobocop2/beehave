@@ -140,7 +140,7 @@ func TestGateRefusal_AReplayOfARecordedGateReturnsTheRecordedPassAfterTheSandbox
 			engine := h.engine(t)
 
 			// The release after the gate fails, so the run fails with the gate pass in its history.
-			_, err := engine.RunFile(testItem, testProject, file)
+			_, err := engine.RunFile(testItem, testProject, file, modeOff())
 			require.ErrorContains(t, err, "release")
 
 			sandboxOn.Store(true)

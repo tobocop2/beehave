@@ -111,7 +111,7 @@ func itemsStartOrder(t *testing.T, severities map[string]string) []string {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 

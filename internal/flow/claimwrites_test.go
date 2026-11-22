@@ -70,7 +70,7 @@ func writeAfter(t *testing.T, w stepWrite, lost bool) ([]string, error) {
 		before = `command(name = "before", run = ["keep"])`
 	}
 
-	_, err := loser.engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(before+"\n"+w.call)))
+	_, err := loser.engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(before+"\n"+w.call)), modeOff())
 
 	return w.written(h, writer), err
 }
@@ -180,7 +180,7 @@ func holdRun(t *testing.T, h *harness, engine *Engine, others func(context.Conte
 	file := writeFlow(t, bodyFlow(`command(name = "w", run = ["wait"])`))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		r.done <- err
 	}()
 
@@ -282,7 +282,7 @@ func TestClaimWrites_AStepThatRunsAProgramAfterTheLossNeverRunsIt(t *testing.T) 
 			loseWhenAsked(h, loser)
 			loser.engine = launchedWith(t, h, func(*Deps) {})
 
-			_, err := loser.engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "before", run = ["`+loseCommand+`"])`+"\n"+call)))
+			_, err := loser.engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "before", run = ["`+loseCommand+`"])`+"\n"+call)), modeOff())
 
 			require.ErrorIs(t, err, errClaimLost)
 			assert.Equal(t, []string{loseCommand}, h.commands.ran(), "the program of the step that starts after the loss never runs: a command can write to the forge")
@@ -334,7 +334,7 @@ func lapsedStep(t *testing.T, call string, lapsed bool) {
 		before = `command(name = "before", run = ["` + lapseCommand + `"])`
 	}
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(before+"\n"+call)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(before+"\n"+call)), modeOff())
 
 	if !lapsed {
 		require.NoError(t, err)
@@ -423,7 +423,7 @@ func TestClaimWrites_AHandOffThatLostItsClaimMarksNothingReady(t *testing.T) {
 	engine := rig.engine(t)
 	loser.engine = engine
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.body("1", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.body("1", ""))), modeOff())
 
 	require.ErrorIs(t, err, errClaimLost)
 	assert.NotContains(t, rig.host.pr.marked(), "1:false", "the claim was lost before the ready mark, so the pull request is never marked ready (a return to draft is no ready mark)")
@@ -591,7 +591,7 @@ func TestClaimWrites_AQueuedMergeAndASlotCommandRecordTheRunAndTheItemOfTheRun(t
 		rig := newBatchRig(t)
 		engine := rig.engine(t)
 
-		_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", ""))))
+		_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", ""))), modeOff())
 		require.NoError(t, err)
 
 		assert.Equal(t, []string{runID(testItem, 1) + " " + testItem}, recordedRuns(t, engine, kindMerge), "the merge names its run and the item of that run, not the member")
@@ -604,7 +604,7 @@ func TestClaimWrites_AQueuedMergeAndASlotCommandRecordTheRunAndTheItemOfTheRun(t
 		h.slots = func(string, string, string) (SlotGrant, error) { return SlotGrant{Host: "box", Count: 1}, nil }
 		engine := h.engine(t)
 
-		_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "mutate", run = ["x"], host = "build", slots = "mutation")`)))
+		_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(`command(name = "mutate", run = ["x"], host = "build", slots = "mutation")`)), modeOff())
 		require.NoError(t, err)
 
 		assert.Equal(t, []string{runID(testItem, 1) + " " + testItem}, recordedRuns(t, engine, kindCommand), "the host job names its run and the item of that run")

@@ -227,7 +227,7 @@ func (r *loopRig) run(t *testing.T) error {
 	engine := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 
 	return err
 }
@@ -257,7 +257,7 @@ func TestQueueLoop_ReadyItemsStartInFreeSlotsWhileOneItemLoops(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, r.file)
+		_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- err
 	}()
 
@@ -297,7 +297,7 @@ func TestQueueLoop_TheRunEndsWhenNoWorkRemains(t *testing.T) {
 	engine := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -341,7 +341,7 @@ func TestQueueLoop_OnePassStartsNoMoreRunsThanFreeSlots(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, r.file)
+		_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- err
 	}()
 
@@ -380,7 +380,7 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 
 	first, stop := r.crashEngine(t)
 
-	go func() { _, _ = first.RunFile(testItem, testProject, r.file) }() //nolint:errcheck // the crash ends the run with an error
+	go func() { _, _ = first.RunFile(testItem, testProject, r.file, modeOff()) }() //nolint:errcheck // the crash ends the run with an error
 
 	waitOn(t, condition(func() bool { return len(r.agents.started()) == 2 }))
 	stop()
@@ -391,7 +391,7 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 	second := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	_, err := second.RunFile(testItem, testProject, r.file)
+	_, err := second.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started(), "every item started, and none has a second entry")
@@ -439,7 +439,7 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	ran := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, r.file)
+		_, runErr := first.RunFile(testItem, testProject, r.file, modeOff())
 		ran <- runErr
 	}()
 
@@ -483,7 +483,7 @@ func TestQueueLoop_AnEngineStoppedInTheSleepAfterAFailureWakesTheResumedRunAtThe
 	second := r.engine(t)
 	t.Cleanup(func() { require.NoError(t, second.Shutdown()) })
 
-	_, err = second.RunFile(testItem, testProject, r.file)
+	_, err = second.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -535,7 +535,7 @@ func TestQueueLoop_AFailedChildIsHeldAndTheLoopGoesOn(t *testing.T) {
 	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)
@@ -563,7 +563,7 @@ func TestQueueLoop_AFailedPassWithNothingToStartDoesNotSleep(t *testing.T) {
 	engine = r.engine(t)
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err := engine.RunFile(testItem, testProject, r.file)
+	_, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)

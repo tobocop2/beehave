@@ -58,7 +58,7 @@ func runFollowup(t *testing.T, rig *agentRig, file, recorded string) (ItemResult
 
 	rig.h.items.fields = map[string]string{"recorded": recorded}
 
-	return rig.h.engine(t).runEntry(testItem, testProject, file, "followup")
+	return rig.h.engine(t).runEntry(testItem, testProject, file, "followup", modeOff())
 }
 
 // recordedValue is the value that a foreign review of the pull request 41 records, with the findings `findings` (a JSON list).
@@ -90,7 +90,7 @@ func TestExampleForeign_TwoPullRequestsOfOneRepositoryFileTwoIssues(t *testing.T
 
 	for _, pr := range []int{foreignPull, other} {
 		rig.h.items.fields = map[string]string{"recorded": recordedOf(pr, foreignFindings)}
-		_, err := engine.runEntry(testItem, testProject, file, "followup")
+		_, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 		require.NoError(t, err)
 	}
 
@@ -106,7 +106,7 @@ func TestExampleForeign_OnePullRequestNumberInTwoRepositoriesFilesTwoIssues(t *t
 
 	for _, repo := range []string{"o/r", "o2/r"} {
 		rig.project.Repo = repo
-		_, err := engine.runEntry(testItem, testProject, file, "followup")
+		_, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 		require.NoError(t, err)
 	}
 
@@ -140,10 +140,10 @@ func TestExampleForeign_ASecondRunForTheSamePullRequestFilesNoSecondIssue(t *tes
 	rig.h.items.fields = map[string]string{"recorded": recordedValue(foreignFindings)}
 	engine := rig.h.engine(t)
 
-	first, err := engine.runEntry(testItem, testProject, file, "followup")
+	first, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 	require.NoError(t, err)
 
-	second, err := engine.runEntry(testItem, testProject, file, "followup")
+	second, err := engine.runEntry(testItem, testProject, file, "followup", modeOff())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "two runs file one issue")

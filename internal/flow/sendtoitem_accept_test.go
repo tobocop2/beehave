@@ -19,7 +19,7 @@ command(name = "got", run = ["got", got.value, got.sender, got.id, str(again.tim
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(item, project, file)
+		result, err := engine.RunFile(item, project, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -47,7 +47,7 @@ func TestSendToItem_ADependencyItemTellsTheItemThatWaitsOnItAndTheMessageArrives
 
 	waiting := waitingItem(t, engine, "21", testProject)
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 	require.NoError(t, err)
 	require.NoError(t, receive(t, waiting).err)
 
@@ -64,21 +64,21 @@ func TestSendToItem_AnItemWithNoOpenRunOrAFinishedRunIsAnError(t *testing.T) {
 	h := newHarness(t)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:30"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:30"), modeOff())
 	require.ErrorContains(t, err, "item 30 has no open run")
 
-	_, err = engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)))
+	_, err = engine.RunFile("21", testProject, writeFlow(t, bodyFlow(`command(name = "w", run = ["w"])`)), modeOff())
 	require.NoError(t, err)
 
 	// Item 12 failed its first run at item 30, and RunFile of a failed item reports that run. A new sender gets its own first run.
-	_, err = engine.RunFile("13", testProject, sendFlow(t, "item:21"))
+	_, err = engine.RunFile("13", testProject, sendFlow(t, "item:21"), modeOff())
 	require.ErrorContains(t, err, "item 21 has no open run")
 }
 
 func TestSendToItem_AnItemThatIsNotAnItemIdIsAnError(t *testing.T) {
 	t.Parallel()
 
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, builtSendFlow(t, "not an item"))
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, builtSendFlow(t, "not an item"), modeOff())
 
 	require.ErrorIs(t, err, ErrBadItem)
 }
@@ -91,7 +91,7 @@ func TestSendToItem_AnItemWithAnOpenRunUnderAnotherProjectIsAnError(t *testing.T
 
 	startOpenRun(t, h, engine, "21", "other")
 
-	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"))
+	_, err := engine.RunFile(testItem, testProject, sendFlow(t, "item:21"), modeOff())
 
 	require.ErrorContains(t, err, "item 21 has an open run under project other")
 	require.ErrorContains(t, err, "project p")
@@ -124,7 +124,7 @@ def main(item):
     gather(k, name = "all")
     command(name = "got", run = ["got", m.value])
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"got x"}, h.commands.ranBy(testItem))

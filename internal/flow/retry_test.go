@@ -96,7 +96,7 @@ func TestCommandRetries_TheSpentRetriesLeaveOneRecordOfTheLastTry(t *testing.T) 
 	h.commands.reply = codes(7)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 2, backoff = \"1ms\", name = \"fetch\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("command(run = [\"fetch\"], retries = 2, backoff = \"1ms\", name = \"fetch\")\n")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, timesRun(h, "fetch"))

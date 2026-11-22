@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 func TestRun_AnEngineThatHoldsTheStateFolderGetsTheItemAndNoOwnEngineOpens(t *testing.T) {
@@ -27,6 +28,56 @@ func TestRun_AnEngineThatHoldsTheStateFolderGetsTheItemAndNoOwnEngineOpens(t *te
 	assert.Zero(t, rig.engines, "a joined run builds no engine")
 	assert.Empty(t, rig.runner.items)
 	assert.True(t, rig.steering.closeOK)
+}
+
+func sandboxedProject() string {
+	return strings.Replace(validProject, `test_report = "r.xml")`, `test_report = "r.xml", sandbox = "on")`, 1)
+}
+
+// clientProjects holds the project file of the client for each sandbox key, and the mode a run of it stores.
+var clientProjects = map[string]struct {
+	project string
+	stored  model.SandboxMode
+}{
+	"key on":    {sandboxedProject(), model.SandboxOn},
+	"key unset": {validProject, model.SandboxOff},
+}
+
+func TestRun_AJoinCarriesTheSandboxModeOfTheProjectOfTheClient(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range clientProjects {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRig(t)
+			writeConfig(t, rig.dir, "projects/p.star", test.project)
+			rig.steering.running = true
+
+			code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+			require.Equal(t, 0, code, stderr)
+			assert.Equal(t, []model.SandboxMode{test.stored}, rig.steering.joinedSandboxes, "an unset key stores off, never an empty mode")
+		})
+	}
+}
+
+func TestRun_AnOwnEngineRunCarriesTheSandboxModeOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range clientProjects {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rig := newRig(t)
+			writeConfig(t, rig.dir, "projects/p.star", test.project)
+
+			code, _, stderr := rig.execute(t.Context(), "run", "12")
+
+			require.Equal(t, 0, code, stderr)
+			assert.Equal(t, []model.SandboxMode{test.stored}, rig.runner.sandboxes, "an unset key stores off, never an empty mode")
+		})
+	}
 }
 
 func TestRun_NoEngineOnTheStateFolderMeansNoJoin(t *testing.T) {

@@ -148,7 +148,7 @@ func TestAgentStep_AllowPathsKeepsTheSnapshotOfTheFirstStartWhenTheRunResumes(t 
 
 	rig.crashItemAfterThePhaseEndedArmedBy(t, testItem, file, func(a func()) { arm = a })
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "late.txt", "the resume compares with the snapshot of the first start")
 	assert.NotContains(t, err.Error(), "notes.txt")

@@ -94,7 +94,7 @@ func TestHostLoss_TheRootRunCountsLossesOfItsChildRuns(t *testing.T) {
 	engine := rig.engine(t)
 	prs := `struct(item = "1", head = "` + rig.heads["1"] + `"), struct(item = "3", head = "` + rig.heads["3"] + `")`
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, strings.Replace(lostTreeFlow, "PRS", prs, 1)))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, strings.Replace(lostTreeFlow, "PRS", prs, 1)), modeOff())
 	require.NoError(t, err)
 
 	first, second, lander := lastRunOf(t, engine, "21"), lastRunOf(t, engine, "22"), lastRunOf(t, engine, "23")
@@ -118,7 +118,7 @@ func TestHostLoss_TwoLossesOfOneRunCountOneThenTwo(t *testing.T) {
 	hosts.proofs = []model.LostProof{{Kind: model.LostStopped}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"first\")\ngate(name = \"second\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("host_up(name = \"start\", host = \"gpu-b\")\ngate(name = \"first\")\ngate(name = \"second\")\n")), modeOff())
 	require.NoError(t, err)
 
 	assert.Subset(t, stepNamesOf(t, engine, testRun), []string{"gate:first#1/host-loss", "gate:second#2/host-loss"}, "the run records each loss as its own step")
@@ -256,7 +256,7 @@ func TestHostLoss_AGateThatLostNothingCountsNoneAndStatusOmitsTheCount(t *testin
 	h := newHarness(t)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 	require.NoError(t, err)
 
 	outputs := gateRecordOf(t, engine, testRun, "gate:check#1")

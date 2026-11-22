@@ -27,7 +27,7 @@ func runGatherThen(t *testing.T, h *harness, read string) (*Engine, error) {
 	t.Helper()
 
 	engine := h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, publishingChild+"    "+strings.ReplaceAll(strings.TrimSpace(read), "\n", "\n    ")+"\n"))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, publishingChild+"    "+strings.ReplaceAll(strings.TrimSpace(read), "\n", "\n    ")+"\n"), modeOff())
 
 	return engine, err
 }
@@ -119,7 +119,7 @@ func TestProgress_RefusesARunThatThisRunDidNotSpawn(t *testing.T) {
 	h := newHarness(t)
 
 	flow := "def main(item):\n    progress([struct(item = \"21\", run = \"item-21-r1\")], \"stage\", name = \"peek\")\n"
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.ErrorContains(t, err, "run item-21-r1 is not a child of this run")
 }
@@ -130,7 +130,7 @@ func TestProgress_RefusesRunsThatSpawnDidNotReturn(t *testing.T) {
 	h := newHarness(t)
 
 	flow := "def main(item):\n    progress(\"item-21-r1\", \"stage\", name = \"peek\")\n"
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.ErrorContains(t, err, "runs must be the value that spawn returned")
 }
@@ -143,7 +143,7 @@ func TestPublish_RefusesAKeyThatTheRuleRejectsWhenTheKeyIsComputed(t *testing.T)
 			t.Parallel()
 
 			flow := "def main(item):\n    k = \"" + key + "\"\n    publish(k, 1, name = \"x\")\n"
-			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 			require.ErrorContains(t, err, "the key \""+key+"\" is ")
 		})
@@ -154,7 +154,7 @@ func TestProgress_RefusesAKeyThatTheRuleRejectsWhenTheKeyIsComputed(t *testing.T
 	t.Parallel()
 
 	flow := "def main(item):\n    runs = spawn(items = [\"21\"], entry = \"main\", name = \"fan\")\n    k = \"beehave.keys\"\n    progress(runs, k, name = \"peek\")\n"
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 	require.ErrorContains(t, err, "is reserved")
 }
@@ -173,7 +173,7 @@ func TestPublish_RefusesAValueThatTheRunCannotKeep(t *testing.T) {
 			t.Parallel()
 
 			flow := "def main(item):\n    publish(\"k\", " + c.value + ", name = \"x\")\n"
-			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow))
+			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 
 			if c.want == "" {
 				require.NoError(t, err)
@@ -230,7 +230,7 @@ def main(item):
     done = gather(spawn(items = ["21"], entry = "worker", name = "fan"), name = "fan")
     command(name = "cost", run = ["cost", str(done.results[0].cost_usd)])
 `
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, capFile(t, flow))
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, capFile(t, flow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cost 5.0"}, rig.h.commands.ranBy(testItem), "the two agent steps of the child cost 2.5 each")
@@ -295,7 +295,7 @@ func TestPublishAndProgress_RefuseArgumentsThatAreMissing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    "+call+"\n"))
+			_, err := newHarness(t).engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    "+call+"\n"), modeOff())
 
 			require.ErrorContains(t, err, name)
 		})
@@ -347,7 +347,7 @@ func TestPublished_AKeyThatTheListNamesAndNoEventHoldsIsAnError(t *testing.T) {
 
 	h := newHarness(t)
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    pass\n"))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, "def main(item):\n    pass\n"), modeOff())
 	require.NoError(t, err)
 
 	// WyJnaG9zdCJd is the base64 of ["ghost"], the way the store keeps the list of keys.
@@ -373,7 +373,7 @@ def main(item):
     p = progress(runs, "note", name = "peek")
     command(name = "log", run = ["log", p[0].value["text"]])
 `
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, flow))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, flow), modeOff())
 	require.NoError(t, err)
 
 	ran := h.commands.ranBy(testItem)
@@ -409,7 +409,7 @@ def main(item):
     done = gather(spawn(items = ["21"], entry = "child", name = "fan"), name = "fan")
     command(name = "cost", run = ["cost", str(done.results[0].cost_usd)])
 `
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, capFile(t, flow))
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, capFile(t, flow), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cost 7.5"}, rig.h.commands.ranBy(testItem), "the child, its child and the child of that one cost 2.5 each")

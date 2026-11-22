@@ -195,7 +195,7 @@ func TestPreflight_TheStepIsRecordedUnderItsName(t *testing.T) {
 	h, _, _ := preflightHarness(t, preflight.Result{})
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("preflight(name = \"intake\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("preflight(name = \"intake\")\n")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"preflight:intake#1"}, stepNames(t, engine))
@@ -206,7 +206,7 @@ func TestPreflight_AStopOfAStepWithNoNameIsReportedAsPreflight(t *testing.T) {
 
 	h, _, _ := preflightHarness(t, preflight.Result{Stop: preflight.Merged, Lines: []string{"STOP: merged"}})
 
-	result, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow("preflight()\n")))
+	result, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow("preflight()\n")), modeOff())
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Stopped)

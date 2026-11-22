@@ -142,7 +142,7 @@ func TestWrite_ACrashBetweenTheWriteAndItsRecordDoesNotRunTheWriteAgainWhenTheRe
 	file := writeFlow(t, bodyFlow("write(run = [\"push\"], read_back = [\"check\"], name = \"w\")\n"))
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
@@ -182,7 +182,7 @@ func TestWrite_ACrashBetweenTheWriteAndItsRecordRunsTheWriteAgainWithTheSameKeyW
 	file := writeFlow(t, bodyFlow("write(run = [\"push\"], name = \"w\")\n"))
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
@@ -291,7 +291,7 @@ func TestWrite_ACrashDuringTheUndosResumesThemAndDoesNotRepeatTheFinishedOnes(t 
 	file := writeFlow(t, bodyFlow(undoFlow))
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))

@@ -68,7 +68,7 @@ func TestNestedSpawn_AChainOfSpawnsRunsToDepthThreeWithOneSlotForEachLevel(t *te
 	h.opts.MaxConcurrent, h.opts.MaxReviewConcurrent = 1, 1
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"leaf"}, h.commands.ranBy("24"), "the run at depth 3 ran once")
@@ -81,7 +81,7 @@ func TestNestedSpawn_EachRunRecordsItsDepthAndItsParentAndRunsOnTheQueueOfItsDep
 	h := newHarness(t)
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 	require.NoError(t, err)
 
 	root, _, err := latestRun(engine.ctx, testItem)
@@ -127,7 +127,7 @@ func TestNestedSpawn_ASpawnPastTheCapNamesTheDepthAndTheCap(t *testing.T) {
 				h.facts = func(string) model.Project { return model.Project{MaxSpawnDepth: c.cap} }
 			}
 
-			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, chainFlow(c.top)))
+			_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, chainFlow(c.top)), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 			assert.Empty(t, h.commands.ranBy("24"), "no run past the cap")
@@ -141,7 +141,7 @@ func TestNestedSpawn_AnEngineWithTwoLevelsCapsAProjectThatSetsThree(t *testing.T
 	h := newHarness(t)
 	h.opts.MaxSpawnDepth = 2
 
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 
 	require.ErrorContains(t, err, "item 24 would run at depth 3, and the project has a cap of 2.")
 }
@@ -279,7 +279,7 @@ func TestNestedSpawn_ARootThatBeehaveRunQueuesWaitsForItsChainWithOneSlotForEach
 	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
 	defer cancel()
 
-	_, err := client.JoinRun(ctx, testItem, testProject, writeFlow(t, chainFlow("l2")))
+	_, err := client.JoinRun(ctx, testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"leaf"}, h.commands.ranBy("24"), "the run at depth 3 ran once")
@@ -312,7 +312,7 @@ func cancelBelow(t *testing.T, target string) *Engine {
 	file := writeFlow(t, chainFlow("l2"))
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- err
 	}()
 
@@ -421,7 +421,7 @@ func TestNestedSpawn_AnEngineThatStartsWithALowerCapReplaysTheSpawnOfARunAtDepth
 func queueOldRoot(t *testing.T, client *Client) {
 	t.Helper()
 
-	in, err := pinnedInput(testItem, testProject, writeFlow(t, chainFlow("l2")))
+	in, err := pinnedInput(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 	require.NoError(t, err)
 
 	_, err = dbos.Enqueue[ItemResult](client.flow, itemsQueueName, itemName, in, dbos.WithEnqueueWorkflowID(runID(testItem, 1)), dbos.WithEnqueueApplicationVersion(client.version))
@@ -441,7 +441,7 @@ func TestNestedSpawn_ARootThatAnOlderBuildQueuedOnItemsRunsAndResumesOnThisBuild
 		queueOldRoot(t, client)
 
 		engine := h.engine(t)
-		_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, chainFlow("l2")))
+		_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 
 		require.NoError(t, err)
 
@@ -475,7 +475,7 @@ func TestNestedSpawn_ARootThatAnOlderBuildQueuedOnItemsRunsAndResumesOnThisBuild
 		require.NoError(t, client.Resume(testItem))
 
 		h.engine(t)
-		_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, chainFlow("l2")))
+		_, err := client.JoinRun(t.Context(), testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 
 		require.NoError(t, err)
 		assert.Contains(t, h.commands.ranBy(testItem), "after", "the root ends")

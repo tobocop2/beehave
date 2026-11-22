@@ -49,7 +49,7 @@ func TestProfile_HasNoNativeCapsAndStreamsItsCost(t *testing.T) {
 	assert.True(t, p.StreamsCost)
 }
 
-func TestProfile_HasNoSandboxSoASandboxedStepIsRefused(t *testing.T) {
+func TestAgent_AnAdapterWithNoSandboxEndsItsStepNotStartedInASandboxedRun(t *testing.T) {
 	t.Parallel()
 
 	assert.False(t, opencode.New().Profile().Sandbox)
@@ -62,7 +62,8 @@ func TestProfile_HasNoSandboxSoASandboxedStepIsRefused(t *testing.T) {
 	})
 
 	assert.Equal(t, agent.OutcomeNotStarted, result.Outcome)
-	assert.Contains(t, result.Note, "sandbox = None")
+	assert.Contains(t, result.Note, `sandbox = "off"`)
+	assert.NotContains(t, result.Note, "sandbox = None")
 }
 
 func TestProfile_NoEditEnvDeniesTheEditPermission(t *testing.T) {

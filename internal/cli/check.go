@@ -112,7 +112,7 @@ func runDryWorkflow(ctx context.Context, cmd *cobra.Command, env map[string]stri
 		return err
 	}
 
-	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth), flow.WithRunnerSkillLoads(project.RunnerSkillLoads)}
+	options := []flow.DryOption{flow.WithVars(project.Vars), flow.WithSpawnDepth(project.MaxSpawnDepth), flow.WithRunnerSkillLoads(project.RunnerSkillLoads), flow.WithSandbox(project.RunSandboxMode())}
 	if dry.redGate {
 		options = append(options, flow.WithRedGate())
 	}

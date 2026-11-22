@@ -46,7 +46,7 @@ func TestSupervisorExample_ACrashInsideStreamDeliversEachEntryOnceAndCancelsOnce
 	require.NoError(t, err)
 	require.NoError(t, first.Launch())
 
-	go func() { _, _ = first.RunFile(testItem, testProject, file) }() //nolint:errcheck // the stop ends the run with an error
+	go func() { _, _ = first.RunFile(testItem, testProject, file, modeOff()) }() //nolint:errcheck // the stop ends the run with an error
 
 	// The supervisor logged the two lines and waits inside the third read: its deadline is the last record.
 	waitOn(t, condition(func() bool {

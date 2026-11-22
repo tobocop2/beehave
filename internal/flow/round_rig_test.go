@@ -536,7 +536,7 @@ func (r *roundRig) runOn(t *testing.T, engine *Engine) (ItemResult, error) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, r.file)
+		result, err := engine.RunFile(testItem, testProject, r.file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 

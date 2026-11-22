@@ -362,7 +362,7 @@ func (s *script) startRuns(plan []spawnedRun, entry, base string) error {
 			continue
 		}
 
-		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent}
+		in := ItemInput{Item: one.Item, Project: s.in.Project, File: s.in.File, Files: s.in.Files, Login: one.Login, Entry: entry, Base: base, Depth: s.in.Depth + 1, Parent: parent, Sandbox: s.runMode()}
 
 		if err := s.startRun(one, in); err != nil {
 			return err

@@ -52,6 +52,9 @@ const (
 
 var errFake = errors.New("fake failure")
 
+// modeOff is the run option of a test run that does not care about the sandbox: the mode of a project with the key unset.
+func modeOff() RunOption { return RunSandbox(model.SandboxOff) }
+
 // fakeAgents records each request and counts the agents in flight, in all and for each login.
 type fakeAgents struct {
 	mu       sync.Mutex
@@ -630,7 +633,7 @@ type harness struct {
 	queue     queueReader // nil unless a test sets it
 	poll      pollReader  // nil unless a test sets it
 	others    *fakeOthers // nil unless a test sets it
-	// sandboxDefault is the project default for a step that sets no sandbox. It is nil, and so off, unless a test sets it.
+	// sandboxDefault is the live sandbox default of a project, read for a run that stored no mode. It is nil, and so off, unless a test sets it.
 	sandboxDefault func(project string) bool
 	// repository says whether a project has a git repository. It is nil, and so every project has one, unless a test sets it.
 	repository func(project string) bool
@@ -684,7 +687,7 @@ func (h *harness) flowIs(t *testing.T, text string) {
 
 // Run walks the default workflow file of the harness. It is a helper of the tests: the production engine runs only a file named by the caller.
 func (e *Engine) Run(item, project string) (ItemResult, error) {
-	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName))
+	return e.RunFile(item, project, filepath.Join(filepath.Dir(e.dir), defaultFlowName), modeOff())
 }
 
 func newHarness(t *testing.T) *harness {

@@ -609,13 +609,13 @@ func (e *Engine) oldRuns() ([]string, error) {
 // RunFile takes one item to the end of its workflow file and returns the result. It joins the run of the item when one is still open.
 // The item belongs to the project from this call on; an open run under another project is refused.
 // The run pins the SHA-256 of the file, and a replay refuses a changed file.
-func (e *Engine) RunFile(item, project, file string) (ItemResult, error) {
-	return e.runEntry(item, project, file, "")
+func (e *Engine) RunFile(item, project, file string, options ...RunOption) (ItemResult, error) {
+	return e.runEntry(item, project, file, "", options...)
 }
 
 // runEntry runs the pinned file for the item at the named entry. An empty entry runs main.
-func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error) {
-	in, err := pinnedInput(item, project, file)
+func (e *Engine) runEntry(item, project, file, entry string, options ...RunOption) (ItemResult, error) {
+	in, err := pinnedInput(item, project, file, options...)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -625,8 +625,8 @@ func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error)
 	return e.run(in)
 }
 
-// pinnedInput reads the workflow file once and returns the input of a run that executes only those bytes.
-func pinnedInput(item, project, file string) (ItemInput, error) {
+// pinnedInput reads the workflow file once and returns the input of a run that executes only those bytes, with the options applied.
+func pinnedInput(item, project, file string, options ...RunOption) (ItemInput, error) {
 	abs, absErr := filepath.Abs(file)
 
 	pinned, pinErr := workflow.Pin(abs)
@@ -634,10 +634,15 @@ func pinnedInput(item, project, file string) (ItemInput, error) {
 		return ItemInput{}, err
 	}
 
-	return ItemInput{Item: item, Project: project, File: abs, Files: pinned}, nil
+	in := ItemInput{Item: item, Project: project, File: abs, Files: pinned}
+	for _, option := range options {
+		option(&in)
+	}
+
+	return in, nil
 }
 
-// check refuses an item that is not an item id, and a missing project.
+// check refuses an item that is not an item id, a missing project, and a run with no sandbox mode.
 func (in ItemInput) check() error {
 	if model.ItemKind(in.Item) == "" {
 		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
@@ -645,6 +650,10 @@ func (in ItemInput) check() error {
 
 	if in.Project == "" {
 		return fmt.Errorf("%w %s: name the project", errNoProject, in.Item)
+	}
+
+	if in.Sandbox == "" {
+		return fmt.Errorf("%w: item %s was not started. The run must store sandbox on or off", errNoSandboxMode, in.Item)
 	}
 
 	return nil

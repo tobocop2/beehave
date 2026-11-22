@@ -239,6 +239,37 @@ func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldTheRunnersOfTheConfigWit
 	assert.Contains(t, stdout.String(), `R={"a": {"loads_skills": True}, "o": {"loads_skills": False}}`)
 }
 
+func TestCheckWorkflowDryRun_AProjectWithTheSandboxOnRefusesASandboxNoneStepAtTheCall(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		key  string
+		want int
+	}{
+		"sandbox on":  {`, sandbox = "on"`, 1},
+		"sandbox off": {`, sandbox = "off"`, 0},
+		"key unset":   {``, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, "workflow.star", "def main(item):\n    off = None\n    agent(name = \"a\", prompt = \"p.md\", model = \"m\", sandbox = off)\n")
+			writeConfig(t, dir, "p.md", "hello\n")
+			writeConfig(t, dir, "runners.star", "runner(name = \"a\", agent = \"claude\")\n")
+			writeConfig(t, dir, "projects/code.star", "project(source = \"/srv/repo\", base_branch = \"main\", gate = \"g\", test_report = \"r.xml\""+test.key+")\n")
+
+			code, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", filepath.Join(dir, "workflow.star"))
+
+			assert.Equal(t, test.want, code, stdout+stderr)
+
+			if test.want != 0 {
+				assert.Contains(t, stdout, "sets sandbox = None")
+			}
+		})
+	}
+}
+
 func TestCheckWorkflowDryRun_AWorkflowThatRefusesARunnerWithNoSkillLineEndsWithExitOneAndTheRefusal(t *testing.T) {
 	t.Parallel()
 

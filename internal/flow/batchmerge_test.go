@@ -71,7 +71,7 @@ command(name = "report", run = ["report", ",".join(out.merged), ",".join([r.item
 func (r *batchRig) walk(t *testing.T, body string) (ItemResult, error) {
 	t.Helper()
 
-	return r.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(body)))
+	return r.engine(t).RunFile(testItem, testProject, writeFlow(t, bodyFlow(body)), modeOff())
 }
 
 func (r *batchRig) mainFiles(t *testing.T) string {
@@ -232,7 +232,7 @@ func TestBatchMerge_AMergeableStateThatStaysUnknownDefersTheMemberAfterThreeRead
 	rig.merger.script["1"] = []merge.Result{unknown, unknown, unknown}
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))), modeOff())
 
 	require.NoError(t, err)
 	assert.Contains(t, rig.h.commands.ran()[0], "1:mergeable is UNKNOWN after 3 reads of 1")
@@ -398,7 +398,7 @@ func TestBatchMerge_AnOwnMemberWithNoApprovalIsRefusedAsOwnWork(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	own := `own = {"logins": ["` + shipOwner + `"], "emails": ["` + shipMail + `"]}, `
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", own))))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1", own))), modeOff())
 
 	require.NoError(t, err)
 	require.Len(t, rig.h.commands.ran(), 1)
@@ -538,7 +538,7 @@ func TestBatchMerge_ACallThatTheBuildOrTheArgumentsCannotServeFailsWithAFix(t *t
 			require.NoError(t, engine.Launch())
 			t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-			_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body(rig))))
+			_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(c.body(rig))), modeOff())
 
 			require.ErrorContains(t, err, c.want)
 		})
@@ -648,7 +648,7 @@ func TestBatchMerge_ATransientRefusalDefersTheMemberAndTheMergerRunsOnce(t *test
 	rig.merger.script["1"] = []merge.Result{failed, failed, failed}
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))), modeOff())
 
 	require.NoError(t, err)
 	assert.Contains(t, rig.h.commands.ran()[0], "1:REFUSE: MergePR: down")
@@ -682,7 +682,7 @@ func TestBatchMerge_EachMemberRecordsItsIntentStepBeforeItsMergeStep(t *testing.
 	rig := newBatchRig(t)
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))), modeOff())
 
 	require.NoError(t, err)
 
@@ -712,7 +712,7 @@ func TestBatchMerge_ACancelWhileTheMergeStepRunsThenAResumeMergesTheMemberOnce(t
 	file := writeFlow(t, bodyFlow(rig.call("1 3", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
@@ -776,7 +776,7 @@ func TestBatchMerge_ARecordedGateThatRanOnAnotherTreeStopsTheReplayToo(t *testin
 	file := writeFlow(t, bodyFlow(rig.call("1 3", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "the recorded gate ran on tree "+rig.gate.lie)
 
@@ -797,7 +797,7 @@ func TestBatchMerge_ATransientFailureOfTheTipReadIsRetriedInsideTheStep(t *testi
 	rig.host.tipErrs = []error{errFake}
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow(rig.call("1 3", ""))), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "3"}, rig.merger.landed())
@@ -818,7 +818,7 @@ func TestBatchMerge_AFailureThatStaysIsRecordedAndAResumeRunsTheStepAgain(t *tes
 	file := writeFlow(t, bodyFlow(rig.call("1 3", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorIs(t, err, errFake)
 

@@ -159,7 +159,7 @@ func walkBody(t *testing.T, h *harness, body string) (ItemResult, error) {
 func walkText(t *testing.T, h *harness, text string) (ItemResult, error) {
 	t.Helper()
 
-	return h.engine(t).RunFile(testItem, testProject, writeFlow(t, text))
+	return h.engine(t).RunFile(testItem, testProject, writeFlow(t, text), modeOff())
 }
 
 // stepNames returns the names of the builtin steps of the run, which are the ones with a count.
@@ -181,7 +181,7 @@ func stepNames(t *testing.T, engine *Engine) []string {
 }
 
 // interrupted runs the file until it waits for the owner, then stops the engine as a crash would.
-func interrupted(t *testing.T, h *harness, file string) {
+func interrupted(t *testing.T, h *harness, file string, options ...RunOption) {
 	t.Helper()
 
 	stopCtx, stop := context.WithCancel(t.Context())
@@ -194,7 +194,7 @@ func interrupted(t *testing.T, h *harness, file string) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := engine.RunFile(testItem, testProject, file)
+		_, runErr := engine.RunFile(testItem, testProject, file, append([]RunOption{modeOff()}, options...)...)
 		ended <- runErr
 	}()
 
@@ -221,7 +221,7 @@ func runFileWithin(t *testing.T, engine *Engine, file string) (ItemResult, error
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := engine.RunFile(testItem, testProject, file)
+		result, err := engine.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -253,7 +253,7 @@ func TestRunStar_AReplayIssuesTheSameStepNamesAndRunsNoRecordedStepAgain(t *test
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -304,7 +304,7 @@ func TestRunStar_TheStepNamesOfTheWaitForALostGateJobMatchTheGoldenList(t *testi
 	hosts.proofs = []model.LostProof{{Note: "the link is down"}, {Kind: model.LostStopped}}
 	engine := h.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"g\")\n")))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"g\")\n")), modeOff())
 	require.NoError(t, err)
 
 	_, child := gateChildSteps(t, engine)

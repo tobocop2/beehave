@@ -47,7 +47,7 @@ func TestRoundTree_TheAgentStepOfARoundItemAsksForTheWorktreeThatTheRecordedStep
 	made := &ensureLog{}
 	harness.trees = &fakeTrees{dir: tree, ensured: made}
 
-	_, err := harness.engine(t).RunFile(testRound, testProject, file)
+	_, err := harness.engine(t).RunFile(testRound, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{testRound, testRound}, made.all(), "the recorded step and the agent step asked for the tree, and nothing else did")
@@ -65,7 +65,7 @@ func TestRoundTree_AResumedRunAsksForNoWorktreeBeforeItsSteps(t *testing.T) {
 	harness.trees = &fakeTrees{dir: tree, ensured: made}
 	engine := harness.engine(t)
 
-	_, err := engine.RunFile(testRound, testProject, writeFlow(t, "def main(item):\n    command(name = \"probe\", run = [\"true\"])\n"))
+	_, err := engine.RunFile(testRound, testProject, writeFlow(t, "def main(item):\n    command(name = \"probe\", run = [\"true\"])\n"), modeOff())
 	require.ErrorContains(t, err, "release")
 	require.Equal(t, []string{testRound}, made.all(), "the first run made the tree once")
 
@@ -256,7 +256,7 @@ func TestRoundTree_EveryLaterStepAsksForTheWorktreeAtTheCommitThatTheRecordedSte
 	starts := &ensureLog{}
 	harness.trees = &fakeTrees{dir: tree, starts: starts}
 
-	_, err := harness.engine(t).RunFile(testRound, testProject, file)
+	_, err := harness.engine(t).RunFile(testRound, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"", head, head, head}, starts.all(), "the recorded step made the tree at the tip; the two steps of the gate and the agent ask for it at the commit it read")
@@ -338,7 +338,7 @@ func TestRoundTree_AChildItemOfARoundMakesItsWorktreeAtTheBaseOfTheRound(t *test
 	made, bases := &ensureLog{}, &ensureLog{}
 	rig.h.trees = &fakeTrees{dir: rig.dir, ensured: made, bases: bases}
 
-	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childAgentFlow, "Probe.\n"))
+	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childAgentFlow, "Probe.\n"), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{testRound, "21"}, made.all(), "the round made its own tree, then the child made its tree")
@@ -352,7 +352,7 @@ func TestRoundTree_AChildItemOfARunThatIsNoRoundMakesItsWorktreeAtTheBaseOfThePr
 	made, bases := &ensureLog{}, &ensureLog{}
 	rig.h.trees = &fakeTrees{dir: rig.dir, ensured: made, bases: bases}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, childAgentFlow, "Probe.\n"))
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, childAgentFlow, "Probe.\n"), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"21"}, made.all(), "only the child made a tree")
@@ -393,7 +393,7 @@ func TestRoundTree_ASpawnWhoseBaseIsTheBaseOfTheRoundItemStartsItsChild(t *testi
 	made, bases := &ensureLog{}, &ensureLog{}
 	rig.h.trees = &fakeTrees{dir: rig.dir, ensured: made, bases: bases}
 
-	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"))
+	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"", "integration/s1"}, bases.all())
@@ -406,7 +406,7 @@ func TestRoundTree_ASpawnWhoseBaseDiffersFromTheBaseOfTheRoundItemStartsNoChildA
 	made := &ensureLog{}
 	rig.h.trees = &fakeTrees{dir: rig.dir, ensured: made}
 
-	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s2"), "Probe.\n"))
+	_, err := rig.h.engine(t).RunFile(testRound, testProject, flowFile(t, childFlowOnBase("integration/s2"), "Probe.\n"), modeOff())
 
 	require.ErrorContains(t, err, "the round item "+testRound+" has the base integration/s1, and the base given to spawn is integration/s2")
 	assert.Equal(t, []string{testRound}, made.all(), "no child made a tree")
@@ -419,7 +419,7 @@ func TestRoundTree_ASpawnThatNamesABaseUnderAnItemThatIsNoRoundCutsItsChildAtTha
 	made, bases := &ensureLog{}, &ensureLog{}
 	rig.h.trees = &fakeTrees{dir: rig.dir, ensured: made, bases: bases}
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"))
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, flowFile(t, childFlowOnBase("integration/s1"), "Probe.\n"), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"integration/s1"}, bases.all(), "the child is cut at the base that its gate reads, though no round item named it")

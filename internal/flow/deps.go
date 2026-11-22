@@ -370,7 +370,7 @@ type Deps struct {
 	// Hosts serves host_up and host_teardown. A nil Hosts means the build cannot start or stop a host: both calls fail.
 	// Hosts also reads the proof that a lost gate job can no longer run. With a nil Hosts no proof comes, and the wait for it ends at host.lost_job_wait.
 	Hosts hostKeeper
-	// SandboxDefault says whether a project runs the agent steps that set no sandbox in the sandbox. A nil SandboxDefault means no project does.
+	// SandboxDefault says whether a project runs the agent steps in the sandbox. The engine asks only for a run that stored no sandbox mode. A nil SandboxDefault means no project does.
 	SandboxDefault func(project string) bool
 	// RefuseGate returns the error of a gate that must not run on this machine, or nil. program is true for a gate that names its own program.
 	// A nil RefuseGate means every gate runs. The engine asks inside a recorded step that comes before the gate key, an earlier pass, any git work or any program

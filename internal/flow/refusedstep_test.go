@@ -83,7 +83,7 @@ func runRefusedFlow(t *testing.T, f refusedFlow, refuse func(*sql.DB)) refusedOu
 	if file == "" {
 		_, out.first = engine.Run(testItem, testProject)
 	} else {
-		_, out.first = engine.RunFile(testItem, testProject, file)
+		_, out.first = engine.RunFile(testItem, testProject, file, modeOff())
 	}
 
 	liftRefusal(t, h)

@@ -122,7 +122,7 @@ func TestAgent_ADataFileThatCannotBeWrittenFailsThePhaseBeforeTheAgentStarts(t *
 	engine := rig.h.engine(t)
 	require.NoError(t, os.WriteFile(filepath.Join(rig.h.opts.StateDir, inputsFolder), nil, 0o600), "a file where the inputs folder goes")
 
-	_, err := engine.RunFile(testItem, testProject, flowFile(t, agentFlow(dataValue), readFrom))
+	_, err := engine.RunFile(testItem, testProject, flowFile(t, agentFlow(dataValue), readFrom), modeOff())
 
 	require.ErrorContains(t, err, "write the data file")
 	assert.Empty(t, rig.h.agents.seen())
@@ -152,7 +152,7 @@ func TestAgent_AReplayWritesTheDataFileFromTheRecordedValue(t *testing.T) {
 	file := flowFile(t, agentFlow(dataValue), readFrom)
 	first := rig.h.engine(t)
 
-	_, err := first.RunFile(testItem, testProject, file)
+	_, err := first.RunFile(testItem, testProject, file, modeOff())
 	require.Error(t, err, "the first run of the agent fails")
 
 	recorded := dataFile(rig.h.opts.StateDir, testItem, aStep)
@@ -269,7 +269,7 @@ func failedDataRun(t *testing.T, rig *agentRig) string {
 	}
 
 	first := rig.h.engine(t)
-	_, err := first.RunFile(testItem, testProject, flowFile(t, agentFlow(dataValue), readFrom))
+	_, err := first.RunFile(testItem, testProject, flowFile(t, agentFlow(dataValue), readFrom), modeOff())
 	require.Error(t, err, "the first run of the agent fails")
 	require.NoError(t, first.Shutdown())
 

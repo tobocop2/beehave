@@ -52,6 +52,23 @@ func TestDepsOn_TheEngineGetsWhetherEachRunnerOfTheConfigHasALineThatLoadsASkill
 	require.Equal(t, map[string]bool{"a": true, "o": false}, deps.Facts("p").RunnerSkillLoads, "the Claude runner has the line, the OpenCode runner has none, and a runner with no adapter is left out")
 }
 
+func TestDepsOn_ARunWithNoStoredModeReadsTheSandboxKeyOfItsProject(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{Projects: map[string]config.Project{
+		"on":    {Project: model.Project{Name: "on", Sandbox: model.SandboxOn}},
+		"off":   {Project: model.Project{Name: "off", Sandbox: model.SandboxOff}},
+		"unset": {Project: model.Project{Name: "unset"}},
+	}}
+
+	deps := depsOn(cfg, flow.Options{StateDir: t.TempDir()}, logins{}, newAdapters(nil, nil, nil))
+
+	require.True(t, deps.SandboxDefault("on"))
+	require.False(t, deps.SandboxDefault("off"))
+	require.False(t, deps.SandboxDefault("unset"), "an unset key is off")
+	require.False(t, deps.SandboxDefault("missing"), "a project the config lacks is off")
+}
+
 func TestDepsOn_TheEngineGetsTheSkillLineOfTheAgentOfEachRunner(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +99,7 @@ func TestFlowFactory_ARunForAnUnknownProjectEndsWithAnErrorAndNoPanic(t *testing
 	file := t.TempDir() + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    gate(name = \"check\", run = [\"true\"])\n"), 0o600))
 
-	_, err = engine.RunFile("12", "zzz", file)
+	_, err = engine.RunFile("12", "zzz", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, errUnknownProject.Error())
 }
@@ -150,7 +167,7 @@ func TestFlowFactory_TheEngineOfTheRunCommandPicksTheRunnerFromTheUsageTheClaude
 	file := dir + "/workflow.star"
 	require.NoError(t, os.WriteFile(file, []byte("def main(item):\n    agent(model = \"m\", prompt = \"prompts/a.md\", name = \"a\")\n"), 0o600))
 
-	_, err = engine.RunFile("12", "p", file)
+	_, err = engine.RunFile("12", "p", file, flow.RunSandbox(model.SandboxOff))
 
 	require.ErrorContains(t, err, "claude exited 7: fake-claude-ran")
 }

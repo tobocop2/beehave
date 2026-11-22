@@ -70,7 +70,7 @@ func TestNow_AReplayKeepsTheFirstReading(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, runErr := first.RunFile(testItem, testProject, file)
+		_, runErr := first.RunFile(testItem, testProject, file, modeOff())
 		ended <- runErr
 	}()
 
@@ -92,7 +92,7 @@ func TestNow_AReplayKeepsTheFirstReading(t *testing.T) {
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, runErr := next.RunFile(testItem, testProject, file)
+		result, runErr := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: runErr}
 	}()
 

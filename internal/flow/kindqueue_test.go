@@ -162,8 +162,14 @@ func TestAgentKind_TheCapsOfTheTwoQueuesAreIndependent(t *testing.T) {
 
 	group.Add(2)
 
-	go func() { defer group.Done(); first.result, first.err = engine.RunFile("1", testProject, implement) }()
-	go func() { defer group.Done(); second.result, second.err = engine.RunFile("2", testProject, review) }()
+	go func() {
+		defer group.Done()
+		first.result, first.err = engine.RunFile("1", testProject, implement, modeOff())
+	}()
+	go func() {
+		defer group.Done()
+		second.result, second.err = engine.RunFile("2", testProject, review, modeOff())
+	}()
 
 	waitOn(t, condition(func() bool { return harness.agents.running() == 2 }))
 	release()
@@ -217,9 +223,15 @@ func TestAgentKind_AReviewRunsBesideAnImplementStepOfTheSameLogin(t *testing.T) 
 
 	group.Add(2)
 
-	go func() { defer group.Done(); first.result, first.err = engine.RunFile("1", testProject, implement) }()
+	go func() {
+		defer group.Done()
+		first.result, first.err = engine.RunFile("1", testProject, implement, modeOff())
+	}()
 	waitOn(t, condition(func() bool { return harness.agents.running() == 1 }))
-	go func() { defer group.Done(); second.result, second.err = engine.RunFile("2", testProject, review) }()
+	go func() {
+		defer group.Done()
+		second.result, second.err = engine.RunFile("2", testProject, review, modeOff())
+	}()
 
 	waitOn(t, condition(func() bool { return harness.agents.running() == 2 }))
 	release()

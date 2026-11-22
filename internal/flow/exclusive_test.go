@@ -49,14 +49,14 @@ func TestExclusive_ABatchMergeOfARepositoryStartsOnlyAfterTheGateOfThatRepositor
 	ended := make(chan error, 2)
 
 	group.Go(func() {
-		_, err := engine.RunFile("gate-item", testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+		_, err := engine.RunFile("gate-item", testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 		ended <- err
 	})
 
 	receive(t, gated.started)
 
 	group.Go(func() {
-		_, err := engine.RunFile("batch-item", testProject, writeFlow(t, bodyFlow(rig.call("1 3", `gate_run = ["check-all"], `))))
+		_, err := engine.RunFile("batch-item", testProject, writeFlow(t, bodyFlow(rig.call("1 3", `gate_run = ["check-all"], `))), modeOff())
 		ended <- err
 	})
 

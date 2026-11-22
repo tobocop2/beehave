@@ -64,7 +64,7 @@ func TestJoin_ARunWhoseWorkflowFileChangedIsRefusedUnderServeAndIsNotCanceled(t 
 
 	client := h.client(t, otherBuild)
 
-	_, err := client.JoinRun(t.Context(), testItem, testProject, file)
+	_, err := client.JoinRun(t.Context(), testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "changed since the run started")
 	assert.Equal(t, testVersion, buildVersion(notCanceled(t, client).Status.ApplicationVersion), "the run stays on the old build")

@@ -132,7 +132,7 @@ func TestAcceptance853_TheCallIsOneRecordedStepWithItsDeadlineAndAReplayReturnsT
 	rig.h.agents.said = said()
 
 	engine := rig.h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, flowFile(t, a853Parent("gather(runs, name = \"w\")\ns = stream(w, after = \"\", timeout = \"5s\", name = \"peek\")\n"+a853Log), "Work.\n"))
+	_, err := engine.RunFile(testItem, testProject, flowFile(t, a853Parent("gather(runs, name = \"w\")\ns = stream(w, after = \"\", timeout = \"5s\", name = \"peek\")\n"+a853Log), "Work.\n"), modeOff())
 	require.NoError(t, err)
 
 	steps, err := dbos.GetWorkflowSteps(engine.ctx, testRun)

@@ -275,7 +275,7 @@ func TestHandOff_AResumeDuringTheWaitMarksNothingReadyTwiceAndTellsTheOwnerNoMor
 	file := writeFlow(t, bodyFlow(rig.body("1", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
@@ -381,7 +381,7 @@ func TestHandOff_ACancelAfterTheReadyMarkStopsTheCallAndAResumeGoesOn(t *testing
 	file := writeFlow(t, bodyFlow(rig.body("1", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	_, err = resumeAndJoin(t, engine, rig.h.client(t, testVersion))
@@ -532,7 +532,7 @@ func TestHandOff_ACancelDuringTheWatchPutsTheReadyPullRequestBackToDraft(t *test
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- err
 	}()
 
@@ -556,7 +556,7 @@ func TestHandOff_ACancelThatCannotDraftTheReadyPullRequestTellsTheOwnerToConvert
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- err
 	}()
 
@@ -581,7 +581,7 @@ func cancelInTheWatch(t *testing.T, rig *handRig, items string) error {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- err
 	}()
 
@@ -664,7 +664,7 @@ func TestHandOff_AWatchSleepsForTheTimeOfTheClockBetweenTwoReads(t *testing.T) {
 	engine := rig.engine(t)
 	file := writeFlow(t, bodyFlow(rig.body("1", "")))
 
-	go func() { _, _ = engine.RunFile(testItem, testProject, file) }() //nolint:errcheck // the test cancels the run below
+	go func() { _, _ = engine.RunFile(testItem, testProject, file, modeOff()) }() //nolint:errcheck // the test cancels the run below
 
 	waitOn(t, inASleep(t, engine))
 
@@ -742,7 +742,7 @@ func TestHandOff_AResumeAfterACancelThatDraftedTheMemberEndsItAndSaysWhy(t *test
 	file := writeFlow(t, bodyFlow(rig.body("1", "")))
 	engine := rig.engine(t)
 
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.Error(t, err)
 	assert.Equal(t, []string{"1:false", "1:true"}, rig.host.pr.marked(), "the cancel drafts the ready pull request")
@@ -767,7 +767,7 @@ func TestHandOff_ACancelDraftsOnlyTheMembersThatHaveNotEnded(t *testing.T) {
 	ended := make(chan error, 1)
 
 	go func() {
-		_, err := engine.RunFile(testItem, testProject, file)
+		_, err := engine.RunFile(testItem, testProject, file, modeOff())
 		ended <- err
 	}()
 

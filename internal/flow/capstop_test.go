@@ -229,7 +229,7 @@ func TestCapStop_AStoreThatRefusesTheRecordOfTheStopFailsTheStepWithNoAgentRun(t
 		"WHEN NEW.function_name = 'agent:c#3/budget1.0' BEGIN SELECT RAISE(ABORT, 'the store refused the record'); END")
 	require.NoError(t, err)
 
-	_, err = engine.RunFile(testItem, testProject, capFile(t, threeFlow))
+	_, err = engine.RunFile(testItem, testProject, capFile(t, threeFlow), modeOff())
 
 	require.ErrorContains(t, err, "the store refused the record")
 	assert.Len(t, rig.h.agents.seen(), 2, "c does not run past the cap")

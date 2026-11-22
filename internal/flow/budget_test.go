@@ -137,7 +137,7 @@ func TestAgentStep_TheCostOfAFailedRunIsRecordedForTheRunCap(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(file), "prompts", "a.md"), []byte("x\n"), 0o600))
 
 	engine := rig.h.engine(t)
-	_, err := engine.RunFile(testItem, testProject, file)
+	_, err := engine.RunFile(testItem, testProject, file, modeOff())
 
 	require.ErrorContains(t, err, "ended as exited (exit 3)", "a failed run still fails the step with its own error")
 

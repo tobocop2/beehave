@@ -75,6 +75,8 @@ type dryChoice struct {
 	skills            []string
 	// spawnDepth is the max_spawn_depth of the project. 0 means config.DefaultMaxSpawnDepth.
 	spawnDepth int
+	// sandbox is the sandbox mode that the run stores: off unless WithSandbox gives the mode of a project.
+	sandbox model.SandboxMode
 }
 
 // DryOption is a choice for a dry run.
@@ -98,13 +100,16 @@ func WithRunnerSkillLoads(loads map[string]bool) DryOption {
 // WithSpawnDepth gives the dry run the max_spawn_depth of a project, so that a spawn past the cap of the project fails as it does in a real run.
 func WithSpawnDepth(depth int) DryOption { return func(c *dryChoice) { c.spawnDepth = depth } }
 
+// WithSandbox gives the dry run the sandbox mode of a project, so that it records the sandbox of a step that sets none and refuses a sandbox = None step, as a run does.
+func WithSandbox(mode model.SandboxMode) DryOption { return func(c *dryChoice) { c.sandbox = mode } }
+
 // WithEntry starts the dry run at the named entry of the file, as a run of the engine does, so that a test walks the file it tests.
 // An entry run skips the finish function. The command beehave check has no flag for it: the option is for tests of the library.
 func WithEntry(name string) DryOption { return func(c *dryChoice) { c.entry = name } }
 
 // chooseDry applies the options of a dry run in order.
 func chooseDry(options []DryOption) dryChoice {
-	var chosen dryChoice
+	chosen := dryChoice{sandbox: model.SandboxOff}
 
 	for _, option := range options {
 		option(&chosen)
@@ -135,7 +140,7 @@ func DryRun(ctx context.Context, file, item string, env map[string]string, out i
 		return err
 	}
 
-	runErr := dryWalk(ctx, opts, deps, item, file, chosen.entry)
+	runErr := dryWalk(ctx, opts, deps, item, file, chosen.entry, chosen.sandbox)
 	last, printErr := printDrySteps(ctx, opts, out)
 
 	return errors.Join(printErr, dryFailure(out, last, runErr))
@@ -162,7 +167,7 @@ func dryPrepare(ctx context.Context, root, item, file string, chosen dryChoice) 
 }
 
 // dryWalk opens an engine over the deps, takes the item through the file and stops the engine.
-func dryWalk(ctx context.Context, opts Options, deps Deps, item, file, entry string) error {
+func dryWalk(ctx context.Context, opts Options, deps Deps, item, file, entry string, sandbox model.SandboxMode) error {
 	engine, err := NewEngine(ctx, opts, deps)
 	if err != nil {
 		return err
@@ -170,7 +175,7 @@ func dryWalk(ctx context.Context, opts Options, deps Deps, item, file, entry str
 
 	err = engine.Launch() //nolint:contextcheck // the engine owns the context of its runs
 	if err == nil {
-		_, err = engine.runEntry(item, dryProject, file, entry) //nolint:contextcheck // the engine owns the context of its runs
+		_, err = engine.runEntry(item, dryProject, file, entry, RunSandbox(sandbox)) //nolint:contextcheck // the engine owns the context of its runs
 	}
 
 	return errors.Join(err, engine.Shutdown())

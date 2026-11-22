@@ -264,7 +264,7 @@ func TestRound_ATimeoutReturnsTheStateWaitingWithTheBaseAndThePullRequestAndCuts
 	engine := waitOverEngine(t, rig)
 
 	// The entry round keeps its value in the result, which main drops.
-	in, err := pinnedInput(testItem, testProject, rig.file)
+	in, err := pinnedInput(testItem, testProject, rig.file, modeOff())
 	require.NoError(t, err)
 
 	in.Entry = "round"
@@ -313,7 +313,7 @@ func TestRound_ARoundWhoseItemBaseIsNotItsBaseSettingSpawnsNoChildAndNamesBothBa
 	t.Parallel()
 
 	rig := newRoundRig(t, "1 3")
-	_, err := rig.engine(t).RunFile(testRound, testProject, rig.file)
+	_, err := rig.engine(t).RunFile(testRound, testProject, rig.file, modeOff())
 
 	require.ErrorContains(t, err, "the round item "+testRound+" has the base integration/s1, and the base given to spawn is main")
 	assert.Empty(t, rig.kids.started(), "no child started")

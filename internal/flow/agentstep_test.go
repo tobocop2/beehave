@@ -60,6 +60,8 @@ type agentRig struct {
 	head string
 	// project is the project facts of the run. The example rig fills it, and a test changes a field before the run starts.
 	project model.Project
+	// sandbox is the sandbox mode that run records. It is off unless a test sets it.
+	sandbox model.SandboxMode
 
 	mu     sync.Mutex
 	failed []error
@@ -82,7 +84,7 @@ func newAgentRig(t *testing.T) *agentRig {
 	h := newHarness(t)
 	h.trees = &fakeTrees{dir: dir}
 
-	return &agentRig{h: h, dir: dir, head: head}
+	return &agentRig{h: h, dir: dir, head: head, sandbox: model.SandboxOff}
 }
 
 // reply makes the fake agent write body at the output path of its prompt and end with result.
@@ -111,7 +113,7 @@ func flowFile(t *testing.T, flow, prompt string) string {
 func (r *agentRig) run(t *testing.T, flow, prompt string) (ItemResult, error) {
 	t.Helper()
 
-	result, err := r.h.engine(t).RunFile(testItem, testProject, flowFile(t, flow, prompt))
+	result, err := r.h.engine(t).RunFile(testItem, testProject, flowFile(t, flow, prompt), RunSandbox(r.sandbox))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -209,7 +211,7 @@ func (r *agentRig) crashItemAfterThePhaseEndedArmedBy(t *testing.T, item, file s
 	go func() {
 		defer routines.Done()
 
-		_, runErr := crashed.RunFile(item, testProject, file)
+		_, runErr := crashed.RunFile(item, testProject, file, modeOff())
 		ran <- runErr
 	}()
 
@@ -831,7 +833,7 @@ func TestAgentStep_AReplayKeepsTheOutputFileOfAnAgentThatAlreadyRan(t *testing.T
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -856,7 +858,7 @@ func TestAgentStep_AReplayAfterTheAgentEndedButBeforeTheReadReadsTheFileTheAgent
 	rig.crashAfterThePhaseEnded(t, file)
 	require.FileExists(t, outputFile(rig.h.opts.StateDir, testItem, aStep))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the agent left")
@@ -879,7 +881,7 @@ func TestAgentStep_AReplayReadsTheOutputFileThatTheRecordedPromptNames(t *testin
 	// The name function now gives another path: the engine computes the file in another folder. The record still names the first one.
 	next := rig.h.engineWith(t, func(e *Engine) { e.dir = t.TempDir() })
 
-	_, err := next.RunFile(testItem, testProject, file)
+	_, err := next.RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"after ok"}, rig.h.commands.ran(), "the replay reads the file that the recorded prompt names")
@@ -933,7 +935,7 @@ func TestAgentStep_AReplayDoesNotReadThePromptFileOrRunTheAgentAgain(t *testing.
 	done := make(chan runOutcome, 1)
 
 	go func() {
-		result, err := next.RunFile(testItem, testProject, file)
+		result, err := next.RunFile(testItem, testProject, file, modeOff())
 		done <- runOutcome{result: result, err: err}
 	}()
 
@@ -1067,7 +1069,7 @@ func TestAgentStep_AReplayAfterTheAgentEndedKeepsTheViolationItRecorded(t *testi
 
 	rig.crashAfterThePhaseEnded(t, file)
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"show bulk-staging: git add -A"}, rig.h.commands.ran(), "the replay reads the violation from the record")

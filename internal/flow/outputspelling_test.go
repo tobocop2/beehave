@@ -138,7 +138,7 @@ func TestAgentStep_ARecordedFlatOutputPathStopsTheCallAndLeavesNoFileInTheOutput
 	require.NoError(t, exectest.ChmodFolder(folder, 0o500))
 
 	first := rig.h.engine(t)
-	_, err := first.RunFile(testItem, testProject, flowFile(t, outputsFlow("1"), "Write to {{ .output_file }}\n"))
+	_, err := first.RunFile(testItem, testProject, flowFile(t, outputsFlow("1"), "Write to {{ .output_file }}\n"), modeOff())
 	require.ErrorContains(t, err, "make the empty output file", "the first run records its render and stops at the empty file")
 	require.NoError(t, first.Shutdown())
 	require.NoError(t, exectest.ChmodFolder(folder, 0o700))
@@ -170,7 +170,7 @@ func TestAgentStep_AReplayOfAFinishedCallWithARecordedFlatOutputPathResumes(t *t
 
 	derived := outputFile(rig.h.opts.StateDir, testItem, aStep)
 	first := rig.h.engine(t)
-	_, err := first.RunFile(testItem, testProject, flowFile(t, outputsFlow("1"), "Write to {{ .output_file }}\n"))
+	_, err := first.RunFile(testItem, testProject, flowFile(t, outputsFlow("1"), "Write to {{ .output_file }}\n"), modeOff())
 	require.Error(t, err, "the command after the finished agent call fails")
 	require.NoError(t, first.Shutdown())
 

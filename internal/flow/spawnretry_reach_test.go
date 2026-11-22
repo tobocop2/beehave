@@ -76,7 +76,7 @@ func TestSpawnRetries_ASendToARetriedChildReachesItsSecondAttempt(t *testing.T) 
     m = recv("job", timeout = "10s", name = "job")
     command(name = "got", run = ["got", str(m.timed_out), str(m.value)])`,
 		`    send(to = a.runs[0], topic = "job", value = "x", name = "give")`)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"c", "got False x"}, h.commands.ranBy("21"), "the second attempt of 21 got the message that the parent sent to the run that spawn returned")
@@ -96,7 +96,7 @@ func TestSpawnRetries_ProgressOfARetriedChildReadsItsSecondAttempt(t *testing.T)
 		`    p = progress(a, "stage", name = "peek")[0]
     command(name = "log", run = ["log", str(p.set), str(p.value), p.item, p.run])
     send(to = a.runs[0], topic = "done", value = 1, name = "done")`)
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"log True two 21 item-21-r2"}, h.commands.ranBy(testItem), "progress reads the second attempt of 21")
@@ -115,7 +115,7 @@ def main(item):
     gather(a, name = "all")
     send(to = a.runs[0], topic = "job", value = "x", name = "late")
 `
-	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := h.engine(t).RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.ErrorContains(t, err, "send: item 21 has no open run: its last attempt item-21-r1 ended")
 }
@@ -172,7 +172,7 @@ def main(item):
     send(to = a.runs[0], topic = "job", value = "x", name = "give")
     gather(a, name = "all")
 `
-	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body))
+	_, err := engine.RunFile(testItem, testProject, writeFlow(t, body), modeOff())
 
 	require.ErrorContains(t, err, "send: read the runs of the spawned items: the store failed")
 

@@ -115,7 +115,7 @@ func swarmHelper(t *testing.T, mode, stateDir string) {
 
 	if mode == swarmFirst {
 		go func() {
-			if _, err := engine.RunFile(testItem, testProject, filepath.Join(filepath.Dir(stateDir), swarmFlow)); err != nil {
+			if _, err := engine.RunFile(testItem, testProject, filepath.Join(filepath.Dir(stateDir), swarmFlow), modeOff()); err != nil {
 				println("the parent ended with an error:", err.Error())
 			}
 		}()

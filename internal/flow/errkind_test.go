@@ -178,7 +178,7 @@ func TestFailure_AGateThatHitsItsDeadlineGivesTheDeadlineErrorToTheParentWithNoK
 	require.NoError(t, engine.Launch())
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
-	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")))
+	_, err = engine.RunFile(testItem, testProject, writeFlow(t, bodyFlow("gate(name = \"check\")\n")), modeOff())
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

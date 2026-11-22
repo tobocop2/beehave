@@ -180,7 +180,7 @@ func TestReviewFix_ARoundAfterTheEscalationRunsFreshOnFixWhenTheProjectNamesNoFi
 	loop := strings.Replace(libraryLoop(rig.head, ", rounds = 4, escalate_after = 1"), `session = ""`, `session = "implement-session"`, 1)
 	require.NoError(t, os.WriteFile(file, []byte(loop), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	seen := map[string]string{}
@@ -231,7 +231,7 @@ func TestReviewFix_TheEscalationRoundComesFromTheProjectFile(t *testing.T) {
 	loop := strings.Replace(libraryLoop(rig.head, ", rounds = 4, escalate_after = 1"), `session = ""`, `session = "implement-session"`, 1)
 	require.NoError(t, os.WriteFile(file, []byte(loop), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.NoError(t, err)
 
 	seen := map[string]string{}
@@ -268,7 +268,7 @@ func TestReviewFix_AFixOnAnotherRunnerThanTheImplementerStartsAFreshSession(t *t
 		loop := strings.Replace(libraryLoop(rig.head, ", rounds = 2"), `session = ""`, `session = "implement-session"`, 1)
 		require.NoError(t, os.WriteFile(file, []byte(loop), 0o600), name)
 
-		_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+		_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 		require.NoError(t, err, name)
 
 		var fixes int
@@ -305,7 +305,7 @@ func TestReviewFix_ALibraryCallWithNoModelForAStepIsRefused(t *testing.T) {
 		loop := strings.Replace(libraryLoop(rig.head, ""), `steps = facts().vars["round"]["steps"]`, "steps = "+test.steps, 1)
 		require.NoError(t, os.WriteFile(file, []byte(loop), 0o600), name)
 
-		_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+		_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 
 		require.ErrorContains(t, err, "REFUSE", name)
 		require.ErrorContains(t, err, test.want, name)
@@ -317,7 +317,7 @@ func TestReviewFix_ALibraryCallWithNoModelForAStepIsRefused(t *testing.T) {
 	loop := strings.Replace(libraryLoop(rig.head, `, design_prompt = "prompts/design.md"`), `steps = facts().vars["round"]["steps"]`, `steps = {"implement": {"model": "m"}, "review": {"model": "m"}, "fix": {"model": "m"}}`, 1)
 	require.NoError(t, os.WriteFile(file, []byte(loop), 0o600))
 
-	_, err := rig.h.engine(t).RunFile(testItem, testProject, file)
+	_, err := rig.h.engine(t).RunFile(testItem, testProject, file, modeOff())
 	require.ErrorContains(t, err, "no entry for the design step")
 }
 
