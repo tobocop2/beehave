@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"go.starlark.net/starlark"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // MaxMessageBytes is the largest JSON text that a message value may have.
@@ -77,12 +79,36 @@ func inboxSignatures() map[string][]Param {
 	return map[string][]Param{
 		recvName: {topic, {Name: "timeout", Kind: KindText, Required: true, Rule: deadlineRule("timeout"), Why: "A receive waits at most this long, such as \"10m\"."}, label},
 		sendName: {
-			{Name: "to", Kind: KindAny, Required: true, Why: "Give \"parent\", or a run that spawn returned."},
+			{Name: "to", Kind: KindAny, Required: true, Rule: sendTargetRule, Why: SendTargetHint + "."},
 			topic,
 			{Name: "value", Kind: KindAny, Required: true, AsValue: true},
 			label,
 		},
 	}
+}
+
+// The text values of the to keyword of send: the parent run, or the open run of an item with the id after the prefix.
+const (
+	ParentTarget = "parent"
+	ItemTarget   = "item:"
+)
+
+// SendTargetHint says what the to keyword of send takes. Every error about that keyword ends with it.
+const SendTargetHint = `Give "parent", "item:<id>" with the id of an item, or a run that spawn returned`
+
+// sendTargetRule is the rule of the to keyword of send. A text must be "parent", or "item:" and an id. A run that spawn returned is a struct, which the run checks.
+// The id must be an item id. A text that the file builds at run time reaches the run, which checks the id with the rule of beehave send.
+func sendTargetRule(v starlark.Value) error {
+	text, isText := starlark.AsString(v)
+	if !isText || text == ParentTarget {
+		return nil
+	}
+
+	if id, found := strings.CutPrefix(text, ItemTarget); found && model.ItemKind(id) != "" {
+		return nil
+	}
+
+	return fmt.Errorf("to is %q. %s", text, SendTargetHint)
 }
 
 // topicsRule is the rule of the topics keyword of first_of.

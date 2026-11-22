@@ -1,0 +1,63 @@
+# The two items of examples/merge-order, killed after the dependency sent its message and the waiting item received it, while both runs wait for the owner.
+# A second beehave run continues each run. The dependency merged once and sent once, the waiting item received once, and no step ran again.
+isolate
+! exec bd version
+! exec gh version
+
+example merge-order/waiting.star
+example merge-order/dependency.star
+example merge-order/project.star config/projects/orders.star
+env WAITER=ui-1
+chmod 755 fake/merge-pr
+subst fake/merge-pr
+
+exec beehavereal item add orders ui-1 --title 'UI' --body-file body.txt
+exec beehavereal item add orders base-1 --title 'Base' --body-file body.txt
+
+! exec sh first.sh run ui-1 orders --workflow merge-order/waiting.star &
+waitstatus 'waits for a message on topic landed'
+! exec sh second.sh run base-1 orders --workflow merge-order/dependency.star &
+waitstatus 'ui-1 is merged after base-1'
+waitstatus 'The pull request of base-1 is merged'
+kill -KILL
+wait
+
+cmp merge.log expected-before.log
+
+# The run of ui-1 starts first and owns the engine. The run of base-1 joins it, so base-1 must end before ui-1 does: an engine that stops cancels the runs that joined it.
+# That is a defect of the join, reproduced on the base without send (#856); the order here avoids it.
+exec beehavereal run ui-1 orders --workflow merge-order/waiting.star &ui&
+waitstatus 'ui-1 is merged after base-1'
+exec beehavereal run base-1 orders --workflow merge-order/dependency.star &base&
+waitstatus 'The pull request of base-1 is merged'
+exec beehavereal answer base-1 done
+wait base
+exec beehavereal answer ui-1 done
+wait ui
+
+exec beehavereal status item-base-1-r1
+stdout -count=1 '^send:tell#1\t'
+! stdout '^send:tell#2'
+
+exec beehavereal status item-ui-1-r1
+stdout -count=1 '^recv:dependency#1\t'
+! stdout '^recv:dependency#2'
+
+cmp merge.log expected-after.log
+
+-- first.sh --
+exec beehavereal "$@" 2> first.err
+-- second.sh --
+exec beehavereal "$@" 2> second.err
+-- body.txt --
+Land in order.
+-- fake/merge-pr --
+#!/bin/sh
+# The fake merge command: it logs the words it got.
+echo "$*" >> "@WORK@/merge.log"
+-- expected-before.log --
+base-1
+ui-1 after base-1
+-- expected-after.log --
+base-1
+ui-1 after base-1

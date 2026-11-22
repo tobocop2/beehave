@@ -644,12 +644,16 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 
 `send(to, topic, value, name="")` puts a message on the inbox of another run, and returns `id`, the id of the message.
 
-- `to` is `"parent"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run.
+- `to` is `"parent"`, `"item:<id>"`, or a run that a `spawn` call of this run returned. `"parent"` names the run that spawned this run. `"item:<id>"` names the open run of an item of the project of this run, which can be the item of this run.
 - `topic` is lowercase letters, digits, `.`, `_` and `-`. A topic that starts with `beehave.` is reserved.
 - `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
 - The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. The send is a recorded step, so a resumed run inserts the message once.
 
-`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run.
+`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run. `beehave check workflow` refuses a literal text that is not `"parent"` or `"item:"` and an item id. A text that the file builds at run time gets the same check from the run, and a bad id gets the error of `beehave send`.
+
+A send to `"item:<id>"` finds the open run in the same way as `beehave send`: the id must be an item id, the item must have a run, and the run must be open and made by a build of this version. The refusals have the texts of `beehave send`, such as `item <id> has no open run`. An item may send to its own open run. The run must be of the project of the sender, as `beehave send` has no project check. Otherwise the send is refused with a text that names both projects.
+
+The lookup is a recorded step, `send:<name>#<n>.to`, or `send#<n>.to` for a call with no name. It holds the id of the run and runs before the send step. A replay reads the record and looks nothing up, so the message goes to the run that the first try chose. If that run ended after the lookup, the message waits in an inbox that nobody reads, as with `beehave send`. In `beehave check workflow --dry-run` no other item has a run, so the dry run ends at this step with the note `send a message to an item`.
 
 A send to a child goes to its latest attempt: the run that `gather` started again last, or the run that `spawn` returned. If that attempt ended, the send is refused with `item <id> has no open run`, as no attempt reads the message. The check is part of the recorded send step, so a replay gives the same answer.
 

@@ -186,8 +186,9 @@ func stopTextsOf(t *testing.T, name, source string) []stopText {
 	require.NoError(t, err)
 
 	var (
-		found []stopText
-		stack []syntax.Node
+		found    []stopText
+		stack    []syntax.Node
+		received = receivedNames(parsed)
 	)
 
 	syntax.Walk(parsed, func(node syntax.Node) bool {
@@ -210,7 +211,7 @@ func stopTextsOf(t *testing.T, name, source string) []stopText {
 
 		text := renderText(call.Args[0])
 		if strings.Contains(strings.ToLower(text), "beehave resume") {
-			found = append(found, stopText{line: int(call.Lparen.Line), text: text, waitTimeout: inTimedOutBranch(stack)})
+			found = append(found, stopText{line: int(call.Lparen.Line), text: text, waitTimeout: inTimedOutBranch(stack, received)})
 		}
 
 		return true
@@ -220,19 +221,54 @@ func stopTextsOf(t *testing.T, name, source string) []stopText {
 }
 
 // inTimedOutBranch says whether the innermost node of the stack is in the body of an `if <wait result>.timed_out` branch. A resume does not replay that stop: the wait asks again (the test research-desk-recover shows it).
-func inTimedOutBranch(stack []syntax.Node) bool {
+// A name that holds the result of recv is not a wait result: a resume replays the recorded timeout of a recv.
+func inTimedOutBranch(stack []syntax.Node, received map[string]bool) bool {
 	for _, node := range stack {
 		branch, ok := node.(*syntax.IfStmt)
 		if !ok {
 			continue
 		}
 
-		if dot, isDot := branch.Cond.(*syntax.DotExpr); isDot && dot.Name.Name == "timed_out" {
-			return true
+		dot, isDot := branch.Cond.(*syntax.DotExpr)
+		if !isDot || dot.Name.Name != "timed_out" {
+			continue
 		}
+
+		if holder, named := dot.X.(*syntax.Ident); named && received[holder.Name] {
+			continue
+		}
+
+		return true
 	}
 
 	return false
+}
+
+// receivedNames lists the names that the file assigns from a call of recv.
+func receivedNames(parsed *syntax.File) map[string]bool {
+	names := map[string]bool{}
+
+	syntax.Walk(parsed, func(node syntax.Node) bool {
+		assign, isAssign := node.(*syntax.AssignStmt)
+		if !isAssign || assign.Op != syntax.EQ {
+			return true
+		}
+
+		call, isCall := assign.RHS.(*syntax.CallExpr)
+		if !isCall {
+			return true
+		}
+
+		if fn, isIdent := call.Fn.(*syntax.Ident); isIdent && fn.Name == "recv" {
+			if target, named := assign.LHS.(*syntax.Ident); named {
+				names[target.Name] = true
+			}
+		}
+
+		return true
+	})
+
+	return names
 }
 
 func TestRestartText_AStopTextInASourceFileIsReadFromTheSyntaxTreeNotFromItsLines(t *testing.T) {
@@ -267,6 +303,12 @@ func TestRestartText_OnlyAStopRaisedOnTheTimedOutFieldOfAWaitResultIsLeftAlone(t
 	require.Len(t, stops, 2)
 	assert.True(t, stops[0].waitTimeout, "the stop in the timed_out branch is the wait timeout")
 	assert.False(t, stops[1].waitTimeout, "a stop outside the branch is not")
+
+	received := "def main(item):\n    got = recv(\"t\", timeout = \"1s\")\n    if got.timed_out:\n        fail(\"REFUSE: late. Run beehave resume.\")\n"
+	stops = stopTextsOf(t, "recv.star", received)
+
+	require.Len(t, stops, 1)
+	assert.False(t, stops[0].waitTimeout, "the timeout of a recv is replayed, so its stop holds the shared sentence")
 }
 
 func TestRestartText_TheLibraryHelperReturnsTheSharedSentence(t *testing.T) {
