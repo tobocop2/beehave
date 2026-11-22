@@ -64,7 +64,8 @@ const coreVersion = 16
 // Version 12 adds the committed field to the result of an agent call.
 // Version 13 puts the data file in a folder of its own and removes the data_file field of the phase input: the phase derives the path.
 // Version 14 adds the skills output of the render step and the skills field of the phase input, and removes the skills list from the recorded sandbox: the prompt declares the skills.
-const agentVersion = 14
+// Version 15 adds the start mark step of an editing call, and the commit step after its read step, in a project with a repository.
+const agentVersion = 15
 
 // landVersion is the version of the land module. Version 2 added the approved field to each member in the recorded input of the batch steps.
 // Version 3 added the refusal field to the result of a merge, which the reason of a batch member reads.

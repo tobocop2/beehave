@@ -94,12 +94,12 @@ func TestAgentStep_ACallWithNoDeclaredOutputsGetsNoOutputFile(t *testing.T) {
 	rig := newAgentRig(t)
 	rig.h.agents.result = func(request AgentRequest) agent.Result {
 		_, err := os.Stat(filepath.Dir(request.OutputFile))
-		assert.ErrorIs(t, err, os.ErrNotExist, "a call with no outputs gets no output file and no folder for one")
+		assert.ErrorIs(t, err, os.ErrNotExist, "a call with no outputs that does not edit gets no output file and no folder for one")
 
 		return exited
 	}
 
-	_, err := rig.run(t, agentFlow(""), "Write to {{ .output_file }}\n")
+	_, err := rig.run(t, agentFlow("edits = False, "), "Write to {{ .output_file }}\n")
 
 	require.NoError(t, err)
 	assert.Len(t, rig.h.agents.seen(), 1)
