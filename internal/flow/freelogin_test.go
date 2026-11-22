@@ -452,7 +452,7 @@ func TestFreeLogin_AResumeKeepsTheRecordedLogins(t *testing.T) {
 	require.NoError(t, err)
 
 	for item, login := range before {
-		last, found, lookErr := latestRun(resumed.ctx, item)
+		last, found, lookErr := latestRun(viewOf(resumed.ctx, resumed.dir), item)
 		require.NoError(t, lookErr)
 		require.True(t, found)
 

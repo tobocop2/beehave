@@ -60,7 +60,7 @@ func TestResume_AWaitThatTheRewindReplaysTakesItsOldAnswerAndDoesNotAskAgain(t *
 	h.agents.err = nil
 	h.agents.mu.Unlock()
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.NoError(t, client.reopen(last.Status.ID, dbos.WithRewindStartStep(0)), "the rewind to step 0 drops the wait")

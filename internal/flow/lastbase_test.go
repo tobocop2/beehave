@@ -20,14 +20,14 @@ func TestWithBaseOf_TakesTheBaseOfTheLastRunOfTheSameItemAndKeepsNoneForAnItemWi
 	enqueueRun(t, client, runID(testItem, 2), ItemInput{Item: testItem, Project: testProject, Base: "integration/s1"}, testVersion)
 	enqueueRun(t, client, runID("round/other", 1), ItemInput{Item: "round/other", Project: testProject}, testVersion)
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 
 	same, err := ItemInput{Item: testItem, Project: testProject}.withBaseOf(last, found)
 	require.NoError(t, err)
 	assert.Equal(t, "integration/s1", same.Base, "the newest attempt of the item gives the base")
 
-	none, found, err := latestRun(engine.ctx, "13")
+	none, found, err := latestRun(viewOf(engine.ctx, engine.dir), "13")
 	require.NoError(t, err)
 
 	other, err := ItemInput{Item: "13", Project: testProject}.withBaseOf(none, found)

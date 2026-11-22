@@ -47,7 +47,7 @@ def main(item):
 func inputOf(t *testing.T, engine *Engine, item string) (ItemInput, dbos.WorkflowStatus) {
 	t.Helper()
 
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 	require.NoError(t, err)
 	require.True(t, found, "item %s has a run", item)
 
@@ -84,7 +84,7 @@ func TestNestedSpawn_EachRunRecordsItsDepthAndItsParentAndRunsOnTheQueueOfItsDep
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, chainFlow("l2")), modeOff())
 	require.NoError(t, err)
 
-	root, _, err := latestRun(engine.ctx, testItem)
+	root, _, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 
 	parent := root.Status.ID
@@ -100,7 +100,7 @@ func TestNestedSpawn_EachRunRecordsItsDepthAndItsParentAndRunsOnTheQueueOfItsDep
 	assert.Equal(t, parent, first.Parent, "the child of the root names the root")
 
 	third, _ := inputOf(t, engine, "24")
-	second, _, err := latestRun(engine.ctx, "23")
+	second, _, err := latestRun(viewOf(engine.ctx, engine.dir), "23")
 	require.NoError(t, err)
 	assert.Equal(t, second.Status.ID, third.Parent, "the run at depth 3 names the run at depth 2")
 	assert.Equal(t, []string{"items", "items.2", "items.3"}, []string{itemsQueueOf(1), itemsQueueOf(2), itemsQueueOf(3)})

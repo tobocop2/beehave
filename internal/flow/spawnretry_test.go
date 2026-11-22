@@ -62,7 +62,7 @@ func TestSpawnRetries_AChildThatFailsOnceStartsAgainAsItsNextAttemptAndTheRaiseD
 	assert.Equal(t, []string{"after 21:ok:1 22:ok:2 23:ok:1"}, h.commands.ranBy(testItem))
 	assert.Equal(t, int32(2), tries.Load(), "the child ran its command in each attempt")
 
-	last, _, err := latestRun(engine.ctx, "22")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 	require.NoError(t, err)
 	assert.Equal(t, 2, last.Attempt, "the retry is the next attempt of the item")
 	assert.Equal(t, testRun, last.Status.ParentWorkflowID, "the retry is a child of the parent")
@@ -117,7 +117,7 @@ def main(item):
 	assert.Equal(t, []string{"after 22:2 22:2"}, h.commands.ranBy(testItem), "both calls see the two attempts that ran")
 	assert.Equal(t, int32(2), tries.Load(), "retries = 1 allows two attempts in all, over every gather of the runs")
 
-	last, _, err := latestRun(engine.ctx, "22")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 	require.NoError(t, err)
 	assert.Equal(t, 2, last.Attempt)
 }
@@ -169,7 +169,7 @@ func TestSpawnRetries_AFailedChildStartsAgainWhileItsSiblingIsStillOpen(t *testi
 		deadline := time.After(20 * time.Second)
 
 		for {
-			if last, _, err := latestRun(running.Load().ctx, "22"); err == nil && last.Attempt == 2 {
+			if last, _, err := latestRun(running.Load().store(), "22"); err == nil && last.Attempt == 2 {
 				return nil
 			}
 
@@ -356,7 +356,7 @@ func TestSpawnRetries_ACrashWhileThePlanOfAStartAgainRunsStartsTheNextAttemptOnc
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 	require.NoError(t, err)
 
-	last, _, err := latestRun(engine.ctx, "22")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 	require.NoError(t, err)
 	assert.Equal(t, 2, last.Attempt, "the resume planned and started the second attempt, and no third")
 	assert.Equal(t, int32(2), tries.Load(), "the item ran once more after the crash")
@@ -378,7 +378,7 @@ func TestSpawnRetries_AResumeOfTheParentReopensTheLastAttemptOfARetriedChildOnly
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 	require.NoError(t, err)
 
-	last, _, err := latestRun(engine.ctx, "22")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 	require.NoError(t, err)
 	assert.Equal(t, 2, last.Attempt, "the resume reopened the second attempt and started no third")
 	assert.Equal(t, dbos.WorkflowStatusError, runStatus(t, engine, runID("22", 1)), "the first attempt stays failed")
@@ -425,7 +425,7 @@ func TestSpawnRetries_AResumeThatReopensASiblingCanceledByTheRaiseStartsNoThirdA
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 	require.NoError(t, err)
 
-	last, _, err := latestRun(engine.ctx, "22")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 	require.NoError(t, err)
 	assert.Equal(t, 2, last.Attempt, "the resume reopened the second attempt and started no third")
 	assert.Equal(t, int32(3), tries.Load(), "only the reopened attempt ran again")
@@ -502,7 +502,7 @@ def main(item):
 		depth int
 	}{{"23", 2}, {"24", 3}} {
 		in, status := inputOf(t, engine, tc.item)
-		last, _, err := latestRun(engine.ctx, tc.item)
+		last, _, err := latestRun(viewOf(engine.ctx, engine.dir), tc.item)
 		require.NoError(t, err)
 		assert.Equal(t, 2, last.Attempt, "item %s ran a second attempt", tc.item)
 		assert.Equal(t, tc.depth, in.Depth, "item %s keeps its depth", tc.item)

@@ -370,7 +370,7 @@ func TestRateLimit_TheCostOfARunThatFailedAtALimitCountsOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.InDelta(t, 0.7, steps.Spent.Cost, 1e-9, "the status view")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 0.7, tree.Cost, 1e-9, "the sum that the tree cap reads")
 
@@ -391,11 +391,11 @@ func TestRateLimit_TheTreeSumCountsTheFailedAgentRunOfAChildRun(t *testing.T) {
 	_, err := engine.RunFile(testItem, testProject, capFile(t, treeFlow), modeOff())
 	require.NoError(t, err, "the root run ends: the gather reports the child run that failed")
 
-	child, err := runAndBelowSpend(engine.ctx, childRun)
+	child, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), childRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 0.7, child.Cost, 1e-9, "the child run holds the cost of its failed agent run")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 1.0, tree.Cost, 1e-9, "the tree holds the root step and the failed agent run of the child run")
 }
@@ -431,7 +431,7 @@ func assertTotals(t *testing.T, engine *Engine, client *Client, want float64) {
 	require.Len(t, runs, 1)
 	assert.InDelta(t, want, runs[0].Spent.Cost, 1e-9, "the list of runs")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, want, tree.Cost, 1e-9, "the sum that the tree cap reads")
 
@@ -537,10 +537,10 @@ func TestClient_AStreamOfFailedRunsThatCannotBeReadFailsEveryTotal(t *testing.T)
 	_, err = client.Status()
 	require.ErrorContains(t, err, "read the cost of the failed agent runs of "+testRun, "the list of runs")
 
-	_, err = runSpend(engine.ctx, testRun)
+	_, err = runSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.ErrorContains(t, err, "read the cost of the failed agent runs of "+testRun, "the sum that the caps read")
 
-	_, err = runAndBelowSpend(engine.ctx, testRun)
+	_, err = runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.ErrorContains(t, err, "read the cost of the failed agent runs of "+testRun, "the sum of the tree cap")
 
 	_, err = daysFromTheRun(t, client)
@@ -593,7 +593,7 @@ func TestRateLimit_AStoreThatRefusesTheLimitRecordFailsTheStepAndTheCostOfTheLim
 	require.ErrorContains(t, err, "the store refused the record")
 	assert.Len(t, h.agents.seen(), 1, "no rerun after a failed limit record")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 0.7, tree.Cost, 1e-9, "the cost of the limited run is recorded by the step of the failed run")
 }
@@ -637,7 +637,7 @@ func TestRateLimit_AResumeAfterTheStoreRefusedTheLimitRecordRunsTheAgentAgainAnd
 	require.NoError(t, err, "the resume cuts the history at the failure of the limit step, and the replay records the limit")
 	assert.Len(t, h.agents.seen(), 2, "the limited run, then the run of the resume")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 0.2, tree.Cost, 1e-9, "the resume records the cost of the limited run once")
 }
@@ -660,7 +660,7 @@ func TestRateLimit_AResumeAfterTheStoreRefusedTheLimitRecordOfASecondRunCountsEa
 	require.NoError(t, err, "the resume runs the second limited run again, and the limit is gone")
 	assert.Len(t, h.agents.seen(), 3, "two limited runs, then the run of the resume")
 
-	tree, err := runAndBelowSpend(engine.ctx, testRun)
+	tree, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 	assert.InDelta(t, 0.9, tree.Cost, 1e-9, "each limited run counts once")
 }

@@ -367,9 +367,9 @@ func phaseRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err er
 // errNoRow is returned when a workflow the store listed is gone.
 var errNoRow = errors.New("the workflow is not in the store")
 
-// row reads one workflow with its input.
+// row reads one workflow with its input, as the store holds it: a reopen needs the true state of the run, whether a mover marked it or not.
 func (c *Client) row(id string) (dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true))
+	rows, err := c.store().Exact(dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return dbos.WorkflowStatus{}, fmt.Errorf("read workflow %s: %w", id, err)
 	}

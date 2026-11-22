@@ -226,7 +226,7 @@ func hasLabel(pull model.PullRequest, name string) bool {
 // rowOf gives the state of one item. It reads the last run with latestRun, as spawn does, so the queue and spawn agree on what is open, failed and done.
 // A hold decides only for an item that spawn could start: the run of an item has its own state.
 func (e *Engine) rowOf(ctx context.Context, item model.Item, pull joinedPull) (queueRow, error) {
-	last, found, err := latestRun(e.ctx, item.ID)
+	last, found, err := latestRun(e.store(), item.ID)
 	if err != nil {
 		return queueRow{}, err
 	}
@@ -356,7 +356,7 @@ func rowWith(item model.Item, pull joinedPull, settled rowState) queueRow {
 
 // freeSlots is the cap of the items queue less the runs that the library holds on it as open. The library keeps the count: the engine keeps none.
 func (e *Engine) freeSlots() (int, error) {
-	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterQueueName(itemsQueueName), dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued))
+	open, err := e.store().Open(itemsQueueName)
 	if err != nil {
 		return 0, fmt.Errorf("count the open runs of the %s queue: %w", itemsQueueName, err)
 	}

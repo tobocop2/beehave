@@ -385,7 +385,7 @@ func (e *Engine) waitOrStop(in PhaseInput, reason string, early bool, graceEnd t
 
 // runOpen reports whether the run with this id is in the store and has not ended.
 func (e *Engine) runOpen(id string) (bool, error) {
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterWorkflowIDs(id))
+	rows, err := e.store().List(dbos.WithFilterWorkflowIDs(id))
 	if err != nil {
 		return false, fmt.Errorf("read run %s: %w", id, err)
 	}

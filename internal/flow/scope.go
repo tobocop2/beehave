@@ -85,7 +85,7 @@ func (s *script) earlierScope(item string) (scopeRead, error) {
 func (s *script) earlierRuns(item string) ([]string, error) {
 	prefix := runPrefix + item + attemptMarker
 
-	rows, err := dbos.ListWorkflows(s.e.ctx, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
+	rows, err := s.e.store().List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
 	if err != nil {
 		return nil, fmt.Errorf("list the earlier runs of item %s: %w", item, err)
 	}

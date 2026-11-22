@@ -373,7 +373,7 @@ func TestExamplePlanner_AnEngineStoppedInFirstOfTakesTheStallMessageOfTheDownTim
 	assert.Equal(t, dbos.WorkflowStatusCancelled, statusOf(t, second, "item-22-r1"), "the message canceled the stalled worker")
 	assert.Equal(t, dbos.WorkflowStatusSuccess, statusOf(t, second, "item-22-r2"), "the task of the worker went to one new worker")
 
-	last, found, err := latestRun(second.ctx, "22")
+	last, found, err := latestRun(viewOf(second.ctx, second.dir), "22")
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, 2, last.Attempt, "the planner took the message once, so it gave the task of 22 to one new worker")

@@ -60,7 +60,7 @@ func failItem(h *harness, item string, on *atomic.Bool) {
 func childStatus(t *testing.T, engine *Engine, item string) dbos.WorkflowStatusType {
 	t.Helper()
 
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 	require.NoError(t, err)
 	require.True(t, found, "item %s has no run", item)
 
@@ -100,7 +100,7 @@ func TestSpawnGather_ThreeChildrenSucceedAndTheParentSeesEachResultInOrder(t *te
 	assert.Equal(t, []string{"spawn:fan#1", "gather:fan#1", "command:after#1"}, stepNames(t, engine))
 	assert.NotContains(t, stepNamesOf(t, engine, testRun), "DBOS.getResult", "gather reads the rows and calls no GetResult")
 
-	last, _, err := latestRun(engine.ctx, "21")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "21")
 	require.NoError(t, err)
 	assert.Equal(t, testRun, last.Status.ParentWorkflowID, "the run is a child of the parent")
 }
@@ -308,7 +308,7 @@ func TestSpawnGather_ResumeOfAFailedParentReopensASiblingThatTheRaiseCancelled(t
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, stopSwarm), modeOff())
 	require.ErrorContains(t, err, "item 22 did not finish")
 
-	last, found, err := latestRun(engine.ctx, "23")
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), "23")
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, dbos.WorkflowStatusCancelled, last.Status.Status, "the raise canceled the open sibling")
@@ -332,7 +332,7 @@ func TestSpawnGather_ResumeOfAFailedParentReopensASiblingThatTheRaiseCancelled(t
 
 // itemEnded reports whether the latest run of an item ended with success. A missing run is not ended.
 func itemEnded(engine *Engine, item string) bool {
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 
 	return err == nil && found && last.Status.Status == dbos.WorkflowStatusSuccess
 }
@@ -342,7 +342,7 @@ func countEnqueued(engine *Engine, items []string) int {
 	count := 0
 
 	for _, item := range items {
-		last, found, err := latestRun(engine.ctx, item)
+		last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 		if err == nil && found && last.Status.Status == dbos.WorkflowStatusEnqueued {
 			count++
 		}
@@ -371,7 +371,7 @@ func dumpRuns(engine *Engine, parent string, children ...string) string {
 	var out strings.Builder
 
 	describe := func(item string) {
-		last, found, err := latestRun(engine.ctx, item)
+		last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 		if err != nil || !found {
 			out.WriteString("item " + item + ": no run: " + fmt.Sprint(err) + "\n")
 
@@ -435,7 +435,7 @@ func startOpenRun(t *testing.T, h *harness, engine *Engine, item, project string
 	}()
 
 	waitOn(t, condition(func() bool {
-		last, found, err := latestRun(engine.ctx, item)
+		last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 
 		return err == nil && found && !last.terminal()
 	}))
@@ -510,7 +510,7 @@ func TestSpawnGather_SpawnReusesAChildThatFinishedAndStartsNoSecondAttempt(t *te
 	assert.Len(t, h.commands.ranBy("21"), 1, "the finished child did not run again")
 	assert.Equal(t, []string{"after 21:out-21 22:out-22 23:out-23"}, h.commands.ranBy(testItem))
 
-	last, _, err := latestRun(engine.ctx, "21")
+	last, _, err := latestRun(viewOf(engine.ctx, engine.dir), "21")
 	require.NoError(t, err)
 	assert.Equal(t, 1, last.Attempt, "no second attempt")
 }
@@ -643,12 +643,12 @@ func TestSpawnGather_CancelOfTheParentWhileItGathersEndsTheChildren(t *testing.T
 	// Wait until every child has a run, and child 22 still runs, so the cancel lands while the parent gathers.
 	waitOn(t, waiting[struct{}]{what: "every child to have a run and child 22 to run", run: runOfEngine(t, engine), read: func() (struct{}, bool, error) {
 		for _, item := range []string{"21", "23"} {
-			if _, found, err := latestRun(engine.ctx, item); err != nil || !found {
+			if _, found, err := latestRun(viewOf(engine.ctx, engine.dir), item); err != nil || !found {
 				return struct{}{}, false, nil
 			}
 		}
 
-		last, found, err := latestRun(engine.ctx, "22")
+		last, found, err := latestRun(viewOf(engine.ctx, engine.dir), "22")
 
 		return struct{}{}, err == nil && found && last.Status.Status == dbos.WorkflowStatusPending, nil
 	}})

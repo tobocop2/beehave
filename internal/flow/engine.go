@@ -440,7 +440,7 @@ func (e *Engine) deepestKept() (int, error) {
 	// The depth comes from the input: a canceled row has lost its queue name.
 	states := dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusError)
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterName(itemName), states, dbos.WithFilterLoadInput(true))
+	rows, err := e.store().List(dbos.WithFilterName(itemName), states, dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return 0, fmt.Errorf("read the item runs that can run again: %w", err)
 	}
@@ -534,7 +534,7 @@ func (e *Engine) sayResumedOff() error {
 		return nil
 	}
 
-	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
+	open, err := e.store().Open("", dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return fmt.Errorf("list the open runs: %w", err)
 	}
@@ -619,7 +619,7 @@ func (e *Engine) forgetDeleted(ids []string, deleteErr error) error {
 func (e *Engine) oldRuns() ([]string, error) {
 	cutoff := e.deps.Clock.wall().Add(-cmp.Or(e.deps.Clock.Retain, e.retention, config.DefaultRetention))
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusSuccess), dbos.WithFilterWorkflowIDPrefix(runPrefix),
+	rows, err := e.store().List(dbos.WithFilterStatus(dbos.WorkflowStatusSuccess), dbos.WithFilterWorkflowIDPrefix(runPrefix),
 		dbos.WithFilterName(itemName), dbos.WithFilterCompletedBefore(cutoff))
 	if err != nil {
 		return nil, fmt.Errorf("list the finished runs: %w", err)
@@ -729,9 +729,7 @@ func (e *Engine) result(handle dbos.WorkflowHandle[ItemResult], item string) (It
 // finishedResult reads the result of the latest run of the item once from the store. ok is false when the run did not end with success.
 // The read ignores the stop of the engine: the store is still open while the stopped runs drain.
 func (e *Engine) finishedResult(item string) (ItemResult, bool) {
-	ctx := dbos.WithoutCancel(e.ctx)
-
-	last, found, err := latestRun(ctx, item)
+	last, found, err := latestRun(viewOf(dbos.WithoutCancel(e.ctx), e.dir), item)
 	if err != nil || !found || last.Status.Status != dbos.WorkflowStatusSuccess {
 		return ItemResult{}, false
 	}
@@ -748,7 +746,7 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(e.ctx, in.Item)
+	last, found, err := latestRun(e.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +766,7 @@ func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found boo
 	}
 
 	if plan.Join != "" {
-		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
+		return retrieve[ItemResult](e.store(), plan.Join)
 	}
 
 	in, err := in.withBaseOf(last, found)
@@ -823,7 +821,7 @@ func (e *Engine) pickLogin(ctx context.Context, in ItemInput, overCap bool, take
 // because its agent step is not queued yet while the run waits in a slot or does other steps. A run that `beehave run` started holds none, so the loop parent needs no login of its own.
 // The engine registers only the run and the phase, so one listing of the open workflows, filtered to those two names, reads both.
 func (e *Engine) busyLogins(taken []string) ([]string, error) {
-	open, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued), dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))
+	open, err := e.store().Open("", dbos.WithFilterName(itemName, phaseName), dbos.WithFilterLoadInput(true))
 	if err != nil {
 		return nil, fmt.Errorf("list the open workflows: %w", err)
 	}

@@ -202,13 +202,13 @@ func TestStreamAfter_AClosedStoreIsAnErrorAtTheLook(t *testing.T) {
 	client := newHarness(t).client(t, testVersion)
 	require.NoError(t, dbos.Shutdown(client.flow, time.Second))
 
-	_, err := streamAfter(client.flow, "item-21-r1", workflow.StreamCursor{})
+	_, err := streamAfter(client.store(), "item-21-r1", workflow.StreamCursor{})
 	require.Error(t, err)
 }
 
 func TestReadSnapshot_AClientWithNoStoreCannotReadAPhase(t *testing.T) {
 	t.Parallel()
 
-	_, err := readSnapshot(nil, "phase")
+	_, err := readSnapshot(storeView{}, "phase")
 	require.Error(t, err)
 }

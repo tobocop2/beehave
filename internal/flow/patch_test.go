@@ -189,7 +189,7 @@ func TestPatch_ARunMovesToANewReleaseBuildWithNoModuleBumpAndKeepsTheOldSteps(t 
 	engine := h.engine(t)
 	client := h.client(t, otherBuild)
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.NotEqual(t, client.version, last.Status.ApplicationVersion, "the run is stored under the old release build")

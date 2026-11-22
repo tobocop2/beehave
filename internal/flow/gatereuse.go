@@ -23,7 +23,7 @@ func (e *Engine) earlierPass(key GateKey, project string) (earlier, bool) {
 		return earlier{}, false
 	}
 
-	rows, err := dbos.ListWorkflows(dbos.WithoutCancel(e.ctx), dbos.WithFilterName(exclusiveName), dbos.WithFilterStatus(dbos.WorkflowStatusSuccess),
+	rows, err := viewOf(dbos.WithoutCancel(e.ctx), e.dir).List(dbos.WithFilterName(exclusiveName), dbos.WithFilterStatus(dbos.WorkflowStatusSuccess),
 		dbos.WithFilterLoadOutput(true), dbos.WithFilterSortDesc(), dbos.WithFilterLimit(reusableRuns))
 	if err != nil {
 		return earlier{}, false

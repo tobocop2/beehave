@@ -507,13 +507,13 @@ func (e *Engine) stopSuperseded(ctx context.Context, in ExclusiveInput) []string
 // olderGates lists the ids of the gates of the pull request of in that judge another head than the tip of in: the queued and running ones,
 // and a canceled one whose build job is still queued or running.
 func (e *Engine) olderGates(in ExclusiveInput) ([]string, error) {
-	ctx := dbos.WithoutCancel(e.ctx)
+	view := viewOf(dbos.WithoutCancel(e.ctx), e.dir)
 
-	rows, err := dbos.ListWorkflows(ctx, dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusPending))
+	rows, err := view.Open("", dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true))
 	if err == nil {
 		var stranded []dbos.WorkflowStatus
 
-		stranded, err = canceledGatesWithAJob(ctx)
+		stranded, err = canceledGatesWithAJob(view)
 		rows = append(rows, stranded...)
 	}
 
@@ -525,15 +525,15 @@ func (e *Engine) olderGates(in ExclusiveInput) ([]string, error) {
 }
 
 // canceledGatesWithAJob lists the canceled gates whose build job is still queued or running.
-func canceledGatesWithAJob(ctx dbos.Context) ([]dbos.WorkflowStatus, error) {
-	jobs, err := dbos.ListWorkflows(ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusPending))
+func canceledGatesWithAJob(view storeView) ([]dbos.WorkflowStatus, error) {
+	jobs, err := view.Open("", dbos.WithFilterName(hostJobName))
 
 	parents := parentsOf(jobs)
 	if err != nil || len(parents) == 0 {
 		return nil, err //nolint:wrapcheck // stopSuperseded logs the error with its context
 	}
 
-	return dbos.ListWorkflows(ctx, dbos.WithFilterWorkflowIDs(parents...), dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), //nolint:wrapcheck // stopSuperseded logs the error with its context
+	return view.List(dbos.WithFilterWorkflowIDs(parents...), dbos.WithFilterName(exclusiveName), dbos.WithFilterLoadInput(true), //nolint:wrapcheck // stopSuperseded logs the error with its context
 		dbos.WithFilterStatus(dbos.WorkflowStatusCancelled))
 }
 
