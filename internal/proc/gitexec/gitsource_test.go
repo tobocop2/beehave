@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// dotImport is the name that a dot import of a package gets in the import table.
+const dotImport = "."
+
 // gitRunnerSites returns "file:line" for each place in the Go files of root that makes a runner or a command for the git program. The program is the literal
-// "git", the name ToolGit, or a name that the same folder assigns from one of them, in the same function or at package level. It does not see a program
-// that comes from a function result, a field, a parameter, a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed
-// ExecRunner literal, or from an assignment in one function to a variable that another function uses.
+// "git", the name ToolGit, or a name that the same folder assigns from one of them. A package-level name is tainted by an assignment anywhere in the
+// folder; a function local only by an assignment in its own function. It does not see a program that comes from a function result, a field, a parameter,
+// a slice element, a selector into another folder, a raw string, a concatenation or an unkeyed ExecRunner literal, or a package-level name that a
+// function of another folder assigns.
 func gitRunnerSites(t *testing.T, root string) []string {
 	t.Helper()
 
@@ -100,8 +105,21 @@ func parseFolder(t *testing.T, fset *token.FileSet, folder string) ([]*ast.File,
 		files = append(files, file)
 
 		for _, decl := range file.Decls {
-			if _, isFunc := decl.(*ast.FuncDecl); !isFunc {
+			function, isFunc := decl.(*ast.FuncDecl)
+			if !isFunc {
 				collectAssigned(decl, packageLevel)
+
+				continue
+			}
+
+			locals := localNames(function)
+			assigned := map[string][]ast.Expr{}
+			collectAssigned(function, assigned)
+
+			for name, values := range assigned {
+				if !locals[name] {
+					packageLevel[name] = append(packageLevel[name], values...)
+				}
 			}
 		}
 	}
@@ -109,21 +127,66 @@ func parseFolder(t *testing.T, fset *token.FileSet, folder string) ([]*ast.File,
 	return files, packageLevel
 }
 
-// scopeOf returns the assignments that a declaration sees: those of the package level, plus its own when it is a function.
+// scopeOf returns the assignments that a declaration sees: those to the package-level names of the whole folder, and in a function those to its own locals,
+// which hide a package-level name of the same spelling.
 func scopeOf(decl ast.Decl, packageLevel map[string][]ast.Expr) map[string][]ast.Expr {
 	function, isFunc := decl.(*ast.FuncDecl)
 	if !isFunc {
 		return packageLevel
 	}
 
-	local := map[string][]ast.Expr{}
-	collectAssigned(function, local)
+	assigned := map[string][]ast.Expr{}
+	collectAssigned(function, assigned)
 
-	for name, values := range packageLevel {
-		local[name] = append(local[name], values...)
+	visible := map[string][]ast.Expr{}
+	maps.Copy(visible, packageLevel)
+
+	for name := range localNames(function) {
+		visible[name] = assigned[name]
 	}
 
-	return local
+	return visible
+}
+
+// localNames returns the names that a function declares itself: parameters, results, short declarations, var specs and range variables.
+func localNames(function *ast.FuncDecl) map[string]bool {
+	names := map[string]bool{}
+
+	add := func(idents ...*ast.Ident) {
+		for _, ident := range idents {
+			names[ident.Name] = true
+		}
+	}
+
+	ast.Inspect(function, func(node ast.Node) bool {
+		switch n := node.(type) {
+		case *ast.Field:
+			add(n.Names...)
+		case *ast.ValueSpec:
+			add(n.Names...)
+		case *ast.AssignStmt:
+			if n.Tok == token.DEFINE {
+				addIdents(add, n.Lhs)
+			}
+		case *ast.RangeStmt:
+			if n.Tok == token.DEFINE {
+				addIdents(add, []ast.Expr{n.Key, n.Value})
+			}
+		}
+
+		return true
+	})
+
+	return names
+}
+
+// addIdents passes the plain names among the expressions to add.
+func addIdents(add func(...*ast.Ident), exprs []ast.Expr) {
+	for _, expr := range exprs {
+		if ident, ok := expr.(*ast.Ident); ok {
+			add(ident)
+		}
+	}
 }
 
 // importNames returns the names under which the file imports the package at path.
@@ -216,12 +279,20 @@ func binaryOf(literal *ast.CompositeLit) []ast.Expr {
 
 // execProgramOf returns the program argument of a Command or CommandContext call on a name that imports os/exec.
 func execProgramOf(call *ast.CallExpr, execNames map[string]bool) []ast.Expr {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || !execNames[identName(selector.X)] {
-		return nil
+	function := ""
+
+	switch fun := call.Fun.(type) {
+	case *ast.SelectorExpr:
+		if execNames[identName(fun.X)] {
+			function = fun.Sel.Name
+		}
+	case *ast.Ident:
+		if execNames[dotImport] {
+			function = fun.Name
+		}
 	}
 
-	switch selector.Sel.Name {
+	switch function {
 	case "Command":
 		return argAt(call.Args, 0)
 	case "CommandContext":
@@ -322,20 +393,33 @@ func TestTheGitSourceTestSeesAVariableOrConstantThatHoldsTheGitProgram(t *testin
 	}
 }
 
-func TestTheGitSourceTestSeesAnAliasedExecPackageAndAPackageLevelName(t *testing.T) {
+func TestTheGitSourceTestSeesAnImportAliasAndAPackageLevelName(t *testing.T) {
 	t.Parallel()
 
-	sources := map[string]string{
-		"an aliased os/exec package": "package p\n\nimport osexec \"os/exec\"\n\nfunc f() {\n_ = osexec.Command(\"git\")\n}\n",
-		"a package level variable":   "package p\n\nvar name = \"git\"\n\nfunc f() {\n_ = proc.NewExecRunner(name, dir)\n}\n",
+	use := "func f() {\n_ = proc.NewExecRunner(name, dir)\n}\n"
+
+	folders := map[string]map[string]string{
+		"an aliased os/exec package": {"p.go": "package p\n\nimport osexec \"os/exec\"\n\nfunc f() {\n_ = osexec.Command(\"git\")\n}\n"},
+		"a dot import of os/exec":    {"p.go": "package p\n\nimport . \"os/exec\"\n\nfunc f() {\n_ = Command(\"git\")\n}\n"},
+		"a package level variable":   {"p.go": "package p\n\nvar name = \"git\"\n\n" + use},
+		"a name that init sets":      {"p.go": "package p\n\nvar name string\n\nfunc init() {\nname = \"git\"\n}\n\n" + use},
+		"a name that a function in another file sets": {
+			"p.go": "package p\n\nvar name string\n\n" + use,
+			"q.go": "package p\n\nfunc setup() {\nname = \"git\"\n}\n",
+		},
+		"a name that one function sets and another runs": {
+			"p.go": "package p\n\nvar name = \"x\"\n\nfunc setup() {\nname = \"git\"\n}\n\n" + use,
+		},
 	}
 
-	for name, source := range sources {
+	for name, sources := range folders {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			require.NoError(t, os.WriteFile(filepath.Join(root, "p.go"), []byte(source), 0o600))
+			for file, source := range sources {
+				require.NoError(t, os.WriteFile(filepath.Join(root, file), []byte(source), 0o600))
+			}
 
 			assert.Len(t, gitRunnerSites(t, root), 1)
 		})
@@ -349,8 +433,11 @@ func TestTheGitSourceTestLeavesOtherProgramsAlone(t *testing.T) {
 		"a runner for another program": "package p\n\nfunc f() {\nname := \"gh\"\n_ = proc.ExecRunner{Binary: name}\n_ = proc.NewExecRunner(\"find\", dir)\n}\n",
 		"git as an argument of another program": "package p\n\nimport \"os/exec\"\n\nfunc f() {\n_ = exec.Command(\"which\", \"git\")\n" +
 			"_ = exec.CommandContext(ctx, \"which\", \"git\")\n}\n",
-		"a Command call that is not os/exec":   "package p\n\nimport \"github.com/spf13/cobra\"\n\nfunc f() {\n_ = cobra.Command(\"git\")\n_ = c.Command(\"git\")\n}\n",
-		"one name for git in another function": "package p\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
+		"a Command call that is not os/exec":          "package p\n\nimport \"github.com/spf13/cobra\"\n\nfunc f() {\n_ = cobra.Command(\"git\")\n_ = c.Command(\"git\")\n}\n",
+		"one name for git in another function":        "package p\n\nfunc f() {\nname := \"git\"\n_ = name\n}\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
+		"a local that hides a package level name":     "package p\n\nvar name = \"git\"\n\nfunc g() {\nname := \"gh\"\n_ = proc.NewExecRunner(name, dir)\n}\n",
+		"a parameter that hides a package level name": "package p\n\nvar name = \"git\"\n\nfunc g(name string) {\n_ = proc.NewExecRunner(name, dir)\n}\n",
+		"a Command function without a dot import":     "package p\n\nfunc f() {\n_ = Command(\"git\")\n}\n",
 	}
 
 	for name, source := range sources {
