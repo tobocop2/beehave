@@ -170,11 +170,11 @@ func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[I
 	return handle, nil
 }
 
-// await waits for the result of the run. A run in the queue waits for ever when no engine takes it, so each poll reads the status of the run and checks for an engine. The check holds probe.lock for microseconds and never meets an engine that is starting, so a poll each second is cheap and safe.
+// await waits for the result of the run. A run in the queue waits for ever when no engine takes it, so each poll reads the status of the run and checks for an engine of this build. The check holds probe.lock for microseconds and never meets an engine that is starting, so a poll each second is cheap and safe.
 // The loop runs in the caller, so it ends with ctx and leaves no poller behind.
 func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResult], item string) (ItemResult, error) {
 	poll := cmp.Or(c.give.Clock.Poll, joinPoll)
-	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item}
+	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
 	ticker := time.NewTicker(poll)
 
 	defer ticker.Stop()
@@ -225,15 +225,16 @@ func (o outcome) unwrap(item string) (ItemResult, error) {
 	return o.result, nil
 }
 
-// engineWatch counts how long no engine holds the state folder.
+// engineWatch counts how long no engine holds the state folder. While an engine holds it, the watch asks build whether that engine runs this build.
 type engineWatch struct {
 	dir   string
 	item  string
 	grace time.Duration
 	since time.Time
+	build func() error
 }
 
-// check returns ErrEngineGone when no engine has held the state folder for the whole grace time.
+// check returns ErrEngineGone when no engine has held the state folder for the whole grace time, and the error of build when the engine that holds it runs another build.
 func (w *engineWatch) check() error {
 	running, err := engineRuns(w.dir)
 	if err != nil {
@@ -243,7 +244,7 @@ func (w *engineWatch) check() error {
 	if running {
 		w.since = time.Time{}
 
-		return nil
+		return w.build()
 	}
 
 	if w.since.IsZero() {
