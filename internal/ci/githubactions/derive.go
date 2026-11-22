@@ -502,9 +502,7 @@ func stepProblem(step workflowStep, stepShell string) string {
 func setupAction(uses string) bool {
 	name, _, _ := strings.Cut(strings.ToLower(uses), "@")
 
-	return slices.Contains([]string{
-		"actions/checkout", "actions/setup-go", "actions/setup-node", "actions/setup-python", "actions/setup-java", "actions/setup-dotnet",
-	}, name)
+	return name == "actions/checkout" || strings.HasPrefix(name, "actions/setup-")
 }
 
 // stepNameOf names a gate step by its job and its step name, or by its place in the job when the step has no name.

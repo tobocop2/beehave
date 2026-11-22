@@ -259,12 +259,45 @@ func TestCheckGateList_AMissingFileAndAFileWithANulByteAreExitCodeTwo(t *testing
 	assert.Equal(t, 2, code)
 	assert.Empty(t, out)
 	assert.Contains(t, errOut, "cannot read ")
+	assert.Contains(t, errOut, "Check that the file exists and that you can read it.\n")
 
 	code, out, errOut = runGateList(t, ciFile(t, "nul.yaml", "jobs:\x00\n"))
 
 	assert.Equal(t, 2, code)
 	assert.Empty(t, out)
-	assert.Contains(t, errOut, "holds a NUL byte")
+	assert.Contains(t, errOut, "holds a NUL byte. Rewrite it as plain text.\n")
+}
+
+func TestCheckGateList_HelpIsExitCodeZeroAndShowsTheUsage(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range []string{"--help", "-h"} {
+		code, out, _ := runGateList(t, flag)
+
+		assert.Equal(t, 0, code, flag)
+		assert.Contains(t, out, "gate-list [--steps <name>]... [--map <json>] <ci-file>...", flag)
+	}
+}
+
+func TestCheckGateList_AFlagMayFollowTheFile(t *testing.T) {
+	t.Parallel()
+
+	file := ciFile(t, "ci.yaml", jobsHead+"run: make lint\n")
+
+	code, out, errOut := runGateList(t, file, "--steps", "test", "--map", `{"make test": ["test"], "make lint": []}`)
+
+	assert.Equal(t, 0, code, errOut)
+	assert.Contains(t, out, "check-gatelist: OK")
+}
+
+func TestCheckGateList_ALongFlagWithASingleDashIsExitCodeTwo(t *testing.T) {
+	t.Parallel()
+
+	code, out, errOut := runGateList(t, "-steps", "test", ciFile(t, "ci.yaml", ciWorkflow))
+
+	assert.Equal(t, 2, code)
+	assert.Empty(t, out)
+	assert.Contains(t, errOut, "unknown shorthand flag")
 }
 
 func TestCheckGateList_ACallWithNoCIFileShowsTheUsageAndIsExitCodeTwo(t *testing.T) {

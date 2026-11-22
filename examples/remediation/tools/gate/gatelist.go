@@ -122,7 +122,7 @@ func (s *gateScan) read(list *gateList, line, name string) {
 func (s *gateScan) errors(g *gateList, name string) []string {
 	switch {
 	case s.sections == 0:
-		return []string{name + ` has no "## Gate steps" section. Add it: one "| name | command |" row for each step. "remedy gatelist" prints the steps of the CI workflow files`}
+		return []string{name + ` has no "## Gate steps" section. Add it: one "| name | command |" row for each step. "beehave check gate-list" prints the steps of the CI workflow files`}
 	case s.sections > 1:
 		return []string{fmt.Sprintf(`%s has %d "## Gate steps" sections. The gate list has one home`, name, s.sections)}
 	case len(g.steps) == 0:

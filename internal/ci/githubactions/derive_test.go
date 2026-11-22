@@ -295,11 +295,11 @@ func TestDerive_AShellOtherThanBashOrShFromTheStepOrTheDefaultsLeavesTheStepOut(
 	fileDefaults := func(shell string) string { return "defaults:\n  run:\n    shell: " + shell + "\n" }
 
 	for name, text := range map[string]string{
-		"step pwsh":           jobOf("", "", harmlessIn("pwsh")),
-		"step custom string":  jobOf("", "", harmlessIn("bash -e {0}")),
-		"step expression":     jobOf("", "", harmlessIn("${{ matrix.shell }}")),
-		"job defaults pwsh":   jobOf("", jobDefaults("pwsh"), harmless),
-		"file defaults pyhon": jobOf(fileDefaults("python"), "", harmless),
+		"step pwsh":          jobOf("", "", harmlessIn("pwsh")),
+		"step custom string": jobOf("", "", harmlessIn("bash -e {0}")),
+		"step expression":    jobOf("", "", harmlessIn("${{ matrix.shell }}")),
+		"job defaults pwsh":  jobOf("", jobDefaults("pwsh"), harmless),
+		"file defaults ruby": jobOf(fileDefaults("ruby {0}"), "", harmless),
 	} {
 		got := derivedAll(t, text)
 

@@ -20,6 +20,12 @@ const (
 	mapFlag        = "map"
 )
 
+// The fixes end with a period, as the error text of the old tool did.
+const (
+	fixUnreadable = "Check that the file exists and that you can read it."
+	fixNulByte    = "Rewrite it as plain text."
+)
+
 const errMapNotMatch = "the gate_map of the project does not match the CI commands. Map each derived command, exactly as the step line prints it, to the gate_steps that run it or to [] when it is not a check, and remove each stale key"
 
 var (
@@ -126,11 +132,11 @@ func readCIFiles(paths []string) ([]ci.File, error) {
 		data, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {
 			// os.ReadFile wraps the cause in a path error that repeats the path.
-			return nil, fmt.Errorf("cannot read %s: %w. Check that the file exists and that you can read it", path, errors.Unwrap(err))
+			return nil, fmt.Errorf("cannot read %s: %w. %s", path, errors.Unwrap(err), fixUnreadable)
 		}
 
 		if bytes.IndexByte(data, 0) >= 0 {
-			return nil, fmt.Errorf("%s holds a NUL byte. Rewrite it as plain text", path)
+			return nil, fmt.Errorf("%s holds a NUL byte. %s", path, fixNulByte)
 		}
 
 		files[i] = ci.File{Path: path, Text: string(data)}
