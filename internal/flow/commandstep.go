@@ -12,6 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/agent"
 	gatepkg "github.com/tobocop2/beehave/internal/gate"
 	"github.com/tobocop2/beehave/internal/host"
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -28,7 +29,7 @@ func (s *script) commandCall(b *starlark.Builtin, args starlark.Tuple, kwargs []
 	c := commandRaw{failure: string(workflow.FailureRaise)}
 
 	err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, slotsKeyword: &c.slots, "stop_on_rc": &c.codes, nameKeyword: &c.label,
+		runKeyword: &c.run, hostKeyword: &c.host, "stdin": &c.stdin, "env": &c.own, timeoutKeyword: &c.timeout, maxNewProcessesKeyword: &c.processes, slotsKeyword: &c.slots, "stop_on_rc": &c.codes, string(sandboxKeyword): &c.sandbox, nameKeyword: &c.label,
 		retriesKeyword: &c.retries, backoffKeyword: &c.backoff, failureKeyword: &c.failure,
 	})
 	if err != nil {
@@ -73,6 +74,8 @@ type commandRaw struct {
 	processes starlark.Value
 	// slots is the slot class as the file wrote it. It stays a value so that an empty text and None are refused with their own message.
 	slots starlark.Value
+	// sandbox is the sandbox keyword as the file wrote it.
+	sandbox starlark.Value
 }
 
 // commandRequest checks the arguments of a command call and makes its request and its stop codes.
@@ -88,13 +91,35 @@ func (s *script) commandRequest(c commandRaw) (CommandRequest, []int, error) {
 		return request, nil, err
 	}
 
-	if request.Env, err = s.environment(request, c.own); err != nil {
+	if err = s.confine(&request, c); err != nil {
 		return request, nil, err
 	}
 
 	stops, err := workflow.StopCodes(c.codes)
 
 	return request, stops, err
+}
+
+// confine sets the environment and the sandbox of the request from the arguments of the call.
+func (s *script) confine(request *CommandRequest, c commandRaw) (err error) {
+	if request.Env, err = s.environment(*request, c.own); err != nil {
+		return err
+	}
+
+	request.Sandbox, err = sandboxOf(c.sandbox, *request)
+
+	return err
+}
+
+// sandboxOf reads the sandbox keyword of a command call. A call that leaves it out, or gives None, runs with no sandbox: the project default of the sandbox
+// is for agent steps. A sandbox value cannot go with a host, stdin or a process cap.
+func sandboxOf(value starlark.Value, request CommandRequest) (*model.Sandbox, error) {
+	choice, err := readSandbox(value)
+	if err != nil || choice.box == nil {
+		return nil, err
+	}
+
+	return choice.box, workflow.SandboxWith(request.Host, request.Stdin, request.MaxNewProcesses)
 }
 
 // limitsOf reads the two settings that limit a call: the cap of its processes and the slot class of its host job. Each one refuses the other host rule on its own.

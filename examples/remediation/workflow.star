@@ -540,7 +540,7 @@ def changelog_missing(changelog, base, head, id, fetch = False):
         if got.rc != 0:
             return "REFUSE: the head %s of item %s could not be fetched, so the changelog %s could not be checked: %s" % (head, id, changelog, got.stderr.strip())
 
-    paths = command(name = "changed-paths-" + id, run = ["git", "diff", "--name-only", "origin/" + base + "..." + head], stop_on_rc = [2])
+    paths = command(name = "changed-paths-" + id, run = ["git", "diff", "--name-only", "origin/" + base + "..." + head], stop_on_rc = [2], sandbox = sandbox())
     if paths.rc != 0:
         return "REFUSE: the changed paths of item %s could not be read, so the changelog %s could not be checked: %s" % (id, changelog, paths.stderr.strip())
 

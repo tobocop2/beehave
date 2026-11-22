@@ -15,7 +15,7 @@ import (
 // sandboxMark is the constructor of the value that the sandbox builtin returns. The sandbox keyword of an agent call takes only such a value, or None.
 const sandboxMark = starlark.String("sandbox")
 
-// sandboxKeyword is the name of the sandbox keyword of an agent call.
+// sandboxKeyword is the name of the sandbox keyword of an agent call and of a command call.
 const sandboxKeyword = starlark.String("sandbox")
 
 // recordedSandbox is the name of the output of the render step that holds the sandbox the step runs with.

@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 var settingsFlow = bodyFlow(`command(
@@ -83,6 +85,62 @@ func TestWalk_ACommandCapReachesTheRunnerAndNoCapMeansZero(t *testing.T) {
 	require.Len(t, h.commands.requests, 2)
 	assert.Equal(t, 5, h.commands.requests[0].MaxNewProcesses)
 	assert.Zero(t, h.commands.requests[1].MaxNewProcesses, "a call with no cap is not capped")
+}
+
+func TestWalk_ACommandSandboxReachesTheRunnerWithItsNetworkListAndAnOmittedOrNoneSandboxIsNil(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	_, err := walkBody(t, h, "command(run = [\"a\"], sandbox = sandbox(network = [\"proxy.golang.org\"]), name = \"boxed\")\n"+
+		"command(run = [\"b\"], sandbox = sandbox(), name = \"closed\")\n"+
+		"command(run = [\"c\"], sandbox = None, name = \"none\")\n"+
+		"command(run = [\"d\"], name = \"left-out\")\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.requests, 4)
+	assert.Equal(t, &model.Sandbox{Network: []string{"proxy.golang.org"}}, h.commands.requests[0].Sandbox)
+	assert.Equal(t, &model.Sandbox{}, h.commands.requests[1].Sandbox, "a sandbox with no list is a sandbox with no network, and it is not nil")
+	assert.Nil(t, h.commands.requests[2].Sandbox)
+	assert.Nil(t, h.commands.requests[3].Sandbox, "the sandbox default of the project is for agent steps, so a call that leaves the keyword out runs as before")
+}
+
+func TestWalk_ACommandSandboxThatTheSandboxCannotApplyIsRefusedBeforeItRuns(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"a host":              `host = str("box"), sandbox = sandbox()`,
+		"stdin":               `stdin = str("x"), sandbox = sandbox()`,
+		"a process cap":       `max_new_processes = int("5"), sandbox = sandbox()`,
+		"a text":              `sandbox = str("on")`,
+		"a bool":              `sandbox = bool(1)`,
+		"a list of domains":   `sandbox = list(["proxy.golang.org"])`,
+		"a bad network entry": `sandbox = sandbox(network = [str("https://x.org")])`,
+	}
+
+	for name, setting := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newHarness(t)
+
+			_, err := walkBody(t, h, "command(run = [\"a\"], "+setting+")\n")
+
+			require.Error(t, err)
+			assert.Empty(t, h.commands.requests)
+		})
+	}
+}
+
+func TestWalk_ACommandWithNoneAndAHostIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	_, err := walkBody(t, h, "command(run = [\"a\"], host = \"box\", sandbox = None)\n")
+
+	require.NoError(t, err)
+	require.Len(t, h.commands.requests, 1)
+	assert.Nil(t, h.commands.requests[0].Sandbox)
 }
 
 func TestWalk_AGateGetsNoEnvironmentOfItsOwn(t *testing.T) {

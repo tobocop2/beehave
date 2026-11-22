@@ -164,6 +164,21 @@ func ProcessCap(v starlark.Value, host string) (int, error) {
 	return int(limit), nil
 }
 
+// SandboxWith refuses the settings of a sandboxed command call that the sandbox cannot apply: a host job takes a command line only, and the sandbox gives
+// the program no stdin and no process cap. Each setting is its zero value for a call that leaves it out.
+func SandboxWith(host, stdin string, processes int) error {
+	switch {
+	case host != "":
+		return errors.New("sandbox cannot be used together with host. A host job takes a command line only. Remove sandbox or host")
+	case stdin != "":
+		return errors.New("sandbox cannot be used together with stdin. The sandbox gives the program no input. Remove sandbox or stdin")
+	case processes != 0:
+		return errors.New("sandbox cannot be used together with max_new_processes. The sandbox sets no process cap. Remove sandbox or max_new_processes")
+	}
+
+	return nil
+}
+
 // OwnDraft reads the own_draft keyword of preflight: the number of a pull request, 1 or more, or zero for a call that leaves it out.
 func OwnDraft(v starlark.Value) (int, error) {
 	if v == nil {

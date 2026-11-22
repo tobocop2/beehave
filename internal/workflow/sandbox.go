@@ -9,7 +9,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// sandboxKeyword is the keyword of an agent call that sets the sandbox, and sandboxName the builtin that builds its value.
+// sandboxKeyword is the keyword of an agent call and of a command call that sets the sandbox, and sandboxName the builtin that builds its value.
 const (
 	sandboxKeyword = "sandbox"
 	sandboxName    = "sandbox"
@@ -56,7 +56,7 @@ func (g *graph) note(at Diagnostic, text string) {
 	g.notes = append(g.notes, at)
 }
 
-// sandboxes checks the sandbox keyword of each agent call in a parsed file. The value is sandbox(...), which the signature of sandbox checks,
+// sandboxes checks the sandbox keyword of each agent and command call in a parsed file. The value is sandbox(...), which the signature of sandbox checks,
 // or None, which turns the sandbox off and gets a note. A literal of any other kind is a problem. A value that is not a literal is left to the run.
 func (g *graph) sandboxes(parsed *syntax.File) {
 	shadowed := definedNames(parsed)
@@ -73,14 +73,14 @@ func (g *graph) sandboxes(parsed *syntax.File) {
 	})
 }
 
-// sandboxCall checks the sandbox keyword of an agent call. The lists of a sandbox call are keywords like any other. A name that the file defines is not the builtin.
+// sandboxCall checks the sandbox keyword of an agent or command call. The lists of a sandbox call are keywords like any other. A name that the file defines is not the builtin.
 func (g *graph) sandboxCall(call *syntax.CallExpr, shadowed []string) {
-	if name := callee(call); name == agentName && !slices.Contains(shadowed, name) {
+	if name := callee(call); (name == agentName || name == commandName) && !slices.Contains(shadowed, name) {
 		g.sandboxValue(call)
 	}
 }
 
-// sandboxValue checks the value of the sandbox keyword of one agent call.
+// sandboxValue checks the value of the sandbox keyword of one agent or command call.
 func (g *graph) sandboxValue(call *syntax.CallExpr) {
 	value := argument(call, sandboxKeyword, len(call.Args))
 	if value == nil {

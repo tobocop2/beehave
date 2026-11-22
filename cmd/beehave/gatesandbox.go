@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/fstree"
@@ -38,10 +41,29 @@ type gateSandbox struct {
 	clones cloneLock
 	// folders is the set of the folders that the engine made. The engine builds one set, and a second set on one root removes the live folders of the first.
 	folders *fstree.Folders
+	// ownGit is true for a command call: git reads the identity of the engine in place of the config file of the owner, which the plan closes.
+	ownGit bool
 }
 
 func newGateSandbox(projects map[string]config.Project, clones cloneLock, folders *fstree.Folders) gateSandbox {
 	return gateSandbox{projects: projects, enforcer: chooseEnforcer, home: os.UserHomeDir, environ: model.EnvPairs(config.ProcessEnv()), clones: clones, folders: folders}
+}
+
+// asked returns the sandbox for a command call whose keyword is box: the network list of the call replaces gate_network of the project. A nil box
+// is a gate, which keeps the lists of the project.
+func (g gateSandbox) asked(project string, box *model.Sandbox) gateSandbox {
+	if box == nil {
+		return g
+	}
+
+	found := g.projects[project]
+	found.GateNetwork = slices.Clone(box.Network)
+
+	g.projects = maps.Clone(g.projects)
+	g.projects[project] = found
+	g.ownGit = true
+
+	return g
 }
 
 // applies says whether a gate of the project runs under the sandbox on this machine: the project has the sandbox on and the gate runs here.
@@ -265,9 +287,41 @@ func (g gateSandbox) runIn(ctx context.Context, enforcer sandbox.Enforcer, proje
 		return notStarted(note)
 	}
 
-	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: append(withoutSocket(g.envOf(env)), "TMPDIR="+tmp)}
+	command := sandbox.Command{Argv: argv, Dir: copied.WorkTree, Env: g.commandEnv(ctx, env, tmp, clone.git.Runner(dir, proc.DefaultTimeout))}
 
 	return execute(ctx, enforcer, plan, command, limit)
+}
+
+// commandEnv returns the environment of the command: env without the SSH agent, its temporary folder, and for a command call the git variables of the engine.
+func (g gateSandbox) commandEnv(ctx context.Context, env []string, tmp string, git gitexec.Runner) []string {
+	run := append(withoutSocket(g.envOf(env)), "TMPDIR="+tmp)
+	if g.ownGit {
+		run = append(run, gitVariables(gitIdentity(ctx, git))...)
+	}
+
+	return run
+}
+
+// gitVariables returns the variables that give git the identity of the engine and no config file of the owner: the plan closes ~/.gitconfig, so git would fail
+// on it. The identity goes by GIT_CONFIG_COUNT, which git reads as config values, so no file holds it and no quoting is needed. A value that is empty is left out.
+func gitVariables(identity agent.GitIdentity) []string {
+	vars := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+
+	var pairs [][2]string
+
+	for _, pair := range [][2]string{{"user.name", identity.Name}, {"user.email", identity.Email}} {
+		if pair[1] != "" {
+			pairs = append(pairs, pair)
+		}
+	}
+
+	vars = append(vars, "GIT_CONFIG_COUNT="+strconv.Itoa(len(pairs)))
+
+	for i, pair := range pairs {
+		vars = append(vars, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, pair[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, pair[1]))
+	}
+
+	return vars
 }
 
 // envOf returns env, or the environment that the sandbox was made with when env is nil. The caller drops the SSH agent from it.

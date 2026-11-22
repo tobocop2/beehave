@@ -659,7 +659,7 @@ func (p programs) Run(ctx context.Context, request flow.CommandRequest) (flow.Co
 		return flow.CommandOutput{}, fmt.Errorf("find the folder of item %s: %w", request.Item, err)
 	}
 
-	if request.Gate && p.sandbox.applies(request.Project, true) {
+	if request.Sandbox != nil || (request.Gate && p.sandbox.applies(request.Project, true)) {
 		return p.sandboxed(ctx, request, dir)
 	}
 
@@ -676,7 +676,8 @@ func (p programs) folder(ctx context.Context, request flow.CommandRequest) (stri
 	return p.trees.Path(ctx, request.Project, request.Item)
 }
 
-// sandboxed runs the program of a gate under the sandbox of its project. Stdin and the process cap of the request do not apply to a sandboxed gate.
+// sandboxed runs the program of a gate, or of a command call with the sandbox keyword, under the sandbox of its project. A command call with the keyword
+// reaches the domains of its own network list in place of gate_network. Stdin and the process cap of the request do not apply to a sandboxed program.
 // The output is the plan, then what the program printed, with stdout and stderr in one stream.
 func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, dir string) (flow.CommandOutput, error) {
 	own := dir == ""
@@ -688,9 +689,11 @@ func (p programs) sandboxed(ctx context.Context, request flow.CommandRequest, di
 
 	defer cleanup()
 
-	run := p.sandbox.run
+	box := p.sandbox.asked(request.Project, request.Sandbox)
+
+	run := box.run
 	if own {
-		run = p.sandbox.runOwn
+		run = box.runOwn
 	}
 
 	out, code := run(ctx, request.Project, dir, request.Run, request.Env, request.Timeout)
