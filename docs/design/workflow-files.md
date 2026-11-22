@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -61,6 +61,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `publish` | Safe. | The event writes and the list of keys are one recorded step, and a repeat sets the same value again. |
 | `send` | Safe. It rests on the library. | The send is a recorded step of the library: the insert and the step record commit together, so a resume inserts the message once. |
 | `recv` | Safe. It rests on the library. | The deadline is a recorded step, and the receive is a durable DBOS step. A resume receives the same message. |
+| `stream` | Safe. | The deadline and the read are recorded steps. A resume returns the recorded entries and the cursor, and a crash inside the read runs it again from the same cursor. |
 | `wait` | Safe. It rests on the library, and no test in this table stops a wait. | The deadline is the output of a recorded DBOS sleep, and the answer is a durable receive. A resume waits for the same answer. |
 | `sleep` | Safe. It rests on the library. | The wake time is the record of a DBOS sleep. A test stops the engine in the middle of a sleep, and the resumed run sleeps only the time left. |
 | `write` with `read_back` | Safe. | The read-back runs first and finds a write that is done. |
@@ -74,7 +75,7 @@ Four cases are not safe today, and a later change fixes each of them.
 | `host_teardown` on ssh and Slurm | Safe. | The step banks the work and leaves the machine up. The bank reads first and pushes only what is not banked, so a repeat pushes nothing. A test runs the bank once, and none runs it twice. |
 | `agent` | The step is a lost step. It resumes the session or runs again with a note. | `durable-loop.md` describes the start mark of a phase. |
 
-The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`) change nothing outside the run, so a repeat is safe.
+The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_calls`, `gather`, `progress`, `stream`) change nothing outside the run, so a repeat is safe.
 
 #### The folder of a program
 
@@ -604,6 +605,18 @@ The deadline is a recorded step, `gather:<name>#<n>.deadline`, before the step o
 - The call is two recorded steps. `cancel:<name>#<n>.open` records whether the run is open. `cancel:<name>#<n>` then cancels it, writing the cancel marker first as `beehave cancel` does, so an engine that stops gives the claim of the run back at its next start. The read is recorded before any cancel, so a cancel step that runs again after a crash still returns True for a run that it ended.
 - `beehave resume` of the parent does not reopen a run that `cancel` or a deadline canceled.
 
+#### `stream`
+
+`stream(run, after="", timeout, name="")` returns the redacted entries of the agent stream of a run that a `spawn` call of this run returned, and the next cursor. It returns `entries`, `next` and `ended`.
+
+- Each entry has `seq`, `attempt`, `kind` and `text`. The kind is `text` or `call`. The entries are those that `beehave status --follow` prints, redacted when the agent wrote them.
+- `after` is empty, or the `next` of an earlier call. The call returns the entries that follow it. `next` is the cursor of the last entry returned, and it is `after` when the call returns no entry. A text that is not a cursor that `stream` returned is refused.
+- `timeout` is required and above zero. The call returns at once when an entry exists. Otherwise it waits up to `timeout`, and returns no entry, `next = after` and `ended = False`.
+- One call returns at most 200 entries and 64 KiB of text, and always at least one entry when one exists. The caller loops until `ended`.
+- `ended` is True when the run had ended before the read and no entry is left after `next`. A call on an ended run does not wait, whatever `timeout` says. A cancelled or failed run ends the same way.
+- A run that this run did not spawn is refused with `run <id> is not a child of this run`. A child of a child is refused too. For a child that `gather` started again, the call reads the latest attempt, and a cursor of an earlier attempt starts that attempt at its first entry.
+- The call is two recorded steps. `stream:<name>#<n>.deadline` records the time at which the wait ends. `stream:<name>#<n>` records the entries, the cursor and `ended`. A replay returns the record and reads nothing.
+
 #### The value of a child run
 
 `value` is what the entry function of the child returned with a plain `return`. It is None when the child returned nothing or did not succeed.
@@ -665,6 +678,7 @@ A send to a child goes to its latest attempt: the run that `gather` started agai
 - The messages of one topic come in the order that they arrived. A message of another topic waits for a later `recv` of its topic.
 - The deadline is a recorded step, `recv:<name>#<n>.deadline`, or `recv#<n>.deadline` for a call with no name, so a resumed run waits only the time that is left. The step holds the end time and the topic.
 - While `recv` waits, `beehave status` shows the call as the step that runs now, and the note `waits for a message on topic <topic> until <time>` with the time left. `status --json` has the field `receiving` with the topic, and `deadline`. A `recv` that takes a message that is already in the buffer shows nothing. The same rule names the call of a `first_of` or a `gather` with a timeout (`first_of:<name>#<n>`, `gather:<name>#<n>`) as the step that runs now, in place of the record of its deadline. These two calls show no topic.
+- While `stream` waits for a new entry, `beehave status` shows the call as the step that runs now (`stream:<name>#<n>`), and the note `waits for the agent output of run <run> until <time>` with the time left. `status --json` has the field `streaming` with the id of the child run, and `deadline`. A `stream` that finds an entry at once shows nothing.
 
 #### `beehave send`
 

@@ -82,11 +82,12 @@ func itemDefs() []builtinDef {
 	}
 }
 
-// eventDefs lists the builtins that publish a value of this run and read the values of the child runs.
+// eventDefs lists the builtins that publish a value of this run and read the values and the agent streams of the child runs.
 func eventDefs() []builtinDef {
 	return []builtinDef{
 		{name: progressKind, call: (*script).progress},
 		{name: publishKind, call: (*script).publish},
+		{name: streamKind, call: (*script).stream},
 	}
 }
 
