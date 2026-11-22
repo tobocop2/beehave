@@ -209,7 +209,7 @@ const runLong = "Take one item through its workflow.\nName the project when the 
 	"After a finished or a canceled run, beehave run starts a new run.\n\n" +
 	"If another engine holds the state folder, beehave run gives the item to that engine and waits for the result. " +
 	"The engine must be the same build, or the command refuses. The run waits in the items queue, so agents.max_concurrent applies, and its progress shows in the log of that engine. " +
-	"If that engine stops, the run stays queued and the command exits with code 1: start the engine or run beehave run again.\n\n" +
+	"If that engine stops, the run stays open, and after 10 seconds the command starts its own engine and continues the run.\n\n" +
 	"The run starts whatever the usage caps say, and a run with no agent step never reads them. The first agent step that names no runner picks one under the caps. " +
 	"If none is under the caps, the step waits for the earliest reset time that is known, then picks again. If no reset time is known, the step fails and says why. " +
 	"With --" + overCapFlag + ", the step takes the runner with the lowest use instead of waiting, and the run records that the runner was over its cap."
