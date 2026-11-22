@@ -149,9 +149,11 @@ func TestSuperseded_AGateWhoseReadOfTheHeadIsOldNeverStopsTheGateOfTheCurrentHea
 		return shifting
 	})
 
-	first := queueGate(engine, "A")
+	firstRun, first := queueGateRun(engine, "A")
 
 	waitOn(t, startsReach(t, engine, gated, 1))
+	// The gate starts while the run that queued it can still be at its stop. The stop is recorded after its read, so the count is final only then.
+	waitOn(t, condition(stopRecorded(engine, firstRun)))
 
 	// The reads so far: the tip and the stop of gate A. Gate B reads its tip as read 3 and reads the head again for its stop as read 4.
 	// Before that fourth read the head moves to C, and the gate of head C queues and stops the old gates.
