@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -50,7 +51,29 @@ func stepWrites() []stepWrite {
 		{"item_create", `item_create(title = "t", key = "k", name = "i")`, func(_ *harness, w *fakeWriter) []string { return w.created }},
 		{"item_status", `item_status(id = "n-1", status = "closed", name = "s")`, func(_ *harness, w *fakeWriter) []string { return w.statuses }},
 		{"item_comment", `item_comment(id = "n-1", text = "hello", key = "k", name = "c")`, func(_ *harness, w *fakeWriter) []string { return w.notes }},
+		{"round_sync", `round_sync(base = "round-i", trunk = "main", name = "rs")`, roundCalls},
+		{"round_land", `round_land(pr = 7, head = "h", base_tip = "t", name = "rl")`, roundCalls},
+		{"round_cut", `round_cut(old = "round-i", new = "round-ii", pr = 9, trunk = "main", name = "rc")`, roundCalls},
+		{"integration_pull", `integration_pull(base = "round-i", into = "main", pr = 9, name = "ip")`, roundCalls},
+		{"board_card", `board_card(board = 3, status = "Done", pr = 7, name = "bc")`, roundCalls},
+		{"pr_take", `pr_take(pr = 7, me = "me", idle = "24", grace = "1", step = "apply", name = "pt")`, roundCalls},
 	}
+}
+
+// roundCalls lists the calls that the round writer of the harness received, each as the line of the tool that it stands for.
+func roundCalls(h *harness, _ *fakeWriter) []string {
+	h.commands.mu.Lock()
+	defer h.commands.mu.Unlock()
+
+	var calls []string
+
+	for _, request := range h.commands.requests {
+		if len(request.Run) > 0 && request.Run[0] == "remedy" {
+			calls = append(calls, strings.Join(request.Run, " "))
+		}
+	}
+
+	return calls
 }
 
 // writeAfter runs the call after a command that loses the claim when lost is true. It returns what the fakes recorded for the call, and the error of the run.
