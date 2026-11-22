@@ -77,11 +77,18 @@ func (g gateSandbox) run(ctx context.Context, project, dir string, argv, env []s
 	return g.runAt(ctx, project, folder{path: dir}, argv, env, limit)
 }
 
+// runGate is run for the command of the project gate: the files that the command writes below the test_report glob of the project in the copy of the work
+// folder are carried to the real folder, where the gate reads them.
+func (g gateSandbox) runGate(ctx context.Context, project, dir string, argv, env []string, limit time.Duration) (out string, code int) {
+	return g.runAt(ctx, project, folder{path: dir, report: g.projects[project].TestReport}, argv, env, limit)
+}
+
 // folder is the folder that a gate command works in. own is true for an empty folder that beehave made for the command: the command may write it. A folder
-// that is not own and has no .git is the real work folder of a project with no repository.
+// that is not own and has no .git is the real work folder of a project with no repository. report is the test_report glob to carry out of the copy, or empty.
 type folder struct {
-	path string
-	own  bool
+	path   string
+	own    bool
+	report string
 }
 
 // runOwn is run for a folder that beehave made for the command alone.
@@ -296,7 +303,7 @@ func (g gateSandbox) runCopied(ctx context.Context, enforcer sandbox.Enforcer, p
 		return notStarted(note)
 	}
 
-	reports, err := startCarry(project.TestReport, copied.WorkTree, dir)
+	reports, err := startCarry(at.report, copied.WorkTree, dir)
 	if err != nil {
 		return notStarted(err.Error() + ". The gate did not run.")
 	}

@@ -183,6 +183,120 @@ func TestGateSandbox_ALinkInTheCopyThatPointsOutsideIsNotFollowed(t *testing.T) 
 	assert.NoFileExists(t, filepath.Join(repo, "reports", "link.xml"))
 }
 
+func TestGateSandbox_AHardLinkInTheCopyToAFileOutsideIsNotCarried(t *testing.T) {
+	t.Parallel()
+
+	outside := t.TempDir()
+	writeReport(t, outside, "secret.xml", "SECRET")
+
+	repo := repoWithCommit(t)
+	g, project, _ := reportGate(t, "reports/*.xml", func(dir string) {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "reports"), 0o750))
+		require.NoError(t, os.Link(filepath.Join(outside, "secret.xml"), filepath.Join(dir, "reports", "a.xml")))
+	})
+
+	result, err := g.Run(t.Context(), gate.Request{Project: project, Dir: repo})
+
+	require.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.Contains(t, result.Report, "not a plain file with one name")
+	assert.NoFileExists(t, filepath.Join(repo, "reports", "a.xml"))
+}
+
+func TestGateSandbox_AReportBelowALinkToAFolderInTheCopyIsNotCarried(t *testing.T) {
+	t.Parallel()
+
+	repo := repoWithCommit(t)
+	g, project, _ := reportGate(t, "reports/*.xml", func(dir string) {
+		writeReport(t, dir, "real/a.xml", passingReport)
+		require.NoError(t, os.Symlink(filepath.Join(dir, "real"), filepath.Join(dir, "reports")))
+	})
+
+	result, err := g.Run(t.Context(), gate.Request{Project: project, Dir: repo})
+
+	require.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.NoDirExists(t, filepath.Join(repo, "reports"))
+	assert.NoDirExists(t, filepath.Join(repo, "real"))
+}
+
+func TestGateSandbox_AReportThatIsALinkInsideTheCopyOrAFolderIsNotCarried(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]func(t *testing.T, dir string){
+		"a link to a file in the copy": func(t *testing.T, dir string) {
+			t.Helper()
+			writeReport(t, dir, "real/x.xml", passingReport)
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, "reports"), 0o750))
+			require.NoError(t, os.Symlink(filepath.Join(dir, "real", "x.xml"), filepath.Join(dir, "reports", "a.xml")))
+		},
+		"a folder that the glob matches": func(t *testing.T, dir string) {
+			t.Helper()
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, "reports", "a.xml"), 0o750))
+		},
+	}
+
+	for name, plant := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := repoWithCommit(t)
+			g, project, _ := reportGate(t, "reports/*.xml", func(dir string) { plant(t, dir) })
+
+			result, err := g.Run(t.Context(), gate.Request{Project: project, Dir: repo})
+
+			require.NoError(t, err)
+			assert.False(t, result.Passed)
+			assert.Contains(t, result.Report, "not a plain file with one name")
+			assert.NoFileExists(t, filepath.Join(repo, "reports", "a.xml"))
+		})
+	}
+}
+
+func TestGateSandbox_ATrackedFileThatTheGlobMatchesIsNeverRewrittenInTheRealFolder(t *testing.T) {
+	t.Parallel()
+
+	repo := repoWithCommit(t)
+	writeReport(t, repo, "package.json", `{"name":"x"}`)
+	runGit(t, repo, "add", "package.json")
+	runGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "track package.json")
+
+	g, project, _ := reportGate(t, "*.json", func(dir string) { writeReport(t, dir, "package.json", `{"name":"planted"}`) })
+
+	result, err := g.Run(t.Context(), gate.Request{Project: project, Dir: repo})
+
+	require.NoError(t, err)
+	assert.False(t, result.Passed, "a tracked file is no report")
+
+	data, err := os.ReadFile(filepath.Join(repo, "package.json")) //nolint:gosec // the path is in the folder of the test
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"x"}`, string(data))
+}
+
+func TestGateSandbox_ACommandCallInAGitFolderIsNeitherRefusedNorCarried(t *testing.T) {
+	t.Parallel()
+
+	for _, pattern := range []string{"../x/*.xml", "reports/*.xml"} {
+		t.Run(pattern, func(t *testing.T) {
+			t.Parallel()
+
+			repo := repoWithCommit(t)
+			fake := &fakeEnforcer{during: func(dir string) { writeReport(t, dir, "reports/junit.xml", passingReport) }}
+			box := sandboxFor(t, fake, nil)
+
+			found := box.projects["p"]
+			found.TestReport = pattern
+			box.projects["p"] = found
+
+			out, code := box.run(t.Context(), "p", repo, []string{"true"}, nil, 0)
+
+			assert.Zero(t, code, out)
+			assert.Equal(t, []string{"true"}, fake.argv, "the command ran")
+			assert.NoDirExists(t, filepath.Join(repo, "reports"), "nothing is carried for a command call")
+		})
+	}
+}
+
 func TestGateSandbox_AFolderLinkInTheCopyThatPointsOutsideIsNotFollowed(t *testing.T) {
 	t.Parallel()
 
@@ -215,7 +329,7 @@ func TestGateSandbox_AReportThatCannotBeWrittenToTheRealFolderFailsTheGateAndSay
 
 	require.NoError(t, err)
 	assert.False(t, result.Passed)
-	assert.Contains(t, result.Report, "write the test report reports/junit.xml to the work folder")
+	assert.Contains(t, result.Report, "carry the test report reports/junit.xml to the work folder")
 }
 
 func TestGateSandbox_ACopyThatTheCommandRemovedFailsTheGateAndSaysWhy(t *testing.T) {
@@ -261,7 +375,7 @@ func TestGateSandbox_AReportThatCannotBeReadInTheCopyFailsTheGateAndSaysWhy(t *t
 
 	require.NoError(t, err)
 	assert.False(t, result.Passed)
-	assert.Contains(t, result.Report, "write the test report reports/junit.xml to the work folder")
+	assert.Contains(t, result.Report, "carry the test report reports/junit.xml to the work folder")
 }
 
 func TestGateSandbox_AGateInAFolderWithNoGitWritesItsReportInPlaceAndCarriesNothing(t *testing.T) {

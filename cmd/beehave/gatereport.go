@@ -1,12 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"time"
+	"syscall"
 )
 
 const (
@@ -16,36 +17,34 @@ const (
 	reportFolderMode = 0o750
 )
 
+// errNotPlainReport is the reason that beehave does not carry a report file that is a link, a folder, or a file with more than one name.
+var errNotPlainReport = errors.New("the file is not a plain file with one name, or a link leads to it, so beehave does not carry it")
+
 // reportCarry carries the test reports that a gate command wrote in the copy of the work folder to the same names in the real work folder, where the
-// gate reads them. The zero value carries nothing. Both folders are opened as roots, so a link in either one cannot lead a read or a write out of it.
+// gate reads them. The zero value carries nothing. Only a name that the copy did not hold before the command is carried, so a tracked file is never rewritten.
+// Only a plain file with one name is carried. Both folders are opened as roots, so a symbolic link cannot lead a read or a write out of either one.
 type reportCarry struct {
 	pattern  string
 	from, to string
-	// before is the stamp of each report file that the copy held before the command ran. An unchanged file is not carried, so a stale report stays stale.
-	before map[string]reportStamp
+	// before is the set of the names that the pattern matched in the copy before the command ran.
+	before map[string]bool
 }
 
-// reportStamp is the modification time and the size of a report file.
-type reportStamp struct {
-	modTime time.Time
-	size    int64
-}
-
-// startCarry reads the report files that the copy in from holds before the command runs. A test_report that is not inside the work folder is refused.
-// A project with no test_report, and a gate that works in the real folder itself, carry nothing.
+// startCarry reads the names that the pattern matches in the copy in from before the command runs. A test_report that is not inside the work folder is
+// refused. A gate with no test_report, and a gate that works in the real folder itself, carry nothing.
 func startCarry(pattern, from, to string) (reportCarry, error) {
 	if pattern == "" || from == to {
 		return reportCarry{}, nil
 	}
 
 	if !filepath.IsLocal(pattern) {
-		return reportCarry{}, fmt.Errorf("test_report %q is not inside the work folder, so the gate cannot read its report from the sandbox", pattern)
+		return reportCarry{}, fmt.Errorf("test_report %q is not inside the work folder. Use a path below the work folder, such as reports/*.xml", pattern)
 	}
 
 	carry := reportCarry{pattern: path.Clean(filepath.ToSlash(pattern)), from: from, to: to}
 
 	err := withRoots(from, to, func(src, _ *os.Root) (err error) {
-		carry.before, err = reportStamps(src, carry.pattern)
+		carry.before, err = reportNames(src, carry.pattern)
 
 		return err
 	})
@@ -75,19 +74,16 @@ func withRoots(from, to string, use func(src, dst *os.Root) error) error {
 	return use(src, dst)
 }
 
-// reportStamps returns the stamp of each regular file in root that the pattern matches. A link that leaves root is not followed.
-func reportStamps(root *os.Root, pattern string) (map[string]reportStamp, error) {
+// reportNames returns the set of the names in root that the pattern matches.
+func reportNames(root *os.Root, pattern string) (map[string]bool, error) {
 	names, err := fs.Glob(root.FS(), pattern)
 	if err != nil {
 		return nil, err
 	}
 
-	found := map[string]reportStamp{}
-
+	found := make(map[string]bool, len(names))
 	for _, name := range names {
-		if info, err := fs.Stat(root.FS(), name); err == nil && info.Mode().IsRegular() {
-			found[name] = reportStamp{modTime: info.ModTime(), size: info.Size()}
-		}
+		found[name] = true
 	}
 
 	return found, nil
@@ -107,40 +103,45 @@ func (c reportCarry) settle(out string, code int) (string, int) {
 	return out, code
 }
 
-// finish writes each report file that the command wrote or changed in the copy to the real folder. It reads only inside the copy and writes only inside the
-// real folder, and only at the names that test_report matches.
+// finish writes each file that the pattern matches and that the command made new in the copy to the real folder. It reads only inside the copy and writes
+// only inside the real folder.
 func (c reportCarry) finish() error {
 	if c.pattern == "" {
 		return nil
 	}
 
 	return withRoots(c.from, c.to, func(src, dst *os.Root) error {
-		after, err := reportStamps(src, c.pattern)
+		after, err := reportNames(src, c.pattern)
 		if err == nil {
-			err = c.carryChanged(src, dst, after)
+			err = c.carryNew(src, dst, after)
 		}
 
 		return err
 	})
 }
 
-// carryChanged carries each file of after that is new or whose stamp differs from the stamp before the command.
-func (c reportCarry) carryChanged(src, dst *os.Root, after map[string]reportStamp) error {
-	for name, stamp := range after {
-		if before, seen := c.before[name]; seen && before == stamp {
+// carryNew carries each name of after that the copy did not hold before the command.
+func (c reportCarry) carryNew(src, dst *os.Root, after map[string]bool) error {
+	for name := range after {
+		if c.before[name] {
 			continue
 		}
 
 		if err := carryFile(src, dst, name); err != nil {
-			return fmt.Errorf("write the test report %s to the work folder: %w", name, err)
+			return fmt.Errorf("carry the test report %s to the work folder: %w", name, err)
 		}
 	}
 
 	return nil
 }
 
-// carryFile copies the file name from src to dst, with the folders above it.
+// carryFile copies the file name from src to dst, with the folders above it. It refuses a name that is not a plain file with one name, or that lies
+// below a link.
 func carryFile(src, dst *os.Root, name string) error {
+	if !plainFile(src, name) {
+		return errNotPlainReport
+	}
+
 	data, err := fs.ReadFile(src.FS(), name)
 	if err != nil {
 		return err
@@ -151,4 +152,19 @@ func carryFile(src, dst *os.Root, name string) error {
 	}
 
 	return dst.WriteFile(name, data, reportMode)
+}
+
+// plainFile says whether name in root is a regular file that nothing else names. A hard link to a file outside the folder has a second name. The glob does
+// not enter a folder that is a link, so no name below a link reaches this check.
+func plainFile(root *os.Root, name string) bool {
+	info, err := root.Lstat(name)
+
+	return err == nil && info.Mode().IsRegular() && hasOneName(info)
+}
+
+// hasOneName says whether the file has no other name. A file that has no link count in its stat is not trusted.
+func hasOneName(info fs.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+
+	return ok && uint64(stat.Nlink) == 1 //nolint:unconvert // Nlink is 16 bits wide on macOS and 64 bits wide on Linux
 }
