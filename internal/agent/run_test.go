@@ -55,10 +55,11 @@ func newFixture(t *testing.T, name string, kind model.Agent, mode string) *fixtu
 	}
 
 	return &fixture{records: records, config: config, work: work, log: log, spec: agent.Spec{
-		Adapter: adapter,
-		Runner:  model.Runner{Name: "main", Agent: kind, ConfigDir: config},
-		Dir:     work,
-		Prompt:  "do the step\n",
+		Adapter:      adapter,
+		Runner:       model.Runner{Name: "main", Agent: kind, ConfigDir: config},
+		Dir:          work,
+		Prompt:       "do the step\n",
+		ConfigFolder: config,
 		Env: map[string]string{
 			"PATH": records + ":/bin:/usr/bin", "HOME": home, "LC_ALL": "C",
 			"ANTHROPIC_API_KEY": "leak", "GH_TOKEN": "leak", "CLAUDE_CONFIG_DIR": "/other/login",
@@ -564,7 +565,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 	t.Run("missing_login_folder_is_not_created", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
 		f := newFixture(t, "claude", claude.Name, "")
 		gone := filepath.Join(t.TempDir(), "no-login")
-		f.spec.Runner.ConfigDir = gone
+		f.spec.ConfigFolder = gone
 
 		got := agent.Runner{}.Run(context.Background(), f.spec)
 
@@ -576,7 +577,7 @@ func TestRunner_DoesNotStart(t *testing.T) { //nolint:paralleltest // t.Setenv c
 
 	t.Run("login_path_is_a_file", func(t *testing.T) { //nolint:paralleltest // the parent test sets PATH
 		f := newFixture(t, "claude", claude.Name, "")
-		f.spec.Runner.ConfigDir = filepath.Join(f.records, "mode")
+		f.spec.ConfigFolder = filepath.Join(f.records, "mode")
 
 		assert.Equal(t, agent.OutcomeNotStarted, agent.Runner{}.Run(context.Background(), f.spec).Outcome)
 	})

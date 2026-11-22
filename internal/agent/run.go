@@ -97,6 +97,9 @@ type Spec struct {
 	// Skills lists the folder of each skill that the agent may load, and the name of the folder is the name of the skill. The adapter copies each one into the
 	// run folder, so a run with or without a sandbox loads these skills. A folder here holds no symbolic link: the engine refuses one.
 	Skills []string
+	// ConfigFolder is the config folder that the CLI reads: the config_dir of the runner, else the default folder of the CLI. The caller resolves it.
+	// The run does not start when it is not a folder.
+	ConfigFolder string
 }
 
 // Result is what a run left behind. Stderr is the redacted tail of the error stream.
@@ -215,9 +218,9 @@ func prepare(spec Spec, goos string) (Profile, string) {
 		return p, problem
 	}
 
-	if info, err := os.Stat(spec.Runner.ConfigDir); err != nil || !info.IsDir() {
-		return p, fmt.Sprintf("the config_dir %q of runner %s is not a folder, so %s is not started. Log in to the runner first.",
-			spec.Runner.ConfigDir, spec.Runner.Name, p.Binary)
+	if info, err := os.Stat(spec.ConfigFolder); err != nil || !info.IsDir() {
+		return p, fmt.Sprintf("the config folder %q of runner %s is not a folder, so %s is not started. Log in to the runner, or set config_dir.",
+			spec.ConfigFolder, spec.Runner.Name, p.Binary)
 	}
 
 	return p, ""

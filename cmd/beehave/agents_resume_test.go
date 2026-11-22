@@ -139,3 +139,83 @@ func TestAgents_ALostStepOnACLIWithNoResumeOptionRunsFreshWithTheNote(t *testing
 	assert.Equal(t, "do it\n\nThis step ran before. 1 file changed", f.spec.Prompt)
 	assert.False(t, got.Resumed)
 }
+
+// resumeHomeAdapter is a resumeAdapter whose CLI keeps its config in the folder .cfg of the home folder when the runner sets none.
+type resumeHomeAdapter struct{ resumeAdapter }
+
+func (resumeHomeAdapter) Profile() agent.Profile {
+	profile := resumeAdapter{}.Profile()
+	profile.ConfigHome = ".cfg"
+
+	return profile
+}
+
+func TestAgents_ALostStepOfARunnerWithNoConfigFolderResumesFromTheTranscriptInTheDefaultFolder(t *testing.T) {
+	t.Parallel()
+
+	f, req := lostFixture(t, resumeHomeAdapter{})
+	home := t.TempDir()
+	f.agents.home = func() (string, error) { return home, nil }
+	f.agents.runners[0].ConfigDir = ""
+
+	transcript := filepath.Join(home, ".cfg", "s-lost.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(transcript), 0o700))
+	require.NoError(t, os.WriteFile(transcript, []byte("{}\n"), 0o600))
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.True(t, got.Resumed, "the transcript is in the default folder under the home folder")
+	assert.Equal(t, "s-lost", f.spec.Resume)
+	assert.Equal(t, transcript, got.Transcript, "the result names the transcript in the default folder, not a relative path")
+}
+
+func TestAgents_ARunnerWithAConfigFolderIgnoresTheDefaultFolderForTheTranscript(t *testing.T) {
+	t.Parallel()
+
+	f, req := lostFixture(t, resumeHomeAdapter{})
+	home := t.TempDir()
+	f.agents.home = func() (string, error) { return home, nil }
+
+	// Only the default folder holds the transcript: the config folder of the runner wins, so the session does not resume.
+	transcript := filepath.Join(home, ".cfg", "s-lost.jsonl")
+	require.NoError(t, os.MkdirAll(filepath.Dir(transcript), 0o700))
+	require.NoError(t, os.WriteFile(transcript, []byte("{}\n"), 0o600))
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.False(t, got.Resumed)
+	assert.Equal(t, filepath.Join(f.agents.runners[0].ConfigDir, "s-lost.jsonl"), got.Transcript)
+}
+
+func TestAgents_ARunnerWithNoConfigFolderAndNoKnownHomeFolderDoesNotStart(t *testing.T) {
+	t.Parallel()
+
+	f, req := lostFixture(t, resumeHomeAdapter{})
+	f.agents.home = func() (string, error) { return "", os.ErrNotExist }
+	f.agents.runners[0].ConfigDir = ""
+
+	got, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeNotStarted, got.Outcome)
+	assert.Contains(t, got.Note, "config_dir", "the note names the fix")
+	assert.Empty(t, f.spec.Prompt, "the agent never started")
+}
+
+func TestAgents_ConfigFolderOfACLIWithNoDefaultFolderNeedsNoHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	noHome := agents{home: func() (string, error) { return "", os.ErrNotExist }, adapter: func(model.Agent) agent.Adapter { return resumeAdapter{} }}
+	runner := model.Runner{Name: "main", Agent: model.Agent("fake")}
+	folder, note := noHome.configFolder(runner, resumeAdapter{})
+
+	assert.Empty(t, folder)
+	assert.Empty(t, note)
+
+	folder, note = noHome.configFolder(runner, nil)
+
+	assert.Empty(t, folder, "an agent with no adapter has no default folder")
+	assert.Empty(t, note, "its run is refused where the adapter is missing, not here")
+}

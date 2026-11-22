@@ -344,19 +344,19 @@ type e2eAgents struct{ dir, path string }
 func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Result, error) {
 	adapter := newAdapters(nil, nil, nil).agent(claude.Name)
 	runner := model.Runner{Name: request.Login, Agent: claude.Name, ConfigDir: a.dir}
-	request, resumed := replayOf(request, runner, a.dir, adapter)
+	request, resumed := replayOf(request, runner.ConfigDir, a.dir, adapter)
 	prompt := "login=" + request.Login + "\n" + request.Prompt
 	env := map[string]string{"PATH": a.path}
 	tap := newSessionTap(adapter, agent.DefaultPrices(), request.Named)
 	protect := protectionOf(request.Protect, a.dir)
 
 	result := agent.Runner{}.Run(ctx, agent.Spec{
-		Adapter: adapter, Runner: runner,
+		Adapter: adapter, Runner: runner, ConfigFolder: a.dir,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits, Resume: request.Resume,
 		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
 	})
 
-	result, err := endOf(adapter, runner, a.dir, tap, result, request.Forbid, protect)
+	result, err := endOf(adapter, runner.ConfigDir, a.dir, tap, result, request.Forbid, protect)
 	result.Resumed = resumed
 
 	return result, err
