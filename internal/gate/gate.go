@@ -679,6 +679,8 @@ func plainWord(word string) bool {
 // When the project has a host block, the gate command runs under `timeout` with the run limit of the host (`host.max_run`), so a hung step
 // ends the job with exit status 124 and the trap still writes the marker and deletes the clone. The config load refuses a limit that the wrap
 // cannot write.
+// A project with a gate_program also gets the words of the gate program: git resolved first, then after the checkout a snapshot of the listed paths at baseSHA,
+// the refusal of a changed path and the overlay, and last the final compare (see program.go).
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
 	words := cloneWords(cloneURL, head, clone)
