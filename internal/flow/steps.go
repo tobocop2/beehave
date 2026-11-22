@@ -154,7 +154,12 @@ func (c *Client) takeDeadline(row dbos.WorkflowStatus, records []dbos.StepInfo, 
 
 // runRow reads the row of one run, with its error. The error is kept with the output of the row.
 func (c *Client) runRow(id string) (dbos.WorkflowStatus, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
+	return runRowOf(c.flow, id)
+}
+
+// runRowOf reads the row of one run from a client or from the engine.
+func runRowOf(c dbos.Client, id string) (dbos.WorkflowStatus, error) {
+	rows, err := dbos.ListWorkflows(c, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterName(itemName), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return dbos.WorkflowStatus{}, fmt.Errorf("read the run %s: %w", id, err)
 	}

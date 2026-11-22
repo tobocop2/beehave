@@ -74,7 +74,7 @@ func pause(ctx context.Context, d time.Duration) error {
 
 // followOnce reads each phase of the run that read does not hold yet, and adds it there. It reports true when the run had ended before the look and the look found no new phase.
 func (c *Client) followOnce(ctx context.Context, id string, read map[string]bool, emit func(FollowedEntry)) (bool, error) {
-	over, phases, err := c.lookAt(id)
+	over, phases, err := lookAt(c.flow, id)
 	if err != nil {
 		return false, err
 	}
@@ -110,20 +110,21 @@ func (c *Client) followedRun(target string) (string, error) {
 }
 
 // lookAt reports whether a run has ended, and lists its agent phases. The state is read before the list, so a phase that starts after the read shows at the next look.
-func (c *Client) lookAt(id string) (bool, []string, error) {
-	row, err := c.runRow(id)
+// The status --follow and the stream step read through it, from a client and from the engine.
+func lookAt(c dbos.Client, id string) (bool, []string, error) {
+	row, err := runRowOf(c, id)
 	if err != nil {
 		return false, nil, err
 	}
 
-	phases, err := c.phasesOf(id)
+	phases, err := phasesOf(c, id)
 
 	return run{Status: row}.terminal(), phases, err
 }
 
 // phasesOf lists the ids of the agent phases of a run, the oldest first.
-func (c *Client) phasesOf(id string) ([]string, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterParentWorkflowID(id), dbos.WithFilterName(phaseName))
+func phasesOf(c dbos.Client, id string) ([]string, error) {
+	rows, err := dbos.ListWorkflows(c, dbos.WithFilterParentWorkflowID(id), dbos.WithFilterName(phaseName))
 	if err != nil {
 		return nil, fmt.Errorf("list the agent phases of %s: %w", id, err)
 	}
@@ -159,6 +160,16 @@ func (c *Client) readPhase(ctx context.Context, phase string, emit func(Followed
 	}
 
 	return err
+}
+
+// readSnapshot returns the entries that the stream of one phase holds now, and does not wait for more.
+func readSnapshot(c dbos.Client, phase string) ([]AgentEntry, error) {
+	entries, _, err := dbos.ReadStream[AgentEntry](c, phase, agentStream, dbos.WithReadStreamSnapshot())
+	if err != nil {
+		return nil, fmt.Errorf("read the agent stream of %s: %w", phase, err)
+	}
+
+	return entries, nil
 }
 
 // deliver gives the entry of a read to emit, or returns the error that the read holds.
