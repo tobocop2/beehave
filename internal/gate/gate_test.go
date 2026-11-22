@@ -108,7 +108,7 @@ func project(buildHost string) model.Project {
 const cloneURL = "https://github.com/owner/name.git"
 
 // tipSHA is the commit that the engine read for the base branch in the tests.
-const tipSHA = "0123456789abcdef0123456789abcdef01234567"
+const tipSHA = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd"
 
 func hostRequest(project model.Project) gate.Request {
 	return gate.Request{Project: project, Dir: "/w", CloneURL: cloneURL, BaseSHA: tipSHA}

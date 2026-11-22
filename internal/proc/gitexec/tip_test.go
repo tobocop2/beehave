@@ -115,7 +115,7 @@ func TestTip_RunsTheProgramThatTheLookupGivesWithNoGitConfigOfTheUser(t *testing
 }
 
 // fullID is a commit id of 40 hexadecimal digits.
-const fullID = "0123456789abcdef0123456789abcdef01234567"
+const fullID = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcd"
 
 func TestTip_RefusesAnAnswerThatIsNotAFullCommitIdAndNamesTheBranch(t *testing.T) {
 	t.Parallel()
