@@ -164,32 +164,41 @@ type gapReading struct {
 	pollErr   error
 }
 
-// readInGap reads the run as status, reply and the wait of a join read it. It returns when all three have read.
+// readInGap reads the run as status, reply and the wait of a join read it, each in its own goroutine, so a reader that waits does not hold back another. It returns when all three have read.
 func readInGap(client *Client) gapReading {
-	var got gapReading
+	var (
+		got  gapReading
+		done sync.WaitGroup
+	)
 
-	infos, err := client.Status()
-	if err != nil {
-		got.state = RunState(err.Error())
-	}
-
-	for _, info := range infos {
-		if info.ID == testRun {
-			got.state = info.State
+	done.Go(func() {
+		infos, err := client.Status()
+		if err != nil {
+			got.state = RunState(err.Error())
 		}
-	}
 
-	got.replyErr = client.Reply(testItem, Reply{Text: "yes"})
+		for _, info := range infos {
+			if info.ID == testRun {
+				got.state = info.State
+			}
+		}
+	})
 
-	handle, err := dbos.RetrieveWorkflow[ItemResult](client.flow, testRun)
-	if err != nil {
-		got.pollErr = err
+	done.Go(func() { got.replyErr = client.Reply(testItem, Reply{Text: "yes"}) })
 
-		return got
-	}
+	done.Go(func() {
+		handle, err := dbos.RetrieveWorkflow[ItemResult](client.flow, testRun)
+		if err != nil {
+			got.pollErr = err
 
-	watch := engineWatch{dir: client.dir, item: testItem, grace: time.Hour, build: func() error { return nil }}
-	_, got.pollEnded, got.pollErr = watch.poll(context.Background(), handle)
+			return
+		}
+
+		watch := engineWatch{dir: client.dir, item: testItem, grace: time.Hour, build: func() error { return nil }}
+		_, got.pollEnded, got.pollErr = watch.poll(context.Background(), handle)
+	})
+
+	done.Wait()
 
 	return got
 }
