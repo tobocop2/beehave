@@ -657,10 +657,30 @@ func sourceOf(raw rawProject, host string) (string, error) {
 	}
 
 	if urlSource.MatchString(raw.Source.Value) {
-		return raw.Source.Value, nil
+		return lowerAuthority(raw.Source.Value), nil
 	}
 
 	return sourcePath(raw, host)
+}
+
+// lowerAuthority writes the scheme and the host of a scheme://host/path address in lower case, and keeps the rest. Git hands a credential helper the host as
+// written, and the helper of a writer role compares it with the lower case host that the start check reads, so the address is made the same once, here.
+func lowerAuthority(address string) string {
+	scheme, rest, found := strings.Cut(address, "://")
+	if !found {
+		return address
+	}
+
+	authority, path := rest, ""
+	if end := strings.IndexAny(rest, "/?#"); end >= 0 {
+		authority, path = rest[:end], rest[end:]
+	}
+
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		return strings.ToLower(scheme) + "://" + authority[:at+1] + strings.ToLower(authority[at+1:]) + path
+	}
+
+	return strings.ToLower(scheme) + "://" + strings.ToLower(authority) + path
 }
 
 func sourcePath(raw rawProject, host string) (string, error) {

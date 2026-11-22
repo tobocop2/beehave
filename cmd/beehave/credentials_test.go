@@ -287,7 +287,7 @@ func TestWorktrees_AClientThatHoldsNoWriterRefusesTheRemoteCallOfAProjectWithCre
 	require.ErrorContains(t, err, "the credentials of the project are not loaded")
 }
 
-func TestWorktrees_EveryWorktreesValueOfTheProgramIsBuiltWithTheWritersAndOnlyReachPicksTheOwnerRunner(t *testing.T) {
+func TestWorktrees_TheSourceOfTheProgramBuildsWorktreesOnlyInTheConstructorWithTheWritersAndPicksTheOwnerRunnerInReachOnly(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob("*.go")
