@@ -798,7 +798,7 @@ func TestScripts(t *testing.T) {
 			"rdinit": cmdResearchDeskInit, "rdfakes": cmdResearchDeskFakes,
 			"pipeinit": cmdPipelineInit, "pipefakes": cmdPipelineFakes,
 			"approvalsfakes": cmdApprovalsFakes, "approvalsinit": cmdApprovalsInit, "approvalskeys": cmdApprovalsKeys,
-			"reviewfakes": cmdReviewLoopFakes,
+			"reviewfakes": cmdReviewLoopFakes, "claudemodel": cmdClaudeModel,
 		},
 	})
 }

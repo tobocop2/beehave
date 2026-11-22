@@ -30,6 +30,10 @@ stdout 'item cold-cost finished'
 
 cmp calls.log expected-calls.log
 
+# Each agent call started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
+
 # The invented quote is kept in the store as not found, and it does not reach the judge or the report.
 grep -count=1 '"quote_ok":false' store/cold-cost/s1.1/claims.jsonl
 ! grep '90 percent' store/cold-cost/report.md

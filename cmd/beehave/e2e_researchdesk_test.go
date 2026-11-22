@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rogpeppe/go-internal/testscript"
 )
@@ -36,7 +37,9 @@ func cmdResearchDeskInit(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Fatalf("rdinit: %v", err)
 	}
 
-	if err := root.WriteFile(filepath.Join("config", "projects", "research-desk.star"), project, e2eFileMode); err != nil {
+	// The agent steps keep their own sandbox() from the workflow. The program gates run on the host here, because the sandbox of a gate has its own tests.
+	text := strings.Replace(string(project), `sandbox = "on"`, `sandbox = "off"`, 1)
+	if err := root.WriteFile(filepath.Join("config", "projects", "research-desk.star"), []byte(text), e2eFileMode); err != nil {
 		ts.Fatalf("rdinit: %v", err)
 	}
 }
@@ -71,4 +74,6 @@ func cmdResearchDeskFakes(ts *testscript.TestScript, _ bool, args []string) {
 			ts.Fatalf("rdfakes: %v", err)
 		}
 	}
+
+	sandboxHome(ts)
 }

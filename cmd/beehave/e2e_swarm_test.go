@@ -519,6 +519,7 @@ func cmdSwarmFakes(ts *testscript.TestScript, _ bool, args []string) {
 		ts.Fatalf("swarmfakes: %v", err)
 	}
 
+	sandboxHome(ts)
 	swarmInit(ts, ts.Getenv("WORK"), work)
 }
 
@@ -530,8 +531,9 @@ func swarmInit(ts *testscript.TestScript, dir string, work *os.Root) {
 	}
 
 	remote := filepath.Join(dir, "remote.git")
+	login := filepath.Join(dir, "login") // sandboxHome made it: the login folder is a credential path, so it is not the folder of the state
 	files := map[string]string{
-		"config/runners.star":        "agents(max_concurrent = 2)\nrunner(name = \"one\", agent = \"claude\", config_dir = \"" + dir + "\")\nrunner(name = \"two\", agent = \"claude\", config_dir = \"" + dir + "\")\n",
+		"config/runners.star":        "agents(max_concurrent = 2)\nrunner(name = \"one\", agent = \"claude\", config_dir = \"" + login + "\")\nrunner(name = \"two\", agent = \"claude\", config_dir = \"" + login + "\")\n",
 		"config/projects/swarm.star": "project(repo = \"o/r\", source = \"" + remote + "\", forge = \"github\", base_branch = \"main\", gate = \"make check\", test_report = \"reports/*.xml\")\n",
 		"seed/Makefile":              "check: ; @mkdir -p reports && echo '<testsuite tests=\"1\"><testcase name=\"t\"/></testsuite>' > reports/r.xml\n",
 		"seed/.gitignore":            "reports/\n",

@@ -25,6 +25,10 @@ stdout 'note-1-r1\tdone'
 
 cmp calls.log expected-calls.log
 
+# Each of the four agent calls started in the sandbox with no network: the fake claude logs a call with no sandbox as open.
+grep -count=4 '^sandboxed domains=$' sandbox.log
+! grep '^open' sandbox.log
+
 -- body.txt --
 Write the release note.
 -- verdicts --
