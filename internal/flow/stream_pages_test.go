@@ -85,6 +85,9 @@ func TestStreamingOf_ReadsOnlyTheDeadlineRecordOfAStreamThatIsLast(t *testing.T)
 	_, waits = streamingOf([]dbos.StepInfo{record("stream:a#1.deadline", window), record("stream:a#1", "{}")})
 	assert.False(t, waits, "a stream that ended waits for nothing")
 
+	_, waits = streamingOf([]dbos.StepInfo{record("stream:a#1.deadline", "1790000000000")})
+	assert.False(t, waits, "a deadline record that holds only a time, the shape before the run was added, is no wait and is never read as one")
+
 	_, waits = streamingOf([]dbos.StepInfo{record("recv:a#1.deadline", window)})
 	assert.False(t, waits, "the deadline of a recv is no wait of a stream")
 }

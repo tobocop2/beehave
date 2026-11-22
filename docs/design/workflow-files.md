@@ -678,6 +678,7 @@ A send to a child goes to its latest attempt: the run that `gather` started agai
 - The messages of one topic come in the order that they arrived. A message of another topic waits for a later `recv` of its topic.
 - The deadline is a recorded step, `recv:<name>#<n>.deadline`, or `recv#<n>.deadline` for a call with no name, so a resumed run waits only the time that is left. The step holds the end time and the topic.
 - While `recv` waits, `beehave status` shows the call as the step that runs now, and the note `waits for a message on topic <topic> until <time>` with the time left. `status --json` has the field `receiving` with the topic, and `deadline`. A `recv` that takes a message that is already in the buffer shows nothing. The same rule names the call of a `first_of` or a `gather` with a timeout (`first_of:<name>#<n>`, `gather:<name>#<n>`) as the step that runs now, in place of the record of its deadline. These two calls show no topic.
+- While `stream` waits for a new entry, `beehave status` shows the call as the step that runs now (`stream:<name>#<n>`), and the note `waits for the agent output of run <run> until <time>` with the time left. `status --json` has the field `streaming` with the id of the child run, and `deadline`. A `stream` that finds an entry at once shows nothing.
 
 #### `beehave send`
 
