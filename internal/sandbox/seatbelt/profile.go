@@ -44,10 +44,6 @@ const header = `(version 1)
 (allow file-read-data (literal "/"))
 `
 
-// developerRules lets the shims of Apple read the preferences of Xcode: without them xcrun fails its license check on a cold cache.
-const developerRules = `(allow user-preference-read (preference-domain "com.apple.dt.Xcode" "com.apple.dt.xcodebuild" "kCFPreferencesAnyApplication"))
-`
-
 // systemRead lists the folders of macOS that every program loads from at start, whatever the plan reads: the system frameworks, the shared cache of the
 // libraries, the time zones and the choice of /bin/sh. None of them holds data of a person. The plan names every other path, /etc and /usr included.
 func systemRead() []string {
@@ -55,7 +51,7 @@ func systemRead() []string {
 }
 
 // Profile returns the Seatbelt profile for a plan and the -D arguments that give the profile its paths and its port. port is the port of the allow-list
-// proxy, or 0 when the plan has no network. The text depends on the number of paths and on whether the plan has a developer folder.
+// proxy, or 0 when the plan has no network. The text depends on the number of paths only.
 func Profile(plan sandbox.Plan, port int) (text string, defines []string) {
 	var b strings.Builder
 
@@ -64,10 +60,6 @@ func Profile(plan sandbox.Plan, port int) (text string, defines []string) {
 	reads := append(systemRead(), plan.Read...)
 	defines = rules(&b, "R", "file-read*", reads, defines)
 	defines = rules(&b, "W", "file-read* file-write*", plan.Write, defines)
-
-	if plan.Developer != "" {
-		b.WriteString(developerRules)
-	}
 
 	if port > 0 {
 		b.WriteString("(allow network-outbound (remote ip (string-append \"localhost:\" (param \"PORT\"))))\n")

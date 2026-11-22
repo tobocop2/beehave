@@ -122,13 +122,12 @@ func readsOf(defines []string) []string {
 	return reads
 }
 
-func TestProfile_ThePreferenceRuleOfXcodeIsInTheProfileOnlyWhenThePlanHasADeveloperFolder(t *testing.T) {
+func TestProfile_ADeveloperFolderAddsNoPreferenceReadAndNoPathToTheText(t *testing.T) {
 	t.Parallel()
 
 	with, _ := seatbelt.Profile(sandbox.Plan{Developer: "/d"}, 0)
 	without, _ := seatbelt.Profile(sandbox.Plan{}, 0)
 
-	assert.Contains(t, with, `(allow user-preference-read (preference-domain "com.apple.dt.Xcode" "com.apple.dt.xcodebuild" "kCFPreferencesAnyApplication"))`)
-	assert.NotContains(t, without, "user-preference-read")
-	assert.NotContains(t, with, "/d", "the folder is a path of the plan and never enters the text")
+	assert.Equal(t, without, with, "the developer folder changes the read list of the plan and no rule of the profile")
+	assert.NotContains(t, with, "user-preference-read")
 }
