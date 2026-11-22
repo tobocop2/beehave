@@ -369,7 +369,7 @@ A dry run takes the same path and prints `WOULD:` lines, and it makes no write c
 
 ### `remedy sync`
 
-`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the sync and integration pull requests always use the default label `made-by-beehave`, and a custom `pr_label` reaches only item drafts. The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
+`remedy sync --base <branch> [--trunk <branch>] [--label <name>]` runs `roundsync`. The pull request that it opens carries the label `--label`, which is `made-by-beehave` when the flag is not given, and an empty value adds none. The command `remedy integration` takes the same flag for the integration pull request. The round workflow passes no label, so the engine steps `round_sync` and `integration_pull` use the `pr_label` of the project (`made-by-beehave` when the project sets none). The forge creates the label first when the repository has none. It prints one line, `state=<state>` followed by the fields that the state has, and the workflow branches on `state`.
 
 | State | Meaning |
 |---|---|

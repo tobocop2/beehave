@@ -56,7 +56,7 @@ The project arguments are `repo`, `source`, `tracker`, `claims`, `forge`, `base_
 
 `max_spawn_depth` is the deepest level below the run a user started at which `spawn` may start a run. It defaults to 3, so a research desk can spawn sources and each source can spawn claims. A project that must not fan out further than one level sets 1. A value below 1 is refused. `beehave check workflow --project <name> --dry-run` uses the cap of the named project.
 
-`pr_label` is the label of every item pull request that the `pr_open` step opens. It defaults to `made-by-beehave`, and an empty value is refused. The forge creates the label first when the repository has none. The sync and integration pull requests of the remediation example always use the default label `made-by-beehave`, so a custom `pr_label` reaches only item drafts.
+`pr_label` is the label of every item pull request that the `pr_open` step opens. It defaults to `made-by-beehave`, and an empty value is refused. The forge creates the label first when the repository has none. The sync and integration pull requests of the remediation example carry the same label, because the steps `round_sync` and `integration_pull` read the `pr_label` of the project.
 
 `test_paths` is a list of globs for the test files, for example `["**/*_test.go", "**/testdata/**"]` or `["tests/**"]`. The revert run copies the added and changed test files of a candidate onto the base code, so a new test that needs a changed helper in a test file still builds there. A project with new tests and no `test_paths` gets a refusal from the `before_review` function of `review_fix.star`.
 
