@@ -113,6 +113,19 @@ func latestRun(client dbos.Client, item string) (run, bool, error) {
 	return last, found, nil
 }
 
+// withBaseOf gives a run that a user started the base of the last run of the same item, which holds the base that its spawn gave it.
+// An item with no earlier run keeps an empty base, so its worktree is cut at the base branch of the project.
+func (in ItemInput) withBaseOf(last run, found bool) (ItemInput, error) {
+	if !found {
+		return in, nil
+	}
+
+	before, err := last.input()
+	in.Base = before.Base
+
+	return in, err
+}
+
 // project returns the project stored with the run. The store keeps the input of the workflow as JSON.
 func (r run) project() (string, error) {
 	in, err := r.input()

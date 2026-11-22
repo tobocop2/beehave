@@ -458,7 +458,8 @@ func newRoundRigOf(t *testing.T, items string) *roundRig {
 	}
 
 	// Each child reads its own item: the id is the id of the item.
-	rig.h.items.byItem = map[string]map[string]string{}
+	// The item of the round itself has the field id only, as a round item has: the example runs a round for it, and a pipeline for an item with a title.
+	rig.h.items.byItem = map[string]map[string]string{testItem: {"id": testItem}}
 	for _, id := range queued {
 		rig.h.items.byItem[id] = map[string]string{"id": id, "title": "a title", "body": "a body"}
 	}

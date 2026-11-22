@@ -650,7 +650,7 @@ func TestDryRun_ARoundRunsWithNoEnvironmentVariables(t *testing.T) {
 
 	// The round reads every setting from the project vars, so the run has no environment at all. It ends early at the read of the queue, which the dry run does not fake.
 	// The queue audit judges the rows of that read, so it comes after it and the dry run does not reach it.
-	err := DryRun(t.Context(), dryRoundFile, "12", nil, &out, dryRound)
+	err := DryRun(t.Context(), dryRoundFile, "round/integration", nil, &out, dryRound)
 
 	require.ErrorIs(t, err, ErrDryRunEndedEarly, out.String())
 	assert.Contains(t, out.String(), "host_up:round-host#1")

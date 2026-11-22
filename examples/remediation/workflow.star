@@ -1152,7 +1152,11 @@ def round(item):
     return {"state": "waiting", "base": round_settings["base"], "pr": 0, "reason": held}
 
 def main(item):
-    round(item)
+    """The entry of a run that a user started. A round item has the field id only, and a tracker item has a title, so `beehave run <item>` on a stopped tracker item starts a new attempt of its pipeline."""
+    if hasattr(item, "title"):
+        return pipeline(item)
+
+    return round(item)
 
 def finish(item):
     """The engine calls finish after main on every end of the run except a cancel: success, error and command stop. A child run never calls it.

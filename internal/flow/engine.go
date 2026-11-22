@@ -722,6 +722,11 @@ func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error
 		return dbos.RetrieveWorkflow[ItemResult](e.ctx, plan.Join)
 	}
 
+	in, err = in.withBaseOf(last, found)
+	if err != nil {
+		return nil, err
+	}
+
 	return e.start(in, plan.Attempt)
 }
 

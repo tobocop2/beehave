@@ -113,6 +113,11 @@ func (c *Client) planAndHandle(in ItemInput) (dbos.WorkflowHandle[ItemResult], e
 		return nil, err
 	}
 
+	in, err = in.withBaseOf(last, found)
+	if err != nil {
+		return nil, err
+	}
+
 	return c.handleOf(plan, in)
 }
 
