@@ -619,6 +619,11 @@ func (e *Engine) runEntry(item, project, file, entry string) (ItemResult, error)
 
 	in.Entry = entry
 
+	in, err = in.withRoundBase(e.ctx)
+	if err != nil {
+		return ItemResult{}, err
+	}
+
 	return e.run(in)
 }
 

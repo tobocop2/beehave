@@ -10,6 +10,16 @@ exec git clone -q --bare seed remote.git
 exec git --git-dir=remote.git branch integration/r1 main
 exec git --git-dir=remote.git branch integration/s1 main
 
+# The round branch is one commit ahead of the project base branch, so a worktree cut at the wrong branch shows.
+exec git clone -q remote.git s1clone
+exec git -C s1clone checkout -q -b integration/s1 origin/integration/s1
+cp s1.txt s1clone/s1.txt
+exec git -C s1clone add s1.txt
+exec git -C s1clone -c user.name=seed -c user.email=seed@example.com commit -q -m 's1 moved'
+exec git -C s1clone push -q origin integration/s1
+exec git --git-dir=remote.git rev-parse integration/s1
+cp stdout s1-tip
+
 example remediation/workflow.star flow/workflow.star
 
 mkdir forge
@@ -42,11 +52,17 @@ waitstatus 'Listed item 432 stopped at command:board'
 exec beehaveround status
 stdout 'item-432-r1	stopped'
 grep -count=1 '^plan$' calls.log
+cmp plan-head-1 s1-tip
 grep -count=1 '^board$' remedy-keys.log
+
+# The local branch of the item is gone (a stopped item has no worktree), and the remote branch is back at the tip of the round branch.
+# The new attempt cuts the branch again at the base of the round, not at the base branch of the project.
+exec sh remove.sh
 
 # The documented command starts a new attempt of the item. It runs the pipeline: the plan agent runs again and the board call passes.
 exec beehaveround run 432 round --workflow flow/workflow.star
 stdout 'item 432 finished'
+cmp plan-head-2 s1-tip
 grep -count=2 '^plan$' calls.log
 grep -count=2 '^board$' remedy-keys.log
 exec beehaveround status
@@ -69,6 +85,12 @@ Change one thing.
 check: ; @mkdir -p reports && echo '<testsuite tests="1"><testcase name="t"/></testsuite>' > reports/r.xml
 -- seed/.gitignore --
 reports/
+-- s1.txt --
+s1
+-- remove.sh --
+set -e
+git -C state/repos/round branch -D 432
+git --git-dir="$WORK/remote.git" update-ref refs/heads/432 refs/heads/integration/s1
 -- mutation.sh --
 exit 0
 -- skill.md --
@@ -138,7 +160,10 @@ echo "$step" >> @WORK@/calls.log
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_skill","name":"Skill","input":{"skill":"the-review-skill"}}]}}'
 echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","content":"Launching skill: the-review-skill"}]}}'
 case $step in
-  plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
+  plan)
+    git rev-parse HEAD > "@WORK@/plan-head-$(grep -c '^plan$' @WORK@/calls.log)"
+    printf '{"regressions":"0"}\n' > "$(field write)"
+    ;;
   review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
   sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;

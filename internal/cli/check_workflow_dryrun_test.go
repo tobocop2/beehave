@@ -49,10 +49,23 @@ func TestCheckWorkflowDryRun_TheRemediationExampleIsARoundThatEndsEarlyAtTheRead
 func TestCheckWorkflowDryRun_TheRemediationExampleWithNoRoundInTheProjectVarsIsRefused(t *testing.T) {
 	t.Parallel()
 
-	code, stdout, _ := runDry(t, map[string]string{}, "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+	code, stdout, _ := runDry(t, map[string]string{}, "--item", "round/integration", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
 
 	require.Equal(t, 1, code, stdout)
 	assert.Contains(t, stdout, "REFUSE: the project vars hold no round.")
+}
+
+func TestCheckWorkflowDryRun_TheDefaultDryRunOfTheRemediationExampleWithATrackerItemWalksThePipeline(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "projects/code.star", roundProject)
+
+	_, stdout, stderr := runDry(t, map[string]string{}, "--config", dir, "--project", "code", "--item", "12", filepath.Join("..", "..", "examples", "remediation", "workflow.star"))
+
+	assert.Empty(t, stderr)
+	assert.NotContains(t, stdout, "host_up:round-host", "a tracker item runs the pipeline, not a round")
+	assert.Contains(t, stdout, "preflight:intake", "the pipeline starts with the intake check of the item")
 }
 
 func TestCheckWorkflowDryRun_TheFactsOfANamedProjectHoldItsVars(t *testing.T) {

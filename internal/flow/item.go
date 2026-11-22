@@ -32,7 +32,7 @@ type ItemInput struct {
 	Depth int `json:"depth,omitempty"`
 	// Parent is the id of the run that spawned this run, which send(to = "parent") sends to. It is empty for a run that a user started.
 	Parent string `json:"parent,omitempty"`
-	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. It is empty for any other run, which cuts at the base branch of the project.
+	// Base is the base branch that the spawn call gave the run, or the base of the round item that spawned it. The worktree of the item is cut there. A run that a user started for a tracker item gets the base of the newest round of its project. It is empty when the project has no round run, and the item is cut at the base branch of the project.
 	Base string `json:"base,omitempty"`
 }
 

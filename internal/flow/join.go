@@ -80,12 +80,8 @@ func (c *Client) Engine() (EngineInfo, bool, error) {
 // The run enters the items queue with the id of its attempt, so two joins of one item make one run. The engine dequeues it, and agents.max_concurrent applies.
 // The run picks its login at its first agent step, as a run that beehave run starts does. When no engine holds the state folder for a while, the call returns ErrEngineGone and the run stays queued.
 func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemResult, error) {
-	in, err := pinnedInput(item, project, file)
+	in, err := c.joinInput(item, project, file)
 	if err != nil {
-		return ItemResult{}, err
-	}
-
-	if err := in.check(); err != nil {
 		return ItemResult{}, err
 	}
 
@@ -99,6 +95,20 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string) (ItemR
 	}
 
 	return c.await(ctx, handle, item)
+}
+
+// joinInput returns the input of the run that a join starts: the pinned file, checked, with the base of the round of the project.
+func (c *Client) joinInput(item, project, file string) (ItemInput, error) {
+	in, err := pinnedInput(item, project, file)
+	if err != nil {
+		return ItemInput{}, err
+	}
+
+	if err := in.check(); err != nil {
+		return ItemInput{}, err
+	}
+
+	return in.withRoundBase(c.flow)
 }
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
