@@ -132,6 +132,14 @@ func TestSandbox_TheShellGetsANewEmptyHomeFolderOfItsOwnNotTheHomeOfTheOwner(t *
 	}
 }
 
+func TestSandbox_TheEnvFileFallsBackToSlashTmpWhenTheShellHasNoTemporaryFolder(t *testing.T) {
+	t.Parallel()
+
+	file := claude.New(nil).Sandbox(plan(), "", "/run", nil, nil).Files["sandbox-env.sh"]
+
+	assert.Contains(t, file, "export HOME=\"${TMPDIR:-/tmp}\"/beehave-home-run\n", "the fallback text is exactly ${TMPDIR:-/tmp}")
+}
+
 func TestSandbox_TheCLIKeepsTheHomeOfTheOwnerForItsLogin(t *testing.T) {
 	t.Parallel()
 
