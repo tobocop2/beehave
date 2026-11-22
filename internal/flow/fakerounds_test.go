@@ -14,7 +14,7 @@ import (
 	"github.com/tobocop2/beehave/internal/takeover"
 )
 
-// fakeRounds is the round writer of a test. It runs no forge: each call is written as the line of the engine step or of the remedy tool that it stands for, and goes to the fake commands, whose reply says what the
+// fakeRounds is the round writer of a test. It runs no forge: each call is written as the line of the engine step that it stands for, and goes to the fake commands, whose reply says what the
 // forge answers. So a test scripts one answer for the round and reads one list of calls. A reply with exit code 2 is a refusal.
 type fakeRounds struct{ commands *fakeCommands }
 
@@ -24,7 +24,8 @@ const (
 	landProgram        = "round_land"
 	cutProgram         = "round_cut"
 	integrationProgram = "integration_pull"
-	remedyProgram      = "remedy"
+	boardProgram       = "board_card"
+	takeProgram        = "pr_take"
 )
 
 // ask records the call as the line of the program and returns the answer of the fake commands.
@@ -126,7 +127,7 @@ func (f fakeRounds) Integrate(ctx context.Context, _ string, req roundintegratio
 
 // Place answers the column that the fake commands print in stdout. A reply with exit code 2 shows the column that the reply names as "shows", else the empty column.
 func (f fakeRounds) Place(ctx context.Context, _ string, card model.Card) (string, error) {
-	words := []string{"board", "--board", strconv.Itoa(card.Board), "--status", card.Status}
+	words := []string{"--board", strconv.Itoa(card.Board), "--status", card.Status}
 	if card.Owner != "" {
 		words = append(words, "--owner", card.Owner)
 	}
@@ -137,7 +138,7 @@ func (f fakeRounds) Place(ctx context.Context, _ string, card model.Card) (strin
 		words = append(words, "--issue", strconv.Itoa(card.Number))
 	}
 
-	out, err := f.ask(ctx, remedyProgram, words...)
+	out, err := f.ask(ctx, boardProgram, words...)
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +151,7 @@ func (f fakeRounds) Place(ctx context.Context, _ string, card model.Card) (strin
 }
 
 func (f fakeRounds) Take(ctx context.Context, _ string, req TakeRequest) (takeover.Result, error) {
-	words := []string{"take", strconv.Itoa(req.Request.PR), "--me", req.Me, "--idle", wholeHours(req.Idle), "--grace", wholeHours(req.Grace)}
+	words := []string{strconv.Itoa(req.Request.PR), "--me", req.Me, "--idle", wholeHours(req.Idle), "--grace", wholeHours(req.Grace)}
 
 	switch req.Request.Mode {
 	case takeover.ModeApply:
@@ -160,7 +161,7 @@ func (f fakeRounds) Take(ctx context.Context, _ string, req TakeRequest) (takeov
 	case takeover.ModeDry:
 	}
 
-	out, err := f.ask(ctx, remedyProgram, words...)
+	out, err := f.ask(ctx, takeProgram, words...)
 	if err != nil {
 		return takeover.Result{}, err
 	}

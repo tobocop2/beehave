@@ -4,6 +4,8 @@ stdout '^  size '
 ! stdout '^  cut '
 ! stdout '^  integration '
 ! stdout '^  sync '
+! stdout '^  board '
+! stdout '^  take '
 stdout '^  audit authored'
 
 # An unknown command is a refusal: exit code 2.
@@ -26,3 +28,7 @@ stderr 'unknown command "cut"'
 stderr 'unknown command "integration"'
 ! exec remedy sync --base staging/r-I
 stderr 'unknown command "sync"'
+! exec remedy board --board 3 --status Done --pr 1
+stderr 'unknown command "board"'
+! exec remedy take 7 --me me --idle 1 --grace 1
+stderr 'unknown command "take"'

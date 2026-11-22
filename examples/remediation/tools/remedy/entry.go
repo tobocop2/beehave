@@ -28,25 +28,13 @@ func OpenForge[F Forge](open func(repo string) (F, error)) func(string) (Forge, 
 	}
 }
 
-// OpenClaims turns the opener of a claim store into the Claims field of Deps. It gives the nil interface on an error, as OpenForge does.
-func OpenClaims[C Claims](open func(repo string) (C, error)) func(string) (Claims, error) {
-	return func(repo string) (Claims, error) {
-		claims, err := open(repo)
-		if err != nil {
-			return nil, err
-		}
-
-		return claims, nil
-	}
-}
-
-// Main runs one command line (without the program name) in the working folder, with the forge that open gives and the claim store that claims gives, and returns the exit code. An interrupt stops the run.
-func Main[F Forge](args []string, out, errOut io.Writer, open func(repo string) (F, error), claims func(repo string) (Claims, error)) int {
+// Main runs one command line (without the program name) in the working folder, with the forge that open gives, and returns the exit code. An interrupt stops the run.
+func Main[F Forge](args []string, out, errOut io.Writer, open func(repo string) (F, error)) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	deps := Deps{
-		Git: gitexec.New(workingFolder, proc.DefaultTimeout), Gh: proc.NewExecRunner("gh", workingFolder), Dir: workingFolder, Forge: OpenForge(open), Now: time.Now, Claims: claims, Book: OpenBook(ledger.Open),
+		Git: gitexec.New(workingFolder, proc.DefaultTimeout), Dir: workingFolder, Forge: OpenForge(open), Now: time.Now, Book: OpenBook(ledger.Open),
 	}
 
 	return Execute(ctx, args, deps, out, errOut)

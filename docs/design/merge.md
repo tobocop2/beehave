@@ -360,9 +360,8 @@ Every other member, and every member whose read failed, is a line of the result 
 ### Binary and packages
 
 - The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
-- The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge and the beads claim store to `remedy.Main`, which wires the real git runner.
-- The package `lease` builds the claims over the rows and finds the project of a repository in the config folder, for `cmd/beehave` and `cmd/remedy` alike.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `audit`, `papers`). The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut or the integration pull request. `board` and `take` stay in the tool for a person at a terminal, who runs them with the login of that person.
+- The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `audit`, `papers`). The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
@@ -456,33 +455,31 @@ When no sync held the round and no item can move, the question names each listed
 
 A line that marks a finding is exit code 1. A range that git cannot read is a refusal, never a clean report.
 
-### `remedy take`
+### The takeover step `pr_take`
 
-`remedy take <pr> --me <login> --idle <hours> --grace <hours> [--head <sha>] [--item <id>] [--apply | --take [--reply-read]]` runs `takeover`. It decides whether to take a pull request that somebody else holds.
+`pr_take(pr, me, idle, grace, step)` runs `takeover`. It decides whether to take a pull request that somebody else holds.
 
 | Step | What it does |
 |---|---|
-| No step flag | Reads and says what it would do |
-| `--apply` | Posts the notice |
-| `--take` | Checks the notice, the grace period and the replies |
+| `apply` | Posts the notice |
+| `take` | Checks the notice, the grace period and the replies |
 
-Every refusal is exit code 2. `--me` is a flag, so the tool keeps no state.
+Every refusal ends the item with exit code 2. `me` is an argument, so the step keeps no state.
 
 #### Rules for every step
 
 - A pull request that is not open, or is ours, is refused first, in every step.
 - A failed read refuses.
-- `--head` names the head commit that the caller works on. If the pull request has another head, the step refuses with exit code 2, and the lines say that the author pushed. With no `--head`, any head passes.
 
 #### The notice
 
-The notice needs a `CHANGES_REQUESTED` review of ours. It names its basis (assigned to us, or idle) and the grace period. A second notice is never posted: right before the post, `--apply` asks the forge for a notice of ours. If one exists, it says so, writes nothing and exits 0.
+The notice needs a `CHANGES_REQUESTED` review of ours. It names its basis (assigned to us, or idle) and the grace period. A second notice is never posted: right before the post, `apply` asks the forge for a notice of ours. If one exists, it says so, writes nothing and exits 0.
 
 The text of the notice is Markdown in `takeover/text`, read through one `embed` variable.
 
-#### `--take` refusals and replies
+#### `take` refusals and replies
 
-`--take` refuses in this order:
+`take` refuses in this order:
 
 1. no notice,
 2. a notice younger than the grace period,
@@ -493,30 +490,19 @@ The text of the notice is Markdown in `takeover/text`, read through one `embed` 
 |---|---|
 | Says `KEEP` | Stops the take |
 | Says `RELEASE` | Takes the pull request without the grace wait or the idle wait |
-| Neither word | Prints every reply and refuses. `--reply-read` lets the take go on with a note. |
+| Neither word | Prints every reply and refuses. |
 
 A token stands alone as a word when no Unicode letter, digit or underscore touches it. So `KEEPER`, `KEEP_ALL` and `KEEPé` do not say `KEEP`.
 
 #### Time
 
-`takeover` never calls `time.Now`. `remedy` puts the time in the context, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal. A pull request with no timestamp at all is unreadable, not idle.
+`takeover` never calls `time.Now`. The engine puts the time in the context, so every age is a pure function of the input. A time that is not a UTC stamp is a refusal. A pull request with no timestamp at all is unreadable, not idle.
 
 #### Claims
 
-`remedy take` never writes a claim. A claim lapses after 5 minutes unless something renews it, and the tool exits at once. The run of the item in the engine takes the claim and renews it.
+The step runs inside the run of the item, and the engine writes only while that run holds the claim of the item. So the claim check of the takeover always passes, and the step reads no claim store and writes no claim.
 
-`--apply` and `--take` read the claim store of the project that owns the origin repository, from the beehave config folder, through `internal/lease`. This is the same code that `beehave run` uses.
-
-- The store opens only when the claim must be read, after every guard and rule that needs no store. So a store that does not open never hides a refusal.
-- A store that does not open is exit code 2.
-- `--apply` refuses when another owner holds the pull request, before it posts. `--take` refuses the same way.
-- When every check passes, `--take` prints one line: the pull request may be taken now, and the run of the item holds the claim. It never prints TAKEN.
-
-`--item` names the tracker item that the run claims. The claim read checks that item, never the pull request number. `--apply` and `--take` refuse with exit code 2 when `--item` is missing. The dry step needs no item.
-
-The engine gives each run a random owner token, and no login maps to an owner. So the read asks as the fixed owner `remedy`, which never holds a claim, and any live claim on the item is another owner's. So run `remedy take` before a run claims the item. Inside the item's own run, it sees the run's claim and always refuses.
-
-The forge of the tools has no call that assigns a pull request, so the take does not co-assign it.
+The take assigns the pull request and its linked issues to `me` through `gh`, as the writer of the project.
 
 ### `remedy admit`
 

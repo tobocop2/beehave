@@ -65,10 +65,6 @@ func (f *forgeWorld) CreateBranch(_ context.Context, branch, _ string) error {
 
 func (*forgeWorld) SetBase(context.Context, int, string) error { return nil }
 
-func (*forgeWorld) ReviewComments(context.Context, int) ([]model.Comment, error) { return nil, nil }
-
-func (*forgeWorld) PostComment(context.Context, int, string) error { return nil }
-
 func (*forgeWorld) PRBody(context.Context, int) (string, error) { return "", nil }
 
 // run executes one command line and returns the exit code with the two outputs.
@@ -118,7 +114,7 @@ func TestExecute_UnknownCommandRefuses(t *testing.T) {
 func TestNames_AreTheCommandsOfTheTable(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"audit", "take", "admit", "size", "ledger", "recount", "scope", "board", "papers", "handoff", "authors", "spend", "job", "report"}, remedy.Names())
+	assert.Equal(t, []string{"audit", "admit", "size", "ledger", "recount", "scope", "papers", "handoff", "authors", "spend", "job", "report"}, remedy.Names())
 }
 
 // history answers the reads of an audit. A call is answered by its arguments joined with spaces.

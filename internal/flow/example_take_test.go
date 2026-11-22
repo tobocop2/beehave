@@ -183,7 +183,7 @@ func TestExampleTake_TheIdleAndGraceHoursAreOne(t *testing.T) {
 	require.NoError(t, receive(t, done).err)
 
 	first := strings.Join(rig.h.commands.requests[0].Run, " ")
-	assert.Equal(t, "remedy take 7 --me owner --idle 1 --grace 1 --apply", first)
+	assert.Equal(t, "pr_take 7 --me owner --idle 1 --grace 1 --apply", first)
 	assert.True(t, strings.HasSuffix(strings.Join(rig.h.commands.requests[1].Run, " "), "--take"), "the take is the last word of the call")
 }
 
