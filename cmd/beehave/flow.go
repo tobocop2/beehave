@@ -11,6 +11,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
+	"github.com/tobocop2/beehave/internal/fstree"
 	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/pool"
@@ -170,18 +171,18 @@ func newEngineOn(ctx context.Context, cfg config.Config, opts flow.Options, read
 func depsOn(cfg config.Config, opts flow.Options, picks logins, table adapters) flow.Deps {
 	trees := newWorktrees(cfg.Projects, opts, table.forge)
 	life := newLife(cfg, table, trees)
-	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table)
+	folders := &fstree.Folders{}
+	commands := newPrograms(cfg, trees, cloneLock{repos: trees.repos}, table, folders)
 
 	return flow.Deps{
-		Agents: newAgents(cfg, opts, trees, table), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: picks, Lifecycle: life, Forge: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
+		Agents: newAgents(cfg, opts, trees, table, folders), Gate: projectGate{projects: cfg.Projects, programs: commands, forge: table.forge}, Logins: picks, Lifecycle: life, Forge: life, Merge: life, Preflight: life, Trees: trees, Beats: life, Others: life,
 		Commands: commands, Items: trackerItems{projects: cfg.Projects, tracker: table.tracker},
-		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker},
-		Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
-		Batch:  batchHost{pulls: life.pulls, programs: commands, base: trees},
-		Hosts:  hostStop{programs: commands},
-		Queue:  queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
-		Poll:   pollReads{projects: cfg.Projects, pulls: life.pulls},
-		Kept:   table.hostErrors(),
+		Writer: trackerWriter{projects: cfg.Projects, tracker: table.tracker}, Reader: trackerReader{projects: cfg.Projects, tracker: table.tracker},
+		Batch: batchHost{pulls: life.pulls, programs: commands, base: trees},
+		Hosts: hostStop{programs: commands},
+		Queue: queueReads{items: trackerItems{projects: cfg.Projects, tracker: table.tracker}, pulls: life.pulls},
+		Poll:  pollReads{projects: cfg.Projects, pulls: life.pulls},
+		Kept:  table.hostErrors(),
 
 		SandboxDefault: func(project string) bool { return cfg.Projects[project].SandboxByDefault() },
 		RefuseGate:     gateRefusal(cfg.Projects, enforcers.Refusal),
@@ -314,10 +315,10 @@ func localRunner(projects map[string]config.Project, found gitexec.Repositories)
 
 // newPrograms runs command steps in the worktree of the item, or on the host of the project.
 // The sandbox of a gate holds the lock of the clone, clones, while it adds or removes the worktree of its copy.
-func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, table adapters) programs {
+func newPrograms(cfg config.Config, trees programTrees, clones cloneLock, table adapters, folders *fstree.Folders) programs {
 	return programs{
 		trees:    trees,
-		sandbox:  newGateSandbox(cfg.Projects, clones),
+		sandbox:  newGateSandbox(cfg.Projects, clones, folders),
 		local:    localRunner(cfg.Projects, gitexec.NewRepositories(clones.repos)),
 		exec:     func(spec proc.ExecRunner) proc.Runner { return spec },
 		hosts:    func(project, cluster string) (host.Host, error) { return buildHostOf(cfg, table, project, cluster) },

@@ -52,7 +52,7 @@ func (brokenEnforcer) Run(context.Context, sandbox.Plan, int, sandbox.Command) (
 func TestNewGateSandbox_ANameThatNoEnforcerHasIsRefusedWithTheNames(t *testing.T) {
 	t.Parallel()
 
-	box := newGateSandbox(sandboxedProject(model.SandboxOn, config.LocalHost), cloneLock{})
+	box := newGateSandbox(sandboxedProject(model.SandboxOn, config.LocalHost), cloneLock{}, nil)
 
 	_, err := box.enforcer("nope")
 	require.ErrorIs(t, err, sandbox.ErrUnavailable)

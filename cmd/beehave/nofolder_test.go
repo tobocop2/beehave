@@ -21,7 +21,7 @@ func TestPrograms_AnItemWithNoWorktreeRunsTheProgramInAnEmptyFolderThatIsRemoved
 	process, err := os.Getwd()
 	require.NoError(t, err)
 
-	runs := newPrograms(config.Config{}, treeAt(""), cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(""), cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	got, err := runs.Run(t.Context(), flow.CommandRequest{Run: []string{"sh", "-c", "pwd -P; ls -A | wc -l; touch marker"}})
 
@@ -42,7 +42,7 @@ func TestPrograms_AnItemWithNoWorktreeRunsTheProgramInAnEmptyFolderThatIsRemoved
 func TestPrograms_AProgramThatCannotGetItsEmptyFolderIsRefused(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 
-	runs := newPrograms(config.Config{}, treeAt(""), cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(config.Config{}, treeAt(""), cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	_, err := runs.Run(t.Context(), flow.CommandRequest{Item: "7", Run: []string{"true"}})
 
@@ -83,7 +83,7 @@ func TestPrograms_ARequestWithATreeStartRunsInTheWorktreeMadeAgainAtThatCommitAn
 
 	var starts []string
 
-	runs := newPrograms(config.Config{}, goneTree{dir: tree, starts: &starts}, cloneLock{}, newAdapters(nil, nil, nil))
+	runs := newPrograms(config.Config{}, goneTree{dir: tree, starts: &starts}, cloneLock{}, newAdapters(nil, nil, nil), nil)
 
 	// A round item of a project with no repository has no tree start, so it runs in an empty folder as any other item does.
 	for _, request := range []flow.CommandRequest{{Item: roundItem, TreeStart: "abc123"}, {Item: roundItem}, {Item: "7"}, {Item: "bb-1"}} {

@@ -109,8 +109,8 @@ func TestGateSandbox_ASandboxReadPathThatHoldsTheHomeFolderIsRefused(t *testing.
 func TestGateSandbox_AppliesOnlyToAProjectWithTheSandboxOnThatBuildsHere(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, newGateSandbox(sandboxedProject(model.SandboxOn, config.LocalHost), cloneLock{}).applies("p", false))
-	assert.False(t, newGateSandbox(sandboxedProject(model.SandboxOn, "cluster"), cloneLock{}).applies("p", false))
-	assert.True(t, newGateSandbox(sandboxedProject(model.SandboxOn, "cluster"), cloneLock{}).applies("p", true))
-	assert.False(t, newGateSandbox(sandboxedProject(model.SandboxOff, config.LocalHost), cloneLock{}).applies("p", true))
+	assert.True(t, newGateSandbox(sandboxedProject(model.SandboxOn, config.LocalHost), cloneLock{}, nil).applies("p", false))
+	assert.False(t, newGateSandbox(sandboxedProject(model.SandboxOn, "cluster"), cloneLock{}, nil).applies("p", false))
+	assert.True(t, newGateSandbox(sandboxedProject(model.SandboxOn, "cluster"), cloneLock{}, nil).applies("p", true))
+	assert.False(t, newGateSandbox(sandboxedProject(model.SandboxOff, config.LocalHost), cloneLock{}, nil).applies("p", true))
 }

@@ -64,7 +64,7 @@ func TestSandboxPlan_TheIdentityIsTheGitIdentityOfTheEngineAtTheWorktree(t *test
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 
 	r := newSandboxRig(t)
-	r.f.agents.identity = newAgents(config.Config{}, flow.Options{StateDir: filepath.Dir(filepath.Dir(r.work))}, treeAt(r.work), newAdapters(nil, nil, nil)).identity
+	r.f.agents.identity = newAgents(config.Config{}, flow.Options{StateDir: filepath.Dir(filepath.Dir(r.work))}, treeAt(r.work), newAdapters(nil, nil, nil), nil).identity
 	runGit(t, r.work, "config", "user.email", "worktree@example.com")
 
 	req := request()
@@ -553,7 +553,7 @@ func TestWithin_APatternCoversEachMatchAndThePathsBelowItWithoutCase(t *testing.
 func TestNewAgents_FindsTheHomeFolderOfTheOwner(t *testing.T) {
 	t.Parallel()
 
-	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil))
+	a := newAgents(config.Config{}, flow.Options{}, treeAt(t.TempDir()), newAdapters(nil, nil, nil), nil)
 
 	home, err := a.home()
 
