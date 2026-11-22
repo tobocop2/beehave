@@ -2,7 +2,7 @@
 
 Part of the [beehave architecture](../architecture.md).
 
-This part covers the lane ledger, the pick of a runner, the machine check (`beehave doctor`), the pull request check before an action, the review poll and the scope check. The ledger and the scope check are tools of the remediation example. The others are part of the engine.
+This part covers the lane ledger, the pick of a runner, the machine check (`beehave doctor`), the pull request check before an action, the review poll and the closing issues of a first review. The ledger is a tool of the remediation example. The others are part of the engine.
 
 ## Ledger
 
@@ -43,7 +43,7 @@ A fix lane is a fix, a rework or a relay.
 
 ### The state folder
 
-The state folder is a flag. Every `remedy ledger` verb and `remedy scope` take `--state <folder>`. `remedy admit` takes the same flag. The ledger file is `lane-ledger.db` in that folder. A writer waits in turn on an operating system lock on `lane-ledger.lock` in the same folder, with no time limit, and a reader never takes that lock.
+The state folder is a flag. Every `remedy ledger` verb takes `--state <folder>`. `remedy admit` takes the same flag. The ledger file is `lane-ledger.db` in that folder. A writer waits in turn on an operating system lock on `lane-ledger.lock` in the same folder, with no time limit, and a reader never takes that lock.
 
 The tool does not guess the folder from the working folder, and it reads no environment variable for it. The workflow passes the folder that it keeps for the run.
 
@@ -53,7 +53,7 @@ The tool does not guess the folder from the working folder, and it reads no envi
 
 - A fix lane takes `--mechanism`, `--model` and `--round`.
 - An `owner-add` row takes the issue number as the lane, and `--words`.
-- The first review of a key needs the issues that the pull request closes. `--body-file <path>` takes the closing keywords of a file. `--pr <number>` reads them through the forge of the `origin` remote with the read of `remedy scope`, and only when the ledger asks for it.
+- The first review of a key needs the issues that the pull request closes. `--body-file <path>` takes the closing keywords of a file. `--pr <number>` reads them through the forge of the `origin` remote with the read of the section Closing issues, and only when the ledger asks for it.
 - The time of the row is the time of the run.
 - The verb prints the issues that a first review recorded.
 
@@ -255,16 +255,9 @@ The sweep and the `OWN` rows read the forge once, through `OwnPulls`. A pull req
 
 A failed read stops the poll with an `UnreadError` that names the read and its cause. A page of unknown rows would hide the cause.
 
-## Scope
+## Closing issues
 
-`scope` is a tool of the remediation example, in `examples/remediation/tools/scope`. It refuses a pull request that started to close a new issue after its first review.
-
-### Command
-
-The command is `remedy scope <pr> --state <folder> [--key <key>]`. It reads the issues that the pull request closes and the ledger in the state folder. `--key` names the ledger key when it is not the pull request number.
-
-- A pass is exit code 0.
-- A refusal, a bad argument and a failed read are exit code 2.
+The engine step `merge` keeps the scope of the first review of an item. The remediation example has no tool for it. The first review row of the ledger records the issues that its pull request closes, as `remedy ledger add --pr` reads them.
 
 ### How the closed issues are read
 
@@ -285,18 +278,8 @@ For a pull request into the default branch, one GraphQL read gives the list, the
 
 For the closing keywords of the body, a keyword must start at an ASCII word boundary, a rule of this tool. So `unfixed #3` closes nothing. Two spellings of one number, such as `12` and `012`, name one issue.
 
-### The check
-
-The first review of a key records the issues that the pull request closes. `Check` reads the issues now and compares the two lists.
-
-`Check` reads the forge only when the ledger holds a first review for the key. With no first review, it fixes the scope under the key and passes.
-
-`Check` imports `ledger`. It reads the ledger and the forge through the small `Records` and `Reader` interfaces, and returns a `Result` with an exit code and the lines to show.
-
 ### Owner-added issues
 
-A new issue passes only when the ledger holds an `owner-add` row for the key and the issue. The lane column of that row is the issue number. The words column is the reason of the owner.
-
-The refusal names the command that adds the row: `remedy ledger add <key> <issue> owner-add --state <folder> --words <words>`.
+The lane column of an `owner-add` row is the issue number. The words column is the reason of the owner. The command that adds the row is `remedy ledger add <key> <issue> owner-add --state <folder> --words <words>`.
 
 An `owner-add` row never fixes a lane, so `Count`, `Prior`, `Rounds` and `Since` do not see it.

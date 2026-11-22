@@ -288,11 +288,11 @@ func TestLedger_AnUnknownVerbIsRefusedByName(t *testing.T) {
 	assert.Contains(t, errOut, "usage: remedy ledger add")
 }
 
-func TestLedger_HelpListsTheLedgerAndScopeCommands(t *testing.T) {
+func TestLedger_HelpListsTheLedgerCommand(t *testing.T) {
 	t.Parallel()
 
 	_, out, _ := run(t, remedy.Deps{}, "--help")
 
 	assert.Contains(t, out, "ledger add <key> <lane> <kind>")
-	assert.Contains(t, out, "scope <pr>")
+	assert.NotContains(t, out, "scope <pr>")
 }

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/brief"
-	"github.com/tobocop2/beehave/examples/remediation/tools/scope"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -23,17 +22,17 @@ const (
 	ExitRefused = 2
 )
 
-// Forge is the forge of every subcommand: the title and body read of the recount, and the body read of the scope check and of the first review row.
-// A forge that also has the closing-reference read of scope.Listing gives both of them the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
+// Forge is the forge of every subcommand: the title and body read of the recount, and the body read of the first review row.
+// A forge that also has the closing-reference read of Listing gives the first review row the closing references of the forge for a pull request into the default branch. The body is read for any other pull request.
 type Forge interface {
-	scope.BodyReader
+	bodyReader
 	PRView(ctx context.Context, pr int, fields ...string) (model.PullRequest, error)
 }
 
-// Book is the lane ledger of the subcommands: the reads and the write of admission, and the reads of the scope check.
+// Book is the lane ledger of the subcommands: the reads and the write of admission, and the read of the issues of a first review.
 type Book interface {
 	brief.Book
-	scope.Records
+	Closes(key string) ([]string, error)
 }
 
 // Deps holds what the subcommands read from outside. The binary builds them, and a test passes fakes.
@@ -62,10 +61,10 @@ type command struct {
 
 // commands is the command table. The binary runs from it, `remedy --help` prints from it, and the test of workflow.star reads it.
 func commands() []command {
-	return slices.Concat(mergeCommands(), briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
+	return slices.Concat(briefCommands(), ledgerCommands(), papersCommands(), spendCommands(), gateCommands())
 }
 
-// ledgerCommands are the subcommands that keep the lane ledger and check the scope of a pull request against it.
+// ledgerCommands are the subcommands that keep the lane ledger and count its rows.
 func ledgerCommands() []command {
 	return []command{
 		{
@@ -79,12 +78,6 @@ func ledgerCommands() []command {
 			usage:   recountSyntax,
 			summary: "count the rows of the integration pull request, and refuse a heading or title that says another number, or a count that did not change after a write",
 			run:     recountCommand,
-		},
-		{
-			name:    "scope",
-			usage:   scopeSyntax,
-			summary: "refuse a pull request that closes an issue it did not close at its first review, unless the ledger holds an owner-add row for it",
-			run:     scopeCommand,
 		},
 	}
 }
@@ -103,18 +96,6 @@ func briefCommands() []command {
 			usage:   sizeSyntax,
 			summary: "size the reading of a brief in tokens, warn about big files and refuse a reading above the budget",
 			run:     sizeCommand,
-		},
-	}
-}
-
-// mergeCommands are the subcommands that audit merges.
-func mergeCommands() []command {
-	return []command{
-		{
-			name:    "audit",
-			usage:   "audit authored <span> | audit present <tip> <base>",
-			summary: "read the merges of a range for content that no pull request diff shows",
-			run:     auditCommand,
 		},
 	}
 }

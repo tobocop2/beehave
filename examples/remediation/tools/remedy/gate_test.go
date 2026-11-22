@@ -1,26 +1,16 @@
 package remedy_test
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
 )
 
 const (
-	gateListText = "# Gate list: owner/name\n\n## Gate steps\n\n" +
-		"| name | command |\n|---|---|\n| fmt | `cargo fmt --all -- --check` |\n| lint | `cargo clippy` |\n"
-
-	goodJob = "#!/bin/bash\n" +
-		"cargo fmt --all -- --check; echo \"STEP_RESULT name=fmt rc=$?\"\n" +
-		"cargo clippy; echo \"STEP_RESULT name=lint rc=$?\"\n" +
-		"echo \"DONE-x rc=$reds gate=full\"\n"
-
 	laneHead = "abcdef1234567890abcdef1234567890abcdef12"
 	laneRed  = "test empty_name_refused ... FAILED"
 
@@ -34,130 +24,6 @@ const (
 		"| src/b.rs:40 create route | validates the same name | yes |\n\n" +
 		"no background commands left\n"
 )
-
-// jobFiles writes the gate list and the job script in a new folder and returns the two paths.
-func jobFiles(t *testing.T, script string) (string, string) {
-	t.Helper()
-
-	dir := t.TempDir()
-
-	list := filepath.Join(dir, "gate.md")
-	job := filepath.Join(dir, "job.sh")
-
-	require.NoError(t, os.WriteFile(list, []byte(gateListText), 0o600))
-	require.NoError(t, os.WriteFile(job, []byte(script), 0o600))
-
-	return job, list
-}
-
-func TestJob_AJobThatRunsEveryStepPassesWithTheSummary(t *testing.T) {
-	t.Parallel()
-
-	script, list := jobFiles(t, goodJob)
-
-	code, out, errOut := run(t, remedy.Deps{}, "job", script, "--list", list)
-
-	assert.Equal(t, remedy.ExitPass, code)
-	assert.Equal(t, "check-job: OK (steps 2, run 2, declared skips 0, unstated 0)\n", out)
-	assert.Empty(t, errOut)
-}
-
-func TestJob_AStepThatTheJobDoesNotRunIsExitCodeOne(t *testing.T) {
-	t.Parallel()
-
-	script, list := jobFiles(t, strings.Replace(goodJob, "cargo clippy; echo \"STEP_RESULT name=lint rc=$?\"\n", "", 1))
-
-	code, out, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
-
-	assert.Equal(t, remedy.ExitDefect, code)
-	assert.Contains(t, out, "FAIL: the job does not run the step lint (cargo clippy)")
-	assert.NotContains(t, out, "check-job: OK")
-}
-
-func TestJob_ARuleOfTheJobScriptIsExitCodeOneEvenWhenEveryStepRuns(t *testing.T) {
-	t.Parallel()
-
-	script, list := jobFiles(t, goodJob+"git add -A\n")
-
-	code, out, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
-
-	assert.Equal(t, remedy.ExitDefect, code)
-	assert.Contains(t, out, "FAIL: the job stages in bulk (")
-	assert.NotContains(t, out, "check-job: OK")
-}
-
-func TestJob_ATestCommandWithNoTimeoutIsExitCodeOne(t *testing.T) {
-	t.Parallel()
-
-	script, list := jobFiles(t, goodJob+"pytest tests\n")
-
-	code, out, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
-
-	assert.Equal(t, remedy.ExitDefect, code)
-	assert.Contains(t, out, "FAIL: the job runs a test command without timeout in front of it: ")
-
-	script, list = jobFiles(t, goodJob+"timeout 60 pytest tests\n")
-
-	code, _, _ = run(t, remedy.Deps{}, "job", script, "--list", list)
-
-	assert.Equal(t, remedy.ExitPass, code)
-}
-
-func TestJob_AFileThatTheJobSourcesIsReadFromTheJobFolder(t *testing.T) {
-	t.Parallel()
-
-	sourced := strings.Replace(goodJob, "echo \"DONE-x", "source lib.sh\necho \"DONE-x", 1)
-	script, list := jobFiles(t, sourced)
-
-	// With no file to read, the sourced file can set any variable, so the exit status is not fixed.
-	code, _, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
-	assert.Equal(t, remedy.ExitPass, code)
-
-	// The file sets the one variable of the marker to a literal.
-	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(script), "lib.sh"), []byte("reds=0\n"), 0o600))
-
-	code, out, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
-	assert.Equal(t, remedy.ExitDefect, code)
-	assert.Contains(t, out, "the job prints a fixed exit status")
-
-	// A --job-dir that holds no such file reads nothing.
-	code, _, _ = run(t, remedy.Deps{}, "job", script, "--list", list, "--job-dir", t.TempDir())
-	assert.Equal(t, remedy.ExitPass, code)
-}
-
-func TestJob_AGateListThatCannotBeReadIsExitCodeTwoAndKeepsTheFailuresFound(t *testing.T) {
-	t.Parallel()
-
-	script, _ := jobFiles(t, goodJob+"git add -A\n")
-
-	code, out, errOut := run(t, remedy.Deps{}, "job", script, "--list", textFile(t, "bad.md", "no table here\n"))
-
-	assert.Equal(t, remedy.ExitRefused, code)
-	assert.Contains(t, out, "FAIL: the job stages in bulk (")
-	assert.Contains(t, errOut, "remedy job: FAIL: ")
-}
-
-func TestJob_AMissingListAScriptThatCannotBeReadAndABadCallAreExitCodeTwo(t *testing.T) {
-	t.Parallel()
-
-	script, list := jobFiles(t, goodJob)
-	none := filepath.Join(t.TempDir(), "none")
-
-	for _, args := range [][]string{
-		{"job", script},
-		{"job"},
-		{"job", script, "--list", list, "extra"},
-		{"job", script, "--nope"},
-		{"job", none, "--list", list},
-		{"job", script, "--list", none},
-	} {
-		code, out, errOut := run(t, remedy.Deps{}, args...)
-
-		assert.Equal(t, remedy.ExitRefused, code, args)
-		assert.Empty(t, out, args)
-		assert.NotEmpty(t, errOut, args)
-	}
-}
 
 func TestReport_AWholeReportPassesWithTheSummary(t *testing.T) {
 	t.Parallel()
@@ -213,10 +79,11 @@ func TestReport_AMissingHeadAFileThatCannotBeReadAndABadCallAreExitCodeTwo(t *te
 func TestPrintable_ALineWithABadByteIsPrintedAsText(t *testing.T) {
 	t.Parallel()
 
-	script, list := jobFiles(t, goodJob+"echo \"DONE-x rc=0\"\x80\n")
+	text := strings.Replace(goodLaneReport, laneRed, "green \x80 at base", 1)
 
-	code, out, _ := run(t, remedy.Deps{}, "job", script, "--list", list)
+	code, out, _ := run(t, remedy.Deps{}, "report", textFile(t, "report.md", text), "--head", laneHead)
 
 	assert.Equal(t, remedy.ExitDefect, code)
+	assert.Contains(t, out, "has no red test")
 	assert.Equal(t, strings.ToValidUTF8(out, ""), out, "output is valid UTF-8")
 }

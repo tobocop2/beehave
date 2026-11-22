@@ -1,23 +1,27 @@
 # The remedy tool runs in the test binary. It follows the exit codes of beehave.
 exec remedy --help
 stdout '^  size '
+stdout '^  report '
 ! stdout '^  cut '
 ! stdout '^  integration '
 ! stdout '^  sync '
 ! stdout '^  board '
 ! stdout '^  take '
-stdout '^  audit authored'
+! stdout '^  scope '
+! stdout '^  papers '
+! stdout '^  audit '
+! stdout '^  job '
 
 # An unknown command is a refusal: exit code 2.
 ! exec remedy bake
 stderr 'unknown command "bake"'
 
-# A report with no finding passes.
-cd tree
-exec remedy audit authored HEAD..HEAD
-stdout 'AUD_AUTHORED_DONE'
+# A commit file with no finding passes.
+exec remedy authors authors.txt --email me@example.com --login me
+stdout 'author check: 1 commits, 1 ours and correctly addressed'
 
 # A read of the forge with no origin remote is a refusal.
+cd tree
 ! exec remedy recount --pr 1
 stderr 'cannot read the origin remote'
 
@@ -32,3 +36,16 @@ stderr 'unknown command "sync"'
 stderr 'unknown command "board"'
 ! exec remedy take 7 --me me --idle 1 --grace 1
 stderr 'unknown command "take"'
+
+# The subcommands that nothing calls are not in the tool.
+! exec remedy scope 7 --state .
+stderr 'unknown command "scope"'
+! exec remedy papers HEAD..HEAD
+stderr 'unknown command "papers"'
+! exec remedy audit authored HEAD..HEAD
+stderr 'unknown command "audit"'
+! exec remedy job job.sh --list gate.md
+stderr 'unknown command "job"'
+
+-- authors.txt --
+abc1234 me@example.com me
