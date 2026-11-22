@@ -40,6 +40,6 @@ def main(item):
         capped(fix, "fix", item)
 
     # The branch goes into the source repository under the id of the item. An item that used all of its passes is not pushed.
-    # A command gets no token. For a remote that needs one, add env = {"GH_TOKEN": env("GH_TOKEN")}.
+    # A command gets no token and no SSH agent, so this push works for a source on this machine only. The push builtin needs a project with a forge, and a forge makes the gate look up pull requests.
     if approved:
         command(name = "push", run = ["git", "push", "origin", "HEAD:refs/heads/" + item.id])

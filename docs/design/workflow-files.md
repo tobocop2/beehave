@@ -93,7 +93,7 @@ The reads (`item_read`, `facts`, `now`, `env`, `queue`, `preflight`, `earlier_ca
 `env("<NAME>")` reads a variable of the engine environment. The value is recorded, so a replay sees the value of the first run.
 
 - A name that is not set fails the step and names the variable, unless the call gives `default`, which is then the value.
-- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `OAUTH` and `SSH_AUTH_SOCK` are not secret names.
+- `env` refuses a name that starts with `DBOS__` or `BEEHAVE_`, a name that ends in `_KEY`, `_PAT`, `_DSN` or `_AUTH`, the names `PAT`, `AUTH` and `DSN`, a name that holds `_PAT_` (such as `GH_PAT_OLD`), and a name that holds `TOKEN`, `SECRET`, `PASSWORD` or `CREDENTIAL`. `env` also refuses a variable whose value holds `scheme://user:password@` with a password that is not empty, whatever the name. `OAUTH` and `SSH_AUTH_SOCK` are not secret names, but no step gets `SSH_AUTH_SOCK` from the caller.
 
 ### `now`
 
@@ -770,7 +770,7 @@ The returned struct also holds `stderr`, the second output stream of the program
 
 #### The environment of the program
 
-The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
+The program of a `command` step gets a small environment: the names that an agent run also takes from the caller (the path, home, locale, proxy and certificate variables, and no `SSH_AUTH_SOCK`), then the variables of `env`. No other variable of the caller reaches it. The `env` builtin refuses the name of a secret, so a workflow cannot read a token from the environment of the engine.
 
 A `gate` step keeps the environment of the process.
 

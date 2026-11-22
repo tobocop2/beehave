@@ -140,12 +140,12 @@ func TestLoginEnv_ALoginWithNoFolderLeavesTheConfigVariablesUnset(t *testing.T) 
 	assert.Equal(t, []string{"PATH=/bin"}, LoginEnv(base, p, ""), "the CLI then reads its default folder, and the variable of the owner never passes")
 }
 
-func TestLoginEnv_KeepsTheSocketOfTheSSHAgentAndNoGitOrTokenVariable(t *testing.T) {
+func TestLoginEnv_DropsTheSocketOfTheSSHAgentAndEveryGitOrTokenVariable(t *testing.T) {
 	t.Parallel()
 
 	base := map[string]string{"SSH_AUTH_SOCK": "/tmp/agent.sock", "GH_TOKEN": "x", "GITHUB_TOKEN": "x", "GIT_SSH_COMMAND": "ssh -i k"}
 
-	assert.Equal(t, []string{"SSH_AUTH_SOCK=/tmp/agent.sock"}, LoginEnv(base, Profile{}, ""))
+	assert.Empty(t, LoginEnv(base, Profile{}, ""))
 }
 
 type refusingWriter struct{}

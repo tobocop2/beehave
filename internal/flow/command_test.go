@@ -36,7 +36,7 @@ func TestWalk_ACommandWithNoSettingsGetsTheAllowedEnvironmentAndNoStdin(t *testi
 	t.Parallel()
 
 	h := newHarness(t)
-	h.opts.Env = map[string]string{"HOME": "/home/me", "ANTHROPIC_API_KEY": "secret"}
+	h.opts.Env = map[string]string{"HOME": "/home/me", "ANTHROPIC_API_KEY": "secret", "SSH_AUTH_SOCK": "/tmp/agent.sock"}
 
 	_, err := walkBody(t, h, "command(run = [\"a\"])\n")
 

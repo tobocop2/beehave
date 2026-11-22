@@ -8,7 +8,7 @@ The rule for every decision here: a rule that the forge or the operating system 
 
 This page is the design. The pages [Sandbox](sandbox.md) and [Merge](merge.md) describe the code as it is today.
 
-This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `CanWriteCI` and `Protection` start checks (the tree still has `TokenScopes`), the `Login` forge method, the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the new environment of an agent step and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
+This list is not complete. Not built yet: the deleted `Approved` flag and guard 0 of `merge`, the `CanWriteCI` and `Protection` start checks (the tree still has `TokenScopes`), the `Login` forge method, the credential roles in the project file, the `As(role)` forge calls, the engine push step, the posting of `beehave/review` and `beehave/gate`, the start check that proves agents cannot read a credential, the `gate_program` key and the base checkout of the gate program, the redactor prefixes, the rest of the new environment of an agent step (the `SSH_AUTH_SOCK` drop is built) and the network lists without `github.com`. The sandbox default, the ledger lift and the claim fence are also design only. The ruleset in this page is not posted.
 
 ## The threat model
 

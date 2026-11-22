@@ -17,16 +17,13 @@ func inheritedNames() []string {
 		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
 		"http_proxy", "https_proxy", "no_proxy", "all_proxy",
 		"SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS",
-		"SSH_AUTH_SOCK",
 	}
 }
 
-// sandboxDropped lists the allowlisted variables that a sandboxed run does not get. A proxy variable of the owner could send a tool past the
-// proxy of the sandbox, and the agent socket reaches the keys of the owner.
+// sandboxDropped lists the allowlisted variables that a sandboxed run does not get. A proxy variable of the owner could send a tool past the proxy of the sandbox.
 func sandboxDropped() []string {
 	return []string{
 		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy",
-		"SSH_AUTH_SOCK",
 	}
 }
 
@@ -59,7 +56,7 @@ func LoginEnv(base map[string]string, p Profile, dir string) []string {
 }
 
 // envFor returns the environment of one run: the allowlisted names, the login folder and the token.
-// A sandboxed run gets no proxy variable and no agent socket, and sets the git variables of its plan: no config file of the owner, and the commit identity.
+// A sandboxed run gets no proxy variable, and sets the git variables of its plan: no config file of the owner, and the commit identity.
 // The variables of the launch come after the allow-list. The variables that turn editing off (NoEditEnv) come after those. The git variables of a sandboxed run, the login folder and the token come after them, so a launch cannot change those.
 func envFor(spec Spec, p Profile, launch map[string]string) []string {
 	env := allowed(spec.Env)

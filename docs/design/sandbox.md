@@ -172,7 +172,7 @@ The engine checks the result instead of the mode. A step that may edit fails whe
 
 Not proven: a real `claude` run that prints `env` in the shell must show that the token is gone. Until then, the shell may read the token and, with a non-empty `network` list, send it out.
 
-The child environment holds no proxy variable and no `SSH_AUTH_SOCK`. It sets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, because the base denies `~/.gitconfig`. A step that needs a proxy of the owner sets `sandbox = None`.
+The child environment holds no proxy variable. No step gets `SSH_AUTH_SOCK` (see [Agent runs](agent-runs.md)), and the plan denies the socket path that the engine holds in `SSH_AUTH_SOCK`, because a socket is a file. It sets `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`, because the base denies `~/.gitconfig`. A step that needs a proxy of the owner sets `sandbox = None`.
 
 The CLI process keeps the `HOME` of the owner, so that its login works. The shell gets its own `HOME`: a new, empty folder `beehave-home-<run folder name>` in the temporary folder of the sandbox, made by the env file before the first command. Each step has its own folder, so no file of one step reaches the next. The Go command keeps its telemetry token and its build cache under the home folder, and the base denies the home folder of the owner, so `go test` fails there. The Go command has no documented setting that turns telemetry off. The build cache of the Go command, and its module cache, start empty in each step. The env file sets `HOME` with the git variables.
 

@@ -50,11 +50,10 @@ The prompt goes on stdin, so it never shows in a process list.
 The CLI gets an allowlisted environment:
 
 - the path, home, locale, proxy and certificate variables;
-- `SSH_AUTH_SOCK`;
 - the login folder variables of its runner;
 - the token, if one is passed.
 
-No other variable of the caller reaches it. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
+No other variable of the caller reaches it. `SSH_AUTH_SOCK` is not on the list, for any step, sandboxed or not, and the usage reader and the `command` step use the same list. If the login folder is missing, the run does not start, because the CLI would create an empty profile there.
 
 The CLI runs in its own process group through `proc`. A total timeout, an idle timeout or a cancel of the context kills the group. Each write on stdout or stderr resets the idle timeout. When the CLI exits, the group is killed again, so no child outlives the step.
 
