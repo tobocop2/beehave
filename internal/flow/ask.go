@@ -127,7 +127,7 @@ func (t *tally) enough(a Asked) bool {
 func (s *script) waitVoices(plan waitPlan) (heard, error) {
 	ctx, project, item := s.ctx, s.in.Project, s.in.Item
 	asked, count := plan.asked, &tally{answers: map[string]string{}}
-	asked.Question, asked.Wait = e.redact(plan.question), plan.id
+	asked.Question, asked.Wait = s.e.redact(plan.question), plan.id
 
 	// The ask event is the only event of the wait. It holds the question, the people and the id of the wait, so beehave answer decides from one read,
 	// and the wait opens and ends with one write each. The question event stays unset: a plain wait owns it.

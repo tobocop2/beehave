@@ -74,7 +74,7 @@ func TestRunSecrets_TheQuestionOfAWaitAndTheAnswerOfTheOwnerHoldNeitherPlantedVa
 
 	assert.Equal(t, "go with [redacted]?", questionOf(t, h, testItem), "status shows the redacted question")
 
-	require.NoError(t, client.Answer(testItem, "use "+plantedForge))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "use " + plantedForge}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Contains(t, h.commands.ranBy(testItem), "got use [redacted]", "the run reads the redacted answer")
@@ -93,7 +93,7 @@ func TestRunSecrets_TheQuestionAndTheAnswerOfAWaitThatAsksPeopleHoldNeitherPlant
 
 	assert.Equal(t, "go with [redacted]?", questionOf(t, h, testItem), "status shows the redacted question")
 
-	require.NoError(t, client.AnswerAs(testItem, "alice", "use "+plantedForge))
+	require.NoError(t, client.Reply(testItem, Reply{From: "alice", Text: "use " + plantedForge}))
 	require.NoError(t, receive(t, done).err)
 
 	assert.Contains(t, h.commands.ranBy(testItem), "got use [redacted]")
