@@ -199,6 +199,10 @@ A gate with no failed step and at least one `unknown` step is void, not red.
 
 Three states, one owner: `internal/gate` sets `pass`, `fail` and `unknown`.
 
+### Gate program
+
+The optional project key `gate_program` lists the repository paths that hold the program of the gate: `Makefile`, its shadow files, `scripts/`. The gate is to take its program from the base and its code from the head. The key is read and shown in `facts().gate_program`. The gate does not use it yet, so an empty or a set list changes no verdict. See `configuration.md` for the rules that the config checks.
+
 ### Pinned tools
 
 A gate that passes with the wrong tool proves nothing about the pinned tool. The optional project key `pin_file` names a file in the format of `.tool-versions`: one tool and its exact version on each line. A `#` starts a comment. The path is relative and has no `..`. The config refuses any other path.

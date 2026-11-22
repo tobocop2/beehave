@@ -52,7 +52,8 @@ const (
 // Version 16 records the topic of a recv call with its deadline, in the deadline step.
 // Version 17 records the run that a send to an item names, in the step send:<name>#<n>.to.
 // Version 18 adds the stream step with its deadline step, which records {until, run}: the end of the wait and the child run that the call reads.
-const coreVersion = 18
+// Version 19 adds the gate_program field to the result of facts.
+const coreVersion = 19
 
 // agentVersion is the version of the agent module. Version 2 added the limit field to the phase output, and the limit step and the later looks at the caps
 // that an agent call records when a provider limit stops its run. Version 3 added the start_head field to the phase input, the session and diff_stat fields

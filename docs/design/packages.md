@@ -228,6 +228,7 @@ For a project with no forge and no `source`:
 - `base_branch` and `gate` are optional.
 - `test_report` is required only when `gate` is set.
 - `pin_file` is refused.
+- `gate_program` is refused.
 
 Each item gets a plain folder under the state folder that beehave makes. Release keeps the folder and beehave never deletes it, so the state folder grows with each item.
 

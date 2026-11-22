@@ -47,7 +47,7 @@ var goldenShapes = map[string][]string{
 		"cancel: " + workflow.CancelledField,
 		"command: attempts,error,rc,stderr,stdout",
 		"earlier_calls: count",
-		"facts: base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars",
+		"facts: base_branch,build_host,forge,gate,gate_program,gate_steps,repo,runners,source,tracker,vars",
 		"first_of: kind,message,outcome,run,runs",
 		"gate: checks,head,host_loss,host_losses,new_tests,passed,report,required,revert,steps,tree",
 		"gather: results",

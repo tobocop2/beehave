@@ -85,7 +85,7 @@ func gateResultFields() map[string][]string {
 
 // factsResultFields holds the fields of the struct that facts returns.
 func factsResultFields() map[string][]string {
-	return map[string][]string{factsName: {"repo", "source", "forge", "tracker", "base_branch", "gate", "gate_steps", "build_host", "vars", "runners"}}
+	return map[string][]string{factsName: {"repo", "source", "forge", "tracker", "base_branch", "gate", "gate_steps", "gate_program", "build_host", "vars", "runners"}}
 }
 
 // trackerResultFields holds the fields of the builtins that write the tracker, the pull request or its branch, and of pr_state and pr_history, which read pull requests.

@@ -14,13 +14,13 @@ A second test checks that `workflow.Builtins` and the registry hold the same bui
 
 A use counts only when an entry reaches it. The entries are the code at the top of each file, the functions `main` and `finish` of each file that runs (a file that another file loads does not run), and each function that the keyword `entry` of a call lists. The keyword `entry` lists a string, a parameter that a call fills with a string, or a variable: a variable lists the strings of the values that it is bound to. A function is reached when reached code reads its name, in a call or as a value. The test binds each name with the resolver of `go.starlark.net`, as `beehave check workflow` does. A keyword of a call, an attribute, a local variable and a string are no reads. A function that no entry reaches gives no use. One exception stays: `pr_state` (all its keywords) and `item_create.shared` are used only by `foreign_followup` of the remediation example. No entry calls it while the engine refuses every foreign pull request, and #438 wires it in. The test names these pairs and fails when an entry reaches one of them, so the exception ends with #438.
 
-Two more tests read this page. One checks that the Use column of each row gives the count of files and the first two files of the calls, and that the Change column holds `unchanged` or `#<number>: <text>`. The other checks that the table of `facts()` holds the ten fields that the check of workflow files and the `facts` struct hold.
+Two more tests read this page. One checks that the Use column of each row gives the count of files and the first two files of the calls, and that the Change column holds `unchanged` or `#<number>: <text>`. The other checks that the table of `facts()` holds the eleven fields that the check of workflow files and the `facts` struct hold.
 
 A call uses a keyword when it names the keyword, when it passes the value at the position of the keyword, or when it splats a dict that the same file builds with that key.
 
 ## The fields of `facts()`
 
-`facts()` returns the ten fields below. Every other setting of a project lives under `vars`.
+`facts()` returns the eleven fields below. Every other setting of a project lives under `vars`.
 
 | Field | Meaning |
 |---|---|
@@ -28,6 +28,7 @@ A call uses a keyword when it names the keyword, when it passes the value at the
 | `build_host` | The build host of the project. |
 | `forge` | The forge adapter. |
 | `gate` | The gate command of the project. |
+| `gate_program` | The paths that hold the program of the gate, as the project key `gate_program` lists them. |
 | `gate_steps` | The steps that the gate must run. |
 | `repo` | The repository, as `owner/name`. |
 | `runners` | The runners that the project allows. |

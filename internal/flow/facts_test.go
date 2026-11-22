@@ -42,7 +42,7 @@ func TestFacts_TheFactsOfTheProjectReachThePromptInputOfAnAgent(t *testing.T) {
 	assert.Contains(t, seen[0].Prompt, "tokens=.", "a setting that vars leaves out reads as nothing to range over, and the template does not fail")
 }
 
-func TestFacts_TheFactsHoldTheTenFieldsOfThePlumbingTheVarsAndTheRunnersAndNothingElse(t *testing.T) {
+func TestFacts_TheFactsHoldTheElevenFieldsOfThePlumbingTheVarsAndTheRunnersAndNothingElse(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -53,7 +53,7 @@ func TestFacts_TheFactsHoldTheTenFieldsOfThePlumbingTheVarsAndTheRunnersAndNothi
 
 	outcome := receive(t, runInBackground(h.engine(t), testItem))
 
-	require.ErrorContains(t, outcome.err, "FIELDS=base_branch,build_host,forge,gate,gate_steps,repo,runners,source,tracker,vars N=3")
+	require.ErrorContains(t, outcome.err, "FIELDS=base_branch,build_host,forge,gate,gate_program,gate_steps,repo,runners,source,tracker,vars N=3")
 }
 
 func TestFacts_AProjectThatTheConfigDoesNotHoldHasEmptyFacts(t *testing.T) {

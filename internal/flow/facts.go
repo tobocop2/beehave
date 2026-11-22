@@ -39,7 +39,7 @@ const varsField = "vars"
 // factsOutputs holds the fields of the facts struct. An empty fact is an empty list, an empty dict or empty text, never a missing field.
 func factsOutputs(p model.Project) map[string]any {
 	facts := map[string]any{
-		repoKeyword: p.Repo, "source": p.Source, "forge": string(p.Forge), "tracker": string(p.Tracker), "base_branch": p.BaseBranch, "gate": gateText(p), "gate_steps": gateStepNames(p), "build_host": p.BuildHost,
+		repoKeyword: p.Repo, "source": p.Source, "forge": string(p.Forge), "tracker": string(p.Tracker), "base_branch": p.BaseBranch, "gate": gateText(p), "gate_steps": gateStepNames(p), "gate_program": append([]string{}, p.GateProgram...), "build_host": p.BuildHost,
 		varsField: orEmptyVars(p.Vars), "runners": runnerFacts(p.RunnerSkillLoads),
 	}
 
