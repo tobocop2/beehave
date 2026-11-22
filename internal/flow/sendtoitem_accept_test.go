@@ -78,7 +78,7 @@ func TestSendToItem_AnItemWithNoOpenRunOrAFinishedRunIsAnError(t *testing.T) {
 func TestSendToItem_AnItemThatIsNotAnItemIdIsAnError(t *testing.T) {
 	t.Parallel()
 
-	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:not an item"))
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, builtSendFlow(t, "not an item"))
 
 	require.ErrorIs(t, err, ErrBadItem)
 }

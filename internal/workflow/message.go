@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"go.starlark.net/starlark"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // MaxMessageBytes is the largest JSON text that a message value may have.
@@ -92,18 +94,18 @@ const (
 )
 
 // sendTargetRule is the rule of the to keyword of send. A text must be "parent", or "item:" and an id. A run that spawn returned is a struct, which the run checks.
-// The run reads the id with the rule of beehave send, so a bad id gets the error of that command.
+// The id must be an item id. A text that the file builds at run time reaches the run, which checks the id with the rule of beehave send.
 func sendTargetRule(v starlark.Value) error {
 	text, isText := starlark.AsString(v)
 	if !isText || text == ParentTarget {
 		return nil
 	}
 
-	if id, found := strings.CutPrefix(text, ItemTarget); found && id != "" {
+	if id, found := strings.CutPrefix(text, ItemTarget); found && model.ItemKind(id) != "" {
 		return nil
 	}
 
-	return fmt.Errorf("to is %q. Give \"parent\", \"item:<id>\", or a run that spawn returned", text)
+	return fmt.Errorf("to is %q. Give \"parent\", \"item:<id>\" with the id of an item, or a run that spawn returned", text)
 }
 
 // topicsRule is the rule of the topics keyword of first_of.

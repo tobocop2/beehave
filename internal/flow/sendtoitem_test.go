@@ -68,12 +68,28 @@ func TestSendToItem_AReplayDoesNotLookTheItemUpAgain(t *testing.T) {
 	require.NoError(t, err, "a lookup on the replay would find no open run, and the recorded run needs none")
 }
 
+// builtSendFlow is a workflow file whose main sends to "item:" and an id that the file builds at run time, so the check of the file cannot read it.
+func builtSendFlow(t *testing.T, id string) string {
+	t.Helper()
+
+	return writeFlow(t, bodyFlow(`send(to = "item:" + ["`+id+`"][0], topic = "landed", value = "pr 5", name = "tell")`))
+}
+
+func TestSendToItem_AnIdOfALiteralTargetThatIsNotAnItemIdIsRefusedBeforeTheRunStarts(t *testing.T) {
+	t.Parallel()
+
+	_, err := newHarness(t).engine(t).RunFile(testItem, testProject, sendFlow(t, "item:not an item"))
+
+	require.ErrorContains(t, err, `to is "item:not an item"`)
+	require.NotErrorIs(t, err, ErrBadItem)
+}
+
 func TestSendToItem_ADryRunRefusesAnIdThatIsNotAnItemId(t *testing.T) {
 	t.Parallel()
 
 	var out bytes.Buffer
 
-	err := DryRun(t.Context(), sendFlow(t, "item:not an item"), "12", map[string]string{}, &out)
+	err := DryRun(t.Context(), builtSendFlow(t, "not an item"), "12", map[string]string{}, &out)
 
 	require.ErrorIs(t, err, ErrBadItem, out.String())
 }

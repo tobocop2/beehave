@@ -24,7 +24,8 @@ wait
 
 cmp merge.log expected-before.log
 
-# The run of ui-1 starts first and owns the engine. The run of base-1 joins it, so base-1 must end before ui-1 does: an engine that stops cancels the runs it hosts.
+# The run of ui-1 starts first and owns the engine. The run of base-1 joins it, so base-1 must end before ui-1 does: an engine that stops cancels the runs that joined it.
+# That is a defect of the join, reproduced on the base without send (/Users/tobias/rounds/beehave/tmp/joined-run-cancel.md); the order here avoids it.
 exec beehavereal run ui-1 orders --workflow merge-order/waiting.star &ui&
 waitstatus 'ui-1 is merged after base-1'
 exec beehavereal run base-1 orders --workflow merge-order/dependency.star &base&

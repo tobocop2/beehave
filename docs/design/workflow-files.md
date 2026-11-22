@@ -649,7 +649,7 @@ Each run has one inbox. A run sends a message to its parent or to a child, and a
 - `value` is a value that encodes as JSON: text, numbers, booleans, lists and dicts. The encoded value is at most 64 KiB, and secrets are removed from it.
 - The id is the id of the sending run, a colon and the step name, such as `item-21-r1:send:tell#1`. The send is a recorded step, so a resumed run inserts the message once.
 
-`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run. `beehave check workflow` refuses a text that is not `"parent"` or `"item:"` and an id.
+`send` refuses `"parent"` in a run that a user started, any other text, and a run that is not a child of this run. `beehave check workflow` refuses a literal text that is not `"parent"` or `"item:"` and an item id. A text that the file builds at run time gets the same check from the run, and a bad id gets the error of `beehave send`.
 
 A send to `"item:<id>"` finds the open run in the same way as `beehave send`: the id must be an item id, the item must have a run, and the run must be open and made by a build of this version. The refusals have the texts of `beehave send`, such as `item <id> has no open run`. An item may send to its own open run. The run must be of the project of the sender, as `beehave send` has no project check. Otherwise the send is refused with a text that names both projects.
 
