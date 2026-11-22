@@ -48,6 +48,6 @@ require (
 
 // The fork carries three changes. Commit 4960747 cancels each level of a workflow before it lists the children of that level, so a child that
 // starts during a cancel with children is cancelled or refused (tobocop2/dbos-transact-golang#2). Commit e7cfe7c adds WithCancelFailed, a cancel
-// that also ends a failed workflow in the same update, which beehave cancel uses for a failed run. Commit 8edc67d adds WithRewindKeepMessages, a
+// that also ends a failed workflow in the same update, which beehave cancel uses for a failed run. Commit ae58a59 adds WithRewindKeepMessages, a
 // rewind that keeps the messages of the run (tobocop2/dbos-transact-golang#4), which beehave resume uses. Drop this line when a DBOS release has all three.
-replace github.com/dbos-inc/dbos-transact-golang => github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261122030834-8edc67d95aa0
+replace github.com/dbos-inc/dbos-transact-golang => github.com/tobocop2/dbos-transact-golang v1.7.1-0.20261122032533-ae58a59da255

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,6 +34,43 @@ const belowTheCutFlow = `def main(item):
     b = recv("chat", timeout = "1s", name = "second")
     command(name = "got", run = ["got", str(a.value), str(b.timed_out)])
 `
+
+// answeredFlow asks one question, runs a command with the answer, then runs an agent step that fails once.
+const answeredFlow = `def main(item):
+    r = wait(name = "ask", question = "What now?", timeout = "20s")
+    command(name = "got", run = ["got", str(r.timed_out)])
+    agent(name = "work", prompt = "prompts/work.md", model = "m")
+`
+
+func TestResume_AWaitThatTheRewindReplaysTakesItsOldAnswerAndDoesNotAskAgain(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.flowIs(t, answeredFlow)
+	h.agents.err = errFake
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+	done := runInBackground(engine, testItem)
+
+	waitOn(t, questionIs(t, h, "What now?"))
+	require.NoError(t, client.Reply(testItem, Reply{Text: "go on"}))
+	require.ErrorContains(t, receive(t, done).err, "fake failure", "the agent step fails after the wait took its answer")
+
+	h.agents.mu.Lock()
+	h.agents.err = nil
+	h.agents.mu.Unlock()
+
+	last, found, err := latestRun(engine.ctx, testItem)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NoError(t, client.reopen(last.Status.ID, dbos.WithRewindStartStep(0)), "the rewind to step 0 drops the wait")
+
+	handle, err := dbos.RetrieveWorkflow[ItemResult](engine.ctx, last.Status.ID)
+	require.NoError(t, err)
+	_, err = resultOfHandle(t, handle)
+	require.NoError(t, err, "the replayed wait took its old answer, so the run ends with no second reply")
+	assert.Equal(t, []string{"got False", "got False"}, h.commands.ranBy(testItem), "the command ran once for each run of the wait, and both runs saw an answer")
+}
 
 func TestResume_AMessageThatATimedOutWaitTookForAnotherTopicReachesALaterRecvOnce(t *testing.T) {
 	t.Parallel()
