@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -133,6 +134,36 @@ type JobSpec struct {
 	// Folder is the absolute path of the folder that the job works in. Wait and Cancel bank only this folder, so a job never reads the clone of another job.
 	// Empty means the job has no folder of its own, and they bank the whole work root.
 	Folder string
+	// Slot is the limit that the job takes on the host: at most Slot.Count jobs of Slot.Class run on the host at once, for every engine that uses it. The zero Slot means no limit.
+	Slot Slot
+}
+
+// Slot is a slot class and its count. The zero value means no limit.
+type Slot struct {
+	Class string
+	Count int
+}
+
+// SlotClassPattern is the class name that the host block accepts. A provider writes the name in a folder name on the host.
+var SlotClassPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// ErrBadSlot is the refusal of a job whose slot has no valid class or no count.
+var ErrBadSlot = errors.New("a job slot needs a class name of letters, digits, dots, dashes and underscores, and a count above zero")
+
+// Limited reports whether the slot limits the job.
+func (s Slot) Limited() bool { return s != Slot{} }
+
+// Check refuses a slot with a class that is not a plain name, or with a count below one. The zero Slot passes.
+func (s Slot) Check() error {
+	if !s.Limited() {
+		return nil
+	}
+
+	if !SlotClassPattern.MatchString(s.Class) || s.Count < 1 {
+		return fmt.Errorf("%w: got class %q and count %d", ErrBadSlot, s.Class, s.Count)
+	}
+
+	return nil
 }
 
 // JobState is where a job stands. The adapter reads it from the scheduler of the host.

@@ -37,7 +37,7 @@ func (eventGate) Key(context.Context, string, string, string, string, string) (G
 	return GateKey{}, nil
 }
 
-func (eventGate) Submit(_ context.Context, project, _, _, _, _, _ string) (GateJob, error) {
+func (eventGate) Submit(_ context.Context, project, _, _, _, _, _ string, _ model.Slot) (GateJob, error) {
 	return GateJob{ID: "job-" + project, Head: gatedHead}, nil
 }
 

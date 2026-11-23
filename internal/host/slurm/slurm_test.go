@@ -397,7 +397,7 @@ func TestScheduler_ALogWithNoSizeReadsAsMinusOne(t *testing.T) {
 	t.Parallel()
 
 	answers := map[string]model.CommandResult{
-		"a failed stat":    {ExitCode: 1, Stderr: "stat: cannot stat"},
+		"a failed read":    {ExitCode: 1, Stderr: "sh: cannot fork"},
 		"an empty answer":  {Stdout: "\n"},
 		"a garbled answer": {Stdout: "many bytes\n"},
 	}
@@ -408,7 +408,7 @@ func TestScheduler_ALogWithNoSizeReadsAsMinusOne(t *testing.T) {
 
 			ssh := &proctest.Scripted{}
 			ssh.Plan("RUNNING\n", "squeue")
-			ssh.PlanResult(answer, "stat")
+			ssh.PlanResult(answer, "sh", "-c")
 
 			state, size, err := scheduler{link.New("lane-host", ssh)}.Observe(t.Context(), jobwait.Job{ID: "7", Nonce: "n"})
 

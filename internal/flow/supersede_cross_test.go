@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/review"
 )
 
@@ -189,7 +190,7 @@ func (g *passThenHold) Key(context.Context, string, string, string, string, stri
 	return GateKey{}, nil
 }
 
-func (*passThenHold) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
+func (*passThenHold) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 
