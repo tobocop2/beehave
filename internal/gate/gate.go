@@ -909,7 +909,7 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 	cluster := project.BuildHost
 
 	// A stopped run ends the wait in one of these states too. That is the end of the run, not a gate that gave no result.
-	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut}, state) {
+	if err := ctx.Err(); err != nil && slices.Contains([]model.JobState{model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull}, state) {
 		return Result{}, fmt.Errorf("wait for the gate on %s: %w", cluster, err)
 	}
 
@@ -918,7 +918,7 @@ func verdict(ctx context.Context, project model.Project, head string, state mode
 		return Result{Passed: true, Steps: hostSteps(project, StatusPass, StatusPass)}, nil
 	case model.JobFailed:
 		return Result{Report: "the gate job failed on " + cluster + ". Read its log on the host.", Steps: failedSteps(project)}, nil
-	case model.JobDied, model.JobStale, model.JobTimedOut:
+	case model.JobDied, model.JobStale, model.JobTimedOut, model.JobDiskFull:
 		return aborted(project, head, abortNote(cluster, state)), nil
 	case model.JobPending, model.JobRunning, model.JobCanceled, model.JobUnknown, model.JobLost:
 	}
@@ -940,6 +940,10 @@ func failedSteps(project model.Project) []Step {
 func abortNote(cluster string, state model.JobState) string {
 	if state == model.JobStale {
 		return "the job on " + cluster + " was stopped because its log did not grow for `host.stale_minutes`. Read the log on the host, raise `host.stale_minutes` if the gate is slow, then run the gate again.\n"
+	}
+
+	if state == model.JobDiskFull {
+		return "the gate on " + cluster + " was stopped because the host ran under its free-space floor `host.disk_floor_gb`. This is a problem of the host, not a failed gate. Free disk space on the host, then run the gate again.\n"
 	}
 
 	if state == model.JobTimedOut {

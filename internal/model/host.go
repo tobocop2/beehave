@@ -183,13 +183,15 @@ const (
 	JobStale JobState = "stale"
 	// JobTimedOut means the run limit (host.max_run) stopped the job: `timeout` ended it with exit status 124, or the scheduler did. It has no result.
 	JobTimedOut JobState = "timed_out"
+	// JobDiskFull means the host fell under its free-space floor while the job ran, and the wait stopped the job. It has no result: it is a problem of the host.
+	JobDiskFull JobState = "disk_full"
 	// JobLost means the link to the host stayed down. The job may still run on the host. It is not a final state of the job.
 	JobLost JobState = "lost"
 )
 
 // Terminal reports whether the job has ended. A lost job has not: the wait cannot tell.
 func (s JobState) Terminal() bool {
-	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale || s == JobTimedOut
+	return s == JobSucceeded || s == JobFailed || s == JobCanceled || s == JobDied || s == JobStale || s == JobTimedOut || s == JobDiskFull
 }
 
 // RemoteHasHost reports whether a git remote names a machine: a URL with a scheme other than file and a host, or a user@host:path address. A local path or a file URL names none.

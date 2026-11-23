@@ -201,6 +201,10 @@ A Slurm or ssh `Wait` can also end with one of these states:
 | `stale` | The log did not grow for `host.stale_minutes` (default 20). | The wait sends one cancel and waits up to five minutes for its final state before it banks. If the job has not ended then, the error says the cancel did not take. |
 | `lost` | No ssh read answered for five minutes. | The error is `ErrLost`. The job keeps running, and the error tells a person to cancel it before a new run. |
 
+The disk guard of a host adds one more end. At each poll while a job runs, the wait of the youngest job of the host reads the free space with the same read as `DiskFloor`. When the host is under `host.disk_floor_gb`, that wait stops its job and ends as `disk_full`. A gate on a `disk_full` job has every step unknown, and the report says the host is the problem: it is not a failed gate. If the free space cannot be read, no job stops. The next poll reads it again. Only one job stops for each reading, and the next reading decides whether another job stops. A stop that fails is tried again at the next poll.
+
+A job joins the list of the host when its wait starts, and leaves it when the wait returns. A job that is submitted and not yet waited for is not in the list, so it never blocks another job. A job that a restarted beehave waits for again joins when that wait starts. "Youngest" is the job whose wait began last in this process of beehave: the adapters do not report the start time of a job. Two processes of beehave on one host each have their own list, so each stops its own youngest job.
+
 A dropped link never submits the job again.
 
 #### Proof of a lost job
