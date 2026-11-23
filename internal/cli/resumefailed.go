@@ -30,9 +30,9 @@ var errNotResumed = errors.New("some runs did not resume")
 
 // manyResume holds the flags that make beehave resume reopen every failed run that fits a filter.
 type manyResume struct {
-	failed, dryRun, onThisBuild bool
-	since, until, project       string
-	limit                       int
+	failed, dryRun, onThisBuild, onThisFile bool
+	since, until, project                   string
+	limit                                   int
 	// picked is the filter that the check of the arguments read from the flags.
 	picked flow.FailedFilter
 }
@@ -46,6 +46,7 @@ func (m *manyResume) addFlags(command *cobra.Command) {
 	command.Flags().IntVar(&m.limit, limitFlag, 0, "with --failed: resume at most this many runs, the ones that ended first. 0 sets no limit")
 	command.Flags().BoolVar(&m.dryRun, dryRunFlag, false, "with --failed: list the runs that would resume, and change nothing")
 	command.Flags().BoolVar(&m.onThisBuild, "on-this-build", false, "move a run that another build started to this build")
+	command.Flags().BoolVar(&m.onThisFile, "on-this-file", false, "run the workflow file as it is now: keep the finished steps and replay them over the changed file")
 }
 
 // typed returns the filter flags that the owner typed, even with an empty value.
@@ -215,7 +216,9 @@ func listOnly(out io.Writer, runs []flow.FailedRun) {
 // resumeAll resumes each run in turn, prints the counts, and returns how many runs refused.
 func (m *manyResume) resumeAll(out io.Writer, client Steering, runs []flow.FailedRun) int {
 	tally := tallyResumes{}
-	refused := countRefused(runs, func(failed flow.FailedRun) bool { return tally.resume(out, client, failed, m.onThisBuild) })
+	refused := countRefused(runs, func(failed flow.FailedRun) bool {
+		return tally.resume(out, client, failed, m.onThisBuild, m.onThisFile)
+	})
 
 	_, _ = fmt.Fprintf(out, "%d resumed, %d skipped, %d refused\n", tally.resumed, tally.skipped, refused)
 
@@ -227,8 +230,8 @@ type tallyResumes struct{ resumed, skipped int }
 
 // resume resumes one failed run, prints its line, and reports whether it did not refuse. A run in the wrong state is skipped: another process resumed it after the list.
 // A run that resumed prints the id that the resume returned, which is the newest run of the item when the resume read it, and so may differ from the id of the list.
-func (t *tallyResumes) resume(out io.Writer, client Steering, failed flow.FailedRun, onThisBuild bool) bool {
-	id, err := client.ResumeRun(failed.Item, onThisBuild)
+func (t *tallyResumes) resume(out io.Writer, client Steering, failed flow.FailedRun, onThisBuild, onThisFile bool) bool {
+	id, err := client.ResumeRun(failed.Item, onThisBuild, onThisFile)
 
 	switch {
 	case err == nil:
