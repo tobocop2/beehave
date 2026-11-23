@@ -12,7 +12,7 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// failedReads answers every optional read with an error. The suite checks accept it, so an adapter that answers the same way conforms.
+// failedReads is a fake that answers every optional read with an error. It tests the suite checks only; it does not run any adapter.
 type failedReads struct{ assignees, ready, card, place error }
 
 func (f failedReads) IssueAssignees(context.Context, string, int) ([]string, error) {
@@ -25,7 +25,7 @@ func (f failedReads) PlaceCard(context.Context, model.Card) error { return f.pla
 
 func (f failedReads) CardStatus(context.Context, model.Card) (string, error) { return "", f.card }
 
-func TestOptionalReads_AFailedReadOfTheAssigneesTheReadyMarksAndACardIsAnErrorTheSuiteAccepts(t *testing.T) {
+func TestOptionalReadChecks_AcceptAFakeThatAnswersWithErrors(t *testing.T) {
 	t.Parallel()
 
 	failed := failedReads{
