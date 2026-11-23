@@ -91,13 +91,18 @@ func loadRunnersFile(path string, adapters Adapters) (agents, Pool, []model.Runn
 
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
 	budget, runBudget, treeBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD)
-	mode := string(f.agents.Concurrency)
+	var mode starlark.Value = starlark.String(f.agents.Concurrency)
 
 	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode); err != nil {
 		return err
 	}
 
-	f.agents.Concurrency = Concurrency(mode)
+	text, isText := starlark.AsString(mode)
+	if !isText {
+		return refuseAt(at, "agents.concurrency is %s: set it to %q or %q. Set it in %s or in %s.", mode, ConcurrencyStatic, ConcurrencyAdaptive, f.path, envConcurrency)
+	}
+
+	f.agents.Concurrency = Concurrency(text)
 
 	f.agents.MaxBudgetUSD, f.agents.MaxRunBudgetUSD, f.agents.MaxTreeBudgetUSD = float64(budget), float64(runBudget), float64(treeBudget)
 

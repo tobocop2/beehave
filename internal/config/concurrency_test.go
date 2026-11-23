@@ -35,12 +35,15 @@ func TestLoadRunners_AnUnknownOrNonStringConcurrencyIsRefusedNamingTheKeyTheMode
 		require.ErrorContains(t, problems[0], "runners.star or in BEEHAVE_AGENTS_CONCURRENCY.", text)
 	}
 
-	_, problems := loadRunnersText(t, "agents(concurrency = 1)\n")
-	require.Len(t, problems, 1)
-	require.ErrorContains(t, problems[0], "concurrency")
+	for _, value := range []string{"1", "True", "None", "[\"static\"]"} {
+		_, problems := loadRunnersText(t, "agents(concurrency = "+value+")\n")
+		require.Len(t, problems, 1, value)
+		require.ErrorContains(t, problems[0], "agents.concurrency is "+value+": set it to \"static\" or \"adaptive\". Set it in ", value)
+		require.ErrorContains(t, problems[0], "runners.star or in BEEHAVE_AGENTS_CONCURRENCY.", value)
+	}
 }
 
-func TestLoadRunners_AdaptiveKeepsThePerLoginCeilingCheck(t *testing.T) {
+func TestLoadRunners_PerLoginAboveTheCapIsRefusedWhileAdaptiveIsSet(t *testing.T) {
 	t.Parallel()
 
 	_, problems := loadRunnersText(t, "agents(max_concurrent = 4, max_review_concurrent = 4, per_login = 5, concurrency = \"adaptive\")\n")

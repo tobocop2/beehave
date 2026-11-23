@@ -185,6 +185,8 @@ func (e *Engine) judgePhase(ctx context.Context, in PhaseInput, result agent.Res
 		return out, err
 	}
 
+	e.signalLimit(out)
+
 	return out, phaseEnd(in, out, e.deps.Clock.wall())
 }
 

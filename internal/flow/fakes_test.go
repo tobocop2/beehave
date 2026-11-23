@@ -362,7 +362,11 @@ type fakeLogins struct {
 	reset    time.Time
 	resetErr error
 	asked    *[]string
+	// room is what the usage read says about the headroom of every login.
+	room bool
 }
+
+func (l fakeLogins) Headroom(context.Context) bool { return l.room }
 
 func (l fakeLogins) Reset(_ context.Context, _, login string) (time.Time, bool, error) {
 	if l.asked != nil {
@@ -386,6 +390,9 @@ type noReset struct{}
 func (noReset) Reset(context.Context, string, string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
+
+// Headroom is false: a fake pool that embeds noReset reads no room for another agent.
+func (noReset) Headroom(context.Context) bool { return false }
 
 // loginPick is one answer of loginSequence.
 type loginPick struct {
@@ -662,6 +669,8 @@ type harness struct {
 	// slots resolves the slot class of a command call. It is nil, and so the build has no slot classes, unless a test sets it.
 	slots func(project, cluster, class string) (SlotGrant, error)
 	ticks chan time.Time
+	// adapt feeds the controller of an adaptive agents queue: each value sent runs one step at that time. It is nil unless a test makes it, and the controller then waits for its real tick.
+	adapt chan time.Time
 	sleep time.Duration
 	// draft is the limit of each draft of a hand-off that ends. A test sets it to shorten the limit.
 	draft time.Duration
@@ -740,7 +749,7 @@ func (h *harness) deps() Deps {
 	deps := Deps{
 		Agents: h.agents, Gate: h.gate, Logins: h.logins, Lifecycle: h.life, Forge: h.forge, Trees: h.trees, Beats: h.beats, Commands: h.commands, Rounds: fakeRounds{commands: h.commands}, Items: h.items, Writer: h.writer, Reader: h.reader,
 		Kept:  []error{errFake},
-		Clock: clock{Tick: h.ticks, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond), Window: h.window},
+		Clock: clock{Tick: h.ticks, Adapt: h.adapt, Poll: storePoll, Settle: cmp.Or(h.sleep, time.Millisecond), Queued: cmp.Or(h.sleep, time.Millisecond), Watch: cmp.Or(h.sleep, time.Millisecond), Draft: h.draft, Wall: h.wall, Reading: h.reading, CapWait: cmp.Or(h.capWait, time.Millisecond), Overload: cmp.Or(h.overload, time.Millisecond), LostPoll: cmp.Or(h.lostPoll, time.Millisecond), Window: h.window},
 	}
 	if h.rounds != nil {
 		deps.Rounds = h.rounds

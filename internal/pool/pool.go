@@ -268,6 +268,28 @@ func SelectOverCap(ctx context.Context, runners []model.Runner, caps config.Pool
 	return picked, nil
 }
 
+// HasRoom reports whether the readings are not empty, every one of them is known, and no window of any is at or over its cap.
+// A login with an unknown reading is no room: the engine adds no agent while it cannot see the usage.
+func HasRoom(readings map[string]model.Reading, caps config.Pool) bool {
+	if len(readings) == 0 {
+		return false
+	}
+
+	for _, reading := range readings {
+		usage, known := reading.Usage()
+		if !known || len(OverCap(usage, caps)) > 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Headroom reads the usage of every runner of the agent and reports whether HasRoom holds. It uses the reader that Select uses, so no second read path exists.
+func Headroom(ctx context.Context, runners []model.Runner, caps config.Pool, agent model.Agent, read Reader) bool {
+	return HasRoom(ReadAll(ctx, ofAgent(runners, agent), read), caps)
+}
+
 // none builds the error of a pick that finds no runner with room.
 func none(runners []model.Runner, readings map[string]model.Reading, caps config.Pool, agent model.Agent) *NoneQualifiesError {
 	reset, _ := EarliestReset(readings, caps)

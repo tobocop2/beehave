@@ -456,6 +456,9 @@ func (dryLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 	return time.Time{}, false, nil
 }
 
+// Headroom is false: a dry run holds the agents queue at its cap and adapts nothing.
+func (dryLogins) Headroom(context.Context) bool { return false }
+
 type dryLifecycle struct{}
 
 func (dryLifecycle) Claim(context.Context, string, string) (string, error) { return dryOwner, nil }

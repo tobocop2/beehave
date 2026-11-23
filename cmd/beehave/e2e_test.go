@@ -500,6 +500,8 @@ func (e2eLogins) Reset(context.Context, string, string) (time.Time, bool, error)
 	return time.Time{}, false, nil
 }
 
+func (e2eLogins) Headroom(context.Context) bool { return false }
+
 // e2ePrompts replace the prompts of the example in the work folder. The workflow file is the example itself.
 var e2ePrompts = map[string]string{
 	"plan":      "step=plan\nwrite={{ .output_file }}\n",

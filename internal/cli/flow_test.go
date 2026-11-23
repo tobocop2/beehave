@@ -118,9 +118,13 @@ type fakeSteering struct {
 	// days and daysErr are what Days returns.
 	days    []flow.DayFigures
 	daysErr error
-	infos   []flow.RunInfo
-	view    flow.RunSteps
-	lanes   flow.ItemLanes
+	// agentsCap, agentsCapOn and agentsCapErr are what AgentsCap returns.
+	agentsCap    flow.AgentsCap
+	agentsCapOn  bool
+	agentsCapErr error
+	infos        []flow.RunInfo
+	view         flow.RunSteps
+	lanes        flow.ItemLanes
 	// published and publishedErr are what Published returns.
 	published    []flow.PublishedValue
 	publishedErr error
@@ -243,6 +247,10 @@ func (s *fakeSteering) Days(since time.Time) ([]flow.DayFigures, error) {
 	s.calls = append(s.calls, "days "+since.Format(time.RFC3339))
 
 	return s.days, s.daysErr
+}
+
+func (s *fakeSteering) AgentsCap() (flow.AgentsCap, bool, error) {
+	return s.agentsCap, s.agentsCapOn, s.agentsCapErr
 }
 
 func (s *fakeSteering) Schedules() ([]flow.ScheduleInfo, error) {

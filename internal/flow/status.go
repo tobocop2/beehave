@@ -16,6 +16,7 @@ import (
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
+	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -90,10 +91,14 @@ type Client struct {
 	maxRunBudget float64
 	// reviewPoll is Options.ReviewPoll, so the status can say that the poll is off.
 	reviewPoll time.Duration
-	dir        string
-	give       ReleaseDeps
-	logger     *slog.Logger
-	log        io.Closer
+	// concurrency, perLogin and maxConcurrent are Options.Concurrency, the floor and the ceiling of the agents queue, for the line of the status.
+	concurrency   config.Concurrency
+	perLogin      int
+	maxConcurrent int
+	dir           string
+	give          ReleaseDeps
+	logger        *slog.Logger
+	log           io.Closer
 	// progress is Options.Progress: a cancel of a canceled run writes there the runs it stopped.
 	progress io.Writer
 	// redact is the one redactor of the client: the log and the messages that send puts on an inbox pass it.
@@ -108,7 +113,7 @@ func OpenClient(ctx context.Context, opts Options, give ReleaseDeps) (*Client, e
 		return nil, err
 	}
 
-	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, dir: state.dir, give: give, log: state.log, progress: opts.Progress, redact: runRedactor(opts.Env)}
+	client := &Client{version: applicationVersion(opts.Version), maxRunBudget: opts.MaxRunBudget, reviewPoll: opts.ReviewPoll, concurrency: opts.Concurrency, perLogin: cmp.Or(opts.PerLogin, config.DefaultPerLogin), maxConcurrent: opts.MaxConcurrent, dir: state.dir, give: give, log: state.log, progress: opts.Progress, redact: runRedactor(opts.Env)}
 	if err := client.connect(ctx, state); err != nil {
 		return nil, errors.Join(fmt.Errorf("open the workflow store: %w", err), state.log.Close())
 	}

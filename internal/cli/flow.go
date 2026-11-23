@@ -61,6 +61,8 @@ type Reading interface {
 	Schedules() ([]flow.ScheduleInfo, error)
 	// Days sums the runs that started or ended since the given time by local day, in the time zone of that time.
 	Days(since time.Time) ([]flow.DayFigures, error)
+	// AgentsCap returns the limit that the agents queue holds now. The second value is false for a static config, which shows no limit.
+	AgentsCap() (flow.AgentsCap, bool, error)
 }
 
 // Steering reads and steers runs without running any.
@@ -683,7 +685,8 @@ const statusHelp = "List the runs, the questions that wait for you and the runs 
 	"A run that waits shows its question, the people it asks, how many of the quorum answered and who, the choices, the next reminder, and the deadline with the time left. " +
 	"A run that stopped or was sent back shows the fields of its result.\n\n" +
 	"After the runs, the list shows each schedule with its last tick and whether an engine fires it (it shows no next due time), then the newest review poll and why the poll is not scheduled.\n\n" +
-	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll and poll_not_scheduled. " +
+	"With agents.concurrency set to adaptive, the list shows the limit of the agents queue: the agents line, as current of ceiling.\n\n" +
+	"Add --" + jsonFlag + " to the list for one JSON object with the same data: runs, schedules, days, poll, poll_not_scheduled and agents_concurrency. " +
 	"Each run has the fields id, state, item, project, question, asked, deadline, receiving, streaming, time_left_seconds, merge, sent_back, closed and stopped. " +
 	"A field with no value is left out. The list reads recorded state only.\n\n" +
 	"The list also shows the figures of each local day from the last --" + daysFlag + " days (default 7, the current day included): the runs that started, the runs that ended as done, failed or canceled, and the spend of those runs with the estimate and unknown marks of the run total. " +
@@ -762,6 +765,7 @@ func printRuns(out io.Writer, client Steering, clock func() time.Time, days int,
 
 	printStatus(out, list.Runs, now)
 	printEngine(out, list.Engine)
+	printAgentsCap(out, list.Agents)
 	printSchedules(out, list.Schedules)
 	printDays(out, list.Days)
 	printPollSection(out, list)
@@ -782,6 +786,16 @@ func printEngine(stdout io.Writer, engine *flow.EngineInfo) {
 	default:
 		_, _ = fmt.Fprintln(stdout, "\nengine: running")
 	}
+}
+
+// printAgentsCap writes the limit of the agents queue of an adaptive config. It writes nothing for a static one.
+func printAgentsCap(stdout io.Writer, shown *flow.AgentsCap) {
+	if shown == nil {
+		return
+	}
+
+	// A failed write to stdout has no recovery.
+	_, _ = fmt.Fprintf(stdout, "agents: %d of %d at once (%s)\n", shown.Current, shown.Ceiling, shown.Mode)
 }
 
 // printDays writes the per-day figures, one line for each day. It writes nothing when the window has no run.
