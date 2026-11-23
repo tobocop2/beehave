@@ -701,13 +701,25 @@ The command refuses in these cases:
 | Case | The refusal |
 |---|---|
 | The claim lease of the run in the store has not ended, because the build that holds the run still renews it. | Names the holder and when the lease ends. |
-| The workflow file or a pinned file changed since the run started. | Names the file and lists the scripts outside the repository, which are not pinned. |
+| The workflow file or a pinned file changed since the run started. | Names the file, names `--on-this-build --on-this-file` as the way to keep the finished steps, and lists the scripts outside the repository, which are not pinned. |
 | The run recorded a step of a step module whose version differs from the version in this build. The application version ends in one version for each module, such as `+core7.agent12.tracker2.forge6.land9.gate6.host1.round3`. The kind at the start of each step name (`gate:g#1`) names the module of that step. A recorded receive of the answer of the owner counts as a step of the core module, so a run that only waited is refused when the core version differs. A module that the run recorded no step of may differ. | Names the module and both versions, and says to start the item again. |
 | The run recorded a step that this build does not record. The steps of the engine (the claim, the worktree, a step that DBOS records) are recorded by every build. A kind that only an older build recorded keeps its module in the table: `merge:<label>#<n>` of the single merge (land), `scope-check:<label>#<n>` (round) and the `watch` read of the owner merge wait (core). The replay cannot reach such a step, so the move fails closed, even when the stored list equals the list of this build. | Names the step and the module of the older build, or says that no module records it, and says to start the item again. |
 | The run is a run of a round item, and the version of the round module differs from the version in this build. The version of the round module covers the step that makes the worktree at the start of every round item, so every round run uses the module, even a run that an older build recorded with no such step. | Names the step that makes the worktree, and says to finish the run on the build that started it or to start the item again. |
 | The run was recorded under an older single version of the steps (the `+star<N>` part of the stored version), other than `star30`. Its recorded steps have another format, so it is not moved. | Names both versions and says to start the item again. |
 
 A stored version that ends in `+star30` stands for every module at version 1. A change to the recorded steps of one builtin bumps the version of its module and no other module, so a run that never used that module still moves. The first build with module versions has a new application version, so an open run of an older build moves only with this command.
+
+#### `beehave resume <item> --on-this-file`
+
+A run replays the files that it pinned when it started. This command puts the run on the files as they are now, and keeps the finished steps. The same move as `--on-this-build` does the work: under `probe.lock` it writes the pin, cancels an open run, and rewinds the run and the phases that the cancel reached.
+
+- The pin is the attribute `pin` of the DBOS row of the run and of each item run below it. It holds the path and the SHA-256 of each file. The attribute is written with the merge option, so the attribute `move` stays. A reader takes the pin from the attribute and falls back to the input of the run when the attribute is not set.
+- The engine opens the files of the run with that pin at each start and each replay, and a child that `spawn` starts copies the pin that is in force.
+- DBOS checks the name of each recorded step at replay. A replay that meets another name raises `UnexpectedStep` before the step body runs, so no step runs on a history that does not fit the file. The engine does not write a replay check of its own.
+- A change after the step that the run reached finds no recorded step to differ from, so the run goes on.
+- A replay mismatch ends the run as failed with the error of DBOS. The run runs no undo of its recorded writes, no `finish` function and no release step. A step recorded after the mismatch would stand in the way of the next replay. The claim and the worktree go back without a step, as a cancel gives them back.
+- A run of another build is refused with the text of `--on-this-build`. With both flags, one cancel and one rewind do both. A file that did not change is an ordinary resume.
+- The refusals are those of `--on-this-build`, except that the pin check is replaced by a read of the file now: a file that cannot be read stops the command before the cancel.
 
 #### Change a builtin that old runs replay
 
@@ -937,6 +949,7 @@ These flags narrow the list. A run must fit every flag that is set.
 | `--limit` | At most this many runs, the ones that ended first. 0 sets no limit. A negative value is refused. |
 | `--dry-run` | Print the runs and change nothing: no claim, no rewind. |
 | `--on-this-build` | Move each run that another build started to this build, as `beehave resume <item> --on-this-build` does. |
+| `--on-this-file` | Put each run on the workflow file as it is now, as `beehave resume <item> --on-this-file` does. |
 
 Every flag except `--failed` needs `--failed`, and `--failed` takes no item.
 
@@ -997,7 +1010,7 @@ So a held `engine.lock` is always one of these:
 
 The client commands that join a run, show the schedules, or cancel a run take these locks for the check only. The other client commands take none.
 
-`beehave cancel` holds `probe.lock` from the cancel of the run to the end of its release. `beehave resume`, with or without `--on-this-build`, holds it while it reads and reopens the tree of the run. DBOS commits each level of a cancel in its own transaction. Without the lock, a resume that reads the tree between two levels skips a child that is still open, and the cancel then cancels that child under the reopened run. With the lock, a resume reads the tree only before or after a cancel. A child that a resume finds open under a canceled parent belongs to a cancel that stopped, and the resume leaves it running. `beehave cancel` of the canceled run cancels it. `beehave resume --on-this-build` of an open run holds the lock from its cancel to its rewind, as a move at join does, so no reader sees the run canceled in between.
+`beehave cancel` holds `probe.lock` from the cancel of the run to the end of its release. `beehave resume`, with or without `--on-this-build` or `--on-this-file`, holds it while it reads and reopens the tree of the run. DBOS commits each level of a cancel in its own transaction. Without the lock, a resume that reads the tree between two levels skips a child that is still open, and the cancel then cancels that child under the reopened run. With the lock, a resume reads the tree only before or after a cancel. A child that a resume finds open under a canceled parent belongs to a cancel that stopped, and the resume leaves it running. `beehave cancel` of the canceled run cancels it. `beehave resume --on-this-build` of an open run holds the lock from its cancel to its rewind, as a move at join does, so no reader sees the run canceled in between.
 
 #### The file `engine.version`
 
