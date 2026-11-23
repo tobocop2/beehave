@@ -139,6 +139,12 @@ type fakeSteering struct {
 	closeOK  bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
+	// resumeErrs makes the resume of one item fail, whatever s.err holds.
+	resumeErrs map[string]error
+	// failed and failedErr are what FailedRuns returns. filters lists the filter of each call.
+	failed    []flow.FailedRun
+	failedErr error
+	filters   []flow.FailedFilter
 	// running is what EngineRuns returns, and runningErr its error.
 	running    bool
 	runningErr error
@@ -281,7 +287,14 @@ func (s *fakeSteering) Send(item string, msg flow.Outgoing) (string, error) {
 func (s *fakeSteering) Resume(item string) error {
 	s.calls = append(s.calls, "resume "+item)
 
-	return s.err
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, error) {
+	s.calls = append(s.calls, "failed-runs")
+	s.filters = append(s.filters, filter)
+
+	return s.failed, s.failedErr
 }
 
 func (s *fakeSteering) Cancel(item string) error {
@@ -959,7 +972,7 @@ func TestResumeCommand_TheOnThisBuildFlagMovesTheRunToThisBuild(t *testing.T) {
 func (s *fakeSteering) ResumeOnThisBuild(item string) error {
 	s.calls = append(s.calls, "resume-here "+item)
 
-	return s.err
+	return cmp.Or(s.resumeErrs[item], s.err)
 }
 
 func TestFlowCommands_AreAbsentWithoutTheirFactories(t *testing.T) {

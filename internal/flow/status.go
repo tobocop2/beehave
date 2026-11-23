@@ -29,8 +29,8 @@ var errNoRun = errors.New("the item has no run")
 // errEmptyAnswer is returned when the answer of the owner has no text.
 var errEmptyAnswer = errors.New("the answer has no text")
 
-// errWrongState is returned when a command does not fit the state of the run.
-var errWrongState = errors.New("the run is in the wrong state for this command")
+// ErrWrongState is returned when a command does not fit the state of the run, as when another process already resumed a failed run.
+var ErrWrongState = errors.New("the run is in the wrong state for this command")
 
 // RunState says where a run stands.
 type RunState string
@@ -409,12 +409,12 @@ func stateOf(status dbos.WorkflowStatusType) RunState {
 // It returns the info of the run, which holds the question and who it asks.
 func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {
 	if last.terminal() {
-		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run beehave run %s to start again", errWrongState, last.Status.ID, stateOf(last.Status.Status), item)
+		return RunInfo{}, fmt.Errorf("%w: %s is %s and waits for no answer. Run beehave run %s to start again", ErrWrongState, last.Status.ID, stateOf(last.Status.Status), item)
 	}
 
 	info, err := c.info(last.Status)
 	if err == nil && info.Question == "" {
-		err = fmt.Errorf("%w: %s asks no question. Run beehave status to see which run waits for an answer", errWrongState, last.Status.ID)
+		err = fmt.Errorf("%w: %s asks no question. Run beehave status to see which run waits for an answer", ErrWrongState, last.Status.ID)
 	}
 
 	return info, err
@@ -461,7 +461,7 @@ func (c *Client) dropClaim(project, item, id, owner string) error {
 // requireResumable refuses a run that is not canceled or failed, and a run that another version of beehave started.
 func (c *Client) requireResumable(item string, last run) error {
 	if state := stateOf(last.Status.Status); state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run beehave run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled or failed run resumes. Run beehave run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if last.Status.ApplicationVersion != c.version {
@@ -543,11 +543,11 @@ func nothingToCancel(r run) error {
 
 	if state == runDone {
 		if settled, result, err := settledOf(r.Status); err == nil && settled == runStopped {
-			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", errWrongState, r.Status.ID, settled, result.Item)
+			return fmt.Errorf("%w: %s is %s and has nothing to cancel. Fix the cause, then run beehave run %s to start a new attempt", ErrWrongState, r.Status.ID, settled, result.Item)
 		}
 	}
 
-	return fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, r.Status.ID, state)
+	return fmt.Errorf("%w: %s is %s and has nothing to cancel", ErrWrongState, r.Status.ID, state)
 }
 
 // CancelRun stops the open run with this run id, a pass run included, ends a failed one, and cancels a canceled run with an open run under it again, as Cancel does. The run need not be the latest run of its item.
@@ -639,7 +639,7 @@ func (c *Client) leftOpen(last run) ([]string, error) {
 
 	open, err := c.openUnder(last.Status.ID)
 	if err == nil && len(open) == 0 {
-		err = fmt.Errorf("%w: %s is %s and has nothing to cancel", errWrongState, last.Status.ID, stateOf(last.Status.Status))
+		err = fmt.Errorf("%w: %s is %s and has nothing to cancel", ErrWrongState, last.Status.ID, stateOf(last.Status.Status))
 	}
 
 	return open, err

@@ -162,7 +162,7 @@ func (c *Client) requireMovable(ctx context.Context, item string, last run) erro
 	}
 
 	if state := stateOf(last.Status.Status); last.terminal() && state != runCancelled && state != runFailed {
-		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", errWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
+		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
 	if err := c.requireNoLiveHolder(ctx, item, last); err != nil {

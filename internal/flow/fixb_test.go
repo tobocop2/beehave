@@ -244,7 +244,7 @@ func TestAnswer_RefusesARunThatAsksNoQuestion(t *testing.T) {
 
 	err := client.Reply(testItem, Reply{Text: "go on"})
 
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "asks no question")
 
 	release()

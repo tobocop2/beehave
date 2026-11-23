@@ -875,7 +875,7 @@ The line shows no next due time. The library counts the first tick of a fixed de
 
 #### `beehave resume <item>`
 
-`resume` reopens the cancelled or the failed run. Then `beehave run <item>` continues it from the last finished step.
+`resume` reopens the cancelled or the failed run. Then `beehave run <item>` continues it from the last finished step. To reopen every failed run after an outage, see [Resume many runs](#resume-many-runs-beehave-resume---failed).
 
 When the store refuses the record of a step, the step records its failure at once, under the same name at the next step id. The resume goes back to the first failed record, so the refused step runs again and no record after it stays. `beehave status <run id>` shows such a step as failed. A canceled run records no failure, and a step whose error DBOS has already recorded, also after its retries, records nothing more. If the store refuses the failure record too, the engine logs a warning. The records that DBOS writes itself (the start of a child run, `DBOS.sleep`) are outside this rule.
 
@@ -888,6 +888,33 @@ When the store refuses the record of a step, the step records its failure at onc
 - A run whose claim step never finished takes no claim at `resume`. The step claims when the run continues.
 
 No engine renews the fresh claim between `beehave resume` and the next `beehave run`. So run the item within 5 minutes after the resume. When the lease of the fresh claim ends, any other `beehave run` can take the item.
+
+#### Resume many runs: `beehave resume --failed`
+
+After an outage, `beehave resume --failed` reopens each run that failed, with no item. It reads the store through the one store view and keeps no state of its own. A run that a move has canceled is not failed, so the list never meets it.
+
+A run is picked when it is the newest attempt of its item and its status is `ERROR` or `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. A cancelled run is not picked: resume it by its item. The end time of a run is the time that `beehave status` shows: the completion time, or the last update when the run has no completion time. The command filters on that time, because a run that ended before the store recorded completion times has none.
+
+These flags narrow the list. A run must fit every flag that is set.
+
+| Flag | Meaning |
+|---|---|
+| `--since` | The earliest end time, inclusive. An RFC 3339 time, or a duration such as `6h` for that long ago. A time in the future is refused. |
+| `--until` | The latest end time, inclusive. The same forms. A time before `--since` is refused. |
+| `--project` | The project of the run. An empty value is refused. |
+| `--limit` | At most this many runs, the ones that ended first. 0 sets no limit. A negative value is refused. |
+| `--dry-run` | Print the runs and change nothing: no claim, no rewind. |
+| `--on-this-build` | Move each run that another build started to this build, as `beehave resume <item> --on-this-build` does. |
+
+Every flag except `--failed` needs `--failed`, and `--failed` takes no item.
+
+For each picked run, in the order of the list (end time, then run id), the command makes the same call as `beehave resume <item>`. So each run takes its own fresh claim and keeps each refusal rule: a claim that another holder has, a run that another build started, a run that is no longer failed. The command does not use the DBOS bulk resume: that call cannot rewind a failed run and takes no claim.
+
+- The command prints one line for each run: `<item>	<run id>	<end time>	<outcome>`. The outcome is `would resume` (dry run), `resumed`, `skipped: <reason>` or `refused: <reason>`.
+- A run that another process resumed after the list prints `skipped`. It does not count as a refusal.
+- A refusal does not stop the other runs.
+- The last line counts the outcomes: `3 resumed, 1 skipped, 1 refused`.
+- The exit code is 0 when no run refused. It is 1 when a run refused or when no failed run fits the filter. A dry run exits 1 when the list is empty.
 
 After a crash, or after Ctrl-C of `beehave run`, the run stays open. `beehave run <item>` continues it without `resume`. A second Ctrl-C during the stop exits at once with code 130.
 

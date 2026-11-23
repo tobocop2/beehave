@@ -131,8 +131,8 @@ func TestRoundRun_CancelRunRefusesAnOpenRunOfAnotherBuildAndAFinishedRunOfAnyBui
 	harness.tick(t)
 	receive(t, done)
 
-	require.ErrorIs(t, other.CancelRun("item-12-r1"), errWrongState, "a finished run of another build has nothing to cancel")
-	require.ErrorIs(t, same.CancelRun("item-12-r1"), errWrongState)
+	require.ErrorIs(t, other.CancelRun("item-12-r1"), ErrWrongState, "a finished run of another build has nothing to cancel")
+	require.ErrorIs(t, same.CancelRun("item-12-r1"), ErrWrongState)
 }
 
 func TestRoundRun_CancelRunByIdRefusesARunOfAnotherBuildWithTheExactText(t *testing.T) {
@@ -228,7 +228,7 @@ func TestRoundRun_CancelRunRefusesARunOfAnotherBuildAndARunThatHasEnded(t *testi
 	require.ErrorIs(t, other.CancelRun("item-12-r1"), errStranded)
 
 	require.NoError(t, client.CancelRun("item-12-r1"))
-	require.ErrorIs(t, client.CancelRun("item-12-r1"), errWrongState, "a run that ended has nothing to cancel")
+	require.ErrorIs(t, client.CancelRun("item-12-r1"), ErrWrongState, "a run that ended has nothing to cancel")
 
 	harness.tick(t)
 	receive(t, done)
@@ -246,7 +246,7 @@ func TestRoundRun_CancelRunRefusesARunThatFinished(t *testing.T) {
 	require.NoError(t, err)
 
 	err = client.CancelRun("item-12-r1")
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "item-12-r1 is done and has nothing to cancel")
 }
 

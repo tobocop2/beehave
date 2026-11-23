@@ -80,7 +80,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	if last.terminal() {
-		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", errWrongState, last.Status.ID, item)
+		return fmt.Errorf("%w: %s ended before it could move to this build. Run beehave run %s again", ErrWrongState, last.Status.ID, item)
 	}
 
 	if err := c.requireMovable(ctx, item, last); err != nil {
