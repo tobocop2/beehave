@@ -149,7 +149,7 @@ func TestScope_AnIgnoredNewFileOutsideTheGlobsIsNamed(t *testing.T) {
 	bad, err := scopeOf(t, "papers/**").outside(t.Context(), engineGit(dir), start)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"build/", "x.log"}, bad)
+	assert.Equal(t, []string{"build/o", "x.log"}, bad)
 }
 
 func TestScope_EveryPathIsRelativeToTheRootWhenTheItemFolderIsASubdirectory(t *testing.T) {
