@@ -193,7 +193,7 @@ func TestClient_ResumeOnThisFileShowsTheErrorOfAFileThatCannotBePinned(t *testin
 	assert.False(t, run{Status: exactRun(t, client)}.terminal(), "the run is not canceled")
 }
 
-func TestClient_ResumeOnThisFileThatCannotWriteThePinDoesNotCancelTheRun(t *testing.T) {
+func TestClient_ResumeOnThisFileOfAnOpenRunThatCannotWriteThePinLeavesItCanceledWithNoPinAndSaysHowToRetry(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -206,7 +206,50 @@ func TestClient_ResumeOnThisFileThatCannotWriteThePinDoesNotCancelTheRun(t *test
 
 	require.ErrorIs(t, err, errSpy)
 	require.ErrorContains(t, err, "pin the workflow file for run "+testRun)
-	assert.False(t, run{Status: exactRun(t, client)}.terminal(), "the run is open and was not canceled")
+	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-file again")
+	assert.True(t, run{Status: exactRun(t, client)}.terminal(), "the pin is written after the cancel, so the run is canceled")
+
+	_, found := pinAttributeOf(t, client, testRun)
+	assert.False(t, found)
+	requireNoMarks(t, client)
+	requireMoveLockFree(t, client)
+}
+
+func TestClient_ResumeOnThisFileOfAnOpenRunWhoseCancelFailsWritesNoPin(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	file := onThisFileRun(t, h, acc933Frontier)
+	acc933Write(t, file, acc933Frontier+"    now()\n")
+	client := h.client(t, testVersion)
+	spyOn(t, client).failCancel = true
+
+	err := client.ResumeOnThisFile(testItem)
+
+	require.ErrorIs(t, err, errSpy)
+	assert.False(t, run{Status: exactRun(t, client)}.terminal(), "the run did not move")
+
+	_, found := pinAttributeOf(t, client, testRun)
+	assert.False(t, found, "a run that did not move carries no pin")
+	requireNoMarks(t, client)
+	requireMoveLockFree(t, client)
+}
+
+func TestClient_ResumeOnThisFileOfAnOpenRunOnAFileThatDidNotChangeReopensItWithNoPin(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	onThisFileRun(t, h, acc933Frontier)
+	client := h.client(t, testVersion)
+
+	require.NoError(t, client.ResumeOnThisFile(testItem))
+
+	_, found := pinAttributeOf(t, client, testRun)
+	assert.False(t, found, "a file that did not change needs no pin")
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	assert.False(t, last.terminal(), "the run is open again: %s", last.Status.Status)
 	requireNoMarks(t, client)
 	requireMoveLockFree(t, client)
 }

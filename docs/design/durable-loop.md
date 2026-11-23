@@ -711,14 +711,14 @@ A stored version that ends in `+star30` stands for every module at version 1. A 
 
 #### `beehave resume <item> --on-this-file`
 
-A run replays the files that it pinned when it started. This command puts the run on the files as they are now, and keeps the finished steps. The same move as `--on-this-build` does the work: under `probe.lock` it writes the pin, cancels an open run, and rewinds the run and the phases that the cancel reached.
+A run replays the files that it pinned when it started. This command puts the run on the files as they are now, and keeps the finished steps. The same move as `--on-this-build` does the work: under `probe.lock` it cancels an open run, writes the pin, and rewinds the run and the phases that the cancel reached. The pin comes after the cancel, so a cancel that fails leaves no pin on a run that did not move. A pin that cannot be written leaves the run canceled, and the error names the command to run again.
 
 - The pin is the attribute `pin` of the DBOS row of the run and of each item run below it. It holds the path and the SHA-256 of each file. The attribute is written with the merge option, so the attribute `move` stays. A reader takes the pin from the attribute and falls back to the input of the run when the attribute is not set.
 - The engine opens the files of the run with that pin at each start and each replay, and a child that `spawn` starts copies the pin that is in force.
 - DBOS checks the name of each recorded step at replay. A replay that meets another name raises `UnexpectedStep` before the step body runs, so no step runs on a history that does not fit the file. The engine does not write a replay check of its own.
 - A change after the step that the run reached finds no recorded step to differ from, so the run goes on.
 - A replay mismatch ends the run as failed with the error of DBOS. The run runs no undo of its recorded writes, no `finish` function and no release step. A step recorded after the mismatch would stand in the way of the next replay. The claim and the worktree go back without a step, as a cancel gives them back.
-- A run of another build is refused with the text of `--on-this-build`. With both flags, one cancel and one rewind do both. A file that did not change is an ordinary resume.
+- A run of another build is refused with the text of `--on-this-build`. With both flags, one cancel and one rewind do both. A file that did not change is no error: a run that ended resumes as `beehave resume` does, and an open run is reopened with no pin written.
 - The refusals are those of `--on-this-build`, except that the pin check is replaced by a read of the file now: a file that cannot be read stops the command before the cancel.
 
 #### Change a builtin that old runs replay

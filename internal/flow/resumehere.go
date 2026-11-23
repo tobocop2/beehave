@@ -28,7 +28,7 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 
 // ResumeOnThisFile reopens the open, canceled or failed run of an item on the workflow file as it is on disk now, from its last finished step.
 // The run replays its recorded steps over the new file, and the engine of the store refuses the replay at the first step that the file no longer makes.
-// The run must be of this build: a run of another build is refused, and ResumeOnThisBuildAndFile moves it. A file that did not change is an ordinary resume.
+// The run must be of this build: a run of another build is refused, and ResumeOnThisBuildAndFile moves it. A file that did not change is no error: a run that ended resumes as `beehave resume` does, and an open run is reopened with no pin written.
 func (c *Client) ResumeOnThisFile(item string) error {
 	_, err := c.resumeMoved(item, false, true)
 
@@ -64,7 +64,8 @@ func (c *Client) resumeMoved(item string, build, file bool) (string, error) {
 		return "", err
 	}
 
-	if same && pin == nil {
+	// A run of this build that has ended and has no new pin is an ordinary resume. An open run is reopened with no pin written.
+	if same && pin == nil && last.terminal() {
 		return c.resumeRun(item)
 	}
 
@@ -134,24 +135,22 @@ func (c *Client) pinToMove(item string, last run, file bool) ([]workflow.PinnedF
 	return now, nil
 }
 
-// moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between. The run is read again first, and a pin is written before the cancel.
+// moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between.
+// The run is read again first, and the pin is written after the cancel.
 func (c *Client) moveOpen(item string, last run, pin []workflow.PinnedFile) error {
 	return c.underProbe(func() error {
 		if err := c.requireUnchanged(item, last); err != nil {
 			return err
 		}
 
-		if err := c.setPin(last, pin); err != nil {
-			return err
-		}
-
-		return c.cancelAndReopenHeld(item, last)
+		return c.cancelAndReopenHeld(item, last, pin)
 	})
 }
 
 // cancelAndReopenHeld is the move of an open run while probe.lock is held. The run and the open runs below it carry the move mark, and move.lock is held, from before the cancel to after the rewind,
 // so a reader reads the run as open (see storeView). When the reopen fails the run stays canceled with no mark, and the error says so and how to try again.
-func (c *Client) cancelAndReopenHeld(item string, last run) (err error) {
+// A pin is written after the cancel and before the rewind, so a cancel that fails leaves no pin on a run that did not move.
+func (c *Client) cancelAndReopenHeld(item string, last run, pin []workflow.PinnedFile) (err error) {
 	span, err := c.beginMove(last)
 	if err != nil {
 		return err
@@ -161,6 +160,10 @@ func (c *Client) cancelAndReopenHeld(item string, last run) (err error) {
 
 	if err := c.cancelHeld(item, last); err != nil {
 		return err
+	}
+
+	if err := c.setPin(last, pin); err != nil {
+		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehave resume %s --on-this-file again", last.Status.ID, err, item)
 	}
 
 	if err := c.reopenHeld(item, last); err != nil {
