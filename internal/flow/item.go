@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -130,7 +131,7 @@ func (e *Engine) workHolding(ctx dbos.Context, a *attempt, login string, taken c
 	forget := e.holds.hold(a, a.in.Project, taken.owner)
 	defer forget()
 
-	if err := e.firstTrust(ctx, a, taken); err != nil {
+	if err := e.trustClaim(ctx, a, taken); err != nil {
 		return ItemResult{}, err
 	}
 
@@ -146,6 +147,37 @@ func (e *Engine) workHolding(ctx dbos.Context, a *attempt, login string, taken c
 	}
 
 	return result, err
+}
+
+// reachedRelease reports whether a replayed run already began its release in an earlier process. The run did all its work then, and the release can have freed the claim before the stop of that process cut the step off, so no renewal of the claim can work.
+func (e *Engine) reachedRelease(a *attempt, taken claimTake) (bool, error) {
+	if !taken.took.IsZero() || a.id == "" {
+		return false, nil
+	}
+
+	steps, err := dbos.GetWorkflowSteps(e.ctx, a.id)
+	if err != nil {
+		return false, fmt.Errorf("read the steps of %s: %w", a.id, err)
+	}
+
+	return slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return step.StepName == treeStepName }), nil
+}
+
+// trustClaim starts the trust in the claim of a run. A run that reached its release replays its recorded steps and renews nothing: the tick skips its claim, and the trust lasts for the replay.
+func (e *Engine) trustClaim(ctx context.Context, a *attempt, taken claimTake) error {
+	released, err := e.reachedRelease(a, taken)
+	if err != nil {
+		return err
+	}
+
+	if !released {
+		return e.firstTrust(ctx, a, taken)
+	}
+
+	e.holds.freed(a)
+	e.trust(a, e.deps.Clock.now())
+
+	return nil
 }
 
 // firstTrust starts the trust in a claim. A take that this run made is trusted from the start of the take. A take of unknown age
