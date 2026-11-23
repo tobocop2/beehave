@@ -72,11 +72,9 @@ With `"forbid"`, the loop adds the output `open` to each review call. The agent 
 
 A workflow that calls `agent` itself reads the output `open` in the same way. The remediation example sets `"forbid"`.
 
-#### The `ledger` argument of the review loop
+#### The ledger of the review loop
 
-A review has no per-finding value, so a finding gets new words in each fix round and a workflow cannot tell a fixed finding from a new one. The review loop takes `ledger = False` (the default) or `True`. With `False`, the loop has no new output, no new data file and no new result field.
-
-With `True`, the loop keeps a ledger of the findings of the run. The ledger is a value of the run. A new run of the item starts with an empty ledger.
+A review has no per-finding value, so a finding gets new words in each fix round and a workflow cannot tell a fixed finding from a new one. The review loop keeps a ledger of the findings of the run. The ledger is a value of the run. A new run of the item starts with an empty ledger. The loop has no argument that turns it off.
 
 - Each review writes the output `findings`: a JSON list of objects with the text keys `id`, `severity`, `path` and `text`. The reviewer reads the ledger in its data file and reuses the `id` of an earlier finding, also when the line moved, the words changed or the file was renamed. The `id` of a new finding is empty, and the loop gives it `f-<n>`.
 - Each fix writes the outputs `resolved`, a JSON list of ids, and `wontfix`, a JSON list of objects with the keys `id` and `reason`.
@@ -87,7 +85,7 @@ The reviews decide the state of an entry. A listed id goes to `open` and takes t
 
 The loop stops the item with a refusal that names the bad value when:
 
-- `ledger` is not `True` or `False`, `review_outputs` or `fix_outputs` names an output that the ledger writes, or the `data` dict of the caller has the key `ledger`.
+- `review_outputs` or `fix_outputs` names an output that the ledger writes, or the `data` dict of the caller has the key `ledger`.
 - `findings`, `resolved` or `wontfix` is not a JSON list, or an entry of it has no text for a key.
 - an id is not in the ledger, or a review lists an id twice.
 - a `wontfix` has an empty reason.

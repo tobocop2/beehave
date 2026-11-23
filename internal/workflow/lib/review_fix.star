@@ -120,7 +120,7 @@ def ended(loop, head, gate = None, review = None, stopped = False, exhausted = F
     host_losses is the highest count that a gate of the loop read, and host_lost is true when HOST_LOSS_LIMIT stopped the reruns.
     lanes holds the result of each fix agent that ran, in order."""
     verdict = verdict_of(loop, review) if review != None else ""
-    return struct(head = head, stopped = stopped, exhausted = exhausted, rejected = rejected, design = design, held = held, gate = gate, review = review, verdict = verdict, host_losses = loop.host["losses"], host_lost = loop.host["lost"], lanes = loop.lanes, ledger = loop.book["entries"] if loop.ledger else None)
+    return struct(head = head, stopped = stopped, exhausted = exhausted, rejected = rejected, design = design, held = held, gate = gate, review = review, verdict = verdict, host_losses = loop.host["losses"], host_lost = loop.host["lost"], lanes = loop.lanes, ledger = loop.book["entries"])
 
 def sent_back(findings, mechanism = "", gate = None, review = None, due = True):
     """The result of a step that sends the head back to a fix: the findings and the mechanism that they are about. due is false only for a head that needs no fix."""
@@ -297,7 +297,7 @@ def review_args(loop, head, violations, scope, outputs, since):
         model = loop.steps["review"]["model"],
         runner = loop.steps["review"]["runner"],
         pin = head,
-        outputs = (["verdict", "mechanism"] if loop.design_prompt != "" else ["verdict"]) + (["open"] if loop.follow_ups == "forbid" else []) + outputs + ([LEDGER_REVIEW_OUTPUT] if loop.ledger else []),
+        outputs = (["verdict", "mechanism"] if loop.design_prompt != "" else ["verdict"]) + (["open"] if loop.follow_ups == "forbid" else []) + outputs + [LEDGER_REVIEW_OUTPUT],
         forbid_commands = REVIEW_FORBID + loop.extra,
         protect_paths = loop.protect,
         output_tries = 2,
@@ -337,9 +337,6 @@ def ledger_finding(finding):
 def absorb_review(loop, review):
     """Records a review in the ledger. A listed id goes to open with its new path and text, an empty id gets the next id, and an open entry that the review omits goes to fixed.
     A wontfix entry that the review omits stays wontfix, and the call number of the review is raised_in and last_raised."""
-    if not loop.ledger:
-        return
-
     book = loop.book
     call = loop.calls["review"]
     seen = []
@@ -362,9 +359,6 @@ def absorb_review(loop, review):
 
 def absorb_fix(loop, fix):
     """Checks the outputs resolved and wontfix of a fix against the ledger. A wontfix gives the entry its state and reason. A resolved id is a claim, and the next review decides."""
-    if not loop.ledger:
-        return
-
     for id in ledger_list(fix.resolved, "resolved"):
         ledger_entry(loop, id, "the output resolved")
 
@@ -377,9 +371,7 @@ def absorb_fix(loop, fix):
         entry.update(state = "wontfix", reason = item["reason"])
 
 def data_of(loop, open_only):
-    """The data keyword of a review or a fix. With the ledger it is the data of the caller plus the key ledger: every entry for a review, the open entries for a fix."""
-    if not loop.ledger:
-        return loop.data
+    """The data keyword of a review or a fix. It is the data of the caller plus the key ledger: every entry for a review, the open entries for a fix."""
     return dict(loop.data or {}, ledger = [entry for entry in loop.book["entries"] if not open_only or entry["state"] == "open"])
 
 def mechanism_of(loop, review):
@@ -499,7 +491,7 @@ def scoped_fix(loop, pending, fixes, decided, outer, inner, lane):
         resume = loop.impl.session if early and loop.steps["fix"]["runner"] == loop.steps["implement"]["runner"] else "",
         forbid_commands = FORBID + loop.extra,
         protect_paths = loop.protect,
-        outputs = loop.fix_outputs + (LEDGER_FIX_OUTPUTS if loop.ledger else []),
+        outputs = loop.fix_outputs + LEDGER_FIX_OUTPUTS,
         inputs = {"item": loop.item, "round": round, "findings": pending.findings, "facts": loop.facts},
         data = data_of(loop, True),
         **loop.scope
@@ -551,7 +543,7 @@ def fix_until_candidate(loop, pending, fixes, decided, outer, lane):
     # The last scoped review asked for changes. Its findings go to the full checks, and its violations keep the full review from a clean approve.
     return struct(end = None, lane = lane, open = pending.findings, breach = review.violations)
 
-def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = None, review_outputs = [], fix_outputs = [], lane_check = None, facts = {}, data = None, review_check = None, checks = [], design_after = DESIGN_AFTER, void_reruns = VOID_RERUNS, void_asks = VOID_ASKS, escalate_after = FIX_ESCALATE_AFTER, push_branch = "", ledger = False):
+def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, follow_ups = "allow", protect = [], design_prompt = "", guard = {}, allow = None, review_outputs = [], fix_outputs = [], lane_check = None, facts = {}, data = None, review_check = None, checks = [], design_after = DESIGN_AFTER, void_reruns = VOID_RERUNS, void_asks = VOID_ASKS, escalate_after = FIX_ESCALATE_AFTER, push_branch = ""):
     """Runs the loop and returns a struct with head, stopped, exhausted, rejected, design, held, gate, review, verdict, host_losses, host_lost, lanes and ledger. docs/design/durable-loop.md describes the loop.
 
     steps is a dict from a step name to {"model": text, "runner": text}. The entries implement, review and fix are required, design is required with a design_prompt, and fix_late is optional.
@@ -570,24 +562,21 @@ def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, f
     data is the data keyword of each review and each fix: a dict that the engine writes to the data file that the prompt names. None gives no data file.
     follow_ups is "allow" or "forbid". With "forbid", each review writes the output `open`, one text with a line for each open finding and an empty text for none,
     and a review with an open finding has the verdict changes unless its verdict is reject. The result field verdict holds the verdict of the last full review with that rule applied.
-    ledger is False or True. With True, each review writes the output findings, a JSON list of objects with the text keys id, severity, path and text, and an empty id for a new finding.
+    Each review writes the output findings, a JSON list of objects with the text keys id, severity, path and text, and an empty id for a new finding.
     Each fix writes the outputs resolved, a JSON list of ids, and wontfix, a JSON list of objects with the keys id and reason. The loop keeps the findings in a ledger of this run and mints the id f-<n> of a new finding.
-    The data file of a review holds every entry under the key ledger, and the data file of a fix holds the open entries. The result field ledger lists the entries. It is None with False.
+    The data file of a review holds every entry under the key ledger, and the data file of a fix holds the open entries. The result field ledger lists the entries.
     """
     if follow_ups not in ["allow", "forbid"]:
         fail("REFUSE: review_fix got follow_ups %r. Use \"allow\" or \"forbid\"." % (follow_ups,))
 
-    if type(ledger) != "bool":
-        fail("REFUSE: review_fix got ledger %r. Use True or False." % (ledger,))
-
-    if ledger and data != None and "ledger" in data:
+    if data != None and "ledger" in data:
         fail("REFUSE: the data of review_fix has the key ledger, which the ledger writes. Rename the key.")
 
-    for name in review_outputs if ledger else []:
+    for name in review_outputs:
         if name == LEDGER_REVIEW_OUTPUT:
             fail("REFUSE: review_outputs lists the output %s, which the ledger writes. Remove it from review_outputs." % name)
 
-    for name in fix_outputs if ledger else []:
+    for name in fix_outputs:
         if name in LEDGER_FIX_OUTPUTS:
             fail("REFUSE: fix_outputs lists the output %s, which the ledger writes. Remove it from fix_outputs." % name)
 
@@ -623,7 +612,6 @@ def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, f
         push_branch = push_branch,
         host = {"losses": 0, "lost": False},
         calls = {"fix": 0, "review": 0},
-        ledger = ledger,
         book = {"entries": [], "count": 0},
         review_cap = rounds * (MAX_INNER + 1),
         fix_cap = rounds * MAX_INNER,
