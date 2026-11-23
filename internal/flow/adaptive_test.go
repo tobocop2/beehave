@@ -509,14 +509,14 @@ func TestAdaptive_LoweringTheLimitCutsNoRunningPhaseAndStartsNoNewOne(t *testing
 	engine.limited <- limitSignal{At: time.Now()}
 
 	eventually(t, func() bool { return agentsLimit(t, client) == 1 })
-	require.Never(t, func() bool { return h.agents.running() != 2 || enqueuedPhases(t, engine) != 1 }, 300*time.Millisecond, 20*time.Millisecond,
+	require.Never(t, func() bool { return h.agents.running() != 2 || enqueuedPhases(t, engine) != 1 }, quietFor, 20*time.Millisecond,
 		"no running phase is cut by the lower limit")
 
 	// One running phase ends. Two run and one waits, so a start under the old limit of 2 would show here: the limit 1 holds the waiting phase while one still runs.
 	h.agents.gate <- struct{}{}
 
 	eventually(t, func() bool { return h.agents.running() == 1 })
-	require.Never(t, func() bool { return h.agents.running() != 1 || enqueuedPhases(t, engine) != 1 }, 300*time.Millisecond, 20*time.Millisecond,
+	require.Never(t, func() bool { return h.agents.running() != 1 || enqueuedPhases(t, engine) != 1 }, quietFor, 20*time.Millisecond,
 		"the waiting phase stays queued while one phase runs at the limit 1")
 
 	release()
@@ -667,6 +667,9 @@ func TestAdaptive_TheControllerTicksOnTheIntervalOfTheControllerAndThatIntervalI
 	require.NoError(t, engine.Shutdown())
 	promptly(t, done)
 }
+
+// quietFor is how long a test watches a queue that must not start a phase. The queue reads the store once each storePoll, so three polls show a start that a wrong limit allows.
+const quietFor = 3 * storePoll
 
 // patience bounds a wait of a controller test. A controller that never acts fails the test in this time and not at the bound of the whole run.
 const patience = 10 * time.Second
