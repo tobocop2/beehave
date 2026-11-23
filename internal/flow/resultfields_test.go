@@ -116,7 +116,7 @@ func TestResultFields_TheStructsOfTheSwarmBuiltinsAreTheFieldsOfTheTable(t *test
 func TestResultFields_TheTableHasEveryBuiltinThatReturnsAStruct(t *testing.T) {
 	t.Parallel()
 
-	noStruct := []string{"env", "json", "now", "struct", "sandbox", "paths_outside", "closing_references", "publish", "progress"}
+	noStruct := []string{"env", "json", "now", "struct", "sandbox", "paths_outside", "closing_references", "publish", "progress", "patched"}
 	for _, name := range workflow.Builtins() {
 		_, has := workflow.ResultFields(name)
 		assert.Equal(t, !slices.Contains(noStruct, name), has, name)
