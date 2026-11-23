@@ -229,7 +229,7 @@ func TestFork_TwoForksAtOnceMakeOneRunAndOneClearRefusalAndTakeOneClaim(t *testi
 
 	require.Equal(t, []string{"item-12-r2"}, made, "one run")
 	require.Len(t, refused, 1, "one refusal")
-	require.ErrorIs(t, refused[0], errWrongState)
+	require.ErrorIs(t, refused[0], ErrWrongState)
 	require.ErrorContains(t, refused[0], "has an open run", "the refusal says why")
 
 	w.settled(t, "item-12-r2")
