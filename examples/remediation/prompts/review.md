@@ -252,10 +252,12 @@ Report each one as a finding.
 
 This method has no follow-ups: every open finding needs a commit. A finding that you leave open gives the verdict `changes`.
 The verdict is `approve` when you have no open finding, and `changes` when you have one.
-Write it to {{ .output_file }} as JSON with the list of your open findings, for example `{"verdict":"approve","findings":[]}`.
-Give each open finding as an object with a `class` and a `text`: `{"class":"blocking","text":"what is wrong and where"}`.
-Write the output `regressions` beside them, as a text that holds one whole number. For example: `{"verdict":"approve","regressions":"0","findings":[]}`.
-Write the output `open` beside them: one text with each open finding on its own line. Write an empty text when you have no open finding. A text that is not empty turns an approve into a verdict of changes. For example: `{"verdict":"changes","open":"the retry never stops","findings":[{"class":"blocking","text":"the retry never stops"}]}`.
-Write the output `mechanism` beside them: the one file that your open findings are about, as the file path. You may add `:function` after the path. The loop counts the fix rounds on the part before the first colon. When you have no open finding, or the findings do not share one mechanism, write an empty text. For example: `{"verdict":"changes","mechanism":"internal/store/retry.go:Do","findings":[{"class":"blocking","text":"the retry never stops"}]}`.
-The class is one of `blocking`, `deferred`, `pre-existing` or `minor`.
+**The findings of this item are a ledger.** The data file {{ .data_file }} holds the key `ledger`: every finding of the earlier reviews, each with `id`, `path`, `severity`, `text`, `state` (`open`, `fixed` or `wontfix`) and `reason`. Read it with `jq .ledger`.
+Write it to {{ .output_file }} as JSON. The output `findings` is a text that holds a JSON list of your open findings. Each finding is an object with the text keys `id`, `severity`, `path` and `text`.
+When a finding is one that the ledger holds, write its `id` from the ledger. This holds also when its line moved, its words changed or its file was renamed. Write an empty `id` for a new finding: the run gives it an id. List each `id` once. An `id` that the ledger does not hold stops the item.
+A finding that you leave out of the list is fixed. A finding in the state `wontfix` that you leave out stays `wontfix`: you accept the reason of the fix lane. List it with its `id` when you do not accept the reason.
+Write the output `regressions` beside them, as a text that holds one whole number. For example: `{"verdict":"approve","regressions":"0","findings":"[]"}`.
+Write the output `open` beside them: one text with each open finding on its own line. Write an empty text when you have no open finding. A text that is not empty turns an approve into a verdict of changes. For example: `{"verdict":"changes","open":"the retry never stops","findings":"[{\"id\":\"\",\"severity\":\"blocking\",\"path\":\"internal/store/retry.go\",\"text\":\"the retry never stops\"}]"}`.
+Write the output `mechanism` beside them: the one file that your open findings are about, as the file path. You may add `:function` after the path. The loop counts the fix rounds on the part before the first colon. When you have no open finding, or the findings do not share one mechanism, write an empty text. For example: `{"verdict":"changes","mechanism":"internal/store/retry.go:Do","findings":"[]"}`.
+The severity is one of `blocking`, `deferred`, `pre-existing` or `minor`.
 Name the head you reviewed. Put each finding under Blocking, Should-fix or Non-blocking.
