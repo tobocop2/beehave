@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/forge/forgetest"
+	"github.com/tobocop2/beehave/internal/ifacetest"
 	"github.com/tobocop2/beehave/internal/model"
 )
 
@@ -36,6 +38,8 @@ type memForge struct {
 	dropped   string
 	extra     bool
 	wrongPR   bool
+	// emptyOn names the read that answers an empty value and no error.
+	emptyOn string
 }
 
 func (m memForge) fail() error {
@@ -232,10 +236,18 @@ func (m memForge) DefaultBranch(context.Context) (string, error) {
 }
 
 func (m memForge) IssueState(context.Context, int) (string, error) {
+	if m.emptyOn == "IssueState" {
+		return "", nil
+	}
+
 	return "", errors.New("this forge cannot read the state of an issue")
 }
 
 func (m memForge) ClosingRefs(context.Context, int) (model.ClosingRefs, error) {
+	if m.emptyOn == "ClosingRefs" {
+		return model.ClosingRefs{}, nil
+	}
+
 	return model.ClosingRefs{}, errors.New("this forge cannot read closing references")
 }
 
@@ -307,6 +319,79 @@ func TestCheckForgeFails_AcceptsAForgeThatErrorsEverywhereAndFailsOneThatDoesNot
 	r = &recorder{}
 	forgetest.CheckForgeFails(r, memForge{})
 	assert.Contains(t, r.failures, "Overlap: want an error from a failed command, got none")
+}
+
+// TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments reads the method list of forge.Forge and fails when a method has no failed-command case.
+// A new read added to the interface must be added to the suite, or to the two methods that take no call to the forge.
+func TestCheckForgeFails_RunsEveryMethodOfTheForgeThatTakesArguments(t *testing.T) {
+	t.Parallel()
+
+	noCall := map[string]bool{"ItemFields": true, "CloneURL": true}
+	ran := map[string]bool{}
+
+	for _, name := range forgetest.FailedCommandMethods() {
+		ran[name] = true
+	}
+
+	declared, err := ifacetest.Methods([]string{"../forge.go"}, "Forge")
+	require.NoError(t, err)
+
+	for _, name := range declared {
+		if !noCall[name] {
+			assert.True(t, ran[name], "forge.Forge.%s has no failed-command case in CheckForgeFails", name)
+		}
+	}
+
+	for name := range ran {
+		assert.Contains(t, declared, name, "CheckForgeFails runs %s, which forge.Forge lacks", name)
+	}
+}
+
+// TestCheckForgeFails_AMethodThatReadsAnErrorAsAnEmptyAnswerFailsTheCase fails the one read the issue names and checks that the case names it.
+func TestCheckForgeFails_AMethodThatReadsAnErrorAsAnEmptyAnswerFailsTheCase(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"ClosingRefs", "IssueState"} {
+		r := &recorder{}
+		forgetest.CheckForgeFails(r, memForge{down: true, emptyOn: name})
+		assert.Contains(t, r.failures, name+": want an error from a failed command, got none")
+	}
+}
+
+// memOptional serves the assignee read and the ready-mark read. down fails the call.
+type memOptional struct{ down bool }
+
+func (m memOptional) IssueAssignees(context.Context, string, int) ([]string, error) {
+	if m.down {
+		return nil, errDown
+	}
+
+	return nil, nil
+}
+
+func (m memOptional) ReadyMarks(context.Context, int) ([]string, error) {
+	if m.down {
+		return nil, errDown
+	}
+
+	return nil, nil
+}
+
+func TestCheckAssigneeReadsFailAndCheckReadyReadsFail_AcceptAnErrorAndRefuseAnEmptyList(t *testing.T) {
+	t.Parallel()
+
+	r := &recorder{}
+	forgetest.CheckAssigneeReadsFail(r, memOptional{down: true})
+	forgetest.CheckReadyReadsFail(r, memOptional{down: true})
+	assert.Empty(t, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckAssigneeReadsFail(r, memOptional{})
+	assert.Equal(t, []string{"IssueAssignees: want an error from a failed command, got none"}, r.failures)
+
+	r = &recorder{}
+	forgetest.CheckReadyReadsFail(r, memOptional{})
+	assert.Equal(t, []string{"ReadyMarks: want an error from a failed command, got none"}, r.failures)
 }
 
 // memSyncer serves the Syncer rules. wrong changes the answers; down fails every call.

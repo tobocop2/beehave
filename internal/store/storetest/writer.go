@@ -83,7 +83,11 @@ func checkStatus(c check, writer store.Writer, probe WriterProbe, id string) {
 func CheckWriterFails(r Reporter, writer store.Writer) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(writerCalls(writer))
+}
+
+func writerCalls(writer store.Writer) []call {
+	return []call{
 		{"Create", func(ctx context.Context) error {
 			_, _, err := writer.Create(ctx, writeKey, store.NewItem{Title: "plan"})
 
@@ -91,5 +95,5 @@ func CheckWriterFails(r Reporter, writer store.Writer) {
 		}},
 		{"SetStatus", func(ctx context.Context) error { return writer.SetStatus(ctx, item, store.StatusClosed) }},
 		{"Comment", func(ctx context.Context) error { return writer.Comment(ctx, item, "note", "text") }},
-	})
+	}
 }

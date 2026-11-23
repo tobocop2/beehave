@@ -304,7 +304,34 @@ func checkDeclared(r Reporter, got map[string]string, declared []string) {
 func CheckForgeFails(r Reporter, target forge.Forge) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(forgeCalls(target))
+}
+
+// FailedCommandMethods names every method of forge.Forge that CheckForgeFails runs. A method of the interface that is not in the list has no failed-command case.
+func FailedCommandMethods() []string {
+	calls := forgeCalls(nil)
+	names := make([]string, len(calls))
+
+	for i, one := range calls {
+		names[i] = one.name
+	}
+
+	return names
+}
+
+// forgeCalls is every method of forge.Forge that takes arguments, with the arguments filled in. The closures need a target only when they run.
+func forgeCalls(target forge.Forge) []call {
+	var all []call
+
+	all = append(all, readCalls(target)...)
+	all = append(all, newCalls(target)...)
+	all = append(all, mergeCalls(target)...)
+
+	return append(all, standingCalls(target)...)
+}
+
+func readCalls(target forge.Forge) []call {
+	return []call{
 		{"Reviews", func(ctx context.Context) error { _, err := target.Reviews(ctx, Seven); return err }},
 		{"PRBody", func(ctx context.Context) error { _, err := target.PRBody(ctx, Seven); return err }},
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
@@ -318,29 +345,24 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 		{"UnresolvedThreads", func(ctx context.Context) error { _, err := target.UnresolvedThreads(ctx, Seven); return err }},
 		{"StackID", func(ctx context.Context) error { _, err := target.StackID(ctx, Seven); return err }},
 		{"ExistingReview", func(ctx context.Context) error { _, err := target.ExistingReview(ctx, Seven); return err }},
-	})
-	checkNewFail(r, target)
-	checkMergeFail(r, target)
-	checkStandingFail(r, target)
+	}
 }
 
-// checkStandingFail runs the batched read, the title read, the annotation read and the item read on a forge whose commands all fail.
-func checkStandingFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// standingCalls are the batched read, the title read, the annotation read, the item read, the closing references and the state of an issue.
+func standingCalls(target forge.Forge) []call {
+	return []call{
 		{"Item", func(ctx context.Context) error { _, err := target.Item(ctx, Seven); return err }},
 		{"Title", func(ctx context.Context) error { _, err := target.Title(ctx, Seven); return err }},
 		{"OwnPulls", func(ctx context.Context) error { _, err := target.OwnPulls(ctx, SearchUser); return err }},
 		{"CheckNotStarted", func(ctx context.Context) error { _, err := target.CheckNotStarted(ctx, SevenRun); return err }},
-	})
+		{"ClosingRefs", func(ctx context.Context) error { _, err := target.ClosingRefs(ctx, Seven); return err }},
+		{"IssueState", func(ctx context.Context) error { _, err := target.IssueState(ctx, Seven); return err }},
+	}
 }
 
-// checkNewFail runs the overlap, the conversation and the branch methods on a forge whose commands all fail.
-func checkNewFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// newCalls are the overlap, the conversation and the branch methods.
+func newCalls(target forge.Forge) []call {
+	return []call{
 		{"Overlap", func(ctx context.Context) error {
 			_, err := target.Overlap(ctx, model.OverlapRequest{PR: "7"})
 			return err
@@ -355,20 +377,36 @@ func checkNewFail(r Reporter, target forge.Forge) {
 		{"BranchRef", func(ctx context.Context) error { _, _, err := target.BranchRef(ctx, SevenBranch); return err }},
 		{"PostComment", func(ctx context.Context) error { return target.PostComment(ctx, Seven, "hello") }},
 		{"SetDraft", func(ctx context.Context) error { return target.SetDraft(ctx, Seven, true) }},
-	})
+	}
 }
 
-// checkMergeFail runs the merge, the branch and pull request edits and the scope read on a forge whose commands all fail.
-func checkMergeFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// mergeCalls are the merge, the branch and pull request edits and the scope read.
+func mergeCalls(target forge.Forge) []call {
+	return []call{
 		{"MergePR", func(ctx context.Context) error { return target.MergePR(ctx, Seven, SevenTip) }},
 		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
 		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
 		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
+	}
+}
+
+// CheckAssigneeReadsFail runs the assignee read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckAssigneeReadsFail(r Reporter, target forge.AssigneeReads) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
+		{"IssueAssignees", func(ctx context.Context) error { _, err := target.IssueAssignees(ctx, "", Seven); return err }},
+	})
+}
+
+// CheckReadyReadsFail runs the ready-mark read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckReadyReadsFail(r Reporter, target forge.ReadyReads) {
+	r.Helper()
+
+	check{r: r}.allFail([]call{
+		{"ReadyMarks", func(ctx context.Context) error { _, err := target.ReadyMarks(ctx, Seven); return err }},
 	})
 }
 

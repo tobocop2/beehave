@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/beads"
 	"github.com/tobocop2/beehave/internal/store/beads/beadstest"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 var _ store.Reader = (*beads.Store)(nil)
@@ -33,6 +34,12 @@ func TestComments_ReadsTheTextAndDropsTheMarkerLine(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"first", "second"}, got)
 	assert.Equal(t, [][]string{{"comments", "p-1", "--json"}}, run.Calls)
+}
+
+func TestStore_ConformsToTheFailedReadRulesOfAReader(t *testing.T) {
+	t.Parallel()
+
+	storetest.CheckReaderFails(t, beadsOver(t, brokenRunner{}))
 }
 
 func TestComments_RefusesAFailedReadAndUnreadableText(t *testing.T) {
