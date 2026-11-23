@@ -135,7 +135,7 @@ func TestExample_AFullReviewThatApprovesWithAnOpenFindingIsAChangesVerdictAndSen
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 		if review == 2 {
-			return `[{"class":"minor","text":"rename x"}]`
+			return `[{"id":"","severity":"minor","path":"a.go","text":"rename x"}]`
 		}
 
 		return "[]"

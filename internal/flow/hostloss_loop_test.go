@@ -92,7 +92,7 @@ func lossyLoopWith(t *testing.T, void, lose int32, extra string) (loopValue, []s
 	rig.h.gate.via = &lossyGate{head: rig.head, void: void, lose: lose}
 	rig.h.gate.checks = cleanChecks()
 	rig.baseAt(t, "main")
-	rig.reply(`{"verdict":"approve"}`, exited)
+	rig.reply(`{"verdict":"approve","findings":"[]"}`, exited)
 
 	file := writeFlow(t, strings.Replace(loopFlow, "rounds = 2", "rounds = 2"+extra, 1))
 	require.NoError(t, os.MkdirAll(filepath.Join(filepath.Dir(file), "prompts"), 0o750))

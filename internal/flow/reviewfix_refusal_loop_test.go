@@ -131,9 +131,10 @@ func tryLoop(t *testing.T, rig *agentRig, extra string, fix func()) (refusalRun,
 		case strings.HasPrefix(request.Prompt, "FIX"):
 			run.fixes = append(run.fixes, request.Prompt)
 			fix()
+			rig.put(request.OutputFile, `{"commit_subject":"fix","commit_body":"fix","resolved":"[]","wontfix":"[]"}`)
 		case strings.HasPrefix(request.Prompt, "REVIEW"):
 			run.reviews = append(run.reviews, gitIn(t, rig.dir, "rev-parse", "HEAD"))
-			rig.put(outputPath(request.Prompt), `{"verdict":"approve"}`)
+			rig.put(outputPath(request.Prompt), `{"verdict":"approve","findings":"[]"}`)
 		}
 
 		return exited

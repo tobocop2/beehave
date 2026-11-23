@@ -170,7 +170,7 @@ case $step in
     git rev-parse HEAD > "@WORK@/plan-head-$(grep -c '^plan$' @WORK@/calls.log)"
     printf '{"regressions":"0"}\n' > "$(field write)"
     ;;
-  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
+  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
   sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)

@@ -67,7 +67,7 @@ func TestExample_TheImplementerTheFixAndTheReviewsGetTheBaseRedsInTheDataFile(t 
 		return "approve"
 	}, func(review int) string {
 		if review == 1 {
-			return `["a finding"]`
+			return newFinding
 		}
 
 		return "[]"
@@ -92,8 +92,16 @@ func TestExample_TheImplementerTheFixAndTheReviewsGetTheBaseRedsInTheDataFile(t 
 	withHistory := `{"base":"integration","base_reds":["lint-a","test-b"],"pulls":[]}`
 
 	assert.Equal(t, []string{"plan", "implement", "sweep", "review", "fix", "review", "review"}, seen.kinds)
-	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, "", record, record, record, record}, seen.texts,
-		"the plan gets the pull requests of the item and no base reds, the implementer gets both, and each other lane finds the base reds of the round")
+	// The ledger of the round: the first review raises f-1, the fix and the second review see it open, and the full review sees it fixed.
+	entry := func(state string) string {
+		return `{"id":"f-1","last_raised":1,"path":"a.go","raised_in":1,"reason":"","severity":"blocking","state":"` + state + `","text":"the retry never stops"}`
+	}
+	withLedger := func(entries string) string {
+		return record[:len(record)-1] + `,"ledger":[` + entries + `]}`
+	}
+
+	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, "", withLedger(""), withLedger(entry("open")), withLedger(entry("open")), withLedger(entry("fixed"))}, seen.texts,
+		"the plan gets the pull requests of the item and no base reds, the implementer gets both, the sweep gets no data, and each review and fix lane gets the base reds and the ledger of the round")
 }
 
 func TestExample_ThePlanAndTheImplementerGetThePullRequestsOfTheItemInTheDataFile(t *testing.T) {
