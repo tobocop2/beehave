@@ -939,7 +939,12 @@ A fork starts a new run of the item from a step of a run that ended: finished, f
 - A workflow that takes another path on a changed var before the chosen step fails the replay with the unexpected-step error of DBOS. The old run stays unchanged.
 - The fork takes a fresh claim on the item and saves its token under the new run id, as a resume does. A source run that has no recorded claim before the chosen step takes none: the new run claims by itself. A fork that fails gives the claim back.
 - A fork refuses a run of another build, a pass run, a child run, and an item that has an open run: run `beehave cancel <item>` first. It reads the runs under `probe.lock` and through the one store view, so a move in flight ends first.
-- A fork never moves a branch. The worktree of the item is cut again at the base of the item. A `push` step that names `expect` refuses a branch that moved.
+- The call that `--from` names can be a finished call or the call that the run failed in, as `beehave status` shows them. A run that failed before it recorded a step of the call has no such call to name.
+- The worktree starts at the head that the copied steps recorded: the head after the last agent call before the step, else the commit that the worktree of a round item was made at, else the head that the first agent call found. A round item gets a detached worktree at that commit. Any other item gets the branch `<item>-r<k+1>` cut at that commit, so the branch of the old run keeps its commits. A fork refuses, and names the commit, when the clone does not hold it. It also refuses a worktree with changes, and a round worktree that holds commits that no remote branch holds and the head does not hold. Nothing is stored or claimed then.
+- A fork never pushes to a branch of an earlier run. A `push` step in the new run refuses a branch that the source run, or a run before it, pushed to. Name the branch in a var and pass the new name with `--vars`. The engine reads the branches from the `push` records. A push with `expect` guards only against a branch that moved between its read and its push.
+- A fork stores the keys `fork:<new run id>` and `fork-pushed:<new run id>` on the row of the source run. A fork that fails removes them. Setting an attribute moves `updated_at` of the old row. Its status, output and `completed_at` stay as they were.
+- The overlay reaches the run that the fork made and no run that this run spawns. A spawn child reads its own recorded facts.
+- Two forks of one run at the same time make one run. The second fork finds the open run and is refused, and it takes no claim.
 
 ### One engine for each state folder
 

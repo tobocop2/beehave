@@ -1,7 +1,7 @@
 ---
 description: Start an beehave run for an item, or continue its open run
 argument-hint: <item> [project] [--workflow <file>]
-allowed-tools: Bash(beehave run:*), Bash(beehave resume:*)
+allowed-tools: Bash(beehave run:*), Bash(beehave resume:*), Bash(beehave fork:*)
 disable-model-invocation: true
 ---
 
@@ -24,6 +24,13 @@ beehave run $ARGUMENTS
 
 ```sh
 beehave resume <item>
+beehave run <item>
+```
+
+To start again from a later step, or with other vars, fork the run. The fork keeps the finished steps before the step it names:
+
+```sh
+beehave fork <run id> --from <step> [--vars <file>]
 beehave run <item>
 ```
 
