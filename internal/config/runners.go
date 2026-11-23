@@ -48,6 +48,9 @@ type agents struct {
 	// MaxTreeBudgetUSD is the most dollars that the agent steps of an item tree spend in all: the root run and every run it spawns. An agent step does not start when the sum is at or past it.
 	// A spawned run uses the cap of its root. 0 means no cap.
 	MaxTreeBudgetUSD float64
+	// MaxWeekBudgetUSD is the most dollars that the agent steps of all items spend in any seven days. An agent step does not start when the sum of the steps that ended in the last seven days is at or past it.
+	// The sum reads the recorded runs of the store, so a `agents.retention_days` from 1 to 6 is refused with this cap. 0 means no cap.
+	MaxWeekBudgetUSD float64
 	// RetentionDays is the age in days at which `beehave run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
 	// A failed or canceled run is never deleted, because `beehave resume` can reopen it.
 	RetentionDays int
@@ -67,7 +70,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?", "trace_parent?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?", "trace_parent?", "max_week_budget_usd?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -92,10 +95,10 @@ func loadRunnersFile(path string, adapters Adapters) (agents, Pool, []model.Runn
 }
 
 func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) error {
-	budget, runBudget, treeBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD)
+	budget, runBudget, treeBudget, weekBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD), number(f.agents.MaxWeekBudgetUSD)
 	var mode starlark.Value = starlark.String(f.agents.Concurrency)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode, &f.agents.TraceParent); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode, &f.agents.TraceParent, &weekBudget); err != nil {
 		return err
 	}
 
@@ -106,7 +109,7 @@ func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) err
 
 	f.agents.Concurrency = Concurrency(text)
 
-	f.agents.MaxBudgetUSD, f.agents.MaxRunBudgetUSD, f.agents.MaxTreeBudgetUSD = float64(budget), float64(runBudget), float64(treeBudget)
+	f.agents.MaxBudgetUSD, f.agents.MaxRunBudgetUSD, f.agents.MaxTreeBudgetUSD, f.agents.MaxWeekBudgetUSD = float64(budget), float64(runBudget), float64(treeBudget), float64(weekBudget)
 
 	return nil
 }

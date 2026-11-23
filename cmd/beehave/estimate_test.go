@@ -142,6 +142,7 @@ func TestAgents_ACostCapOnACLIThatDoesNotCapDollarsIsRefusedWhenTheModelHasNoPri
 	for name, set := range map[string]func(*agentFixture, *flow.AgentRequest){
 		"the_cap_of_the_run":    func(f *agentFixture, _ *flow.AgentRequest) { f.agents.maxRunBudget = 20 },
 		"the_cap_of_the_tree":   func(f *agentFixture, _ *flow.AgentRequest) { f.agents.maxTreeBudget = 20 },
+		"the_cap_of_the_week":   func(f *agentFixture, _ *flow.AgentRequest) { f.agents.maxWeekBudget = 20 },
 		"the_global_step_cap":   func(f *agentFixture, _ *flow.AgentRequest) { f.agents.maxBudget = 5 },
 		"the_cap_of_the_step":   func(_ *agentFixture, r *flow.AgentRequest) { r.MaxBudget = 2 },
 		"the_cap_and_the_model": func(f *agentFixture, r *flow.AgentRequest) { f.agents.maxRunBudget, r.Model = 20, "" },
