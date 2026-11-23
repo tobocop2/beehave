@@ -194,19 +194,17 @@ func overlayWhole(env map[string]string, name, hint string, into *int) error {
 	return nil
 }
 
-// overlayBool reads a true or false from the environment. An empty variable leaves the value.
+// overlayBool reads the text true or false from the environment. An empty variable leaves the value. Any other text is refused.
 func overlayBool(env map[string]string, name string, into *bool) error {
-	value := env[name]
-	if value == "" {
-		return nil
-	}
-
-	flag, err := strconv.ParseBool(value)
-	if err != nil {
+	switch value := env[name]; value {
+	case "":
+	case "true":
+		*into = true
+	case "false":
+		*into = false
+	default:
 		return refuse("%s=%s is not true or false. Write true or false.", name, value)
 	}
-
-	*into = flag
 
 	return nil
 }

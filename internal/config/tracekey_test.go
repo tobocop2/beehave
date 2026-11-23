@@ -61,6 +61,16 @@ func TestConfig_ATraceParentVariableThatIsNoBooleanIsRefusedAndNamed(t *testing.
 	assert.Contains(t, problems, "BEEHAVE_AGENTS_TRACE_PARENT=maybe")
 }
 
+func TestConfig_ATraceParentVariableOtherThanTrueOrFalseIsRefused(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"1", "t", "T", "0", "f", "F", "TRUE", "True", "yes"} {
+		_, problems := loadTraceKey(t, "agents(max_turns = 3)\n", map[string]string{"BEEHAVE_AGENTS_TRACE_PARENT": value})
+
+		assert.Contains(t, problems, "BEEHAVE_AGENTS_TRACE_PARENT="+value, value)
+	}
+}
+
 func TestConfig_ATraceParentOfTheFileThatIsNoBooleanIsRefused(t *testing.T) {
 	t.Parallel()
 
