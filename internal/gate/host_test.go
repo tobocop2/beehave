@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	clone       = defaultRoot + "/beehave-gate-demo-a1b2c3"
-	hostCommand = `trap 'echo beehave-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone + ` && cd ` + clone +
+	clone = defaultRoot + "/beehave-gate-demo-a1b2c3"
+	sweep = `( for bh_d in ` + defaultRoot + `/beehave-gate-*/; do bh_d=${bh_d%/}; [ -d "$bh_d" ] && [ ! -L "$bh_d" ] && [ -f "$bh_d/.beehave-job" ] || continue; ` +
+		`( flock -n 8 && rm -rf -- "$bh_d" ) 8<"$bh_d"; done; : )`
+	hostCommand = sweep + ` && trap 'echo beehave-gate-done; rm -rf ` + clone + `' EXIT && trap 'exit 143' HUP INT TERM && rm -rf ` + clone + ` && mkdir ` + clone +
+		` && exec 8<` + clone + ` && flock -n 8 && : > ` + clone + `/.beehave-job && cd ` + clone +
 		` && git clone -- https://github.com/owner/name.git tree && cd tree && ` +
 		`git checkout --detach a1b2c3 && [ "$(git rev-parse HEAD)" = a1b2c3 ] && sh -c 'make check'`
 )
@@ -106,7 +109,8 @@ func TestRun_AWorkRootWithASpaceAndADollarIsQuotedEverywhereThePathIsUsed(t *tes
 
 	path := `'/home/o b$x/beehave-gate-demo-a1b2c3'`
 	assert.Contains(t, remote.submitted[0].Command, `trap 'echo beehave-gate-done; rm -rf '\''/home/o b$x/beehave-gate-demo-a1b2c3'\''' EXIT`)
-	assert.Contains(t, remote.submitted[0].Command, ` && rm -rf `+path+` && mkdir `+path+` && cd `+path+` && git clone`)
+	assert.Contains(t, remote.submitted[0].Command, ` && rm -rf `+path+` && mkdir `+path+` && exec 8<`+path+` && flock -n 8 && : > `+path+`/.beehave-job && cd `+path+` && git clone`)
+	assert.Contains(t, remote.submitted[0].Command, `for bh_d in '/home/o b$x'/beehave-gate-*/; do`)
 }
 
 func TestRun_ACloneFolderOutsideTheWorkRootIsRefusedAndNoJobStarts(t *testing.T) {
@@ -184,12 +188,15 @@ func runProjectCommand(t *testing.T, project model.Project, env ...string) (int,
 	require.Len(t, remote.submitted, 1)
 
 	cmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", remote.submitted[0].Command) //nolint:gosec // the command is the one the code under test composes, run against a shim git
-	path := bin + ":/usr/bin:/bin"
-	if found, lookErr := exec.LookPath("timeout"); lookErr == nil {
-		path += ":" + filepath.Dir(found) // a host without a timeout in /usr/bin (macOS) has it elsewhere
+	dirs := []string{bin, "/usr/bin", "/bin"}
+
+	for _, tool := range []string{"timeout", "flock"} {
+		if found, lookErr := exec.LookPath(tool); lookErr == nil {
+			dirs = append(dirs, filepath.Dir(found)) // a machine without the tool in /usr/bin (macOS) has it elsewhere
+		}
 	}
 
-	cmd.Env = append([]string{"HOME=" + home, "PATH=" + path}, env...)
+	cmd.Env = append([]string{"HOME=" + home, "PATH=" + strings.Join(dirs, ":")}, env...)
 
 	code := 0
 
@@ -281,8 +288,8 @@ func TestHostCommand_TheMarkerIsInTheCommandBeforeTheDelete(t *testing.T) {
 
 	command := remote.submitted[0].Command
 	require.Contains(t, command, "echo beehave-gate-done")
-	require.Contains(t, command, "rm -rf")
-	assert.Less(t, strings.Index(command, "echo beehave-gate-done"), strings.Index(command, "rm -rf"))
+	require.Contains(t, command, "echo beehave-gate-done; rm -rf")
+	assert.Equal(t, strings.Index(command, "echo beehave-gate-done"), strings.Index(command, "echo beehave-gate-done; rm -rf"))
 }
 
 func TestHostCommand_AFailedCloneAlsoRemovesTheFolder(t *testing.T) {
