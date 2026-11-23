@@ -31,7 +31,7 @@ type Filler struct {
 	Path string
 }
 
-// Fill runs go mod download all in the item worktree dir and returns the module cache of the project, or "" for a folder with no go.mod and no go.work,
+// Fill runs go mod download all on a copy of the module files of the item worktree dir and returns the module cache of the project, or "" for a folder with no go.mod and no go.work,
 // or with a vendor folder. The note says why the cache may be incomplete; the step starts with the cache as it is.
 func (f Filler) Fill(ctx context.Context, project, dir string) (string, string) {
 	cache := f.Cache(project, dir)
@@ -98,7 +98,7 @@ func workFile(work string) string {
 	return "off"
 }
 
-// goCommand runs the go command in the worktree with the fixed environment.
+// goCommand runs the go command in the folder dir with the fixed environment.
 type goCommand struct {
 	binary string
 	dir    string
