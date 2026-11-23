@@ -335,7 +335,7 @@ func TestRun_ARunThatSetsNoTimeoutEndsAtTheProfileLimitAndNamesTheLikelyCause(t 
 
 	var limit time.Duration
 
-	result := agent.Runner{Version: func(context.Context, string, []string) (string, error) { return "1.19.5", nil }, AfterFunc: func(d time.Duration, fire func()) agent.Timer {
+	result := agent.Runner{Version: func(context.Context, []string, []string) (string, error) { return "1.19.5", nil }, AfterFunc: func(d time.Duration, fire func()) agent.Timer {
 		limit = d
 
 		return time.AfterFunc(20*time.Millisecond, fire)

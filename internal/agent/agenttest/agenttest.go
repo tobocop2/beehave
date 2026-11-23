@@ -79,9 +79,12 @@ func TestAdapter(t *testing.T, make Factory, opts ...Option) {
 	testLimits(t, make, o)
 }
 
-// testSessions runs the arms for the output lines and the transcript of a session.
+// testSessions runs the arms for the output lines and the transcript of a session, and for the way that the prompt reaches the CLI.
 func testSessions(t *testing.T, make Factory) {
 	t.Helper()
+	t.Run("a_launch_sends_the_prompt_the_way_it_says", func(t *testing.T) {
+		CheckPrompt(t, make(), t.TempDir())
+	})
 	t.Run("a_line_with_no_call_holds_no_call", func(t *testing.T) {
 		CheckCalls(t, make())
 	})
@@ -199,7 +202,7 @@ func runFake(adapter agent.Adapter, dir string, out io.Writer, change ...func(*a
 		set(&spec)
 	}
 
-	version := func(context.Context, string, []string) (string, error) { return adapter.Profile().SupportedFrom, nil }
+	version := func(context.Context, []string, []string) (string, error) { return adapter.Profile().SupportedFrom, nil }
 
 	return agent.Runner{Version: version}.Run(context.Background(), spec)
 }
