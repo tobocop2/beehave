@@ -4,15 +4,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 // closing refuses a pull request whose closing references are not the issues the item names. An extra issue would be closed by mistake,
-// and a missing one stays open. GitHub parses the closing keywords of the pull request; the guard reads its list. The list holds no keyword of a commit message,
-// so the guard reads the commit messages too (see commitKeywords).
-// GitHub lists closing references only for a pull request into the default branch, so a pull request into any other base is not audited here:
-// the guard says so. A request with AuditClosing false names no issue for the item and is not audited; the guard shows the line of Unaudited.
+// and a missing one stays open. The forge lists the issues that the pull request closes: GitHub's own list for a pull request into the default branch,
+// and the keywords of the body and the commit messages for a pull request into any other base. The guard reads the commit messages too (see commitKeywords).
+// A request with AuditClosing false names no issue for the item and is not audited; the guard shows the line of Unaudited.
 func (a *attempt) closing() *refusal {
 	if !a.req.AuditClosing {
 		return a.unaudited()
@@ -27,22 +24,11 @@ func (a *attempt) closing() *refusal {
 		return refuse(fmt.Sprintf("REFUSE: cannot read the base branch and the default branch of #%d, so its closing references cannot be audited.", a.req.PR))
 	}
 
-	if stop := a.listed(refs); stop != nil {
+	if stop := a.sameIssues(refs.Issues); stop != nil {
 		return stop
 	}
 
 	return a.commitKeywords()
-}
-
-// listed audits the closing references of the forge, or says that the base is not the default branch and skips them.
-func (a *attempt) listed(refs model.ClosingRefs) *refusal {
-	if refs.BaseBranch != refs.DefaultBranch {
-		a.say(fmt.Sprintf("closing references: #%d targets %s, not the default branch %s, so GitHub lists none and the audit is skipped.", a.req.PR, refs.BaseBranch, refs.DefaultBranch))
-
-		return nil
-	}
-
-	return a.sameIssues(refs.Issues)
 }
 
 // unaudited shows why no audit ran, when the request says why. It never refuses.

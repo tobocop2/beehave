@@ -3,9 +3,11 @@ package github
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/tobocop2/beehave/internal/closing"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -25,7 +27,7 @@ const (
 	stackNumberQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(" +
 		"number:$p){stack{number}}}}"
 	closingQuery = "query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){defaultBranchRef{name} pullRequest(" +
-		"number:$p){baseRefName baseRepository{nameWithOwner} " +
+		"number:$p){baseRefName baseRepository{nameWithOwner} body commits(first:100){totalCount nodes{commit{message}}} " +
 		"closingIssuesReferences(first:100){totalCount nodes{number repository{nameWithOwner}}}}}}"
 )
 
@@ -209,6 +211,15 @@ type closingRepository struct {
 			NameWithOwner string `json:"nameWithOwner"`
 		} `json:"baseRepository"`
 		Closing *closingPage `json:"closingIssuesReferences"`
+		Body    string       `json:"body"`
+		Commits struct {
+			TotalCount int `json:"totalCount"`
+			Nodes      []struct {
+				Commit struct {
+					Message string `json:"message"`
+				} `json:"commit"`
+			} `json:"nodes"`
+		} `json:"commits"`
 	} `json:"pullRequest"`
 }
 
@@ -221,8 +232,9 @@ func (a closingAnswer) repository() *closingRepository {
 	return a.Data.Repository
 }
 
-// ClosingRefs reads, in one call, what the scope check needs: the issues that merging a pull request closes as GitHub lists them,
-// the base branch of the pull request and the default branch of the repository. The list holds the keywords of the body and the issues linked in the sidebar.
+// ClosingRefs reads, in one call, what the scope check needs: the issues that merging a pull request closes, the base branch of the pull request and the default branch of the repository.
+// For a pull request into the default branch, the issues are GitHub's list: the keywords of the body and the issues linked in the sidebar.
+// GitHub lists none for any other base, so the keywords of the body and of the commit messages stand in.
 // An issue is kept when its repository is the base repository of the same answer, so a renamed repository still works.
 // More issues than one page, a list whose every issue is dropped, or a failed read, is a refusal.
 func (f *Forge) ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, error) {
@@ -249,23 +261,81 @@ func (f *Forge) ClosingRefs(ctx context.Context, pr int) (model.ClosingRefs, err
 // closingRefsOf checks the answer and builds the refs. It refuses a list of more than one page, an answer with no base repository,
 // and a non-empty list whose every issue is in another repository.
 func closingRefsOf(repository *closingRepository, pr int, base string) (model.ClosingRefs, error) {
-	pull := repository.PullRequest
-
-	more := fmt.Sprintf("pull request %d closes %d issues, more than one page; the rest are unknown", pr, pull.Closing.TotalCount)
-	if err := fullPage(pull.Closing.Nodes, pull.Closing.TotalCount, base, "issue list", more); err != nil {
+	issues, err := listedIssues(repository, pr, base)
+	if err != nil {
 		return model.ClosingRefs{}, err
 	}
 
-	if pull.BaseRepository == nil {
-		return model.ClosingRefs{}, forge.Refuse("%s: the answer holds no base repository", base)
+	refs := model.ClosingRefs{Issues: issues, BaseBranch: repository.baseBranch(), DefaultBranch: repository.defaultBranch()}
+	if refs.BaseBranch == "" || refs.DefaultBranch == "" || refs.BaseBranch == refs.DefaultBranch {
+		return refs, nil
 	}
 
-	issues := ownNumbers(pull.Closing.Nodes, pull.BaseRepository.NameWithOwner)
-	if len(issues) == 0 && len(pull.Closing.Nodes) > 0 {
-		return model.ClosingRefs{}, forge.Refuse("pull request %d lists %d closing issues, and none is in %s; the answer cannot be trusted", pr, len(pull.Closing.Nodes), pull.BaseRepository.NameWithOwner)
+	refs.Issues, err = keywordIssues(repository, pr, base)
+	if err != nil {
+		return model.ClosingRefs{}, err
 	}
 
-	return model.ClosingRefs{Issues: issues, BaseBranch: repository.baseBranch(), DefaultBranch: repository.defaultBranch()}, nil
+	return refs, nil
+}
+
+// listedIssues returns the issues of the list of GitHub that are in the base repository.
+func listedIssues(repository *closingRepository, pr int, base string) ([]int, error) {
+	page, baseRepository := repository.PullRequest.Closing, repository.PullRequest.BaseRepository
+
+	more := fmt.Sprintf("pull request %d closes %d issues, more than one page; the rest are unknown", pr, page.TotalCount)
+	if err := fullPage(page.Nodes, page.TotalCount, base, "issue list", more); err != nil {
+		return nil, err
+	}
+
+	if baseRepository == nil {
+		return nil, forge.Refuse("%s: the answer holds no base repository", base)
+	}
+
+	issues := ownNumbers(page.Nodes, baseRepository.NameWithOwner)
+	if len(issues) == 0 && len(page.Nodes) > 0 {
+		return nil, forge.Refuse("pull request %d lists %d closing issues, and none is in %s; the answer cannot be trusted", pr, len(page.Nodes), baseRepository.NameWithOwner)
+	}
+
+	return issues, nil
+}
+
+// keywordIssues reads the issues that a pull request into a base other than the default branch closes by keyword. GitHub lists none for such a pull request,
+// so the keywords of the body and of the commit messages stand in. A keyword for another repository is left out. A cut commit list is a refusal.
+func keywordIssues(repository *closingRepository, pr int, base string) ([]int, error) {
+	pull := repository.PullRequest
+
+	more := fmt.Sprintf("pull request %d has %d commits, more than one page; their messages are unknown", pr, pull.Commits.TotalCount)
+	if err := fullPage(pull.Commits.Nodes, pull.Commits.TotalCount, base, "commit list", more); err != nil {
+		return nil, err
+	}
+
+	texts := []string{pull.Body}
+	for _, node := range pull.Commits.Nodes {
+		texts = append(texts, node.Commit.Message)
+	}
+
+	return ownKeywords(strings.Join(texts, "\n"), pull.BaseRepository.NameWithOwner), nil
+}
+
+// ownKeywords returns the issues of the repository that the closing keywords of a text name, sorted and without a repeat. The result is never nil.
+func ownKeywords(text, repository string) []int {
+	numbers := []int{}
+
+	for _, ref := range closing.References(text) {
+		owner, digits, _ := strings.Cut(ref, "#")
+		if owner != "" && !strings.EqualFold(owner, repository) {
+			continue
+		}
+
+		if number, err := strconv.Atoi(digits); err == nil {
+			numbers = append(numbers, number)
+		}
+	}
+
+	slices.Sort(numbers)
+
+	return slices.Compact(numbers)
 }
 
 // baseBranch is the base branch of the pull request, or empty when the answer holds null.

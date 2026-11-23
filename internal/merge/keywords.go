@@ -2,29 +2,12 @@ package merge
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/tobocop2/beehave/internal/closing"
 )
-
-// closingKeyword finds a closing keyword of GitHub in a commit message and the issue it names, as "#N", "owner/repo#N" or an issue URL.
-// The keywords are the nine that GitHub documents, in any case:
-// https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue
-// A plain "#N" with no keyword closes nothing, so it does not match.
-var closingKeyword = regexp.MustCompile(`(?i)\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?\s+((?:[a-z0-9_.-]+/[a-z0-9_.-]+)?#\d+|https?://github\.com/[a-z0-9_.-]+/[a-z0-9_.-]+/issues/\d+)`)
-
-// ClosingReferences lists the issues that a text closes with a closing keyword, each as "#N" or "owner/repo#N", in the order of the text.
-// The merge guard and the posting guard of the workflow builtins read the same keywords.
-func ClosingReferences(text string) []string {
-	var refs []string
-
-	for _, found := range closingKeyword.FindAllStringSubmatch(text, -1) {
-		refs = append(refs, issueRef(found[1]))
-	}
-
-	return refs
-}
 
 // shortSHA is the length of a commit id in a line of a refusal.
 const shortSHA = 9
@@ -57,9 +40,7 @@ func (a *attempt) commitKeywords() *refusal {
 func (a *attempt) closedBy(message string) []string {
 	var out []string
 
-	for _, found := range closingKeyword.FindAllStringSubmatch(message, -1) {
-		ref := issueRef(found[1])
-
+	for _, ref := range closing.References(message) {
 		repo, digits, _ := strings.Cut(ref, "#")
 		if repo != "" && !strings.EqualFold(repo, a.req.Repo) {
 			out = append(out, ref)
@@ -74,20 +55,4 @@ func (a *attempt) closedBy(message string) []string {
 	}
 
 	return out
-}
-
-// issueRef writes an issue URL as "owner/repo#N" and returns any other reference unchanged.
-func issueRef(found string) string {
-	path, ok := strings.CutPrefix(strings.ToLower(found), "https://github.com/")
-	if !ok {
-		path, ok = strings.CutPrefix(strings.ToLower(found), "http://github.com/")
-	}
-
-	if !ok {
-		return found
-	}
-
-	repo, number, _ := strings.Cut(path, "/issues/")
-
-	return repo + "#" + number
 }
