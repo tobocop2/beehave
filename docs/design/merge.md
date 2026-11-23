@@ -123,12 +123,11 @@ The closing-references guard runs only for an item of the GitHub tracker whose i
 
 The guard reads the issues that GitHub lists as closed by the pull request. It refuses when they are not exactly the issue of the item, with a line that names both lists. A forge that cannot read them refuses with a transient refusal.
 
-The guard skips in these cases:
+GitHub lists no issues for a pull request into a branch other than the default branch. For such a pull request, the forge reads the closing keywords of the body and of the commit messages instead. The keywords are `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` and `resolved`, in any case, with an optional colon, and a number written as `#N`, `owner/repo#N` or an issue URL. A keyword for another repository does not count. A pull request with more than 100 commits is refused, because the later messages are unknown.
 
-- GitHub lists no issues for a pull request into a branch other than the default branch. The guard skips there and prints a line that names the base.
-- A member of a batch always skips, because its base is the integration branch. The read after `merge` covers it.
+A member of a batch always skips the guard, because its base is the integration branch. The read after `merge` covers it.
 
-The audit does not see a closing keyword that is only in a commit message, because the field may not list it. It does not report a close of an issue in another repository.
+The audit does not report a close of an issue in another repository.
 
 #### Children
 

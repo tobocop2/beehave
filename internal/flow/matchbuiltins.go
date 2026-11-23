@@ -5,7 +5,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/tobocop2/beehave/internal/merge"
+	"github.com/tobocop2/beehave/internal/closing"
 	"github.com/tobocop2/beehave/internal/workflow"
 )
 
@@ -43,5 +43,5 @@ func closingReferences(_ *script, b *starlark.Builtin, args starlark.Tuple, kwar
 		return nil, err
 	}
 
-	return textList(merge.ClosingReferences(text)), nil
+	return textList(closing.References(text)), nil
 }
