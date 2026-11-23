@@ -37,7 +37,7 @@ type attemptPlan struct {
 func planOf(last run, found bool, in ItemInput, version string, resumed bool) (attemptPlan, error) {
 	switch {
 	case found && in.Debounce > 0 && last.delayed():
-		return bouncePlan(last, in)
+		return bouncePlan(last, in, version)
 	case found && !last.terminal():
 		return joinPlan(last, in, version)
 	case found && resumed:
@@ -50,10 +50,15 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 }
 
 // bouncePlan names the delayed run that a debounced start takes over: the start pushes the delay of that run back and replaces its input, and the run keeps its attempt and its id.
-// A delayed run has not started, so it is never moved to another build. It refuses a run of another project.
-func bouncePlan(delayed run, in ItemInput) (attemptPlan, error) {
+// A delayed run has not started, so it is never moved to another build: a start from a build other than the one that stored the run is refused, and the run keeps its input and its version.
+// It also refuses a run of another project.
+func bouncePlan(delayed run, in ItemInput, version string) (attemptPlan, error) {
 	if err := startProject(delayed, in.Item, in.Project); err != nil {
 		return attemptPlan{}, err
+	}
+
+	if delayed.Status.ApplicationVersion != version {
+		return attemptPlan{}, namedVersions(fmt.Errorf("%w: %s waits for its debounce window under the build that stored it. Run beehave cancel %s to end it, then start again", errStranded, delayed.Status.ID, in.Item), delayed, version)
 	}
 
 	return attemptPlan{Attempt: delayed.Attempt}, nil

@@ -302,6 +302,78 @@ func TestDebounce_AStreamOfStartsCannotHoldTheRunBackBeyondTenWindows(t *testing
 	require.NoError(t, client.Cancel(testItem))
 }
 
+func TestDebounce_AStartFromAnotherBuildIsRefusedAndTheDelayedRunKeepsItsInputAndItsVersion(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+	other := h.client(t, "another-build")
+	files := debounceFiles(t, "stored", "refused")
+
+	in, err := pinnedInput(testItem, testProject, files[0], modeOff())
+	require.NoError(t, err)
+
+	in.Debounce = debounceWindow
+	stored := other.version
+	_, err = other.debounce(in, 1)
+	require.NoError(t, err)
+
+	for _, policy := range []workflow.OnOpen{workflow.OnOpenJoin, workflow.OnOpenReplace} {
+		refused := refusedAtOnce(t, startFile(engine, testItem, testProject, files[1], RunOnOpen(policy), RunDebounce(debounceWindow)))
+
+		require.ErrorIs(t, refused.err, errStranded, policy)
+		assert.Contains(t, refused.err.Error(), "The run started under version "+stored+" and this is "+engine.version, policy)
+	}
+
+	runs := replaceRuns(t, client, testItem)
+	require.Len(t, runs, 1, replaceStates(runs))
+	assert.Equal(t, stored, runs[0].Status.ApplicationVersion, "the version of the delayed run does not move")
+	assert.Equal(t, files[0], debounceFileOf(t, runs[0]), "the refused start did not bounce the input")
+}
+
+func TestDebounce_ARunHeldInItsWindowStartsOnceWithTheLastInputWhenANewEngineTakesTheStateFolder(t *testing.T) {
+	t.Parallel()
+
+	const window = 4 * time.Second
+
+	h := newHarness(t)
+	files := debounceFiles(t, "first", "last")
+	deps := h.deps()
+
+	first, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+	t.Cleanup(func() { require.NoError(t, first.Shutdown()) })
+
+	client := h.client(t, testVersion)
+	began := time.Now()
+	starts := make([]<-chan runOutcome, 0, len(files))
+
+	for _, file := range files {
+		starts = append(starts, startFile(first, testItem, testProject, file, RunDebounce(window)))
+
+		soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusDelayed, "item-12-r1", file) }, "the start holds its window")
+	}
+
+	// The engine stops while the window is open. Its starts end, and the delayed run stays in the store.
+	require.NoError(t, first.Shutdown())
+
+	for _, start := range starts {
+		require.Error(t, receive(t, start).err)
+	}
+
+	require.Len(t, replaceRuns(t, client, testItem), 1, "the stop keeps the delayed run and makes no second")
+
+	engineOn(t, h, deps)
+
+	soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusPending, "item-12-r1", files[1]) }, "the new engine starts the delayed run once, with the input of the last start")
+	assert.GreaterOrEqual(t, time.Since(began), window, "the run started before the window ended")
+	assert.Len(t, replaceRuns(t, client, testItem), 1)
+
+	require.NoError(t, client.Cancel(testItem))
+}
+
 func TestDebounce_TheWindowIsAnInstructionOfTheStartAndTheStoredInputReadsItEmpty(t *testing.T) {
 	t.Parallel()
 
