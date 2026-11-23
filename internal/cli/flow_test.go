@@ -316,11 +316,17 @@ func (s *fakeSteering) FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, [
 	return s.failed, s.unreadable, s.failedErr
 }
 
-// ResumeRun resumes through Resume or ResumeOnThisBuild, and returns the id that resumedIDs holds for the item, or the id of its failed run.
-func (s *fakeSteering) ResumeRun(item string, onThisBuild bool) (string, error) {
+// ResumeRun resumes through the method that the two flags pick, and returns the id that resumedIDs holds for the item, or the id of its failed run.
+func (s *fakeSteering) ResumeRun(item string, onThisBuild, onThisFile bool) (string, error) {
 	resume := s.Resume
-	if onThisBuild {
+
+	switch {
+	case onThisBuild && onThisFile:
+		resume = s.ResumeOnThisBuildAndFile
+	case onThisBuild:
 		resume = s.ResumeOnThisBuild
+	case onThisFile:
+		resume = s.ResumeOnThisFile
 	}
 
 	if err := resume(item); err != nil {
@@ -1016,6 +1022,52 @@ func (s *fakeSteering) ResumeOnThisBuild(item string) error {
 	s.calls = append(s.calls, "resume-here "+item)
 
 	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) ResumeOnThisFile(item string) error {
+	s.calls = append(s.calls, "resume-file "+item)
+
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func (s *fakeSteering) ResumeOnThisBuildAndFile(item string) error {
+	s.calls = append(s.calls, "resume-here-file "+item)
+
+	return cmp.Or(s.resumeErrs[item], s.err)
+}
+
+func TestResumeCommand_TheOnThisFileFlagPutsTheRunOnTheFileAsItIsNow(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-file")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"resume-file 12"}, rig.steering.calls)
+}
+
+func TestResumeCommand_TheTwoFlagsTogetherMakeOneMove(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-build", "--on-this-file")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Equal(t, []string{"resume-here-file 12"}, rig.steering.calls, "one call does both, so the run is canceled and rewound once")
+}
+
+func TestResumeCommand_TheOnThisFileRefusalOfTheRunReachesTheOwner(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.resumeErrs = map[string]error{"12": errors.New("item-12-r1 is done")}
+
+	code, _, stderr := rig.execute(t.Context(), "resume", "12", "--on-this-file")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "item-12-r1 is done")
 }
 
 func TestFlowCommands_AreAbsentWithoutTheirFactories(t *testing.T) {

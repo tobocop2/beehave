@@ -22,6 +22,7 @@ type moveSpy struct {
 
 	onCancel    func(id string)
 	failSet     bool
+	failPin     bool
 	failClear   bool
 	failCancel  bool
 	failRewind  bool
@@ -44,6 +45,10 @@ func (s *moveSpy) ListWorkflows(_ dbos.Client, opts ...dbos.ListWorkflowsOption)
 }
 
 func (s *moveSpy) SetWorkflowAttributes(_ dbos.Client, id string, attributes map[string]any, opts ...dbos.SetWorkflowAttributesOption) error {
+	if _, isPin := attributes[pinAttribute]; isPin && s.failPin {
+		return errSpy
+	}
+
 	if (attributes[moveAttribute] == nil && s.failClear) || (attributes[moveAttribute] != nil && s.failSet) {
 		return errSpy
 	}
@@ -178,7 +183,7 @@ func TestStoreView_ACanceledRunWithTheMarkAndAFreeMoveLockWhoseMoverFinishedRead
 	mark, marked := moveMarkOf(stale)
 
 	require.True(t, marked)
-	require.NoError(t, client.reopenHere(testItem, last))
+	require.NoError(t, client.reopenHere(testItem, last, nil))
 
 	read, err := client.store().moving(stale, mark)
 

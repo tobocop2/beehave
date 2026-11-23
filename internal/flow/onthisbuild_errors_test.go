@@ -116,7 +116,7 @@ func TestClient_ReopenHereGivesBackItsClaimWhenTheRewindFails(t *testing.T) {
 	last, err := other.newest(testItem)
 	require.NoError(t, err)
 
-	err = other.reopenHere(testItem, last) // the run is still open, and DBOS rewinds only a run that ended
+	err = other.reopenHere(testItem, last, nil) // the run is still open, and DBOS rewinds only a run that ended
 
 	require.Error(t, err)
 

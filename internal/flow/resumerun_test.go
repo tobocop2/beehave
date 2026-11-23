@@ -20,7 +20,7 @@ func TestResumeRun_ReturnsTheIdOfTheNewestAttemptThatItReopened(t *testing.T) {
 
 	_, c := failedItemWithTwoAttempts(t)
 
-	id, err := c.ResumeRun("81", false)
+	id, err := c.ResumeRun("81", false, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "item-81-r2", id, "the resume reopens the newest attempt, and not the run that an earlier list named")
@@ -31,7 +31,7 @@ func TestResumeRun_ReturnsTheIdOfTheRunThatTheMoveToThisBuildReopened(t *testing
 
 	h, _ := failedItemWithTwoAttempts(t)
 
-	id, err := h.client(t, otherBuild).ResumeRun("81", true)
+	id, err := h.client(t, otherBuild).ResumeRun("81", true, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "item-81-r2", id)
@@ -43,7 +43,7 @@ func TestResumeRun_ReturnsNoIdForARunThatItRefuses(t *testing.T) {
 	h, c := failedWorld(t, []failedRunSpec{{"82", "p", "SUCCESS", failedInside}})
 
 	for here, client := range map[bool]*Client{false: c, true: h.client(t, otherBuild)} {
-		id, err := client.ResumeRun("82", here)
+		id, err := client.ResumeRun("82", here, false)
 
 		require.ErrorIs(t, err, ErrWrongState)
 		assert.Empty(t, id)
@@ -61,7 +61,7 @@ func TestResumeRun_AMoveSkipsAnOpenRunThatAnotherBuildChangedAfterTheMoveReadIt(
 		storeExec(t, h, "UPDATE workflow_status SET application_version = 'v3' WHERE workflow_uuid = '"+testRun+"'")
 	})
 
-	id, err := other.ResumeRun(testItem, true)
+	id, err := other.ResumeRun(testItem, true, false)
 
 	require.ErrorIs(t, err, ErrWrongState, "a run of another build that changed since the read is skipped, not moved")
 	require.ErrorContains(t, err, "the move read it as")
@@ -87,7 +87,7 @@ func TestResumeRun_AMoveSkipsAnOpenRunWhoseStatusAloneChangedAfterTheMoveReadIt(
 	before, err := other.row(testRun)
 	require.NoError(t, err)
 
-	id, err := other.ResumeRun(testItem, true)
+	id, err := other.ResumeRun(testItem, true, false)
 
 	require.ErrorIs(t, err, ErrWrongState, "a run whose status changed since the read is skipped, not moved")
 	require.ErrorContains(t, err, testRun, "the error names the run")
@@ -142,7 +142,7 @@ func TestResumeRun_AMoveSkipsAFailedRunThatAnotherBuildChangedAfterTheMoveReadIt
 
 	storeExec(t, h, "UPDATE workflow_status SET application_version = 'v3' WHERE workflow_uuid = 'item-83-r1'")
 
-	err = other.reopenHere("83", read)
+	err = other.reopenHere("83", read, nil)
 
 	require.ErrorIs(t, err, ErrWrongState)
 

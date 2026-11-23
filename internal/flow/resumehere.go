@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,40 +21,82 @@ import (
 // DBOS stores the version of the application on each run and recovers only the runs of its own version, so the rewind restamps the run (and the phases it reopens) with this version.
 // The move is refused when the workflow file or a file it pins changed since the run started. A run of this build is an ordinary resume.
 func (c *Client) ResumeOnThisBuild(item string) error {
-	_, err := c.resumeHere(item)
+	_, err := c.resumeMoved(item, true, false)
 
 	return err
 }
 
-// resumeHere is ResumeOnThisBuild, and it returns the id of the run that it moved.
-func (c *Client) resumeHere(item string) (string, error) {
+// ResumeOnThisFile reopens the open, canceled or failed run of an item on the workflow file as it is on disk now, from its last finished step.
+// The run replays its recorded steps over the new file, and the engine of the store refuses the replay at the first step that the file no longer makes.
+// The run must be of this build: a run of another build is refused, and ResumeOnThisBuildAndFile moves it. A file that did not change is no error: a run that ended resumes as `beehave resume` does, and an open run is reopened with no pin written.
+func (c *Client) ResumeOnThisFile(item string) error {
+	_, err := c.resumeMoved(item, false, true)
+
+	return err
+}
+
+// ResumeOnThisBuildAndFile is ResumeOnThisBuild and ResumeOnThisFile in one move: one cancel and one rewind.
+func (c *Client) ResumeOnThisBuildAndFile(item string) error {
+	_, err := c.resumeMoved(item, true, true)
+
+	return err
+}
+
+// resumeMoved reopens the run of an item and returns its id. build lets the run move from another build to this one, and file puts the run on the workflow file as it is now.
+// A run of this build with no new file is an ordinary resume.
+func (c *Client) resumeMoved(item string, build, file bool) (string, error) {
 	last, err := c.newest(item)
 	if err != nil {
 		return "", err
 	}
 
-	if last.Status.ApplicationVersion == c.version {
+	same := last.Status.ApplicationVersion == c.version
+
+	switch {
+	case same && !file:
 		return c.resumeRun(item)
+	case !same && !build:
+		return "", strandedError(last, c.version)
 	}
 
-	if err := c.requireMovable(context.Background(), item, last); err != nil {
+	return c.moveOrResume(item, last, same, file)
+}
+
+// moveOrResume runs the refusals of a move on the run that resumeMoved read, then reopens it. It returns the id of that run.
+func (c *Client) moveOrResume(item string, last run, same, file bool) (string, error) {
+	pin, err := c.checkMove(item, last, file)
+	if err != nil {
 		return "", err
 	}
 
-	if err := c.moveHere(item, last); err != nil {
+	// A run of this build that has ended and has no new pin is an ordinary resume. An open run is reopened with no pin written.
+	if same && pin == nil && last.terminal() {
+		return c.resumeRun(item)
+	}
+
+	if err := c.reopenMoved(item, last, pin); err != nil {
 		return "", err
 	}
 
 	return last.Status.ID, nil
 }
 
-// moveHere moves a run that requireMovable accepted to this build. DBOS rewinds only a run that ended, so an open run is canceled first.
-func (c *Client) moveHere(item string, last run) error {
-	if last.terminal() {
-		return c.reopenHere(item, last)
+// checkMove runs the refusals of a move and returns the pin to write.
+func (c *Client) checkMove(item string, last run, file bool) ([]workflow.PinnedFile, error) {
+	if err := c.requireMovableRun(context.Background(), item, last); err != nil {
+		return nil, err
 	}
 
-	return c.moveOpen(item, last)
+	return c.pinToMove(item, last, file)
+}
+
+// reopenMoved reopens a run that passed the checks of its move. DBOS rewinds only a run that ended, so an open run is canceled first.
+func (c *Client) reopenMoved(item string, last run, pin []workflow.PinnedFile) error {
+	if last.terminal() {
+		return c.reopenHere(item, last, pin)
+	}
+
+	return c.moveOpen(item, last, pin)
 }
 
 // requireUnchanged reads the newest run of the item again, under probe.lock, and refuses the move when another build or another command changed it since requireMovable read it.
@@ -72,20 +115,47 @@ func (c *Client) requireUnchanged(item string, last run) error {
 	return nil
 }
 
+// pinToMove checks that the run may replay on the files of its move, and returns the pin to write. A move with no new file needs the pinned files unchanged.
+// A move with a new file reads the workflow file now, and returns no pin when it is the pin that the run replays against.
+func (c *Client) pinToMove(item string, last run, file bool) ([]workflow.PinnedFile, error) {
+	if !file {
+		return nil, requirePinned(item, last)
+	}
+
+	in, err := last.input()
+	if err != nil {
+		return nil, err
+	}
+
+	now, err := workflow.Pin(in.File)
+	if err != nil {
+		return nil, fmt.Errorf("%s was not moved onto the workflow file: %w", last.Status.ID, err)
+	}
+
+	have, err := pinOf(last.Status, in)
+	if err != nil || slices.Equal(now, have) {
+		return nil, err
+	}
+
+	return now, nil
+}
+
 // moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between.
-func (c *Client) moveOpen(item string, last run) error {
+// The run is read again first, and the pin is written after the cancel.
+func (c *Client) moveOpen(item string, last run, pin []workflow.PinnedFile) error {
 	return c.underProbe(func() error {
 		if err := c.requireUnchanged(item, last); err != nil {
 			return err
 		}
 
-		return c.cancelAndReopenHeld(item, last)
+		return c.cancelAndReopenHeld(item, last, pin)
 	})
 }
 
 // cancelAndReopenHeld is the move of an open run while probe.lock is held. The run and the open runs below it carry the move mark, and move.lock is held, from before the cancel to after the rewind,
 // so a reader reads the run as open (see storeView). When the reopen fails the run stays canceled with no mark, and the error says so and how to try again.
-func (c *Client) cancelAndReopenHeld(item string, last run) (err error) {
+// A pin is written after the cancel and before the rewind, so a cancel that fails leaves no pin on a run that did not move.
+func (c *Client) cancelAndReopenHeld(item string, last run, pin []workflow.PinnedFile) (err error) {
 	span, err := c.beginMove(last)
 	if err != nil {
 		return err
@@ -95,6 +165,10 @@ func (c *Client) cancelAndReopenHeld(item string, last run) (err error) {
 
 	if err := c.cancelHeld(item, last); err != nil {
 		return err
+	}
+
+	if err := c.setPin(last, pin); err != nil {
+		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehave resume %s --on-this-file again, with --on-this-build when another build started the run", last.Status.ID, err, item)
 	}
 
 	if err := c.reopenHeld(item, last); err != nil {
@@ -194,6 +268,15 @@ func canceledNotMoved(item string, last run, err error) error {
 
 // requireMovable refuses a run that cannot move to this build: one recorded under another step list, a finished one, one whose holder is alive, and one whose files changed.
 func (c *Client) requireMovable(ctx context.Context, item string, last run) error {
+	if err := c.requireMovableRun(ctx, item, last); err != nil {
+		return err
+	}
+
+	return requirePinned(item, last)
+}
+
+// requireMovableRun is requireMovable for a move that checks no file: a move onto the new workflow file reads the file itself.
+func (c *Client) requireMovableRun(ctx context.Context, item string, last run) error {
 	if err := c.requireSameSteps(item, last); err != nil {
 		return err
 	}
@@ -202,11 +285,7 @@ func (c *Client) requireMovable(ctx context.Context, item string, last run) erro
 		return fmt.Errorf("%w: %s is %s and only a cancelled, failed or open run moves to this build. Run beehave run %s to start again", ErrWrongState, last.Status.ID, state, item) //nolint:misspell // user-facing state word, same as runCancelled
 	}
 
-	if err := c.requireNoLiveHolder(ctx, item, last); err != nil {
-		return err
-	}
-
-	return requirePinned(last)
+	return c.requireNoLiveHolder(ctx, item, last)
 }
 
 // requireSameSteps refuses a run that this build cannot replay. A run replays its recorded steps, so it needs the step modules that it recorded
@@ -318,7 +397,7 @@ func (c *Client) requireNoLiveHolder(ctx context.Context, item string, last run)
 		holder = owner
 	}
 
-	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run beehave resume %s --on-this-build again",
+	return fmt.Errorf("%w: %s still runs on version %s. The claim lease of %s ends at %s. Stop that build first, or wait for the lease to end, then run beehave resume %s again with the same flags",
 		errStranded, last.Status.ID, last.Status.ApplicationVersion, holder, ends.UTC().Format(time.RFC3339), item)
 }
 
@@ -347,12 +426,13 @@ func (c *Client) leaseOf(ctx context.Context, last run) (owner string, ends time
 
 // requirePinned refuses a run whose workflow file or pinned file changed since the run started, and names the file. The refusal also lists the scripts
 // outside the repository, which a run does not pin.
-func requirePinned(last run) error {
+func requirePinned(item string, last run) error {
 	in, readErr := last.input()
-	_, openErr := workflow.Open(in.File, in.Files)
+	pin, pinErr := pinOf(last.Status, in)
+	_, openErr := workflow.Open(in.File, pin)
 
-	if err := errors.Join(readErr, openErr); err != nil {
-		text := fmt.Sprintf("%s was not moved to this build: %v", last.Status.ID, err)
+	if err := errors.Join(readErr, pinErr, openErr); err != nil {
+		text := fmt.Sprintf("%s was not moved to this build: %v. To keep its finished steps and run the changed file, run beehave resume %s --on-this-build --on-this-file", last.Status.ID, err, item)
 
 		if outside := workflow.OutsideScripts(in.File); len(outside) > 0 {
 			text += ". These scripts are outside the repository and are not pinned: " + strings.Join(outside, ", ")
@@ -370,9 +450,13 @@ func requirePinned(last run) error {
 
 // reopenHere takes a fresh claim, as Resume does, and rewinds the run and the phases the cancel reached onto this build.
 // probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
-func (c *Client) reopenHere(item string, last run) error {
+func (c *Client) reopenHere(item string, last run, pin []workflow.PinnedFile) error {
 	return c.underProbe(func() error {
 		if err := c.requireUnchanged(item, last); err != nil {
+			return err
+		}
+
+		if err := c.setPin(last, pin); err != nil {
 			return err
 		}
 
