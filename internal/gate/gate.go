@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -707,6 +708,7 @@ func plainWord(word string) bool {
 // cannot write.
 // A project with a gate_program also gets the words of the gate program: git resolved first, then after the checkout a snapshot of the listed paths at baseSHA,
 // the refusal of a changed path and the overlay, and last the final compare (see program.go).
+// A host job first removes the clone folders of dead jobs (see sweepWord) and locks its own folder, so a job that SIGKILL ended leaves no clone for long.
 // A clone or checkout that fails, as it does for a commit that is not pushed, ends the command with a failure before the gate runs.
 func hostCommand(project model.Project, pins []Pin, cloneURL, head, clone, base, baseSHA string) string {
 	return jobCommand(project, pins, jobSource{from: cloneURL, cloneURL: cloneURL}, head, clone, base, baseSHA)
@@ -749,7 +751,7 @@ func jobCommand(project model.Project, pins []Pin, src jobSource, head, clone, b
 // template folder reaches the copy, and runs every other git call with gitWord (see programGit).
 // A local job copies the objects (--no-local) and drops the address of the clone, so head code finds no path of the repository that it was cloned from.
 func cloneWords(src jobSource, head, clone string, program bool) []string {
-	words := cloneFolder(clone)
+	words := cloneFolder(clone, !src.local)
 	from := "git clone "
 
 	if program {
@@ -766,17 +768,34 @@ func cloneWords(src jobSource, head, clone string, program bool) []string {
 	return append(words, gitWord(program, "checkout --detach "+model.ShellQuote(head)), `[ "$(`+gitWord(program, "rev-parse HEAD")+`)" = `+model.ShellQuote(head)+` ]`)
 }
 
-// cloneFolder are the words that make the clone folder, enter it, and delete it on exit with the marker line.
-func cloneFolder(clone string) []string {
-	path := model.ShellQuote(clone)
+// jobMarker is the file that a host job writes in its clone folder after it holds the lock of the folder.
+const jobMarker = ".beehave-job"
 
-	return []string{
-		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+path) + " EXIT",
+// sweepWord removes the clone folders of dead jobs below the work root. A job holds flock(1) on its clone folder, on file descriptor 8, for as long as it
+// lives, and the kernel frees the lock when the job dies, even by SIGKILL. A folder whose lock the sweep takes and that holds the job marker belongs to a gone job.
+// A folder with no marker (a job that has not locked it yet, or an unknown folder), a link, or a folder that cannot be opened stays. The word never fails the job.
+// The arguments are the quoted work root and the clone prefix.
+const sweepWord = `( for bh_d in %s/%s*/; do bh_d=${bh_d%%/}; [ -d "$bh_d" ] && [ ! -L "$bh_d" ] && [ -f "$bh_d/` + jobMarker + `" ] || continue; ` +
+	`( flock -n 8 && rm -rf -- "$bh_d" ) 8<"$bh_d"; done; : )`
+
+// cloneFolder are the words that make the clone folder, enter it, and delete it on exit with the marker line.
+// A host job first sweeps the folders of dead jobs, and takes the lock of its own folder before it writes the job marker.
+func cloneFolder(clone string, host bool) []string {
+	quoted := model.ShellQuote(clone)
+
+	words := []string{
+		"trap " + model.ShellQuote("echo "+cloneMarker+"; rm -rf "+quoted) + " EXIT",
 		"trap 'exit 143' HUP INT TERM",
-		"rm -rf " + path,
-		"mkdir " + path,
-		"cd " + path,
+		"rm -rf " + quoted,
+		"mkdir " + quoted,
 	}
+
+	if host {
+		words = append([]string{fmt.Sprintf(sweepWord, model.ShellQuote(path.Dir(clone)), clonePrefix)}, words...)
+		words = append(words, "exec 8<"+quoted+" && flock -n 8 && : > "+quoted+"/"+jobMarker)
+	}
+
+	return append(words, "cd "+quoted)
 }
 
 // copyFlag is the flag that makes git copy the objects of a local source instead of linking them. A source that is a URL needs none.
