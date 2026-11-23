@@ -3,7 +3,6 @@ package flow
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -81,8 +80,8 @@ func TestAgentStep_TheRunAndTheCallOfTheStepGoToTheAgentRequest(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, rig.h.agents.seen(), 1)
-	assert.NotEmpty(t, rig.h.agents.seen()[0].Run)
-	assert.True(t, strings.HasPrefix(rig.h.agents.seen()[0].Call, "agent:"), rig.h.agents.seen()[0].Call)
+	assert.Equal(t, "item-"+testItem+"-r1", rig.h.agents.seen()[0].Run)
+	assert.Equal(t, "agent:a#1", rig.h.agents.seen()[0].Call)
 }
 
 func TestAgentStep_ABadStepCapFailsTheStepAndNamesTheKeyword(t *testing.T) {
