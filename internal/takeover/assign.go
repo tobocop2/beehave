@@ -58,7 +58,7 @@ func (c closing) own() []int {
 	return issues
 }
 
-// assign adds the acting login to the pull request and to every issue that it closes. The issues are read first, so a failed read leaves nothing assigned.
+// assign reads the pull request again before its first write, then adds the acting login to the pull request and to every issue that it closes. The issues are read first, so a failed read leaves nothing assigned.
 // gh adds an assignee that is already there without a change, so a repeated take is safe, and no assignee is removed.
 func (s *session) assign(ctx context.Context) error {
 	number := s.request.PR
@@ -68,17 +68,30 @@ func (s *session) assign(ctx context.Context) error {
 		return unread(err, "cannot read the issues that #%d closes.", number)
 	}
 
-	if err = s.assignOne(ctx, "pr", number); err != nil {
+	if err = s.recheck(ctx); err != nil {
+		return err
+	}
+
+	if err = s.assignAll(ctx, issues); err != nil {
+		return err
+	}
+
+	s.say(s.assigned(issues))
+
+	return nil
+}
+
+// assignAll adds the acting login to the pull request, then to each issue, and stops at the first failure.
+func (s *session) assignAll(ctx context.Context, issues []int) error {
+	if err := s.assignOne(ctx, "pr", s.request.PR); err != nil {
 		return err
 	}
 
 	for _, issue := range issues {
-		if err = s.assignOne(ctx, "issue", issue); err != nil {
+		if err := s.assignOne(ctx, "issue", issue); err != nil {
 			return err
 		}
 	}
-
-	s.say(s.assigned(issues))
 
 	return nil
 }

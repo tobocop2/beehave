@@ -383,6 +383,8 @@ A bad argument is a refusal. The tool finds the repository from the `origin` rem
 - refuses unless the integration pull request is merged,
 - makes or resumes the new base only at the trunk tip,
 - moves every open pull request on the old base to it,
+- reads the trunk tip again right before it creates the new base, and refuses if the tip moved,
+- reads each pull request again right before it moves it, and refuses if it is not open or no longer targets the old base,
 - never deletes the old branch. The forge interface has no call that deletes a branch.
 
 The step has no dry run. The `--dry` flag of the old `remedy cut` has no engine step, and the library keeps the dry path for tests only. The `trunk` argument is required, and the workflow passes the base branch of the project. The number of the new round is the text after the last dash of the new branch.
@@ -494,7 +496,7 @@ A token stands alone as a word when no Unicode letter, digit or underscore touch
 
 The step runs inside the run of the item, and the engine writes only while that run holds the claim of the item. So the claim check of the takeover always passes, and the step reads no claim store and writes no claim.
 
-The take assigns the pull request and its linked issues to `me` through `gh`, as the writer of the project.
+The take assigns the pull request and its linked issues to `me` through `gh`, as the writer of the project. Right before the first assignment, the take reads the state, the author and the head again. If the pull request closed or became ours, the take refuses with code 2. If the head is not the one the plan read, the take refuses with code 2 and names the old head and the new head. In both cases it assigns nothing.
 
 ### `remedy admit`
 
