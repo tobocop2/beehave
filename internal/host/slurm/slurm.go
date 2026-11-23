@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,11 @@ const (
 	drainReason = "beehave"
 	defaultPoll = 10 * time.Second
 	timeoutExit = "124" // the exit status of `timeout` for a command that it stopped
+
+	// stateFolder is the folder in the login folder of the head node that holds the lock files of the slot classes and the markers of the jobs that wait.
+	stateFolder   = ".beehave"
+	slotsFolder   = "slots"
+	waitingPrefix = "waiting-"
 )
 
 // Slot is what the owner of the cluster does to keep the cluster busy while a job holds its work.
@@ -142,7 +148,7 @@ func (q *Queue) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, er
 		return "", errJobFields
 	}
 
-	if err := jobwait.CheckFolder(spec.Folder); err != nil {
+	if err := errors.Join(spec.Slot.Check(), jobwait.CheckFolder(spec.Folder)); err != nil {
 		return "", err
 	}
 
@@ -165,7 +171,10 @@ func (q *Queue) queue(ctx context.Context, spec model.JobSpec) (jobwait.Job, err
 		words = append(words, "--time="+strconv.FormatInt(int64(math.Ceil(q.limit.Minutes())), 10))
 	}
 
-	out, err := q.link.Remote(ctx, "sbatch", append(words, "--wrap="+spec.Command)...)
+	marker := `"` + path.Join(stateFolder, waitingPrefix) + `$SLURM_JOB_ID"`
+	command := host.SlotWrap(spec.Slot, model.ShellQuote(path.Join(stateFolder, slotsFolder, spec.Slot.Class)), marker, spec.Command)
+
+	out, err := q.link.Remote(ctx, "sbatch", append(words, "--wrap="+command)...)
 	if err != nil {
 		return jobwait.Job{}, err
 	}
@@ -255,16 +264,42 @@ func ended(state model.JobState) bool {
 
 type scheduler struct{ link *link.Link }
 
-// Observe reads the state, and the size of the log only for a running job.
+// Observe reads the state, and the size of the log only for a running job. A running job that waits for a slot of its class reads pending.
 func (s scheduler) Observe(ctx context.Context, job jobwait.Job) (model.JobState, int64, error) {
 	state, err := s.state(ctx, job)
 	if err != nil || state != model.JobRunning {
 		return state, -1, err
 	}
 
+	waiting, err := s.waiting(ctx, job)
+	if err != nil {
+		return model.JobUnknown, -1, err
+	}
+
+	if waiting {
+		return model.JobPending, -1, nil
+	}
+
 	size, err := s.logSize(ctx, job)
 
 	return state, size, err
+}
+
+// waiting reports whether the marker of the job exists: the job script writes it while it waits for a slot of its class.
+func (s scheduler) waiting(ctx context.Context, job jobwait.Job) (bool, error) {
+	result := s.link.Exec(ctx, "test", "-e", path.Join(stateFolder, waitingPrefix+job.ID))
+	if err := s.link.Drop(result); err != nil {
+		return false, err
+	}
+
+	switch result.ExitCode {
+	case 0:
+		return true, nil
+	case 1:
+		return false, nil
+	}
+
+	return false, link.Failure("test", result)
 }
 
 // state reads squeue while the controller knows the job and sacct afterwards.

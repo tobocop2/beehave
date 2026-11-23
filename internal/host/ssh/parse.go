@@ -45,9 +45,11 @@ var unitPattern = regexp.MustCompile(`^beehave-[A-Za-z0-9]+$`)
 // This keeps the result of a job readable after its release, as the accounting of Slurm does.
 const (
 	canceledLine = "beehave-canceled"
+	waitingLine  = "beehave-waiting"
 	resultPrefix = "beehave-result "
 	sizePrefix   = "beehave-size "
 	observeShell = `if test -e "$2.canceled"; then echo ` + canceledLine + `; fi
+if test -e "$2.waiting"; then echo ` + waitingLine + `; fi
 for s in succeeded failed timed_out; do if test -e "$2.$s"; then echo "` + resultPrefix + `$s"; fi; done
 systemctl --user show -p LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus "$1" || exit 3
 echo "` + sizePrefix + `$(stat -c %s "$2.log" 2>/dev/null || echo -1)"`
@@ -73,6 +75,7 @@ func parseJobID(id model.JobID) (jobwait.Job, error) {
 // reading is what one poll read about the unit: the marker of a cancel and the properties. The size of the log comes back beside it.
 type reading struct {
 	canceled                  bool
+	waiting                   bool           // the job waits for a slot of its class on the host
 	recorded                  model.JobState // the final state that an earlier poll wrote beside the log; empty for none
 	load, active, sub, result string
 	code, status              int
@@ -103,6 +106,8 @@ func (r *reading) take(line string, size int64, seen map[string]string) (int64, 
 	switch {
 	case line == canceledLine:
 		r.canceled = true
+	case line == waitingLine:
+		r.waiting = true
 	case strings.HasPrefix(line, resultPrefix):
 		return size, r.takeResult(line)
 	case strings.HasPrefix(line, sizePrefix):
@@ -160,7 +165,7 @@ func (r reading) state() (model.JobState, error) {
 		return r.gone(), nil
 	case r.load != "loaded":
 		return model.JobUnknown, r.unknown()
-	case r.active == "activating":
+	case r.active == "activating", r.waiting && r.active == "active" && r.sub == "running":
 		return model.JobPending, nil
 	case r.active == "active" && r.sub == "running", isChanging(r.active):
 		return model.JobRunning, nil

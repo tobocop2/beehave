@@ -106,5 +106,7 @@ func newHost(t *testing.T, cfg model.HostConfig) (*Host, *fakeQueue, *proctest.S
 	})
 	require.NoError(t, err)
 
+	ssh.Plan("flock from util-linux 2.39.3\n", "flock", "--version")
+
 	return h, queue, sky, ssh
 }

@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 
 	"go.starlark.net/starlark"
@@ -13,7 +12,7 @@ import (
 )
 
 // className is the name of a slot class. It is a plain word, because the engine names the queue of the class with it.
-var className = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+var className = model.SlotClassPattern
 
 // slotTable is the slots argument of the host block: a dict of slot class names to counts. The range of the counts is checked later, with the position of the block.
 type slotTable map[string]starlark.Int

@@ -52,6 +52,7 @@ type Cluster struct {
 	Sbatches int             // the number of jobs submitted
 	DropOn   string          // the first word of a command whose ssh call drops once
 	NoStop   bool            // scancel fails
+	NoFlock  bool            // the head node has no flock command
 	Scancels int             // the number of scancel calls that took
 	DropAll  string          // the first word of a command whose ssh call always drops
 }
@@ -188,6 +189,18 @@ func (f *Cluster) other(words []string) model.CommandResult {
 		f.Files[words[1]] = true
 
 		return ok("")
+	case "test":
+		if f.Files[words[2]] {
+			return ok("")
+		}
+
+		return model.CommandResult{ExitCode: 1}
+	case "flock":
+		if f.NoFlock {
+			return model.CommandResult{ExitCode: 127, Stderr: "flock: command not found"}
+		}
+
+		return ok("flock from util-linux 2.39.3\n")
 	case "stat":
 		return f.stat(words[len(words)-1])
 	case "pwd":

@@ -45,6 +45,8 @@ const (
 	stateFolder    = ".beehave"
 	drainMarker    = "drain"
 	canceledSuffix = ".canceled"
+	waitingSuffix  = ".waiting"
+	slotsFolder    = "slots"
 	logSuffix      = ".log"
 )
 
@@ -162,6 +164,10 @@ func (h *Host) Up(ctx context.Context) error {
 	}
 
 	if err = h.checkSystemd(ctx); err != nil {
+		return err
+	}
+
+	if err = h.link.CheckFlock(ctx); err != nil {
 		return err
 	}
 
@@ -410,10 +416,14 @@ func (h *Host) Submit(ctx context.Context, spec model.JobSpec) (model.JobID, err
 	return h.start(ctx, root, dir, spec)
 }
 
-// checkSpec refuses a job with no name or no command, and a job with a folder that is not an absolute path.
+// checkSpec refuses a job with no name or no command, a job with a slot that is not valid, and a job with a folder that is not an absolute path.
 func checkSpec(spec model.JobSpec) error {
 	if spec.Name == "" || spec.Command == "" {
 		return errJobFields
+	}
+
+	if err := spec.Slot.Check(); err != nil {
+		return err
 	}
 
 	return jobwait.CheckFolder(spec.Folder)
@@ -436,7 +446,8 @@ func (h *Host) refuseDraining(ctx context.Context, root string) error {
 // start runs the unit. dir is the state folder under root.
 func (h *Host) start(ctx context.Context, root, dir string, spec model.JobSpec) (model.JobID, error) {
 	unit := "beehave-" + h.nonce()
-	encoded := base64.StdEncoding.EncodeToString([]byte(spec.Command))
+	script := host.SlotWrap(spec.Slot, model.ShellQuote(path.Join(dir, slotsFolder, spec.Slot.Class)), model.ShellQuote(path.Join(dir, unit+waitingSuffix)), spec.Command)
+	encoded := base64.StdEncoding.EncodeToString([]byte(script))
 
 	_, err := h.run(ctx, "systemd-run", "systemd-run", "--user", "--quiet", "--unit="+unit, "--remain-after-exit",
 		"-p", "RuntimeMaxSec="+strconv.FormatInt(h.config.RunLimitSeconds(), 10), "-p", "TimeoutStopSec="+strconv.Itoa(stopTimeout),
