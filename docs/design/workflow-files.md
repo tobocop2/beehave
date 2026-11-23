@@ -147,8 +147,20 @@ The argument `ledger = True` of `review_fix` gives each finding of a review a st
 At the start of a run, the engine pins the SHA-256 of the workflow file and of every file it loads.
 
 - A run continues with its pinned path. `beehave resume` takes no file, and `beehave run` ignores `--workflow` for an open run.
-- Each file must still have its pinned hash. A changed file refuses the run. To go on, restore the file, or cancel the run and start a new one.
+- Each file must still have its pinned hash. A changed file refuses the run. To go on, restore the file, run `beehave resume <item> --on-this-file` (next section), or cancel the run and start a new one.
 - A different workflow file never applies to a run that is open.
+
+#### Change a workflow file under an open run
+
+`beehave resume <item> --on-this-file` puts an open, failed or cancelled run on the workflow file as it is on disk now. The author runs it once, after the edit. An edit never moves a run by itself.
+
+- The command reads the workflow file and each file it loads, and stores that pin on the run. The run keeps its id and its finished steps, and replays them over the new file. A child run of the run takes the same pin.
+- A change after the step that the run reached goes on at once, and the run ends done on the new file.
+- A change before the reached step ends the run as failed at the first step that differs. The error is the one of the engine of the store, and it names the step. No new step runs, and nothing that the run wrote is undone. To finish the run, restore the file and run the command again.
+- A file that did not change is no error. A run that ended resumes as `beehave resume` does, and an open run is reopened.
+- A run of another build is refused, as `beehave resume` refuses it. Give `--on-this-build` and `--on-this-file` together to move the run and put it on the file in one move.
+- A run that is open is cancelled and reopened under `probe.lock`, as `--on-this-build` does it. The claim lease of the run must have ended.
+- A run that a changed file refused names the command in its error.
 
 #### Pinned scripts
 

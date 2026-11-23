@@ -25,11 +25,11 @@ const jsonModule = "json"
 // The application version holds those module versions, so an old run is not replayed by a build that changed a module that the run used.
 const stepsVersion = "star30"
 
-// runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned.
+// runStar runs `main(item)` of the workflow file of the run on one thread. The files are the bytes that the run pinned, or the bytes that the author adopted for it (pinOf).
 // Each builtin does its work in DBOS steps, so a replay of this function makes the same calls and gets the recorded results.
 // treeStart is the commit that the recorded step made the worktree of a round item at, and empty for any other item.
 func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login, treeStart string) (ItemResult, error) {
-	sources, err := workflow.Open(in.File, in.Files)
+	sources, err := e.openPinned(ctx, &in)
 	if err != nil {
 		return ItemResult{}, err
 	}
@@ -46,6 +46,24 @@ func (e *Engine) runStar(ctx dbos.Context, in ItemInput, login, treeStart string
 	return e.playScript(&script{e: e, ctx: ctx, in: in, login: login, treeStart: treeStart, severity: severityOfItem(fields), counts: map[string]int{}}, sources, fields)
 }
 
+// openPinned opens the files that the run replays against and sets them as the pin of in. The run plays the pin in force from here on, so a child that spawn starts copies that pin, not the one of the input.
+// A file that changed since the pin refuses the run, and the error names the command that adopts the file.
+func (e *Engine) openPinned(ctx dbos.Context, in *ItemInput) (*workflow.Sources, error) {
+	pin, err := e.pinInForce(ctx, *in)
+	if err != nil {
+		return nil, err
+	}
+
+	in.Files = pin
+
+	sources, err := workflow.Open(in.File, in.Files)
+	if err != nil {
+		return nil, fmt.Errorf("%w. To keep the finished steps and run the changed file, run beehave resume %s --on-this-file", err, in.Item)
+	}
+
+	return sources, nil
+}
+
 // itemFields reads the fields of an item from the tracker. A round item has no tracker issue, so it gets its id as its only field and no read.
 func (e *Engine) itemFields(ctx context.Context, project, item string) (map[string]string, error) {
 	if model.ItemKind(item) == model.KindRound {
@@ -58,6 +76,11 @@ func (e *Engine) itemFields(ctx context.Context, project, item string) (map[stri
 // playScript runs main, then the finish of the workflow file, and returns what the item came to.
 func (e *Engine) playScript(s *script, sources *workflow.Sources, fields map[string]string) (ItemResult, error) {
 	err := s.end(s.main(e.thread(s.in.Item), sources, fields))
+
+	// A replay that meets a step the file no longer makes ends the run at once. Its recorded writes stay, and no later step, undo or finish runs on a history that does not fit the file.
+	if replayMismatch(err) {
+		return ItemResult{Item: s.in.Item, Stopped: s.stopped, Value: s.value}, err
+	}
 
 	// A failed run undoes its finished writes. A stop, a cancel and a success undo nothing.
 	if err != nil && s.ctx.Err() == nil {

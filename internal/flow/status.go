@@ -427,10 +427,10 @@ func (c *Client) Resume(item string) error {
 	return err
 }
 
-// ResumeRun is Resume, or with onThisBuild ResumeOnThisBuild, and it returns the id of the run that it reopened: the newest run of the item when the call read it.
-func (c *Client) ResumeRun(item string, onThisBuild bool) (string, error) {
-	if onThisBuild {
-		return c.resumeHere(item)
+// ResumeRun is Resume, or with onThisBuild, onThisFile or both the move that ResumeOnThisBuild, ResumeOnThisFile or ResumeOnThisBuildAndFile makes. It returns the id of the run that it reopened: the newest run of the item when the call read it.
+func (c *Client) ResumeRun(item string, onThisBuild, onThisFile bool) (string, error) {
+	if onThisBuild || onThisFile {
+		return c.resumeMoved(item, onThisBuild, onThisFile)
 	}
 
 	return c.resumeRun(item)
