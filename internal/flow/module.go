@@ -49,8 +49,9 @@ func StepModule() step.Module {
 
 // recordsCountedStep is false for the builtins that record no counted step. merge names its steps batch:<name>.<kind>#<item>, and sandbox, struct,
 // paths_outside and closing_references record no step: the last two match text, so a replay computes the same answer from the same input.
+// patched records the marker DBOS.patch-<name>, a step of DBOS and no counted step of a module.
 func recordsCountedStep(builtin string) bool {
-	return !slices.Contains([]string{mergeKey, recordedSandbox, "struct", "paths_outside", "closing_references"}, builtin)
+	return !slices.Contains([]string{mergeKey, recordedSandbox, "struct", "paths_outside", "closing_references", "patched"}, builtin)
 }
 
 // stepDefs lists the builtins of this package. The names are the builtins of workflow.Builtins less json, which is the module of the Starlark library.
@@ -104,6 +105,7 @@ func runDefs() []builtinDef {
 		{name: "host_up", call: (*script).hostUp},
 		{name: "now", call: (*script).now},
 		{name: "paths_outside", call: pathsOutside},
+		{name: "patched", call: (*script).patched},
 		{name: "queue", call: (*script).queue},
 		{name: "sandbox", call: (*script).sandbox},
 		{name: "sleep", call: (*script).sleep},
