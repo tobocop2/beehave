@@ -105,14 +105,7 @@ func (s *scanner) config() *expand.Config {
 	}
 }
 
-// words expands each argument to the words a shell would run; a wrapper variable splits into its own words.
-func (s *scanner) words(u Unit, args []*syntax.Word) []string {
-	out, _ := s.namedWords(u, args)
-
-	return out
-}
-
-// namedWords is words with a second list of the same length: for a word that is a lone variable whose value could not be read, the name of that variable, else "".
+// namedWords expands each argument to the words a shell would run; a wrapper variable splits into its own words. It also returns a second list of the same length: for a word that is a lone variable whose value could not be read, the name of that variable, else "".
 func (s *scanner) namedWords(u Unit, args []*syntax.Word) ([]string, []string) {
 	out := make([]string, 0, len(args))
 	names := make([]string, 0, len(args))

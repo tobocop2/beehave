@@ -17,6 +17,8 @@ const (
 	sectionInputs   section = "Inputs"
 	sectionSiblings section = "Siblings"
 
+	newline       = "\n"
+	blanks        = " \t"
 	minHeadLength = 7
 	headShown     = 12
 	headerRows    = 2

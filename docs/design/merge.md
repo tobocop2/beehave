@@ -49,8 +49,7 @@ The `github` backend reads a log with `gh run view --job <number> --log-failed`.
 - `NeedsCommit` is true for a blocking finding. It is also true for any open finding when the `Policy` sets `NoFollowUps`.
 - `Standing.Compare` lets a review of an earlier commit stand for a head that holds the same tree.
 
-The round cut is the engine step `round_cut`. The merge audit is not part of the engine. It lives in `examples/remediation/tools/` and runs through the `remedy` binary. See [Remediation tools](#remediation-tools).
-
+The round cut is the engine step `round_cut`.
 ### Own work merges only after another step approved it
 
 [The trust boundary](trust.md#the-merge-checks-no-flag) describes the planned change: the forge requires the statuses `beehave/review` and `beehave/gate` at the head, and the `Approved` flag is deleted.
@@ -361,7 +360,7 @@ Every other member, and every member whose read failed, is a line of the result 
 
 - The one binary is `examples/remediation/tools/cmd/remedy`. `make remedy` makes `bin/remedy`, and `make build` makes it too. The release archive and the cask hold only `beehave`. A `command` step finds `remedy` on the `PATH` of the beehave process, so a round starts with `bin` on its `PATH`. See `examples/remediation/README.md`.
 - The package `remedy` holds the command table. `cmd/remedy` only passes the GitHub forge to `remedy.Main`, which wires the real git runner.
-- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only checks (`report`, `audit`, `papers`). The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
+- A `command` step runs `remedy <subcommand>` and reads `rc` and `stdout`, for the read-only check `report`. The gate list derive is `beehave check gate-list`. The forge writes of a round (the sync, the landing of a sync, the cut, the integration pull request, the board card and the takeover) are engine steps that run as the writer role: `round_sync`, `round_land`, `round_cut`, `integration_pull`, `board_card` and `pr_take`. The tool has no subcommand for the sync, the landing, the cut, the integration pull request, the board card or the takeover.
 
 The prompts of the example hold the text that a lane reads. `examples/remediation/prompts/` has one Markdown file for each step, and the `agent` step renders it. No Go code builds that text. The tools only judge a brief that a lane has written, in the package `examples/remediation/tools/brief`.
 
@@ -446,15 +445,6 @@ A held round starts no sync and no item in a later pass. It gathers and lands th
 
 When no sync held the round and no item can move, the question names each listed item, its state and the step of the owner: `beehave resume <item>` for a failed item, then `beehave cancel <item>` when the resume refuses the run, so the next pass starts a new attempt. A round with no item list gets the count of the rows in each state and the ids of the failed rows. The round starts no new attempt for a failed item on its own.
 
-### `remedy audit`
-
-`remedy audit authored <span>` and `remedy audit present <tip> <base>` run `audit`. The audit reads the merges of a range through git, with `-z` path lists.
-
-- `Authored` lists the paths of a merge that differ from every parent, as resolved or authored, with a mark on sensitive paths.
-- `Present` lists the lines a merge added that the tip lost, and the files deleted at the tip.
-
-A line that marks a finding is exit code 1. A range that git cannot read is a refusal, never a clean report.
-
 ### The takeover step `pr_take`
 
 `pr_take(pr, me, idle, grace, step)` runs `takeover`. It decides whether to take a pull request that somebody else holds.
@@ -522,16 +512,12 @@ A pass is exit code 0. A gate that holds the brief back is exit code 1, with the
 
 | Command | Checks | Exit 1 | Exit 2 |
 |---|---|---|---|
-| `remedy papers <base>..<head> [--globs <patterns>]` | Lists the source paths that the range changes | A source path | |
 | `remedy handoff <file> [--name <text>] [--transcript <file>] [--cap <tokens>]` | Checks a handoff | A refused handoff | |
 | `remedy authors <file> --email <address> --login <name>` | Checks `<sha> <email> <login>` lines against the identity of the owner | A commit of the owner under another address | A missing identity or an empty file |
 | `remedy spend <transcript> [--hours <n>] [--cap <tokens>]` | Prints the hour table and one row for each lane | A lane over the cap | |
-| `remedy job <script> --list <file> [--job-dir <folder>]` | Checks a host job against the gate list | A defect in the job | A gate list that cannot be read |
 | `remedy report <file> --head <sha>` | Checks the four tables of a lane report | A defect | |
 
-None of `papers`, `handoff`, `authors` and `spend` reads the state folder. None of `job` and `report` reads an environment variable.
-
-`--job-dir` names the folder that a sourced file is read from. When it is not given, it is the folder of the script.
+None of `handoff`, `authors` and `spend` reads the state folder. `report` reads no environment variable.
 
 ### `remedy size`
 

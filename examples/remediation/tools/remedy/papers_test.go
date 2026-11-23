@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/examples/remediation/tools/remedy"
-	"github.com/tobocop2/beehave/internal/model"
 )
 
 const (
@@ -26,65 +25,6 @@ func textFile(t *testing.T, name, text string) string {
 	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
 
 	return path
-}
-
-// changes is a fake git that answers every call with the changed paths.
-func changes(names string) remedy.Deps {
-	return remedy.Deps{Git: git(func([]string) model.CommandResult { return model.CommandResult{Stdout: names} })}
-}
-
-func TestPapers_ASourcePathIsExitCodeOne(t *testing.T) {
-	t.Parallel()
-
-	code, out, _ := run(t, changes("reports/proof.md\ncrates/a/src/lib.rs\n"), "papers", "A..B", "--globs", "crates/*/src/*")
-
-	assert.Equal(t, remedy.ExitDefect, code)
-	assert.Contains(t, out, "REFUSED: A..B changes 1 source path(s)")
-	assert.Contains(t, out, "crates/a/src/lib.rs")
-}
-
-func TestPapers_AMalformedPatternIsExitCodeTwo(t *testing.T) {
-	t.Parallel()
-
-	code, out, errOut := run(t, changes("src/a.rs\n"), "papers", "A..B", "--globs", "[")
-
-	assert.Equal(t, remedy.ExitRefused, code)
-	assert.Empty(t, out)
-	assert.Contains(t, errOut, `the pattern "[" is not valid`)
-}
-
-func TestPapers_NoGlobsTreatsDocumentsAsPapersAndPasses(t *testing.T) {
-	t.Parallel()
-
-	code, out, errOut := run(t, changes("docs/a.md\ndocs/a.txt\n"), "papers", "A..B")
-
-	assert.Equal(t, remedy.ExitPass, code)
-	assert.Equal(t, "OK: A..B changes no source path.\n", out)
-	assert.Empty(t, errOut)
-}
-
-func TestPapers_ARangeThatGitCannotReadIsExitCodeTwo(t *testing.T) {
-	t.Parallel()
-
-	deps := remedy.Deps{Git: git(func([]string) model.CommandResult { return model.CommandResult{ExitCode: 128} })}
-
-	code, out, errOut := run(t, deps, "papers", "nosuchref..HEAD")
-
-	assert.Equal(t, remedy.ExitRefused, code)
-	assert.Empty(t, out)
-	assert.Contains(t, errOut, "git cannot read the range nosuchref..HEAD")
-}
-
-func TestPapers_ABadRangeAndABadCallShowTheUsage(t *testing.T) {
-	t.Parallel()
-
-	for _, args := range [][]string{{"papers"}, {"papers", "HEAD"}, {"papers", "A..B", "extra"}, {"papers", "A..B", "--nope"}} {
-		code, out, errOut := run(t, changes(""), args...)
-
-		assert.Equal(t, remedy.ExitRefused, code, args)
-		assert.Empty(t, out, args)
-		assert.NotEmpty(t, errOut, args)
-	}
 }
 
 func TestHandoff_AWholeHandoffPasses(t *testing.T) {

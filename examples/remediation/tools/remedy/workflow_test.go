@@ -84,7 +84,7 @@ func TestWorkflow_SubcommandsAreReadFromCommandAndGateCalls(t *testing.T) {
 	src := `
 def main(item):
     command(name = "size", run = ["remedy", "size", "brief.md"])
-    gate(name = "check", run = ["remedy", "audit", "present", "tip", "base"])
+    gate(name = "check", run = ["remedy", "report", "report.md", "--head", "tip"])
     command(name = "other", run = ["make", "check"])
     gate(name = "plain")
     for _ in range(2):
@@ -93,5 +93,5 @@ def main(item):
 
 	got := subcommands(t, src)
 
-	assert.True(t, slices.Equal([]string{"size", "audit", "bake"}, got), "got %v", got)
+	assert.True(t, slices.Equal([]string{"size", "report", "bake"}, got), "got %v", got)
 }

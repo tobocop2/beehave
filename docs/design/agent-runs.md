@@ -95,7 +95,7 @@ The tap gives each new session id to the request at the line that holds it, so t
 
 The entries that the adapter reads go to the durable stream `agent` of the phase, redacted. The workflow builtin `stream` reads that stream for a child run, with the reader of `beehave status --follow` (see [`stream`](workflow-files.md#stream)).
 
-The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules and the job check](#shell-rules-and-the-job-check)).
+The shape is the one of the Claude Code headless page (https://code.claude.com/docs/en/headless). The shell rules live in `check/shell` (see [Shell rules](#shell-rules)).
 
 ### How the adapter reads a provider limit
 
@@ -128,18 +128,18 @@ The setting `forbid_commands` of an `agent` step is a list of finding kinds. A s
 
 | Kind | Refuses |
 |---|---|
-| `bulk-staging` | Bulk staging. See [Shell rules](#shell-rules-and-the-job-check). |
+| `bulk-staging` | Bulk staging. See [Shell rules](#shell-rules). |
 | `config-read` | The print of a file that holds a key. |
-| `delete-text` | Delete text in `echo`, `printf` or a heredoc. See [Shell rules](#shell-rules-and-the-job-check). |
+| `delete-text` | Delete text in `echo`, `printf` or a heredoc. See [Shell rules](#shell-rules). |
 | `env-override` | A change of the search path or of a shell start file. |
 | `git-author` | A commit author. |
 | `git-bypass` | A skipped git safeguard: no-verify, stash, a config write, a force-push, a delete of a remote branch. |
 | `git-write` | Each git command that changes a repository. See below. Opt-in. |
 | `laptop-copy` | A copy from this machine to another machine for a repository that is not private. See below. |
-| `local-delete` | A delete whose path is not a literal absolute path. See [Shell rules](#shell-rules-and-the-job-check). |
-| `opaque-command` | A command word the scan cannot read. See [Shell rules](#shell-rules-and-the-job-check). |
+| `local-delete` | A delete whose path is not a literal absolute path. See [Shell rules](#shell-rules). |
+| `opaque-command` | A command word the scan cannot read. See [Shell rules](#shell-rules). |
 | `protected-path` | A write inside a protected directory. See below. Needs `protect_paths`. |
-| `remote-delete` | Any delete inside an `ssh`, `gcloud compute ssh` or wrapper command. See [Shell rules](#shell-rules-and-the-job-check). |
+| `remote-delete` | Any delete inside an `ssh`, `gcloud compute ssh` or wrapper command. See [Shell rules](#shell-rules). |
 | `unparsed` | A line of a command that does not parse as shell. |
 | `zsh-expansion` | The zsh-only forms `${(flags)x}`, `${=x}`, `${~x}` and `${^x}` outside single quotes. |
 
@@ -322,7 +322,7 @@ The setting `data` of an `agent` step is a dict of values that the agent reads f
 
 The prompt tells the agent to read the file with the shell and to refuse when the file is missing. The sandbox reads this one file: see [the sandbox](sandbox.md#the-data-file).
 
-## Shell rules and the job check
+## Shell rules
 
 ### check/shell
 
@@ -351,20 +351,6 @@ An unreadable variable stays `$name` text. If it is the command word, or the fir
 
 A value that depends on a variable being read is kept for the current lookup only. The number of values worked out for one use does not grow with the number of uses. The time for a script still grows with its size.
 
-### The job check
-
-`job.Script`, in `examples/remediation/tools/job`, reads a job through the scan of `check/shell`. It:
-
-- applies the bulk staging rule;
-- refuses a test command with no `timeout` in front of it. A test command is `cargo test`, `cargo nextest`, `pytest`, `py.test`, `bats` or `make test*`.
-
-The check reads a string that a shell, `ssh`, `eval`, a container runner or `uv run` runs. It reads a heredoc that a shell reads or that a later command runs as a file.
-
-`job.Script` also refuses two kinds of text:
-
-- A line that does not parse as shell. The lines that do parse are still judged, and so is a line that only ends in an operator, such as `git add -A &&`.
-- A command the check cannot read: `env -S`, `find -exec sh -c`, and a command word that holds a variable or a substitution when the words after it would be a staging or a delete if the word were `git` or `rm`, such as `$g add -A` and `$x -rf "$d"`. When the variable is the `rm` itself, a delete needs a recursive or force option to count. A command word that hides no rule, such as `$ROOT/bin/run.sh`, passes.
-
 ## Lane papers
 
 ### Where the checks live
@@ -374,17 +360,14 @@ The engine has one check package: `check/shell`, for the shell scan. The other c
 | Check | Run by |
 |---|---|
 | The gate list derive | `beehave check gate-list` |
-| The job check | `remedy job` |
 | The report check | `remedy report` |
-| The papers check | `remedy papers` |
 | The handoff check | `remedy handoff` |
 | The author check | `remedy authors` |
 | The spend tables | `remedy spend` |
 
-They live in `examples/remediation/tools/gate`, `examples/remediation/tools/job`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. See [Remediation tools](merge.md#remediation-tools).
+They live in `examples/remediation/tools/gate`, `examples/remediation/tools/papers` and `examples/remediation/tools/transcript`. See [Remediation tools](merge.md#remediation-tools).
 
 - Each keeps its own copy of the small text helpers it uses. They share only the `Refusal` type of `examples/remediation/tools/check`.
-- The packages `gate` and `job` read shell text through `check/shell` (`ParseUnits`, `Scan` and a `Reader` of command words).
 - The package `papers` reads the context of a lane through `transcript.LaneContext` of the tools.
 - Each check returns its lines and a verdict, or an error that is a `Refusal` when it cannot run. A refusal carries the lines found before it stopped.
 - `Report` and `Authors` cannot refuse. `Authors` returns the exit code, because its two refusals (2 and 3) differ.
@@ -408,19 +391,15 @@ The burn record reads the transcript of the orchestrator. It counts the main thr
 - A transcript line whose `message` or `usage` is not an object is skipped, and so is a line with `NaN` or `Infinity`.
 - A transcript key matches by exact case.
 
-### The papers check
+### The glob dialect
 
-The papers check lists the source paths that a revision range changes. A lane of proof and papers changes none. A range that starts with `-` is refused, so git never reads it as an option.
-
-The globs use the same `github.com/bmatcuk/doublestar/v4` dialect as [`allow_paths`](#the-setting-allow_paths). A pattern has three forms that `fnmatch` does not have:
+The globs of [`allow_paths`](#the-setting-allow_paths) use the `github.com/bmatcuk/doublestar/v4` dialect. A pattern has three forms that `fnmatch` does not have:
 
 - `[!x]` and `[^x]` negate a set.
 - `{a,b}` chooses between patterns, so a literal brace is `\{` or `\}`.
 - `\` escapes the next character, so a literal backslash is `\\` and `\*` is a literal star.
 
 A pattern that does not parse is a refusal that names the pattern. Examples are an unclosed `[` or `{`, a lone `[!` and a trailing `\`.
-
-The package `papers` declares its own `runner` interface for git, so it does not import `forge`.
 
 ### The author check
 
@@ -465,40 +444,3 @@ The command of a derived step is its whole record: the run text, then each part 
 
 A `--map` with no `--steps` is exit code 2, and the message names `gate_steps`. The round refuses a project with `gate_files` and no `gate_steps` before it runs the command. A refused step needs no key, because it never runs. Add a refused step, such as the lint action, to `gate_steps` by hand.
 
-#### The job check
-
-When a step passes:
-
-- A row with the command `see <file>` is an unstated step. The job passes when it prints `name=<step>`.
-- Any other step passes when one command of the job holds every literal part of the gate command, in order, around the `<slot>` parts.
-
-A command here is one of:
-
-- a simple command with its redirects;
-- a pipeline or list (`&&`, `||`, `;`, `|`);
-- a subshell;
-- a compound command that sits on one line (`time cargo fmt`, `{ cmd; }`, `if`, `while`, `for`, `case`, `coproc`), with its keyword;
-- one line of a here-document.
-
-A compound command on several lines is not one command. The check keeps the text of the outermost command of a chain once, so its cost is linear in the length of the job.
-
-Other rules:
-
-- A line that runs a step and also declares a skip, such as `cargo fmt; echo "GATE-SKIP fmt: x"`, counts the run and records the skip.
-- Words join on blank and tab only, so a no-break space does not join them.
-- A comment at the end of a line is not a command.
-- The skip reason and the fixed-status message print the text of the command, not of its whole line.
-- The rows and sections are read as text with `splitRow`. The job is read with the parser of `shell.ParseUnits`. The `let` rule parses its arithmetic text with the same parser.
-
-A `GATE-SKIP <step>: <reason>` line declares a skip. It needs:
-
-- a reason;
-- a step of the list;
-- a `command -v` check when the reason names a missing tool;
-- a final marker with `gate=partial`.
-
-### The exit marker rule
-
-The exit marker rule finds a print command that prints `rc=` followed by a literal number. A print command is `echo`, `printf`, a here-document or a here-string, also inside a shell string argument.
-
-A variable counts as a literal when one assignment sets it, to a number, and nothing else can change it: no arithmetic, `read`, `for`, `printf -v`, `eval` or sourced file. The caller passes the function that reads sourced files. A file that cannot be read, or a path that only the shell can resolve, makes every variable unknown.
