@@ -2,6 +2,7 @@
 # Week 46 has a new version of the api library, but a bump pull request of the repository is still open, so api skips and no run starts.
 # Week 47 has no open pull request any more, and api gets a second pull request. Every skip costs no run, no update agent and no worktree.
 [!exec:jq] skip
+[!exec:perl] skip
 [!exec:sha256sum] [!exec:shasum] skip
 isolate
 maintinit
