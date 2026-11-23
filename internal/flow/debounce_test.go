@@ -269,7 +269,8 @@ func TestDebounce_AKeyThatAnotherRunHoldsIsReportedAndStartsNothing(t *testing.T
 func TestDebounce_AStreamOfStartsCannotHoldTheRunBackBeyondTenWindows(t *testing.T) {
 	t.Parallel()
 
-	const window = 200 * time.Millisecond
+	// The window is long against the pause between two starts, so a slow machine does not let the window pass by itself.
+	const window = 500 * time.Millisecond
 
 	h := newHarness(t)
 	h.engine(t)
@@ -283,7 +284,7 @@ func TestDebounce_AStreamOfStartsCannotHoldTheRunBackBeyondTenWindows(t *testing
 	began := time.Now()
 
 	// Each pass is a later start in the window. The run must start although the stream goes on.
-	for range 100 {
+	for range 1000 {
 		if runs := replaceRuns(t, client, testItem); len(runs) == 1 && !runs[0].delayed() {
 			break
 		}
@@ -291,7 +292,7 @@ func TestDebounce_AStreamOfStartsCannotHoldTheRunBackBeyondTenWindows(t *testing
 		_, err := client.debounce(in, 1)
 		require.NoError(t, err)
 
-		time.Sleep(window / 2)
+		time.Sleep(window / 25)
 	}
 
 	runs := replaceRuns(t, client, testItem)
