@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/stretchr/testify/assert"
@@ -106,6 +107,24 @@ func placeEngine(t *testing.T, declared []string) (*Engine, placeGate, *placeHos
 	gated := newPlaceGate(declared[0])
 
 	return launchHostEngine(t, h, gated), gated, hosts
+}
+
+func TestPlaceOnHost_AGateWaitsForThePlacementLockBeforeItReadsTheHostsAndQueuesItsJob(t *testing.T) {
+	t.Parallel()
+
+	engine, gated, hosts := placeEngine(t, []string{"A", "B"})
+	close(gated.release)
+
+	engine.placement.Lock()
+
+	done := queueHostGate(engine, "project-one", "1", "A", "")
+
+	require.Never(t, func() bool { return gated.started.Load() > 0 || hosts.readCount() > 0 }, 3*storePoll, 100*time.Millisecond, "the lock is held: no host is read and no job is queued")
+
+	engine.placement.Unlock()
+
+	require.NoError(t, receive(t, done).err)
+	assert.Equal(t, []string{"project-one/A"}, gated.where())
 }
 
 func TestPlaceOnHost_AFullHostSendsTheNextGateToTheFreeHost(t *testing.T) {
