@@ -202,7 +202,7 @@ func runFake(adapter agent.Adapter, dir string, out io.Writer, change ...func(*a
 		set(&spec)
 	}
 
-	version := func(context.Context, string, []string) (string, error) { return adapter.Profile().SupportedFrom, nil }
+	version := func(context.Context, []string, []string) (string, error) { return adapter.Profile().SupportedFrom, nil }
 
 	return agent.Runner{Version: version}.Run(context.Background(), spec)
 }

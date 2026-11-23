@@ -22,16 +22,25 @@ func cliThatPrints(t *testing.T, script string) string {
 func TestRunVersion_ReturnsWhatTheCLIPrints(t *testing.T) {
 	t.Parallel()
 
-	out, err := runVersion(t.Context(), cliThatPrints(t, "#!/bin/sh\necho \"cli 1.2.3 $*\"\n"), []string{"PATH=/usr/bin:/bin"})
+	out, err := runVersion(t.Context(), []string{cliThatPrints(t, "#!/bin/sh\necho \"cli 1.2.3 $*\"\n")}, []string{"PATH=/usr/bin:/bin"})
 
 	require.NoError(t, err)
 	assert.Equal(t, "cli 1.2.3 --version\n", out)
 }
 
+func TestRunVersion_AWordAfterTheProgramIsAnArgumentBeforeTheVersionFlag(t *testing.T) {
+	t.Parallel()
+
+	out, err := runVersion(t.Context(), []string{cliThatPrints(t, "#!/bin/sh\necho \"cli $*\"\n"), "one word", "two"}, []string{"PATH=/usr/bin:/bin"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "cli one word two --version\n", out)
+}
+
 func TestRunVersion_AFailingCLIReturnsItsExitCodeAndText(t *testing.T) {
 	t.Parallel()
 
-	_, err := runVersion(t.Context(), cliThatPrints(t, "#!/bin/sh\necho 'no login' >&2\nexit 3\n"), []string{"PATH=/usr/bin:/bin"})
+	_, err := runVersion(t.Context(), []string{cliThatPrints(t, "#!/bin/sh\necho 'no login' >&2\nexit 3\n")}, []string{"PATH=/usr/bin:/bin"})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exited with code 3")

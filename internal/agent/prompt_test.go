@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -83,6 +84,35 @@ func TestRunner_APrefixIsOneProgramWithOneArgumentForEachWordAndTheCLIFollowsIt(
 
 	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
 	assert.Equal(t, "one word|two", record(t, records, "wrapped"))
+	assert.Contains(t, record(t, records, "args"), "-p --output-format")
+}
+
+// supplyScript is a prefix that supplies the CLI: it drops its tag and the CLI name, then starts the CLI that the file "real" in its own folder names.
+const supplyScript = `#!/bin/sh
+here=$(dirname "$0")
+shift 2
+exec "$(cat "$here/real")" "$@"
+`
+
+func TestRunner_APrefixThatSuppliesTheCLIPassesTheLookupAndTheVersionProbeThroughThePrefix(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	f, records := launchFixture(t, launchAdapter{Adapter: ranged{claude.New(nil)}, launch: promptLaunch(agent.Launch{Prefix: []string{"supply", "tag"}})})
+	supplier := t.TempDir()
+	require.NoError(t, exectest.Write(filepath.Join(supplier, "supply"), supplyScript))
+	require.NoError(t, os.WriteFile(filepath.Join(supplier, "real"), []byte(filepath.Join(records, "claude")), 0o600))
+	f.spec.Env["PATH"] = supplier + ":/bin:/usr/bin"
+
+	var probed []string
+
+	reader := func(_ context.Context, command, _ []string) (string, error) {
+		probed = command
+
+		return "3.1.0", nil
+	}
+
+	got := agent.Runner{Version: reader}.Run(context.Background(), f.spec)
+
+	require.Equal(t, agent.OutcomeExited, got.Outcome, got.Note)
+	assert.Equal(t, []string{filepath.Join(supplier, "supply"), "tag", "claude"}, probed)
 	assert.Contains(t, record(t, records, "args"), "-p --output-format")
 }
 

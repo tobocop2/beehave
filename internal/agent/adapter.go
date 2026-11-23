@@ -123,7 +123,7 @@ type PromptMode int
 const (
 	// PromptStdin sends the prompt on standard input.
 	PromptStdin PromptMode = iota
-	// PromptArgument puts the prompt in one argument, the last one. The prompt shows in the process list of the machine.
+	// PromptArgument puts the prompt in one argument, the last one. The prompt shows in the process list of the machine, and the argument limit of the system bounds it.
 	PromptArgument
 	// PromptFile writes the prompt to a file in the run folder and puts the path of the file in the last argument.
 	PromptFile
@@ -133,7 +133,8 @@ const (
 // Prompt says how the prompt reaches the CLI. For PromptArgument and PromptFile the runner appends one argument after every other argument, so a flag that
 // names the prompt goes last in Args. The file of PromptFile is beehave-prompt.txt in the run folder, has mode 0600 and is removed with the folder when the run ends. A launch file of that name is replaced.
 // Prefix is a list of words that the runner puts before the CLI on the command line, such as a wrapper that sets up an environment. The first word is looked
-// up on PATH. Each word is one argument and no shell reads the line. The probe of the version of the CLI does not use the prefix.
+// up on PATH, and the runner does not look up the CLI itself: the program of the prefix finds it by name. Each word is one argument and no shell reads the line.
+// The probe of the version of the CLI runs the prefix, then the CLI, then --version.
 // Args are appended to the command line. Env is added to the environment after the allow-list; it never replaces a login variable or the token.
 // Files maps a path inside the run folder to its content. The runner writes them before the CLI starts, with mode 0600 in a folder of mode 0700.
 // A path must be local: no absolute path and no "..". The runner removes the folder when the run ends.

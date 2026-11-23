@@ -139,9 +139,9 @@ func TestRunner_ARunNeedsAVersionInTheSupportedRangeWithOrWithoutAGuard(t *testi
 }
 
 func TestRunner_ARunWithAnUnreadableVersionDoesNotStartWhenTheProfileHasARange(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
-	failing := func(context.Context, string, []string) (string, error) { return "", errors.New("no such file") }
+	failing := func(context.Context, []string, []string) (string, error) { return "", errors.New("no such file") }
 
-	for name, reader := range map[string]func(context.Context, string, []string) (string, error){"no number": seen("cli next"), "no output": failing} {
+	for name, reader := range map[string]func(context.Context, []string, []string) (string, error){"no number": seen("cli next"), "no output": failing} {
 		f := newFixture(t, "claude", claude.Name, "")
 		f.spec.Adapter = ranged{f.spec.Adapter}
 
@@ -155,7 +155,7 @@ func TestRunner_ARunWithAnUnreadableVersionDoesNotStartWhenTheProfileHasARange(t
 func TestRunner_ARunWithNoSupportedRangeAndNoSandboxNeverReadsTheVersion(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	f := newFixture(t, "claude", claude.Name, "")
 
-	reader := func(context.Context, string, []string) (string, error) { return "", errors.New("must not run") }
+	reader := func(context.Context, []string, []string) (string, error) { return "", errors.New("must not run") }
 
 	got := agent.Runner{Version: reader}.Run(context.Background(), f.spec)
 

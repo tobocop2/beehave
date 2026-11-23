@@ -161,11 +161,12 @@ type Timer interface {
 
 // Runner starts agent CLIs. AfterFunc starts the idle timer and the total timer; the zero value uses time.AfterFunc.
 // Version reads the version of a CLI before a sandboxed run, and OS names the operating system. Their zero values run the CLI with --version and use this system.
+// Version gets the words that start the CLI (the prefix of the launch, then the CLI) and adds --version itself.
 // Temp is the folder in which a sandboxed run gets its own temporary folder; the zero value is /tmp.
 // Folders is the set of the temporary folders that this process made. The runners of one process share one. A runner with none keeps every folder of a live pid, this process included.
 type Runner struct {
 	AfterFunc func(d time.Duration, fire func()) Timer
-	Version   func(ctx context.Context, binary string, env []string) (string, error)
+	Version   func(ctx context.Context, command, env []string) (string, error)
 	OS        string
 	Temp      string
 	Folders   *fstree.Folders
@@ -296,11 +297,6 @@ type timers struct {
 }
 
 func execute(ctx context.Context, spec Spec, p Profile, clock timers, version versionOf, where tempPlace) Result {
-	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
-	if err != nil {
-		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
-	}
-
 	runDir, err := os.MkdirTemp("", "beehave-run-") // mode 0700
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: fmt.Sprintf("cannot make the run folder for %s: %v", p.Binary, err)}
@@ -315,7 +311,7 @@ func execute(ctx context.Context, spec Spec, p Profile, clock timers, version ve
 
 	defer remove()
 
-	return launchRun(ctx, spec, p, binary, runDir, clock, version)
+	return launchRun(ctx, spec, p, runDir, clock, version)
 }
 
 // tempPlace is where a sandboxed run makes its temporary folder: the root of the folders of the users, and the set of the folders that this process made.
@@ -345,21 +341,20 @@ func withTemp(spec Spec, binary string, where tempPlace) (Spec, func(), string) 
 }
 
 // launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
-func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, clock timers, version versionOf) Result {
-	launch := launchOf(spec, runDir)
-
-	if problem := cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies)); problem != "" {
+func launchRun(ctx context.Context, spec Spec, p Profile, runDir string, clock timers, version versionOf) Result {
+	launch, words, problem := launchWords(spec, p, runDir)
+	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
 	env := envFor(spec, p, launch.Env)
 
-	problem, printed := versionProblem(ctx, spec, p, binary, env, version)
+	problem, printed := versionProblem(ctx, spec, p, words, env, version)
 	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
-	cmd, problem := commandOf(ctx, spec, launch, runDir, binary, argsOf(spec, p, launch, versionArgs(p, printed)), env)
+	cmd, problem := commandOf(ctx, spec, launch, runDir, words, argsOf(spec, p, launch, versionArgs(p, printed)), env)
 	if problem != "" {
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
@@ -368,20 +363,28 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 	return withGuardProof(runCommand(ctx, spec, cmd, clock.idle), runDir, launch.Loaded).AddNote(note)
 }
 
-// commandOf returns the command of the run with the environment env: the prompt in the place that the launch names, and the prefix of the launch before the CLI.
+// launchWords returns the launch of the run and the words that start the CLI. It finds the programs first, then writes the files of the launch into runDir.
 // It returns why it cannot, or "".
-func commandOf(ctx context.Context, spec Spec, launch Launch, runDir, binary string, args, env []string) (*exec.Cmd, string) {
+func launchWords(spec Spec, p Profile, runDir string) (Launch, []string, string) {
+	launch := launchOf(spec, runDir)
+
+	words, problem := commandWords(launch.Prefix, spec.Env["PATH"], p.Binary)
+	if problem != "" {
+		return Launch{}, nil, problem
+	}
+
+	return launch, words, cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies))
+}
+
+// commandOf returns the command of the run with the environment env: the words that start the CLI, then the arguments, with the prompt in the place that the
+// launch names. It returns why it cannot, or "".
+func commandOf(ctx context.Context, spec Spec, launch Launch, runDir string, words, args, env []string) (*exec.Cmd, string) {
 	stdin, args, problem := placePrompt(spec.Prompt, launch.Prompt, runDir, args)
 	if problem != "" {
 		return nil, problem
 	}
 
-	program, args, problem := withPrefix(launch.Prefix, spec.Env["PATH"], binary, args)
-	if problem != "" {
-		return nil, problem
-	}
-
-	cmd := proc.GroupCommand(ctx, program, args, spec.Dir)
+	cmd := proc.GroupCommand(ctx, words[0], slices.Concat(words[1:], args), spec.Dir)
 	cmd.Env, cmd.Stdin = env, stdin
 
 	return cmd, ""
@@ -408,19 +411,24 @@ func placePrompt(prompt string, mode PromptMode, runDir string, args []string) (
 	}
 }
 
-// withPrefix returns the program and the arguments of a run that starts with the words of prefix: the first word is the program, and the CLI and its
-// arguments follow the other words. An empty prefix changes nothing. It returns why it cannot find the first word, or "".
-func withPrefix(prefix []string, path, binary string, args []string) (string, []string, string) {
+// commandWords returns the words that start the CLI. With no prefix it is the CLI, found on PATH. With a prefix it is the first word of the prefix, found on
+// PATH, then the other words, then the name of the CLI, which the program of the prefix finds. It returns why a program is not installed, or "".
+func commandWords(prefix []string, path, cli string) ([]string, string) {
 	if len(prefix) == 0 {
-		return binary, args, ""
+		program, err := proc.LookPath(cli, path)
+		if err != nil {
+			return nil, cli + " is not installed. Install it and put it on PATH."
+		}
+
+		return []string{program}, ""
 	}
 
 	program, err := proc.LookPath(prefix[0], path)
 	if err != nil {
-		return "", nil, prefix[0] + " is not installed, and the launch of the agent puts it before the CLI. Install it and put it on PATH."
+		return nil, prefix[0] + " is not installed, and the launch of the agent puts it before the CLI. Install it and put it on PATH."
 	}
 
-	return program, slices.Concat(prefix[1:], []string{binary}, args), ""
+	return slices.Concat([]string{program}, prefix[1:], []string{cli}), ""
 }
 
 // beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none. The total timer stops while it runs and
