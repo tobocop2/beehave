@@ -297,7 +297,7 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 
 #### The build_host key
 
-The key `build_host` is the one declaration of the hosts of a project: a name, or a list of names that share the `host` block. The first name is the default.
+The key `build_host` is the one declaration of the hosts of a project: a name, or a list of names that share the `host` block. The first name is the default. The gate key holds the whole list, so a pass on one host is reused on the others. Every host in one list must therefore match in architecture and toolchain.
 
 - A run chooses another with the `host` argument of `host_up`, and the step records the cluster. A call of `host_up` with no name records the default host.
 - A run that never calls `host_up` has its gates placed: each gate goes to the declared host that is up and has the most free gate slots, and the first declared host wins a tie (see the gate design, `gate:place`). To keep the old behaviour, declare one host or call `host_up`.

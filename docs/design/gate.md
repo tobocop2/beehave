@@ -70,7 +70,7 @@ A project that declares more than one host in `build_host`, with a run that call
 
 A lock covers the read of the free slots and the queueing of the job, so two gates never see the same free slot. One engine owns one state folder, so the lock does not reach a second engine with another state folder: two such engines can fill one host. A gate that queued on a host stays there, even if another host frees first.
 
-The key of a gate holds the list of declared hosts and not the host that ran it, so a pass of one tree on one declared host stands for the same tree on another.
+The key of a gate holds the list of declared hosts and not the host that ran it, so a pass of one tree on one declared host stands for the same tree on another. Every host in one list must match in architecture and toolchain.
 
 Each job works in its own folder on the host, `beehave-gate-<project>-<head>` under the work root. The job id that the host returns holds that folder. When the job ends, the wait banks the work in that folder only, so the bank of one job never reads the clone of another job. A job with no folder banks the whole work root.
 
