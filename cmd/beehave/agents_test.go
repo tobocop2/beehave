@@ -614,6 +614,34 @@ func TestAgents_TheCapsOfTheConfigGoToTheSpecOfEveryRun(t *testing.T) {
 	assert.InDelta(t, 1.5, f.spec.MaxBudget, 0)
 }
 
+func TestAgents_TheContextLimitOfTheStepAndTheWindowOfTheConfigGoToTheSpec(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+	f.agents.contextWindow = 200000
+	req := request()
+	req.MaxContextPercent = 75
+
+	_, err := f.agents.Run(t.Context(), req)
+
+	require.NoError(t, err)
+	assert.Equal(t, 75, f.spec.MaxContextPercent)
+	assert.Equal(t, int64(200000), f.spec.ContextWindow)
+}
+
+func TestAgents_ARunThatTheContextLimitStoppedKeepsItsSessionAndTextAndIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	f := newAgentFixture("session=s1\ntext=halfway\n", agent.Result{Outcome: agent.OutcomeContextCap, ExitCode: -1})
+
+	got, err := f.agents.Run(t.Context(), request())
+
+	require.NoError(t, err)
+	assert.Equal(t, agent.OutcomeContextCap, got.Outcome)
+	assert.Equal(t, "s1", got.Session)
+	assert.Equal(t, "halfway", got.Text)
+}
+
 func TestAgents_TheCostOfTheResultLineIsTheCostOfTheRunWhetherOrNotACapStoppedIt(t *testing.T) {
 	t.Parallel()
 

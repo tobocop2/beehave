@@ -158,7 +158,17 @@ The severity is the field `severity` of the item (`P0` to `P3`, or `P?`). The ru
 
 #### Turn and budget stops
 
-When the agent CLI stops a run at `agents.max_turns` or `agents.max_budget_usd`, the step does not fail. Its output `stop` is `turns` or `budget`, and the workflow decides what follows.
+When the agent CLI stops a run at `agents.max_turns` or `agents.max_budget_usd`, the step does not fail. Its output `stop` is `turns` or `budget`, and the workflow decides what follows. A run that reaches its context limit has the output `stop` `context` (see the next section).
+
+#### Context stop
+
+The keyword `max_context_percent` of the `agent` call takes a whole number from 0 to 100. 0, or no keyword, sets no limit. When the context of the run reaches that share of `agents.context_window_tokens`, the runner stops the agent and the output `stop` is `context`. The step does not fail.
+
+- The context is the last turn of the main agent: `input_tokens` plus `cache_read_input_tokens` plus `cache_creation_input_tokens` of the assistant line. A sub-agent turn does not count.
+- The window is `agents.context_window_tokens`, which defaults to 200000. A model with a larger window needs that key set, or the limit fires at a smaller share of the real window.
+- The check runs when a line arrives, so a run can pass the limit by one turn. The first turn at or past the limit stops the run, even if a later turn would shrink the context.
+- An agent CLI that reports no such figure never reaches the limit. Claude Code reports it. OpenCode does not, so the limit has no effect on it.
+- The workflow decides what follows. beehave does not start a replacement lane or write a hand-off note: the library does not give a workflow a hand-off.
 
 `beehave resume` starts a new agent run with the same cap for each run. The cap of one agent run does not count across resumes. For the cap of an item run, see [Cost budgets](#cost-budgets).
 

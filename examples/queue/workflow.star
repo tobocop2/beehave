@@ -41,7 +41,7 @@ def work(item):
         inputs = {"item": item, "base": env("BASE")},
     )
 
-    # A cap ended the run (the output `stop` is "turns" or "budget"), so the pull request may be half done. The item fails with the reason.
+    # A cap ended the run (the output `stop` is "turns", "budget" or "context"), so the pull request may be half done. The item fails with the reason.
     if implement.stop != "":
         fail("REFUSE: the implement step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (implement.stop, item.id, item.id, item.id))
 

@@ -7,7 +7,7 @@ load("@beehave//review_fix.star", "is_void", "void_names")
 VOID_LIMIT = 3
 
 def capped(step, name, item):
-    """Stops the item when a cap ended the agent step. The output `stop` is "turns" or "budget", and the work of a capped run may be half done."""
+    """Stops the item when a cap ended the agent step. The output `stop` is "turns", "budget" or "context", and the work of a capped run may be half done."""
     if step.stop != "":
         fail("REFUSE: the %s step stopped at the %s cap before it finished. Raise the cap or split the item. A plain beehave resume replays this stop. To start the item again, run beehave resume %s, then beehave cancel %s, then beehave run %s." % (name, step.stop, item.id, item.id, item.id))
 
