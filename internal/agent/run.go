@@ -48,6 +48,8 @@ const (
 	// runDirMode and launchFileMode are the modes of the folders and the files that a launch writes.
 	runDirMode     = 0o700
 	launchFileMode = 0o600
+	// promptFileName is the file of PromptFile in the run folder.
+	promptFileName = "beehave-prompt.txt"
 	// shortTemp is the folder that holds the folder of the user for the temporary folders of sandboxed runs, and tempPrefix starts its name. A short path
 	// keeps the socket paths of the shell under the limit of 104 bytes on macOS, and the path of the CLI home under the limit of cliTempLimit.
 	shortTemp  = "/tmp"
@@ -169,7 +171,7 @@ type Runner struct {
 	Folders   *fstree.Folders
 }
 
-// Run starts the agent, sends the prompt on stdin and copies redacted stdout lines to Spec.Log.
+// Run starts the agent, gives it the prompt the way that the launch says (Launch.Prompt) and copies redacted stdout lines to Spec.Log.
 // The agent runs in its own process group, which dies on a timeout, a cancel or the end of the run.
 func (r Runner) Run(ctx context.Context, spec Spec) Result {
 	p, refusal := prepare(spec, cmp.Or(r.OS, hostOS()))
@@ -357,13 +359,68 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
+	cmd, problem := commandOf(ctx, spec, launch, runDir, binary, argsOf(spec, p, launch, versionArgs(p, printed)), env)
+	if problem != "" {
+		return Result{Outcome: OutcomeNotStarted, Note: problem}
+	}
+
 	note := beforeStart(ctx, spec, clock.total)
-	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch, versionArgs(p, printed)), spec.Dir)
-
-	cmd.Env = env
-	cmd.Stdin = strings.NewReader(spec.Prompt)
-
 	return withGuardProof(runCommand(ctx, spec, cmd, clock.idle), runDir, launch.Loaded).AddNote(note)
+}
+
+// commandOf returns the command of the run with the environment env: the prompt in the place that the launch names, and the prefix of the launch before the CLI.
+// It returns why it cannot, or "".
+func commandOf(ctx context.Context, spec Spec, launch Launch, runDir, binary string, args, env []string) (*exec.Cmd, string) {
+	stdin, args, problem := placePrompt(spec.Prompt, launch.Prompt, runDir, args)
+	if problem != "" {
+		return nil, problem
+	}
+
+	program, args, problem := withPrefix(launch.Prefix, spec.Env["PATH"], binary, args)
+	if problem != "" {
+		return nil, problem
+	}
+
+	cmd := proc.GroupCommand(ctx, program, args, spec.Dir)
+	cmd.Env, cmd.Stdin = env, stdin
+
+	return cmd, ""
+}
+
+// placePrompt returns the standard input of the run and the arguments of the run with the prompt in the place that the mode names. Only PromptStdin has an
+// input. The file of PromptFile is promptFileName in runDir, with mode 0600, and the run removes runDir. It returns why it cannot, or "".
+func placePrompt(prompt string, mode PromptMode, runDir string, args []string) (io.Reader, []string, string) {
+	switch mode {
+	case PromptStdin:
+		return strings.NewReader(prompt), args, ""
+	case PromptArgument:
+		return nil, append(args, prompt), ""
+	case PromptFile:
+		path := filepath.Join(runDir, promptFileName)
+
+		if err := os.WriteFile(path, []byte(prompt), launchFileMode); err != nil {
+			return nil, nil, fmt.Sprintf("cannot write the prompt file in the run folder, so the run does not start: %v", err)
+		}
+
+		return nil, append(args, path), ""
+	default:
+		return nil, nil, fmt.Sprintf("the launch of the agent has the unknown prompt mode %d, so the run does not start.", mode)
+	}
+}
+
+// withPrefix returns the program and the arguments of a run that starts with the words of prefix: the first word is the program, and the CLI and its
+// arguments follow the other words. An empty prefix changes nothing. It returns why it cannot find the first word, or "".
+func withPrefix(prefix []string, path, binary string, args []string) (string, []string, string) {
+	if len(prefix) == 0 {
+		return binary, args, ""
+	}
+
+	program, err := proc.LookPath(prefix[0], path)
+	if err != nil {
+		return "", nil, prefix[0] + " is not installed, and the launch of the agent puts it before the CLI. Install it and put it on PATH."
+	}
+
+	return program, slices.Concat(prefix[1:], []string{binary}, args), ""
 }
 
 // beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none. The total timer stops while it runs and

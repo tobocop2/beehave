@@ -45,7 +45,12 @@ A step author must know these limits:
 
 ### The process of the CLI
 
-The prompt goes on stdin, so it never shows in a process list.
+The launch of an adapter says how the prompt reaches the CLI. The default is stdin, so the prompt never shows in a process list. Both adapters use it.
+
+- `argument` puts the prompt in one argument, the last one, after every other argument. It shows in the process list of the machine. A flag that names the prompt goes last in the arguments of the launch.
+- `file` writes the prompt to `beehave-prompt.txt` in the run folder and puts the path in the last argument. The file has mode 0600, the folder has mode 0700, and the runner removes the folder when the run ends.
+
+The launch can also set a prefix: a list of words that the runner puts before the CLI. The first word is a program found on PATH, and each other word is one argument. No shell reads the command line. The probe of the version of the CLI does not use the prefix.
 
 The CLI gets an allowlisted environment:
 
