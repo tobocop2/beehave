@@ -267,7 +267,13 @@ A project selects a host with `build_host` and the `host` block.
 
 #### Slot classes
 
-A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one state folder, which has one `dbos.db`, like the gate queue. Two beehave processes with separate state folders each run the count.
+A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one host. The engine queue limits the jobs of one state folder, which has one `dbos.db`. The job script on the host limits the jobs of every engine, so two engines with separate state folders share the count on the host.
+
+- The job script takes one of `count` lock files with `flock` before the command runs. The files are `slots/<class>/<i>.lock` in the work folder of the host. The kernel frees a lock when the last process that holds it ends, so no cleanup and no lease table exist.
+- A job that waits for a lock writes a marker file. The poll reads the marker and reports the job as `pending`, so a waiting job is not stale. The wait counts against `host.max_run`.
+- Every engine that uses a host gives the same count for one class. Equal counts are needed. With different counts the lower count does not hold, because each job takes any free lock of its own count.
+- `Up` refuses a host with no `flock` command on `ssh`, `slurm` and `skypilot`, and the refusal says to install `flock`.
+- On `slurm` the lock files are in the login folder. A cluster with many nodes and no shared file system that supports `flock` runs the jobs of different nodes with no limit.
 
 - A class name holds letters, digits, dot, underscore and hyphen, and starts with a letter or a digit.
 - A count is a whole number from 1 to 1048576. A count below 1, or a value that is not a whole number, is refused, and the refusal names the class.
