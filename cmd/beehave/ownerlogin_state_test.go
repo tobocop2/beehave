@@ -210,6 +210,50 @@ func TestOwnerLogin_TheStartReadsTheTokenOfEachHttpsHostOfTheProjectsWithNoCrede
 	require.ErrorIs(t, err, reach.ErrNoOwnerToken, "a nil writers holds no token")
 }
 
+// httpsProjects names one https project with no credentials, on the host one.test.
+func httpsProjects() config.Config {
+	return config.Config{Projects: map[string]config.Project{"a": {Project: model.Project{Name: "a", Source: "https://one.test/o/r.git"}}}}
+}
+
+func TestOwnerLogin_AFailedReadOfTheTokenIsNotHeldSoTheNextCallReadsItAfterGhAuthLogin(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	roles := &writers{}
+	failed := fakeGH(t, "")
+
+	_, err := roles.ownerTokenOf("one.test")
+	require.ErrorIs(t, err, reach.ErrNoOwnerToken)
+	assert.Len(t, ghCalls(t, failed), 1)
+
+	logged := fakeGH(t, "tok-gh")
+	token, err := roles.ownerTokenOf("one.test")
+	require.NoError(t, err, "the same engine must read the token after gh auth login")
+	assert.Equal(t, "tok-gh", token)
+
+	again, err := roles.ownerTokenOf("one.test")
+	require.NoError(t, err)
+	assert.Equal(t, "tok-gh", again)
+	assert.Len(t, ghCalls(t, logged), 1, "a token that was read is held, so the next call runs no gh")
+}
+
+func TestOwnerLogin_TheStartOfTheEngineReadsTheTokenOfEachHttpsHostBeforeAnyCall(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	log := fakeGH(t, "tok-gh")
+
+	roles := &writers{}
+	require.NoError(t, roles.start(t.Context(), httpsProjects(), flow.Options{StateDir: t.TempDir(), Env: map[string]string{"PATH": testPath}}))
+
+	assert.Equal(t, []string{"auth token --hostname one.test"}, ghCalls(t, log), "the start read no token")
+}
+
+func TestOwnerLogin_AnEmptyTokenFromAZeroExitIsRefusedWithTheGhAuthLoginMessage(t *testing.T) {
+	bin := t.TempDir()
+	require.NoError(t, exectest.Write(filepath.Join(bin, "gh"), "#!/bin/sh\necho '  '\nexit 0\n"))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+testPath)
+
+	_, err := (&writers{}).ownerTokenOf("one.test")
+
+	require.ErrorIs(t, err, reach.ErrNoOwnerToken)
+	require.ErrorContains(t, err, "Run gh auth login --hostname one.test, or declare credentials for the project")
+}
+
 func TestOwnerLogin_ASshRemoteKeepsTheAgentSocketAndTheCallReadsNoGitConfig(t *testing.T) {
 	rig := newPushRig(t)
 	planted := plantGlobalConfig(t, "")
