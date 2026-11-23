@@ -21,14 +21,9 @@ import (
 // DBOS stores the version of the application on each run and recovers only the runs of its own version, so the rewind restamps the run (and the phases it reopens) with this version.
 // The move is refused when the workflow file or a file it pins changed since the run started. A run of this build is an ordinary resume.
 func (c *Client) ResumeOnThisBuild(item string) error {
-	_, err := c.resumeHere(item)
+	_, err := c.resumeMoved(item, true, false)
 
 	return err
-}
-
-// resumeHere is ResumeOnThisBuild, and it returns the id of the run that it moved.
-func (c *Client) resumeHere(item string) (string, error) {
-	return c.resumeMoved(item, true, false)
 }
 
 // ResumeOnThisFile reopens the open, canceled or failed run of an item on the workflow file as it is on disk now, from its last finished step.

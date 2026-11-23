@@ -42,6 +42,12 @@ func TestResumeFailed_ResumesEachPickedRunThroughTheSingleResume(t *testing.T) {
 	code, _, stderr = rig.execute(t.Context(), "resume", "--failed", "--on-this-build")
 	require.Equal(t, 0, code, stderr)
 	assert.Equal(t, []string{"failed-runs", "resume-here 12", "resume-here 13", "resume-here 14"}, rig.steering.calls)
+
+	rig = failedRig(t)
+
+	code, _, stderr = rig.execute(t.Context(), "resume", "--failed", "--on-this-file")
+	require.Equal(t, 0, code, stderr)
+	assert.Equal(t, []string{"failed-runs", "resume-file 12", "resume-file 13", "resume-file 14"}, rig.steering.calls)
 }
 
 func TestResumeFailed_TheFlagsFormTheFilterThatTheListGets(t *testing.T) {
