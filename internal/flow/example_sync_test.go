@@ -71,7 +71,7 @@ type syncGate struct {
 	red      bool
 }
 
-func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string) (GateJob, error) {
+func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error) {
 	if item == testItem {
 		g.mu.Lock()
 		g.bases = append(g.bases, base)
@@ -79,7 +79,7 @@ func (g *syncGate) Submit(ctx context.Context, project, item, host, base, pinBas
 		g.mu.Unlock()
 	}
 
-	return g.gate.Submit(ctx, project, item, host, base, pinBase, baseSHA)
+	return g.gate.Submit(ctx, project, item, host, base, pinBase, baseSHA, slot)
 }
 
 // roundPinBases returns the pin base of each gate of the round itself, in order.

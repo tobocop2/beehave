@@ -52,6 +52,7 @@ type Cluster struct {
 	Sbatches int             // the number of jobs submitted
 	DropOn   string          // the first word of a command whose ssh call drops once
 	NoStop   bool            // scancel fails
+	NoFlock  bool            // the head node has no flock command
 	Scancels int             // the number of scancel calls that took
 	DropAll  string          // the first word of a command whose ssh call always drops
 }
@@ -171,30 +172,49 @@ func (f *Cluster) dropped(command string) bool {
 func (f *Cluster) other(words []string) model.CommandResult {
 	switch words[0] {
 	case "scancel":
-		if f.NoStop {
-			return failure("scancel: denied")
-		}
-
-		job := f.Jobs[words[1]]
-		if job == nil {
-			return failure("scancel: invalid job id " + words[1])
-		}
-
-		f.Scancels++
-		job.Canceled = true
-
-		return ok("")
+		return f.scancel(words[1])
 	case "touch":
 		f.Files[words[1]] = true
 
 		return ok("")
+	case "test":
+		if f.Files[words[2]] {
+			return ok("")
+		}
+
+		return model.CommandResult{ExitCode: 1}
+	case "flock":
+		if f.NoFlock {
+			return model.CommandResult{ExitCode: 127, Stderr: "flock: command not found"}
+		}
+
+		return ok("flock from util-linux 2.39.3\n")
 	case "stat":
 		return f.stat(words[len(words)-1])
+	case "sh":
+		return f.running(words[len(words)-2], words[len(words)-1])
 	case "pwd":
 		return ok("/home/lane\n")
 	}
 
 	return failure("ssh: unknown command")
+}
+
+// scancel cancels one job, unless the test denies the call or the job is not known.
+func (f *Cluster) scancel(id string) model.CommandResult {
+	if f.NoStop {
+		return failure("scancel: denied")
+	}
+
+	job := f.Jobs[id]
+	if job == nil {
+		return failure("scancel: invalid job id " + id)
+	}
+
+	f.Scancels++
+	job.Canceled = true
+
+	return ok("")
 }
 
 // stat prints the size of the log of a job, from the sizes the test planned. A job with none has no log.
@@ -208,6 +228,20 @@ func (f *Cluster) stat(log string) model.CommandResult {
 	job.Stats++
 
 	return ok(strconv.Itoa(size) + "\n")
+}
+
+// running answers the one read of a running job, sh -c <script> sh <marker> <log>: a waiting line when the marker exists, then the size of the log or -1.
+func (f *Cluster) running(marker, log string) model.CommandResult {
+	size := "-1"
+	if result := f.stat(log); result.ExitCode == 0 {
+		size = strings.TrimSpace(result.Stdout)
+	}
+
+	if f.Files[marker] {
+		return ok("beehave-waiting\n" + size + "\n")
+	}
+
+	return ok(size + "\n")
 }
 
 func (f *Cluster) df() model.CommandResult {

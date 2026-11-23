@@ -65,13 +65,19 @@ var hostGateRuns atomic.Int64
 
 // queueHostGate queues the project gate of an item that runs on the build host, as a run of a flow does, and returns the channel of its end.
 func queueHostGate(engine *Engine, project, item, head, host string) <-chan gateEnd {
+	return queueHostGateOf(engine, head, CommandRequest{Project: project, Item: item, BuildHost: host})
+}
+
+// queueHostGateOf queues the gate of a request as queueHostGate does. A request with a Run is a program gate.
+func queueHostGateOf(engine *Engine, head string, request CommandRequest) <-chan gateEnd {
+	project, item, host := request.Project, request.Item, request.BuildHost
 	ended := make(chan gateEnd, 1)
 	id := fmt.Sprintf("queue-host-gate-%d-%s-%s-%s-%s", hostGateRuns.Add(1), project, item, head, host)
 	gateEndsMu.Lock()
 	gateEnds[id] = ended
 	gateEndsMu.Unlock()
 
-	in := ExclusiveInput{Kind: kindGate, Project: project, Item: item, Head: head, Request: CommandRequest{Project: project, Item: item, BuildHost: host}}
+	in := ExclusiveInput{Kind: kindGate, Project: project, Item: item, Head: head, Request: request}
 
 	if _, err := dbos.RunWorkflow(engine.ctx, gateQueuer{engine}.queue, in, dbos.WithWorkflowID(id)); err != nil {
 		ended <- gateEnd{err: err}

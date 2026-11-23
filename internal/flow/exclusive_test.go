@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // slowGate holds each gate until the test lets it end, and tells the test when it started.
@@ -16,7 +18,7 @@ type slowGate struct {
 	release chan struct{}
 }
 
-func (slowGate) Submit(context.Context, string, string, string, string, string, string) (GateJob, error) {
+func (slowGate) Submit(context.Context, string, string, string, string, string, string, model.Slot) (GateJob, error) {
 	return GateJob{}, nil
 }
 

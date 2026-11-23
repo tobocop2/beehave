@@ -123,9 +123,11 @@ func (h *Host) Up(ctx context.Context) error {
 		args = append(args, "-t", h.values.instanceType)
 	}
 
-	_, err := link.Run(ctx, h.sky, "sky launch", args)
+	if _, err := link.Run(ctx, h.sky, "sky launch", args); err != nil {
+		return err
+	}
 
-	return err
+	return h.link.CheckFlock(ctx)
 }
 
 func (h *Host) infra() string {

@@ -193,8 +193,11 @@ func (e *Engine) claimedMerge(ctx context.Context, in ExclusiveInput) (result me
 
 // claimedCommand runs the program of a command job under the claim of the run that queued it.
 func (e *Engine) claimedCommand(ctx context.Context, in ExclusiveInput) (out CommandOutput, err error) {
+	request := in.Request
+	request.SlotCount = in.SlotCount
+
 	err = claimedCall(ctx, e.queuedClaim(in), func(c context.Context) error {
-		out, err = e.deps.Commands.Run(c, in.Request)
+		out, err = e.deps.Commands.Run(c, request)
 
 		return err
 	})
@@ -235,7 +238,7 @@ func (e *Engine) gateCall(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOut
 				}
 			}
 
-			return e.programGateOutputs(c, in.Request, in.Head)
+			return e.programGateOutputs(c, in.Request, in.Head, in.gateSlot())
 		})
 	}
 
@@ -276,7 +279,7 @@ func (e *Engine) projectGateCall(ctx dbos.Context, in ExclusiveInput, out *Exclu
 // gateJobStep is the first step of a project gate (gate:job): it reuses an earlier pass and stores its key in out, or submits the host job.
 func (e *Engine) gateJobStep(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) (gateStart, error) {
 	return runStep(e, ctx, gateJobName, func(c context.Context) (gateStart, error) {
-		started, err := e.startProjectGate(c, in.Request)
+		started, err := e.startProjectGate(c, in.Request, in.gateSlot())
 		if started.Reused != nil {
 			out.setKey(started.Key.ID, in.Request.Project)
 		}
@@ -309,6 +312,16 @@ func (e *Engine) gateHost(in ExclusiveInput) string {
 	}
 
 	return host
+}
+
+// gateSlot is the limit that the build job of a gate takes on its host: the class gate with the count that the gate recorded when it was queued.
+// A gate that runs on this machine recorded none, and has no limit.
+func (in ExclusiveInput) gateSlot() model.Slot {
+	if in.SlotCount < 1 {
+		return model.Slot{}
+	}
+
+	return model.Slot{Class: model.GateClass, Count: in.SlotCount}
 }
 
 // recordedHost is the host that the run recorded in host_up, and whether the call runs on a build host at all.

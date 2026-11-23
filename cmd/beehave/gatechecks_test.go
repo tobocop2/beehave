@@ -42,7 +42,7 @@ func candidateChecks(t *testing.T, log string) flow.GateChecks {
 		forge: forgeAt("https://example.test/repo.git"),
 	}
 
-	job, err := gate.Submit(t.Context(), "p", "1", "", "main", "", "")
+	job, err := gate.Submit(t.Context(), "p", "1", "", "main", "", "", model.Slot{})
 	require.NoError(t, err)
 
 	got, err := gate.Run(t.Context(), "p", "1", "", job)

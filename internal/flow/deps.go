@@ -150,8 +150,9 @@ type GateJob struct {
 // A baseSHA is the base commit that Key read: Submit uses it and reads no tip. An empty baseSHA makes Submit read the tip itself.
 // A pinBase turns on no candidate check. Run then waits for that job and judges the result; given an empty GateJob it starts the job itself.
 // host is the build host that the run recorded in host_up. An empty host is the default build host of the project.
+// A slot is the limit that the host job takes on the host, shared with every engine that uses it. The zero Slot means no limit.
 type gate interface {
-	Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string) (GateJob, error)
+	Submit(ctx context.Context, project, item, host, base, pinBase, baseSHA string, slot model.Slot) (GateJob, error)
 	Run(ctx context.Context, project, item, host string, job GateJob) (GateResult, error)
 	Key(ctx context.Context, project, item, host, base, pinBase string) (GateKey, error)
 }
@@ -313,6 +314,8 @@ type CommandRequest struct {
 	MaxNewProcesses int
 	// SlotClass names the slot class of a call with Host. The host runs at most the count of its host block for the class at once. It is empty for a call that names none.
 	SlotClass string
+	// SlotCount is the count of SlotClass on the host. The engine sets it when it runs the call, and the host job takes a slot of that class and count.
+	SlotCount int
 	// Stdin is the text that the program reads. It is empty when the call sets none.
 	Stdin string
 	// Env is the whole environment of the program as NAME=value pairs. It is nil for a request that keeps the environment of the process.
