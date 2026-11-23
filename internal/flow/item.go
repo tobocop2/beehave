@@ -94,17 +94,29 @@ func (e *Engine) item(parent dbos.Context, in ItemInput) (ItemResult, error) {
 
 		result, workErr := e.workHolding(ctx, a, login, claimTake{owner: owner, took: took})
 
-		// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
-		// A run that lost its claim has nothing to release.
-		if ctx.Err() != nil {
-			return result, workErr
-		}
-
-		released := e.finish(ctx, a)
-		e.tellParent(ctx, in)
-
-		return result, errors.Join(workErr, released)
+		return result, e.endItem(ctx, a, in, workErr)
 	})
+}
+
+// endItem releases the item of a run whose work ended with workErr, and returns the error of the run.
+// A run whose context ended is canceled, interrupted or without its claim. A canceled run is released by the tick; an interrupted run keeps its claim and continues at the next beehave run.
+// A run that lost its claim has nothing to release.
+// A replay over a changed file records no step: a step recorded at a later id would stand in the way of the replay that follows the author's fix.
+// The claim and the worktree go back as a cancel gives them back, with no step, and the parent reads the end of the run at its next look.
+func (e *Engine) endItem(ctx dbos.Context, a *attempt, in ItemInput, workErr error) error {
+	switch {
+	case ctx.Err() != nil:
+		return workErr
+	case replayMismatch(workErr):
+		e.giveBack(ctx, a)
+
+		return workErr
+	}
+
+	released := e.finish(ctx, a)
+	e.tellParent(ctx, in)
+
+	return errors.Join(workErr, released)
 }
 
 // tellParent sends the end notice of a run that spawn started to the run that spawned it, after the file and the release ended, as a recorded send.

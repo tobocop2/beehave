@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -75,6 +76,17 @@ func (w *forkWorld) settled(t *testing.T, id string) {
 		rows, err := dbos.ListWorkflows(w.client.flow, dbos.WithFilterWorkflowIDs(id))
 
 		return err == nil && len(rows) == 1 && rows[0].Status == dbos.WorkflowStatusSuccess
+	}, forkSettle, 25*time.Millisecond)
+}
+
+// recorded waits until run id has the record of step. The command prints before the store records its step, and a cancel that lands between the two loses the record.
+func (w *forkWorld) recorded(t *testing.T, id, step string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		records, err := dbos.GetWorkflowSteps(w.client.flow, id)
+
+		return err == nil && slices.ContainsFunc(records, func(record dbos.StepInfo) bool { return record.StepName == step })
 	}, forkSettle, 25*time.Millisecond)
 }
 
@@ -314,12 +326,31 @@ func TestFork_ACanceledRunForksLikeAnyEndedRun(t *testing.T) {
 
 	waiting, err := w.client.Fork(ForkRequest{Run: testRun, Step: "command:two#2", Vars: map[string]any{"mode": "wait"}})
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return strings.HasSuffix(w.ran(), "two wait k") }, forkSettle, 25*time.Millisecond)
+	w.recorded(t, waiting, "command:two#2")
 	require.NoError(t, w.client.Cancel(testItem))
 
 	id := w.fork(t, waiting, "command:two#2", map[string]any{"mode": "d"})
 
 	assert.Equal(t, "item-12-r3", id)
+}
+
+func TestFork_OnlyAFinishedStarStepGivesItsOutputsToTheOverlay(t *testing.T) {
+	t.Parallel()
+
+	finished := `{"outputs":{"branch":"b1"}}`
+
+	for name, tc := range map[string]struct {
+		step dbos.StepInfo
+		want []string
+	}{
+		"a step that finished":              {dbos.StepInfo{StepName: "push#1", Output: finished}, []string{"b1"}},
+		"a step that failed":                {dbos.StepInfo{StepName: "push#1", Output: finished, Error: errors.New("failed")}, nil},
+		"a step that is still waiting":      {dbos.StepInfo{StepName: "wait:ask#2"}, nil},
+		"an output that is not stored text": {dbos.StepInfo{StepName: "push#1", Output: 7}, nil},
+		"an output that is not json":        {dbos.StepInfo{StepName: "push#1", Output: "not json"}, nil},
+	} {
+		assert.Equal(t, tc.want, pushedBranches([]dbos.StepInfo{tc.step}, nil), name)
+	}
 }
 
 func TestFork_AClaimThatTheItemDoesNotGiveRefusesTheForkAndNamesTheCommandToRepeat(t *testing.T) {

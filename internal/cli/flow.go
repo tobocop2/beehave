@@ -93,8 +93,12 @@ type Resuming interface {
 	Resume(item string) error
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
 	ResumeOnThisBuild(item string) error
-	// ResumeRun is Resume, or with onThisBuild ResumeOnThisBuild, and it returns the id of the run that it reopened.
-	ResumeRun(item string, onThisBuild bool) (string, error)
+	// ResumeOnThisFile reopens a run on the workflow file as it is on disk now, from its last finished step.
+	ResumeOnThisFile(item string) error
+	// ResumeOnThisBuildAndFile moves a run that another build started to this build and onto the workflow file as it is now, in one move.
+	ResumeOnThisBuildAndFile(item string) error
+	// ResumeRun is Resume, or with onThisBuild, onThisFile or both the move that ResumeOnThisBuild, ResumeOnThisFile or ResumeOnThisBuildAndFile makes, and it returns the id of the run that it reopened.
+	ResumeRun(item string, onThisBuild, onThisFile bool) (string, error)
 	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
 	// It returns apart the failed runs of the range whose input cannot be read.
 	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error)
@@ -1304,18 +1308,26 @@ const resumeLong = "Reopen the cancelled or failed run of an item. The run resta
 	"A canceled run that left its claim gives it back at the next beehave run.\n" +
 	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
 	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
-	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned.\n\n" +
+	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned.\n" +
+	"A run replays the workflow file that it pinned when it started, and a changed file refuses the run. Add --on-this-file to run the file as it is now: the run keeps its finished steps and replays them over the new file.\n" +
+	"A change after the step that the run reached goes on at once. A change before it ends the run at the first step that differs, and the error names that step. Nothing that the run wrote is undone. Restore the file and run beehave resume --on-this-file again to finish the run.\n" +
+	"Give --on-this-build and --on-this-file together to move a run of another build onto the file in one move.\n\n" +
 	"Add --failed to resume every run that failed, and give no item. After an outage, this reopens the runs that the outage stopped.\n" +
 	"A run is failed when it ended with an error or gave up recovering. A run that was stopped is not failed: resume it by its item.\n" +
 	"Narrow the runs with --since and --until (the end time of the run, ends included, as an RFC 3339 time or a duration such as 6h for that long ago), --project (the project of the run) and --limit (the runs that ended first). A run must fit every filter that is set.\n" +
-	"Each run resumes as beehave resume <item> does, with the same refusals and --on-this-build. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
+	"Each run resumes as beehave resume <item> does, with the same refusals, --on-this-build and --on-this-file. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
 	"The command prints one line for each run: the item, the run id, the end time and the outcome. It exits 0 when no run refused, and exits 1 when a run refused or when no failed run fits.\n" +
 	"Add --dry-run to list the runs that would resume and change nothing."
 
-// resumeItem reopens the run of an item, and moves it to this build first when the owner asked for that.
-func resumeItem(client Steering, item string, onThisBuild bool) error {
-	if onThisBuild {
+// resumeItem reopens the run of an item, and moves it to this build, onto the workflow file as it is now, or both, when the owner asked for that.
+func resumeItem(client Steering, item string, onThisBuild, onThisFile bool) error {
+	switch {
+	case onThisBuild && onThisFile:
+		return client.ResumeOnThisBuildAndFile(item)
+	case onThisBuild:
 		return client.ResumeOnThisBuild(item)
+	case onThisFile:
+		return client.ResumeOnThisFile(item)
 	}
 
 	return client.Resume(item)
@@ -1342,7 +1354,7 @@ func (f flowCommands) resumeCommand() *cobra.Command {
 // resume runs beehave resume: one item, or with --failed every failed run that the filter picks.
 func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, args []string) error {
 	if !many.failed {
-		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild) })
+		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild, many.onThisFile) })
 	}
 
 	return f.withClient(cmd, flag, func(client Steering) error {
