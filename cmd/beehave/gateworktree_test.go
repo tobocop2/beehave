@@ -55,9 +55,10 @@ func worktreesOf(t *testing.T, dir string) []string {
 	return folders
 }
 
-func TestGateSandbox_AGitWorkTreeRunsInADisposableWorktreeAndTheRealFolderIsOutsideThePlan(t *testing.T) {
-	t.Parallel()
-
+func TestGateSandbox_AGitWorkTreeRunsInADisposableWorktreeAndTheRealFolderIsOutsideThePlan(t *testing.T) { //nolint:paralleltest // t.Setenv gives the gate its own temporary folder
+	// The parallel tests of the package share one root of gate copies and make the folder name of a finished copy again, so only a root of its own tells
+	// whether this copy is gone.
+	root := ownTemp(t)
 	dir := repoWithCommit(t)
 	fake := &fakeEnforcer{}
 
@@ -72,6 +73,7 @@ func TestGateSandbox_AGitWorkTreeRunsInADisposableWorktreeAndTheRealFolderIsOuts
 	assert.NotContains(t, fake.plan.Read, dir, "the real folder is not in the plan")
 	assert.Equal(t, []string{dir}, worktreesOf(t, dir), "the worktree of the gate is gone from the repository")
 	assert.NoDirExists(t, fake.dir)
+	assert.Empty(t, entriesOf(t, root), "the gate leaves no folder of its own")
 }
 
 func TestGateSandbox_ALinkedWorkTreeKeepsItsSharedGitFolderReadOnlyInThePlan(t *testing.T) {
