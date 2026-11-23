@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,8 +98,8 @@ func traceScenario(t *testing.T, line string) (string, string) {
 	}
 
 	queue := &queueFake{}
-	room, waiting, limited := true, 1, signals()
-	control := controllerOf(floor, ceiling, queue, &room, &waiting, limited)
+	room, waiting := true, 1
+	control := controllerOf(floor, ceiling, queue, &room, &waiting, nil)
 	require.NoError(t, control.launch())
 
 	for index, event := range events {
@@ -111,13 +112,13 @@ func traceScenario(t *testing.T, line string) (string, string) {
 		case 'I':
 			waiting = 0
 		case 'L':
-			limited <- limitSignal{ResetsAt: now.Add(time.Duration(after) * adaptiveTick)}
+			control.halve(t.Context(), limitSignal{At: now, ResetsAt: now.Add(time.Duration(after) * adaptiveTick)})
 		case 'B':
 			for range 3 {
-				limited <- limitSignal{ResetsAt: now.Add(time.Duration(after) * adaptiveTick)}
+				control.halve(t.Context(), limitSignal{At: now, ResetsAt: now.Add(time.Duration(after) * adaptiveTick)})
 			}
 		case 'O':
-			limited <- limitSignal{}
+			control.halve(t.Context(), limitSignal{At: now})
 		}
 
 		control.step(t.Context(), now)
@@ -221,8 +222,8 @@ func TestController_StepNeverPassesTheCeilingAndTheFloorStaysWhenALimitComes(t *
 	t.Parallel()
 
 	queue := &queueFake{}
-	room, waiting, limited := true, 5, signals()
-	control := controllerOf(1, 2, queue, &room, &waiting, limited)
+	room, waiting := true, 5
+	control := controllerOf(1, 2, queue, &room, &waiting, nil)
 	require.NoError(t, control.launch())
 
 	for index := 1; index <= 4; index++ {
@@ -231,12 +232,10 @@ func TestController_StepNeverPassesTheCeilingAndTheFloorStaysWhenALimitComes(t *
 
 	assert.Equal(t, []int{1, 2}, queue.written(), "the number stops at the ceiling and the controller writes nothing more")
 
-	limited <- limitSignal{}
-	control.step(t.Context(), tickAt(5))
+	control.halve(t.Context(), limitSignal{At: tickAt(5)})
 	assert.Equal(t, []int{1, 2, 1}, queue.written(), "a limit halves 2 to the floor 1")
 
-	limited <- limitSignal{}
-	control.step(t.Context(), tickAt(7))
+	control.halve(t.Context(), limitSignal{At: tickAt(7)})
 	assert.Equal(t, []int{1, 2, 1}, queue.written(), "a limit at the floor writes nothing")
 }
 
@@ -244,8 +243,8 @@ func TestController_AHoldBlocksTheRiseUntilTheResetTimeAndTakesNoSecondHalving(t
 	t.Parallel()
 
 	queue := &queueFake{}
-	room, waiting, limited := true, 5, signals()
-	control := controllerOf(1, 8, queue, &room, &waiting, limited)
+	room, waiting := true, 5
+	control := controllerOf(1, 8, queue, &room, &waiting, nil)
 	require.NoError(t, control.launch())
 
 	for index := 1; index <= 7; index++ {
@@ -254,12 +253,11 @@ func TestController_AHoldBlocksTheRiseUntilTheResetTimeAndTakesNoSecondHalving(t
 
 	require.Equal(t, 8, queue.limit)
 
-	limited <- limitSignal{ResetsAt: tickAt(10)}
-	limited <- limitSignal{ResetsAt: tickAt(20)}
-	control.step(t.Context(), tickAt(8))
+	control.halve(t.Context(), limitSignal{At: tickAt(8), ResetsAt: tickAt(10)})
+	control.halve(t.Context(), limitSignal{At: tickAt(8), ResetsAt: tickAt(20)})
 	assert.Equal(t, 4, queue.limit, "the first limit halves 8, the second one inside the hold does not")
 
-	limited <- limitSignal{ResetsAt: tickAt(30)}
+	control.halve(t.Context(), limitSignal{At: tickAt(9), ResetsAt: tickAt(30)})
 	control.step(t.Context(), tickAt(9))
 	assert.Equal(t, 4, queue.limit, "a limit while the hold is open changes nothing, and the hold keeps its end")
 
@@ -267,16 +265,34 @@ func TestController_AHoldBlocksTheRiseUntilTheResetTimeAndTakesNoSecondHalving(t
 	assert.Equal(t, 5, queue.limit, "the tick at the reset time adds one agent again")
 }
 
+func TestController_APhaseThatEndedInsideTheHoldNeverHalvesAgainWhenALaterTickReadsIt(t *testing.T) {
+	t.Parallel()
+
+	queue := &queueFake{}
+	room, waiting := true, 0
+	control := controllerOf(1, 16, queue, &room, &waiting, nil)
+	require.NoError(t, control.launch())
+	require.NoError(t, control.set(16))
+	control.current = 16
+
+	control.halve(t.Context(), limitSignal{At: tickAt(1)})
+	control.halve(t.Context(), limitSignal{At: tickAt(1).Add(10 * time.Second)})
+	control.step(t.Context(), tickAt(2))
+	control.halve(t.Context(), limitSignal{At: tickAt(2)})
+
+	assert.Equal(t, []int{1, 16, 8, 4}, queue.written(), "the phase that ended 10 s after the first one is inside the hold and adds no halving; a phase that ends when the hold ends halves again")
+}
+
 func TestController_ALimitWithoutAResetTimeOrWithOneInThePastHoldsOneTick(t *testing.T) {
 	t.Parallel()
 
-	for name, signal := range map[string]limitSignal{"an_overload_has_no_reset_time": {}, "a_reset_time_in_the_past": {ResetsAt: tickAt(-5)}} {
+	for name, signal := range map[string]limitSignal{"an_overload_has_no_reset_time": {At: tickAt(4)}, "a_reset_time_in_the_past": {At: tickAt(4), ResetsAt: tickAt(-5)}} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			queue := &queueFake{}
-			room, waiting, limited := true, 5, signals()
-			control := controllerOf(1, 8, queue, &room, &waiting, limited)
+			room, waiting := true, 5
+			control := controllerOf(1, 8, queue, &room, &waiting, nil)
 			require.NoError(t, control.launch())
 
 			for index := 1; index <= 3; index++ {
@@ -285,14 +301,36 @@ func TestController_ALimitWithoutAResetTimeOrWithOneInThePastHoldsOneTick(t *tes
 
 			require.Equal(t, 4, queue.limit)
 
-			limited <- signal
+			control.halve(t.Context(), signal)
 			control.step(t.Context(), tickAt(4))
-			assert.Equal(t, 2, queue.limit, "the limit halves 4")
+			assert.Equal(t, 2, queue.limit, "the limit halves 4, and the tick of the same time adds none")
 
 			control.step(t.Context(), tickAt(5))
 			assert.Equal(t, 3, queue.limit, "the hold ended one tick after the limit")
 		})
 	}
+}
+
+func TestController_RunHalvesAtOnceWhenALimitedPhaseArrivesWithNoTick(t *testing.T) {
+	t.Parallel()
+
+	queue := &queueFake{}
+	room, waiting, limited := true, 0, signals()
+	control := controllerOf(1, 8, queue, &room, &waiting, limited)
+	require.NoError(t, control.launch())
+	control.current = 8
+
+	stop, done := make(chan struct{}), make(chan struct{})
+
+	go func() {
+		control.run(t.Context(), make(chan time.Time), stop)
+		close(done)
+	}()
+
+	limited <- limitSignal{At: tickAt(1)}
+	eventually(t, func() bool { return slices.Equal(queue.written(), []int{1, 4}) })
+	close(stop)
+	promptly(t, done)
 }
 
 func TestController_AFailedWriteKeepsTheNumberAndTheNextTickTriesAgain(t *testing.T) {
@@ -344,7 +382,7 @@ func TestController_RunStepsOnEachTickAndStopsWhenStopCloses(t *testing.T) {
 	ticks <- tickAt(1)
 	ticks <- tickAt(2)
 	close(stop)
-	receive(t, done)
+	promptly(t, done)
 
 	assert.Equal(t, []int{1, 2, 3}, queue.written(), "each tick that the run received added one agent")
 }
@@ -364,7 +402,7 @@ func TestController_RunStopsWhenItsContextEnds(t *testing.T) {
 	}()
 
 	cancel()
-	receive(t, done)
+	promptly(t, done)
 }
 
 func TestSignalLimit_NeverBlocksAndSendsOnlyALimitedPhase(t *testing.T) {
@@ -374,7 +412,13 @@ func TestSignalLimit_NeverBlocksAndSendsOnlyALimitedPhase(t *testing.T) {
 	reset := tickAt(3)
 
 	engine.signalLimit(PhaseOutput{Outcome: agent.OutcomeLimited, Limit: &agent.Limit{Kind: agent.LimitRate, ResetsAt: reset}})
-	assert.Equal(t, limitSignal{ResetsAt: reset}, <-engine.limited)
+	<-engine.limited
+
+	before := time.Now()
+	engine.signalLimit(PhaseOutput{Outcome: agent.OutcomeLimited, Limit: &agent.Limit{Kind: agent.LimitRate, ResetsAt: reset}})
+	sent := <-engine.limited
+	assert.Equal(t, reset, sent.ResetsAt)
+	assert.False(t, sent.At.Before(before), "the signal carries the time when the phase ended")
 
 	engine.signalLimit(PhaseOutput{Outcome: agent.OutcomeLimited})
 	engine.signalLimit(PhaseOutput{Outcome: agent.OutcomeTurnCap, Limit: &agent.Limit{Kind: agent.LimitRate}})
@@ -400,7 +444,7 @@ func adaptiveHarness(t *testing.T, logins map[string]string) (*harness, func()) 
 	h.opts.MaxConcurrent = 2
 	h.opts.PerLogin = 1
 	h.logins = fakeLogins{byItem: logins, room: true}
-	h.adapt = make(chan time.Time)
+	h.adapt = make(chan time.Time, 1)
 	h.agents.gate = make(chan struct{})
 
 	release := sync.OnceFunc(func() { close(h.agents.gate) })
@@ -431,17 +475,17 @@ func TestAdaptive_TheQueueStartsAtTheFloorAndATickWithAWaitingPhaseStartsTheNext
 
 	first, second := runInBackground(engine, "1"), runInBackground(engine, "2")
 
-	waitOn(t, condition(func() bool { return h.agents.running() == 1 }))
-	waitOn(t, condition(func() bool { return enqueuedPhases(t, engine) == 1 }))
+	eventually(t, func() bool { return h.agents.running() == 1 })
+	eventually(t, func() bool { return enqueuedPhases(t, engine) == 1 })
 
 	h.adapt <- tickAt(1)
 
-	waitOn(t, condition(func() bool { return h.agents.running() == 2 }))
+	eventually(t, func() bool { return h.agents.running() == 2 })
 	assert.Equal(t, 2, agentsLimit(t, client), "the tick wrote 2 to the queue row, and the waiting phase started")
 
 	release()
-	require.NoError(t, receive(t, first).err)
-	require.NoError(t, receive(t, second).err)
+	require.NoError(t, promptly(t, first).err)
+	require.NoError(t, promptly(t, second).err)
 }
 
 func TestAdaptive_LoweringTheLimitCutsNoRunningPhaseAndStartsNoNewOne(t *testing.T) {
@@ -453,34 +497,38 @@ func TestAdaptive_LoweringTheLimitCutsNoRunningPhaseAndStartsNoNewOne(t *testing
 
 	first, second := runInBackground(engine, "1"), runInBackground(engine, "2")
 
-	waitOn(t, condition(func() bool { return enqueuedPhases(t, engine) == 1 && h.agents.running() == 1 }))
+	eventually(t, func() bool { return enqueuedPhases(t, engine) == 1 && h.agents.running() == 1 })
 	h.adapt <- tickAt(1)
-	waitOn(t, condition(func() bool { return h.agents.running() == 2 }))
+	eventually(t, func() bool { return h.agents.running() == 2 })
 
 	third := runInBackground(engine, "3")
 
-	waitOn(t, condition(func() bool { return enqueuedPhases(t, engine) == 1 }))
+	eventually(t, func() bool { return enqueuedPhases(t, engine) == 1 })
 	require.Equal(t, 2, h.agents.running(), "the limit 2 holds the third phase")
 
-	engine.limited <- limitSignal{}
-	h.adapt <- tickAt(2)
+	engine.limited <- limitSignal{At: time.Now()}
 
-	waitOn(t, condition(func() bool { return agentsLimit(t, client) == 1 }))
+	eventually(t, func() bool { return agentsLimit(t, client) == 1 })
 	require.Never(t, func() bool { return h.agents.running() != 2 || enqueuedPhases(t, engine) != 1 }, 300*time.Millisecond, 20*time.Millisecond,
-		"no running phase is cut, and the waiting one does not start under the lower limit")
+		"no running phase is cut by the lower limit")
+
+	// One running phase ends. Two run and one waits, so a start under the old limit of 2 would show here: the limit 1 holds the waiting phase while one still runs.
+	h.agents.gate <- struct{}{}
+
+	eventually(t, func() bool { return h.agents.running() == 1 })
+	require.Never(t, func() bool { return h.agents.running() != 1 || enqueuedPhases(t, engine) != 1 }, 300*time.Millisecond, 20*time.Millisecond,
+		"the waiting phase stays queued while one phase runs at the limit 1")
 
 	release()
-	require.NoError(t, receive(t, first).err)
-	require.NoError(t, receive(t, second).err)
-	require.NoError(t, receive(t, third).err, "the third phase starts after the two end")
+	require.NoError(t, promptly(t, first).err)
+	require.NoError(t, promptly(t, second).err)
+	require.NoError(t, promptly(t, third).err, "the third phase starts after the two end")
 }
 
 func TestAdaptive_APhaseThatEndsAtALimitSignalsTheControllerWithTheResetTime(t *testing.T) {
 	t.Parallel()
 
 	h := limitedHarness(t, limitReset.Add(-30*time.Millisecond))
-	h.opts.Concurrency = config.ConcurrencyAdaptive
-	h.adapt = make(chan time.Time)
 	inTurn(h, limited(limitReset, 0), exited)
 
 	engine := h.engine(t)
@@ -491,6 +539,7 @@ func TestAdaptive_APhaseThatEndsAtALimitSignalsTheControllerWithTheResetTime(t *
 	select {
 	case signal := <-engine.limited:
 		assert.Equal(t, limitReset, signal.ResetsAt, "the limited phase sent its reset time")
+		assert.False(t, signal.At.IsZero(), "and the time when it ended")
 	default:
 		require.Fail(t, "the limited phase sent no signal")
 	}
@@ -584,4 +633,63 @@ func TestAdaptive_TheAgentsQueueIsRegisteredAtTheFloorBeforeTheControllerWritesI
 	t.Cleanup(func() { require.NoError(t, engine.Shutdown()) })
 
 	assert.Equal(t, 2, *engine.queue.GetGlobalConcurrency(), "no phase starts above the floor before the first write")
+}
+
+func TestAdaptive_TheControllerTicksOnTheIntervalOfTheControllerAndThatIntervalIsOneMinute(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, time.Minute, adaptiveTick, "the real tick is one minute")
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	assert.Equal(t, time.Minute, engine.newController().tick, "the controller of an engine takes the constant")
+
+	counted := make(chan struct{}, 1)
+	control := controllerOf(1, 4, &queueFake{}, new(bool), new(int), nil)
+	control.tick = 10 * time.Millisecond
+	control.waiting = func(context.Context) (int, error) {
+		select {
+		case counted <- struct{}{}:
+		default:
+		}
+
+		return 0, nil
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		engine.runController(control)
+		close(done)
+	}()
+
+	promptly(t, counted)
+	require.NoError(t, engine.Shutdown())
+	promptly(t, done)
+}
+
+// patience bounds a wait of a controller test. A controller that never acts fails the test in this time and not at the bound of the whole run.
+const patience = 10 * time.Second
+
+// eventually waits until check is true, and fails the test after patience.
+func eventually(t *testing.T, check func() bool) {
+	t.Helper()
+
+	require.Eventually(t, check, patience, 5*time.Millisecond)
+}
+
+// promptly receives one value from ch, and fails the test after patience.
+func promptly[T any](t *testing.T, ch <-chan T) T {
+	t.Helper()
+
+	select {
+	case value := <-ch:
+		return value
+	case <-time.After(patience):
+		require.FailNow(t, "no value on the channel in time")
+
+		var none T
+
+		return none
+	}
 }

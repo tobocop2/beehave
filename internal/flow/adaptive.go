@@ -22,17 +22,17 @@ const limitSignals = 16
 // halving is the divisor of the limit when a phase ends at a provider limit.
 const halving = 2
 
-// limitSignal tells the controller that a phase ended at a provider limit. ResetsAt is the zero time when the limit has no reset time.
-type limitSignal struct{ ResetsAt time.Time }
+// limitSignal tells the controller that a phase ended at a provider limit. At is the time when the phase ended. ResetsAt is the zero time when the limit has no reset time.
+type limitSignal struct{ At, ResetsAt time.Time }
 
 // controller moves the global limit of the agents queue between a floor and a ceiling while the engine runs.
-// It adds one agent at a tick when every login has room and a phase waits. It halves the limit at the first limited phase and holds it until the reset time.
+// It adds one agent at a tick when every login has room and a phase waits. It halves the limit at once at the first limited phase and holds it until the reset time.
 // One goroutine runs it: it is the only caller of set, and it owns every field.
 type controller struct {
 	floor, ceiling int
 	// current is the limit that the queue holds, as far as the controller knows.
 	current int
-	// holdUntil is the time before which the limit does not rise. A limit that ends before it halves nothing more.
+	// holdUntil is the time before which the limit does not rise. A phase that ended at a limit before this time halves nothing more.
 	holdUntil time.Time
 	tick      time.Duration
 	// set writes the limit to the queue.
@@ -56,10 +56,8 @@ func (c *controller) launch() error {
 	return nil
 }
 
-// step runs one tick at time now: it takes the limits that ended since the last tick, then adds one agent when it may.
+// step runs one tick at time now: it adds one agent when it may.
 func (c *controller) step(ctx context.Context, now time.Time) {
-	c.takeLimits(ctx, now)
-
 	if now.Before(c.holdUntil) || c.current >= c.ceiling {
 		return
 	}
@@ -78,26 +76,19 @@ func (c *controller) step(ctx context.Context, now time.Time) {
 	c.move(ctx, c.current+1)
 }
 
-// takeLimits halves the limit for the first limited phase of a hold, and ignores the others until the hold ends.
+// halve takes a phase that ended at a limit. The first one of a hold halves the limit and opens the hold. A phase that ended before the hold ends changes nothing.
 // A limit with no reset time, or one whose reset time has passed, holds for one tick.
-func (c *controller) takeLimits(ctx context.Context, now time.Time) {
-	for {
-		select {
-		case signal := <-c.limited:
-			if now.Before(c.holdUntil) {
-				continue
-			}
-
-			c.holdUntil = now.Add(c.tick)
-			if signal.ResetsAt.After(c.holdUntil) {
-				c.holdUntil = signal.ResetsAt
-			}
-
-			c.move(ctx, max(c.floor, c.current/halving))
-		default:
-			return
-		}
+func (c *controller) halve(ctx context.Context, signal limitSignal) {
+	if signal.At.Before(c.holdUntil) {
+		return
 	}
+
+	c.holdUntil = signal.At.Add(c.tick)
+	if signal.ResetsAt.After(c.holdUntil) {
+		c.holdUntil = signal.ResetsAt
+	}
+
+	c.move(ctx, max(c.floor, c.current/halving))
 }
 
 // move writes a new limit when it differs from the current one. A failed write keeps the old number, and the next tick tries again.
@@ -115,18 +106,12 @@ func (c *controller) move(ctx context.Context, limit int) {
 	c.current = limit
 }
 
-// run takes one step for each value of ticks until stop closes. The context of a step ends when stop closes, so a slow usage read does not hold the shutdown.
+// run takes one step for each value of ticks, and takes each limited phase when it arrives, until stop closes. The context of a step ends when stop closes, so a slow usage read does not hold the shutdown.
 func (c *controller) run(ctx context.Context, ticks <-chan time.Time, stop <-chan struct{}) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go func() {
-		select {
-		case <-stop:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
+	go cancelOnStop(ctx, cancel, stop)
 
 	for {
 		select {
@@ -134,7 +119,18 @@ func (c *controller) run(ctx context.Context, ticks <-chan time.Time, stop <-cha
 			return
 		case now := <-ticks:
 			c.step(ctx, now)
+		case signal := <-c.limited:
+			c.halve(ctx, signal)
 		}
+	}
+}
+
+// cancelOnStop cancels ctx when stop closes, and returns when ctx ends.
+func cancelOnStop(ctx context.Context, cancel context.CancelFunc, stop <-chan struct{}) {
+	select {
+	case <-stop:
+		cancel()
+	case <-ctx.Done():
 	}
 }
 
@@ -162,7 +158,7 @@ func (e *Engine) startController() error {
 func (e *Engine) runController(c *controller) {
 	ticks := e.deps.Clock.Adapt
 	if ticks == nil {
-		ticker := time.NewTicker(adaptiveTick)
+		ticker := time.NewTicker(c.tick)
 		defer ticker.Stop()
 
 		ticks = ticker.C
@@ -191,14 +187,14 @@ func (e *Engine) waitingPhases(context.Context) (int, error) {
 	return len(rows), nil
 }
 
-// signalLimit tells the controller that a phase ended at a limit. It never blocks: a full channel drops the signal, and a static engine has no channel.
+// signalLimit tells the controller that a phase ended at a limit, with the time when it ended. It never blocks: a full channel drops the signal. A static engine has the channel and no reader, so it keeps the first signals and drops the rest.
 func (e *Engine) signalLimit(out PhaseOutput) {
 	if out.Outcome != agent.OutcomeLimited || out.Limit == nil {
 		return
 	}
 
 	select {
-	case e.limited <- limitSignal{ResetsAt: out.Limit.ResetsAt}:
+	case e.limited <- limitSignal{At: e.deps.Clock.wall(), ResetsAt: out.Limit.ResetsAt}:
 	default:
 	}
 }

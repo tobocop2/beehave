@@ -219,7 +219,7 @@ type Engine struct {
 	keepRuns  bool
 	// concurrency is Options.Concurrency: the mode of the cap of the agents queue.
 	concurrency config.Concurrency
-	// limited carries each phase that ends at a provider limit to the controller of an adaptive engine. A static engine has no controller, and the channel drops every send.
+	// limited carries each phase that ends at a provider limit to the controller of an adaptive engine. A static engine has no controller to read it, so the channel keeps the first signals and drops the rest.
 	limited chan limitSignal
 	// overCap is Options.OverCap.
 	overCap bool
