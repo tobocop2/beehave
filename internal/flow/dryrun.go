@@ -73,10 +73,12 @@ func dryReading() func() time.Time {
 // dryChoice holds what the caller chose for a dry run.
 type dryChoice struct {
 	redGate, sendBack bool
-	vars              map[string]any
-	runnerSkillLoads  map[string]bool
-	entry             string
-	skills            []string
+	// voidGates is the number of the first gates that give no verdict.
+	voidGates        int
+	vars             map[string]any
+	runnerSkillLoads map[string]bool
+	entry            string
+	skills           []string
 	// spawnDepth is the max_spawn_depth of the project. 0 means config.DefaultMaxSpawnDepth.
 	spawnDepth int
 	// sandbox is the sandbox mode that the run stores: off unless WithSandbox gives the mode of a project.
@@ -88,6 +90,10 @@ type DryOption func(*dryChoice)
 
 // WithRedGate makes the first gate of the dry run red, with one failed step, so that the run walks the fix round of the workflow. Each later gate passes.
 func WithRedGate() DryOption { return func(c *dryChoice) { c.redGate = true } }
+
+// WithVoidGates makes the first count gates of the dry run void: each one did not run, so its step is unknown and it gives no verdict. Each later gate passes.
+// The command beehave check has no flag for it: the option is for tests of the library.
+func WithVoidGates(count int) DryOption { return func(c *dryChoice) { c.voidGates = count } }
 
 // WithSendBack makes the first review of the dry run end with the verdict changes, so that the run walks a send-back and a fix round. Each later review approves.
 func WithSendBack() DryOption { return func(c *dryChoice) { c.sendBack = true } }
@@ -231,8 +237,11 @@ func dryDeps(tree, head, item string, chosen dryChoice) Deps {
 		agents.sendBack.Store(true)
 	}
 
+	gate := newDryGate(tree, head, chosen.redGate)
+	gate.void = chosen.voidGates
+
 	return Deps{
-		Agents: agents, Gate: newDryGate(tree, head, chosen.redGate), Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
+		Agents: agents, Gate: gate, Logins: dryLogins{}, Lifecycle: dryLifecycle{}, Beats: dryBeats{},
 		Forge: dryForge{head: head}, Rounds: dryRounds{}, Trees: dryTrees{dir: tree}, Commands: dryCommands{}, Items: dryItems{item: item},
 		Writer: dryWriter{}, Reader: dryReader{}, Preflight: dryPreflight{}, Slots: drySlots, SkillLine: drySkillLine,
 		Facts: func(string) model.Project {
@@ -410,10 +419,11 @@ func dryOutput(name string) string {
 }
 
 // dryGate runs on the commit of the dry-run folder and passes. With red set, its first run is red, with one failed step, so that a dry run walks the fix round of a workflow.
-// A gate with a base gets a clean check record: one new test and a clean secret scan.
+// A gate with a base gets a clean check record: one new test and a clean secret scan. With void set, its first void runs give no verdict: the step is unknown.
 type dryGate struct {
 	dir, head string
 	red       bool
+	void      int
 	runs      *atomic.Int32
 }
 
@@ -439,8 +449,13 @@ func (g dryGate) Submit(ctx context.Context, _, _, _, base, _, _ string, _ model
 
 func (g dryGate) Run(_ context.Context, _, _, _ string, job GateJob) (GateResult, error) {
 	result := GateResult{Passed: true, Head: g.head, Tree: dryTree, Steps: []GateStep{{Name: gatepkg.StepCommand, Status: passStatus}}}
-	if g.runs.Add(1) == 1 && g.red {
+	run := int(g.runs.Add(1))
+	if run == 1 && g.red {
 		result.Passed, result.Steps = false, []GateStep{{Name: gatepkg.StepCommand, Status: failStatus}}
+	}
+
+	if run <= g.void {
+		result.Passed, result.Steps = false, []GateStep{{Name: gatepkg.StepCommand, Status: unknownStatus}}
 	}
 
 	if job.Plan.Base != "" {
