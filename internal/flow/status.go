@@ -422,27 +422,43 @@ func (c *Client) requireQuestion(item string, last run) (RunInfo, error) {
 
 // Resume reopens the canceled or failed run of an item, from its last finished step. Run beehave run for the item to continue it.
 func (c *Client) Resume(item string) error {
+	_, err := c.resumeRun(item)
+
+	return err
+}
+
+// ResumeRun is Resume, or with onThisBuild ResumeOnThisBuild, and it returns the id of the run that it reopened: the newest run of the item when the call read it.
+func (c *Client) ResumeRun(item string, onThisBuild bool) (string, error) {
+	if onThisBuild {
+		return c.resumeHere(item)
+	}
+
+	return c.resumeRun(item)
+}
+
+// resumeRun reopens the canceled or failed run of an item and returns its id.
+func (c *Client) resumeRun(item string) (string, error) {
 	last, err := c.latest(item)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := c.requireResumable(item, last); err != nil {
-		return err
+		return "", err
 	}
 
 	// The run replays its recorded claim step, whose claim was released. A fresh claim comes first, and the run refuses to reopen without it.
 	project, owner, err := c.takeClaim(item, last)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
 	if err := c.underProbe(func() error { return c.reopenRun(last) }); err != nil {
-		return errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
+		return "", errors.Join(err, c.dropClaim(project, item, last.Status.ID, owner))
 	}
 
-	return nil
+	return last.Status.ID, nil
 }
 
 // dropClaim gives back a claim that Resume took for run id, when the run did not reopen, and removes the token it saved: a phase waits for the reopen of a run that has one.

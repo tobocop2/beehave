@@ -552,6 +552,8 @@ type fakeBeats struct {
 	err     error
 	onBeat  func()
 	renewed time.Time
+	// onRenewed runs in each read of the last renewal.
+	onRenewed func()
 
 	renewedErr error
 }
@@ -577,9 +579,25 @@ func (b *fakeBeats) Beat(_ context.Context, project, owner string) (string, erro
 // Renewed answers with the time that setRenewed set, or the time of the last Beat when one came after: the last renewal of the claim lease of any item.
 func (b *fakeBeats) Renewed(context.Context, string, string, string) (time.Time, error) {
 	b.mu.Lock()
+	hook := b.onRenewed
+	b.mu.Unlock()
+
+	if hook != nil {
+		hook()
+	}
+
+	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	return b.renewed, b.renewedErr
+}
+
+// hookRenewed sets the function that runs in each read of the last renewal, before it answers: a test uses it to change the run after a move has read it.
+func (b *fakeBeats) hookRenewed(f func()) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.onRenewed = f
 }
 
 // failRenewed makes every later read of the last renewal fail with err.

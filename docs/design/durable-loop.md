@@ -913,10 +913,12 @@ Every flag except `--failed` needs `--failed`, and `--failed` takes no item.
 For each picked run, in the order of the list (end time, then run id), the command makes the same call as `beehave resume <item>`. So each run takes its own fresh claim and keeps each refusal rule: a claim that another holder has, a run that another build started, a run that is no longer failed. The command does not use the DBOS bulk resume: that call cannot rewind a failed run and takes no claim.
 
 - The command prints one line for each run: `<item>	<run id>	<end time>	<outcome>`. The outcome is `would resume` (dry run), `resumed`, `skipped: <reason>` or `refused: <reason>`.
-- A run that another process resumed after the list prints `skipped`. It does not count as a refusal.
+- The run id of a `resumed` line is the run that the resume reopened. It is the newest attempt of the item when the resume read it, so it differs from the listed run when a new attempt started after the list. The end time of the listed run does not belong to that newer run, so the line shows `-` in its place.
+- A run of another build whose lease has ended is a stalled run, and `--on-this-build` takes it over, so a run that another build resumed before the move read it is moved. A run that another process resumed after the list prints `skipped`. It does not count as a refusal. With `--on-this-build` the move reads the run again under `probe.lock`, and a run that another build changed since the move read it also prints `skipped`.
 - A refusal does not stop the other runs.
+- A failed run whose input cannot be read has no known item or project. The command does not list it. It prints `<run id>	not resumed: <reason>` on stderr, and the other runs resume.
 - The last line counts the outcomes: `3 resumed, 1 skipped, 1 refused`.
-- The exit code is 0 when no run refused. It is 1 when a run refused or when no failed run fits the filter. A dry run exits 1 when the list is empty.
+- The exit code is 0 when no run refused and every input could be read. It is 1 when a run refused, when a run has an input that cannot be read, or when no failed run fits the filter. A dry run exits 1 when the list is empty or holds such a run.
 
 After a crash, or after Ctrl-C of `beehave run`, the run stays open. `beehave run <item>` continues it without `resume`. A second Ctrl-C during the stop exits at once with code 130.
 

@@ -157,23 +157,50 @@ func describe(filter flow.FailedFilter) string {
 
 // resumeMany lists the failed runs that fit the filter and resumes each one through the resume of a single item.
 // It prints one line for each run and goes on after a refusal. A dry run prints the lines and resumes nothing.
-func (m *manyResume) resumeMany(out io.Writer, client Steering, filter flow.FailedFilter) error {
-	runs, err := client.FailedRuns(filter)
+// A run whose input cannot be read is named on errOut and left alone, and the command exits with an error after it resumes the others.
+func (m *manyResume) resumeMany(out, errOut io.Writer, client Steering, filter flow.FailedFilter) error {
+	runs, unreadable, err := client.FailedRuns(filter)
 	if err != nil {
 		return err
 	}
 
-	if len(runs) == 0 {
+	if len(runs) == 0 && len(unreadable) == 0 {
 		return fmt.Errorf("%w: %s. Run beehave status to see the runs", errNoFailed, describe(filter))
 	}
+
+	reportUnreadable(errOut, unreadable)
 
 	if m.dryRun {
 		listOnly(out, runs)
 
-		return nil
+		return failedOutcome(0, len(unreadable), len(runs))
 	}
 
-	return m.resumeAll(out, client, runs)
+	refused := m.resumeAll(out, client, runs)
+
+	return failedOutcome(refused, len(unreadable), len(runs))
+}
+
+// reportUnreadable names each failed run whose input cannot be read, one line on errOut: the run id and the reason.
+func reportUnreadable(errOut io.Writer, unreadable []flow.UnreadableRun) {
+	for _, bad := range unreadable {
+		_, _ = fmt.Fprintf(errOut, "%s\tnot resumed: %s\n", bad.ID, model.OneLine(bad.Err.Error()))
+	}
+}
+
+// failedOutcome returns the error of beehave resume --failed: how many runs refused, and how many runs had an input that could not be read. It is nil when both counts are 0.
+func failedOutcome(refused, unreadable, total int) error {
+	var problems []error
+
+	if refused > 0 {
+		problems = append(problems, fmt.Errorf("%w: %d of %d runs refused", errNotResumed, refused, total))
+	}
+
+	if unreadable > 0 {
+		problems = append(problems, fmt.Errorf("%w: %d runs have an input that cannot be read", errNotResumed, unreadable))
+	}
+
+	return errors.Join(problems...)
 }
 
 // listOnly prints each run as one that would resume, and the count.
@@ -185,32 +212,29 @@ func listOnly(out io.Writer, runs []flow.FailedRun) {
 	_, _ = fmt.Fprintf(out, "%d would resume\n", len(runs))
 }
 
-// resumeAll resumes each run in turn, prints the counts, and returns an error that says how many runs refused.
-func (m *manyResume) resumeAll(out io.Writer, client Steering, runs []flow.FailedRun) error {
+// resumeAll resumes each run in turn, prints the counts, and returns how many runs refused.
+func (m *manyResume) resumeAll(out io.Writer, client Steering, runs []flow.FailedRun) int {
 	tally := tallyResumes{}
 	refused := countRefused(runs, func(failed flow.FailedRun) bool { return tally.resume(out, client, failed, m.onThisBuild) })
 
 	_, _ = fmt.Fprintf(out, "%d resumed, %d skipped, %d refused\n", tally.resumed, tally.skipped, refused)
 
-	if refused > 0 {
-		return fmt.Errorf("%w: %d of %d runs refused", errNotResumed, refused, len(runs))
-	}
-
-	return nil
+	return refused
 }
 
 // tallyResumes counts the runs that resumed and the runs that another process had already resumed.
 type tallyResumes struct{ resumed, skipped int }
 
 // resume resumes one failed run, prints its line, and reports whether it did not refuse. A run in the wrong state is skipped: another process resumed it after the list.
+// A run that resumed prints the id that the resume returned, which is the newest run of the item when the resume read it, and so may differ from the id of the list.
 func (t *tallyResumes) resume(out io.Writer, client Steering, failed flow.FailedRun, onThisBuild bool) bool {
-	err := resumeItem(client, failed.Item, onThisBuild)
+	id, err := client.ResumeRun(failed.Item, onThisBuild)
 
 	switch {
 	case err == nil:
 		t.resumed++
 
-		printFailed(out, failed, "resumed")
+		printFailed(out, reopened(failed, id), "resumed")
 	case errors.Is(err, flow.ErrWrongState):
 		t.skipped++
 
@@ -224,9 +248,23 @@ func (t *tallyResumes) resume(out io.Writer, client Steering, failed flow.Failed
 	return true
 }
 
-// printFailed writes the line of one failed run: item, run id, end time and what happened to it.
+// reopened returns the run that a resume reopened. The end time is the end time of the listed run, so a newer run has none.
+func reopened(listed flow.FailedRun, id string) flow.FailedRun {
+	if id == listed.ID {
+		return listed
+	}
+
+	return flow.FailedRun{Item: listed.Item, ID: id}
+}
+
+// printFailed writes the line of one failed run: item, run id, end time and what happened to it. A run with no end time shows a dash.
 func printFailed(out io.Writer, failed flow.FailedRun, outcome string) {
-	_, _ = fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", failed.Item, failed.ID, failed.Ended.UTC().Format(time.RFC3339), outcome)
+	ended := "-"
+	if !failed.Ended.IsZero() {
+		ended = failed.Ended.UTC().Format(time.RFC3339)
+	}
+
+	_, _ = fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", failed.Item, failed.ID, ended, outcome)
 }
 
 // countRefused calls take for each item in turn and returns how many items it did not take.

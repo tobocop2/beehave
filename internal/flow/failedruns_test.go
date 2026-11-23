@@ -74,21 +74,21 @@ func TestFailedRuns_PicksFailedRunsInTheClosedRange(t *testing.T) {
 		{"25", "p", "ERROR", failedUntil},
 	})
 
-	got, err := c.FailedRuns(FailedFilter{Since: failedSince, Until: failedUntil})
+	got, _, err := c.FailedRuns(FailedFilter{Since: failedSince, Until: failedUntil})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-24-r1", "item-21-r1", "item-25-r1"}, failedIDs(got), "both ends are inside the range, and the order is the end time")
 	assert.Equal(t, "21", got[1].Item)
 	assert.Equal(t, failedInside, got[1].Ended)
 
-	all, err := c.FailedRuns(FailedFilter{})
+	all, _, err := c.FailedRuns(FailedFilter{})
 	require.NoError(t, err)
 	assert.Len(t, all, 5, "no bound picks every failed run")
 
-	from, err := c.FailedRuns(FailedFilter{Since: failedUntil})
+	from, _, err := c.FailedRuns(FailedFilter{Since: failedUntil})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-25-r1", "item-23-r1"}, failedIDs(from), "a start alone has no upper bound")
 
-	to, err := c.FailedRuns(FailedFilter{Until: failedSince})
+	to, _, err := c.FailedRuns(FailedFilter{Until: failedSince})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-22-r1", "item-24-r1"}, failedIDs(to), "an end alone has no lower bound")
 }
@@ -104,7 +104,7 @@ func TestFailedRuns_LeavesOutEndedOpenCancelledAndOlderAttempts(t *testing.T) {
 		{"35", "p", "ERROR", failedInside},
 	}, "35")
 
-	got, err := c.FailedRuns(FailedFilter{})
+	got, _, err := c.FailedRuns(FailedFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-31-r1", "item-35-r2"}, failedIDs(got), "35-r1 failed too, but resume acts on the newest attempt of an item, which is 35-r2")
 }
@@ -114,7 +114,7 @@ func TestFailedRuns_AMaxRecoveryRunIsFailed(t *testing.T) {
 
 	_, c := failedWorld(t, []failedRunSpec{{"41", "p", "MAX_RECOVERY_ATTEMPTS_EXCEEDED", failedInside}})
 
-	got, err := c.FailedRuns(FailedFilter{})
+	got, _, err := c.FailedRuns(FailedFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-41-r1"}, failedIDs(got))
 }
@@ -128,23 +128,23 @@ func TestFailedRuns_ProjectAndLimitNarrowTheList(t *testing.T) {
 		{"53", "p", "ERROR", failedInside},
 	})
 
-	got, err := c.FailedRuns(FailedFilter{Project: "q"})
+	got, _, err := c.FailedRuns(FailedFilter{Project: "q"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-52-r1"}, failedIDs(got))
 
-	got, err = c.FailedRuns(FailedFilter{Limit: 2})
+	got, _, err = c.FailedRuns(FailedFilter{Limit: 2})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-53-r1", "item-52-r1"}, failedIDs(got), "the limit keeps the runs that ended first")
 
-	got, err = c.FailedRuns(FailedFilter{Project: "p", Limit: 1})
+	got, _, err = c.FailedRuns(FailedFilter{Project: "p", Limit: 1})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"item-53-r1"}, failedIDs(got), "the project narrows before the limit")
 
-	_, err = c.FailedRuns(FailedFilter{Limit: -1})
+	_, _, err = c.FailedRuns(FailedFilter{Limit: -1})
 	require.ErrorIs(t, err, errBadFailedFilter)
 	assert.Contains(t, err.Error(), "limit")
 
-	_, err = c.FailedRuns(FailedFilter{Since: failedUntil, Until: failedSince})
+	_, _, err = c.FailedRuns(FailedFilter{Since: failedUntil, Until: failedSince})
 	require.ErrorIs(t, err, errBadFailedFilter)
 	assert.Contains(t, err.Error(), "Swap")
 }
@@ -185,7 +185,7 @@ func TestFailedRuns_ADryRunWritesNothing(t *testing.T) {
 	h, c := failedWorld(t, []failedRunSpec{{"61", "p", "ERROR", failedInside}, {"62", "p", "ERROR", failedInside}})
 
 	before := claimState(t, h)
-	got, err := c.FailedRuns(FailedFilter{})
+	got, _, err := c.FailedRuns(FailedFilter{})
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -199,16 +199,34 @@ func TestFailedRuns_ReportsAStoreThatIsGone(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, client.Close())
 
-	_, err = client.FailedRuns(FailedFilter{})
+	_, _, err = client.FailedRuns(FailedFilter{})
 	require.ErrorContains(t, err, "list the failed runs")
 }
 
-func TestFailedRuns_ReportsARunWhoseInputIsNotReadable(t *testing.T) {
+func TestFailedRuns_ReportsARunWhoseItemCannotBeListedAndLeavesNothingPartial(t *testing.T) {
 	t.Parallel()
 
-	h, c := failedWorld(t, []failedRunSpec{{"71", "p", "ERROR", failedInside}})
-	storeExec(t, h, "UPDATE workflow_input SET inputs = '{' WHERE workflow_uuid = 'item-71-r1'")
+	_, c := failedWorld(t, []failedRunSpec{{"72", "p", "ERROR", failedInside}})
+	spyOn(t, c).listFailAt = 2 // the first list reads the failed rows, the second one reads the runs of the item
 
-	_, err := c.FailedRuns(FailedFilter{})
-	require.ErrorContains(t, err, "read the input of run item-71-r1")
+	got, unreadable, err := c.FailedRuns(FailedFilter{})
+
+	require.ErrorIs(t, err, errSpy)
+	assert.Empty(t, got)
+	assert.Empty(t, unreadable)
+}
+
+func TestFailedRuns_ReturnsARunWhoseInputIsNotReadableApartAndListsTheOthers(t *testing.T) {
+	t.Parallel()
+
+	h, c := failedWorld(t, []failedRunSpec{{"71", "p", "ERROR", failedInside}, {"72", "p", "ERROR", failedInside.Add(time.Minute)}, {"73", "p", "ERROR", failedUntil.Add(time.Hour)}})
+	storeExec(t, h, "UPDATE workflow_input SET inputs = '{' WHERE workflow_uuid IN ('item-71-r1', 'item-73-r1')")
+
+	got, unreadable, err := c.FailedRuns(FailedFilter{Until: failedUntil, Limit: 1})
+	require.NoError(t, err, "one unreadable run does not fail the list")
+
+	assert.Equal(t, []string{"item-72-r1"}, failedIDs(got), "the readable run is listed, and the unreadable one does not use up the limit")
+	require.Len(t, unreadable, 1, "the unreadable run past the range is not reported")
+	assert.Equal(t, "item-71-r1", unreadable[0].ID)
+	require.ErrorContains(t, unreadable[0], "read the input of run item-71-r1")
 }

@@ -168,7 +168,12 @@ func TestStoreView_ACanceledRunWithTheMarkAndAFreeMoveLockWhoseMoverFinishedRead
 	h, _ := otherBuildRun(t)
 	client := h.client(t, otherBuild)
 
-	last := markedMove(t, client)
+	markedMove(t, client)
+
+	// The move reads the run after the mover canceled it, and it reopens that read.
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+
 	stale := exactRun(t, client)
 	mark, marked := moveMarkOf(stale)
 

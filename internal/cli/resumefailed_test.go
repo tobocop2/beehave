@@ -164,6 +164,54 @@ func TestResumeFailed_ADryRunPrintsTheListAndResumesNothing(t *testing.T) {
 	assert.Contains(t, stderr, "no failed run")
 }
 
+func TestResumeFailed_PrintsTheRunThatTheResumeActedOnNotTheRunOfTheList(t *testing.T) {
+	t.Parallel()
+
+	rig := failedRig(t)
+	rig.steering.resumedIDs = map[string]string{"13": "item-13-r3"}
+
+	code, stdout, stderr := rig.execute(t.Context(), "resume", "--failed")
+	require.Equal(t, 0, code, stderr)
+
+	assert.Contains(t, stdout, "13\titem-13-r3\t-\tresumed\n", "a new attempt started after the list, and the resume reopened it: it has no end time of the list to show")
+	assert.NotContains(t, stdout, "item-13-r2")
+	assert.Contains(t, stdout, "12\titem-12-r1\t", "the other runs print their own ids")
+}
+
+func TestResumeFailed_ARunWithAnUnreadableInputIsReportedAndTheOthersResume(t *testing.T) {
+	t.Parallel()
+
+	rig := failedRig(t)
+	rig.steering.unreadable = []flow.UnreadableRun{{ID: "item-71-r1", Err: fmt.Errorf("%w: read the input of run item-71-r1", errFake)}}
+
+	code, stdout, stderr := rig.execute(t.Context(), "resume", "--failed")
+
+	assert.Equal(t, 1, code, "the exit code stays non-zero")
+	assert.Equal(t, []string{"failed-runs", "resume 12", "resume 13", "resume 14"}, rig.steering.calls, "the readable runs resume")
+	assert.Contains(t, stdout, "3 resumed, 0 skipped, 0 refused\n")
+	assert.Contains(t, stderr, "item-71-r1\tnot resumed: fake failure: read the input of run item-71-r1")
+	assert.Contains(t, stderr, "1 runs have an input that cannot be read")
+
+	rig = failedRig(t)
+	rig.steering.unreadable = []flow.UnreadableRun{{ID: "item-71-r1", Err: errFake}}
+
+	code, stdout, stderr = rig.execute(t.Context(), "resume", "--failed", "--dry-run")
+
+	assert.Equal(t, 1, code, "a dry run reports the unreadable run too")
+	assert.Equal(t, []string{"failed-runs"}, rig.steering.calls)
+	assert.Contains(t, stdout, "3 would resume\n")
+	assert.Contains(t, stderr, "item-71-r1\tnot resumed")
+
+	rig = newRig(t)
+	rig.steering.unreadable = []flow.UnreadableRun{{ID: "item-71-r1", Err: errFake}}
+
+	code, _, stderr = rig.execute(t.Context(), "resume", "--failed")
+
+	assert.Equal(t, 1, code, "only unreadable runs is not an empty list")
+	assert.Contains(t, stderr, "item-71-r1")
+	assert.NotContains(t, stderr, "no failed run matches")
+}
+
 func TestResumeFailed_AListThatCannotBeReadIsReportedInTheRealRunAndTheDryRun(t *testing.T) {
 	t.Parallel()
 
