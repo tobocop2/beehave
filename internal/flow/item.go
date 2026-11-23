@@ -155,7 +155,7 @@ func (e *Engine) reachedRelease(a *attempt, taken claimTake) (bool, error) {
 		return false, fmt.Errorf("read the steps of %s: %w", a.id, err)
 	}
 
-	return slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return step.StepName == treeStepName && step.Error == nil }), nil
+	return slices.ContainsFunc(steps, func(step dbos.StepInfo) bool { return step.StepName == treeStepName }), nil
 }
 
 // trustClaim starts the trust in the claim of a run. A run that reached its release replays its recorded steps and renews nothing: the tick skips its claim, and the trust lasts for the replay.

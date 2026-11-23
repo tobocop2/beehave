@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -27,6 +28,41 @@ func (b freedBeats) Beat(ctx context.Context, project, owner string) (string, er
 	}
 
 	return b.fakeBeats.Beat(ctx, project, owner)
+}
+
+func TestRelease_ARunWhoseWorktreeRemovalFailedAndWhoseReleaseWasCutFinishesOnTheNextEngine(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.trees.err = errFake
+	deps := h.deps()
+	deps.Beats = freedBeats{fakeBeats: h.beats, life: h.life}
+
+	first, err := NewEngine(t.Context(), h.opts, deps)
+	require.NoError(t, err)
+	require.NoError(t, first.Launch())
+	t.Cleanup(func() { require.NoError(t, first.Shutdown()) })
+
+	// The removal of the worktree fails and records its error, then the stop cuts the release that follows it.
+	h.life.onRelease = sync.OnceFunc(func() {
+		go func() { assert.NoError(t, first.Shutdown()) }()
+
+		<-first.ctx.Done()
+	})
+
+	done := runInBackground(first, testItem)
+
+	require.Error(t, receive(t, done).err)
+	require.NoError(t, first.Shutdown())
+
+	second := engineOn(t, h, deps)
+	handle, err := dbos.RetrieveWorkflow[ItemResult](second.ctx, testRun)
+	require.NoError(t, err)
+
+	_, err = resultOfHandle(t, handle)
+
+	assert.NotContains(t, fmt.Sprint(err), errClaimLost.Error(), "a failed removal is a recorded step: the replay renews no claim")
+	assert.Len(t, h.life.released, 2, "the second engine releases the claim again after the failed removal")
 }
 
 func TestRelease_AStoreThatCannotBeReadEndsTheRunAndSkipsNoRenewal(t *testing.T) {
