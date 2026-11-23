@@ -51,6 +51,7 @@ func plantConfigAt(t *testing.T, extra, file string) plant {
 	require.NoError(t, os.WriteFile(filepath.Join(found.home, file), []byte(text), 0o600))
 	t.Setenv("HOME", found.home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(found.home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1") // the control calls read no system config of the host
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 	require.NoError(t, os.Unsetenv("GIT_CONFIG_GLOBAL"))
 

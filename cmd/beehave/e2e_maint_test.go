@@ -44,7 +44,7 @@ func maintGit(ts *testscript.TestScript, dir string, args ...string) {
 }
 
 // cmdMaintInit is "maintinit": it copies examples/maintenance to home/.upkeep in the work folder and commits it there.
-// It makes a bare repository remotes/acme/<name> for each repository of the example. The global git config maps the GitHub address of the repository to it.
+// It makes a bare repository remotes/acme/<name> for each repository of the example. A git wrapper first on PATH maps the GitHub address of the repository to it.
 // The project files are the output of mkprojects.sh: repo and forge, as a user has them. beehave clones and pushes through the mapped address.
 func cmdMaintInit(ts *testscript.TestScript, _ bool, args []string) {
 	if len(args) != 0 {

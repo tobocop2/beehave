@@ -62,7 +62,7 @@ func Runner(c Call, stand func(dir string) proc.Runner) proc.Runner { //nolint:i
 	return runner
 }
 
-// owner returns the runner of a call that runs with the login of the owner. A non-nil stand replaces it.
+// owner returns the runner of a call of a project with no credentials. It reads no git config of the owner (see ownerEnv). A non-nil stand replaces it.
 func owner(c Call, stand func(dir string) proc.Runner) proc.Runner { //nolint:ireturn // the callers take the interface
 	if stand != nil {
 		return stand(c.Dir)
