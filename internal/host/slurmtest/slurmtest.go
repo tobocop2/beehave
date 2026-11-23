@@ -29,6 +29,7 @@ type Job struct {
 	Command  string
 	Name     string // the job name that sbatch got
 	Forgot   bool   // the controller forgot the job: squeue by name does not list it, and sacct does
+	Final    string // the end state that a read by name reports in place of RUNNING (FAILED, COMPLETED); it ends the job, so squeue by name does not list it
 	Canceled bool
 	Polls    int
 	Live     int   // the number of squeue calls that answer RUNNING; zero means one
@@ -322,11 +323,15 @@ func (f *Cluster) byName(command, name string) model.CommandResult {
 	lines := make([]string, 0, len(f.Jobs))
 
 	for id, job := range f.Jobs {
-		if job.Name != name || job.Vanished || (command == "squeue" && job.Forgot) {
+		if job.Name != name || job.Vanished || (command == "squeue" && (job.Forgot || job.Final != "")) {
 			continue
 		}
 
 		state := "RUNNING"
+		if job.Final != "" {
+			state = job.Final
+		}
+
 		if job.Canceled {
 			state = "CANCELLED by 1000" //nolint:misspell // Slurm's spelling
 		}
