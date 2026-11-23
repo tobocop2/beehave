@@ -173,12 +173,16 @@ At the start of a run, the engine pins the SHA-256 of the workflow file and of e
 
 #### Pinned scripts
 
-A `command` call pins its script like a loaded file when all of these hold: the `run` list is a literal list, the call has no `host`, and the first word is a path to a file in the repository of the workflow file.
+A `command` call pins its script like a loaded file when all of these hold: the `run` list is a literal list, the call has no `host`, and the first word is a path to a file.
 
 - The repository is the nearest folder with a `.git` entry at or above the workflow folder.
 - A relative path resolves against the root of that repository, not against the work tree or the folder where the command runs.
 - A word with no `/`, such as `git`, names a program on the path and is not pinned.
-- A script outside the repository is not pinned, and a script on a build host is not pinned.
+- A script outside the repository is pinned when the first word is a path to a file that starts with `#!`. The path is absolute, or relative and leaves the repository. A link is pinned by the content of its target.
+- The run records the SHA-256 of such a script, and a changed or deleted script refuses the run with its path.
+- A compiled program outside the repository, such as `/bin/sh`, is not a script of the workflow and is not pinned. A file that the user cannot read is not pinned either.
+- A run that an older build started recorded no outside script, and it resumes even when such a script changed.
+- A script on a build host is not pinned.
 - A `command` call whose `run` list is not a literal list of texts is not pinned either, and the refusal counts such calls.
 - A changed script refuses the run in the same way as a changed workflow file.
 

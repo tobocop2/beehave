@@ -37,26 +37,6 @@ func TestClient_ResumeOnThisBuildRefusesARunWhoseStepsDifferInFormatOnly(t *test
 	require.ErrorIs(t, client.ResumeOnThisBuild(testItem), errStranded)
 }
 
-func TestClient_ResumeOnThisBuildNamesTheScriptsOutsideTheRepositoryWhenAFileChanged(t *testing.T) {
-	t.Parallel()
-
-	const outside = "    command(run = [\"/bin/sh\", \"-c\", \"true\"])\n"
-
-	harness := newHarness(t)
-	harness.flowIs(t, waitFlow+outside)
-	engine := harness.engine(t)
-
-	runInBackground(engine, testItem)
-	waitOn(t, ownerAsks(t, harness))
-
-	harness.flowIs(t, waitFlow+outside+"# edited\n")
-
-	err := harness.client(t, otherBuild).ResumeOnThisBuild(testItem)
-
-	require.ErrorContains(t, err, "changed since the run started")
-	require.ErrorContains(t, err, "These scripts are outside the repository and are not pinned: /bin/sh")
-}
-
 func TestClient_ResumeOnThisBuildCountsTheCommandsWhoseScriptsAreNotPinned(t *testing.T) {
 	t.Parallel()
 
