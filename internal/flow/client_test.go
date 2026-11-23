@@ -70,9 +70,9 @@ func TestClient_CommandsRefuseWhatDoesNotFit(t *testing.T) {
 	_, err := engine.Run(testItem, testProject)
 	require.NoError(t, err)
 
-	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), errWrongState)
-	require.ErrorIs(t, client.Cancel(testItem), errWrongState)
-	require.ErrorIs(t, client.Resume(testItem), errWrongState)
+	require.ErrorIs(t, client.Reply(testItem, Reply{Text: "x"}), ErrWrongState)
+	require.ErrorIs(t, client.Cancel(testItem), ErrWrongState)
+	require.ErrorIs(t, client.Resume(testItem), ErrWrongState)
 	require.ErrorContains(t, client.Resume(testItem), "only a cancelled or failed run resumes") //nolint:misspell // user-facing state word
 }
 

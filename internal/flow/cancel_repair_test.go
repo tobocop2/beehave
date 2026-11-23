@@ -147,7 +147,7 @@ func TestCancel_ACancelThatFailedAtTheBuildJobIsFinishedByTheNextCancel(t *testi
 			assert.Contains(t, said.String(), job, "the cancel names the job it stopped")
 
 			err := cancel(client, run)
-			require.ErrorIs(t, err, errWrongState, "a canceled run with nothing open is refused")
+			require.ErrorIs(t, err, ErrWrongState, "a canceled run with nothing open is refused")
 			require.ErrorContains(t, err, run+" is cancelled and has nothing to cancel") //nolint:misspell // the state word that beehave status prints
 			endsAfterTheCancel(t, h, done)
 		})

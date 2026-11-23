@@ -147,7 +147,7 @@ func TestJoin_ARunThatEndedBeforeTheMoveIsNotReopened(t *testing.T) {
 
 	err := client.moveIfOtherBuild(t.Context(), plan, testItem)
 
-	require.ErrorIs(t, err, errWrongState)
+	require.ErrorIs(t, err, ErrWrongState)
 	require.ErrorContains(t, err, "ended before it could move")
 
 	last, newestErr := client.newest(testItem)

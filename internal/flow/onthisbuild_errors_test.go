@@ -23,7 +23,7 @@ func TestClient_ResumeOnThisBuildRefusesWhatItCannotMove(t *testing.T) {
 	require.NoError(t, err)
 
 	err = other.ResumeOnThisBuild(testItem)
-	require.ErrorIs(t, err, errWrongState, "a finished run has nothing to move")
+	require.ErrorIs(t, err, ErrWrongState, "a finished run has nothing to move")
 	require.ErrorContains(t, err, "only a cancelled, failed or open run moves to this build") //nolint:misspell // user-facing state word
 }
 

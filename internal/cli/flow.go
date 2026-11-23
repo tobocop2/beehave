@@ -69,7 +69,7 @@ type Reading interface {
 type Steering interface {
 	Reading
 	Messaging
-	Resume(item string) error
+	Resuming
 	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses. live is the live default of a project.
 	OpenRun(item string, live func(project string) bool) (flow.OpenRun, error)
 	// EngineRuns reports whether an engine holds the state folder.
@@ -78,10 +78,17 @@ type Steering interface {
 	Engine() (flow.EngineInfo, bool, error)
 	// JoinRun gives the item to the engine that holds the state folder and waits for its result.
 	JoinRun(ctx context.Context, item, project, file string, options ...flow.RunOption) (flow.ItemResult, error)
-	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
-	ResumeOnThisBuild(item string) error
 	Canceling
 	Close() error
+}
+
+// Resuming reopens failed and canceled runs.
+type Resuming interface {
+	Resume(item string) error
+	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
+	ResumeOnThisBuild(item string) error
+	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
+	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, error)
 }
 
 // Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
@@ -1043,7 +1050,7 @@ type manyAnswer struct {
 func given(cmd *cobra.Command) []string {
 	var names []string
 
-	for _, name := range []string{"project", "question", "items"} {
+	for _, name := range []string{projectFlag, "question", "items"} {
 		if cmd.Flags().Changed(name) {
 			names = append(names, name)
 		}
@@ -1132,15 +1139,7 @@ func answerMany(out io.Writer, client Steering, m manyAnswer, reply flow.Reply) 
 
 // replyAll answers each item in turn and returns how many refused.
 func replyAll(out io.Writer, client Steering, items []string, reply flow.Reply) int {
-	refused := 0
-
-	for _, item := range items {
-		if !replyTo(out, client, item, reply) {
-			refused++
-		}
-	}
-
-	return refused
+	return countRefused(items, func(item string) bool { return replyTo(out, client, item, reply) })
 }
 
 // replyTo answers one item, prints its line, and reports whether the run took the answer.
@@ -1230,7 +1229,13 @@ const resumeLong = "Reopen the cancelled or failed run of an item. The run resta
 	"A canceled run that left its claim gives it back at the next beehave run.\n" +
 	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
 	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
-	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned."
+	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned.\n\n" +
+	"Add --failed to resume every run that failed, and give no item. After an outage, this reopens the runs that the outage stopped.\n" +
+	"A run is failed when it ended with an error or gave up recovering. A run that was stopped is not failed: resume it by its item.\n" +
+	"Narrow the runs with --since and --until (the end time of the run, ends included, as an RFC 3339 time or a duration such as 6h for that long ago), --project (the project of the run) and --limit (the runs that ended first). A run must fit every filter that is set.\n" +
+	"Each run resumes as beehave resume <item> does, with the same refusals and --on-this-build. A run that refuses prints one line with the reason, and the other runs still resume. A run that another process already resumed prints skipped.\n" +
+	"The command prints one line for each run: the item, the run id, the end time and the outcome. It exits 0 when no run refused, and exits 1 when a run refused or when no failed run fits.\n" +
+	"Add --dry-run to list the runs that would resume and change nothing."
 
 // resumeItem reopens the run of an item, and moves it to this build first when the owner asked for that.
 func resumeItem(client Steering, item string, onThisBuild bool) error {
@@ -1244,21 +1249,28 @@ func resumeItem(client Steering, item string, onThisBuild bool) error {
 func (f flowCommands) resumeCommand() *cobra.Command {
 	var flag string
 
-	var onThisBuild bool
+	var many manyResume
 
 	command := &cobra.Command{
-		Use:   "resume <item>",
-		Short: "Reopen the cancelled or failed run of an item", //nolint:misspell // user-facing state word, same as the cancelled run state
+		Use:   "resume <item> | resume --failed [filters]",
+		Short: "Reopen the cancelled or failed run of an item, or every failed run", //nolint:misspell // user-facing state word, same as the cancelled run state
 		Long:  resumeLong,
-		Args:  oneItem,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], onThisBuild) })
-		},
+		Args:  func(cmd *cobra.Command, args []string) error { return many.resumeArgs(f.clock(), cmd, args) },
+		RunE:  func(cmd *cobra.Command, args []string) error { return f.resume(cmd, flag, &many, args) },
 	}
 	addConfigFlag(command, &flag)
-	command.Flags().BoolVar(&onThisBuild, "on-this-build", false, "move a run that another build started to this build")
+	many.addFlags(command)
 
 	return command
+}
+
+// resume runs beehave resume: one item, or with --failed every failed run that the filter picks.
+func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, args []string) error {
+	if !many.failed {
+		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild) })
+	}
+
+	return f.withClient(cmd, flag, func(client Steering) error { return many.resumeMany(cmd.OutOrStdout(), client, many.picked) })
 }
 
 // cancelArgs takes one item, or no item and a run id in --run.
