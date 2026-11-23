@@ -57,6 +57,7 @@ flowchart TD
         lockfile["lockfile<br/>file lock opener"]
         atomicfile["atomicfile<br/>whole-file writes"]
         fstree["fstree<br/>removes a tree with read-only folders"]
+        gotelemetry["gotelemetry<br/>turns go telemetry off in a home folder"]
         exectest["exectest<br/>writes the programs that tests start"]
     end
 

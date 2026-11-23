@@ -20,8 +20,13 @@ func TestOff_WritesTheModeOffAtEachPathTheGoCommandReads(t *testing.T) {
 
 	assert.Equal(t, []string{".config/go/telemetry/mode", "Library/Application Support/go/telemetry/mode"}, gotelemetry.ModeFiles())
 
+	root, err := os.OpenRoot(home)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, root.Close()) }()
+
 	for _, file := range gotelemetry.ModeFiles() {
-		content, err := os.ReadFile(filepath.Join(home, file))
+		content, err := root.ReadFile(file)
 		require.NoError(t, err)
 		assert.Equal(t, "off\n", string(content), file)
 	}
