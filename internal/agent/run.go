@@ -91,7 +91,7 @@ type Spec struct {
 	Log       io.Writer
 	OnStart   func(pid int)
 	// BeforeStart, when set, runs after every check that can refuse the run and just before the CLI starts. A refused run never calls it.
-	// The note it returns is added to the result of the run.
+	// The note it returns is added to the result of the run. Its time does not count against Timeout: the total limit starts again after it.
 	BeforeStart func(ctx context.Context) string
 	// Guard, when set, is the shell command that the CLI runs before each shell command of the agent. An adapter with no such option ignores it.
 	Guard string
@@ -182,12 +182,13 @@ func (r Runner) Run(ctx context.Context, spec Spec) Result {
 
 	after := r.after()
 
-	defer startTotalTimeout(cmp.Or(spec.Timeout, p.DefaultTimeout), after, cancel)()
+	total := startTotalTimeout(cmp.Or(spec.Timeout, p.DefaultTimeout), after, cancel)
+	defer total.stop()
 
 	idle := newIdleTimer(spec.IdleTimeout, after, cancel)
 	defer idle.stop()
 
-	return stalled(execute(ctx, spec, p, idle, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
+	return stalled(execute(ctx, spec, p, timers{idle, total}, r.version(), tempPlace{cmp.Or(r.Temp, shortTemp), r.Folders}), p)
 }
 
 // stalled adds the StallNote of the profile to a run that a total or idle limit ended.
@@ -257,18 +258,42 @@ func optionProblem(spec Spec, p Profile) string {
 	return ""
 }
 
-// startTotalTimeout cancels the run when the total limit passes. It returns the function that stops the timer.
-func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) func() {
-	if limit <= 0 {
-		return func() {}
-	}
-
-	timer := after(limit, func() { cancel(errTotalTimeout) })
-
-	return func() { timer.Stop() }
+// totalTimer cancels the run when the total limit passes. A run with no limit has no timer.
+type totalTimer struct {
+	limit time.Duration
+	timer Timer
 }
 
-func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version versionOf, where tempPlace) Result {
+// startTotalTimeout starts the total timer of the run.
+func startTotalTimeout(limit time.Duration, after func(time.Duration, func()) Timer, cancel context.CancelCauseFunc) *totalTimer {
+	if limit <= 0 {
+		return &totalTimer{}
+	}
+
+	return &totalTimer{limit: limit, timer: after(limit, func() { cancel(errTotalTimeout) })}
+}
+
+// stop stops the timer.
+func (t *totalTimer) stop() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+}
+
+// restart starts the timer again with the whole limit.
+func (t *totalTimer) restart() {
+	if t.timer != nil {
+		t.timer.Reset(t.limit)
+	}
+}
+
+// timers are the idle timer and the total timer of one run.
+type timers struct {
+	idle  *idleTimer
+	total *totalTimer
+}
+
+func execute(ctx context.Context, spec Spec, p Profile, clock timers, version versionOf, where tempPlace) Result {
 	binary, err := proc.LookPath(p.Binary, spec.Env["PATH"])
 	if err != nil {
 		return Result{Outcome: OutcomeNotStarted, Note: p.Binary + " is not installed. Install it and put it on PATH."}
@@ -288,7 +313,7 @@ func execute(ctx context.Context, spec Spec, p Profile, idle *idleTimer, version
 
 	defer remove()
 
-	return launchRun(ctx, spec, p, binary, runDir, idle, version)
+	return launchRun(ctx, spec, p, binary, runDir, clock, version)
 }
 
 // tempPlace is where a sandboxed run makes its temporary folder: the root of the folders of the users, and the set of the folders that this process made.
@@ -318,7 +343,7 @@ func withTemp(spec Spec, binary string, where tempPlace) (Spec, func(), string) 
 }
 
 // launchRun writes the files of the launch into runDir, starts the CLI with the arguments and the variables of the launch, and waits for it.
-func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, idle *idleTimer, version versionOf) Result {
+func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string, clock timers, version versionOf) Result {
 	launch := launchOf(spec, runDir)
 
 	if problem := cmp.Or(writeFiles(runDir, launch.Files), copyFolders(runDir, launch.Copies)); problem != "" {
@@ -332,20 +357,24 @@ func launchRun(ctx context.Context, spec Spec, p Profile, binary, runDir string,
 		return Result{Outcome: OutcomeNotStarted, Note: problem}
 	}
 
-	note := beforeStart(ctx, spec)
+	note := beforeStart(ctx, spec, clock.total)
 	cmd := proc.GroupCommand(ctx, binary, argsOf(spec, p, launch, versionArgs(p, printed)), spec.Dir)
 
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(spec.Prompt)
 
-	return withGuardProof(runCommand(ctx, spec, cmd, idle), runDir, launch.Loaded).AddNote(note)
+	return withGuardProof(runCommand(ctx, spec, cmd, clock.idle), runDir, launch.Loaded).AddNote(note)
 }
 
-// beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none.
-func beforeStart(ctx context.Context, spec Spec) string {
+// beforeStart runs the BeforeStart function of the spec and returns its note, or "" when the spec sets none. The total timer stops while it runs and
+// starts again with the whole limit after it, so the time it takes does not count against the run.
+func beforeStart(ctx context.Context, spec Spec, total *totalTimer) string {
 	if spec.BeforeStart == nil {
 		return ""
 	}
+
+	total.stop()
+	defer total.restart()
 
 	return spec.BeforeStart(ctx)
 }
