@@ -1,6 +1,8 @@
 package flow
 
 import (
+	"encoding/json"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -204,6 +206,32 @@ func TestExample_TheReviewPromptAsksForFindingsAsJSONTextWithLedgerIdsAndTheFixP
 	assert.Contains(t, review, "`ledger`", "the review reads the ledger in its data file")
 	assert.Contains(t, review, "`severity`", "each finding has a severity")
 	assert.NotContains(t, review, `"class":`, "the findings are no array of class and text objects")
+
+	// Every example reply of the prompt that lists findings carries the one shape: a list of objects with the keys id, severity, path and text.
+	examples := 0
+
+	for _, span := range regexp.MustCompile("`(\\{\"verdict\".*?\\})`").FindAllStringSubmatch(review, -1) {
+		var reply map[string]string
+
+		require.NoError(t, json.Unmarshal([]byte(span[1]), &reply), span[1])
+
+		var list []map[string]string
+
+		require.NoError(t, json.Unmarshal([]byte(reply["findings"]), &list), "the findings of the example are a JSON list text: %s", span[1])
+
+		for _, finding := range list {
+			examples++
+
+			keys := make([]string, 0, len(finding))
+			for key := range finding {
+				keys = append(keys, key)
+			}
+
+			assert.ElementsMatch(t, []string{"id", "severity", "path", "text"}, keys, "a finding of the example has the keys id, severity, path and text")
+		}
+	}
+
+	assert.NotZero(t, examples, "the prompt shows at least one example finding")
 
 	fixes := requestsWith(rig, fixMarker)
 	require.NotEmpty(t, fixes)

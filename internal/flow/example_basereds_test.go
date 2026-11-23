@@ -67,7 +67,7 @@ func TestExample_TheImplementerTheFixAndTheReviewsGetTheBaseRedsInTheDataFile(t 
 		return "approve"
 	}, func(review int) string {
 		if review == 1 {
-			return `["a finding"]`
+			return newFinding
 		}
 
 		return "[]"
@@ -92,8 +92,14 @@ func TestExample_TheImplementerTheFixAndTheReviewsGetTheBaseRedsInTheDataFile(t 
 	withHistory := `{"base":"integration","base_reds":["lint-a","test-b"],"pulls":[]}`
 
 	assert.Equal(t, []string{"plan", "implement", "sweep", "review", "fix", "review", "review"}, seen.kinds)
-	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, "", record, record, record, record}, seen.texts,
-		"the plan gets the pull requests of the item and no base reds, the implementer gets both, and each other lane finds the base reds of the round")
+	require.Len(t, seen.texts, 7)
+	assert.Equal(t, []string{`{"pulls":[]}`, withHistory, ""}, seen.texts[:3],
+		"the plan gets the pull requests of the item and no base reds, the implementer gets both, and the sweep gets no data")
+
+	for _, text := range seen.texts[3:] {
+		assert.Contains(t, text, record[:len(record)-1], "each review and fix lane finds the base reds of the round, and the ledger beside them")
+		assert.Contains(t, text, `"ledger":[`)
+	}
 }
 
 func TestExample_ThePlanAndTheImplementerGetThePullRequestsOfTheItemInTheDataFile(t *testing.T) {
