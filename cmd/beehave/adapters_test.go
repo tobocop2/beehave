@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -501,6 +503,109 @@ func TestAdapters_HostBuildsTheProviderTheProjectNames(t *testing.T) {
 	built, err = table.host(hostProject(skypilot.Name, "-oProxyCommand=x"))
 	require.ErrorIs(t, err, skypilot.ErrConfig)
 	assert.Nil(t, built)
+}
+
+// runningHost is a host.Host whose jobs run until the test ends them or the host cancels them. A cancel frees the disk.
+type runningHost struct {
+	host.Host
+
+	mu       sync.Mutex
+	free     uint64
+	jobs     map[model.JobID]chan model.JobState
+	canceled []model.JobID
+}
+
+func (r *runningHost) Status(context.Context) (model.HostStatus, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: r.free, Readable: true}}, nil
+}
+
+func (r *runningHost) Submit(context.Context, model.JobSpec) (model.JobID, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	id := model.JobID(strconv.Itoa(len(r.jobs) + 1))
+	r.jobs[id] = make(chan model.JobState, 1)
+
+	return id, nil
+}
+
+func (r *runningHost) Wait(_ context.Context, id model.JobID) (model.JobState, error) {
+	r.mu.Lock()
+	ended := r.jobs[id]
+	r.mu.Unlock()
+
+	return <-ended, nil
+}
+
+// Cancel frees the disk after a short while, as a job that ends takes a moment to leave its files.
+func (r *runningHost) Cancel(_ context.Context, id model.JobID) error {
+	r.mu.Lock()
+	r.canceled = append(r.canceled, id)
+	r.mu.Unlock()
+
+	time.Sleep(30 * time.Millisecond)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.free = 60 << 30
+	r.jobs[id] <- model.JobCanceled
+
+	return nil
+}
+
+func TestAdapters_HostsBuiltForOneClusterShareOneFleetSoOnlyTheYoungestJobStops(t *testing.T) {
+	t.Parallel()
+
+	const gigabyte = 1 << 30
+
+	inner := &runningHost{free: 60 * gigabyte, jobs: map[model.JobID]chan model.JobState{}}
+	table := newAdapters(beadstest.NewBd(t), nil, nil)
+	table.diskPoll = time.Millisecond
+	table.hosts[skypilot.Name] = hostAdapter{build: func(model.Project) (host.Host, error) { return inner, nil }}
+
+	project := hostProject(skypilot.Name, "lane-host")
+	older, err := table.host(project)
+	require.NoError(t, err)
+	younger, err := table.host(project)
+	require.NoError(t, err)
+
+	first, err := older.Submit(t.Context(), model.JobSpec{Name: "a"})
+	require.NoError(t, err)
+	second, err := younger.Submit(t.Context(), model.JobSpec{Name: "b"})
+	require.NoError(t, err)
+
+	inner.mu.Lock()
+	inner.free = 10 * gigabyte
+	inner.mu.Unlock()
+
+	olderEnd := make(chan model.JobState, 1)
+
+	go func() {
+		state, waitErr := older.Wait(t.Context(), first)
+		assert.NoError(t, waitErr)
+
+		olderEnd <- state
+	}()
+
+	state, err := younger.Wait(t.Context(), second)
+	require.NoError(t, err)
+	assert.Equal(t, model.JobDiskFull, state, "the guard of the second host stops the job that started last on the cluster")
+
+	select {
+	case inner.jobs[first] <- model.JobSucceeded:
+	default:
+	}
+
+	assert.Equal(t, model.JobSucceeded, <-olderEnd)
+
+	inner.mu.Lock()
+	defer inner.mu.Unlock()
+
+	assert.Equal(t, []model.JobID{second}, inner.canceled, "the older job is not stopped")
 }
 
 // statusHost is a host.Host that reports one disk reading and records its Submit calls.

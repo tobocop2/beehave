@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/agent"
@@ -44,6 +45,27 @@ type adapters struct {
 	writers *writers
 	// diskPoll is how often a job that waits for disk space reads the disk again.
 	diskPoll time.Duration
+	// fleets holds the jobs of each build host, so the guards of one host see each other's jobs.
+	fleets *hostFleets
+}
+
+// hostFleets is the fleet of each build host, by provider and cluster name.
+type hostFleets struct {
+	mu    sync.Mutex
+	hosts map[string]*host.Fleet
+}
+
+// of returns the fleet of the host, and makes it the first time.
+func (h *hostFleets) of(provider model.HostProvider, cluster string) *host.Fleet {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	key := string(provider) + "/" + cluster
+	if h.hosts[key] == nil {
+		h.hosts[key] = host.NewFleet()
+	}
+
+	return h.hosts[key]
 }
 
 // registration is what the entries of one kind share: what the config reads, and the version check of each program the adapter needs, by tool name.
@@ -165,6 +187,7 @@ func newAdapters(bd proc.Runner, state func() (string, error), env map[string]st
 		state:    state,
 		writers:  roles,
 		diskPoll: defaultDiskPoll,
+		fleets:   &hostFleets{hosts: map[string]*host.Fleet{}},
 	}
 }
 
@@ -440,7 +463,7 @@ func (a adapters) host(project model.Project) (host.Host, error) { //nolint:iret
 
 	wait := time.Duration(project.Host.DiskWaitMinutes) * time.Minute
 
-	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll), nil
+	return host.WithDiskWait(built, project.Host.DiskFloorGB, wait, a.diskPoll, a.fleets.of(project.Host.Provider, project.BuildHost)), nil
 }
 
 // agent builds the adapter of the agent. It returns nil for an agent that has no adapter, and a run with no adapter does not start.

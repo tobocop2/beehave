@@ -235,6 +235,7 @@ func TestSteps_AHostJobThatDiedWentStaleOrTimedOutGivesEveryStepUnknownAndNoErro
 		model.JobDied:     "the scheduler holds no record of it",
 		model.JobStale:    "raise `host.stale_minutes`",
 		model.JobTimedOut: "Raise `host.max_run`",
+		model.JobDiskFull: "not a failed gate",
 	}
 
 	for state, advice := range cases {
