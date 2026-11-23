@@ -120,7 +120,7 @@ func (s *script) spawn(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 	call := spawnCall{entry: defaultEntry}
 
 	if err := workflow.Unpack(b.Name(), args, kwargs, map[string]any{
-		"items": &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries,
+		"items": &call.items, "entry": &call.entry, baseKeyword: &call.base, nameKeyword: &call.label, retriesKeyword: &call.retries, workflow.OnOpenKeyword: &call.onOpen,
 	}); err != nil {
 		return nil, err
 	}
@@ -175,6 +175,8 @@ type spawnCall struct {
 	base         string
 	entry, label string
 	retries      int
+	// onOpen is the on_open word of the call, as the call wrote it.
+	onOpen string
 }
 
 // checkBase refuses a spawn whose base is not the base of the round item that calls it. The children are cut at the base of the round item, so another base would cut them at one branch and merge them into another.
@@ -197,6 +199,11 @@ func (s *script) childBase(base string) string {
 
 // planRuns checks the arguments of a spawn call, then records the plan of the runs as one step.
 func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
+	policy, err := workflow.OpenPolicy(call.onOpen)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
 	ids, err := s.spawnIDs(call.items)
 	if err != nil {
 		return nil, err
@@ -210,7 +217,7 @@ func (s *script) planRuns(call spawnCall) ([]spawnedRun, error) {
 		return nil, fmt.Errorf("entry %q is not a function of the workflow file. Add def %s(item)", call.entry, call.entry)
 	}
 
-	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids) })
+	return countedStep(s, "spawn", call.label, func(c context.Context) ([]spawnedRun, error) { return s.e.planSpawn(c, s.in, ids, policy) })
 }
 
 // itemsQueueOf is the name of the items queue of the runs at a depth. A run that a user started is at depth 0 and has the queue roots, so no parent shares a queue with its children.
@@ -259,14 +266,15 @@ func (s *script) checkItem(id string, seen map[string]bool) error {
 	return nil
 }
 
-// planSpawn decides, for each item, which run gather waits for. It is one recorded step, so a replay reads the plan and picks no login again.
-func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string) ([]spawnedRun, error) {
+// planSpawn decides, for each item, which run gather waits for. It is one recorded step, so a replay reads the plan, cancels nothing again and picks no login again.
+// With the policy replace, the open run of an item is canceled first, so planOne finds a canceled run and plans the next attempt.
+func (e *Engine) planSpawn(ctx context.Context, in ItemInput, ids []string, policy workflow.OnOpen) ([]spawnedRun, error) {
 	plan := make([]spawnedRun, 0, len(ids))
 
 	var taken []string
 
 	for _, id := range ids {
-		one, err := e.planOne(ctx, in, id, taken)
+		one, err := e.planReplacing(ctx, in, id, taken, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -337,13 +345,8 @@ func (e *Engine) itemsPlace(ctx context.Context, project, id string) (uint, erro
 
 // openRunError tells why spawn does not start an item that has an open run, and how to end that run.
 func openRunError(open run, item, project string) error {
-	held, err := open.project()
-	if err != nil {
+	if err := startProject(open, item, project); err != nil {
 		return err
-	}
-
-	if held != project {
-		return conflictError(item, held, project)
 	}
 
 	return fmt.Errorf("item %s has an open run, %s. Run beehave status to see it, or beehave cancel %s to end it, then start this item again", item, open.Status.ID, item)

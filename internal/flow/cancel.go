@@ -332,7 +332,7 @@ func (e *Engine) giveBack(ctx context.Context, a *attempt) {
 func (e *Engine) giveBackClaim(ctx context.Context, a *attempt) {
 	owner, err := releaseOwner(e.ctx, a)
 	if err == nil {
-		err = ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.giveBack(ctx, e.logger, a.in.Project, a.in.Item, owner)
+		err = e.asClient().giveOwned(ctx, a, owner)
 	}
 
 	if err != nil && !errors.Is(err, errNoOwner) {

@@ -739,7 +739,7 @@ func (c *Client) releaseUnowned(a *attempt) error {
 func (c *Client) giveBack(a *attempt) error {
 	owner, err := releaseOwner(c.flow, a)
 	if err == nil {
-		err = c.give.giveBack(context.Background(), c.logger, a.in.Project, a.in.Item, owner)
+		err = c.giveOwned(context.Background(), a, owner)
 	}
 
 	if err != nil && !errors.Is(err, errNoOwner) {
@@ -747,6 +747,16 @@ func (c *Client) giveBack(a *attempt) error {
 	}
 
 	return forgetAttempt(c.dir, a.id, owner)
+}
+
+// giveOwned releases the claim of the attempt with its token, and removes the worktree unless a newer run of the item uses it.
+func (c *Client) giveOwned(ctx context.Context, a *attempt, owner string) error {
+	newer, err := newerRunExists(c.store(), a)
+	if err != nil {
+		return err
+	}
+
+	return c.give.giveBack(ctx, c.logger, a.in.Project, a.in.Item, owner, newer)
 }
 
 // OpenRun is what the store holds about the open run of an item: its pinned workflow file and the sandbox mode that it uses.

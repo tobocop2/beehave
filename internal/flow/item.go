@@ -36,10 +36,15 @@ type ItemInput struct {
 	Base string `json:"base,omitempty"`
 	// Sandbox is the sandbox mode the run started with, on or off. The start of a run refuses an empty mode, so only a run recorded before the field existed has none, and it reads the live sandbox mode of its project.
 	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
+	// OnOpen is what this start does with an open run of the item. It is an instruction of the start, not state of the run, so the store never holds it: a resume and a replay read it empty.
+	OnOpen workflow.OnOpen `json:"-"`
 }
 
 // RunOption is a choice for a run that a caller makes when it starts the run.
 type RunOption func(*ItemInput)
+
+// RunOnOpen sets what the start does with an open run of its item: join it, or replace it. An empty policy joins.
+func RunOnOpen(policy workflow.OnOpen) RunOption { return func(in *ItemInput) { in.OnOpen = policy } }
 
 // RunSandbox records the sandbox mode of the run in its input. The caller resolves the mode from its own config, never from the engine that serves the run.
 func RunSandbox(mode model.SandboxMode) RunOption { return func(in *ItemInput) { in.Sandbox = mode } }
@@ -257,7 +262,12 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 
 // begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
 // A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
+// The claim waits for the release of an earlier attempt of the item first, as a replace starts the next attempt before the engine released the one it canceled.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
+	if err = e.awaitRelease(ctx, in.Item, workflowID(ctx)); err != nil {
+		return "", "", time.Time{}, err
+	}
+
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err

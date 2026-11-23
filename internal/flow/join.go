@@ -49,16 +49,25 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 
 // joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
 func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
-	held, err := open.project()
-	if err != nil {
+	if err := startProject(open, in.Item, in.Project); err != nil {
 		return attemptPlan{}, err
 	}
 
-	if held != in.Project {
-		return attemptPlan{}, conflictError(in.Item, held, in.Project)
+	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+}
+
+// startProject refuses a start for a project other than the one that the open run of the item uses.
+func startProject(open run, item, project string) error {
+	held, err := open.project()
+	if err != nil {
+		return err
 	}
 
-	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+	if held != project {
+		return conflictError(item, held, project)
+	}
+
+	return nil
 }
 
 // moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
@@ -140,6 +149,21 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string, option
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
 func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	var handle dbos.WorkflowHandle[ItemResult]
+
+	err := c.underReplace(in, func() error { //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
+		var err error
+
+		handle, err = c.planHandle(ctx, in)
+
+		return err
+	})
+
+	return handle, err
+}
+
+// planHandle reads the newest run of the item, decides what the call does with it, and returns the run to wait for.
+func (c *Client) planHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	last, found, err := latestRun(c.store(), in.Item)
 	if err != nil {
 		return nil, err
@@ -150,7 +174,7 @@ func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.Workflow
 		return nil, err
 	}
 
-	if err := c.moveIfOtherBuild(ctx, plan, in.Item); err != nil {
+	if err := c.moveInStart(ctx, plan, in); err != nil {
 		return nil, err
 	}
 

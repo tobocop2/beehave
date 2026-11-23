@@ -67,7 +67,7 @@ def main(item):
             open_runs = []
 
     # Part 3: the planner gives the task of each stalled worker to a new worker.
-    again = spawn(items = [run.item for run in stalled], entry = "worker", name = "reassign")
+    again = spawn(items = [run.item for run in stalled], entry = "worker", on_open = "replace", name = "reassign")
 
     # One deadline bounds the new workers. At the deadline the planner cancels each one that is still open.
     late = gather(again, timeout = DEADLINE, on_timeout = "cancel", name = "deadline").results
