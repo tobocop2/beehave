@@ -13,7 +13,7 @@ func succeededRun(input, output string) run {
 	return run{Attempt: 1, Status: dbos.WorkflowStatus{ID: runID("21", 1), Status: dbos.WorkflowStatusSuccess, Input: input, Output: output}}
 }
 
-const foreignOutput = `{"item": "21", "value": {"reason": "foreign", "pr": 7, "findings": [{"class": "blocking", "text": "x"}]}}`
+const foreignOutput = `{"item": "21", "value": {"reason": "foreign", "pr": 7, "findings": [{"id": "f-1", "severity": "blocking", "path": "a.go", "text": "x"}]}}`
 
 func TestQueue_AForeignRunWhoseProjectCannotBeReadFailsClosedAndIsNotDone(t *testing.T) {
 	t.Parallel()
@@ -47,7 +47,7 @@ func TestQueue_ARunWhoseResultCannotBeReadFailsClosedAndIsNotDone(t *testing.T) 
 	for name, output := range map[string]string{
 		"the stored output is not JSON":         "not json",
 		"the stored output is the empty string": "",
-		"the stored output has a wrong field":   `{"item": 21, "value": {"reason": "foreign", "pr": 7, "findings": [{"class": "blocking"}]}}`,
+		"the stored output has a wrong field":   `{"item": 21, "value": {"reason": "foreign", "pr": 7, "findings": [{"severity": "blocking"}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
