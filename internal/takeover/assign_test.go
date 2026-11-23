@@ -113,3 +113,49 @@ func TestTake_AFailedAssignOfAnIssueIsAnErrorAndStopsThere(t *testing.T) {
 	require.ErrorContains(t, err, "cannot assign issue 12 to me.")
 	assert.Equal(t, [][]string{viewCall, edit("pr", "7"), edit("issue", "12")}, s.gh.Calls)
 }
+
+func TestTake_AHeadThatMovesAfterThePlanRefusesAndAssignsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{age: 9, notice: 5})
+	s.gh = listing("https://github.com/o/n/issues/12")
+	s.beforeSecondView = func() { s.pr["headRefOid"] = pushed }
+	got := s.run(t, takeover.ModeTake)
+
+	assert.Equal(t, takeover.CodeGuard, got.Code)
+	assert.Contains(t, all(got), "REFUSE: #7 moved from "+planned+" to "+pushed+" since the plan. Nothing assigned.")
+	assert.Equal(t, [][]string{viewCall}, s.gh.Calls)
+}
+
+func TestTake_APullRequestClosedAfterThePlanRefusesAndAssignsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{age: 9, notice: 5})
+	s.beforeSecondView = func() { s.pr["state"] = "CLOSED" }
+	got := s.run(t, takeover.ModeTake)
+
+	assert.Equal(t, takeover.CodeGuard, got.Code)
+	assert.Contains(t, all(got), "#7 is CLOSED, not OPEN")
+	assert.Equal(t, [][]string{viewCall}, s.gh.Calls)
+}
+
+func TestTake_AReadThatFailsAfterThePlanAssignsNothing(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{age: 9, notice: 5})
+	s.secondViewErr = errDown
+	_, err := s.try(takeover.ModeTake)
+
+	require.ErrorIs(t, err, errDown)
+	assert.Equal(t, [][]string{viewCall}, s.gh.Calls)
+}
+
+func TestTake_TheReReadAsksForTheStateTheAuthorAndTheHead(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(spec{age: 9, notice: 5})
+	s.run(t, takeover.ModeTake)
+
+	require.Len(t, s.fields, 2)
+	assert.ElementsMatch(t, []string{"state", "author", "headRefOid"}, s.fields[1])
+}

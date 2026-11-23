@@ -27,6 +27,7 @@ type pull struct {
 	number int
 	title  string
 	base   string
+	closed bool
 }
 
 // world is a stateful fake forge. A write changes its branches and bases. Every write is recorded in writes.
@@ -46,6 +47,11 @@ type world struct {
 	noWrites  bool
 	writes    []string
 	lists     [][]string
+
+	// afterTip runs once, right after the first read of the trunk tip. afterList runs after each list.
+	afterTip  func()
+	tipReads  int
+	afterList func()
 }
 
 func newWorld() *world {
@@ -54,7 +60,7 @@ func newWorld() *world {
 	return &world{
 		state: "MERGED", mergedAt: &at, trunk: tip, trunkOK: true,
 		branches: map[string]string{}, stuck: map[int]bool{}, fails: map[string]bool{},
-		pulls: []pull{{11, "one", oldRef}, {12, "two", oldRef}},
+		pulls: []pull{{11, "one", oldRef, false}, {12, "two", oldRef, false}},
 	}
 }
 
@@ -63,13 +69,37 @@ func (w *world) PRView(_ context.Context, number int, fields ...string) (model.P
 		return model.PullRequest{}, fmt.Errorf("view: %w", errDown)
 	}
 
-	if number != oldPR || !slices.Equal(fields, []string{"state", "mergedAt", "baseRefName"}) {
+	if number != oldPR {
+		return w.viewRow(number, fields)
+	}
+
+	if !slices.Equal(fields, []string{"state", "mergedAt", "baseRefName"}) {
 		return model.PullRequest{}, fmt.Errorf("unexpected view of #%d %v: %w", number, fields, errDown)
 	}
 
 	base := "main"
 
 	return model.PullRequest{Number: number, State: &w.state, MergedAt: w.mergedAt, BaseRefName: &base}, nil
+}
+
+// viewRow answers the second read of a row: its state and its base.
+func (w *world) viewRow(number int, fields []string) (model.PullRequest, error) {
+	if !slices.Equal(fields, []string{"state", "baseRefName"}) || w.fails["row"] {
+		return model.PullRequest{}, fmt.Errorf("unexpected view of #%d %v: %w", number, fields, errDown)
+	}
+
+	for _, p := range w.pulls {
+		if p.number == number {
+			state := "OPEN"
+			if p.closed {
+				state = "CLOSED"
+			}
+
+			return model.PullRequest{Number: number, State: &state, BaseRefName: &p.base}, nil
+		}
+	}
+
+	return model.PullRequest{}, fmt.Errorf("no pull request %d: %w", number, errDown)
 }
 
 func (w *world) PRList(_ context.Context, limit int, args ...string) ([]model.PullRequest, error) {
@@ -89,12 +119,23 @@ func (w *world) PRList(_ context.Context, limit int, args ...string) ([]model.Pu
 		}
 	}
 
+	if w.afterList != nil {
+		w.afterList()
+	}
+
 	return rows, nil
 }
 
 func (w *world) BranchRef(_ context.Context, branch string) (sha string, found bool, err error) {
 	if branch == "main" {
-		return w.trunk, w.trunkOK, w.failIf("trunk")
+		sha, found, err = w.trunk, w.trunkOK, w.failIf("trunk")
+
+		w.tipReads++
+		if w.tipReads == 1 && w.afterTip != nil {
+			w.afterTip()
+		}
+
+		return sha, found, err
 	}
 
 	if err := w.failIf("branch"); err != nil {

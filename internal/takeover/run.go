@@ -459,7 +459,30 @@ func (s *session) stillAt(pr model.PullRequest) error {
 		return nil
 	}
 
-	return stop(CodeGuard, fmt.Sprintf("REFUSE: #%d moved from %s to %s since the plan. Nothing posted.", s.request.PR, s.head, now))
+	return stop(CodeGuard, fmt.Sprintf("REFUSE: #%d moved from %s to %s since the plan. %s", s.request.PR, s.head, now, s.nothing()))
+}
+
+// nothing is the line that says the refused step wrote nothing.
+func (s *session) nothing() string {
+	if s.request.Mode == ModeTake {
+		return "Nothing assigned."
+	}
+
+	return "Nothing posted."
+}
+
+// recheck reads the state, the author and the head again, right before a take writes, and refuses a pull request that changed since the plan.
+func (s *session) recheck(ctx context.Context) error {
+	pr, err := s.reader.PRView(ctx, s.request.PR, "state", "author", "headRefOid")
+	if err != nil {
+		return unread(err, "cannot read #%d again.", s.request.PR)
+	}
+
+	if err = s.guard(pr); err != nil {
+		return err
+	}
+
+	return s.stillAt(pr)
 }
 
 // posted asks the forge for the notice of ours on the pull request. A read that fails is an error, never "no notice".
