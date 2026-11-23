@@ -501,7 +501,7 @@ func TestRoundSync_AForgeFailureOfTheCheckEndsTheItemWithTheLineOfTheTool(t *tes
 
 // itemTerminal reports whether the latest run of the item has ended, or cannot be read.
 func itemTerminal(engine *Engine, item string) bool {
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 
 	return err != nil || (found && last.terminal())
 }

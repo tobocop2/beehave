@@ -90,7 +90,7 @@ func runRefusedFlow(t *testing.T, f refusedFlow, refuse func(*sql.DB)) refusedOu
 
 	_, out.resumed = resumeAndJoin(t, engine, h.client(t, testVersion))
 
-	spend, err := runAndBelowSpend(engine.ctx, testRun)
+	spend, err := runAndBelowSpend(viewOf(engine.ctx, engine.dir), testRun)
 	require.NoError(t, err)
 
 	out.agents, out.cost = len(h.agents.seen()), spend.Cost

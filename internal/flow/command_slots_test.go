@@ -425,7 +425,7 @@ func TestCommand_ARestartKeepsTheLimitOfAClassForTheJobThatWasRunning(t *testing
 	endPasses()
 
 	for _, item := range []string{testItem, "13"} {
-		last, found, lerr := latestRun(second.ctx, item)
+		last, found, lerr := latestRun(viewOf(second.ctx, second.dir), item)
 		require.NoError(t, lerr)
 		require.True(t, found)
 

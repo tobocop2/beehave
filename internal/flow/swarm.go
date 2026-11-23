@@ -290,7 +290,7 @@ func (e *Engine) spawnCap(project string) int {
 // A failed last attempt is refused until beehave resume continues it. A run that finished with success is reused. A canceled run or no run starts the next attempt.
 // taken lists the logins of the runs that this plan already starts: no run has them yet, so the pick must be told.
 func (e *Engine) planOne(ctx context.Context, in ItemInput, id string, taken []string) (spawnedRun, error) {
-	last, found, err := latestRun(e.ctx, id)
+	last, found, err := latestRun(e.store(), id)
 
 	switch {
 	case err != nil:
@@ -718,7 +718,7 @@ func (e *Engine) priced(parent string, used []look, fired raiseResult) (gathered
 	priced := slices.Clone(used)
 
 	for i := range priced {
-		spent, err := runAndBelowSpend(e.ctx, priced[i].ref.Run)
+		spent, err := runAndBelowSpend(e.store(), priced[i].ref.Run)
 		if err != nil {
 			return gathered{}, fmt.Errorf("read the spend of run %s: %w", priced[i].ref.Run, err)
 		}
@@ -796,7 +796,7 @@ func (e *Engine) rowsOf(refs []spawnedRun) (map[string]dbos.WorkflowStatus, erro
 		ids[i] = ref.Run
 	}
 
-	rows, err := dbos.ListWorkflows(dbos.WithoutCancel(e.ctx), dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
+	rows, err := viewOf(dbos.WithoutCancel(e.ctx), e.dir).List(dbos.WithFilterWorkflowIDs(ids...), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("read the runs of the spawned items: %w", err)
 	}

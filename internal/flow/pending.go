@@ -234,10 +234,7 @@ func (e *Engine) sweepOne(ctx context.Context, a *attempt, atStart bool) {
 		// beehave cancel writes the marker before it cancels the run, so the cancel may still come.
 	default:
 		// The engine stopped after the cancel and before the run woke, so no live wait turned off the queued merge.
-		list := func(opts ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
-			return dbos.ListWorkflows(e.ctx, opts...)
-		}
-		if err := disarmCanceled(ctx, list, e.deps.Merge, a.id); err != nil {
+		if err := disarmCanceled(ctx, e.store().List, e.deps.Merge, a.id); err != nil {
 			e.logger.WarnContext(ctx, "cannot turn off the queued merge of a canceled run", "run", a.id, "error", err)
 		}
 
@@ -257,7 +254,7 @@ func attemptOf(id, prefix string) (attempt int, ok bool) {
 func (e *Engine) markerState(id, item string) (state markerRun, err error) {
 	prefix := runPrefix + item + attemptMarker
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
+	rows, err := e.store().List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
 	if err != nil {
 		return markerRun{}, err
 	}

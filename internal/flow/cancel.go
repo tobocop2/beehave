@@ -296,7 +296,7 @@ func (e *Engine) canceledRows(local []*attempt) (map[string]bool, error) {
 		ids = append(ids, a.id)
 	}
 
-	rows, err := dbos.ListWorkflows(e.ctx, dbos.WithFilterStatus(dbos.WorkflowStatusCancelled), dbos.WithFilterWorkflowIDs(ids...))
+	rows, err := e.store().List(dbos.WithFilterStatus(dbos.WorkflowStatusCancelled), dbos.WithFilterWorkflowIDs(ids...))
 	if err != nil {
 		return nil, err
 	}

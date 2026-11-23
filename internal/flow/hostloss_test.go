@@ -35,7 +35,7 @@ def main(item):
 func lastRunOf(t *testing.T, engine *Engine, item string) string {
 	t.Helper()
 
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 	require.NoError(t, err)
 	require.True(t, found, "item %s has no run", item)
 

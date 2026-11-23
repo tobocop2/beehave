@@ -94,10 +94,10 @@ func runID(item string, attempt int) string {
 }
 
 // latestRun returns the attempt of the item with the highest number. found is false when the item never ran.
-func latestRun(client dbos.Client, item string) (run, bool, error) {
+func latestRun(client storeView, item string) (run, bool, error) {
 	prefix := runPrefix + item + attemptMarker
 
-	rows, err := dbos.ListWorkflows(client, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
+	rows, err := client.List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return run{}, false, fmt.Errorf("list the runs of item %s: %w", item, err)
 	}

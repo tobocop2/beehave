@@ -88,15 +88,7 @@ func (c *Client) moveHeld(ctx context.Context, item string) error {
 	}
 
 	// The cancel and the release bound their own work, as beehave resume --on-this-build does with no context.
-	if err := c.cancelHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return err
-	}
-
-	if err := c.reopenHeld(item, last); err != nil { //nolint:contextcheck // see the comment above
-		return canceledNotMoved(item, last, err)
-	}
-
-	return nil
+	return c.cancelAndReopenHeld(item, last) //nolint:contextcheck // see the comment above
 }
 
 // namedVersions adds the stored version and this version to the refusal of a run that this build cannot replay.
@@ -148,7 +140,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string, option
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
 func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(c.flow, in.Item)
+	last, found, err := latestRun(c.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +199,7 @@ func (c *Client) liveVersion() (string, error) {
 // handleOf retrieves the run to join, or enqueues the next attempt for the version of this build.
 func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	if plan.Join != "" {
-		return dbos.RetrieveWorkflow[ItemResult](c.flow, plan.Join)
+		return retrieve[ItemResult](c.store(), plan.Join)
 	}
 
 	handle, err := dbos.Enqueue[ItemResult](c.flow, rootsQueueName, itemName, in,
@@ -223,7 +215,7 @@ func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[I
 // The loop runs in the caller, so it ends with ctx and leaves no poller behind.
 func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResult], item string) (ItemResult, error) {
 	poll := cmp.Or(c.give.Clock.Poll, joinPoll)
-	watch := engineWatch{dir: c.dir, grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
+	watch := engineWatch{dir: c.dir, view: c.store(), grace: cmp.Or(c.give.Clock.Gone, engineGone), item: item, build: c.sameBuildAsEngine}
 	ticker := time.NewTicker(poll)
 
 	defer ticker.Stop()
@@ -244,7 +236,7 @@ func (c *Client) await(ctx context.Context, handle dbos.WorkflowHandle[ItemResul
 
 // poll reads the run once. It returns done with the result when the run ended, and an error when the status cannot be read or no engine holds the state folder for the grace time.
 func (w *engineWatch) poll(handle dbos.WorkflowHandle[ItemResult]) (ItemResult, bool, error) {
-	status, err := handle.GetStatus()
+	status, err := settledStatus(w.view, handle)
 	if err != nil {
 		return ItemResult{}, false, fmt.Errorf("item %s: read the status of the run: %w", w.item, err)
 	}
@@ -277,6 +269,7 @@ func (o outcome) unwrap(item string) (ItemResult, error) {
 // engineWatch counts how long no engine holds the state folder. While an engine holds it, the watch asks build whether that engine runs this build.
 type engineWatch struct {
 	dir   string
+	view  storeView
 	item  string
 	grace time.Duration
 	since time.Time

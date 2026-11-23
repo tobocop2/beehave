@@ -170,12 +170,12 @@ func (e *Engine) treeHostLosses(ctx dbos.Context, item string) (int, error) {
 		return 0, err
 	}
 
-	return hostLossesBelow(e.ctx, root)
+	return hostLossesBelow(e.store(), root)
 }
 
 // hostLossesBelow counts the steps <call>/host-loss of a run and of every item run below it. The count needs the names of the steps only,
 // so the walk does not load their outputs.
-func hostLossesBelow(ctx dbos.Client, id string) (int, error) {
+func hostLossesBelow(ctx storeView, id string) (int, error) {
 	count := 0
 
 	err := walkTree(ctx, id, dbos.WithStepsLoadOutput(false), func(_ string, records []dbos.StepInfo) error {

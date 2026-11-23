@@ -90,7 +90,7 @@ const (
 
 // finished reports whether the latest run of an item ended with success. A run that does not exist yet is not finished.
 func finished(engine *Engine, item string) bool {
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 
 	return err == nil && found && last.Status.Status == dbos.WorkflowStatusSuccess
 }
@@ -132,7 +132,7 @@ func swarmHelper(t *testing.T, mode, stateDir string) {
 	}
 
 	waitOn(t, condition(func() bool {
-		last, found, err := latestRun(engine.ctx, testItem)
+		last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 
 		return err == nil && found && last.Status.Status == dbos.WorkflowStatusSuccess
 	}))

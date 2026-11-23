@@ -314,7 +314,7 @@ func printDrySteps(ctx context.Context, opts Options, out io.Writer) (string, er
 
 // dryLines reads the steps of the runs in the store of the client, in order. last names the final step, or "the start" when none ran.
 func dryLines(client *Client) (lines []string, last string, err error) {
-	runs, err := dbos.ListWorkflows(client.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName))
+	runs, err := client.store().List(dbos.WithFilterWorkflowIDPrefix(runPrefix), dbos.WithFilterName(itemName))
 	last = "the start"
 
 	for _, run := range runs {

@@ -353,7 +353,7 @@ func TestQueueLoop_OnePassStartsNoMoreRunsThanFreeSlots(t *testing.T) {
 	spawned := 0
 
 	for _, item := range []string{"21", "22", "23", "24"} {
-		if _, found, err := latestRun(engine.ctx, item); err == nil && found {
+		if _, found, err := latestRun(viewOf(engine.ctx, engine.dir), item); err == nil && found {
 			spawned++
 		}
 	}
@@ -397,7 +397,7 @@ func TestQueueLoop_ACrashAfterSpawnAndAResumeStartNoItemTwice(t *testing.T) {
 	assert.ElementsMatch(t, []string{"21", "22", "23"}, r.agents.started(), "every item started, and none has a second entry")
 
 	for _, item := range []string{"21", "22", "23"} {
-		last, found, lookErr := latestRun(second.ctx, item)
+		last, found, lookErr := latestRun(viewOf(second.ctx, second.dir), item)
 		require.NoError(t, lookErr)
 		require.True(t, found)
 		assert.Equal(t, 1, last.Attempt, "item %s kept its first attempt", item)

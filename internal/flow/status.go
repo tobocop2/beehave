@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -136,7 +137,7 @@ func (c *Client) Close() error {
 
 // Status lists every run of every item, oldest first.
 func (c *Client) Status() ([]RunInfo, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(runPrefix, passPrefix), dbos.WithFilterName(itemName, passName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
+	rows, err := c.store().List(dbos.WithFilterWorkflowIDPrefix(runPrefix, passPrefix), dbos.WithFilterName(itemName, passName), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return nil, fmt.Errorf("list the runs: %w", err)
 	}
@@ -159,7 +160,7 @@ func (c *Client) Status() ([]RunInfo, error) {
 // A poll that did not succeed returns Failure and the time it ended, so an older poll never shows as current.
 // The second value is false when no poll has finished.
 func (c *Client) Poll() (PollOutput, bool, error) {
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterName(pollName),
+	rows, err := c.store().List(dbos.WithFilterName(pollName),
 		dbos.WithFilterStatus(dbos.WorkflowStatusSuccess, dbos.WorkflowStatusError, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded),
 		dbos.WithFilterLoadOutput(true), dbos.WithFilterSortDesc(), dbos.WithFilterLimit(1))
 	if err != nil {
@@ -572,7 +573,7 @@ func (c *Client) runWithID(id string) (run, error) {
 		return run{}, fmt.Errorf("%w: %q. Give a run id that beehave status lists, such as item-12-r1", errBadRunID, id)
 	}
 
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
+	rows, err := c.store().List(dbos.WithFilterWorkflowIDs(id), dbos.WithFilterLoadInput(true), dbos.WithFilterLoadOutput(true))
 	if err != nil {
 		return run{}, fmt.Errorf("read run %s: %w", id, err)
 	}
@@ -641,23 +642,41 @@ func (c *Client) leftOpen(last run) ([]string, error) {
 
 // openUnder returns the ids of the open runs in the tree under the run with this id, at any depth.
 func (c *Client) openUnder(id string) ([]string, error) {
-	var open []string
+	rows, err := c.openRowsUnder(id)
+	ids := make([]string, len(rows))
+
+	for i, row := range rows {
+		ids[i] = row.ID
+	}
+
+	return ids, err
+}
+
+// openRowsUnder returns the open runs in the tree under the run with this id, at any depth, as the store holds them: a mover reads its own move this way.
+func (c *Client) openRowsUnder(id string) ([]dbos.WorkflowStatus, error) {
+	rows, err := c.rowsUnder(id)
+
+	return slices.DeleteFunc(rows, func(row dbos.WorkflowStatus) bool { return (run{Status: row}).terminal() }), err
+}
+
+// rowsUnder returns the runs in the tree under the run with this id, at any depth, as the store holds them.
+func (c *Client) rowsUnder(id string) ([]dbos.WorkflowStatus, error) {
+	var below []dbos.WorkflowStatus
 
 	for parents := []string{id}; len(parents) > 0; parents = parents[1:] {
-		rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterParentWorkflowID(parents[0]))
+		rows, err := c.store().Exact(dbos.WithFilterParentWorkflowID(parents[0]))
 		if err != nil {
 			return nil, fmt.Errorf("list the children of run %s: %w", parents[0], err)
 		}
 
 		for _, row := range rows {
 			parents = append(parents, row.ID)
-			if !(run{Status: row}).terminal() {
-				open = append(open, row.ID)
-			}
 		}
+
+		below = append(below, rows...)
 	}
 
-	return open, nil
+	return below, nil
 }
 
 // sayStopped writes to progress the runs that a cancel of a canceled run stopped.
@@ -705,10 +724,7 @@ func (c *Client) releaseUnowned(a *attempt) error {
 	}
 
 	// No engine runs the run, so no live wait can turn off its queued merge.
-	list := func(opts ...dbos.ListWorkflowsOption) ([]dbos.WorkflowStatus, error) {
-		return dbos.ListWorkflows(c.flow, opts...)
-	}
-	off := disarmCanceled(context.Background(), list, c.give.Merge, a.id)
+	off := disarmCanceled(context.Background(), c.store().List, c.give.Merge, a.id)
 
 	return errors.Join(off, c.giveBack(a), held.Unlock())
 }
@@ -741,7 +757,7 @@ type OpenRun struct {
 // OpenRun returns the open run of the item. live is the live default of a project, which a run recorded before the mode existed uses.
 // It reads the store and launches nothing.
 func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, error) {
-	last, found, err := latestRun(c.flow, item)
+	last, found, err := latestRun(c.store(), item)
 	if err != nil || !found || last.terminal() {
 		return OpenRun{}, err
 	}
@@ -753,16 +769,16 @@ func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, 
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.
 func (c *Client) latest(item string) (run, error) {
-	return latestOf(c.flow, c.version, item)
+	return latestOf(c.store(), c.version, item)
 }
 
 // newest returns the newest run of an item, whatever build started it.
 func (c *Client) newest(item string) (run, error) {
-	return newestOf(c.flow, item)
+	return newestOf(c.store(), item)
 }
 
 // latestOf returns the newest run of an item, and refuses a run that a build of another version started.
-func latestOf(client dbos.Client, version, item string) (run, error) {
+func latestOf(client storeView, version, item string) (run, error) {
 	last, err := newestOf(client, item)
 	if err != nil {
 		return run{}, err
@@ -776,7 +792,7 @@ func latestOf(client dbos.Client, version, item string) (run, error) {
 }
 
 // newestOf returns the newest run of an item, whatever build started it.
-func newestOf(client dbos.Client, item string) (run, error) {
+func newestOf(client storeView, item string) (run, error) {
 	if model.ItemKind(item) == "" {
 		return run{}, fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, item)
 	}

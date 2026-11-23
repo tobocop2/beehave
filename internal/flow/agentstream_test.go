@@ -323,7 +323,7 @@ func TestFollow_AClosedStoreIsAnErrorAtEachLook(t *testing.T) {
 	_, err := client.followOnce(t.Context(), "item-fix-a-r1", map[string]bool{}, func(FollowedEntry) {})
 	require.Error(t, err, "the look at the run")
 
-	_, err = phasesOf(client.flow, "item-fix-a-r1")
+	_, err = phasesOf(client.store(), "item-fix-a-r1")
 	require.Error(t, err)
 
 	asked := ""

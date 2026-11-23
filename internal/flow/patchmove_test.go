@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -54,7 +56,7 @@ func TestPatch_AnOpenRunOfAnotherReleaseBuildJoinsUnderRunWhenNoModuleChanged(t 
 	require.NoError(t, outcome.err, "the modules are equal, so run moves the open run of the older release build and finishes it")
 	assert.Equal(t, []string{"old", "old", "new"}, seen.all(), "call 1 replays its old step, and call 2 is new code")
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, engine.version, last.Status.ApplicationVersion, "the run is stored under this build")
@@ -119,9 +121,9 @@ func TestPatch_AWaitDoesNotTakeTheCancelOfAMoveForTheEndOfTheRun(t *testing.T) {
 		t.Fatalf("the move ended before it took the claim: %v", err)
 	}
 
-	last, err := client.newest(testItem)
+	held, err := client.store().Exact(dbos.WithFilterWorkflowIDs(testRun))
 	require.NoError(t, err)
-	require.Equal(t, dbos.WorkflowStatusCancelled, last.Status.Status, "the move canceled the run and has not rewound it yet")
+	require.Equal(t, dbos.WorkflowStatusCancelled, held[0].Status, "the move canceled the run and has not rewound it yet")
 	assert.Empty(t, run.stalled(time.Now()), "the move holds probe.lock, so the wait does not take its cancel for the end of the run")
 
 	close(resume)
@@ -151,6 +153,32 @@ func TestPatch_AWaitDoesNotTakeTheOpenRunOfAnotherBuildForOneThatParks(t *testin
 
 	require.NoError(t, client.moveIfOtherBuild(t.Context(), attemptPlan{Join: testRun, Move: true}, testItem))
 	assert.Empty(t, run.stalled(time.Now()), "the moved run is open on this build")
+}
+
+func TestResumeOnThisBuild_ReadsNoCanceledRunBetweenTheCancelAndTheReopen(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	client := h.client(t, otherBuild)
+
+	// The cancel releases the claim of the run at its end. The release replaces probe.lock with a folder, which no process can lock.
+	// A move that frees probe.lock after the cancel and takes it again for the reopen fails at the second take, and leaves the run canceled.
+	var once sync.Once
+
+	h.life.onRelease = func() {
+		once.Do(func() {
+			path := filepath.Join(client.dir, probeLockName)
+			assert.NoError(t, os.Remove(path))
+			assert.NoError(t, os.Mkdir(path, 0o700))
+		})
+	}
+
+	require.NoError(t, client.ResumeOnThisBuild(testItem), "the move holds probe.lock from the cancel to the rewind, so it takes the lock once")
+
+	last, err := client.newest(testItem)
+	require.NoError(t, err)
+	assert.Equal(t, client.version, last.Status.ApplicationVersion)
+	assert.False(t, last.terminal(), "the run is open on this build: %s", last.Status.Status)
 }
 
 func TestPatch_AnOpenRunOfAnotherReleaseBuildIsRefusedByRunAndNamesTheModuleThatChanged(t *testing.T) {
@@ -242,7 +270,7 @@ func TestPatch_ARunThatHoldsAMarkerMovesToAnotherReleaseBuild(t *testing.T) {
 	engine := h.engine(t)
 	client := h.client(t, otherBuild)
 
-	last, found, err := latestRun(engine.ctx, testItem)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), testItem)
 	require.NoError(t, err)
 	require.True(t, found)
 

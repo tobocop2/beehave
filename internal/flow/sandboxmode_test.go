@@ -32,7 +32,7 @@ func (l countingLogins) Pick(ctx context.Context, project, item string, busy []s
 func storedInput(t *testing.T, client *Client, item string) ItemInput {
 	t.Helper()
 
-	last, found, err := latestRun(client.flow, item)
+	last, found, err := latestRun(client.store(), item)
 	require.NoError(t, err)
 	require.True(t, found)
 
@@ -304,7 +304,7 @@ func TestRun_TheStartOfARunRefusesAnEmptySandboxMode(t *testing.T) {
 			require.ErrorIs(t, err, errNoSandboxMode)
 			assert.Empty(t, rig.h.agents.seen(), "no step of the run started")
 
-			_, found, readErr := latestRun(rig.h.client(t, testVersion).flow, testItem)
+			_, found, readErr := latestRun(rig.h.client(t, testVersion).store(), testItem)
 			require.NoError(t, readErr)
 			assert.False(t, found, "the store holds no run with an empty mode")
 		})

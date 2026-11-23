@@ -191,7 +191,7 @@ func (e *Engine) planRestart(ctx context.Context, in ItemInput, failed spawnedRu
 
 // latestInput reads the input of the latest run of the item.
 func (e *Engine) latestInput(item string) (ItemInput, error) {
-	last, _, err := latestRun(e.ctx, item)
+	last, _, err := latestRun(e.store(), item)
 	if err != nil {
 		return ItemInput{}, err
 	}

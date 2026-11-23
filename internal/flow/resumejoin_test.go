@@ -20,7 +20,7 @@ func resumeRun(t *testing.T, engine *Engine, client *Client) dbos.WorkflowHandle
 func resumeRunOf(t *testing.T, engine *Engine, client *Client, item string) dbos.WorkflowHandle[ItemResult] {
 	t.Helper()
 
-	last, found, err := latestRun(engine.ctx, item)
+	last, found, err := latestRun(viewOf(engine.ctx, engine.dir), item)
 	require.NoError(t, err)
 	require.True(t, found, "no run to resume")
 

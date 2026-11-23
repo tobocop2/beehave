@@ -53,7 +53,7 @@ func lanesRead(item string, ids []string, read func(string) (RunSteps, error)) (
 func (c *Client) attemptsOf(item string) ([]string, error) {
 	prefix := runPrefix + item + attemptMarker
 
-	rows, err := dbos.ListWorkflows(c.flow, dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
+	rows, err := c.store().List(dbos.WithFilterWorkflowIDPrefix(prefix), dbos.WithFilterName(itemName))
 	if err != nil {
 		return nil, fmt.Errorf("list the runs of item %s: %w", item, err)
 	}

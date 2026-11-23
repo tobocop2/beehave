@@ -74,14 +74,14 @@ func TestSpawn_ACrashWhileTheParentWaitsInGatherStartsNoSecondChild(t *testing.T
 	_, err := engine.RunFile(testItem, testProject, writeFlow(t, spawnFlow), modeOff())
 	require.Error(t, err, "the crash ends the parent")
 
-	before, found, err := latestRun(engine.ctx, "21")
+	before, found, err := latestRun(viewOf(engine.ctx, engine.dir), "21")
 	require.NoError(t, err)
 	require.True(t, found, "the child started before the crash")
 
 	_, err = resumeAndJoin(t, engine, h.client(t, testVersion))
 	require.NoError(t, err)
 
-	after, found, err := latestRun(engine.ctx, "21")
+	after, found, err := latestRun(viewOf(engine.ctx, engine.dir), "21")
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, before.Status.ID, after.Status.ID, "the resume found the child by its run id")
