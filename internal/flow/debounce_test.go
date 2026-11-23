@@ -233,10 +233,13 @@ func TestDebounce_ANegativeWindowIsRefusedByTheEngineAndTheClientAndStartsNothin
 	files := debounceFiles(t, "x")
 	sentence := `debounce is "-1s", which must be above zero. Write a duration such as "30s", or leave debounce out to start at once`
 
-	_, err := engine.RunFile(testItem, testProject, files[0], modeOff(), RunDebounce(-time.Second))
-	require.EqualError(t, err, sentence)
+	refused := refusedAtOnce(t, startFile(engine, testItem, testProject, files[0], RunDebounce(-time.Second)))
+	require.EqualError(t, refused.err, sentence)
 
-	_, err = client.JoinRun(t.Context(), testItem, testProject, files[0], modeOff(), RunDebounce(-time.Second))
+	ctx, cancel := context.WithTimeout(t.Context(), refusalWait)
+	defer cancel()
+
+	_, err := client.JoinRun(ctx, testItem, testProject, files[0], modeOff(), RunDebounce(-time.Second))
 	require.EqualError(t, err, sentence)
 
 	assert.Empty(t, replaceRuns(t, client, testItem), "a refused start stores no run")
