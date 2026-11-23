@@ -3,6 +3,7 @@ package flow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -68,6 +69,20 @@ func TestAgentStep_TheCapOfTheStepGoesToTheAgentRequest(t *testing.T) {
 		require.Len(t, rig.h.agents.seen(), 1)
 		assert.InDelta(t, tc.want, rig.h.agents.seen()[0].MaxBudget, 0, tc.extra)
 	}
+}
+
+func TestAgentStep_TheRunAndTheCallOfTheStepGoToTheAgentRequest(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	rig.reply("", exited)
+
+	_, err := rig.run(t, agentFlow(""), "x")
+
+	require.NoError(t, err)
+	require.Len(t, rig.h.agents.seen(), 1)
+	assert.NotEmpty(t, rig.h.agents.seen()[0].Run)
+	assert.True(t, strings.HasPrefix(rig.h.agents.seen()[0].Call, "agent:"), rig.h.agents.seen()[0].Call)
 }
 
 func TestAgentStep_ABadStepCapFailsTheStepAndNamesTheKeyword(t *testing.T) {

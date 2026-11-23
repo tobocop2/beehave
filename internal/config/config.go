@@ -25,6 +25,7 @@ const (
 	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
 	envMaxTreeBudget       = "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD"
+	envTraceParent         = "BEEHAVE_AGENTS_TRACE_PARENT"
 	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
 	envReviewLookback      = "BEEHAVE_REVIEW_LOOKBACK_DAYS"
@@ -193,6 +194,23 @@ func overlayWhole(env map[string]string, name, hint string, into *int) error {
 	return nil
 }
 
+// overlayBool reads a true or false from the environment. An empty variable leaves the value.
+func overlayBool(env map[string]string, name string, into *bool) error {
+	value := env[name]
+	if value == "" {
+		return nil
+	}
+
+	flag, err := strconv.ParseBool(value)
+	if err != nil {
+		return refuse("%s=%s is not true or false. Write true or false.", name, value)
+	}
+
+	*into = flag
+
+	return nil
+}
+
 // overlayConcurrency sets the concurrency mode from the variable. An empty variable leaves the value; the check of the value is in Validate.
 func overlayConcurrency(env map[string]string, into *Concurrency) {
 	if value := env[envConcurrency]; value != "" {
@@ -209,9 +227,7 @@ func (c *Config) applyEnv(env map[string]string) error {
 		overlayWhole(env, envReviewPoll, "for example 60, or 0 for no poll.", &c.Agents.ReviewPollMinutes),
 		overlayWhole(env, envReviewLookback, "for example 3.", &c.Agents.ReviewLookbackDays),
 		overlayWhole(env, envRetentionDays, "for example 30, or 0 to keep every finished run.", &c.Agents.RetentionDays),
-		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
-		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
-		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
+		c.overlayBudgets(env),
 	)
 	if err != nil {
 		return err
@@ -220,6 +236,16 @@ func (c *Config) applyEnv(env map[string]string) error {
 	return errors.Join(
 		overlayPercent(env, envFiveHourMax, &c.Pool.FiveHourMax),
 		overlayPercent(env, envSevenDayMax, &c.Pool.SevenDayMax),
+		overlayBool(env, envTraceParent, &c.Agents.TraceParent),
+	)
+}
+
+// overlayBudgets reads the three caps in dollars from the environment.
+func (c *Config) overlayBudgets(env map[string]string) error {
+	return errors.Join(
+		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
+		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
+		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
 	)
 }
 

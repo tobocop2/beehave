@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -25,6 +27,14 @@ import (
 
 // snippetRunes is the longest command text in one violation line.
 const snippetRunes = 160
+
+// The text that salts the hash of a run into a trace id and of a step into a span id, and the byte lengths that W3C Trace Context gives to the two ids.
+const (
+	traceSalt    = "beehave-trace:"
+	spanSalt     = "beehave-span:"
+	traceIDBytes = 16
+	spanIDBytes  = 8
+)
 
 // maxViolationLines is the most violation lines that a run records. One more line says how many the run left out.
 const maxViolationLines = 20
@@ -57,6 +67,8 @@ type agents struct {
 	maxRunBudget float64
 	// maxTreeBudget is agents.max_tree_budget_usd. 0 means no cap.
 	maxTreeBudget float64
+	// traceParent is agents.trace_parent: each agent process gets a TRACEPARENT of its run and step.
+	traceParent bool
 	// prices is the price table that estimates the cost of a CLI that reports tokens and no dollars.
 	prices agent.Prices
 	// home returns the home folder of the owner, which a sandboxed step cannot read.
@@ -86,7 +98,8 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		repos:    repos,
 
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
-		prices: agent.DefaultPrices(),
+		traceParent: cfg.Agents.TraceParent,
+		prices:      agent.DefaultPrices(),
 	}
 }
 
@@ -145,7 +158,20 @@ func (a agents) specOf(request flow.AgentRequest, runner model.Runner, dir strin
 		Timeout: request.Timeout, IdleTimeout: request.IdleTimeout, Model: request.Model, Resume: request.Resume,
 		MaxTurns: a.maxTurns, MaxBudget: lowerCap(a.maxBudget, request.MaxBudget),
 		Log: tap, OnStart: request.Started, Guard: guard, NoEdits: request.NoEdits, Write: outputWrites(request),
+		Traceparent: a.traceparentOf(request),
 	}
+}
+
+// traceparentOf returns the W3C TRACEPARENT of the step, or "" when agents.trace_parent is off. The trace id is the first 16 bytes of the hash of the run, and the parent span id is the first 8 bytes of the hash of the run and the call, so a replay builds the same value.
+func (a agents) traceparentOf(request flow.AgentRequest) string {
+	if !a.traceParent {
+		return ""
+	}
+
+	trace := sha256.Sum256([]byte(traceSalt + request.Run))
+	span := sha256.Sum256([]byte(spanSalt + request.Run + "/" + request.Call))
+
+	return "00-" + hex.EncodeToString(trace[:traceIDBytes]) + "-" + hex.EncodeToString(span[:spanIDBytes]) + "-01"
 }
 
 // lowerCap returns the lower of two caps in dollars, where 0 means no cap. The cap of a step can lower the global cap and never raise it.

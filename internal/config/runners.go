@@ -51,6 +51,8 @@ type agents struct {
 	// RetentionDays is the age in days at which `beehave run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
 	// A failed or canceled run is never deleted, because `beehave resume` can reopen it.
 	RetentionDays int
+	// TraceParent passes a W3C TRACEPARENT to each agent process, built from the run and the step. The default is false: no trace variable reaches an agent.
+	TraceParent bool
 }
 
 // runnersFile is the result of evaluating runners.star. A block that the file leaves out keeps its default.
@@ -65,7 +67,7 @@ type runnersFile struct {
 
 // The schemas of the constructors of the runners file.
 func agentsSpec() spec {
-	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?"}}
+	return spec{"agents", []string{"max_concurrent?", "max_review_concurrent?", "max_turns?", "max_budget_usd?", "review_poll_minutes?", "max_run_budget_usd?", "retention_days?", "max_tree_budget_usd?", "per_login?", "review_lookback_days?", "concurrency?", "trace_parent?"}}
 }
 
 func poolSpec() spec { return spec{"pool", []string{"five_hour_max?", "seven_day_max?"}} }
@@ -93,7 +95,7 @@ func (f *runnersFile) addAgents(at syntax.Position, kwargs []starlark.Tuple) err
 	budget, runBudget, treeBudget := number(f.agents.MaxBudgetUSD), number(f.agents.MaxRunBudgetUSD), number(f.agents.MaxTreeBudgetUSD)
 	var mode starlark.Value = starlark.String(f.agents.Concurrency)
 
-	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode); err != nil {
+	if err := agentsSpec().unpack(at, kwargs, &f.agents.MaxConcurrent, &f.agents.MaxReviewConcurrent, &f.agents.MaxTurns, &budget, &f.agents.ReviewPollMinutes, &runBudget, &f.agents.RetentionDays, &treeBudget, &f.agents.PerLogin, &f.agents.ReviewLookbackDays, &mode, &f.agents.TraceParent); err != nil {
 		return err
 	}
 

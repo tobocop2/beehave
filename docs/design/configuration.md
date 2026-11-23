@@ -27,6 +27,7 @@ Each file is Starlark with the step limit of the workflow files. The limits and 
 | `max_budget_usd` | The cap of dollars for one agent run. | 0 means no cap. | |
 | `max_run_budget_usd` | The cap of dollars for the agent steps of one run in all. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD` |
 | `max_tree_budget_usd` | The cap of dollars for the agent steps of an item tree in all: the root run and every run it spawns. A spawned run uses the cap of its root. | 0 means no cap. | `BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD` |
+| `trace_parent` | When true, each agent process gets one W3C `TRACEPARENT` that names the run and the step. A `command` step gets none. | Default false. A value that is not true or false is refused. | `BEEHAVE_AGENTS_TRACE_PARENT` |
 | `review_poll_minutes` | The minutes between two review polls. | 0 means no poll. | `BEEHAVE_REVIEW_POLL_MINUTES` |
 | `review_lookback_days` | The days that the review poll looks back for replies. | Default 3. The least is 1. The most is 365. | `BEEHAVE_REVIEW_LOOKBACK_DAYS` |
 | `retention_days` | The age in days at which `beehave run` deletes a finished run. | Default 7. 0 keeps every finished run. The most is 36500. | `BEEHAVE_AGENTS_RETENTION_DAYS` |
