@@ -50,7 +50,7 @@ func TestFetchHead_EveryGitCallOfTheCopyHasTheFileTransportOnlyAndNoPrompt(t *te
 func TestWorktrees_TheCallToTheRemoteOfAProjectWithNoCredentialsRunsAsTheOwnerWithNoPasswordPrompt(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
 	log := envGit(t)
 
-	out := worktrees{}.reach("q", t.TempDir(), "https://example.test/o/r.git").Run(t.Context(), []string{"fetch"})
+	out := worktrees{}.reach("q", t.TempDir(), "ssh://git@example.test/o/r.git").Run(t.Context(), []string{"fetch"})
 
 	require.Equal(t, 0, out.ExitCode)
 	assert.Equal(t, []string{"dir=unset prompt=0 allow=unset"}, envCalls(t, log))
@@ -60,7 +60,7 @@ func TestPulls_ThePushOfAProjectWithNoCredentialsRunsAsTheOwnerInThePushReposito
 	log := envGit(t)
 	dir := t.TempDir()
 
-	out := pulls{}.pusher("q", dir, "https://example.test/o/r.git").Run(t.Context(), []string{"push"})
+	out := pulls{}.pusher("q", dir, "ssh://git@example.test/o/r.git").Run(t.Context(), []string{"push"})
 
 	require.Equal(t, 0, out.ExitCode)
 	assert.Equal(t, []string{"dir=" + dir + " prompt=0 allow=unset"}, envCalls(t, log))

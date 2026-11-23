@@ -329,6 +329,7 @@ func credentialRig(t *testing.T) pushRig {
 	project.Source = address
 	rig.pulls.projects["p"] = project
 	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
+	rig.pulls.trees.pushCheck = noPushCheck
 
 	root, dir := pushRepository(rig.pulls.trees.repos, "p")
 	require.NoError(t, openPushRepository(t.Context(), pushLocal(dir), root, dir))
@@ -352,7 +353,7 @@ func TestPushLocal_RunsGitInTheNamedRepositoryWithTheFileTransportOnlyAndNoPromp
 	assert.Equal(t, "dir="+dir+" prompt=0 allow=file", strings.TrimSpace(string(got)))
 }
 
-func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *testing.T) {
+func TestPulls_PushOfAProjectWithNoCredentialsKeepsNoTokenOfTheEnvironmentOfTheOwner(t *testing.T) {
 	t.Setenv("GH_TOKEN", "owner-token")
 
 	rig := newPushRig(t)
@@ -363,5 +364,5 @@ func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *t
 
 	got, err := os.ReadFile(seen) //nolint:gosec // a path of this test
 	require.NoError(t, err)
-	assert.Equal(t, "owner-token", strings.TrimSpace(string(got)))
+	assert.Equal(t, "unset", strings.TrimSpace(string(got)), "a hook of the remote sees no token of the process")
 }

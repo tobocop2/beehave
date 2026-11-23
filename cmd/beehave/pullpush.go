@@ -45,7 +45,28 @@ func (p pulls) Push(ctx context.Context, project, item, branch, head, expect str
 // pusher returns the git runner that pushes from the push repository dir to the address remote: the writer of the project when it has credentials, else the
 // runner of the owner (see writers.git).
 func (p pulls) pusher(project, dir, remote string) proc.Runner { //nolint:ireturn // both runners are the interface of the push
-	return p.writers.git(p.projects, project, dir, remote, nil, pushEnv(dir), "GIT_DIR="+dir)
+	return checkedPush{git: p.writers.git(p.projects, project, dir, remote, nil, pushEnv(dir), "GIT_DIR="+dir), dir: dir, check: p.trees.pushCheck}
+}
+
+// checkedPush runs a call from the push repository dir only when check accepts the config of that repository; a nil check refuses a key outside the allow list.
+type checkedPush struct {
+	git   proc.Runner
+	dir   string
+	check func(ctx context.Context, dir string) error
+}
+
+// Run refuses the call when the config of the push repository holds a setting outside the allow list, and runs it otherwise.
+func (c checkedPush) Run(ctx context.Context, args []string) model.CommandResult {
+	check := c.check
+	if check == nil {
+		check = func(ctx context.Context, dir string) error { return gitexec.CheckBare(ctx, dir, proc.DefaultTimeout) }
+	}
+
+	if err := check(ctx, c.dir); err != nil {
+		return model.CommandResult{ExitCode: 1, Stderr: err.Error(), SetupErr: err}
+	}
+
+	return c.git.Run(ctx, args)
 }
 
 // pushRemote returns the address that the clone of the project came from. A project with no forge is an error.

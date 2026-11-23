@@ -2,6 +2,11 @@
 # The stand-in for gh. It logs every call to gh.log in the work folder. The state of the forge is in the folder gh of the work folder:
 # gh/open holds one pull request number for each line (the open bump pull requests), gh/created holds one line for each pull request that was created,
 # gh/state-<number> holds OPEN or MERGED for the pull request of that number.
+# The owner login of the engine: beehave reads this token for an https remote. It is not a call of the forge, so it is not logged.
+if [ "$1 $2" = "auth token" ]; then
+  echo fake-gh-token
+  exit 0
+fi
 echo "gh $*" >> "@WORK@/gh.log"
 mkdir -p "@WORK@/gh"
 case "$1 $2" in

@@ -131,10 +131,7 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 			return engine, nil
 		},
 		Client: func(ctx context.Context, cfg config.Config, opts flow.Options) (cli.Steering, error) {
-			// The client never reads usage, so the table needs no environment.
-			table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
-
-			client, err := flow.OpenClient(ctx, opts, releaseDeps(cfg, opts, table))
+			client, err := openClient(ctx, cfg, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -142,6 +139,16 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 			return client, nil
 		},
 	}
+}
+
+// openClient opens the client of the commands. It reads the token of the owner for the https hosts of the projects first, because the client reaches the
+// remotes of projects that have no writer.
+func openClient(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Client, error) {
+	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
+	table.writers.env = opts.Env
+	table.writers.readOwnerTokens(ctx, cfg)
+
+	return flow.OpenClient(ctx, opts, releaseDeps(cfg, opts, table))
 }
 
 // stateFolder returns the state folder of the options as the answer of a function, which is how the table of adapters asks for it.
