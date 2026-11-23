@@ -195,12 +195,12 @@ func (rig *agentRig) answerLikeTheExample(skill string, verdicts, findings, mech
 			// review writes no output, so the run fails at once and the test reports it as an assertion, not as a timeout.
 			path := promptOutput(request.Prompt)
 			if verdict := verdicts(reviews); verdict != "" && reviews <= limit {
-				mechanism := ""
+				outputs := map[string]string{"verdict": verdict, "regressions": "0", "open": openOf(findings(reviews)), "findings": findings(reviews)}
 				if mechanisms != nil {
-					mechanism = `"mechanism":"` + mechanisms(reviews) + `",`
+					outputs["mechanism"] = mechanisms(reviews)
 				}
 
-				rig.put(path, `{"verdict":"`+verdict+`",`+mechanism+`"regressions":"0","open":"`+openOf(findings(reviews))+`","findings":`+findings(reviews)+`}`)
+				rig.putOutputs(path, outputs)
 			}
 		}
 
@@ -245,7 +245,7 @@ func laneKind(request AgentRequest) string {
 // The file holds no value for any other name, so the engine runs the step again on the missing output while output_tries allows,
 // then fails the run, until this table knows it.
 func (rig *agentRig) putDeclared(request AgentRequest) {
-	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "report": cleanLaneReport(laneKind(request))}
+	clean := map[string]string{"regressions": "0", "parked": "[]", "uncaused": "[]", "resolved": "[]", "wontfix": "[]", "report": cleanLaneReport(laneKind(request))}
 	answer := map[string]string{}
 
 	for _, name := range request.Outputs {
@@ -367,7 +367,7 @@ func TestExample_AnApproveWithAnOpenFindingIsAChangesVerdictAndSendsTheRunToAFix
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 		if review == 1 {
-			return `[{"class":"minor","text":"rename x"}]`
+			return `[{"id":"","severity":"minor","path":"a.go","text":"rename x"}]`
 		}
 
 		return "[]"
@@ -536,7 +536,7 @@ func TestReviewFix_TheFollowUpsArgumentReachesTheReviewAndTheDefaultAllowsThem(t
 	} {
 		rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 			if review == 1 {
-				return `[{"class":"deferred","text":"later"}]`
+				return `[{"id":"","severity":"deferred","path":"a.go","text":"later"}]`
 			}
 
 			return "[]"
@@ -556,7 +556,7 @@ func TestReviewFix_TheStatusShowsTheLabelOfTheLastReviewWithItsRoundAgainstTheCa
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "approve" }, func(review int) string {
 		if review == 1 {
-			return `[{"class":"deferred","text":"later"}]`
+			return `[{"id":"","severity":"deferred","path":"a.go","text":"later"}]`
 		}
 
 		return "[]"
