@@ -42,7 +42,7 @@ esac
 		"-c", "credential.https://example.test.username=me=x",
 		"-c", "credential.usehttppath",
 	}, login.Settings(), "the system file comes first, an empty value stays so that it clears the helpers before it, and a key with no value stays a key")
-	assert.Equal(t, "config --system --null --get-regexp ^credential\\.\nconfig --global --null --get-regexp ^credential\\.", calls(t, log))
+	assert.Equal(t, "config --system --includes --null --get-regexp ^credential\\.\nconfig --global --includes --null --get-regexp ^credential\\.", calls(t, log))
 }
 
 func TestReadOwnerLogin_AFileWithNoCredentialSettingGivesNoSetting(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
@@ -59,15 +59,42 @@ func TestReadOwnerLogin_AFileThatGitCannotReadIsAnErrorThatNamesTheFile(t *testi
 
 	_, err := gitexec.ReadOwnerLogin(t.Context())
 
-	require.ErrorContains(t, err, "(--global): git exited with code 128: bad config line 3")
+	require.EqualError(t, err, "read the credential settings of the git config of the owner (--global): git exited with code 128: bad config line 3")
 }
 
-func TestReadOwnerLogin_AGitThatCannotStartIsAnError(t *testing.T) {
+func TestReadOwnerLogin_AGitThatCannotStartIsAnErrorWithTheCause(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	_, err := gitexec.ReadOwnerLogin(t.Context())
 
-	require.ErrorContains(t, err, "read the credential settings of the git config of the owner (--system)")
+	require.Error(t, err)
+	assert.Regexp(t, `^read the credential settings of the git config of the owner \(--system\): git exited with code \d+: .*not found`, err.Error())
+	assert.NotContains(t, err.Error(), "%!")
+}
+
+func TestReadOwnerLogin_FollowsAnIncludeOfTheGlobalConfig(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(home, "extra"), []byte("[credential]\n\thelper = included-helper\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[include]\n\tpath = "+filepath.Join(home, "extra")+"\n"), 0o600))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	require.NoError(t, os.Unsetenv("GIT_CONFIG_GLOBAL"))
+
+	login, err := gitexec.ReadOwnerLogin(t.Context())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"-c", "credential.helper=included-helper"}, login.Settings(), "the helper of the included file is a setting of the owner")
+}
+
+func TestOwnerLoginOf_HoldsTheSettingsOfARecordAndKeepsNoAliasOfTheSlice(t *testing.T) {
+	t.Parallel()
+
+	record := []string{"-c", "credential.helper=x"}
+	login := gitexec.OwnerLoginOf(record)
+	record[1] = "changed"
+
+	assert.Equal(t, []string{"-c", "credential.helper=x"}, login.Settings())
 }
 
 func TestOwnerLoginStart_KeepsTheLoginVariablesOfTheProcessAndNoConfigFileAndNoOtherGitVariable(t *testing.T) {

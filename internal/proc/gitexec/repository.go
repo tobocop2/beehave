@@ -57,16 +57,30 @@ func (r Repository) env() []string {
 
 // check refuses the repository when its config holds a setting outside the allow list. The listing reads no include and starts no program.
 func (r Repository) check(ctx context.Context, timeout time.Duration) error {
-	config := filepath.Join(r.CommonDir, "config")
-	listing := start(New(r.WorkTree, timeout).ExecRunner, false).
+	return checkConfig(ctx, filepath.Join(r.CommonDir, "config"), r.WorkTree, filepath.Dir(r.CommonDir), timeout)
+}
+
+// CheckBare refuses the bare repository dir when its config holds a setting outside the allow list. A repository with no config file yet passes.
+func CheckBare(ctx context.Context, dir string, timeout time.Duration) error {
+	config := filepath.Join(dir, "config")
+	if _, err := os.Stat(config); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	return checkConfig(ctx, config, dir, dir, timeout)
+}
+
+// checkConfig lists the keys of the config file in the folder from and refuses the ones outside the allow list. name is the repository in the messages.
+func checkConfig(ctx context.Context, config, from, name string, timeout time.Duration) error {
+	listing := start(New(from, timeout).ExecRunner, false).
 		Run(ctx, []string{configCommand, "--file", config, "--list", "--name-only", "--null", "--no-includes"})
 
 	if listing.ExitCode != 0 {
-		return fmt.Errorf("read the git settings of %s: %s", filepath.Dir(r.CommonDir), strings.TrimSpace(listing.Stderr))
+		return fmt.Errorf("read the git settings of %s: %s", name, strings.TrimSpace(listing.Stderr))
 	}
 
 	if outside := outsideKeys(listing.Stdout); len(outside) > 0 {
-		return &SettingError{Clone: filepath.Dir(r.CommonDir), Keys: outside}
+		return &SettingError{Clone: name, Keys: outside}
 	}
 
 	return nil

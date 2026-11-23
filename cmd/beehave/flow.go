@@ -141,11 +141,10 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 	}
 }
 
-// openClient opens the client of the commands. It reads the credential settings of the owner first, because the client reaches remotes of projects that have
-// no writer. It never reads usage, so the table needs no environment.
+// openClient opens the client of the commands, with the owner login that it needs for the remotes of projects that have no writer.
 func openClient(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Client, error) {
 	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
-	if err := table.writers.readLogin(ctx); err != nil {
+	if err := table.writers.readLogin(ctx, opts.StateDir); err != nil {
 		return nil, err
 	}
 

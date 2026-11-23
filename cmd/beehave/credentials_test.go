@@ -329,6 +329,7 @@ func credentialRig(t *testing.T) pushRig {
 	project.Source = address
 	rig.pulls.projects["p"] = project
 	rig.pulls.writers = &writers{byProject: map[string]writerRole{"p": {token: writerToken}}, env: map[string]string{"PATH": testPath}}
+	rig.pulls.trees.pushCheck = noPushCheck
 
 	root, dir := pushRepository(rig.pulls.trees.repos, "p")
 	require.NoError(t, openPushRepository(t.Context(), pushLocal(dir), root, dir))

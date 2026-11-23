@@ -28,6 +28,13 @@ type plant struct {
 func plantGlobalConfig(t *testing.T, extra string) plant {
 	t.Helper()
 
+	return plantConfigAt(t, extra, ".gitconfig")
+}
+
+// plantConfigAt is plantGlobalConfig with the config file at the path file under HOME, as .config/git/config is for the XDG folder.
+func plantConfigAt(t *testing.T, extra, file string) plant {
+	t.Helper()
+
 	root := evaluated(t, t.TempDir())
 	found := plant{home: filepath.Join(root, "home"), decoy: filepath.Join(root, "decoy"), sshRuns: filepath.Join(root, "ssh-runs"), hookRuns: filepath.Join(root, "hook-runs")}
 	require.NoError(t, os.MkdirAll(found.home, 0o700))
@@ -42,7 +49,8 @@ func plantGlobalConfig(t *testing.T, extra string) plant {
 	runGit(t, found.decoy, "init", "-q", "--bare", "r.git")
 
 	text := "[core]\n\tsshCommand = " + ssh + "\n\thooksPath = " + hooks + "\n[url \"file://" + found.decoy + "/\"]\n\tinsteadOf = https://example.test/o/\n" + extra
-	require.NoError(t, os.WriteFile(filepath.Join(found.home, ".gitconfig"), []byte(text), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(found.home, file)), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(found.home, file), []byte(text), 0o600))
 	t.Setenv("HOME", found.home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(found.home, ".config"))
 	t.Setenv("GIT_CONFIG_GLOBAL", "")

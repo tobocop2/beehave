@@ -30,21 +30,18 @@ type writerRole struct {
 type writers struct {
 	byProject map[string]writerRole
 	env       map[string]string
-	// login holds the credential settings of the owner, for the git calls of the projects that have no writer. The start reads it once, so a setting that an
-	// agent writes into the git config later does not reach a call.
+	// login is the credential settings of the owner for the git calls of the projects that have no writer.
 	login gitexec.OwnerLogin
 }
 
-// start reads the credential settings of the owner, then the writer credential of each project that declares one, and makes the gh config folder of its
-// role. It then runs the start probe on the environment that an agent step and a command step get, and refuses to start when that environment holds a
-// forge token or a token value.
+// start loads the owner login and the writer credential of each project that declares one, then runs the start probe on the environment of the steps.
 func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Options) error {
-	if err := w.readLogin(ctx); err != nil {
+	found, err := readRoles(ctx, cfg, opts)
+	if err != nil {
 		return err
 	}
 
-	found, err := readRoles(ctx, cfg, opts)
-	if err != nil || len(found) == 0 {
+	if err := w.readLogin(ctx, opts.StateDir); err != nil || len(found) == 0 {
 		return err
 	}
 
@@ -53,18 +50,6 @@ func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Option
 	}
 
 	w.byProject, w.env = found, opts.Env
-
-	return nil
-}
-
-// readLogin reads the credential settings of the owner. The client reads them too, because it reaches remotes of projects that have no writer.
-func (w *writers) readLogin(ctx context.Context) error {
-	login, err := gitexec.ReadOwnerLogin(ctx)
-	if err != nil {
-		return err
-	}
-
-	w.login = login
 
 	return nil
 }

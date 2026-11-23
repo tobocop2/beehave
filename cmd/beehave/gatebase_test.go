@@ -134,6 +134,7 @@ func TestWorktrees_AFetchByIdThatASourceOfProtocolVersionZeroRefusesSaysThatTheS
 
 	rig := newFetchRig(t)
 	trees := rig.pulls.trees
+	trees.pushCheck = noPushCheck
 	_, err := trees.BaseTip(t.Context(), "p", rig.remote, "main")
 	require.NoError(t, err, "the read makes the push repository")
 

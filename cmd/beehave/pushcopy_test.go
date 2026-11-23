@@ -361,6 +361,7 @@ func TestPulls_ASecondPushCopiesOnlyTheNewObjects(t *testing.T) {
 	t.Parallel()
 
 	rig := newPushRig(t)
+	rig.pulls.trees.pushCheck = noPushCheck
 	require.NoError(t, rig.pulls.Push(t.Context(), "p", pushItem, pushItem, rig.head, ""))
 
 	repo := filepath.Join(rig.opts.StateDir, "push", "p.git")
