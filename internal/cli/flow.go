@@ -190,7 +190,7 @@ func (f flowCommands) options(stderr io.Writer, flag string) (config.Config, flo
 func (f flowCommands) engineOptions(cfg config.Config, state string) flow.Options {
 	return flow.Options{
 		StateDir: state, Version: f.version, MaxConcurrent: cfg.Agents.MaxConcurrent, MaxReviewConcurrent: cfg.Agents.MaxReviewConcurrent, PerLogin: cfg.Agents.PerLogin, Concurrency: cfg.Agents.Concurrency, Env: f.env,
-		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
+		MaxRunBudget: cfg.Agents.MaxRunBudgetUSD, MaxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, MaxWeekBudget: cfg.Agents.MaxWeekBudgetUSD, MaxSpawnDepth: deepestSpawn(cfg.Projects),
 		ReviewPoll:         time.Duration(cfg.Agents.ReviewPollMinutes) * time.Minute,
 		ReviewLookbackDays: cfg.Agents.ReviewLookbackDays,
 		Retention:          time.Duration(cfg.Agents.RetentionDays) * 24 * time.Hour,
