@@ -890,17 +890,18 @@ func TestOptions_TheReviewLookbackIsTheDefaultOfTheConfigAndTheWrittenValueOther
 	assert.Equal(t, 9, rig.options.ReviewLookbackDays)
 }
 
-func TestOptions_TheCapsOfTheRunAndOfTheTreeReachTheEngine(t *testing.T) {
+func TestOptions_TheCapsOfTheRunTheTreeAndTheWeekReachTheEngine(t *testing.T) {
 	t.Parallel()
 
 	rig := newRig(t)
-	writeConfig(t, rig.dir, "runners.star", "agents(max_run_budget_usd = 20, max_tree_budget_usd = 60)\n"+validRunners)
+	writeConfig(t, rig.dir, "runners.star", "agents(max_run_budget_usd = 20, max_tree_budget_usd = 60, max_week_budget_usd = 250)\n"+validRunners)
 
 	code, _, stderr := rig.execute(t.Context(), "run", "12")
 
 	require.Equal(t, 0, code, stderr)
 	assert.InDelta(t, 20.0, rig.options.MaxRunBudget, 0)
 	assert.InDelta(t, 60.0, rig.options.MaxTreeBudget, 0)
+	assert.InDelta(t, 250.0, rig.options.MaxWeekBudget, 0)
 }
 
 func TestOptions_PerLoginIsTheOneOfTheConfigByDefaultAndTheWrittenValueOtherwise(t *testing.T) {

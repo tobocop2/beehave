@@ -68,6 +68,8 @@ type agents struct {
 	maxRunBudget float64
 	// maxTreeBudget is agents.max_tree_budget_usd. 0 means no cap.
 	maxTreeBudget float64
+	// maxWeekBudget is agents.max_week_budget_usd. 0 means no cap.
+	maxWeekBudget float64
 	// traceParent is agents.trace_parent: each agent process gets a TRACEPARENT of its run and step.
 	traceParent bool
 	// prices is the price table that estimates the cost of a CLI that reports tokens and no dollars.
@@ -107,7 +109,7 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		identity: gitIdentity,
 		repos:    repos,
 		modules:  moduleFiller(opts),
-		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
+		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD, maxWeekBudget: cfg.Agents.MaxWeekBudgetUSD,
 		traceParent: cfg.Agents.TraceParent,
 		prices:      agent.DefaultPrices(),
 	}
@@ -327,7 +329,7 @@ func (a agents) runCosted(ctx context.Context, tap *sessionTap, spec agent.Spec,
 // cost that beehave adds up after each run, and a model with no price gives no cost to add: the cap could not be checked, so the run does not start.
 // A CLI that reports the dollars of each step (Profile.StreamsCost) needs no price: the runner caps the sum of those dollars.
 func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest) string {
-	capped := a.maxRunBudget > 0 || a.maxTreeBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
+	capped := a.maxRunBudget > 0 || a.maxTreeBudget > 0 || a.maxWeekBudget > 0 || lowerCap(a.maxBudget, request.MaxBudget) > 0
 	if !capped || a.prices.Has(request.Model) {
 		return ""
 	}
@@ -342,7 +344,7 @@ func (a agents) unpricedCapNote(adapter agent.Adapter, request flow.AgentRequest
 	}
 
 	return fmt.Sprintf("The run has a cost cap, but the agent CLI cannot cap dollars itself and %s has no price in the price table, so beehave cannot check the cap. "+
-		"The step did not start. Add a price for the model, or set agents.max_run_budget_usd, agents.max_tree_budget_usd and agents.max_budget_usd to 0.", name)
+		"The step did not start. Add a price for the model, or set agents.max_run_budget_usd, agents.max_tree_budget_usd, agents.max_week_budget_usd and agents.max_budget_usd to 0.", name)
 }
 
 // protection returns the paths that the step must not change, and whether the project is private.
