@@ -22,7 +22,7 @@ var (
 	ErrDropped = errors.New("the ssh link to the host dropped")
 )
 
-// ErrNoFlock is the refusal of a host that has no flock(1), which the slot limit of a job needs.
+// ErrNoFlock is the refusal of a host that has no flock(1), which the slot limit and the clone lock of a job need.
 var ErrNoFlock = errors.New("the host has no flock command. Install util-linux (flock) on the host")
 
 const droppedExit = 255 // the exit code of ssh when the link fails
