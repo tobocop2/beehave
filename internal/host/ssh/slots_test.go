@@ -2,6 +2,7 @@ package ssh_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,6 +58,8 @@ type job struct {
 	e    *engine
 	unit string
 	cmd  *exec.Cmd
+	// reaped is true once kill has stopped and reaped the process.
+	reaped bool
 }
 
 // submit submits a job that writes started-<tag>, then waits for release-<tag>. An empty class sets no slot.
@@ -73,22 +76,44 @@ func (e *engine) submit(class string, count int) *job {
 	text := e.m.Units[string(id)].Command
 	e.m.Mu.Unlock()
 
-	cmd := exec.Command("sh", "-c", text)
+	cmd := exec.CommandContext(context.WithoutCancel(e.t.Context()), "sh", "-c", text) //nolint:gosec // the test runs the job command that the fake machine recorded, under a real shell
 	cmd.Dir = e.root
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	require.NoError(e.t, cmd.Start())
-	e.t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() })
 
-	return &job{e: e, unit: string(id), cmd: cmd}
+	j := &job{e: e, unit: string(id), cmd: cmd}
+	e.t.Cleanup(j.kill)
+
+	return j
 }
 
 func (j *job) started() bool { return exists(filepath.Join(j.e.root, "started-"+j.e.tag)) }
 
-func (j *job) release() { _ = os.WriteFile(filepath.Join(j.e.root, "release-"+j.e.tag), nil, 0o600) }
+func (j *job) release() {
+	j.e.t.Helper()
 
+	require.NoError(j.e.t, os.WriteFile(filepath.Join(j.e.root, "release-"+j.e.tag), nil, 0o600))
+}
+
+// kill stops the job and every child of it, and reaps it once. A second call does nothing.
 func (j *job) kill() {
-	_ = syscall.Kill(-j.cmd.Process.Pid, syscall.SIGKILL)
-	_ = j.cmd.Wait()
+	j.e.t.Helper()
+
+	if j.reaped {
+		return
+	}
+
+	j.reaped = true
+
+	// A group whose leader ended on its own gives ESRCH, or EPERM on macOS while the leader waits to be reaped. Both mean that nothing is left to stop.
+	if err := syscall.Kill(-j.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) && !errors.Is(err, syscall.EPERM) {
+		j.e.t.Errorf("kill the job group: %v", err)
+	}
+
+	var killed *exec.ExitError
+	if err := j.cmd.Wait(); err != nil && !errors.As(err, &killed) {
+		j.e.t.Errorf("wait for the killed job: %v", err)
+	}
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -117,6 +142,8 @@ func still(t *testing.T, what string, ok func() bool) {
 }
 
 func TestSlots_AJobWithNoSlotRunsBesideAnotherAndTakesNoLock(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -129,6 +156,8 @@ func TestSlots_AJobWithNoSlotRunsBesideAnotherAndTakesNoLock(t *testing.T) {
 }
 
 func TestSlots_TheSecondEngineWaitsUntilTheFirstJobEnds(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -145,6 +174,8 @@ func TestSlots_TheSecondEngineWaitsUntilTheFirstJobEnds(t *testing.T) {
 }
 
 func TestSlots_TwoSlotsLetTwoEnginesRunAndHoldTheThirdJob(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -161,6 +192,8 @@ func TestSlots_TwoSlotsLetTwoEnginesRunAndHoldTheThirdJob(t *testing.T) {
 }
 
 func TestSlots_AKilledJobFreesItsSlot(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -177,6 +210,8 @@ func TestSlots_AKilledJobFreesItsSlot(t *testing.T) {
 }
 
 func TestSlots_AJobOfAnotherClassNeverWaitsForAFullClass(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -191,6 +226,8 @@ func TestSlots_AJobOfAnotherClassNeverWaitsForAFullClass(t *testing.T) {
 }
 
 func TestSlots_AWaitingJobShowsAMarkerUntilItHoldsASlot(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -209,6 +246,8 @@ func TestSlots_AWaitingJobShowsAMarkerUntilItHoldsASlot(t *testing.T) {
 }
 
 func TestSlots_CancelingAWaitingJobTakesNoSlotAndFreesNone(t *testing.T) {
+	t.Parallel()
+
 	requireFlock(t)
 
 	root := t.TempDir()
@@ -224,7 +263,7 @@ func TestSlots_CancelingAWaitingJobTakesNoSlotAndFreesNone(t *testing.T) {
 	jc := c.submit("mutation", 1)
 
 	still(t, "a third job started although the holder still runs", jc.started)
-	assert.True(t, strings.Contains(a.m.Units[ja.unit].Command, "flock"), "the holder took its slot with a flock")
+	assert.Contains(t, a.m.Units[ja.unit].Command, "flock", "the holder took its slot with a flock")
 	ja.release()
 	eventually(t, "the third job starts after the holder ended", jc.started)
 }
@@ -260,7 +299,7 @@ func TestUp_RefusesAMachineWithNoFlock(t *testing.T) {
 	err := e.h.Up(t.Context())
 
 	require.ErrorIs(t, err, link.ErrNoFlock)
-	assert.ErrorContains(t, err, "Install util-linux (flock)")
+	require.ErrorContains(t, err, "Install util-linux (flock)")
 }
 
 // A pending job does not count toward the stale limit, which counts a running unit that writes no log. The unit reads running for far longer than

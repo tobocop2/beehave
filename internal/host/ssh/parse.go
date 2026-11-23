@@ -55,6 +55,12 @@ systemctl --user show -p LoadState,ActiveState,SubState,Result,ExecMainCode,Exec
 echo "` + sizePrefix + `$(stat -c %s "$2.log" 2>/dev/null || echo -1)"`
 )
 
+// The words of systemd that more than one read compares with.
+const (
+	activeState    = "active"
+	systemdRunning = "running"
+)
+
 // minSystemd is the oldest systemd whose transient units write a log with append:.
 const minSystemd = 240
 
@@ -111,17 +117,22 @@ func (r *reading) take(line string, size int64, seen map[string]string) (int64, 
 	case strings.HasPrefix(line, resultPrefix):
 		return size, r.takeResult(line)
 	case strings.HasPrefix(line, sizePrefix):
-		n, err := strconv.ParseInt(strings.TrimPrefix(line, sizePrefix), 10, 64)
-		if err != nil {
-			return size, fmt.Errorf("%w: %q", errUnitText, line)
-		}
-
-		return n, nil
+		return parseSize(line, size)
 	case isPair:
 		seen[key] = value
 	}
 
 	return size, nil
+}
+
+// parseSize reads the line of the log size. A number that is not one is an error, and the earlier size stays.
+func parseSize(line string, size int64) (int64, error) {
+	n, err := strconv.ParseInt(strings.TrimPrefix(line, sizePrefix), 10, 64)
+	if err != nil {
+		return size, fmt.Errorf("%w: %q", errUnitText, line)
+	}
+
+	return n, nil
 }
 
 // takeResult reads the line of a state that an earlier poll recorded. Any other state is an error.
@@ -165,11 +176,11 @@ func (r reading) state() (model.JobState, error) {
 		return r.gone(), nil
 	case r.load != "loaded":
 		return model.JobUnknown, r.unknown()
-	case r.active == "activating", r.waiting && r.active == "active" && r.sub == "running":
+	case r.pending():
 		return model.JobPending, nil
-	case r.active == "active" && r.sub == "running", isChanging(r.active):
+	case r.running(), isChanging(r.active):
 		return model.JobRunning, nil
-	case r.active == "active" && r.sub == "exited":
+	case r.active == activeState && r.sub == "exited":
 		return r.exited(), nil
 	case r.active == "failed":
 		return r.failed()
@@ -177,6 +188,12 @@ func (r reading) state() (model.JobState, error) {
 
 	return model.JobUnknown, r.unknown()
 }
+
+// running says whether the main process of the unit runs.
+func (r reading) running() bool { return r.active == activeState && r.sub == systemdRunning }
+
+// pending says whether the unit starts, or runs a job that waits for a slot of its class.
+func (r reading) pending() bool { return r.active == "activating" || r.waiting && r.running() }
 
 // isChanging says whether an ActiveState is one of a unit that systemd is stopping or reloading. The unit is not final, so it still runs,
 // as Slurm reads COMPLETING. A job that ignores SIGTERM stays in deactivating until TimeoutStopSec ends.

@@ -2,8 +2,12 @@ package slurm
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,6 +85,77 @@ func TestWait_AWaitingMarkerReadsPendingSoTheJobNeverGoesStale(t *testing.T) {
 			assert.Equal(t, tc.want, state)
 		})
 	}
+}
+
+// startWrapped runs the --wrap text of a submitted job under a real shell in dir, as Slurm does in the login folder, with the job number in the environment.
+func startWrapped(t *testing.T, dir, number, text string) *exec.Cmd {
+	t.Helper()
+
+	// The job runs to its end after the test ends its context, so it takes a context that the end of the test does not cancel.
+	cmd := exec.CommandContext(context.WithoutCancel(t.Context()), "sh", "-c", "SLURM_JOB_ID="+number+"; export SLURM_JOB_ID; "+text) //nolint:gosec // the test runs the text that Submit sent to sbatch, under a real shell
+	cmd.Dir = dir
+	require.NoError(t, cmd.Start())
+
+	return cmd
+}
+
+// The wrapper and the observe are written apart: one writes the marker with a shell, the other reads it with test. The wrapper runs here for real, and the
+// file it writes goes into the fake cluster under its own name, so Wait reads pending only when the two paths agree.
+func TestWait_TheMarkerThatTheWrapperWritesIsTheOneThatTheObserveReads(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("flock"); err != nil {
+		t.Skip("flock is not on PATH")
+	}
+
+	h, f, _ := newClockedHost(t)
+	dir := t.TempDir()
+	slot := model.Slot{Class: "mutation", Count: 1}
+
+	held, release := filepath.Join(dir, "held"), filepath.Join(dir, "release")
+	first, err := h.Submit(t.Context(), model.JobSpec{Name: "gate", Command: "touch " + held + "; until test -e " + release + "; do sleep 0.05; done", Slot: slot})
+	require.NoError(t, err)
+
+	holder := startWrapped(t, dir, jobNumber(t, first), f.Jobs[jobNumber(t, first)].Command)
+	t.Cleanup(func() {
+		require.NoError(t, os.WriteFile(release, nil, 0o600))
+		require.NoError(t, holder.Wait())
+	})
+	require.Eventually(t, func() bool { _, statErr := os.Stat(held); return statErr == nil }, 10*time.Second, 20*time.Millisecond, "the first job holds the only slot")
+
+	second, err := h.Submit(t.Context(), model.JobSpec{Name: "gate", Command: "true", Slot: slot})
+	require.NoError(t, err)
+
+	number := jobNumber(t, second)
+	waiter := startWrapped(t, dir, number, f.Jobs[number].Command)
+	t.Cleanup(func() {
+		var killed *exec.ExitError
+
+		require.NoError(t, waiter.Process.Kill())
+		require.ErrorAs(t, waiter.Wait(), &killed)
+	})
+
+	require.Eventually(t, func() bool {
+		names, globErr := filepath.Glob(filepath.Join(dir, ".beehave", "waiting-*"))
+
+		return globErr == nil && len(names) == 1
+	}, 10*time.Second, 20*time.Millisecond, "the waiting job writes one marker")
+
+	written, err := filepath.Glob(filepath.Join(dir, ".beehave", "waiting-*"))
+	require.NoError(t, err)
+
+	rel, err := filepath.Rel(dir, written[0])
+	require.NoError(t, err)
+
+	job := f.Jobs[number]
+	job.Live, job.LogSizes = 300, []int{10}
+	f.Files[rel] = true
+
+	state, err := h.Wait(t.Context(), second)
+
+	require.NoError(t, err)
+	assert.Equal(t, ".beehave/waiting-"+number, rel, "the wrapper names the marker by the job number")
+	assert.Equal(t, model.JobSucceeded, state, "the observe finds the marker of the wrapper and keeps the job pending, so it is not stale")
 }
 
 // testExit answers the read of the marker with an exit status, and every other call as the fake cluster does.

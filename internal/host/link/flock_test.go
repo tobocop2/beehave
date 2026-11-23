@@ -26,8 +26,8 @@ func TestCheckFlock_RefusesAHostWithNoFlockAndNamesTheHostAndThePackage(t *testi
 	err := link.New("head", proctest.Always(model.CommandResult{ExitCode: 127})).CheckFlock(t.Context())
 
 	require.ErrorIs(t, err, link.ErrNoFlock)
-	assert.ErrorContains(t, err, "head")
-	assert.ErrorContains(t, err, "Install util-linux (flock)")
+	require.ErrorContains(t, err, "head")
+	require.ErrorContains(t, err, "Install util-linux (flock)")
 }
 
 func TestCheckFlock_ReportsADroppedLinkAsADroppedLinkAndNotAsAMissingFlock(t *testing.T) {

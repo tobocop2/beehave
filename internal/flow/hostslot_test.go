@@ -51,14 +51,16 @@ func TestGateSlot_ABatchGateOnABuildHostSubmitsTheGateClassWithTheRecordedCount(
 	assert.Equal(t, []model.Slot{{Class: model.GateClass, Count: 2}}, rig.gate.submitSlots)
 }
 
-func TestGateSlot_AProgramGateOnABuildHostRunsItsHostJobInTheGateClassWithTheRecordedCount(t *testing.T) {
+func TestGateSlot_AProgramGateQueuedOnABuildHostRunsItsHostJobInTheGateClassWithTheCountOfGateSlots(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
+	h.slots = func(_, cluster, _ string) (SlotGrant, error) { return SlotGrant{Host: cluster, Count: 2}, nil }
+	engine := launchHostEngine(t, h, newSupersedeGate(""))
 
-	_, err := h.engine(t).programGateOutputs(t.Context(), CommandRequest{Project: testProject, Item: testItem, Host: "box", Run: []string{"make"}}, "head", model.Slot{Class: model.GateClass, Count: 2})
+	ended := receive(t, queueHostGateOf(engine, "A", CommandRequest{Project: testProject, Item: testItem, Host: "box", BuildHost: "box", Run: []string{"make"}}))
 
-	require.NoError(t, err)
+	require.NoError(t, ended.err)
 	require.Len(t, h.commands.requests, 1)
 	assert.Equal(t, model.GateClass, h.commands.requests[0].SlotClass)
 	assert.Equal(t, 2, h.commands.requests[0].SlotCount)

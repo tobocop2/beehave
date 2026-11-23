@@ -159,21 +159,26 @@ func (h *Host) Up(ctx context.Context) error {
 	}
 
 	user = model.FirstLine(user)
-	if err = h.checkLinger(ctx, user); err != nil {
-		return err
-	}
-
-	if err = h.checkSystemd(ctx); err != nil {
-		return err
-	}
-
-	if err = h.link.CheckFlock(ctx); err != nil {
+	if err = h.checkTools(ctx, user); err != nil {
 		return err
 	}
 
 	_, err = h.stateDir(ctx)
 
 	return err
+}
+
+// checkTools checks what the host needs to run a job: linger for the user, systemd and flock.
+func (h *Host) checkTools(ctx context.Context, user string) error {
+	if err := h.checkLinger(ctx, user); err != nil {
+		return err
+	}
+
+	if err := h.checkSystemd(ctx); err != nil {
+		return err
+	}
+
+	return h.link.CheckFlock(ctx)
 }
 
 func (h *Host) target() string { return h.link.Target() }
@@ -203,7 +208,7 @@ func (h *Host) checkSystemd(ctx context.Context) error {
 	}
 
 	// A user manager with a failed unit reports degraded and exits non-zero. It still runs jobs.
-	if state := strings.TrimSpace(result.Stdout); state != "running" && state != "degraded" {
+	if state := strings.TrimSpace(result.Stdout); state != systemdRunning && state != "degraded" {
 		return fmt.Errorf("%w: `systemctl --user is-system-running` gave %q. Start the user manager of the login user", ErrSystemd, model.FirstLine(result.Stdout+result.Stderr))
 	}
 

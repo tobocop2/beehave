@@ -172,19 +172,7 @@ func (f *Cluster) dropped(command string) bool {
 func (f *Cluster) other(words []string) model.CommandResult {
 	switch words[0] {
 	case "scancel":
-		if f.NoStop {
-			return failure("scancel: denied")
-		}
-
-		job := f.Jobs[words[1]]
-		if job == nil {
-			return failure("scancel: invalid job id " + words[1])
-		}
-
-		f.Scancels++
-		job.Canceled = true
-
-		return ok("")
+		return f.scancel(words[1])
 	case "touch":
 		f.Files[words[1]] = true
 
@@ -208,6 +196,23 @@ func (f *Cluster) other(words []string) model.CommandResult {
 	}
 
 	return failure("ssh: unknown command")
+}
+
+// scancel cancels one job, unless the test denies the call or the job is not known.
+func (f *Cluster) scancel(id string) model.CommandResult {
+	if f.NoStop {
+		return failure("scancel: denied")
+	}
+
+	job := f.Jobs[id]
+	if job == nil {
+		return failure("scancel: invalid job id " + id)
+	}
+
+	f.Scancels++
+	job.Canceled = true
+
+	return ok("")
 }
 
 // stat prints the size of the log of a job, from the sizes the test planned. A job with none has no log.

@@ -11,9 +11,6 @@ import (
 	"github.com/tobocop2/beehave/internal/model"
 )
 
-// className is the name of a slot class. It is a plain word, because the engine names the queue of the class with it.
-var className = model.SlotClassPattern
-
 // slotTable is the slots argument of the host block: a dict of slot class names to counts. The range of the counts is checked later, with the position of the block.
 type slotTable map[string]starlark.Int
 
@@ -83,7 +80,7 @@ func checkClass(at syntax.Position, class string) error {
 		return refuseAt(at, "`host.slots` has the class %q, which belongs to the gates. Set the number of gates in `host.gate_slots`.", class)
 	}
 
-	if !className.MatchString(class) {
+	if !model.SlotClassPattern.MatchString(class) {
 		return refuseAt(at, "`host.slots` has the class %q. Use letters, digits, dot, underscore and hyphen, and start with a letter or a digit.", class)
 	}
 
