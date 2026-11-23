@@ -44,8 +44,9 @@ func e2eTools() []string {
 // e2eOptionalTools are the programs that only some scripts need. A machine without one still runs the other scripts, and a script that needs one
 // starts with the condition [!exec:name] skip. The desk example needs jq for its gateway and eval scripts, and a SHA-256 tool for its mask:
 // sha256sum on Linux and shasum on macOS. The approvals example also needs ssh-keygen for the signatures, sqlite3 for the ledger and flock for its lock.
+// The maintenance tick takes its lock through perl, which macOS and Linux both have.
 func e2eOptionalTools() []string {
-	return []string{"jq", "sha256sum", "shasum", "ssh-keygen", "sqlite3", "flock"}
+	return []string{"jq", "sha256sum", "shasum", "ssh-keygen", "sqlite3", "flock", "perl"}
 }
 
 // e2eReal is the beehavereal command of the scripts.
