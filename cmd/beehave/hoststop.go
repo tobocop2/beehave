@@ -108,6 +108,31 @@ func (s hostStop) Teardown(ctx context.Context, project, cluster string) error {
 	return banking.Teardown(ctx)
 }
 
+// Ready says whether the cluster takes a new job: it is up and its disk holds the floor of the project. A project with no host block has no host that takes a job.
+// A host that cannot be read gives an error that names the host and the fix.
+func (s hostStop) Ready(ctx context.Context, project, cluster string) (bool, error) {
+	chosen, err := s.programs.resolve(project, cluster)
+	if err != nil {
+		return false, err
+	}
+
+	h, err := s.programs.hosts(project, chosen)
+	if errors.Is(err, errNoHost) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	ready, err := host.Ready(ctx, h)
+	if err != nil {
+		return false, fmt.Errorf("cannot read host %s of project %s: check that it answers: %w", chosen, project, err)
+	}
+
+	return ready, nil
+}
+
 // LostProof stops the job of a gate whose wait ended as lost, on the cluster that the job ran on, and reads whether it can no longer run.
 // It gets the host as Teardown does, and asks the provider. A project with no host block has no job that can run: no proof and no error.
 func (s hostStop) LostProof(ctx context.Context, project, cluster, job string) (model.LostProof, error) {

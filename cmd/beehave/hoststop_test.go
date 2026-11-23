@@ -296,3 +296,70 @@ func TestHostStop_TheLostProofOfAProjectWithNoHostIsNoProofAndAnyOtherFaultIsAnE
 	require.ErrorIs(t, err, model.ErrUndeclaredHost)
 	assert.Empty(t, built, "no host is built for a cluster that the project does not declare")
 }
+
+// answeringHost is a host.Host that answers Status from its fields.
+type answeringHost struct {
+	host.Host
+
+	status model.HostStatus
+	err    error
+}
+
+func (s *answeringHost) Status(context.Context) (model.HostStatus, error) { return s.status, s.err }
+
+func TestHostStop_ReadyIsTrueOnlyForAnUpHostWithEnoughSpace(t *testing.T) {
+	t.Parallel()
+
+	const gb = 1 << 30
+
+	roomy := model.DiskReading{FreeBytes: 60 * gb, Readable: true}
+	tests := []struct {
+		name   string
+		status model.HostStatus
+		want   bool
+	}{
+		{"up", model.HostStatus{State: model.HostUp, Disk: roomy}, true},
+		{"absent", model.HostStatus{State: model.HostAbsent, Disk: roomy}, false},
+		{"draining", model.HostStatus{State: model.HostDraining, Disk: roomy}, false},
+		{"under_the_floor", model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ready, err := stopOf(host.WithDiskFloor(&answeringHost{status: tc.status}, 50), nil).Ready(t.Context(), "p", "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, ready)
+		})
+	}
+}
+
+func TestHostStop_ReadyNamesTheHostWhenItCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	var built []string
+
+	_, err := clusters(&built, host.WithDiskFloor(&answeringHost{err: errFake}, 50)).Ready(t.Context(), "p", "gpu-b")
+	require.ErrorIs(t, err, errFake)
+	assert.Contains(t, err.Error(), "cannot read host gpu-b of project p: check that it answers")
+	assert.Equal(t, []string{"gpu-b"}, built, "the host of the asked cluster is read")
+}
+
+func TestHostStop_ReadyOfAProjectWithNoHostIsFalseAndAnyOtherFaultIsAnError(t *testing.T) {
+	t.Parallel()
+
+	ready, err := stopOf(nil, errNoHost).Ready(t.Context(), "p", "")
+	require.NoError(t, err)
+	assert.False(t, ready, "a project with no host has no host that takes a job")
+
+	broken := errors.New("host config is unreadable")
+	_, err = stopOf(nil, broken).Ready(t.Context(), "p", "")
+	require.ErrorIs(t, err, broken)
+
+	var built []string
+
+	_, err = clusters(&built, &answeringHost{}).Ready(t.Context(), "p", "rogue")
+	require.ErrorIs(t, err, model.ErrUndeclaredHost)
+	assert.Empty(t, built, "no host is built for a cluster that the project does not declare")
+}
