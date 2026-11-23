@@ -203,7 +203,9 @@ type Engine struct {
 	itemQueues []dbos.Queue
 	// exclusiveQueue is the queue of the gates and the merges: one run for each repository.
 	exclusiveQueue dbos.Queue
-	deps           Deps
+	// placement is held by a gate from the read of the free gate slots of its hosts until its job is queued.
+	placement sync.Mutex
+	deps      Deps
 	// maxConcurrent is agents.max_concurrent, the cap of the items queue. The queue builtin subtracts the open runs from it.
 	maxConcurrent int
 	// perLogin is the agent steps that one login runs at once in each agent queue: Options.PerLogin, or the default of the config.

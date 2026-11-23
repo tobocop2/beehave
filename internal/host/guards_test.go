@@ -99,6 +99,62 @@ func TestDiskFloor_ABrokenStatusKeepsItsCause(t *testing.T) {
 	require.ErrorIs(t, host.DiskFloor(t.Context(), &stubHost{statusErr: errDown}, 50), errDown)
 }
 
+func TestReady_OnlyAnUpHostWithEnoughSpaceTakesAJob(t *testing.T) {
+	t.Parallel()
+
+	roomy := model.DiskReading{FreeBytes: 60 * gb, Readable: true}
+	tests := []struct {
+		name string
+		host *stubHost
+		want bool
+	}{
+		{"up_with_space", &stubHost{status: model.HostStatus{State: model.HostUp, Disk: roomy}}, true},
+		{"absent", &stubHost{status: model.HostStatus{State: model.HostAbsent, Disk: roomy}}, false},
+		{"draining", &stubHost{status: model.HostStatus{State: model.HostDraining, Disk: roomy}}, false},
+		{"under_the_floor", &stubHost{status: model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: 49 * gb, Readable: true}}}, false},
+		{"unreadable_disk", &stubHost{status: model.HostStatus{State: model.HostUp, Disk: model.DiskReading{FreeBytes: 900 * gb}}}, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			wrapped, err := host.Ready(t.Context(), host.WithDiskFloor(tc.host, 50))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, wrapped, "a host with the disk floor")
+
+			keeping, err := host.Ready(t.Context(), host.WithDiskWait(&tearing{stubHost: tc.host}, 50, time.Hour, time.Hour))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, keeping, "a host with the disk floor and a teardown")
+		})
+	}
+}
+
+func TestReady_AHostWithNoFloorIsReadyWhenItIsUp(t *testing.T) {
+	t.Parallel()
+
+	up, err := host.Ready(t.Context(), &stubHost{status: model.HostStatus{State: model.HostUp}})
+	require.NoError(t, err)
+	assert.True(t, up)
+
+	draining, err := host.Ready(t.Context(), &stubHost{status: model.HostStatus{State: model.HostDraining}})
+	require.NoError(t, err)
+	assert.False(t, draining)
+}
+
+func TestReady_AStatusThatFailsIsAnErrorWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	for name, h := range map[string]host.Host{
+		"plain":   &stubHost{statusErr: errDown},
+		"floored": host.WithDiskFloor(&stubHost{statusErr: errDown}, 50),
+	} {
+		ready, err := host.Ready(t.Context(), h)
+		require.ErrorIs(t, err, errDown, name)
+		assert.False(t, ready, name)
+	}
+}
+
 func TestWithDiskFloor_ASubmitStartsOnlyOnAHostAboveTheFloor(t *testing.T) {
 	t.Parallel()
 

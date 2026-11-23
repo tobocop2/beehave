@@ -59,6 +59,9 @@ type ExclusiveInput struct {
 	// HostKey is the partition of the slot queue that holds the build job of the gate. It is set when the gate is queued, so a replay uses the host that the first
 	// run chose even when the project file changed since. It is empty for a gate that runs on this machine. A reopened job goes back to the same partition.
 	HostKey string `json:"host_key,omitempty"`
+	// Hosts are the declared build hosts that the gate may go to, set when the gate is queued for a project with more than one host and a run that recorded none.
+	// The step gate:place picks one when the gate leaves the exclusive queue, and the gate then holds it in HostKey. It is empty for every other call.
+	Hosts []string `json:"hosts,omitempty"`
 	// SlotCount is the count of the slot class of a command call or a gate, set when the job is queued. A gate reads it to name its queue, and the rewind of a reopened job reads it too.
 	// A command replay asks Deps.Slots again, so a changed host block gives the replay the new count.
 	SlotCount int `json:"slot_count,omitempty"`
@@ -355,23 +358,57 @@ func (e *Engine) hostJob(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput, 
 // during the cancel is listed and canceled, or refused by the owner check of its start. A queued job never starts, and a running one stops at the next tick. The wait itself never cancels the job: a cancel by id from a wait that stopped could land after a resume
 // reopened the job, and fail the replay of the gate. A stop of the engine leaves the job for the next start.
 func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) error {
-	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
+	handle, err := e.placedJob(ctx, in)
 	if err != nil {
 		return err
 	}
 
-	return e.runJob(ctx, in, queue, out)
+	return e.awaitJob(ctx, handle, out)
+}
+
+// placedJob places the gate of in when it has hosts to choose from, and queues its host job. The placement lock is held from the read of the free slots
+// until the job is queued. One engine owns one state folder, so the lock covers every gate that can read the same host slots.
+func (e *Engine) placedJob(ctx dbos.Context, in ExclusiveInput) (dbos.WorkflowHandle[ExclusiveOutput], error) {
+	if len(in.Hosts) > 0 {
+		e.placement.Lock()
+		defer e.placement.Unlock()
+	}
+
+	in, err := e.place(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
+	if err != nil {
+		return nil, err
+	}
+
+	return e.queueJob(ctx, in, queue)
 }
 
 // runJob queues the host job of in on queue, under the HostKey of in, and waits for it. The error and the stop of the wait are those of onHost.
 func (e *Engine) runJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue, out *ExclusiveOutput) error {
-	host := strings.TrimPrefix(in.HostKey, hostKeyPrefix)
-
-	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(in.Priority))
+	handle, err := e.queueJob(ctx, in, queue)
 	if err != nil {
-		return fmt.Errorf("queue the build job of item %s on host %s: %w", in.Item, host, err)
+		return err
 	}
 
+	return e.awaitJob(ctx, handle, out)
+}
+
+// queueJob queues the host job of in on queue, under the HostKey of in.
+func (e *Engine) queueJob(ctx dbos.Context, in ExclusiveInput, queue dbos.Queue) (dbos.WorkflowHandle[ExclusiveOutput], error) {
+	handle, err := dbos.RunWorkflow(ctx, e.hostJob, in, dbos.WithQueue(queue), dbos.WithQueuePartitionKey(in.HostKey), dbos.WithPriority(in.Priority))
+	if err != nil {
+		return nil, fmt.Errorf("queue the build job of item %s on host %s: %w", in.Item, strings.TrimPrefix(in.HostKey, hostKeyPrefix), err)
+	}
+
+	return handle, nil
+}
+
+// awaitJob waits for the host job of handle and stores its output in out.
+func (e *Engine) awaitJob(ctx dbos.Context, handle dbos.WorkflowHandle[ExclusiveOutput], out *ExclusiveOutput) error {
 	done, err := awaitResult(ctx, e.ctx, handle, e.deps.Clock.resultOptions())
 	if err != nil {
 		return err
@@ -441,7 +478,8 @@ func (e *Engine) placeOnHost(in ExclusiveInput) (ExclusiveInput, error) {
 		return in, fmt.Errorf("queue the %s of item %s: %w", in.Kind, in.Item, err)
 	}
 
-	in.HostKey, in.SlotCount = hostKeyPrefix+host, count
+	recorded, _ := in.recordedHost()
+	in.HostKey, in.SlotCount, in.Hosts = hostKeyPrefix+host, count, e.placeCandidates(in, recorded)
 
 	return in, nil
 }

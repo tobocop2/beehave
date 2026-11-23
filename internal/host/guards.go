@@ -88,15 +88,50 @@ func DiskFloor(ctx context.Context, h Host, floorGB int) error {
 		return fmt.Errorf("%w: %w", err, ErrDiskRead)
 	}
 
-	if !status.Disk.Readable {
+	return belowFloor(status.Disk, floorGB)
+}
+
+// belowFloor is nil when the reading is readable and holds at least floorGB of free space.
+func belowFloor(disk model.DiskReading, floorGB int) error {
+	if !disk.Readable {
 		return ErrDiskRead
 	}
 
-	if free := status.Disk.FreeBytes; free < uint64(floorGB)*bytesPerGB { //nolint:gosec // config keeps the floor between 1 and MaxDiskFloorGB, so the product cannot wrap
+	if free := disk.FreeBytes; free < uint64(floorGB)*bytesPerGB { //nolint:gosec // config keeps the floor between 1 and MaxDiskFloorGB, so the product cannot wrap
 		return fmt.Errorf("%d GB free, floor %d GB: %w", free/bytesPerGB, floorGB, ErrDiskLow)
 	}
 
 	return nil
+}
+
+// readier is a Host that says whether it takes a new job now. The wrapper of the disk floor is one.
+type readier interface {
+	Ready(ctx context.Context) (bool, error)
+}
+
+// Ready says whether h takes a new job: it is up, and the wrapper of the disk floor, when h has one, finds enough free space.
+// A host that cannot be read gives the error of the read. A host that is absent, draining or under its floor gives false and no error.
+func Ready(ctx context.Context, h Host) (bool, error) {
+	if r, ok := h.(readier); ok {
+		return r.Ready(ctx)
+	}
+
+	status, err := h.Status(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read the host: %w", err)
+	}
+
+	return status.State == model.HostUp, nil
+}
+
+// Ready reads the status once: the host is ready when it is up and its disk holds the floor.
+func (f floored) Ready(ctx context.Context) (bool, error) {
+	status, err := f.Status(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read the host: %w", err)
+	}
+
+	return status.State == model.HostUp && belowFloor(status.Disk, f.floorGB) == nil, nil
 }
 
 // floored is a Host that checks the disk floor before it starts a job.
