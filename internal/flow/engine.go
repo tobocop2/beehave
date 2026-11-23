@@ -84,6 +84,8 @@ type Options struct {
 	KeepRuns bool
 	// OverCap lets the first agent step of a run take a runner that is over its usage cap when no runner has room. The step records that it did.
 	OverCap bool
+	// OnOpen is what the start of the command line does with an open run of its item. The command reads it for its own start and takes the policy of its first start only: a takeover continues the run that the first start made.
+	OnOpen workflow.OnOpen
 	// Progress receives one line when a run starts and one when each top-level step of a run starts and ends.
 	// A client writes there the runs that a cancel of a canceled run stopped. A nil Progress prints nothing.
 	Progress io.Writer
@@ -690,8 +692,12 @@ func pinnedInput(item, project, file string, options ...RunOption) (ItemInput, e
 	return in, nil
 }
 
-// check refuses an item that is not an item id, a missing project, and a run with no sandbox mode.
+// check refuses an item that is not an item id, a missing project, a run with no sandbox mode, and an on_open word that is neither join nor replace.
 func (in ItemInput) check() error {
+	if _, err := workflow.OpenPolicy(string(in.OnOpen)); err != nil {
+		return err //nolint:wrapcheck // the sentence of the check is the same at every entry point
+	}
+
 	if model.ItemKind(in.Item) == "" {
 		return fmt.Errorf("%w %q: use an item id such as 12 or fix-login", ErrBadItem, in.Item)
 	}
@@ -767,7 +773,7 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(e.store(), in.Item)
+	last, found, err := e.asClient().latestFor(in)
 	if err != nil {
 		return nil, err
 	}

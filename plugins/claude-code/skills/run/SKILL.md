@@ -29,4 +29,6 @@ beehave run <item>
 
 If the resume refuses the run, tell the user to run `/beehave:cancel <item>`, then `beehave run <item>`: the cancel ends the failed run, and the run after it starts a new attempt.
 
+If the user wants a new run in place of the open one, run `beehave run <item> --on-open replace`. It cancels the open run with its children and starts the next attempt. It does not replace a failed run.
+
 8. If the run pauses with a question, run `/beehave:status` to show it. The user answers with `/beehave:answer`.

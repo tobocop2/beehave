@@ -14,6 +14,8 @@ DBOS stores the state of every workflow in SQLite (`dbos.db`) in the state folde
 
 An item workflow has the ID `item-<n>-r<k>`, where `k` counts the attempts at the item. Because of this ID, a second start of the same attempt joins the first.
 
+A start can ask to replace the open run in place of joining it: `beehave run <item> --on-open replace`, the `RunOnOpen` option of the library, or `on_open="replace"` in a `spawn` call. The default is `join`. A replace takes `probe.lock`, reads the newest run of the item again, and cancels it with its children, as `beehave cancel` does. A canceled run is terminal, so the existing attempt rule then starts attempt `k+1`: a replace adds no second way to number attempts. The read goes through the store view, so a run under a move reads as open. The lock makes the replace wait for the mover, and then it cancels the rewound run. A run that ended since the first read is not canceled. A failed run and an open run of another project are refused as for a start with no option, before any cancel. The option is an instruction of the start: the store never holds it, so a resume and a replay read it empty. The claim of attempt `k+1` and the release of attempt `k` use different owner tokens, so the late release of the canceled run never frees the new claim. When a `beehave run` that joined an engine replaces the run and then takes over after the engine stops, the takeover joins the new run and cancels nothing.
+
 #### Who runs the item workflow
 
 The engine that `beehave run` starts runs the item workflow at once, outside any queue.

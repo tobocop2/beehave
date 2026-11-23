@@ -36,10 +36,15 @@ type ItemInput struct {
 	Base string `json:"base,omitempty"`
 	// Sandbox is the sandbox mode the run started with, on or off. The start of a run refuses an empty mode, so only a run recorded before the field existed has none, and it reads the live sandbox mode of its project.
 	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
+	// OnOpen is what this start does with an open run of the item. It is an instruction of the start, not state of the run, so the store never holds it: a resume and a replay read it empty.
+	OnOpen workflow.OnOpen `json:"-"`
 }
 
 // RunOption is a choice for a run that a caller makes when it starts the run.
 type RunOption func(*ItemInput)
+
+// RunOnOpen sets what the start does with an open run of its item: join it, or replace it. An empty policy joins.
+func RunOnOpen(policy workflow.OnOpen) RunOption { return func(in *ItemInput) { in.OnOpen = policy } }
 
 // RunSandbox records the sandbox mode of the run in its input. The caller resolves the mode from its own config, never from the engine that serves the run.
 func RunSandbox(mode model.SandboxMode) RunOption { return func(in *ItemInput) { in.Sandbox = mode } }

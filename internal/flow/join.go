@@ -49,16 +49,25 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 
 // joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
 func joinPlan(open run, in ItemInput, version string) (attemptPlan, error) {
-	held, err := open.project()
-	if err != nil {
+	if err := startProject(open, in.Item, in.Project); err != nil {
 		return attemptPlan{}, err
 	}
 
-	if held != in.Project {
-		return attemptPlan{}, conflictError(in.Item, held, in.Project)
+	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+}
+
+// startProject refuses a start for a project other than the one that the open run of the item uses.
+func startProject(open run, item, project string) error {
+	held, err := open.project()
+	if err != nil {
+		return err
 	}
 
-	return attemptPlan{Join: open.Status.ID, Move: open.Status.ApplicationVersion != version}, nil
+	if held != project {
+		return conflictError(item, held, project)
+	}
+
+	return nil
 }
 
 // moveIfOtherBuild moves the open run of the item to this build when the plan says so. It uses the check and the restamp of beehave resume --on-this-build,
@@ -140,7 +149,7 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string, option
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
 func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := latestRun(c.store(), in.Item)
+	last, found, err := c.latestFor(in) //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
 	if err != nil {
 		return nil, err
 	}

@@ -542,7 +542,9 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 #### `spawn`
 
-`spawn(items, entry="main", base="", retries=0, name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+`spawn(items, entry="main", base="", retries=0, on_open="join", name="")` starts each item as its own run of the same workflow file, and returns `runs`, a list of structs with the fields `item` and `run`.
+
+- With `on_open="replace"`, `spawn` cancels the open run of an item with its children, as `beehave cancel` does, and starts the next attempt. The parent of the canceled run reads its end at once. `spawn` still refuses a failed run and an open run of another project. The default `on_open="join"` refuses an open run, as below. The cancel is part of the recorded plan of the call, so a replay cancels nothing again.
 
 - With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
 - The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
@@ -559,7 +561,7 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 `spawn` refuses:
 
-- An item that has an open run.
+- An item that has an open run, unless the call has `on_open="replace"`.
 - An item whose last attempt failed.
 - The parent itself.
 - An item that is in `items` twice.
