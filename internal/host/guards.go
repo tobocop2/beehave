@@ -141,19 +141,23 @@ type floored struct {
 	floorGB int
 	wait    time.Duration
 	poll    time.Duration
+	fleet   *Fleet
 }
 
 // WithDiskFloor returns h with a Submit that first runs DiskFloor. A job does not start on a host under its floor, or on a host that cannot report its free space.
-// Every other method of Host is the method of h. Of the methods outside Host, the wrapper keeps only Teardown, so a wrapped host has no Drain or Resume.
+// Every other method of Host is the method of h, with the Wait of diskwatch.go. Of the methods outside Host, the wrapper keeps only Teardown, so a wrapped host has no Drain or Resume.
+// It does not watch the disk while a job runs.
 func WithDiskFloor(h Host, floorGB int) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return keepTeardown(floored{Host: h, floorGB: floorGB}, h)
+	return keepTeardown(floored{Host: h, floorGB: floorGB, fleet: NewFleet()}, h)
 }
 
 // WithDiskWait is WithDiskFloor with a wait: a job under the floor reads the disk again every poll, for at most wait, and starts when the space is back.
 // A job still under the floor when the wait ends is refused with ErrDiskLow. A reading that cannot be read is refused at once, because waiting does not fix it.
-// A wait of zero or less is WithDiskFloor.
-func WithDiskWait(h Host, floorGB int, wait, poll time.Duration) Host { //nolint:ireturn // the wrapper is a Host of any provider
-	return keepTeardown(floored{Host: h, floorGB: floorGB, wait: wait, poll: poll}, h)
+// A wait of zero or less does not wait before the start.
+// While a job runs, the guard reads the disk every poll and stops the youngest job of the fleet when the host is under the floor; see Wait.
+// Guards of one host share one fleet. A poll of zero or less does not watch the disk.
+func WithDiskWait(h Host, floorGB int, wait, poll time.Duration, fleet *Fleet) Host { //nolint:ireturn // the wrapper is a Host of any provider
+	return keepTeardown(floored{Host: h, floorGB: floorGB, wait: wait, poll: poll, fleet: fleet}, h)
 }
 
 // teardowner is the Teardown that a provider adds to the contract: it banks the work of the host and releases it.

@@ -123,7 +123,7 @@ func TestReady_OnlyAnUpHostWithEnoughSpaceTakesAJob(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, wrapped, "a host with the disk floor")
 
-			keeping, err := host.Ready(t.Context(), host.WithDiskWait(&tearing{stubHost: tc.host}, 50, time.Hour, time.Hour))
+			keeping, err := host.Ready(t.Context(), host.WithDiskWait(&tearing{stubHost: tc.host}, 50, time.Hour, time.Hour, host.NewFleet()))
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, keeping, "a host with the disk floor and a teardown")
 		})
@@ -220,7 +220,7 @@ func TestWithDiskWait_AJobWaitsForTheSpaceInsteadOfRefusing(t *testing.T) {
 	t.Parallel()
 
 	stub := &freeing{stubHost: &stubHost{}, free: 0}
-	id, err := host.WithDiskWait(stub, 50, time.Minute, time.Millisecond).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	id, err := host.WithDiskWait(stub, 50, time.Minute, time.Millisecond, host.NewFleet()).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
 
 	require.NoError(t, err)
 	assert.Equal(t, model.JobID("1"), id)
@@ -232,7 +232,7 @@ func TestWithDiskWait_AJobStillUnderTheFloorWhenTheWaitEndsIsRefused(t *testing.
 	t.Parallel()
 
 	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 10 * gb, Readable: true}}}
-	_, err := host.WithDiskWait(stub, 50, 20*time.Millisecond, time.Millisecond).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	_, err := host.WithDiskWait(stub, 50, 20*time.Millisecond, time.Millisecond, host.NewFleet()).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
 
 	require.ErrorIs(t, err, host.ErrDiskLow)
 	require.ErrorContains(t, err, "10 GB free, floor 50 GB")
@@ -244,7 +244,7 @@ func TestWithDiskWait_AnUnreadableDiskIsRefusedAtOnceWithoutWaiting(t *testing.T
 
 	stub := &stubHost{status: model.HostStatus{Disk: model.DiskReading{FreeBytes: 900 * gb}}}
 	started := time.Now()
-	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
+	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour, host.NewFleet()).Submit(t.Context(), model.JobSpec{Name: "gate-p"})
 
 	require.ErrorIs(t, err, host.ErrDiskRead)
 	assert.Less(t, time.Since(started), time.Minute)
@@ -258,7 +258,7 @@ func TestWithDiskWait_ACanceledContextEndsTheWait(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour).Submit(ctx, model.JobSpec{Name: "gate-p"})
+	_, err := host.WithDiskWait(stub, 50, time.Hour, time.Hour, host.NewFleet()).Submit(ctx, model.JobSpec{Name: "gate-p"})
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, stub.submits)
@@ -298,7 +298,7 @@ func TestDiskGuards_KeepTheTeardownOfAHostThatHasOne(t *testing.T) {
 
 	for name, wrap := range map[string]func(host.Host) host.Host{
 		"floor": func(h host.Host) host.Host { return host.WithDiskFloor(h, 50) },
-		"wait":  func(h host.Host) host.Host { return host.WithDiskWait(h, 50, time.Hour, time.Hour) },
+		"wait":  func(h host.Host) host.Host { return host.WithDiskWait(h, 50, time.Hour, time.Hour, host.NewFleet()) },
 	} {
 		inner := &tearing{stubHost: &stubHost{}}
 		wrapped, ok := wrap(inner).(keeper)
