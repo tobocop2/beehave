@@ -59,6 +59,7 @@ flowchart TD
         fstree["fstree<br/>removes a tree with read-only folders"]
         gotelemetry["gotelemetry<br/>turns go telemetry off in a home folder"]
         exectest["exectest<br/>writes the programs that tests start"]
+        ifacetest["ifacetest<br/>lists the methods of an interface from its source"]
     end
 
     main --> cli

@@ -33,6 +33,8 @@ const (
 	UnreadableDisk
 	// Unreachable is for a provider that does not own its machine (see NonOwning): the machine does not answer.
 	Unreachable
+	// UnreadableLog is a host that works, except that the read of the log of a job fails. It reaches the log read that Broken stops short of.
+	UnreadableLog
 )
 
 // DF is the answer of `df -P -k` on a machine with free space, for the fakes of every adapter.
@@ -104,6 +106,9 @@ func testOwning(t *testing.T, newHost Factory) {
 	t.Run("a_failed_command_is_an_error_everywhere", func(t *testing.T) {
 		CheckHostFails(t, newHost(t, Broken))
 	})
+	t.Run("a_log_that_cannot_be_read_is_an_error", func(t *testing.T) {
+		CheckUnreadableLog(t, newHost(t, UnreadableLog))
+	})
 	t.Run("a_host_that_is_not_up_takes_no_job", func(t *testing.T) {
 		CheckBeforeUp(t, newHost(t, Working))
 	})
@@ -119,6 +124,9 @@ func testNonOwning(t *testing.T, newHost Factory) {
 	})
 	t.Run("a_failed_command_is_an_error_everywhere_but_down", func(t *testing.T) {
 		checkHostFails(t, newHost(t, Broken), false)
+	})
+	t.Run("a_log_that_cannot_be_read_is_an_error", func(t *testing.T) {
+		CheckUnreadableLog(t, newHost(t, UnreadableLog))
 	})
 	t.Run("a_machine_that_does_not_answer_is_absent_and_takes_no_job", func(t *testing.T) {
 		CheckUnreachable(t, newHost(t, Unreachable))
@@ -202,6 +210,23 @@ func CheckUnreadableDisk(r Reporter, h host.Host) {
 	if got, err := h.Status(ctx); err == nil && got.Disk.Readable {
 		r.Errorf("a disk that cannot be read: Status reports a readable reading of %d bytes", got.Disk.FreeBytes)
 	}
+}
+
+// CheckUnreadableLog checks that a host whose log read fails returns an error from Log and never an empty log. The host works in every other call.
+func CheckUnreadableLog(r Reporter, h host.Host) {
+	r.Helper()
+
+	c := check{r: r}
+	ctx, cancel := deadline()
+	defer cancel()
+
+	c.noError(h.Up(ctx), "Up")
+
+	id, err := h.Submit(ctx, model.JobSpec{Name: "log", Command: PassingCommand})
+	c.noError(err, "Submit")
+
+	_, err = h.Log(ctx, id)
+	c.isError(err, "Log of a log that cannot be read")
 }
 
 // CheckUnknownState checks that Wait never returns a final state for a job whose scheduler state beehave does not know. Wait may fail or return a state that is not final.

@@ -29,4 +29,7 @@ func TestMethods_AMissingInterfaceOrAFileThatDoesNotParseIsAnError(t *testing.T)
 
 	_, err = ifacetest.Methods([]string{"testdata/broken.go"}, "Outer")
 	require.ErrorContains(t, err, "no interface Gone")
+
+	_, err = ifacetest.Methods([]string{"testdata/qualified.go"}, "Outer")
+	require.ErrorContains(t, err, "interface Outer embeds a type that is not a name")
 }

@@ -36,6 +36,7 @@ func (r *recorder) Errorf(format string, args ...any) {
 // memHost is a host in memory. down fails every call. noDisk makes the disk reading unreadable. stuck leaves every job running.
 type memHost struct {
 	down   bool
+	noLog  bool
 	noDisk bool
 	stuck  bool
 	root   string
@@ -105,7 +106,13 @@ func (m *memHost) Cancel(_ context.Context, id model.JobID) error {
 	return m.fail()
 }
 
-func (m *memHost) Log(context.Context, model.JobID) (string, error) { return "", m.fail() }
+func (m *memHost) Log(context.Context, model.JobID) (string, error) {
+	if m.noLog {
+		return "", errDown
+	}
+
+	return "", m.fail()
+}
 
 func (m *memHost) LostProof(context.Context, model.JobID) (model.LostProof, error) {
 	return model.LostProof{}, m.fail()
@@ -212,9 +219,22 @@ func TestTestHost_RunsAgainstAnAdapter(t *testing.T) {
 		m := newMemHost()
 		m.down = mode == hosttest.Broken
 		m.noDisk = mode == hosttest.UnreadableDisk
+		m.noLog = mode == hosttest.UnreadableLog
 
 		return m
 	})
+}
+
+func TestCheckUnreadableLog_AcceptsAnErrorAndFailsAHostThatReadsAnEmptyLog(t *testing.T) {
+	t.Parallel()
+
+	rec := &recorder{}
+	hosttest.CheckUnreadableLog(rec, &memHost{noLog: true, state: model.HostAbsent, jobs: map[model.JobID]model.JobState{}})
+	assert.Empty(t, rec.failures)
+
+	rec = &recorder{}
+	hosttest.CheckUnreadableLog(rec, newMemHost())
+	assert.Equal(t, []string{"Log of a log that cannot be read: want an error from a failed command, got none"}, rec.failures)
 }
 
 func TestCheckBeforeUp(t *testing.T) {

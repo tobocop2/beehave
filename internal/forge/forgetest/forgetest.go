@@ -307,13 +307,16 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 	check{r: r}.allFail(forgeCalls(target))
 }
 
-// FailedCommandMethods names every method of forge.Forge that CheckForgeFails runs. A method of the interface that is not in the list has no failed-command case.
+// FailedCommandMethods names every method that a failed-command check runs: forge.Forge, Syncer, Statuses, AssigneeReads, ReadyReads and Boarder.
+// A method of those interfaces that is not in the list has no failed-command case.
+// Opener is left out: its three methods only write, so no read can turn an error into an empty answer, and the adapter tests prove each write.
 func FailedCommandMethods() []string {
-	calls := forgeCalls(nil)
-	names := make([]string, len(calls))
+	var names []string
 
-	for i, one := range calls {
-		names[i] = one.name
+	for _, calls := range [][]call{forgeCalls(nil), syncerCalls(nil), statusCalls(nil), assigneeCalls(nil), readyCalls(nil), boarderCalls(nil)} {
+		for _, one := range calls {
+			names = append(names, one.name)
+		}
 	}
 
 	return names
@@ -396,18 +399,45 @@ func mergeCalls(target forge.Forge) []call {
 func CheckAssigneeReadsFail(r Reporter, target forge.AssigneeReads) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(assigneeCalls(target))
+}
+
+func assigneeCalls(target forge.AssigneeReads) []call {
+	return []call{
 		{"IssueAssignees", func(ctx context.Context) error { _, err := target.IssueAssignees(ctx, "", Seven); return err }},
-	})
+	}
 }
 
 // CheckReadyReadsFail runs the ready-mark read of a forge whose commands all fail. It must return an error and never an empty list.
 func CheckReadyReadsFail(r Reporter, target forge.ReadyReads) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(readyCalls(target))
+}
+
+func readyCalls(target forge.ReadyReads) []call {
+	return []call{
 		{"ReadyMarks", func(ctx context.Context) error { _, err := target.ReadyMarks(ctx, Seven); return err }},
-	})
+	}
+}
+
+// sevenCard is the card of pull request 7 on board 1, for the board calls of a forge whose commands all fail.
+func sevenCard() model.Card {
+	return model.Card{Board: 1, Number: Seven, Pull: true, Status: "Todo"}
+}
+
+// CheckBoarderFails runs both methods of a Boarder whose commands all fail. Each must return an error and never a guess.
+func CheckBoarderFails(r Reporter, target forge.Boarder) {
+	r.Helper()
+
+	check{r: r}.allFail(boarderCalls(target))
+}
+
+func boarderCalls(target forge.Boarder) []call {
+	return []call{
+		{"PlaceCard", func(ctx context.Context) error { return target.PlaceCard(ctx, sevenCard()) }},
+		{"CardStatus", func(ctx context.Context) error { _, err := target.CardStatus(ctx, sevenCard()); return err }},
+	}
 }
 
 // What the fake behind a Syncer serves: the count of commits that SyncHead has and SyncBase lacks, and the merge commit of the merge.
@@ -437,10 +467,14 @@ func CheckSyncer(r Reporter, target forge.Syncer) {
 func CheckSyncerFails(r Reporter, target forge.Syncer) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(syncerCalls(target))
+}
+
+func syncerCalls(target forge.Syncer) []call {
+	return []call{
 		{"CommitsAhead", func(ctx context.Context) error { _, err := target.CommitsAhead(ctx, SyncBase, SyncHead); return err }},
 		{"MergeBranch", func(ctx context.Context) error { _, err := target.MergeBranch(ctx, SyncBase, SyncHead); return err }},
-	})
+	}
 }
 
 // What the fake behind a Statuses serves: the branch that requires a pull request and the statuses StatusGate and StatusReview, and the commit that a status is posted on.
@@ -469,12 +503,16 @@ func CheckStatuses(r Reporter, target forge.Statuses) {
 func CheckStatusesFails(r Reporter, target forge.Statuses) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(statusCalls(target))
+}
+
+func statusCalls(target forge.Statuses) []call {
+	return []call{
 		{"PostStatus", func(ctx context.Context) error {
 			return target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess})
 		}},
 		{"Protection", func(ctx context.Context) error { _, err := target.Protection(ctx, StatusBranch); return err }},
-	})
+	}
 }
 
 func pick[T, V any](rows []T, field func(T) V) []V {

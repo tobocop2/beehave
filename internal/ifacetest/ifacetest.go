@@ -74,12 +74,20 @@ func add(specs map[string]*ast.InterfaceType, name string, found map[string]bool
 			continue
 		}
 
-		if embedded, isIdent := field.Type.(*ast.Ident); isIdent {
-			if err := add(specs, embedded.Name, found); err != nil {
-				return err
-			}
+		if err := addEmbedded(specs, name, field, found); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// addEmbedded adds the methods of an embedded interface. A qualified name is an error: the files cannot show its methods.
+func addEmbedded(specs map[string]*ast.InterfaceType, outer string, field *ast.Field, found map[string]bool) error {
+	embedded, isIdent := field.Type.(*ast.Ident)
+	if !isIdent {
+		return fmt.Errorf("interface %s embeds a type that is not a name in the same files, and its methods cannot be listed", outer)
+	}
+
+	return add(specs, embedded.Name, found)
 }
