@@ -540,6 +540,34 @@ func TestScope_AStoreThatIsShutDownRefusesTheReadOfAnEarlierScope(t *testing.T) 
 	require.ErrorContains(t, err, "read the steps of item-12-r1")
 }
 
+func TestScope_AStoreThatIsShutDownRefusesTheReadOfTheKeptIssues(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	_, err = (&script{e: engine, in: ItemInput{Item: testItem}}).keptOf("1")
+	require.ErrorContains(t, err, "list the earlier runs of item 12")
+
+	err = (&batchBase{s: &script{e: engine, ctx: engine.ctx, in: ItemInput{Item: testItem}}}).keep("1", []int{13})
+	require.ErrorContains(t, err, "record the issues kept for item 1")
+}
+
+func TestScope_ARunWhoseStepsTheStoreCannotReadRefusesTheReadOfTheKeptIssues(t *testing.T) {
+	t.Parallel()
+
+	engine, err := NewEngine(t.Context(), newHarness(t).opts, Deps{Forge: &fakeForge{closing: [][]int{{12}}}})
+	require.NoError(t, err)
+	require.NoError(t, engine.Shutdown())
+
+	_, err = recordedKept(engine.ctx, "item-12-r1", "1")
+	require.ErrorContains(t, err, "read the steps of item-12-r1")
+
+	_, err = (&script{e: engine, ctx: engine.ctx, fixed: true, in: ItemInput{Item: testItem, Project: testProject}}).freshIssues(t.Context(), testItem)
+	require.ErrorContains(t, err, "list the earlier runs of item 12")
+}
+
 func TestKeptIssues_ReadsOnlyTheKeepForm(t *testing.T) {
 	t.Parallel()
 
@@ -568,4 +596,67 @@ func TestMerge_ALaterGateOfTheRunKeepsTheScopeOfTheFirstAndReadsNothing(t *testi
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, rig.h.forge.closingReads, "one read at the first gate and one before the merge")
+}
+
+// keepAs runs a merge of the members as a run of runItem, answers its one question with "keep #13", and returns once the run ends.
+func (r *batchRig) keepAs(t *testing.T, engine *Engine, runItem, members string) {
+	t.Helper()
+
+	done := r.runMergeAs(t, engine, runItem, members)
+
+	questionOf(t, r.h, runItem)
+	require.NoError(t, r.h.client(t, testVersion).Reply(runItem, Reply{Text: "keep #13"}))
+	require.NoError(t, receive(t, done).err)
+}
+
+func TestMerge_ANewRunOfTheSameItemAsksNoSecondQuestionForAnIssueTheOwnerKept(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+	rig.keepAs(t, engine, "9", "1")
+
+	done := rig.runMergeAs(t, engine, "9", "1")
+
+	select {
+	case outcome := <-done:
+		require.NoError(t, outcome.err)
+	case <-time.After(secondCallBound):
+		t.Fatalf("the second run of item 9 did not end within %s: it asked the owner again about the issue that run one kept", secondCallBound)
+	}
+
+	assert.Equal(t, []string{"1", "1"}, rig.merger.landed())
+	require.Len(t, rig.merger.given, 2)
+	assert.Equal(t, []int{13}, rig.merger.given[1].Kept, "the merge of run two still gets the kept issue")
+}
+
+func TestMerge_AnIssueKeptByARunOfOneItemIsStillAskedAboutByARunOfAnotherItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closing = [][]int{{12}, {12, 13}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+	rig.keepAs(t, engine, "9", "1")
+
+	rig.keepAs(t, engine, "8", "1")
+
+	assert.Equal(t, []string{"1", "1"}, rig.merger.landed(), "run 8 asked its own question and landed the member after the answer")
+}
+
+func TestMerge_AnIssueKeptForOneMemberIsStillAskedAboutForAnotherMemberOfTheSameItem(t *testing.T) {
+	t.Parallel()
+
+	rig := newBatchRig(t)
+	rig.h.forge.closingOf = map[string][][]int{"1": {{12}, {12, 13}}, "3": {{12}, {12, 13}}}
+	engine := rig.engine(t)
+	rig.fixScopeOf(t, engine, "1")
+	rig.fixScopeOf(t, engine, "3")
+	rig.keepAs(t, engine, "9", "1")
+
+	rig.keepAs(t, engine, "9", "3")
+
+	assert.Equal(t, []string{"1", "3"}, rig.merger.landed(), "member 3 asked its own question: the keep of #13 for member 1 does not cover it")
 }
