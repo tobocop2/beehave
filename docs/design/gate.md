@@ -24,7 +24,7 @@ The gate must judge the commit that beehave sends on, so it refuses a tree with 
 |---|---|
 | The tree has uncommitted changes | Refused |
 | The head or the tree changes during the run | Refused |
-| A host job died, went stale or ran past `host.max_run` | Void: every step is `unknown`, and the report says why |
+| A host job died, went stale, ran past `host.max_run`, or was stopped because the host ran under `host.disk_floor_gb` | Void: every step is `unknown`, and the report says why. A disk stop is a problem of the host, not a failed gate |
 | A host job in any state other than succeeded or failed | `ErrNoVerdict`; it never counts as a pass |
 | A clone or checkout on the host fails (for example, a head that is not pushed) | A failed gate, never a pass |
 | A host request without a `CloneURL` | Refused |
