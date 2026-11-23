@@ -33,6 +33,19 @@ func BankAll(ctx context.Context, git, find proc.Runner, root, private string, o
 	return Bank(ctx, git, repos, private, opts...)
 }
 
+// BankFolder banks the work in the repositories under one folder, the folder of a job, as BankAll does for the work root. probe is the command line of test on the host.
+// A folder that does not exist holds no work, and the answer is ErrNoRepos, as for a root with no repository. A probe that fails any other way is a refusal.
+func BankFolder(ctx context.Context, git, find, probe proc.Runner, folder, private string, opts ...ScanOption) error {
+	switch result := probe.Run(ctx, []string{"-d", folder}); result.ExitCode {
+	case 0:
+		return BankAll(ctx, git, find, folder, private, opts...)
+	case 1:
+		return fmt.Errorf("%w: %s", ErrNoRepos, folder)
+	default:
+		return fmt.Errorf("check the folder %s: exit %d: %s", folder, result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
+}
+
 // Teardown scans the host, banks its work and stops it. It is the only way to stop a host with the guards:
 // a host with unbanked work, or one whose work cannot be read, stays up. A host with no repository stays up too: Teardown refuses zero repositories.
 // It scans the root that Host.WorkRoot names, the root that Wait scans.

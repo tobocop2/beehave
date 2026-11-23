@@ -2,6 +2,7 @@ package jobwait_test
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -103,7 +104,74 @@ func engine(s jobwait.Scheduler, c *clock, bank func(context.Context) error, sl 
 }
 
 func limitedEngine(s jobwait.Scheduler, c *clock, bank func(context.Context) error, sl slot, stale time.Duration, limits jobwait.Limits) *jobwait.Engine {
-	return jobwait.New(s, sl.Release, jobwait.Clock{Poll: 10 * time.Second, Now: c.read, Sleep: c.sleep}, bank, stale, limits)
+	return jobwait.New(s, sl.Release, jobwait.Clock{Poll: 10 * time.Second, Now: c.read, Sleep: c.sleep}, func(ctx context.Context, _ string) error { return bank(ctx) }, stale, limits)
+}
+
+func TestJob_StringHoldsTheFolderAndSplitFolderReadsItBack(t *testing.T) {
+	t.Parallel()
+
+	withFolder := jobwait.Job{ID: "7", Nonce: "n", Folder: "/home/ci/beehave-gate-a-1"}
+
+	assert.Equal(t, "7-n", withFolder.Key())
+	assert.NotEqual(t, withFolder.Key(), withFolder.String())
+
+	key, folder, err := jobwait.SplitFolder(withFolder.String())
+	require.NoError(t, err)
+	assert.Equal(t, "7-n", key)
+	assert.Equal(t, "/home/ci/beehave-gate-a-1", folder)
+
+	key, folder, err = jobwait.SplitFolder("7-n")
+	require.NoError(t, err)
+	assert.Equal(t, "7-n", key)
+	assert.Empty(t, folder, "an id with no folder gives none")
+}
+
+func TestSplitFolder_RefusesAFolderThatIsNotAnAbsolutePath(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{"7-n~!!!", "7-n~" + base64.RawURLEncoding.EncodeToString([]byte("relative/dir")), "7-n~" + base64.RawURLEncoding.EncodeToString([]byte("/a\nb"))} {
+		_, _, err := jobwait.SplitFolder(text)
+		require.ErrorIs(t, err, jobwait.ErrBadFolder, text)
+	}
+}
+
+func TestCheckFolder_AcceptsNoFolderAndAnAbsolutePathOnly(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, jobwait.CheckFolder(""))
+	require.NoError(t, jobwait.CheckFolder("/home/ci/x"))
+	require.ErrorIs(t, jobwait.CheckFolder("x/y"), jobwait.ErrBadFolder)
+	require.ErrorIs(t, jobwait.CheckFolder("/x\x00"), jobwait.ErrBadFolder)
+}
+
+func TestScopedBank_AJobWithAFolderBanksOnlyThatFolderAndOneWithNoneBanksTheRoot(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+
+	bank := jobwait.ScopedBank(
+		func(context.Context) error { calls = append(calls, "root"); return nil },
+		func(_ context.Context, folder string) error { calls = append(calls, folder); return nil },
+	)
+
+	require.NoError(t, bank(t.Context(), "/home/ci/a"))
+	require.NoError(t, bank(t.Context(), ""))
+	assert.Equal(t, []string{"/home/ci/a", "root"}, calls)
+}
+
+func TestWait_AJobWithAFolderBanksThatFolderWhenItEnds(t *testing.T) {
+	t.Parallel()
+
+	var banked []string
+
+	c := newClock()
+	e := jobwait.New(&scripted{reads: []reading{{state: model.JobSucceeded}}}, slot{}.Release, jobwait.Clock{Poll: 10 * time.Second, Now: c.read, Sleep: c.sleep},
+		func(_ context.Context, folder string) error { banked = append(banked, folder); return nil }, 0, jobwait.Limits{})
+
+	_, err := e.Wait(t.Context(), jobwait.Job{ID: "7", Nonce: "n", Folder: "/home/ci/a"})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/home/ci/a"}, banked)
 }
 
 func noBank(context.Context) error { return nil }

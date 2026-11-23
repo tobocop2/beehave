@@ -654,7 +654,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor())})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}

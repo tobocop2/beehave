@@ -42,12 +42,17 @@ func parseSubmitted(out string) (string, error) {
 
 // parseJobID reads a job id that Submit returned. It refuses any other text, so none reaches the scheduler command line.
 func parseJobID(id model.JobID) (jobwait.Job, error) {
-	match := handlePattern.FindStringSubmatch(string(id))
+	handle, folder, err := jobwait.SplitFolder(string(id))
+	if err != nil {
+		return jobwait.Job{}, err
+	}
+
+	match := handlePattern.FindStringSubmatch(handle)
 	if match == nil {
 		return jobwait.Job{}, fmt.Errorf("%w: got %q", errBadJobID, string(id))
 	}
 
-	return jobwait.Job{ID: match[1], Nonce: match[2]}, nil
+	return jobwait.Job{ID: match[1], Nonce: match[2], Folder: folder}, nil
 }
 
 // slurmJobState maps a Slurm state name to a job state. The names are Slurm's own spelling.
