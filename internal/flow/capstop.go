@@ -287,12 +287,28 @@ func inWindow(line StepLine, since time.Time) bool {
 // weekWindow is the span that the week cap counts back from the time of the check.
 const weekWindow = 7 * 24 * time.Hour
 
+// windowRuns lists the item runs that can hold a cost that ended at or after since: the runs that finished after since, and the runs that have not finished.
+// A run that finished before since holds no such cost, so the sum never reads it.
+func windowRuns(ctx storeView, since time.Time) ([]dbos.WorkflowStatus, error) {
+	finished, err := itemRuns(ctx, dbos.WithFilterCompletedAfter(since), dbos.WithFilterStatus(dbos.WorkflowStatusSuccess, dbos.WorkflowStatusError, dbos.WorkflowStatusCancelled, dbos.WorkflowStatusMaxRecoveryAttemptsExceeded))
+	if err != nil {
+		return nil, err
+	}
+
+	open, err := itemRuns(ctx, dbos.WithFilterStatus(dbos.WorkflowStatusPending, dbos.WorkflowStatusEnqueued, dbos.WorkflowStatusDelayed, dbos.WorkflowStatusSuspended))
+	if err != nil {
+		return nil, err
+	}
+
+	return append(finished, open...), nil
+}
+
 // weekSpend sums the recorded cost of every item run of the store that ended inside the last week. The run id is not read: the week cap is one sum for all items.
 func (e *Engine) weekSpend(string) (agent.Spend, error) {
 	since := e.deps.Clock.wall().Add(-weekWindow)
 
 	// The reads go through the context of the engine, not the one of the run: a library call on the context of a run records a step of its own.
-	runs, err := itemRuns(e.store())
+	runs, err := windowRuns(e.store(), since)
 	if err != nil {
 		return agent.Spend{}, err
 	}

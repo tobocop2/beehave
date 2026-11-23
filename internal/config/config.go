@@ -338,6 +338,7 @@ func (c Config) Validate() Problems {
 	problems = append(problems, c.pollProblems(runnersPath)...)
 	problems = append(problems, c.lookbackProblems(runnersPath)...)
 	problems = append(problems, c.retentionProblems(runnersPath)...)
+	problems = append(problems, c.weekRetentionProblems(runnersPath)...)
 	problems = append(problems, c.slotProblems()...)
 
 	return append(problems, c.poolProblems(runnersPath)...)
@@ -392,6 +393,16 @@ func (c Config) retentionProblems(runnersPath string) Problems {
 		return Problems{refuse("agents.retention_days must be 0 (keep for ever) or more. Set it in %s or in %s.", runnersPath, envRetentionDays)}
 	case days > maxRetentionDays:
 		return Problems{refuse("agents.retention_days is %d: set it to %d (100 years) or less. Set it in %s or in %s.", days, maxRetentionDays, runnersPath, envRetentionDays)}
+	}
+
+	return nil
+}
+
+// weekRetentionProblems refuses a week cap with a retention of 1 to 6 days. The retention deletes a finished run before its cost leaves the seven day window, so the sum would be lower than the spend.
+func (c Config) weekRetentionProblems(runnersPath string) Problems {
+	if c.Agents.MaxWeekBudgetUSD > 0 && c.Agents.RetentionDays > 0 && c.Agents.RetentionDays < defaultRetentionDays {
+		return Problems{refuse("agents.retention_days is %d, and agents.max_week_budget_usd is set: the cap counts the last 7 days, and a finished run is deleted after %d. Set agents.retention_days to 7 or more, or to 0, or set agents.max_week_budget_usd to 0. Set them in %s or in %s and %s.",
+			c.Agents.RetentionDays, c.Agents.RetentionDays, runnersPath, envRetentionDays, envMaxWeekBudget)}
 	}
 
 	return nil

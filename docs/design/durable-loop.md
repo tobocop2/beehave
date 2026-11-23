@@ -268,11 +268,12 @@ A CLI with no budget option refuses the run, unless it reports the dollars of ea
 
 **The cap of a week: `agents.max_week_budget_usd`** (or `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD`). It caps the sum for all items of the store in the last seven days.
 
-- The sum reads the step records of every item run in the store, not one run or one tree.
-- A cost counts when its agent step ended at or after the time of the check minus seven days. A step that ended exactly seven days ago counts. A step that runs counts from its start.
+- The sum reads the step records of the item runs of the store that finished in the last seven days, and of every item run that has not finished. It reads no run that finished before the window, so the cost of a check does not grow with the history of the store.
+- A cost counts when its agent step ended at or after the time of the check minus seven days. A step that ended exactly seven days ago counts. A step that runs has no recorded cost yet and adds 0 until it ends.
 - A cost with no time, such as the cost of a failed run whose call has no step record, counts. The cap errs toward stopping.
 - The rule and the wait are the same as for the run cap. The stop has the scope `week`. All set caps apply.
-- A finished run that `agents.retention_days` deleted is not in the sum. Keep `retention_days` at 7 or more, or at 0, for a week cap.
+- A cost is recorded when its step ends, and nothing reserves it before. Two agent steps that start at the same time both read the same sum, so both can start under the cap. The overshoot is at most the cost of the steps that run at once.
+- A finished run that `agents.retention_days` deleted is not in the sum, so beehave refuses a config with a week cap and a `retention_days` from 1 to 6. Set `retention_days` to 7 or more, or to 0.
 - The sum covers beehave recorded costs only. The usage windows of a subscription are not read.
 
 **The stop in the status.** `beehave status <run id> --json` shows `cap_stop` with `scope` (`run`, `tree` or `week`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
@@ -748,7 +749,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | Note | Meaning |
 |---|---|
 | `spent $S of $C` | The cost so far against `agents.max_run_budget_usd`: the sum of the `cost_usd` of the read steps, of the limited runs, and of the failed runs in the stream `failed_runs`, which a resume keeps. It is the same sum that the run cap checks. `spent $S` when no cap is set. |
-| `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run` or `tree`. The step waits until the cap is raised and beehave restarts. |
+| `stopped at the <scope> cap $C, spent $S` | A cap holds an agent step of the open run back. The scope is `run`, `tree` or `week`. The step waits until the cap is raised and beehave restarts. |
 | `waits for the <kind> limit <window> of login <login> until <time>` | A provider limit holds an agent step of the open run. The step runs again after that time. |
 | `now <step>` | The step that an open run is in. A run that asks a question shows the question in place of the step and, when the `wait` has a `timeout`, `answer by <time>`. |
 | `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |

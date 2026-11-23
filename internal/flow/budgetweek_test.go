@@ -183,13 +183,113 @@ func TestWeekCap_ACapCheckWhoseReadOfARunFailsNamesTheRunAndReturnsNoStop(t *tes
 	t.Parallel()
 
 	engine, _ := weekStore(t, newAgentRig(t), map[string]float64{"1": 6})
-	// The first read lists the item runs, and the second reads the steps of the only run.
-	failing := &Engine{ctx: &failingRead{Context: engine.ctx, at: 2}, maxWeekBudget: 5}
+	// The first two reads list the finished runs and the open runs, and the third reads the steps of the only run.
+	failing := &Engine{ctx: &failingRead{Context: engine.ctx, at: 3}, maxWeekBudget: 5}
 
 	got, err := failing.checkCaps("q", runID("2", 1))
 
 	require.ErrorContains(t, err, "read the steps of "+runID("1", 1))
 	assert.Nil(t, got.Stop)
+}
+
+func TestWeekCap_ACapCheckWhoseListOfOpenRunsFailsReturnsTheErrorAndNoStop(t *testing.T) {
+	t.Parallel()
+
+	engine, _ := weekStore(t, newAgentRig(t), map[string]float64{"1": 6})
+	failing := &Engine{ctx: &failingRead{Context: engine.ctx, at: 2}, maxWeekBudget: 5}
+
+	got, err := failing.checkCaps("q", runID("2", 1))
+
+	require.ErrorContains(t, err, "the store failed")
+	assert.Nil(t, got.Stop)
+}
+
+func TestWeekCap_ARunThatFinishedBeforeTheWindowIsNotRead(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+	engine, at := weekStore(t, rig, map[string]float64{"1": 3, "2": 3})
+
+	// Two reads list the runs. Each run that the sum reads adds one read of its steps.
+	counting := &failingRead{Context: engine.ctx}
+	reader := &Engine{ctx: counting, deps: engine.deps, maxWeekBudget: 5}
+
+	later := time.Now().Add(8 * 24 * time.Hour)
+	at.Store(&later)
+
+	spent, err := reader.weekSpend("q")
+
+	require.NoError(t, err)
+	assert.InDelta(t, 0.0, spent.Cost, 0)
+	assert.Equal(t, 2, counting.seen, "the two runs finished eight days before the check, so only the two lists were read")
+
+	now := time.Now()
+	at.Store(&now)
+	counting.seen = 0
+
+	spent, err = reader.weekSpend("q")
+
+	require.NoError(t, err)
+	assert.InDelta(t, 6.0, spent.Cost, 0)
+	assert.Equal(t, 4, counting.seen, "the two lists and the steps of each of the two runs finished inside the window")
+}
+
+func TestWeekCap_ARunThatHasNotFinishedIsReadWhateverTheWindow(t *testing.T) {
+	t.Parallel()
+
+	rig := newAgentRig(t)
+
+	var at atomic.Pointer[time.Time]
+
+	rig.h.wall = func() time.Time {
+		if set := at.Load(); set != nil {
+			return *set
+		}
+
+		return time.Now()
+	}
+
+	engine := rig.h.opened(t)
+	release := make(chan struct{})
+
+	open := func(ctx dbos.Context, in ItemInput) (string, error) {
+		_, err := runStep(engine, ctx, "agent#1/spent0", func(context.Context) (stepResult, error) {
+			return stepResult{Outputs: spendOutputs(agent.Spend{Cost: 6})}, nil
+		})
+		<-release
+
+		return in.Item, err
+	}
+
+	dbos.RegisterWorkflow(engine.ctx, open, dbos.WithWorkflowName(itemName))
+	require.NoError(t, dbos.Launch(engine.ctx))
+
+	handle, err := dbos.RunWorkflow(engine.ctx, open, ItemInput{Item: "1", Project: testProject}, dbos.WithWorkflowID(runID("1", 1)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		close(release)
+
+		_, err := handle.GetResult()
+		require.NoError(t, err)
+	})
+
+	require.Eventually(t, func() bool {
+		records, err := dbos.GetWorkflowSteps(engine.ctx, runID("1", 1))
+
+		return err == nil && len(records) > 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	counting := &failingRead{Context: engine.ctx}
+	reader := &Engine{ctx: counting, deps: engine.deps, maxWeekBudget: 5}
+
+	later := time.Now().Add(8 * 24 * time.Hour)
+	at.Store(&later)
+
+	spent, err := reader.weekSpend("q")
+
+	require.NoError(t, err)
+	assert.InDelta(t, 0.0, spent.Cost, 0, "the cost is older than the window")
+	assert.Equal(t, 3, counting.seen, "the two lists and the steps of the run that has not finished")
 }
 
 func TestWeekCap_ACapCheckWhoseListOfRunsFailsReturnsTheErrorAndNoStop(t *testing.T) {

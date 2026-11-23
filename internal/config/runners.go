@@ -49,7 +49,7 @@ type agents struct {
 	// A spawned run uses the cap of its root. 0 means no cap.
 	MaxTreeBudgetUSD float64
 	// MaxWeekBudgetUSD is the most dollars that the agent steps of all items spend in any seven days. An agent step does not start when the sum of the steps that ended in the last seven days is at or past it.
-	// The sum reads the recorded runs of the store, so `agents.retention_days` under 7 drops finished runs from it. 0 means no cap.
+	// The sum reads the recorded runs of the store, so a `agents.retention_days` from 1 to 6 is refused with this cap. 0 means no cap.
 	MaxWeekBudgetUSD float64
 	// RetentionDays is the age in days at which `beehave run` deletes a finished run, with its recorded steps. The default is 7. 0 keeps every finished run.
 	// A failed or canceled run is never deleted, because `beehave resume` can reopen it.
