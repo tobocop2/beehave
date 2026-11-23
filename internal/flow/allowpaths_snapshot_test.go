@@ -52,8 +52,8 @@ func TestScope_TheStartMarkNamesTheErrorWhenGitCannotListTheFolder(t *testing.T)
 func TestScope_AFileThatGitListsAndThatIsGoneHasTheStampGone(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "gone", stamp(t.TempDir(), "missing.txt", false))
-	assert.Empty(t, stamp(t.TempDir(), "missing/", true))
+	assert.Equal(t, "gone", stamp(t.TempDir(), "missing.txt"))
+	assert.Empty(t, stamp(t.TempDir(), "missing/"))
 }
 
 func TestScope_ARecordedNoteThatIsNotAStartMarkIsRefused(t *testing.T) {
@@ -112,7 +112,7 @@ func TestAgentStep_AllowPathsNamesAnUntrackedFileThatTheAgentEdited(t *testing.T
 	assert.NotContains(t, err.Error(), "build")
 }
 
-func TestAgentStep_AllowPathsNamesAnIgnoredFolderThatTheAgentCreated(t *testing.T) {
+func TestAgentStep_AllowPathsNamesAnIgnoredFolderThatTheAgentCreatedAndTheFileInsideAnOldOne(t *testing.T) {
 	t.Parallel()
 
 	rig := newAgentRig(t)
@@ -122,9 +122,10 @@ func TestAgentStep_AllowPathsNamesAnIgnoredFolderThatTheAgentCreated(t *testing.
 
 	_, err := rig.run(t, agentFlow(`allow_paths = ["papers/**"], `), "x")
 
-	require.ErrorContains(t, err, "target/")
+	require.ErrorContains(t, err, "target/x.o")
 	require.ErrorContains(t, err, "other.log")
-	assert.NotContains(t, err.Error(), "build")
+	require.ErrorContains(t, err, "build/more.o")
+	assert.NotContains(t, err.Error(), "build/cache.o")
 }
 
 func TestAgentStep_AllowPathsKeepsTheSnapshotOfTheFirstStartWhenTheRunResumes(t *testing.T) {
