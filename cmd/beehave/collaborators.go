@@ -61,7 +61,7 @@ type worktrees struct {
 	// remote of a project with no credentials; nil runs the real one (see reach).
 	git    func(dir string) proc.Runner
 	remote func(dir string) proc.Runner
-	// pushCheck checks the config of the push repository before each call that reaches a remote. nil refuses a setting outside the allow list (see checkedPush).
+	// pushCheck checks the config of the push repository before each call that reaches a remote; nil means the allow list.
 	pushCheck func(ctx context.Context, dir string) error
 	forge     func(model.Project) (forge.Forge, error)
 	// roles gives a call that reaches the remote of a project the writer role of that project. A project with no credentials reaches it as the owner. A

@@ -48,8 +48,7 @@ func (p pulls) pusher(project, dir, remote string) proc.Runner { //nolint:iretur
 	return checkedPush{git: p.writers.git(p.projects, project, dir, remote, nil, pushEnv(dir), "GIT_DIR="+dir), dir: dir, check: p.trees.pushCheck}
 }
 
-// checkedPush runs a call that reaches a remote from the push repository dir only when check accepts the config of that repository. A nil check is
-// gitexec.CheckBare, which refuses a setting outside the allow list.
+// checkedPush runs a call from the push repository dir only when check accepts the config of that repository; a nil check refuses a key outside the allow list.
 type checkedPush struct {
 	git   proc.Runner
 	dir   string
