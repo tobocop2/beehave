@@ -100,17 +100,17 @@ func (d ReleaseDeps) limit(ctx context.Context) (context.Context, context.Cancel
 	return context.WithTimeout(ctx, cmp.Or(d.Clock.Release, releaseTimeout))
 }
 
-// giveBack ends an item with no workflow step: first the worktree, then the claim.
-// A worktree that stays is not a failure; the log says why.
-func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project, item, owner string) error {
-	kept, treeErr := d.removeTree(ctx, project, item)
-	if kept != "" {
-		logger.InfoContext(ctx, "kept the worktree", "item", item, "reason", kept)
-	}
+// newerRunExists reports whether a newer run of the item than the attempt exists. The worktree is the folder of the item, so it belongs to that newer run.
+func newerRunExists(view storeView, a *attempt) (bool, error) {
+	last, found, err := latestRun(view, a.in.Item)
 
-	if treeErr != nil {
-		treeErr = fmt.Errorf("%s of item %s: %w", treeStepName, item, treeErr)
-	}
+	return found && last.Status.ID != a.id, err
+}
+
+// giveBack ends an item with no workflow step: first the worktree, then the claim.
+// A worktree that stays is not a failure; the log says why. With newer true a newer run of the item uses the worktree, so the give-back keeps it and releases the claim only.
+func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project, item, owner string, newer bool) error {
+	treeErr := d.giveTree(ctx, logger, project, item, newer)
 
 	bounded, cancel := d.limit(ctx)
 	defer cancel()
@@ -120,6 +120,24 @@ func (d ReleaseDeps) giveBack(ctx context.Context, logger *slog.Logger, project,
 	}
 
 	return treeErr
+}
+
+// giveTree removes the worktree of the item, unless newer says that a newer run uses it. A worktree that stays is logged with the reason.
+func (d ReleaseDeps) giveTree(ctx context.Context, logger *slog.Logger, project, item string, newer bool) error {
+	kept, err := "a newer run of the item uses the worktree", error(nil)
+	if !newer {
+		kept, err = d.removeTree(ctx, project, item)
+	}
+
+	if kept != "" {
+		logger.InfoContext(ctx, "kept the worktree", "item", item, "reason", kept)
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s of item %s: %w", treeStepName, item, err)
+	}
+
+	return nil
 }
 
 // tryRemove removes the worktree from the clone that owns it, or returns the reason it stays. heads reads the branches of the remote.

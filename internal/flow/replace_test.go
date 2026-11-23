@@ -249,7 +249,7 @@ func TestReplace_WaitsForTheHolderOfProbeLockThenCancelsTheRunItLeft(t *testing.
 	}, "after the lock the run is canceled and attempt 2 starts")
 }
 
-func TestReplace_TheClaimOfAttemptTwoIsNotFreedByTheLateReleaseOfAttemptOne(t *testing.T) {
+func TestReplace_TheEngineReleasesOnlyTheTokenOfAttemptOneAndAttemptTwoTakesItsOwnClaim(t *testing.T) {
 	t.Parallel()
 
 	h, engine, client := openRunRig(t)
@@ -266,10 +266,13 @@ func TestReplace_TheClaimOfAttemptTwoIsNotFreedByTheLateReleaseOfAttemptOne(t *t
 	soon(t, func() bool { return len(h.life.releasedBy()) > 0 }, "the engine releases the canceled attempt 1")
 
 	assert.Equal(t, []string{testOwner + testItem}, h.life.releasedBy(), "only the token of attempt 1 is released")
-	h.life.mu.Lock()
-	defer h.life.mu.Unlock()
 
-	assert.Equal(t, 2, h.life.takes[testItem], "attempt 2 took its own claim")
+	soon(t, func() bool {
+		h.life.mu.Lock()
+		defer h.life.mu.Unlock()
+
+		return h.life.takes[testItem] == 2
+	}, "attempt 2 took its own claim after the release")
 }
 
 func TestReplace_AJoinWithTheOptionCancelsTheRunOfTheEngineAndWaitsForTheNewOne(t *testing.T) {

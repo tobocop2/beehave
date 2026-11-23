@@ -773,7 +773,22 @@ func (e *Engine) finishedResult(item string) (ItemResult, bool) {
 // A new attempt picks its login here, live, before the workflow exists: a pool with no usable login stores no run.
 // The login goes in the input, so a resume or a replay keeps it.
 func (e *Engine) handleFor(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := e.asClient().latestFor(in)
+	var handle dbos.WorkflowHandle[ItemResult]
+
+	err := e.asClient().underReplace(in, func() error {
+		var err error
+
+		handle, err = e.planAndStart(in)
+
+		return err
+	})
+
+	return handle, err
+}
+
+// planAndStart reads the newest run of the item, decides what the call does with it, and starts or joins the run.
+func (e *Engine) planAndStart(in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	last, found, err := latestRun(e.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}

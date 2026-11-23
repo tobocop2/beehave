@@ -327,12 +327,22 @@ func (e *Engine) giveBack(ctx context.Context, a *attempt) {
 	e.giveBackClaim(ctx, a)
 }
 
+// giveOwned releases the claim of the attempt with its token, and removes the worktree unless a newer run of the item uses it.
+func (e *Engine) giveOwned(ctx context.Context, a *attempt, owner string) error {
+	newer, err := newerRunExists(e.store(), a)
+	if err != nil {
+		return err
+	}
+
+	return ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.giveBack(ctx, e.logger, a.in.Project, a.in.Item, owner, newer)
+}
+
 // giveBackClaim removes the worktree of a canceled item and releases the claim of the attempt. A run that never claimed has nothing to give back.
 // The files of the run go only while they name the token of the attempt: a resume can take the item once the release frees it.
 func (e *Engine) giveBackClaim(ctx context.Context, a *attempt) {
 	owner, err := releaseOwner(e.ctx, a)
 	if err == nil {
-		err = ReleaseDeps{Lifecycle: e.deps.Lifecycle, Trees: e.deps.Trees, Clock: e.deps.Clock, Repository: e.deps.Repository}.giveBack(ctx, e.logger, a.in.Project, a.in.Item, owner)
+		err = e.giveOwned(ctx, a, owner)
 	}
 
 	if err != nil && !errors.Is(err, errNoOwner) {

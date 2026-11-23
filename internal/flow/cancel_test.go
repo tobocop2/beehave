@@ -220,7 +220,7 @@ func TestReleaseDeps_GiveBackReportsEachFailureAndKeepsTheOtherStep(t *testing.T
 			life := &fakeLifecycle{failing: test.failing}
 			deps := ReleaseDeps{Lifecycle: life, Trees: test.trees}
 
-			err := deps.giveBack(t.Context(), slog.New(slog.DiscardHandler), testProject, testItem, "tok")
+			err := deps.giveBack(t.Context(), slog.New(slog.DiscardHandler), testProject, testItem, "tok", false)
 
 			if test.want == "" {
 				require.NoError(t, err)

@@ -262,7 +262,12 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 
 // begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
 // A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
+// The claim waits for the release of an earlier attempt of the item first, as a replace starts the next attempt before the engine released the one it canceled.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
+	if err = e.awaitRelease(ctx, in.Item, workflowID(ctx)); err != nil {
+		return "", "", time.Time{}, err
+	}
+
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err

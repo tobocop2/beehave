@@ -149,7 +149,22 @@ func (c *Client) JoinRun(ctx context.Context, item, project, file string, option
 
 // planAndHandle plans the attempt for the item and returns the run to wait for.
 func (c *Client) planAndHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
-	last, found, err := c.latestFor(in) //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
+	var handle dbos.WorkflowHandle[ItemResult]
+
+	err := c.underReplace(in, func() error { //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
+		var err error
+
+		handle, err = c.planHandle(ctx, in)
+
+		return err
+	})
+
+	return handle, err
+}
+
+// planHandle reads the newest run of the item, decides what the call does with it, and returns the run to wait for.
+func (c *Client) planHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
+	last, found, err := latestRun(c.store(), in.Item)
 	if err != nil {
 		return nil, err
 	}
