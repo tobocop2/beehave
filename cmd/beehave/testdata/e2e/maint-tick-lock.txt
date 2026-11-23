@@ -1,0 +1,41 @@
+# A tick that a kill stops leaves no lock behind. A tick that its holder still runs is refused. The first tick blocks in git until the file release exists.
+[!exec:jq] skip
+[!exec:perl] skip
+isolate
+maintinit
+maintfakes
+env HOME=$WORK/home
+env GIT_BASE=file://$WORK/remotes
+env UPKEEP_WEEK=2026-W44
+cp blocking-git fake/git
+chmod 755 fake/git
+
+# The holder takes the lock and waits in git.
+! exec sh home/.upkeep/scripts/tick.sh &holder&
+waitfile held
+
+# A second tick while the holder lives is refused.
+! exec sh home/.upkeep/scripts/tick.sh
+stderr 'another tick runs'
+
+# SIGKILL gives the holder no time to run a trap. The lock must still end with it.
+kill -KILL holder
+
+# The git of the dead tick still waits. The next tick takes the lock all the same, because no command of the tick keeps it.
+# Its sync fails, which the tick logs, and the tick goes on.
+exec sh home/.upkeep/scripts/tick.sh
+grep 'sync failed' home/.upkeep/runs.tsv
+cp release.txt release
+wait holder
+
+-- blocking-git --
+#!/bin/sh
+# The stand-in for git. The first call writes the file held and waits for the file release. Every later call fails.
+work=$(dirname "$0")/..
+if [ -f "$work/held" ]; then exit 1; fi
+: > "$work/held"
+n=0
+while [ ! -f "$work/release" ] && [ "$n" -lt 30 ]; do n=$((n + 1)); sleep 1; done > /dev/null 2>&1
+exit 1
+-- release.txt --
+go

@@ -33,6 +33,17 @@ runlog() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$(printf '%s' "$5" | tr '\t\n' '  ')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$RUNLOG"
 }
 
+# take_lock <file> <command...> replaces the shell with the command, under an operating system lock on the file, held on descriptor 9.
+# The kernel drops the lock when the holder ends, even by SIGKILL, so a crash leaves nothing to remove. A second caller exits 75 at once.
+# perl does the lock because flock(1) is missing on macOS, and perl is on macOS and on Linux.
+take_lock() {
+    exec perl -e 'use Fcntl qw(:flock); use POSIX ();
+open(my $f, ">>", shift) or do { print STDERR "lock: cannot open the lock file\n"; exit 74 };
+flock($f, LOCK_EX | LOCK_NB) or do { print STDERR "tick: another tick runs; stop\n"; exit 75 };
+POSIX::dup2(fileno($f), 9) or exit 74;
+exec @ARGV or exit 127' "$@"
+}
+
 # logged <week> <repo> [outcome...] is true when the log has a row for the week and the repository, with one of the outcomes when given.
 logged() {
     w=$1; r=$2; shift 2
