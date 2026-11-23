@@ -159,7 +159,7 @@ func (e *Engine) reachedRelease(a *attempt, taken claimTake) (bool, error) {
 }
 
 // trustClaim starts the trust in the claim of a run. A run that reached its release replays its recorded steps and renews nothing: the tick skips its claim, and the trust lasts for the replay.
-func (e *Engine) trustClaim(ctx dbos.Context, a *attempt, taken claimTake) error {
+func (e *Engine) trustClaim(ctx context.Context, a *attempt, taken claimTake) error {
 	released, err := e.reachedRelease(a, taken)
 	if err != nil {
 		return err

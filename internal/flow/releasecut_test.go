@@ -29,6 +29,45 @@ func (b freedBeats) Beat(ctx context.Context, project, owner string) (string, er
 	return b.fakeBeats.Beat(ctx, project, owner)
 }
 
+func TestRelease_AStoreThatCannotBeReadEndsTheRunAndSkipsNoRenewal(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	require.NoError(t, engine.Shutdown())
+
+	a := &attempt{id: "item-12-r1", in: ItemInput{Item: testItem, Project: testProject}}
+
+	released, err := engine.reachedRelease(a, claimTake{owner: testOwner + testItem})
+	require.ErrorContains(t, err, "read the steps of item-12-r1")
+	assert.False(t, released, "a read that failed does not say the run reached its release")
+
+	err = engine.trustClaim(t.Context(), a, claimTake{owner: testOwner + testItem})
+	require.ErrorContains(t, err, "read the steps of item-12-r1", "the run reports the failure and starts no replay")
+	assert.Empty(t, h.beats.calls, "the failed read starts no renewal either")
+}
+
+func TestRelease_ATickDuringTheReplayOfAFreedClaimRenewsNothingAndLosesNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	a := &attempt{id: "item-12-r1", in: ItemInput{Item: testItem, Project: testProject}, cancel: func() {}}
+
+	forget := engine.holds.hold(a, testProject, testOwner+testItem)
+	defer forget()
+
+	engine.holds.freed(a)
+	engine.trust(a, engine.deps.Clock.now())
+
+	engine.beatClaims()
+
+	assert.Empty(t, h.beats.calls, "the tick does not renew a claim that its own release freed")
+
+	_, _, reason, _ := engine.holds.distrust(a.id, engine.deps.Clock)
+	assert.Empty(t, reason, "the run still trusts the claim for the replay")
+}
+
 func TestRelease_ARunWhoseReleaseWasCutByAnEngineStopFinishesOnTheNextEngine(t *testing.T) {
 	t.Parallel()
 
