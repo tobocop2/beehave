@@ -661,6 +661,35 @@ func TestLoadFolder_AgentsMaxRunBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadVa
 	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD=lots is not a number")
 }
 
+func TestLoadFolder_AgentsMaxWeekBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadValue(t *testing.T) {
+	t.Parallel()
+
+	cfg, problems := loadRunnersText(t, "agents()\n")
+	require.Empty(t, problems)
+	require.InDelta(t, 0.0, cfg.Agents.MaxWeekBudgetUSD, 0)
+
+	cfg, problems = loadRunnersText(t, "agents(max_week_budget_usd = 250.5)\n")
+	require.Empty(t, problems)
+	require.InDelta(t, 250.5, cfg.Agents.MaxWeekBudgetUSD, 0)
+	require.InDelta(t, 0.0, cfg.Agents.MaxTreeBudgetUSD, 0, "the week cap does not set the tree cap")
+
+	_, problems = loadRunnersText(t, "agents(max_week_budget_usd = -1)\n")
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "agents.max_week_budget_usd must be 0 (no cap) or more")
+	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD")
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "runners.star"), "agents(max_week_budget_usd = 1)\n")
+
+	cfg, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD": "75"})
+	require.Empty(t, problems)
+	require.InDelta(t, 75.0, cfg.Agents.MaxWeekBudgetUSD, 0)
+
+	_, problems = loadFolder(dir, map[string]string{"BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD": "lots"})
+	require.Len(t, problems, 1)
+	require.ErrorContains(t, problems[0], "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD=lots is not a number")
+}
+
 func TestLoadFolder_AgentsMaxTreeBudgetDefaultsToNoCapTakesTheEnvAndRefusesABadValue(t *testing.T) {
 	t.Parallel()
 

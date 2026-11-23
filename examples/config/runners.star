@@ -30,6 +30,7 @@ pool(
 # the cap, so the last step can pass it by its own cost (set max_budget_usd to limit that). A child workflow of the run starts its own sum.
 # max_tree_budget_usd caps the same sum for the root run and every run it spawns. A spawned run uses the cap of its root. A step that a cap stops waits:
 # raise the cap (or set it to 0) and restart beehave to resume it.
+# max_week_budget_usd caps the dollars that the agent steps of all items spend in any seven days. A step that ended exactly seven days ago counts. Keep retention_days at 7 or more, or at 0: a deleted run is not in the sum.
 # A step can set a lower cap for itself with max_budget_usd in its agent() call.
 # review_poll_minutes is the time between two polls of the open pull requests that wait for your
 # review or your reply. 0 means no poll, which is the default. The most is 10080 (one week).
@@ -53,6 +54,7 @@ agents(
     # max_budget_usd = 5,
     # max_run_budget_usd = 20,
     # max_tree_budget_usd = 100,
+    # max_week_budget_usd = 300,
     # review_poll_minutes = 60,
     # review_lookback_days = 3,
     # retention_days = 7,

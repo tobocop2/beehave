@@ -266,13 +266,22 @@ A CLI with no budget option refuses the run, unless it reports the dollars of ea
 - A spawned run uses the cap of its root. It does not start a new sum and cannot raise the cap.
 - The rule and the wait are the same as for the run cap. Both caps apply when both are set.
 
-**The stop in the status.** `beehave status <run id> --json` shows `cap_stop` with `scope` (`run` or `tree`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
+**The cap of a week: `agents.max_week_budget_usd`** (or `BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD`). It caps the sum for all items of the store in the last seven days.
+
+- The sum reads the step records of every item run in the store, not one run or one tree.
+- A cost counts when its agent step ended at or after the time of the check minus seven days. A step that ended exactly seven days ago counts. A step that runs counts from its start.
+- A cost with no time, such as the cost of a failed run whose call has no step record, counts. The cap errs toward stopping.
+- The rule and the wait are the same as for the run cap. The stop has the scope `week`. All set caps apply.
+- A finished run that `agents.retention_days` deleted is not in the sum. Keep `retention_days` at 7 or more, or at 0, for a week cap.
+- The sum covers beehave recorded costs only. The usage windows of a subscription are not read.
+
+**The stop in the status.** `beehave status <run id> --json` shows `cap_stop` with `scope` (`run`, `tree` or `week`), `cap_usd`, `spent_usd` and `note` on the run, and on the line of the held agent step, while the run reads `running`. The stop goes away when a phase of the step finds no stop at its look, before its agent ends.
 
 **The wait for a provider limit in the status.** While an agent step waits for a provider limit to reset, `beehave status <run id> --json` shows `limit_wait` with `limit`, `login` and `wait_until` on the run and on the line of the step. The run reads `running`.
 
 #### Not covered
 
-- A cap for a week.
+- A cap on the usage windows of a subscription. The week cap counts recorded costs.
 - The check starts no agent step late and stops no agent step that already runs. The cap of one agent run does that.
 
 #### The swarm example

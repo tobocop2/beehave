@@ -25,6 +25,7 @@ const (
 	envMaxBudget           = "BEEHAVE_AGENTS_MAX_BUDGET_USD"
 	envMaxRunBudget        = "BEEHAVE_AGENTS_MAX_RUN_BUDGET_USD"
 	envMaxTreeBudget       = "BEEHAVE_AGENTS_MAX_TREE_BUDGET_USD"
+	envMaxWeekBudget       = "BEEHAVE_AGENTS_MAX_WEEK_BUDGET_USD"
 	envTraceParent         = "BEEHAVE_AGENTS_TRACE_PARENT"
 	envRetentionDays       = "BEEHAVE_AGENTS_RETENTION_DAYS"
 	envReviewPoll          = "BEEHAVE_REVIEW_POLL_MINUTES"
@@ -238,12 +239,13 @@ func (c *Config) applyEnv(env map[string]string) error {
 	)
 }
 
-// overlayBudgets reads the three caps in dollars from the environment.
+// overlayBudgets reads the caps in dollars from the environment.
 func (c *Config) overlayBudgets(env map[string]string) error {
 	return errors.Join(
 		overlayDollars(env, envMaxBudget, "5", &c.Agents.MaxBudgetUSD),
 		overlayDollars(env, envMaxRunBudget, "20", &c.Agents.MaxRunBudgetUSD),
 		overlayDollars(env, envMaxTreeBudget, "100", &c.Agents.MaxTreeBudgetUSD),
+		overlayDollars(env, envMaxWeekBudget, "300", &c.Agents.MaxWeekBudgetUSD),
 	)
 }
 
@@ -352,6 +354,7 @@ func (c Config) budgetProblems(runnersPath string) Problems {
 		{"agents.max_budget_usd", envMaxBudget, c.Agents.MaxBudgetUSD},
 		{"agents.max_run_budget_usd", envMaxRunBudget, c.Agents.MaxRunBudgetUSD},
 		{"agents.max_tree_budget_usd", envMaxTreeBudget, c.Agents.MaxTreeBudgetUSD},
+		{"agents.max_week_budget_usd", envMaxWeekBudget, c.Agents.MaxWeekBudgetUSD},
 	} {
 		if !(limit.dollars >= 0) || math.IsInf(limit.dollars, 0) {
 			problems = append(problems, refuse("%s must be 0 (no cap) or more, and a finite number. Set it in %s or in %s.", limit.name, runnersPath, limit.env))
