@@ -25,7 +25,8 @@ import (
 func gitTree(t *testing.T) (dir, head string) {
 	t.Helper()
 
-	dir = t.TempDir()
+	dir = filepath.Join(t.TempDir(), "item")
+	require.NoError(t, os.MkdirAll(dir, 0o750))
 
 	initRepo := exec.CommandContext(t.Context(), "git", "init", "-q")
 	initRepo.Dir = dir
