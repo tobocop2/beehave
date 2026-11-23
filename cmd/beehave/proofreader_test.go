@@ -1,4 +1,4 @@
-package github_test
+package main
 
 import (
 	"testing"
@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/batch"
+	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
+	"github.com/tobocop2/beehave/internal/proc/proctest"
 )
 
 const (
@@ -16,8 +18,8 @@ const (
 	proofEnd   = "4444444444444444444444444444444444444444"
 )
 
-// proofForge builds a forge that answers like a forge for one member whose head is not in the base. Its start tree and the tree of the base hold
-// deploy.sh with startMode and endMode, and the tree of the member holds it as an executable. All three hold the same content id.
+// proofForge builds the GitHub forge over scripted gh answers for one member whose head is not in the base. The start tree and the tree of the base
+// hold deploy.sh with startMode and endMode, and the tree of the member holds it as an executable. All three hold the same content id.
 func proofForge(t *testing.T, startMode, endMode string) batch.ProofReads {
 	t.Helper()
 
@@ -25,7 +27,7 @@ func proofForge(t *testing.T, startMode, endMode string) batch.ProofReads {
 		return `{"truncated":false,"tree":[{"path":"deploy.sh","mode":"` + mode + `","type":"blob","sha":"b1"}]}`
 	}
 
-	f, run := fixed(t, "")
+	run := &proctest.Scripted{}
 	run.PlanContaining(entry(startMode), "git/trees/"+proofStart)
 	run.PlanContaining(entry("100755"), "git/trees/"+proofTree)
 	run.PlanContaining(entry(endMode), "git/trees/"+proofEnd)
@@ -33,7 +35,10 @@ func proofForge(t *testing.T, startMode, endMode string) batch.ProofReads {
 	run.PlanContaining(`{"object":{"sha":"`+proofHead+`"}}`, "git/ref/heads/a")
 	run.PlanContaining("diverged 1 1", "compare/"+proofHead)
 
-	return f
+	gh, err := forgegithub.New("owner/name", run)
+	require.NoError(t, err)
+
+	return gh
 }
 
 func TestProve_TheListOfTheRealReaderShowsAMemberThatOnlyMadeAFileExecutable(t *testing.T) {
