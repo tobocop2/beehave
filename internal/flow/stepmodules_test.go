@@ -74,8 +74,8 @@ func TestStepModuleTable_HoldsTheEightModulesOnceEach(t *testing.T) {
 func TestApplicationVersion_HoldsOneVersionForEachModule(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "v1+core18.agent15.tracker2.forge7.land9.gate6.host1.round5", applicationVersion("v1"))
-	assert.Equal(t, "v1+core18.agent15.tracker2.forge7.land9.gate7.host1.round5", versionWithModule("v1", moduleGate, 7))
+	assert.Equal(t, "v1+core18.agent15.tracker2.forge7.land10.gate6.host1.round5", applicationVersion("v1"))
+	assert.Equal(t, "v1+core18.agent15.tracker2.forge7.land10.gate7.host1.round5", versionWithModule("v1", moduleGate, 7))
 }
 
 func TestStepModules_TheCoreModuleIsAtVersionEighteen(t *testing.T) {
@@ -92,12 +92,13 @@ func TestStepModules_TheCoreModuleIsAtVersionEighteen(t *testing.T) {
 		"and the stream step with its deadline step, which records the end of the wait and the child run, comes at core18")
 }
 
-func TestStepModules_TheLandModuleIsAtVersionNine(t *testing.T) {
+func TestStepModules_TheLandModuleIsAtVersionTen(t *testing.T) {
 	t.Parallel()
 
-	assert.Contains(t, strings.Split(moduleVersions(), "."), "land9", "merge is the old batch_merge and a merge of one pull request records the batch steps, "+
+	assert.Contains(t, strings.Split(moduleVersions(), "."), "land10", "merge is the old batch_merge and a merge of one pull request records the batch steps, "+
 		"each member records its scope check as batch:<call>.scope#<item> before its intent, a hand-off records batch:<call>.ready#<item> and batch:<call>.watch#<item>@<round>, "+
-		"the preflight step records no foreign, pr, head or author field, and the merge of a member names its run at land9")
+		"the preflight step records no foreign, pr, head or author field, the merge of a member names its run at land9, "+
+		"and an owner line that keeps issues records batch:<call>.kept#<item> at land10")
 }
 
 func TestStepModules_TheGateModuleIsAtVersionSix(t *testing.T) {
