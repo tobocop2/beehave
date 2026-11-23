@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -424,8 +423,8 @@ func (c *Client) leaseOf(ctx context.Context, last run) (owner string, ends time
 	return owner, renewed.Add(model.ClaimLease), nil
 }
 
-// requirePinned refuses a run whose workflow file or pinned file changed since the run started, and names the file. The refusal also lists the scripts
-// outside the repository, which a run does not pin.
+// requirePinned refuses a run whose workflow file or pinned file changed since the run started, and names the file. The refusal also counts the command
+// calls whose script is not known before the run, which a run does not pin.
 func requirePinned(item string, last run) error {
 	in, readErr := last.input()
 	pin, pinErr := pinOf(last.Status, in)
@@ -433,10 +432,6 @@ func requirePinned(item string, last run) error {
 
 	if err := errors.Join(readErr, pinErr, openErr); err != nil {
 		text := fmt.Sprintf("%s was not moved to this build: %v. To keep its finished steps and run the changed file, run beehave resume %s --on-this-build --on-this-file", last.Status.ID, err, item)
-
-		if outside := workflow.OutsideScripts(in.File); len(outside) > 0 {
-			text += ". These scripts are outside the repository and are not pinned: " + strings.Join(outside, ", ")
-		}
 
 		if dynamic := workflow.DynamicCommands(in.File); dynamic > 0 {
 			text += fmt.Sprintf(". %d command calls have a run list that is not a literal, so their scripts are not pinned", dynamic)

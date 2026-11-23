@@ -61,6 +61,10 @@ func resolveModule(module string) (string, error) {
 
 // readFile reads a pinned file by its name: from the folder, or from the binary.
 func readFile(dir, name string) ([]byte, error) {
+	if abs, ok := strings.CutPrefix(name, outsidePrefix); ok {
+		return os.ReadFile(abs)
+	}
+
 	if script, ok := strings.CutPrefix(name, scriptPrefix); ok {
 		return fs.ReadFile(os.DirFS(repoRoot(dir)), script)
 	}
@@ -112,18 +116,28 @@ func (g *graph) failure() error {
 	return errors.Join(errs...)
 }
 
-// pinScripts returns the hashes of the scripts of the repository that the command calls of the workflow run.
+// pinScripts returns the hashes of the scripts that the command calls of the workflow run, in the repository and outside it.
 func (g *graph) pinScripts() ([]PinnedFile, error) {
-	inside, _ := g.scripts()
-	pinned := make([]PinnedFile, 0, len(inside))
+	inside, outside := g.scripts()
+	names := make([]string, 0, len(inside)+len(outside))
 
 	for _, name := range inside {
-		data, err := readFile(g.dir, scriptPrefix+name)
+		names = append(names, scriptPrefix+name)
+	}
+
+	for _, name := range outside {
+		names = append(names, outsidePrefix+name)
+	}
+
+	pinned := make([]PinnedFile, 0, len(names))
+
+	for _, name := range names {
+		data, err := readFile(g.dir, name)
 		if err != nil {
-			return nil, fmt.Errorf("read the script %s: %w", name, err)
+			return nil, fmt.Errorf("read the script %s: %w", strings.TrimPrefix(strings.TrimPrefix(name, scriptPrefix), outsidePrefix), err)
 		}
 
-		pinned = append(pinned, PinnedFile{Path: scriptPrefix + name, SHA256: hashOf(data)})
+		pinned = append(pinned, PinnedFile{Path: name, SHA256: hashOf(data)})
 	}
 
 	return pinned, nil
