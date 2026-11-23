@@ -1,6 +1,7 @@
 package gomod_test
 
 import (
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -321,7 +322,7 @@ func TestFill_AGoSumTheDownloadLeavesAsItIsIsNotRewritten(t *testing.T) {
 	assert.True(t, os.SameFile(before, after), "the go.sum file is the same file")
 }
 
-func TestFill_AGoSumThatCannotBeWrittenBackIsANote(t *testing.T) {
+func TestFill_AFolderAtTheTemporaryNameIsInTheWay(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t, fillsCache)
@@ -331,8 +332,80 @@ func TestFill_AGoSumThatCannotBeWrittenBackIsANote(t *testing.T) {
 	cache, note := r.filler.Fill(t.Context(), "proj", r.work)
 
 	assert.NotEmpty(t, cache, "the step starts with the cache")
+	assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehave")+" is in the way")
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum"))
+}
+
+func TestFill_AGoSumThatCannotBeWrittenBackIsANote(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	require.NoError(t, exectest.ChmodFolder(r.work, 0o500), "a read-only worktree refuses the new file")
+	t.Cleanup(func() { assert.NoError(t, exectest.ChmodFolder(r.work, 0o700)) })
+
+	cache, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.NotEmpty(t, cache, "the step starts with the cache")
 	assert.Contains(t, note, "cannot be written to "+filepath.Join(r.work, "go.sum"))
 	assert.NoFileExists(t, filepath.Join(r.work, "go.sum"))
+}
+
+func TestFill_ALinkAtTheTemporaryNameIsRefusedAndNothingIsWrittenThroughIt(t *testing.T) {
+	t.Parallel()
+
+	// A link inside is relative, as an agent writes it: os.Root follows it. A link outside is absolute.
+	for name, link := range map[string]string{
+		"an existing file inside":  "inner.txt",
+		"a new hook inside":        filepath.Join(".husky", "pre-commit"),
+		"an existing file outside": filepath.Join(t.TempDir(), "victim"),
+		"a new file outside":       filepath.Join(t.TempDir(), "new"),
+	} {
+		r := newRig(t, fillsCache)
+		write(t, filepath.Join(r.work, "go.mod"), module)
+		write(t, filepath.Join(r.work, "inner.txt"), "keep\n")
+		require.NoError(t, os.MkdirAll(filepath.Join(r.work, ".husky"), 0o700))
+
+		victim := link
+		if !filepath.IsAbs(link) {
+			victim = filepath.Join(r.work, link)
+		}
+
+		if name == "an existing file outside" {
+			write(t, victim, "keep\n")
+		}
+
+		require.NoError(t, os.Symlink(link, filepath.Join(r.work, "go.sum.beehave")))
+
+		cache, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+		assert.NotEmpty(t, cache, "%s: the step starts with the cache", name)
+		assert.Contains(t, note, filepath.Join(r.work, "go.sum.beehave")+" is in the way", name)
+		assert.NoFileExists(t, filepath.Join(r.work, "go.sum"), name)
+
+		kept, err := os.ReadFile(victim) //nolint:gosec // a path inside the test folder
+		if strings.HasPrefix(name, "a new") {
+			assert.ErrorIs(t, err, fs.ErrNotExist, "%s: nothing is written through the link", name)
+		} else {
+			require.NoError(t, err, name)
+			assert.Equal(t, "keep\n", string(kept), "%s: nothing is written through the link", name)
+		}
+	}
+}
+
+func TestFill_TheWriteBackMakesNoExecutableFile(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	require.NoError(t, exectest.Write(filepath.Join(r.work, "go.sum"), ""), "the agent can make go.sum executable")
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	require.Empty(t, note)
+	info, err := os.Stat(filepath.Join(r.work, "go.sum"))
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o600), info.Mode().Perm())
 }
 
 func TestFill_AGoSumThatCannotBeReadIsANote(t *testing.T) {

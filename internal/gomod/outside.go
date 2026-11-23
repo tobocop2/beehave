@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -19,6 +20,8 @@ const (
 	newSumMode = 0o600
 	// copyMode is the mode of the folders and files of the copy: only the engine reads them.
 	copyMode = 0o700
+	// writeMode is the most a checksum file that the engine writes back may allow: the mode of the old file with no execute bit.
+	writeMode = 0o666
 )
 
 // replace is one replace line of a go.mod or a go.work file, as go mod edit -json prints it. A local replace has no version.
@@ -242,22 +245,45 @@ func (t *tree) back() string {
 			continue
 		}
 
-		if err := t.replace(path, data, old.mode); err != nil {
-			return fmt.Sprintf("the go.sum lines that the Go module download added cannot be written to %s (%v), so the step starts with the file as it was.", filepath.Join(t.dir, path), err)
+		if note := t.replace(path, data, old.mode); note != "" {
+			return note
 		}
 	}
 
 	return ""
 }
 
-// replace writes data to a new file beside path and renames it over path, so the write never follows a link that path became.
-func (t *tree) replace(path string, data []byte, mode fs.FileMode) error {
+// replace writes data to a new file beside path and renames it over path, so the write never follows a link that path became. The new file is made
+// with an exclusive create, which never follows or reuses an entry at its name, and with no execute bit.
+func (t *tree) replace(path string, data []byte, mode fs.FileMode) string {
 	temp := path + ".beehave"
-	if err := t.root.WriteFile(temp, data, mode); err != nil {
+
+	err := t.create(temp, data, mode)
+	if errors.Is(err, fs.ErrExist) {
+		return inTheWayNote(filepath.Join(t.dir, path), filepath.Join(t.dir, temp))
+	}
+
+	if err == nil {
+		err = t.root.Rename(temp, path)
+	}
+
+	if err != nil {
+		return fmt.Sprintf("the go.sum lines that the Go module download added cannot be written to %s (%v), so the step starts with the file as it was.", filepath.Join(t.dir, path), err)
+	}
+
+	return ""
+}
+
+// create makes the new file temp in the worktree with data, or fails with fs.ErrExist when any entry, a link included, is at that name.
+func (t *tree) create(temp string, data []byte, mode fs.FileMode) error {
+	file, err := t.root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode&writeMode)
+	if err != nil {
 		return err
 	}
 
-	return t.root.Rename(temp, path)
+	_, err = file.Write(data)
+
+	return cmp.Or(err, file.Close())
 }
 
 // decode runs a go edit command and decodes the JSON it prints into value, or returns the note of a failure.
@@ -286,6 +312,11 @@ func absolute(path string) string {
 // outsideNote says that file names a path that is not a relative path inside the worktree, so no download ran.
 func outsideNote(file, path string) string {
 	return fmt.Sprintf("the Go module download did not run: %s names %s, which is outside the worktree of the item or not a relative path. The step starts with the module cache as it is. Move that module into the worktree and name it with a relative path, or remove the line.", file, path)
+}
+
+// inTheWayNote says that an entry at the temporary name temp stops the write-back of the checksum file path.
+func inTheWayNote(path, temp string) string {
+	return fmt.Sprintf("the go.sum lines that the Go module download added are not written to %s, because %s is in the way, so the step starts with the file as it was. Remove %s.", path, temp, temp)
 }
 
 // linkNote says that a module file of the worktree is a link or not a regular file, so no download ran.
