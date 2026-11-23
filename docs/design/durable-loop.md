@@ -63,6 +63,28 @@ The `agent` step has no follow-ups setting. The review loop of the library (`rev
 With `"forbid"`, the loop adds the output `open` to each review call. The agent writes `open` as a text with one line for each open finding, and an empty text for none. A review with a non-empty `open` and a verdict that is not `reject` gets the verdict `changes` in the loop. With `"allow"`, the verdict of the agent stands.
 
 A workflow that calls `agent` itself reads the output `open` in the same way. The remediation example sets `"forbid"`.
+
+#### The `ledger` argument of the review loop
+
+A review has no per-finding value, so a finding gets new words in each fix round and a workflow cannot tell a fixed finding from a new one. The review loop takes `ledger = False` (the default) or `True`. With `False`, the loop has no new output, no new data file and no new result field.
+
+With `True`, the loop keeps a ledger of the findings of the run. The ledger is a value of the run. A new run of the item starts with an empty ledger.
+
+- Each review writes the output `findings`: a JSON list of objects with the text keys `id`, `severity`, `path` and `text`. The reviewer reads the ledger in its data file and reuses the `id` of an earlier finding, also when the line moved, the words changed or the file was renamed. The `id` of a new finding is empty, and the loop gives it `f-<n>`.
+- Each fix writes the outputs `resolved`, a JSON list of ids, and `wontfix`, a JSON list of objects with the keys `id` and `reason`.
+- The data file of a review holds the key `ledger` with every entry, whatever its state. The data file of a fix holds the open entries. The data dict of the caller stays in the file beside the key `ledger`.
+- The result field `ledger` lists the entries with `id`, `path`, `severity`, `text`, `state` (`open`, `fixed` or `wontfix`), `reason`, `raised_in` and `last_raised`. The last two are the numbers of review calls, and the first review call is 1.
+
+The reviews decide the state of an entry. A listed id goes to `open` and takes the new `path`, `severity` and `text`, also when it was `fixed` or `wontfix`. An `open` entry that a review omits goes to `fixed`. A `wontfix` entry that a review omits stays `wontfix`. A `wontfix` of a fix sets the state and the reason, and the reason stays when a review lists the id again. A `resolved` id is only checked against the ledger. It moves no state, and the next review decides.
+
+The loop stops the item with a refusal that names the bad value when:
+
+- `ledger` is not `True` or `False`, or `review_outputs` or `fix_outputs` names an output that the ledger writes.
+- `findings`, `resolved` or `wontfix` is not a JSON list, or an entry of it has no text for a key.
+- an id is not in the ledger, or a review lists an id twice.
+- a `wontfix` has an empty reason.
+
+The loop cannot see the meaning of a finding. A reviewer that reuses an id for another finding hides the first one. The design agent gets no ledger.
 - A literal `"forbid"` or `"audit"` whose literal `outputs` lack `verdict`.
 
 The check sees only calls named `agent`. A call through an alias or a wrapper is checked when the run starts it.
