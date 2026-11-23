@@ -258,13 +258,17 @@ func (t *tree) back() string {
 func (t *tree) replace(path string, data []byte, mode fs.FileMode) string {
 	temp := path + ".beehave"
 
-	err := t.create(temp, data, mode)
+	made, err := t.create(temp, data, mode)
 	if errors.Is(err, fs.ErrExist) {
 		return inTheWayNote(filepath.Join(t.dir, path), filepath.Join(t.dir, temp))
 	}
 
 	if err == nil {
 		err = t.root.Rename(temp, path)
+	}
+
+	if err != nil && made {
+		err = errors.Join(err, t.root.Remove(temp)) // the engine made temp, so no next fill finds it in the way
 	}
 
 	if err != nil {
@@ -274,16 +278,17 @@ func (t *tree) replace(path string, data []byte, mode fs.FileMode) string {
 	return ""
 }
 
-// create makes the new file temp in the worktree with data, or fails with fs.ErrExist when any entry, a link included, is at that name.
-func (t *tree) create(temp string, data []byte, mode fs.FileMode) error {
+// create makes the new file temp in the worktree with data, or fails with fs.ErrExist when any entry, a link included, is at that name. It reports
+// whether it made the file, so a failure after the create can remove it.
+func (t *tree) create(temp string, data []byte, mode fs.FileMode) (bool, error) {
 	file, err := t.root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode&writeMode)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	_, err = file.Write(data)
 
-	return cmp.Or(err, file.Close())
+	return true, cmp.Or(err, file.Close())
 }
 
 // decode runs a go edit command and decodes the JSON it prints into value, or returns the note of a failure.

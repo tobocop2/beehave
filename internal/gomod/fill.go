@@ -4,6 +4,7 @@ package gomod
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -23,6 +24,8 @@ const (
 	vendorList = "vendor/modules.txt"
 	// cacheMode is the mode of the cache folder of a project: only the owner reads it.
 	cacheMode = 0o700
+	// modeFileMode is the mode of the telemetry mode file in the empty home.
+	modeFileMode = 0o600
 )
 
 // Filler fills one module cache per project under Root, with the go command that Path finds.
@@ -59,11 +62,12 @@ func (f Filler) Cache(project, dir string) string {
 // download copies the module files of the worktree into a folder of an empty home that it removes after, runs the download there, and writes the
 // go.sum lines it added back into the worktree. go never runs in the files the agent wrote. It returns the note of a failure.
 func (f Filler) download(ctx context.Context, cache, dir string) string {
-	home, err := os.MkdirTemp(f.Root, ".home-")
+	home, remove, err := emptyHome(f.Root)
+	defer remove()
+
 	if err != nil {
 		return failed(fmt.Sprintf("its empty home folder cannot be made (%v)", err))
 	}
-	defer os.RemoveAll(home)
 
 	binary, err := proc.LookPath("go", f.Path)
 	if err != nil {
@@ -76,16 +80,49 @@ func (f Filler) download(ctx context.Context, cache, dir string) string {
 	}
 	defer t.close()
 
-	return t.download(ctx, func(work string) goCommand {
-		return goCommand{binary: binary, dir: t.copy, env: f.env(cache, home, work)}
-	})
+	return t.download(ctx, f.command(binary, t.copy, cache, home))
+}
+
+// command returns the function that gives the go command in the folder dir for a GOWORK value.
+func (f Filler) command(binary, dir, cache, home string) func(work string) goCommand {
+	return func(work string) goCommand { return goCommand{binary: binary, dir: dir, env: f.env(cache, home, work)} }
+}
+
+// emptyHome makes the empty home folder of one download in root, with the telemetry of the go command off. It returns the function that removes
+// the folder, which the caller runs whatever the error.
+func emptyHome(root string) (string, func(), error) {
+	home, err := os.MkdirTemp(root, ".home-")
+	if err != nil {
+		return "", func() {}, err
+	}
+
+	return home, func() { _ = os.RemoveAll(home) }, telemetryOff(home)
+}
+
+// telemetryOff writes the telemetry mode off into the config folder of the go command in home: home/.config, which XDG_CONFIG_HOME names, and
+// home/Library/Application Support on macOS. With telemetry on or local, the go command starts a child process that it does not wait for, in
+// that folder, and the child would outlive the fill and write into the home folder after the engine removes it.
+func telemetryOff(home string) error {
+	var err error
+
+	for _, config := range []string{configFolder(home), filepath.Join(home, "Library", "Application Support")} {
+		dir := filepath.Join(config, "go", "telemetry")
+		err = errors.Join(err, os.MkdirAll(dir, cacheMode), os.WriteFile(filepath.Join(dir, "mode"), []byte("off\n"), modeFileMode))
+	}
+
+	return err
+}
+
+// configFolder is the config folder in home that XDG_CONFIG_HOME names for the go command.
+func configFolder(home string) string {
+	return filepath.Join(home, ".config")
 }
 
 // env is the whole environment of the go command: no variable of the owner reaches it.
 func (f Filler) env(cache, home, work string) []string {
 	return []string{
 		"PATH=" + f.Path, "HOME=" + home, "GOENV=off", "GOFLAGS=-mod=readonly", "GOPROXY=" + proxy, "GOTOOLCHAIN=local",
-		"GOMODCACHE=" + cache, "GOCACHE=" + filepath.Join(home, "build"), "GOWORK=" + work,
+		"GOMODCACHE=" + cache, "GOCACHE=" + filepath.Join(home, "build"), "GOWORK=" + work, "XDG_CONFIG_HOME=" + configFolder(home),
 	}
 }
 

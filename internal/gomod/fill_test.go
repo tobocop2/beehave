@@ -322,6 +322,44 @@ func TestFill_AGoSumTheDownloadLeavesAsItIsIsNotRewritten(t *testing.T) {
 	assert.True(t, os.SameFile(before, after), "the go.sum file is the same file")
 }
 
+// The go command starts a telemetry child that it does not wait for, in the home folder, once it holds the upload token. With telemetry off it
+// writes no counter and takes no token, so no child outlives the fill.
+func TestFill_TheRealGoCommandStartsNoTelemetryChildThatOutlivesTheFill(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, `REALGO "$@" && find "$HOME" > "$(dirname "$0")/home.list"`)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	require.Empty(t, note)
+	home, err := os.ReadFile(filepath.Join(filepath.Dir(r.calls), "home.list"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(home), "upload.token", "no go call took the upload token, which starts the child")
+	assert.NotContains(t, string(home), ".count", "no go call wrote a telemetry counter")
+
+	entries, err := os.ReadDir(r.filler.Root)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "the fill left only the cache of the project")
+	assert.Equal(t, "proj", entries[0].Name())
+}
+
+func TestFill_AWriteBackThatFailsAfterTheCreateLeavesNoTemporaryFile(t *testing.T) {
+	t.Parallel()
+
+	// The download makes a folder at go.sum in the worktree, so the rename over it fails after the new file is made.
+	r := newRig(t, `mkdir -p "$(cat "$(dirname "$0")/plant")/x" && `+fillsCache)
+	write(t, filepath.Join(r.work, "go.mod"), module)
+	write(t, filepath.Join(filepath.Dir(r.calls), "plant"), filepath.Join(r.work, "go.sum"))
+
+	cache, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.NotEmpty(t, cache, "the step starts with the cache")
+	assert.Contains(t, note, "cannot be written to "+filepath.Join(r.work, "go.sum"))
+	assert.NoFileExists(t, filepath.Join(r.work, "go.sum.beehave"), "the engine removes the file it made")
+	assert.DirExists(t, filepath.Join(r.work, "go.sum", "x"))
+}
+
 func TestFill_AFolderAtTheTemporaryNameIsInTheWay(t *testing.T) {
 	t.Parallel()
 
@@ -468,6 +506,7 @@ func TestFill_RunsGoWithAFixedEnvironment(t *testing.T) {
 	assert.NotEqual(t, filepath.Dir(r.work), home)
 	assert.NoDirExists(t, home, "the empty home of the download is removed after it")
 	assert.True(t, strings.HasPrefix(env["GOCACHE"], home), "the build cache of the download is in its home")
+	assert.Equal(t, filepath.Join(home, ".config"), env["XDG_CONFIG_HOME"], "the config folder of go, which holds the telemetry mode, is in its home")
 }
 
 func TestFill_AGoVersionNewerThanTheLocalGoIsANoteAndNoToolchainDownload(t *testing.T) {
