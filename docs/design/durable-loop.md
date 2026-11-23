@@ -79,7 +79,7 @@ The reviews decide the state of an entry. A listed id goes to `open` and takes t
 
 The loop stops the item with a refusal that names the bad value when:
 
-- `ledger` is not `True` or `False`, or `review_outputs` or `fix_outputs` names an output that the ledger writes.
+- `ledger` is not `True` or `False`, `review_outputs` or `fix_outputs` names an output that the ledger writes, or the `data` dict of the caller has the key `ledger`.
 - `findings`, `resolved` or `wontfix` is not a JSON list, or an entry of it has no text for a key.
 - an id is not in the ledger, or a review lists an id twice.
 - a `wontfix` has an empty reason.

@@ -182,6 +182,10 @@ func raisedOnce(first string, later func(n int, seen []ledgerEntry) string) ledg
 				return first
 			}
 
+			if later == nil {
+				return "[]"
+			}
+
 			return later(n, seen)
 		},
 		fix: noFix,
@@ -518,4 +522,41 @@ func TestReviewFix_ALedgerKeepsTheDataOfTheCallerAndTheOutputsOfThePolicies(t *t
 	require.NoError(t, data.err)
 	assert.Contains(t, data.reviewData[0], `"x"`, "the data of the caller stays beside the ledger")
 	assert.Contains(t, data.reviewData[0], `"ledger"`)
+}
+
+func TestReviewFix_ACallerWithNoLedgerMayNameTheLedgerOutputsAndTheDataKeyLedger(t *testing.T) {
+	t.Parallel()
+
+	run := runLedgerLoop(t, raisedOnce(ledgerList(ledgerFinding("", "a.go", "a")), nil), `, review_outputs = ["findings"], fix_outputs = ["resolved", "wontfix"], data = {"ledger": "mine"}`)
+
+	require.NoError(t, run.err, "with the default the outputs and the data key are the free text of the caller")
+	assert.True(t, run.ledgerNull)
+	require.NotEmpty(t, run.reviews)
+	require.NotEmpty(t, run.fixes)
+	assert.Equal(t, []string{"verdict", "findings"}, run.reviews[len(run.reviews)-1].Outputs, "the full review declares the output that the caller listed")
+	assert.Contains(t, run.reviewData[0], `"mine"`, "the data of the caller reaches the data file as it is")
+}
+
+func TestReviewFix_ALedgerOfACleanImplementerIsEmptyAndItsFirstReviewGetsAnEmptyLedger(t *testing.T) {
+	t.Parallel()
+
+	run := runLedgerLoop(t, raisedOnce("[]", nil), ledgerExtra)
+
+	require.NoError(t, run.err)
+	assert.False(t, run.ledgerNull, "the result field ledger is a list with the ledger on")
+	assert.Empty(t, run.ledger)
+	require.NotEmpty(t, run.reviewData)
+	assert.Contains(t, run.reviewData[0], `"ledger"`, "the first review reads an empty ledger from its data file")
+	assert.Empty(t, run.reviewSaw[0])
+	assert.Empty(t, run.fixes, "a first review with no finding starts no fix")
+}
+
+func TestReviewFix_ALedgerStopsTheItemOnADataDictThatHoldsTheKeyLedger(t *testing.T) {
+	t.Parallel()
+
+	run := runLedgerLoop(t, raisedOnce("[]", nil), ledgerExtra+`, data = {"ledger": "mine", "x": 1}`)
+
+	require.Error(t, run.err)
+	assert.Contains(t, run.err.Error(), "REFUSE")
+	assert.Contains(t, run.err.Error(), "the key ledger")
 }

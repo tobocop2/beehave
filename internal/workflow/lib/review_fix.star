@@ -580,6 +580,9 @@ def review_fix(item, impl, review_prompt, fix_prompt, base, steps, rounds = 6, f
     if type(ledger) != "bool":
         fail("REFUSE: review_fix got ledger %r. Use True or False." % (ledger,))
 
+    if ledger and data != None and "ledger" in data:
+        fail("REFUSE: the data of review_fix has the key ledger, which the ledger writes. Rename the key.")
+
     for name in review_outputs if ledger else []:
         if name == LEDGER_REVIEW_OUTPUT:
             fail("REFUSE: review_outputs lists the output %s, which the ledger writes. Remove it from review_outputs." % name)
