@@ -59,6 +59,11 @@ func (c *Client) resumeMoved(item string, build, file bool) (string, error) {
 		return "", strandedError(last, c.version)
 	}
 
+	return c.moveOrResume(item, last, same, file)
+}
+
+// moveOrResume runs the refusals of a move on the run that resumeMoved read, then reopens it. It returns the id of that run.
+func (c *Client) moveOrResume(item string, last run, same, file bool) (string, error) {
 	pin, err := c.checkMove(item, last, file)
 	if err != nil {
 		return "", err
@@ -163,7 +168,7 @@ func (c *Client) cancelAndReopenHeld(item string, last run, pin []workflow.Pinne
 	}
 
 	if err := c.setPin(last, pin); err != nil {
-		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehave resume %s --on-this-file again", last.Status.ID, err, item)
+		return fmt.Errorf("run %s is now canceled and not on the new file: %w. Run beehave resume %s --on-this-file again, with --on-this-build when another build started the run", last.Status.ID, err, item)
 	}
 
 	if err := c.reopenHeld(item, last); err != nil {

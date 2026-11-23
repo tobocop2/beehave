@@ -396,6 +396,49 @@ func TestClient_ResumeOnThisBuildAndFileMovesTheRunOfAnotherBuildOntoThisFile(t 
 	assert.Equal(t, want, pin, "the pin is the file as it is on disk now")
 }
 
+func TestClient_ResumeRunWithTheFileFlagAdoptsTheFileAndReturnsTheIdOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	file := onThisFileRun(t, h, acc933Frontier)
+	acc933Write(t, file, acc933Frontier+"    now()\n")
+
+	client := h.client(t, testVersion)
+	id, err := client.ResumeRun(testItem, false, true)
+	require.NoError(t, err)
+
+	want, err := workflow.Pin(file)
+	require.NoError(t, err)
+
+	pin, found := pinAttributeOf(t, client, testRun)
+	require.True(t, found, "the resume wrote the pin on the run")
+	assert.Equal(t, want, pin, "the pin is the file as it is on disk now")
+	assert.Equal(t, testRun, id)
+}
+
+func TestClient_ResumeRunWithBothFlagsMovesTheRunOntoThisBuildAndFileAndReturnsItsId(t *testing.T) {
+	t.Parallel()
+
+	harness, _, other := strandedHarness(t)
+	harness.flowIs(t, waitFlow+"\n# edited\n")
+	expireLease(harness)
+
+	id, err := other.ResumeRun(testItem, true, true)
+	require.NoError(t, err)
+
+	row, err := other.row(testRun)
+	require.NoError(t, err)
+	assert.Equal(t, other.version, row.ApplicationVersion, "the run is on this build")
+
+	pin, found := pinAttributeOf(t, other, testRun)
+	require.True(t, found)
+
+	want, err := workflow.Pin(filepath.Join(filepath.Dir(harness.opts.StateDir), defaultFlowName))
+	require.NoError(t, err)
+	assert.Equal(t, want, pin, "the pin is the file as it is on disk now")
+	assert.Equal(t, testRun, id)
+}
+
 func TestClient_AChangedFileRefusesAMoveToThisBuildAndNamesBothFlags(t *testing.T) {
 	t.Parallel()
 
