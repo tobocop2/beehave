@@ -1,6 +1,7 @@
 # The remote of api is gone, so the sync of api fails. The tick writes an error row for api and goes on: web still gets its pull request.
 # A name that the tick refuses (.hidden) gets no row at all, and the report says "No record" for it. The report posts once for the week.
 [!exec:jq] skip
+[!exec:perl] skip
 [!exec:sha256sum] [!exec:shasum] skip
 isolate
 maintinit

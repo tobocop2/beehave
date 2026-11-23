@@ -1,6 +1,7 @@
 # The tests of api stay red after the bump and after two fix rounds. The run waits for a person. The answer hold ends the run: the log has a red row,
 # the item is on hold, and nothing reaches the remote or the forge. The report names the red repository.
 [!exec:jq] skip
+[!exec:perl] skip
 [!exec:sha256sum] [!exec:shasum] skip
 isolate
 maintinit
