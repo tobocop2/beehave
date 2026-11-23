@@ -314,7 +314,7 @@ func (a agentArgs) ownPaths(ctx context.Context, root string, changes []change) 
 // unchangedSinceStart tells whether a change of the status was already in the folder at the start mark and the step left it as it was.
 func (a agentArgs) unchangedSinceStart(ctx context.Context, root string, one change) (bool, error) {
 	if one.code == "??" {
-		return a.start.Seen[one.path] == stamp(root, one.path, false), nil
+		return a.start.Seen[one.path] == stamp(root, one.path), nil
 	}
 
 	before, dirty := a.start.Dirty[one.path]
