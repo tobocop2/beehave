@@ -231,8 +231,46 @@ func (c *cutter) createBase(tip string) Stop {
 		return Done
 	}
 
+	if stop := c.checkTip(tip); stop != Done {
+		return stop
+	}
+
 	if err := c.forge.CreateBranch(c.ctx, base, tip); err != nil {
 		return c.refuse(fmt.Sprintf("REFUSE: cannot create branch %s: %v", base, err))
+	}
+
+	return Done
+}
+
+// checkTip reads the trunk tip again and refuses when it is not the tip that the cut read first.
+func (c *cutter) checkTip(tip string) Stop {
+	trunk := c.req.Cut.Trunk
+
+	now, found, err := c.forge.BranchRef(c.ctx, trunk)
+	if err != nil || !found {
+		return c.refuse("REFUSE: cannot read the tip of " + trunk + " again")
+	}
+
+	if now != tip {
+		return c.refuse(fmt.Sprintf("REFUSE: %s moved from %s to %s since the cut read it. Nothing created.", trunk, tip, now))
+	}
+
+	return Done
+}
+
+// checkRow reads a pull request again and refuses when it is not open or no longer targets the old base.
+func (c *cutter) checkRow(number int) Stop {
+	pr, err := c.forge.PRView(c.ctx, number, "state", "baseRefName")
+	if err != nil {
+		return c.refuse(fmt.Sprintf("REFUSE: cannot read #%d again", number))
+	}
+
+	if state := or(pr.State); state != "OPEN" {
+		return c.refuse(fmt.Sprintf("REFUSE: #%d is %s since the list. Its base is not changed.", number, state))
+	}
+
+	if now := or(pr.BaseRefName); now != c.req.Cut.OldBase {
+		return c.refuse(fmt.Sprintf("REFUSE: #%d targets %s since the list, not %s. Its base is not changed.", number, now, c.req.Cut.OldBase))
 	}
 
 	return Done
@@ -245,6 +283,10 @@ func (c *cutter) setBase(number int) Stop {
 		c.say(fmt.Sprintf("WOULD: set the base of #%d to %s", number, base))
 
 		return Done
+	}
+
+	if stop := c.checkRow(number); stop != Done {
+		return stop
 	}
 
 	if err := c.forge.SetBase(c.ctx, number, base); err != nil {

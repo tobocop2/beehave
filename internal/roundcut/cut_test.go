@@ -256,7 +256,7 @@ func TestRun_TheCountOfRowsCountsATitleOnceWhateverItHolds(t *testing.T) {
 
 	for _, title := range []string{"a\nb", "tab\tin it"} {
 		w := newWorld()
-		w.pulls = []pull{{11, title, oldRef}}
+		w.pulls = []pull{{11, title, oldRef, false}}
 		result := w.cut(true)
 
 		assert.Contains(t, result.Lines, "open PRs to retarget: 1", title)
@@ -268,11 +268,83 @@ func TestRun_ARowWithNoNumberIsListedButNotEdited(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld()
-	w.pulls = []pull{{0, "x", oldRef}}
+	w.pulls = []pull{{0, "x", oldRef, false}}
 	result := w.cut(true)
 
 	require.Equal(t, roundcut.Done, result.Stop)
 	assert.Contains(t, result.Lines, "#0 x")
 	assert.False(t, hasPrefix(result, "WOULD: set the base"))
 	assert.Empty(t, w.writes)
+}
+
+func TestRun_ATrunkThatMovesAfterTheFirstReadCreatesNoBaseAndNamesBothTips(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.afterTip = func() { w.trunk = moved }
+	result := w.cut(false)
+
+	assert.Equal(t, roundcut.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: main moved from "+tip+" to "+moved+" since the cut read it. Nothing created.", last(result))
+	assert.Empty(t, w.writes)
+}
+
+func TestRun_ATrunkThatCannotBeReadAgainCreatesNoBase(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.afterTip = func() { w.fails["trunk"] = true }
+	result := w.cut(false)
+
+	assert.Equal(t, roundcut.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: cannot read the tip of main again", last(result))
+	assert.Empty(t, w.writes)
+}
+
+func TestRun_APullRequestThatClosesAfterTheListIsNotRetargeted(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.afterList = func() { w.pulls[0].closed = true }
+	result := w.cut(false)
+
+	assert.Equal(t, roundcut.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #11 is CLOSED since the list. Its base is not changed.", last(result))
+	assert.Equal(t, []string{"CreateBranch " + newRef + " " + tip}, w.writes)
+}
+
+func TestRun_APullRequestThatAnotherBaseTookAfterTheListIsNotRetargeted(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.afterList = func() { w.pulls[0].base = "somewhere-else" }
+	result := w.cut(false)
+
+	assert.Equal(t, roundcut.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: #11 targets somewhere-else since the list, not "+oldRef+". Its base is not changed.", last(result))
+	assert.Equal(t, []string{"CreateBranch " + newRef + " " + tip}, w.writes)
+}
+
+func TestRun_APullRequestThatCannotBeReadAgainIsNotRetargeted(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.fails["row"] = true
+	result := w.cut(false)
+
+	assert.Equal(t, roundcut.Refused, result.Stop)
+	assert.Equal(t, "REFUSE: cannot read #11 again", last(result))
+	assert.Equal(t, []string{"CreateBranch " + newRef + " " + tip}, w.writes)
+}
+
+func TestRun_ADryRunReadsNothingAgain(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld()
+	w.fails["row"] = true
+	w.afterTip = func() { w.trunk = moved }
+	result := w.cut(true)
+
+	assert.Equal(t, roundcut.Done, result.Stop)
+	assert.Equal(t, 1, w.tipReads)
 }
