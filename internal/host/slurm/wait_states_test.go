@@ -268,7 +268,7 @@ func TestWait_LostEndsAfterFiveMinutesWithoutAnAnsweredReadAndLeavesTheJobRunnin
 func TestWait_ADropOnTheLogReadOrTheRecordReadIsOneFailedReadNotTheEndOfTheWait(t *testing.T) {
 	t.Parallel()
 
-	for _, command := range []string{"stat", "sacct"} {
+	for _, command := range []string{"sh", "sacct"} { // sh is the read of the marker and the log size of a running job
 		h, f, _ := newClockedHost(t)
 		id, job := submitted(t, h, f)
 		job.Live, job.LogSizes, f.DropOn = 3, []int{1, 2, 3, 4}, command
@@ -321,7 +321,7 @@ func TestWait_ALogReadThatAlwaysDropsDoesNotCountAsAnAnsweredRead(t *testing.T) 
 
 	h, f, clock := newClockedHost(t)
 	id, job := submitted(t, h, f)
-	job.Live, job.LogSizes, f.DropAll = 100000, []int{1}, "stat"
+	job.Live, job.LogSizes, f.DropAll = 100000, []int{1}, "sh"
 	clock.limit = 1000
 	start := clock.now
 

@@ -97,6 +97,22 @@ func TestSSH_ATestOfAFileAnswersForTheFilesThatWereTouched(t *testing.T) {
 	assert.Equal(t, 0, call(c, "test", "-e", "m").ExitCode)
 }
 
+func TestSSH_TheReadOfARunningJobAnswersTheMarkerAndTheLogSizeInOneCall(t *testing.T) {
+	t.Parallel()
+
+	c := up(hosttest.Working)
+	id := submit(c, "x")
+	read := func() string { return call(c, "sh", "-c", "script", "sh", "m", "slurm-"+id+".out").Stdout }
+
+	assert.Equal(t, "-1\n", read(), "no marker and a log with no size")
+
+	c.Jobs[id].LogSizes = []int{7}
+	assert.Equal(t, "7\n", read())
+
+	call(c, "touch", "m")
+	assert.Equal(t, "beehave-waiting\n7\n", read())
+}
+
 func TestSSH_TheFlockProbeAnswersUnlessTheHeadNodeHasNoFlock(t *testing.T) {
 	t.Parallel()
 

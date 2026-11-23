@@ -191,6 +191,8 @@ func (f *Cluster) other(words []string) model.CommandResult {
 		return ok("flock from util-linux 2.39.3\n")
 	case "stat":
 		return f.stat(words[len(words)-1])
+	case "sh":
+		return f.running(words[len(words)-2], words[len(words)-1])
 	case "pwd":
 		return ok("/home/lane\n")
 	}
@@ -226,6 +228,20 @@ func (f *Cluster) stat(log string) model.CommandResult {
 	job.Stats++
 
 	return ok(strconv.Itoa(size) + "\n")
+}
+
+// running answers the one read of a running job, sh -c <script> sh <marker> <log>: a waiting line when the marker exists, then the size of the log or -1.
+func (f *Cluster) running(marker, log string) model.CommandResult {
+	size := "-1"
+	if result := f.stat(log); result.ExitCode == 0 {
+		size = strings.TrimSpace(result.Stdout)
+	}
+
+	if f.Files[marker] {
+		return ok("beehave-waiting\n" + size + "\n")
+	}
+
+	return ok(size + "\n")
 }
 
 func (f *Cluster) df() model.CommandResult {

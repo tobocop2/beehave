@@ -2,6 +2,7 @@ package slurm
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/host/hosttest"
+	"github.com/tobocop2/beehave/internal/host/jobwait"
 	"github.com/tobocop2/beehave/internal/host/link"
 	"github.com/tobocop2/beehave/internal/host/slurmtest"
 	"github.com/tobocop2/beehave/internal/model"
@@ -158,47 +160,140 @@ func TestWait_TheMarkerThatTheWrapperWritesIsTheOneThatTheObserveReads(t *testin
 	assert.Equal(t, model.JobSucceeded, state, "the observe finds the marker of the wrapper and keeps the job pending, so it is not stale")
 }
 
-// testExit answers the read of the marker with an exit status, and every other call as the fake cluster does.
+// testExit answers the remote read that names the waiting marker with an exit status, and every other call as the fake cluster does.
 type testExit struct {
 	inner proc.Runner
 	code  int
 }
 
 func (r testExit) Run(ctx context.Context, args []string) model.CommandResult {
-	if strings.Contains(strings.Join(args, " "), " test -e ") {
+	if strings.Contains(strings.Join(args, " "), stateFolder+"/"+waitingPrefix) {
 		return model.CommandResult{ExitCode: r.code, Stderr: "test: bad"}
 	}
 
 	return r.inner.Run(ctx, args)
 }
 
-func TestObserve_ARunningJobWhoseMarkerReadFailsIsUnknownAndNeverPending(t *testing.T) {
+// The job has a marker in both cases, so a read that failed and still read the marker would say pending.
+func TestObserve_ARunningJobWhoseMarkerReadFailsIsRunningWithNoSizeAndNeverPending(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
 		code int
 		want error
 	}{
-		"a test that exits with a status other than 0 or 1": {code: 2, want: link.ErrCommand},
-		"a dropped ssh link": {code: 255, want: link.ErrDropped},
+		"a read that exits with a status other than 0": {code: 2},
+		"a dropped ssh link":                           {code: 255, want: link.ErrDropped},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			h, f, _ := newClockedHost(t)
 			id, job := submitted(t, h, f)
-			job.Live = 5
+			job.Live, job.LogSizes = 5, []int{10}
+			f.Files[".beehave/waiting-"+jobNumber(t, id)] = true
 
 			parsed, err := parseJobID(id)
 			require.NoError(t, err)
 
 			state, size, err := scheduler{link.New(slurmtest.Target, testExit{inner: f.SSH(), code: tc.code})}.Observe(context.Background(), parsed)
 
-			require.ErrorIs(t, err, tc.want)
-			assert.Equal(t, model.JobUnknown, state)
+			require.ErrorIs(t, err, tc.want, "only a dropped link is an error")
+			assert.Equal(t, model.JobRunning, state)
 			assert.EqualValues(t, -1, size)
 		})
 	}
+}
+
+func TestWait_ARunningJobWhoseMarkerReadFailsKeepsWaitingAndEndsAsTheJobEnds(t *testing.T) {
+	t.Parallel()
+
+	h, f, clock := newClockedHost(t)
+	id, job := submitted(t, h, f)
+	job.Live = 3
+
+	failing := New(link.New(slurmtest.Target, testExit{inner: f.SSH(), code: 2}), h.config, fakeSlot{f},
+		WithClock(jobwait.Clock{Poll: clockPoll, Now: clock.read, Sleep: clock.sleep}), WithBank(noBank))
+
+	state, err := failing.Wait(t.Context(), id)
+
+	require.NoError(t, err)
+	assert.Equal(t, model.JobSucceeded, state, "a read of the marker that exits 2 is no marker, and the Wait ends on the final state of the job")
+	assert.Equal(t, 4, job.Polls, "the Wait reads squeue at each of the three running polls and once more for the end")
+}
+
+func TestObserve_ARunningJobMakesTwoRemoteExecutionsPerPoll(t *testing.T) {
+	t.Parallel()
+
+	for name, marker := range map[string]bool{"a job that runs": false, "a job that waits for a slot": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h, f, _ := newClockedHost(t)
+			id, job := submitted(t, h, f)
+			job.Live, job.LogSizes = 5, []int{10}
+			f.Files[".beehave/waiting-"+jobNumber(t, id)] = marker
+
+			parsed, err := parseJobID(id)
+			require.NoError(t, err)
+
+			s := &spy{inner: f.SSH()}
+			_, _, err = scheduler{link.New(slurmtest.Target, s)}.Observe(t.Context(), parsed)
+
+			require.NoError(t, err)
+			assert.Len(t, s.calls, 2, "squeue and one read of the marker and the log size: %v", s.calls)
+		})
+	}
+}
+
+// hereShell runs the remote command of an ssh call under a real sh in dir, as the login shell of the head node runs the words that ssh sends.
+type hereShell struct{ dir string }
+
+func (r hereShell) Run(ctx context.Context, args []string) model.CommandResult {
+	cmd := exec.CommandContext(ctx, "sh", "-c", strings.Join(args[3:], " ")) //nolint:gosec // the test runs the words that the link sends to the head node
+	cmd.Dir = r.dir
+	out, err := cmd.Output()
+
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return model.CommandResult{Stdout: string(out), ExitCode: exit.ExitCode()}
+	}
+
+	return model.CommandResult{Stdout: string(out)}
+}
+
+func TestObserve_TheReadOfARunningJobUnderARealShellFindsTheMarkerAndTheLogSize(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".beehave"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".beehave", "waiting-7"), nil, 0o600))
+
+	for _, number := range []string{"7", "8"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "slurm-"+number+".out"), []byte("12345"), 0o600))
+	}
+
+	want := int64(5)
+	if exec.CommandContext(t.Context(), "stat", "-c", "%s", filepath.Join(dir, "slurm-8.out")).Run() != nil { //nolint:gosec // the path is a file of the test's own temp folder
+		want = -1 // a stat with no -c, as on macOS, gives no size
+	}
+
+	s := scheduler{link.New("lane-host", hereShell{dir})}
+
+	waiting, size, err := s.running(t.Context(), jobwait.Job{ID: "7", Nonce: "n"})
+	require.NoError(t, err)
+	assert.True(t, waiting, "the job with a marker waits")
+	assert.Equal(t, want, size)
+
+	waiting, size, err = s.running(t.Context(), jobwait.Job{ID: "8", Nonce: "n"})
+	require.NoError(t, err)
+	assert.False(t, waiting, "the job with no marker runs")
+	assert.Equal(t, want, size)
+
+	waiting, size, err = s.running(t.Context(), jobwait.Job{ID: "9", Nonce: "n"})
+	require.NoError(t, err)
+	assert.False(t, waiting)
+	assert.EqualValues(t, -1, size, "a job with no log has no size")
 }
 
 func TestUp_RefusesAHeadNodeWithoutFlock(t *testing.T) {

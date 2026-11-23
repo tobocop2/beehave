@@ -126,7 +126,6 @@ func TestWait_DoesNotBankWhileTheJobRuns(t *testing.T) {
 
 	h, ssh := newBanking(t, "")
 	ssh.Plan("RUNNING\n", "squeue")
-	ssh.PlanFail("", "test", "-e") // a running job reads its waiting marker, and this one has none
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
@@ -264,7 +263,6 @@ func TestCancel_WaitsUntilTheJobIsFinalBeforeItBanks(t *testing.T) {
 	h, _, ssh := newScripted(t)
 	ssh.Plan("", "scancel")
 	ssh.Plan("RUNNING\n", "squeue")
-	ssh.PlanFail("", "test", "-e") // a running job reads its waiting marker, and this one has none
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,12 @@ const (
 	stateFolder   = ".beehave"
 	slotsFolder   = "slots"
 	waitingPrefix = "waiting-"
+
+	// waitingLine is the line that runningShell prints for a job that waits for a slot.
+	waitingLine = "beehave-waiting"
+	// runningShell prints waitingLine when the marker $1 exists, then the size of the log $2, or -1 for a log with no size.
+	runningShell = `if test -e "$1"; then echo ` + waitingLine + `; fi
+stat -c %s "$2" 2>/dev/null || echo -1`
 )
 
 // Slot is what the owner of the cluster does to keep the cluster busy while a job holds its work.
@@ -264,42 +271,19 @@ func ended(state model.JobState) bool {
 
 type scheduler struct{ link *link.Link }
 
-// Observe reads the state, and the size of the log only for a running job. A running job that waits for a slot of its class reads pending.
+// Observe reads the state, and the waiting marker and the size of the log only for a running job. A running job that waits for a slot of its class reads pending.
 func (s scheduler) Observe(ctx context.Context, job jobwait.Job) (model.JobState, int64, error) {
 	state, err := s.state(ctx, job)
 	if err != nil || state != model.JobRunning {
 		return state, -1, err
 	}
 
-	waiting, err := s.waiting(ctx, job)
-	if err != nil {
-		return model.JobUnknown, -1, err
-	}
-
+	waiting, size, err := s.running(ctx, job)
 	if waiting {
 		return model.JobPending, -1, nil
 	}
 
-	size, err := s.logSize(ctx, job)
-
 	return state, size, err
-}
-
-// waiting reports whether the marker of the job exists: the job script writes it while it waits for a slot of its class.
-func (s scheduler) waiting(ctx context.Context, job jobwait.Job) (bool, error) {
-	result := s.link.Exec(ctx, "test", "-e", path.Join(stateFolder, waitingPrefix+job.ID))
-	if err := s.link.Drop(result); err != nil {
-		return false, err
-	}
-
-	switch result.ExitCode {
-	case 0:
-		return true, nil
-	case 1:
-		return false, nil
-	}
-
-	return false, link.Failure("test", result)
 }
 
 // state reads squeue while the controller knows the job and sacct afterwards.
@@ -334,19 +318,25 @@ func (s scheduler) recorded(ctx context.Context, id string) (model.JobState, err
 	return parseJobState(result.Stdout)
 }
 
-// logSize is -1 for a log that has no size yet, which counts as no growth.
-func (s scheduler) logSize(ctx context.Context, job jobwait.Job) (int64, error) {
-	result := s.link.Exec(ctx, "stat", "-c", "%s", "slurm-"+job.ID+".out")
+// running reads in one remote command whether the job waits for a slot of its class and the size of its log.
+// A read that fails reads as no marker and a size of -1, which counts as no growth; only a dropped link is an error.
+func (s scheduler) running(ctx context.Context, job jobwait.Job) (bool, int64, error) {
+	result := s.link.Exec(ctx, "sh", "-c", runningShell, "sh", path.Join(stateFolder, waitingPrefix+job.ID), "slurm-"+job.ID+".out")
 	if err := s.link.Drop(result); err != nil {
-		return -1, err
+		return false, -1, err
 	}
 
-	size, err := strconv.ParseInt(strings.TrimSpace(result.Stdout), 10, 64)
-	if result.ExitCode != 0 || err != nil {
-		return -1, nil
+	lines := model.NonEmptyLines(result.Stdout)
+	if result.ExitCode != 0 || len(lines) == 0 {
+		return false, -1, nil
 	}
 
-	return size, nil
+	size, err := strconv.ParseInt(lines[len(lines)-1], 10, 64)
+	if err != nil {
+		size = -1
+	}
+
+	return slices.Contains(lines, waitingLine), size, nil
 }
 
 func (s scheduler) Stop(ctx context.Context, job jobwait.Job) error {
