@@ -179,7 +179,7 @@ Setup rules:
 - `beehave check workflow` refuses the same two cases, and an empty path, when both settings are list literals of text literals. A setting that is not a literal is left to the run.
 - A relative path starts at the folder of the step.
 - The hook gets the directories as `--protect` (absolute, comma-separated or repeated). `--protect` is required when `--forbid` lists the kind. The default `--forbid` list leaves the kind out, as it leaves out `git-write`.
-- The hook gets the directory of the command from the `cwd` of the event.
+- The hook gets the directory of the command from the event: the `cwd` of Claude Code, or the `directory` that the OpenCode plugin forwards.
 - The step passes `protect_paths` in its recorded phase only when the list is not empty, so a replay of a step without it reads the same record as before.
 
 Path compare:
@@ -213,7 +213,7 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 `worktree add` and `worktree list` pass. A reviewer builds its own copy of the tree with `worktree add`, not with `apply`.
 
-`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehave check command` holds every kind except `git-write`, so a bare hook does not refuse every commit.
+`git-write` is for a read-only step. `review_fix.star` lists it for each review call (the scoped reviews, the full review `candidate-review` and the design step), so a reviewer cannot fix, commit or push. It is opt-in, like the other kinds that a step lists. The default `--forbid` list of `beehave check command --agent <agent>` holds every kind except `git-write`, so a bare hook does not refuse every commit.
 
 #### Check of the workflow
 
@@ -223,7 +223,9 @@ The kind refuses each git command that changes a repository: add, commit, push, 
 
 The Claude adapter passes `--settings` with inline JSON. The JSON adds a `PreToolUse` hook with matcher `Bash` for that run (https://code.claude.com/docs/en/hooks). The adapter never edits a settings file of the user.
 
-The hook runs `beehave check command --forbid <kinds>`. It reads the event on stdin. When the command breaks a listed rule, it exits 2 with the reason on stderr, and Claude Code blocks the call. The command exits 2 for every failure: a bad flag, a bad kind, an event it cannot read.
+The hook runs `beehave check command --agent <agent> --forbid <kinds>`. It reads the event on stdin, in the hook format of the agent that `--agent` names. When the command breaks a listed rule, it exits 2 with the reason on stderr, and the agent CLI blocks the call. The command exits 2 for every failure: a missing or unknown agent (the message lists the known ones), a bad flag, a bad kind, an event it cannot read.
+
+The shell rules are the same for each agent. Each adapter supplies only the reader of its hook format: `agent/claude` reads the `PreToolUse` event of Claude Code, and `agent/opencode` reads the call that its plugin forwards (`directory`, `tool` and `args`). A new agent CLI needs a reader and a name in the table of `--agent`, and no copy of the rules.
 
 The hook also sets `"onFailure": "block"`. With it, a hook that cannot start (for example, the program of beehave moved during the run), exits with another code or times out blocks the call too. Without the key, those failures let the call go ahead. The hooks page says of the key: "Requires Claude Code v2.1.295 or later." An older Claude Code ignores the key and fails open on those failures.
 

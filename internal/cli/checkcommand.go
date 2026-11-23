@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tobocop2/beehave/internal/agent"
 	"github.com/tobocop2/beehave/internal/check/shell"
 	"github.com/tobocop2/beehave/internal/model"
 )
@@ -20,51 +21,44 @@ const (
 	protectFlag = "protect"
 	// visibilityFlag tells the check whether the repository is private. A missing flag counts as public.
 	visibilityFlag = "visibility"
-	bashToolName   = "Bash"
-	exitRefused    = 2
+	// agentFlag names the agent CLI whose hook format the command reads.
+	agentFlag   = "agent"
+	exitRefused = 2
 )
 
 var (
-	errUnknownKind = errors.New("unknown kind of command")
-	errNoPaths     = errors.New("the kind needs a directory")
+	errUnknownAgent = errors.New("unknown agent")
+	errUnknownKind  = errors.New("unknown kind of command")
+	errNoPaths      = errors.New("the kind needs a directory")
 )
 
-// hookEvent is the part of a PreToolUse event that the check reads. Claude Code sends it as JSON on stdin.
-// Cwd is the directory the Bash tool runs the command in.
-type hookEvent struct {
-	Cwd       string `json:"cwd"`
-	ToolName  string `json:"tool_name"`
-	ToolInput struct {
-		Command string `json:"command"`
-	} `json:"tool_input"`
-}
-
-func newCheckCommandCommand() *cobra.Command {
+func newCheckCommandCommand(hooks map[model.Agent]agent.HookDecoder) *cobra.Command {
 	var forbid, protect []string
 
-	var visibility string
+	var visibility, agentName string
 
 	command := &cobra.Command{
 		Use:   "command",
-		Short: "Refuse a shell command of an agent that breaks a rule, as a PreToolUse hook",
+		Short: "Refuse a shell command of an agent that breaks a rule, as a hook of the agent CLI",
 		Long:  checkCommandLong,
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runCheckCommand(cmd.InOrStdin(), cmd.ErrOrStderr(), forbid, protect, visibility)
+			return runHook(cmd, hooks, agentName, forbid, protect, visibility)
 		},
 	}
 	// A hook that fails must block the call, so a bad flag ends with exit code 2 as well.
 	command.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return refuse(cmd.ErrOrStderr(), err.Error())
 	})
+	addAgentFlag(command, &agentName, hooks)
 	addCheckFlags(command, &forbid, &protect, &visibility)
 
 	return command
 }
 
-const checkCommandLong = "Read one PreToolUse event as JSON on stdin and check the Bash command in it against the shell rules. " +
-	"Exit 0 when the command is allowed or the tool is not Bash. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason (an unreadable event, a bad flag); " +
-	"Claude Code then blocks the call. The step of a workflow installs this command as a hook for each run that sets `forbid_commands`. " +
+const checkCommandLong = "Read one hook event of the agent CLI that --agent names, as it arrives on stdin, and check the shell command in it against the shell rules. " +
+	"Exit 0 when the command is allowed or the tool is not a shell tool. Exit 2 and print the reason on stderr when the command breaks a rule or the command fails for any other reason (an unknown agent, an unreadable event, a bad flag); " +
+	"the agent CLI then blocks the call. The step of a workflow installs this command as a hook for each run that sets `forbid_commands`. " +
 	"The kind protected-path refuses a write inside the directories of --protect, and a git command that is not a read there. " +
 	"The kind laptop-copy refuses a copy from this machine to another machine (rsync or scp with a remote target, a pipe into ssh) unless --visibility is private; " +
 	"a missing --visibility counts as public."
@@ -89,10 +83,46 @@ func addCheckFlags(command *cobra.Command, forbid, protect *[]string, visibility
 	command.Flags().StringSliceVar(protect, protectFlag, nil, "the absolute directories that protected-path guards, separated by commas; the kind needs at least one")
 }
 
-// dir returns the directory the command of the event runs in. With none, a relative path cannot be placed and counts against the command.
-func (e hookEvent) dir(getwd func() (string, error)) string {
-	if e.Cwd != "" {
-		return e.Cwd
+// runHook finds the hook reader of the agent that --agent names, and checks the event on stdin with it.
+func runHook(cmd *cobra.Command, hooks map[model.Agent]agent.HookDecoder, name string, forbid, protect []string, visibility string) error {
+	decode, err := hookReader(hooks, name)
+	if err != nil {
+		return refuse(cmd.ErrOrStderr(), err.Error())
+	}
+
+	return runCheckCommand(cmd.InOrStdin(), cmd.ErrOrStderr(), decode, forbid, protect, visibility)
+}
+
+// addAgentFlag adds --agent, which names the agent CLI whose hook format the command reads.
+func addAgentFlag(command *cobra.Command, name *string, hooks map[model.Agent]agent.HookDecoder) {
+	command.Flags().StringVar(name, agentFlag, "", "the agent CLI that sends the event, whose hook format the command reads ("+strings.Join(hookNames(hooks), ", ")+")")
+}
+
+// hookNames returns the names of the agents that --agent accepts, in order.
+func hookNames(hooks map[model.Agent]agent.HookDecoder) []string {
+	names := make([]string, 0, len(hooks))
+	for name := range hooks {
+		names = append(names, string(name))
+	}
+
+	slices.Sort(names)
+
+	return names
+}
+
+// hookReader returns the hook reader of the agent that --agent names. A missing or unknown name is an error that lists the known ones.
+func hookReader(hooks map[model.Agent]agent.HookDecoder, name string) (agent.HookDecoder, error) {
+	if decode := hooks[model.Agent(name)]; decode != nil {
+		return decode, nil
+	}
+
+	return nil, fmt.Errorf("%w %q (use one of: %s)", errUnknownAgent, name, strings.Join(hookNames(hooks), ", "))
+}
+
+// dirOf returns the directory the command of the call runs in: the one of the call, else the one of the process. With none, a relative path cannot be placed and counts against the command.
+func dirOf(call agent.HookCall, getwd func() (string, error)) string {
+	if call.Dir != "" {
+		return call.Dir
 	}
 
 	dir, err := getwd()
@@ -112,22 +142,22 @@ func noArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runCheckCommand(stdin io.Reader, stderr io.Writer, forbid, protect []string, visibility string) error {
+func runCheckCommand(stdin io.Reader, stderr io.Writer, decode agent.HookDecoder, forbid, protect []string, visibility string) error {
 	kinds, private, err := settingsOf(forbid, protect, visibility)
 	if err != nil {
 		return refuse(stderr, err.Error())
 	}
 
-	event, err := decodeEvent(stdin)
+	call, err := decodeEvent(stdin, decode)
 	if err != nil {
 		return refuse(stderr, err.Error())
 	}
 
-	if event.ToolName != bashToolName {
+	if !call.Shell {
 		return nil
 	}
 
-	if hits := hitsOf(event.ToolInput.Command, kinds, shell.Protection{Dirs: protect, Base: event.dir(os.Getwd), Private: private}); len(hits) > 0 {
+	if hits := hitsOf(call.Command, kinds, shell.Protection{Dirs: protect, Base: dirOf(call, os.Getwd), Private: private}); len(hits) > 0 {
 		return refuse(stderr, "this command breaks the shell rules of the step.\n"+strings.Join(hits, "\n"))
 	}
 
@@ -160,13 +190,13 @@ func privateOf(visibility string) (bool, error) {
 	return parsed == model.VisibilityPrivate, nil
 }
 
-func decodeEvent(stdin io.Reader) (hookEvent, error) {
+func decodeEvent(stdin io.Reader, decode agent.HookDecoder) (agent.HookCall, error) {
 	raw, err := io.ReadAll(stdin)
 	if err != nil {
-		return hookEvent{}, fmt.Errorf("cannot read the hook event: %w", err)
+		return agent.HookCall{}, fmt.Errorf("cannot read the hook event: %w", err)
 	}
 
-	return model.Decode[hookEvent]("the hook event", string(raw))
+	return decode(string(raw))
 }
 
 // hitsOf returns one line for each finding of a listed kind in the command.
@@ -214,7 +244,7 @@ func kindsOf(names, protect []string) ([]model.FindingKind, error) {
 	return kinds, needPaths(kinds, protect)
 }
 
-// refuse prints the reason on stderr, where Claude Code reads it, and ends with exit code 2, which blocks the call.
+// refuse prints the reason on stderr, where the agent CLI reads it, and ends with exit code 2, which blocks the call.
 func refuse(stderr io.Writer, reason string) error {
 	// A failed write to stderr has no recovery.
 	_, _ = fmt.Fprintln(stderr, "beehave refused the command: "+reason)

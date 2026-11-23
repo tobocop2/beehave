@@ -117,6 +117,31 @@ func checkScript(t *testing.T, stderr, code string) string {
 	return path
 }
 
+func TestGuard_ThePluginRunOnNodeSendsTheCallInTheFormatThatDecodeHookReads(t *testing.T) {
+	t.Parallel()
+
+	node, err := exec.LookPath("node")
+	if !nodeAvailable(t, err, os.Getenv("CI")) { //nolint:forbidigo // the CI variable of the job decides whether a missing Node fails this proof test
+		return
+	}
+
+	sent := filepath.Join(t.TempDir(), "sent")
+	guard := filepath.Join(t.TempDir(), "check")
+	require.NoError(t, exectest.Write(guard, "#!/bin/sh\ncat > "+sent+"\n"))
+
+	outcome, _ := nodeRun(t, node, guard, "bash")
+	require.Equal(t, "pass", outcome)
+
+	input, err := os.ReadFile(sent) //nolint:gosec // a file of this test
+	require.NoError(t, err)
+
+	call, err := opencode.DecodeHook(string(input))
+	require.NoError(t, err)
+	assert.True(t, call.Shell)
+	assert.Equal(t, "ls", call.Command)
+	assert.NotEmpty(t, call.Dir)
+}
+
 func TestGuard_ThePluginRunOnNodeDecidesFromTheExitCodeOfTheCheck(t *testing.T) {
 	t.Parallel()
 

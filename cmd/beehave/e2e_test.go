@@ -74,7 +74,7 @@ func e2eBeehave() {
 		version = other
 	}
 
-	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Registry: newAdapters(nil, nil, nil).registry(), Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
+	code := cli.Execute(ctx, os.Args[1:], cli.BuildInfo{Version: version, Registry: newAdapters(nil, nil, nil).registry(), Hooks: newAdapters(nil, nil, nil).hooks(), Flow: e2eFlow(env[e2eDirVariable], env["PATH"])}, env, os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
 }
@@ -359,7 +359,7 @@ func (a e2eAgents) Run(ctx context.Context, request flow.AgentRequest) (agent.Re
 	result := agent.Runner{}.Run(ctx, agent.Spec{
 		Adapter: adapter, Runner: runner, ConfigFolder: a.dir,
 		Dir: a.dir, Prompt: prompt, Env: env, Log: tap, OnStart: request.Started, NoEdits: request.NoEdits, Resume: request.Resume,
-		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(request.Forbid, protect),
+		Guard: agents{guard: guardCommand(os.Executable)}.guardFor(claude.Name, request.Forbid, protect),
 	})
 
 	result, err := endOf(adapter, runner.ConfigDir, a.dir, tap, result, request.Forbid, protect)

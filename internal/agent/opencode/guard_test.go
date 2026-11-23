@@ -139,7 +139,7 @@ var decisions = []struct {
 	{"only exit code 0 lets the call through", `return ""`, true},
 	{"a throw refuses, and never with an empty text", `return String(err && err.message ? err.message : err) || "the check of the command threw"`, true},
 	{"only the bash tool is checked", `if (input.tool !== "bash") return`, false},
-	{"the hook asks the verdict about the command of the call", `const why = verdict(directory, output && output.args ? output.args.command : undefined)`, false},
+	{"the hook asks the verdict about the call as OpenCode gives it", `const why = verdict(directory, input.tool, output && output.args)`, false},
 	{"a refusal throws", `if (why !== "") throw new Error("beehave refused: " + why)`, false},
 }
 
@@ -201,7 +201,7 @@ func TestGuard_AMutantOfThePluginBreaksADecision(t *testing.T) {
 		{"a throw passes", `return String(err && err.message ? err.message : err) || "the check of the command threw"`, `return ""`},
 		{"a throw with an empty text passes", ` || "the check of the command threw"`, ``},
 		{"every tool is skipped", `if (input.tool !== "bash") return`, `if (input.tool !== "bash" || true) return`},
-		{"the hook skips the verdict", `const why = verdict(directory, output && output.args ? output.args.command : undefined)`, `const why = ""`},
+		{"the hook skips the verdict", `const why = verdict(directory, input.tool, output && output.args)`, `const why = ""`},
 		{"the verdict never runs the guard command", `const run = spawnSync(GUARD, { shell: true, input: event, encoding: "utf8", timeout: 30000 })`, `const run = { status: 0 }`},
 		{"a refusal does not throw", `if (why !== "") throw new Error("beehave refused: " + why)`, `if (why !== "") return`},
 		{"the marker is not written", `  writeFileSync(LOADED, "loaded\n")` + "\n", ""},
