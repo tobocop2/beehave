@@ -21,6 +21,7 @@ type treeAnswer struct {
 	Truncated bool `json:"truncated"`
 	Tree      []struct {
 		Path string `json:"path"`
+		Mode string `json:"mode"`
 		Type string `json:"type"`
 		SHA  string `json:"sha"`
 	} `json:"tree"`
@@ -97,7 +98,7 @@ func parseComparison(answer string) (model.Comparison, bool) {
 	return model.Comparison{Status: words[0], AheadBy: ahead, BehindBy: behind}, true
 }
 
-// TreeBlobs returns every file of a tree: its path and the id of its content. A folder is not listed. A tree too large for one answer is refused.
+// TreeBlobs returns every file of a tree: its path, and its mode and the id of its content joined by a space. A folder is not listed. A tree too large for one answer is refused.
 func (f *Forge) TreeBlobs(ctx context.Context, tree string) (map[string]string, error) {
 	base := "cannot list the tree " + tree
 
@@ -118,7 +119,7 @@ func (f *Forge) TreeBlobs(ctx context.Context, tree string) (map[string]string, 
 	return answer.files(base)
 }
 
-// files returns the path and content id of each entry that is not a folder. A list cut short is refused with the base text.
+// files returns the path, mode and content id of each entry that is not a folder. A list cut short is refused with the base text.
 func (a treeAnswer) files(base string) (map[string]string, error) {
 	if a.Truncated {
 		return nil, forge.Refuse("%s: it is too large for one answer", base)
@@ -128,7 +129,7 @@ func (a treeAnswer) files(base string) (map[string]string, error) {
 
 	for _, entry := range a.Tree {
 		if entry.Type != "tree" {
-			files[entry.Path] = entry.SHA
+			files[entry.Path] = entry.Mode + " " + entry.SHA
 		}
 	}
 

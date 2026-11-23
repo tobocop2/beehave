@@ -182,6 +182,20 @@ func TestProve_TwoMembersOffTheBaseAreCheckedAgainstTheSameTwoTreesReadOnce(t *t
 	assert.Equal(t, 2, reads, "the start tree and the end tree are listed once for the whole batch")
 }
 
+func TestProve_AMemberThatOnlyMakesAFileExecutableIsUnprovenWhenTheBaseHoldsItWithoutTheBit(t *testing.T) {
+	t.Parallel()
+
+	w := newProofWorld()
+	w.blobs["t-start"]["a.go"] = "100644 1"
+	w.blobs["t-b"]["a.go"] = "100755 1"
+	w.blobs["t-end"]["a.go"] = "100644 1"
+
+	got := batch.Prove(t.Context(), w, "main", startTip, endTip, members()[1:])
+
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0].Reason, "a.go")
+}
+
 func TestProve_AFileTheMemberRemovedThatTheBaseStillHoldsIsUnproven(t *testing.T) {
 	t.Parallel()
 
