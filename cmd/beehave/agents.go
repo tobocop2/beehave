@@ -21,6 +21,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/fstree"
+	"github.com/tobocop2/beehave/internal/gomod"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
@@ -77,6 +78,8 @@ type agents struct {
 	identity func(ctx context.Context, git gitexec.Runner) agent.GitIdentity
 	// repos finds the repository of a worktree of a project with a repository, whose identity and hooks folder the git of the engine reads.
 	repos gitexec.Repositories
+	// modules fills the Go module cache of a project in a worktree and returns the cache, or "", and the note of a fill that failed.
+	modules func(ctx context.Context, project, dir string) (string, string)
 }
 
 // newAgents runs the agent CLIs with the environment of the process.
@@ -96,11 +99,16 @@ func newAgents(cfg config.Config, opts flow.Options, trees treeFinder, table ada
 		home:     os.UserHomeDir,
 		identity: gitIdentity,
 		repos:    repos,
-
+		modules:  moduleFiller(opts).Fill,
 		maxTurns: cfg.Agents.MaxTurns, maxBudget: cfg.Agents.MaxBudgetUSD, maxRunBudget: cfg.Agents.MaxRunBudgetUSD, maxTreeBudget: cfg.Agents.MaxTreeBudgetUSD,
 		traceParent: cfg.Agents.TraceParent,
 		prices:      agent.DefaultPrices(),
 	}
+}
+
+// moduleFiller fills one Go module cache per project in the state folder, with the go command on the PATH of the engine.
+func moduleFiller(opts flow.Options) gomod.Filler {
+	return gomod.Filler{Root: filepath.Join(opts.StateDir, "gomodcache"), Path: opts.Env["PATH"]}
 }
 
 // guardCommand returns the shell command line that starts `beehave check command` from this binary, or "" when the path of the binary is unknown.
@@ -231,23 +239,32 @@ func (a agents) runIn(ctx context.Context, request flow.AgentRequest, runner mod
 	result, err := endOf(adapter, ready.folder, dir, tap, a.runCosted(ctx, tap, spec, request.Model), request.Forbid, protect)
 	result.Resumed, result.Denials = resumed, markClosed(result.Denials, ready.box)
 
-	return result, err
+	return result.AddNote(ready.modules), err
 }
 
-// stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan and its skill folders.
+// stepReady is what a step needs before it starts: the config folder of its runner, its sandbox plan, its skill folders, and the note of a module fill that failed.
 type stepReady struct {
-	folder string
-	box    *agent.SandboxPlan
-	skills []string
+	folder  string
+	box     *agent.SandboxPlan
+	skills  []string
+	modules string
 }
 
 // readyOf returns what the step needs before it starts, or the reason why it cannot start: its config folder, its sandbox or its skills cannot be made.
+// Only a sandboxed step that starts gets its Go module cache filled.
 func (a agents) readyOf(ctx context.Context, request flow.AgentRequest, runner model.Runner, dir string, adapter agent.Adapter, guard string) (stepReady, string) {
 	folder, unknown := a.configFolder(runner, adapter)
 	box, note := a.boxOf(ctx, request, folder, dir, adapter, guard)
 	skills, missing := a.skillsOf(request, folder)
 
-	return stepReady{folder: folder, box: box, skills: skills}, cmp.Or(note, unknown, missing)
+	ready := stepReady{folder: folder, box: box, skills: skills}
+	if note = cmp.Or(note, unknown, missing); note != "" || box == nil {
+		return ready, note
+	}
+
+	box.ModuleCache, ready.modules = a.modules(ctx, request.Project, dir)
+
+	return ready, ""
 }
 
 // tapOf returns the log of a run. It gives each new session id to the request, and each message text and tool call.
