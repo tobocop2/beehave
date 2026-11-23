@@ -926,7 +926,20 @@ The shutdown of the engine and the start of a run do not overlap. The shutdown w
 
 `beehave run <item>` starts a new run only after a finished or a cancelled run. If the last run failed, `beehave run` refuses, names the step that failed, and tells the owner to run `beehave resume <item>`. If the resume refuses the run, because another build made it, the refusal names `beehave cancel <item>`: the cancel ends the failed run, and the next `beehave run` starts a new attempt.
 
-A resume replays the recorded steps of the run. If the run failed in the workflow file on a recorded result, for example a missing skill call, the run fails again at the same point. To start a failed item again from the first step, run `beehave cancel <item>`, then `beehave run <item>`. `beehave cancel` ends a failed run (see below), so no resume comes first.
+A resume replays the recorded steps of the run. If the run failed in the workflow file on a recorded result, for example a missing skill call, the run fails again at the same point. To start a failed item again from the first step, run `beehave cancel <item>`, then `beehave run <item>`. `beehave cancel` ends a failed run (see below), so no resume comes first. To start again from a later step, or with other vars, fork the run (see below).
+
+#### `beehave fork <run id> --from <step> [--vars <file>]`
+
+A fork starts a new run of the item from a step of a run that ended: finished, failed or canceled. The old run does not change. The new run is the next attempt of the item (`item-<item>-r<k+1>`), so `beehave status`, `beehave cancel` and the next `beehave run` work on it. It waits in the `roots` queue. Run `beehave run <item>` to continue it.
+
+- The step is a call as `beehave status` shows it, such as `command:review#2`. The new run keeps the recorded outputs of every call before it and runs the call and every later call again. An unknown step is refused, and the error lists the steps of the run.
+- DBOS `ForkWorkflow` copies the records before the step in one transaction. beehave writes no replay of its own. The new run reads the same input as the source run, so it runs the workflow file that the source run pinned.
+- `--vars` names a file that holds one JSON object. Each top-level key replaces the same key of the `vars` of the source run, and every other key stays. A key that names a fact of the project (`gate`, `repo` and the rest) is refused: a fork changes `vars` only.
+- The overlay is stored as the attribute `fork:<new run id>` on the row of the source run, and the fork copies it to the new run in the same transaction that creates it. `facts()` merges the overlay of its own run over the recorded vars on every read, a replay included. The steps before the chosen step are recorded and do not run again, so the overlay reaches only the steps that run. A fork of a fork starts with the overlay of its parent, and the new `--vars` go over it.
+- A workflow that takes another path on a changed var before the chosen step fails the replay with the unexpected-step error of DBOS. The old run stays unchanged.
+- The fork takes a fresh claim on the item and saves its token under the new run id, as a resume does. A source run that has no recorded claim before the chosen step takes none: the new run claims by itself. A fork that fails gives the claim back.
+- A fork refuses a run of another build, a pass run, a child run, and an item that has an open run: run `beehave cancel <item>` first. It reads the runs under `probe.lock` and through the one store view, so a move in flight ends first.
+- A fork never moves a branch. The worktree of the item is cut again at the base of the item. A `push` step that names `expect` refuses a branch that moved.
 
 ### One engine for each state folder
 

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -70,6 +71,7 @@ type Steering interface {
 	Reading
 	Messaging
 	Resuming
+	Forking
 	// OpenRun returns the open run of the item: its pinned workflow file and the sandbox mode that it uses. live is the live default of a project.
 	OpenRun(item string, live func(project string) bool) (flow.OpenRun, error)
 	// EngineRuns reports whether an engine holds the state folder.
@@ -89,6 +91,12 @@ type Resuming interface {
 	ResumeOnThisBuild(item string) error
 	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
 	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, error)
+}
+
+// Forking starts a new run from a step of a run that ended.
+type Forking interface {
+	// Fork starts a new run of the item of a finished run from a step of it, and returns the id of the new run. The new run waits in the queue.
+	Fork(req flow.ForkRequest) (string, error)
 }
 
 // Messaging delivers to the open run of an item: an answer to a wait, or a message to a recv.
@@ -133,7 +141,7 @@ func (f flowCommands) add(root *cobra.Command) {
 		return
 	}
 
-	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.cancelCommand())
+	root.AddCommand(f.statusCommand(), f.answerCommand(), f.sendCommand(), f.resumeCommand(), f.forkCommand(), f.cancelCommand())
 
 	if f.factory.Engine != nil {
 		root.AddCommand(f.runCommand(), f.serveCommand())
@@ -1271,6 +1279,63 @@ func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, 
 	}
 
 	return f.withClient(cmd, flag, func(client Steering) error { return many.resumeMany(cmd.OutOrStdout(), client, many.picked) })
+}
+
+const forkLong = "Start a new run of an item from a step of a run that ended, with other vars if you want.\n" +
+	"The new run is the next attempt of the item. It keeps the recorded outputs of the steps before the step, and runs that step and every later step again.\n" +
+	"Name the step as beehave status shows it, such as command:review#2. The old run does not change.\n" +
+	"--vars names a file that holds one JSON object. Each key replaces the same var of the source run. A key that names a fact of the project is refused.\n" +
+	"The run uses the workflow file that the source run pinned. A fork takes a fresh claim on the item, and refuses an item that has an open run: run beehave cancel first.\n" +
+	"The new run waits in the queue. Run beehave run for the item next: it continues the new run."
+
+// forkRun starts the fork that the flags ask for and prints the id of the new run. varsFile is empty when the owner gave no --vars.
+func forkRun(out io.Writer, client Steering, run, step, varsFile string) error {
+	vars, err := readForkVars(varsFile)
+	if err != nil {
+		return err
+	}
+
+	id, err := client.Fork(flow.ForkRequest{Run: run, Step: step, Vars: vars})
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out, "Forked %s from %s as %s. Run beehave run for the item to continue it.\n", run, step, id)
+
+	return err
+}
+
+// readForkVars reads and decodes the vars file of a fork. An empty name holds no vars.
+func readForkVars(path string) (map[string]any, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	text, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("read the vars file: %w", err)
+	}
+
+	return flow.ParseForkVars(text)
+}
+
+func (f flowCommands) forkCommand() *cobra.Command {
+	var flag, step, varsFile string
+
+	command := &cobra.Command{
+		Use:   "fork <run id> --from <step> [--vars <file>]",
+		Short: "Start a new run of an item from a step of an ended run",
+		Long:  forkLong,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return f.withClient(cmd, flag, func(client Steering) error { return forkRun(cmd.OutOrStdout(), client, args[0], step, varsFile) })
+		},
+	}
+	addConfigFlag(command, &flag)
+	command.Flags().StringVar(&step, "from", "", "the step to start from, as beehave status shows it, such as command:review#2")
+	command.Flags().StringVar(&varsFile, "vars", "", "a file that holds a JSON object of vars to change for the new run")
+
+	return command
 }
 
 // cancelArgs takes one item, or no item and a run id in --run.
