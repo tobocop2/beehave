@@ -208,6 +208,19 @@ func TestFill_LocalReplaceOutsideTheWorktreeIsRefused(t *testing.T) {
 	assert.Empty(t, r.downloads(t), "no download ran")
 }
 
+func TestFill_AFolderBesideTheWorktreeWithTheSameNameStartIsRefused(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, fillsCache)
+	beside := r.work + "-other"
+	write(t, filepath.Join(r.work, "go.mod"), module+"\nreplace example.com/x => "+beside+"\n")
+
+	_, note := r.filler.Fill(t.Context(), "proj", r.work)
+
+	assert.Contains(t, note, beside)
+	assert.Empty(t, r.downloads(t), "no download ran")
+}
+
 func TestFill_ALinkInTheWorktreeToAFolderOutsideIsRefused(t *testing.T) {
 	t.Parallel()
 
