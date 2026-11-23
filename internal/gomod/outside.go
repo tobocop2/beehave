@@ -1,12 +1,24 @@
 package gomod
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"maps"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+)
+
+const (
+	// newSumMode is the mode of a go.sum file that the download adds to the worktree.
+	newSumMode = 0o600
+	// copyMode is the mode of the folders and files of the copy: only the engine reads them.
+	copyMode = 0o700
 )
 
 // replace is one replace line of a go.mod or a go.work file, as go mod edit -json prints it. A local replace has no version.
@@ -30,17 +42,88 @@ type workspace struct {
 	Replace []replace
 }
 
-// outside returns the note that names the first use path or local replace path outside the worktree dir, or why go cannot read the files, or "".
-func (g goCommand) outside(ctx context.Context, dir, work string) string {
-	root := resolve(dir, ".")
+// sum is a checksum file that the download can change: its text and mode at copy time, and whether it was there.
+type sum struct {
+	data  []byte
+	mode  fs.FileMode
+	found bool
+}
 
-	mods, note := g.modFiles(ctx, dir, work, root)
-	if note != "" {
+// tree copies the module files of the worktree dir into the folder copy that the engine owns, so go never runs in the files the agent wrote.
+// root opens the worktree and out opens the copy, so no read or write leaves either. sums holds each checksum file by its path relative to dir.
+type tree struct {
+	dir  string
+	root *os.Root
+	copy string
+	out  *os.Root
+	sums map[string]sum
+}
+
+// openTree makes the folder copy and opens it and the worktree dir, or returns the note of a failure.
+func openTree(dir, copy string) (*tree, string) {
+	made := os.Mkdir(copy, copyMode)
+	out, outErr := os.OpenRoot(copy)
+	root, rootErr := os.OpenRoot(dir)
+
+	t := &tree{dir: dir, root: root, copy: copy, out: out, sums: map[string]sum{}}
+	if err := cmp.Or(made, outErr, rootErr); err != nil {
+		t.close()
+
+		return nil, failed(fmt.Sprintf("the worktree cannot be opened (%v)", err))
+	}
+
+	return t, ""
+}
+
+// close closes the worktree and the copy.
+func (t *tree) close() {
+	for _, root := range []*os.Root{t.root, t.out} {
+		if root != nil {
+			_ = root.Close()
+		}
+	}
+}
+
+// download copies the module files, runs go mod download all in the copy with the go command that command gives for a GOWORK value, and writes
+// the checksum files that it changed back into the worktree. It returns the note of a failure.
+func (t *tree) download(ctx context.Context, command func(work string) goCommand) string {
+	if note := t.top(); note != "" {
 		return note
 	}
 
-	for _, mod := range mods {
-		if note := g.localReplace(ctx, root, mod); note != "" {
+	g := command(workFile(filepath.Join(t.copy, "go.work")))
+	if note := t.locals(ctx, g); note != "" {
+		return note
+	}
+
+	if _, note := g.run(ctx, "mod", "download", "all"); note != "" {
+		return note
+	}
+
+	return t.back()
+}
+
+// top copies go.work, go.work.sum, go.mod and go.sum of the worktree, or returns the note that names a link.
+func (t *tree) top() string {
+	return cmp.Or(t.take("go.work"), t.take("go.work.sum"), t.folder("."))
+}
+
+// locals copies the go.mod file of each use folder and local replace folder, or returns the note that names a path outside the worktree, a link, or
+// why go cannot read a file.
+func (t *tree) locals(ctx context.Context, g goCommand) string {
+	work := filepath.Join(t.copy, "go.work")
+	if !exists(work) {
+		return t.replaces(ctx, g, ".")
+	}
+
+	var space workspace
+	if note := cmp.Or(decode(ctx, g, &space, "work", "edit", "-json", work), t.targets("go.work", ".", space.Replace)); note != "" {
+		return note
+	}
+
+	for _, use := range space.Use {
+		folder, note := t.local("go.work", ".", use.DiskPath)
+		if note = cmp.Or(note, t.folder(folder), t.replaces(ctx, g, folder)); note != "" {
 			return note
 		}
 	}
@@ -48,44 +131,133 @@ func (g goCommand) outside(ctx context.Context, dir, work string) string {
 	return ""
 }
 
-// localReplace returns the note that names the first local replace path of the go.mod file mod outside root, or why go cannot read the file, or "".
-func (g goCommand) localReplace(ctx context.Context, root, mod string) string {
+// replaces copies the go.mod file of each local replace folder of the go.mod file in folder, or returns the note of a failure.
+func (t *tree) replaces(ctx context.Context, g goCommand, folder string) string {
 	var file modFile
-	if note := decode(ctx, g, &file, "mod", "edit", "-json", mod); note != "" {
+	if note := decode(ctx, g, &file, "mod", "edit", "-json", filepath.Join(t.copy, folder, "go.mod")); note != "" {
 		return note
 	}
 
-	return escapes(root, mod, filepath.Dir(mod), file.Replace)
+	return t.targets(filepath.Join(folder, "go.mod"), folder, file.Replace)
 }
 
-// modFiles returns the go.mod file of the worktree, or the go.mod file of each use folder of its go.work, or the note that names a path outside the worktree.
-func (g goCommand) modFiles(ctx context.Context, dir, work, root string) ([]string, string) {
-	if !exists(work) {
-		return []string{filepath.Join(dir, "go.mod")}, ""
-	}
-
-	var space workspace
-	if note := cmp.Or(decode(ctx, g, &space, "work", "edit", "-json", work), escapes(root, work, dir, space.Replace)); note != "" {
-		return nil, note
-	}
-
-	return useFiles(root, dir, work, space)
-}
-
-// useFiles returns the go.mod file of each use folder of the workspace, or the note that names the first use folder outside root.
-func useFiles(root, dir, work string, space workspace) ([]string, string) {
-	mods := make([]string, 0, len(space.Use))
-
-	for _, use := range space.Use {
-		folder := resolve(dir, use.DiskPath)
-		if !inside(root, folder) {
-			return nil, outsideNote(work, folder)
+// targets copies the go.mod file of each local replace path that file names relative to base, or returns the note of a failure.
+func (t *tree) targets(file, base string, replaces []replace) string {
+	for _, line := range replaces {
+		if line.New.Version != "" {
+			continue
 		}
 
-		mods = append(mods, filepath.Join(folder, "go.mod"))
+		folder, note := t.local(file, base, line.New.Path)
+		if note = cmp.Or(note, t.take(filepath.Join(folder, "go.mod"))); note != "" {
+			return note
+		}
 	}
 
-	return mods, ""
+	return ""
+}
+
+// local returns the folder that path names relative to base, as a path inside the worktree, or the note that names a path that is absolute or outside.
+func (t *tree) local(file, base, path string) (string, string) {
+	folder := filepath.Join(base, path)
+	if filepath.IsAbs(path) || !filepath.IsLocal(folder) {
+		return "", outsideNote(filepath.Join(t.dir, file), cmp.Or(absolute(path), filepath.Join(t.dir, folder)))
+	}
+
+	return folder, ""
+}
+
+// folder copies the go.mod and go.sum files of a module folder of the worktree.
+func (t *tree) folder(folder string) string {
+	return cmp.Or(t.take(filepath.Join(folder, "go.mod")), t.take(filepath.Join(folder, "go.sum")))
+}
+
+// take copies the file at path, relative to the worktree, into the copy. A missing file is no copy, and a link in the path or a file that is not
+// regular is the note that names it. A checksum file is kept in sums, so the lines the download adds reach the worktree.
+func (t *tree) take(path string) string {
+	info, link := t.lstat(path)
+	if link != "" {
+		return linkNote(link)
+	}
+
+	checksum := filepath.Base(path) == "go.sum" || filepath.Base(path) == "go.work.sum"
+	if checksum {
+		t.sums[path] = sum{mode: newSumMode}
+	}
+
+	if info == nil {
+		return ""
+	}
+
+	data, note := t.copyIn(path)
+	if checksum {
+		t.sums[path] = sum{data: data, mode: info.Mode().Perm(), found: true}
+	}
+
+	return note
+}
+
+// copyIn copies the file at path from the worktree into the copy and returns its text, or the note of a failure.
+func (t *tree) copyIn(path string) ([]byte, string) {
+	data, err := t.root.ReadFile(path)
+	if err = cmp.Or(err, t.out.MkdirAll(filepath.Dir(path), copyMode), t.out.WriteFile(path, data, copyMode)); err != nil {
+		return nil, failed(fmt.Sprintf("%s cannot be copied (%v)", filepath.Join(t.dir, path), err))
+	}
+
+	return data, ""
+}
+
+// lstat returns the file at path with no link followed, or nil when a part of the path does not exist. The second result is the worktree path of
+// the first part that is a link, or of the file when it is not regular.
+func (t *tree) lstat(path string) (fs.FileInfo, string) {
+	part, info := "", fs.FileInfo(nil)
+	for name := range strings.SplitSeq(filepath.Clean(path), string(filepath.Separator)) {
+		var err error
+
+		part = filepath.Join(part, name)
+		if info, err = t.root.Lstat(part); err != nil {
+			return nil, ""
+		}
+
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return nil, filepath.Join(t.dir, part)
+		}
+	}
+
+	if !info.Mode().IsRegular() {
+		return nil, filepath.Join(t.dir, part)
+	}
+
+	return info, ""
+}
+
+// back writes each checksum file that the download changed or added into the worktree, as a new file that replaces the old one, and returns the note
+// of a failure.
+func (t *tree) back() string {
+	for _, path := range slices.Sorted(maps.Keys(t.sums)) {
+		old := t.sums[path]
+
+		data, err := t.out.ReadFile(path)
+		if err != nil || old.found && bytes.Equal(data, old.data) {
+			continue
+		}
+
+		if err := t.replace(path, data, old.mode); err != nil {
+			return fmt.Sprintf("the go.sum lines that the Go module download added cannot be written to %s (%v), so the step starts with the file as it was.", filepath.Join(t.dir, path), err)
+		}
+	}
+
+	return ""
+}
+
+// replace writes data to a new file beside path and renames it over path, so the write never follows a link that path became.
+func (t *tree) replace(path string, data []byte, mode fs.FileMode) error {
+	temp := path + ".beehave"
+	if err := t.root.WriteFile(temp, data, mode); err != nil {
+		return err
+	}
+
+	return t.root.Rename(temp, path)
 }
 
 // decode runs a go edit command and decodes the JSON it prints into value, or returns the note of a failure.
@@ -102,40 +274,21 @@ func decode[P *modFile | *workspace](ctx context.Context, g goCommand, value P, 
 	return ""
 }
 
-// escapes returns the note that names the first local replace path of file, relative to base, that is outside root, or "".
-func escapes(root, file, base string, replaces []replace) string {
-	for _, line := range replaces {
-		if line.New.Version != "" {
-			continue
-		}
-
-		if path := resolve(base, line.New.Path); !inside(root, path) {
-			return outsideNote(file, path)
-		}
+// absolute returns path when it is absolute, or "".
+func absolute(path string) string {
+	if filepath.IsAbs(path) {
+		return path
 	}
 
 	return ""
 }
 
-// resolve returns path, taken from base when it is relative, with its links resolved. A path that does not exist is cleaned only.
-func resolve(base, path string) string {
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(base, path)
-	}
-
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		return real
-	}
-
-	return filepath.Clean(path)
-}
-
-// inside reports whether path is root or a path under it.
-func inside(root, path string) bool {
-	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
-}
-
-// outsideNote says that file names a path outside the worktree, so no download ran.
+// outsideNote says that file names a path that is not a relative path inside the worktree, so no download ran.
 func outsideNote(file, path string) string {
-	return fmt.Sprintf("the Go module download did not run: %s names %s, which is outside the worktree of the item. The step starts with the module cache as it is. Move that module into the worktree, or remove the line.", file, path)
+	return fmt.Sprintf("the Go module download did not run: %s names %s, which is outside the worktree of the item or not a relative path. The step starts with the module cache as it is. Move that module into the worktree and name it with a relative path, or remove the line.", file, path)
+}
+
+// linkNote says that a module file of the worktree is a link or not a regular file, so no download ran.
+func linkNote(path string) string {
+	return fmt.Sprintf("the Go module download did not run: %s is a link or not a regular file, and the engine copies only regular module files. The step starts with the module cache as it is. Replace the link with the file.", path)
 }
