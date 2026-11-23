@@ -127,6 +127,8 @@ type Request struct {
 	BaseSHA string
 	// Slot is the limit that the host job takes on the build host, shared with every engine that uses it. The zero Slot means no limit.
 	Slot model.Slot
+	// JobKey names the call that submits the host job. The same key finds the job that an earlier Submit started on the host. Empty means a new job at each Submit.
+	JobKey string
 
 	// pins are the pinned tools that the probe in front of each gate command checks. Run and Submit read them from the pin file at the base commit.
 	pins []Pin
@@ -656,7 +658,7 @@ func submit(ctx context.Context, host Remote, request Request, head string) (mod
 		return "", err
 	}
 
-	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone, Slot: request.Slot})
+	id, err := host.Submit(ctx, model.JobSpec{Name: "gate-" + project.Name, Command: hostCommand(project, request.pins, request.CloneURL, head, clone, request.Base, request.anchor()), Folder: clone, Slot: request.Slot, Key: request.JobKey})
 	if err != nil {
 		return "", fmt.Errorf("start the gate on %s: %w", project.BuildHost, err)
 	}

@@ -41,6 +41,7 @@ const (
 	defaultPoll    = 10 * time.Second
 	stopTimeout    = 30 // seconds that systemd waits for a unit after SIGTERM before SIGKILL
 	stopNotLoaded  = 5  // the exit status of systemctl stop for a unit that is not loaded
+	loadedState    = "loaded"
 	logTailBytes   = 16384
 	stateFolder    = ".beehave"
 	drainMarker    = "drain"
@@ -450,7 +451,20 @@ func (h *Host) refuseDraining(ctx context.Context, root string) error {
 
 // start runs the unit. dir is the state folder under root.
 func (h *Host) start(ctx context.Context, root, dir string, spec model.JobSpec) (model.JobID, error) {
-	unit := "beehave-" + h.nonce()
+	unit, held, err := h.unitOf(ctx, spec.Key)
+	if err == nil && !held {
+		err = h.runUnit(ctx, root, dir, unit, spec)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return model.JobID(jobwait.Job{ID: unit, Folder: spec.Folder}.String()), nil
+}
+
+// runUnit starts the transient unit that runs the command of spec.
+func (h *Host) runUnit(ctx context.Context, root, dir, unit string, spec model.JobSpec) error {
 	script := host.SlotWrap(spec.Slot, model.ShellQuote(path.Join(dir, slotsFolder, spec.Slot.Class)), model.ShellQuote(path.Join(dir, unit+waitingSuffix)), spec.Command)
 	encoded := base64.StdEncoding.EncodeToString([]byte(script))
 
@@ -458,11 +472,30 @@ func (h *Host) start(ctx context.Context, root, dir string, spec model.JobSpec) 
 		"-p", "RuntimeMaxSec="+strconv.FormatInt(h.config.RunLimitSeconds(), 10), "-p", "TimeoutStopSec="+strconv.Itoa(stopTimeout),
 		"-p", "WorkingDirectory="+root, "-p", "StandardOutput=append:"+path.Join(dir, unit+logSuffix), "-p", "StandardError=inherit",
 		"--", "sh", "-c", `eval "$(printf %s `+encoded+` | base64 -d)"`)
-	if err != nil {
-		return "", err
+
+	return err
+}
+
+// unitOf returns the unit name of a job and whether systemd already holds that unit. A job with no key gets a new name from the nonce and is never held.
+func (h *Host) unitOf(ctx context.Context, key string) (string, bool, error) {
+	if key == "" {
+		return "beehave-" + h.nonce(), false, nil
 	}
 
-	return model.JobID(jobwait.Job{ID: unit, Folder: spec.Folder}.String()), nil
+	unit := "beehave-" + jobwait.KeyDigest(key)
+	held, err := h.holds(ctx, unit)
+
+	return unit, held, err
+}
+
+// holds reports whether systemd holds the unit: a job that an earlier Submit of the same key started, and that no release has removed.
+func (h *Host) holds(ctx context.Context, unit string) (bool, error) {
+	out, err := h.run(ctx, "systemctl show", "systemctl", "--user", "show", "-p", "LoadState", "--value", unit)
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) == loadedState, nil
 }
 
 // Wait polls the unit until the job has a final state. See jobwait for the states, the lost, stale and died limits, and the bank.
