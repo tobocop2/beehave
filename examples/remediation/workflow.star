@@ -751,10 +751,18 @@ def take_over(item, pr, author, project, round_settings):
 
     pr_take(name = "take-claim", pr = int(pr), me = round_settings["owner"], idle = IDLE_HOURS, grace = GRACE_HOURS, step = "take")
 
+def wontfix_text(ledger, heading):
+    """The findings of the review ledger in the state wontfix, one line each with the id, the path, the text and the reason, after `heading`. It returns "" when there is none."""
+    lines = ["- %s (%s): %s. Reason: %s" % (entry["id"], entry["path"], entry["text"], entry["reason"]) for entry in ledger if entry["state"] == "wontfix"]
+    if len(lines) == 0:
+        return ""
+
+    return heading + "\n".join(lines)
+
 def foreign_followup(recorded, project):
     """Files one follow-up issue for the findings that a foreign review left open, once the reviewed pull request merged, and returns its id. It returns "" when it files nothing.
     No entry calls it yet: the engine refuses every foreign pull request until the sandbox default lands (#438), and that change wires it in.
-    `recorded` is the value of the foreign review run: `pr` is the number that the intake preflight gave, and `findings` the open findings of the review, each with a `class` and a `text`.
+    `recorded` is the value of the foreign review run: `pr` is the number that the intake preflight gave, and `findings` the open findings of the review, each with an `id`, a `severity`, a `path` and a `text`.
     `project` is the value of facts().
     The step reads the state of that number. It does not look the pull request up again, so a branch that is not the item id and a base that is not vars.round.base change nothing.
     A review with no open findings files nothing, and so does a pull request that is still open or closed without a merge.
@@ -768,7 +776,7 @@ def foreign_followup(recorded, project):
     if pr_state(name = "foreign-state", pr = pr).state != "MERGED":
         return ""
 
-    lines = ["- %s: %s" % (finding["class"], finding["text"]) for finding in findings]
+    lines = ["- %s: %s" % (finding["severity"], finding["text"]) for finding in findings]
     return item_create(
         name = "foreign-followup",
         key = "foreign:%s:%d" % (project.repo, pr),
@@ -1353,7 +1361,7 @@ def _lane(item, project, round_settings):
 
     # The loop starts from the sweep as the lane of the implementer. The violations of the implement step go with it, so its first fix still answers them.
     starting = struct(session = sweep_step.session, head_sha = sweep_step.head_sha, report = sweep_step.report, rewrote = sweep_step.rewrote, violations = "\n".join([text for text in [implement.violations, sweep_step.violations] if text]))
-    loop = review_fix(item, starting, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused"], lane_check = lane_report, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id)
+    loop = review_fix(item, starting, "prompts/review.md", "prompts/fix.md", base = base, follow_ups = "forbid", protect = protected(round_settings), design_prompt = "prompts/design.md", guard = guard, allow = scope.get("allow_paths"), rounds = rounds, review_outputs = ["regressions"], fix_outputs = ["report", "uncaused"], lane_check = lane_report, facts = project, data = lane_data, review_check = rise_after_review, checks = [mutants], steps = {name: round_settings["steps"][name] for name in LOOP_STEPS}, design_after = round_settings["design_after"], void_reruns = round_settings["void_reruns"], void_asks = round_settings["void_asks"], escalate_after = round_settings["escalate_after"], push_branch = item.id, ledger = True)
 
     if loop.stopped:
         return item_value(item, "", False, "stopped", loop.host_losses)
@@ -1396,7 +1404,7 @@ def _lane(item, project, round_settings):
     # After the last round, no fix lane starts. A person rules on each open finding, and the settle step applies the ruling once: it is the only edit after the last round, no review follows it, and nothing merges.
     if loop.exhausted:
         ruling = wait(
-            "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong.",
+            "The review loop used all of its rounds. Rule on each open finding: fix it now, or park it with the cost if it is wrong." + wontfix_text(loop.ledger, "\n\nThe fix lane declared these findings wontfix:\n"),
             name = "adjudicate",
         )
 
@@ -1439,7 +1447,7 @@ def _lane(item, project, round_settings):
         pr_comment(
             name = "approved",
             key = "approved",
-            text = "The review approved the head %s.\n\nThe plan:\n\n%s" % (loop.gate.head, plan.text),
+            text = "The review approved the head %s.\n\nThe plan:\n\n%s%s" % (loop.gate.head, plan.text, wontfix_text(loop.ledger, "\n\nThe review accepted these findings as wontfix:\n")),
             integration = trunk,
             forbid_text = ATTRIBUTION,
         )
