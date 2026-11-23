@@ -141,12 +141,12 @@ func flowFactoryFrom(build func(context.Context, config.Config, flow.Options) (*
 	}
 }
 
-// openClient opens the client of the commands, with the owner login that it needs for the remotes of projects that have no writer.
+// openClient opens the client of the commands. It reads the token of the owner for the https hosts of the projects first, because the client reaches the
+// remotes of projects that have no writer.
 func openClient(ctx context.Context, cfg config.Config, opts flow.Options) (*flow.Client, error) {
 	table := newAdapters(proc.NewExecRunner("bd", ""), stateFolder(opts.StateDir), nil)
-	if err := table.writers.readLogin(ctx, opts.StateDir); err != nil {
-		return nil, err
-	}
+	table.writers.env = opts.Env
+	table.writers.readOwnerTokens(ctx, cfg)
 
 	return flow.OpenClient(ctx, opts, releaseDeps(cfg, opts, table))
 }

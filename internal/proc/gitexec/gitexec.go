@@ -45,15 +45,10 @@ func kept(userConfig bool) []string {
 
 // base returns the variables of the process that a git call keeps (see kept).
 func base(userConfig bool) []string {
-	return keep(kept(userConfig))
-}
-
-// keep returns the variables of the process whose names are in names.
-func keep(names []string) []string {
 	var env []string
 
 	for _, pair := range (&exec.Cmd{}).Environ() {
-		if name, _, _ := strings.Cut(pair, "="); slices.Contains(names, name) {
+		if name, _, _ := strings.Cut(pair, "="); slices.Contains(kept(userConfig), name) {
 			env = append(env, pair)
 		}
 	}

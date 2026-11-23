@@ -16,7 +16,6 @@ import (
 	forgegithub "github.com/tobocop2/beehave/internal/forge/github"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
-	"github.com/tobocop2/beehave/internal/proc/gitexec"
 	"github.com/tobocop2/beehave/internal/proc/gitexec/reach"
 )
 
@@ -30,18 +29,18 @@ type writerRole struct {
 type writers struct {
 	byProject map[string]writerRole
 	env       map[string]string
-	// login is the credential settings of the owner for the git calls of the projects that have no writer.
-	login gitexec.OwnerLogin
+	// owner is the token of the owner for each https host, for the git calls of the projects that have no writer.
+	owner ownerTokens
 }
 
-// start loads the owner login and the writer credential of each project that declares one, then runs the start probe on the environment of the steps.
+// start reads the token of the owner for the https hosts of the projects with no credentials and the writer credential of each project that declares one,
+// then runs the start probe on the environment of the steps.
 func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Options) error {
-	found, err := readRoles(ctx, cfg, opts)
-	if err != nil {
-		return err
-	}
+	w.env = opts.Env
+	w.readOwnerTokens(ctx, cfg)
 
-	if err := w.readLogin(ctx, opts.StateDir); err != nil || len(found) == 0 {
+	found, err := readRoles(ctx, cfg, opts)
+	if err != nil || len(found) == 0 {
 		return err
 	}
 
@@ -49,7 +48,7 @@ func (w *writers) start(ctx context.Context, cfg config.Config, opts flow.Option
 		return err
 	}
 
-	w.byProject, w.env = found, opts.Env
+	w.byProject = found
 
 	return nil
 }
@@ -145,17 +144,8 @@ func (w *writers) git(projects map[string]config.Project, project, dir, remote s
 
 	return reach.Runner(reach.Call{
 		Project: project, Dir: dir, Remote: remote, Declared: projects[project].HasWriter(), Loaded: loaded, Token: role.token,
-		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv, Login: w.ownerLogin(),
+		Base: w.base(), Pairs: pairs, OwnerEnv: ownerEnv, OwnerToken: w.ownerTokenOf,
 	}, owner)
-}
-
-// ownerLogin returns the credential settings of the owner that the start read. A nil writers holds none.
-func (w *writers) ownerLogin() gitexec.OwnerLogin {
-	if w == nil {
-		return gitexec.OwnerLogin{}
-	}
-
-	return w.login
 }
 
 // base returns the environment that a writer call takes its names from. A nil writers holds none.

@@ -5,8 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	"github.com/tobocop2/beehave/internal/exectest"
 )
 
 // maintFakes are the programs that the maintenance scripts call: the file in testdata and the name in the folder fake of the work folder.
@@ -64,6 +67,8 @@ func cmdMaintInit(ts *testscript.TestScript, _ bool, args []string) {
 	maintGit(ts, upkeep, "add", "scripts", "bump.star", "report.star", "repos.tsv", "prompts")
 	maintGit(ts, upkeep, "commit", "-q", "-m", "upkeep")
 
+	var rewrites []string
+
 	for name, repo := range maintRepos {
 		seed := filepath.Join(work, "seed", name)
 		if err := os.MkdirAll(seed, e2eFolderMode); err != nil {
@@ -89,14 +94,40 @@ func cmdMaintInit(ts *testscript.TestScript, _ bool, args []string) {
 		maintGit(ts, seed, "commit", "-q", "-m", "seed")
 		maintGit(ts, work, "clone", "-q", "--bare", seed, remote)
 
-		maintGit(ts, work, "config", "--file", gitconfig, "url."+remote+".insteadOf", "https://github.com/acme/"+name+".git")
+		rewrites = append(rewrites, "-c", "url."+remote+".insteadOf=https://github.com/acme/"+name+".git")
 	}
+
+	writeGitWrapper(ts, filepath.Join(work, "fake"), rewrites)
 
 	mkprojects := exec.CommandContext(context.Background(), "sh", filepath.Join(upkeep, "scripts", "mkprojects.sh"), filepath.Join(work, "config")) //nolint:gosec // a test runs the script of the example
 	mkprojects.Env = []string{"PATH=" + ts.Getenv("PATH"), "HOME=" + filepath.Join(work, "home"), "UPKEEP_HOME=" + upkeep}
 
 	if out, err := mkprojects.CombinedOutput(); err != nil {
 		ts.Fatalf("maintinit: mkprojects: %v: %s", err, out)
+	}
+}
+
+// writeGitWrapper writes a git first on PATH in the folder fake. It runs the real git with the -c pairs of rewrites before the arguments of the call, so the
+// GitHub address of each repository reaches its local bare repository. The pairs belong to the program, not to a config file of the owner: the clone, the
+// fetch and the push of the engine read no such file.
+func writeGitWrapper(ts *testscript.TestScript, fake string, rewrites []string) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		ts.Fatalf("maintinit: %v", err)
+	}
+
+	if err := os.MkdirAll(fake, e2eFolderMode); err != nil {
+		ts.Fatalf("maintinit: %v", err)
+	}
+
+	quoted := make([]string, 0, len(rewrites))
+	for _, word := range rewrites {
+		quoted = append(quoted, "'"+word+"'")
+	}
+
+	script := "#!/bin/sh\nexec '" + gitPath + "' " + strings.Join(quoted, " ") + " \"$@\"\n"
+	if err := exectest.Write(filepath.Join(fake, "git"), script); err != nil {
+		ts.Fatalf("maintinit: %v", err)
 	}
 }
 

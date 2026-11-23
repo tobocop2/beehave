@@ -1,13 +1,10 @@
 package main
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/config"
 	"github.com/tobocop2/beehave/internal/exectest"
 	"github.com/tobocop2/beehave/internal/flow"
+	"github.com/tobocop2/beehave/internal/model"
 )
 
 // plant is a global git config under a temporary HOME that an agent could have written, with a counter for each program it names.
@@ -77,8 +75,15 @@ func runs(t *testing.T, counter string) int {
 func startOwnerLogin(t *testing.T) *writers {
 	t.Helper()
 
+	return startOwnerLoginWith(t, map[string]string{"PATH": testPath})
+}
+
+// startOwnerLoginWith is startOwnerLogin with the environment env, which an owner call takes its network names from.
+func startOwnerLoginWith(t *testing.T, env map[string]string) *writers {
+	t.Helper()
+
 	roles := &writers{}
-	require.NoError(t, roles.start(t.Context(), config.Config{}, flow.Options{StateDir: t.TempDir()}))
+	require.NoError(t, roles.start(t.Context(), config.Config{}, flow.Options{StateDir: t.TempDir(), Env: env}))
 
 	return roles
 }
@@ -141,50 +146,13 @@ func ownerGit(t *testing.T, args ...string) {
 	}
 }
 
-func TestOwnerLogin_TheCredentialHelperOfTheGlobalConfigStillAnswersAnHttpRemoteOfTheEngine(t *testing.T) { //nolint:paralleltest // t.Setenv changes HOME for the process
-	var (
-		mu   sync.Mutex
-		auth []string
-	)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		auth = append(auth, r.Header.Get("Authorization"))
-		mu.Unlock()
-
-		w.Header().Set("WWW-Authenticate", `Basic realm="r"`)
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	t.Cleanup(server.Close)
-
-	rig := newPushRig(t)
-	helper := filepath.Join(t.TempDir(), "helper")
-	require.NoError(t, exectest.Write(helper, "#!/bin/sh\necho username=owner\necho password=secret\n"))
-	plantGlobalConfig(t, "[credential]\n\thelper = "+helper+"\n[credential \""+server.URL+"\"]\n\tusername = owner\n")
-
-	trees := rig.pulls.trees
-	trees.roles = startOwnerLogin(t)
-	repo, err := trees.openPush(t.Context(), "p", server.URL+"/o/r.git")
-	require.NoError(t, err)
-
-	_, err = repo.run(t.Context(), "ls-remote", server.URL+"/o/r.git")
-	require.Error(t, err)
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	assert.Contains(t, auth, "Basic b3duZXI6c2VjcmV0", "the helper of the owner answered the second request with owner:secret")
-}
-
-func TestOwnerLogin_AnEngineStartAndAClientStartFailWhenGitCannotReadTheGlobalConfig(t *testing.T) { //nolint:paralleltest // t.Setenv changes HOME for the process
-	planted := plantGlobalConfig(t, "[broken\n")
+func TestOwnerLogin_AClientStartReadsTheTokenOfTheHttpsHostOfAProjectWithNoCredentials(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	log := fakeGH(t, "tok-gh")
 	opts := flow.Options{StateDir: t.TempDir() + "/state", Version: "v1", MaxConcurrent: 1, MaxReviewConcurrent: 1, Env: map[string]string{}}
-	factory := flowFactory()
+	cfg := config.Config{Projects: map[string]config.Project{"p": {Project: model.Project{Name: "p", Source: "https://example.test/o/r.git"}}}}
 
-	_, err := factory.Engine(t.Context(), config.Config{Projects: map[string]config.Project{}}, opts)
-	require.ErrorContains(t, err, "read the credential settings of the git config of the owner")
+	_, err := flowFactory().Client(t.Context(), cfg, opts)
 
-	_, err = factory.Client(t.Context(), config.Config{}, opts)
-	require.ErrorContains(t, err, "read the credential settings of the git config of the owner")
-	assert.Zero(t, runs(t, planted.sshRuns))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"auth token --hostname example.test"}, ghCalls(t, log))
 }

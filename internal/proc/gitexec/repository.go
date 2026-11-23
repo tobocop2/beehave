@@ -60,6 +60,9 @@ func (r Repository) check(ctx context.Context, timeout time.Duration) error {
 	return checkConfig(ctx, filepath.Join(r.CommonDir, "config"), r.WorkTree, filepath.Dir(r.CommonDir), timeout)
 }
 
+// configCommand is the git command that reads the config files.
+const configCommand = "config"
+
 // CheckBare refuses the bare repository dir when its config holds a setting outside the allow list. A repository with no config file yet passes.
 func CheckBare(ctx context.Context, dir string, timeout time.Duration) error {
 	config := filepath.Join(dir, "config")

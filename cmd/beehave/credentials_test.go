@@ -353,7 +353,7 @@ func TestPushLocal_RunsGitInTheNamedRepositoryWithTheFileTransportOnlyAndNoPromp
 	assert.Equal(t, "dir="+dir+" prompt=0 allow=file", strings.TrimSpace(string(got)))
 }
 
-func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *testing.T) {
+func TestPulls_PushOfAProjectWithNoCredentialsKeepsNoTokenOfTheEnvironmentOfTheOwner(t *testing.T) {
 	t.Setenv("GH_TOKEN", "owner-token")
 
 	rig := newPushRig(t)
@@ -364,5 +364,5 @@ func TestPulls_PushOfAProjectWithNoCredentialsKeepsTheEnvironmentOfTheOwner(t *t
 
 	got, err := os.ReadFile(seen) //nolint:gosec // a path of this test
 	require.NoError(t, err)
-	assert.Equal(t, "owner-token", strings.TrimSpace(string(got)))
+	assert.Equal(t, "unset", strings.TrimSpace(string(got)), "a hook of the remote sees no token of the process")
 }

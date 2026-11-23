@@ -3,7 +3,6 @@ package remote
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"github.com/tobocop2/beehave/internal/model"
@@ -14,9 +13,6 @@ import (
 // Runner runs git with the hooks off and allows every transport. Its fields are those of proc.ExecRunner.
 type Runner struct {
 	proc.ExecRunner
-
-	// Settings are git arguments (-c pairs) that go before the command of each call.
-	Settings []string
 }
 
 // New returns a runner for git in dir. Run it only where no agent writes the git config: in a repository that only the engine writes, with --git-dir set,
@@ -27,5 +23,5 @@ func New(dir string, timeout time.Duration) Runner {
 
 // Run runs git with the hooks off.
 func (r Runner) Run(ctx context.Context, args []string) model.CommandResult {
-	return r.ExecRunner.Run(ctx, gitbin.Args(append(slices.Clone(r.Settings), args...)))
+	return r.ExecRunner.Run(ctx, gitbin.Args(args))
 }

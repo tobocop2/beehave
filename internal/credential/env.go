@@ -15,7 +15,7 @@ func networkNames() []string {
 		"PATH", "TMPDIR", "LANG",
 		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
 		"http_proxy", "https_proxy", "no_proxy", "all_proxy",
-		"SSL_CERT_FILE", "SSL_CERT_DIR",
+		"SSL_CERT_FILE", "SSL_CERT_DIR", "GIT_SSL_CAINFO",
 	}
 }
 
