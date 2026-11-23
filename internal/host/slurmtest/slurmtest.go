@@ -4,6 +4,7 @@ package slurmtest
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,8 @@ const DF = hosttest.DF
 // Job is one job in the fake Slurm. Polls counts the squeue calls, so the first answer is a live state and the later ones are the empty answer of a forgotten job.
 type Job struct {
 	Command  string
+	Name     string // the job name that sbatch got
+	Forgot   bool   // the controller forgot the job: squeue by name does not list it, and sacct does
 	Canceled bool
 	Polls    int
 	Live     int   // the number of squeue calls that answer RUNNING; zero means one
@@ -55,6 +58,8 @@ type Cluster struct {
 	NoFlock  bool            // the head node has no flock command
 	Scancels int             // the number of scancel calls that took
 	DropAll  string          // the first word of a command whose ssh call always drops
+	// BadLookup is the command (squeue or sacct) whose read by job name fails with exit 1.
+	BadLookup string
 }
 
 // New returns a cluster that is down. A test sets Up before it calls the ssh runner.
@@ -127,10 +132,8 @@ func (f *Cluster) runSSH(args []string) model.CommandResult {
 		return ok("")
 	case "sbatch":
 		return f.sbatch(line)
-	case "squeue":
-		return f.squeue(words[3])
-	case "sacct":
-		return f.sacct(words[5])
+	case "squeue", "sacct":
+		return f.query(words)
 	}
 
 	return f.other(words)
@@ -273,9 +276,67 @@ func (f *Cluster) sbatch(rest string) model.CommandResult {
 	f.Sbatches++
 
 	id := strconv.Itoa(f.Next)
-	f.Jobs[id] = &Job{Command: strings.ReplaceAll(strings.TrimSuffix(command, "'"), `'\''`, "'")}
+	f.Jobs[id] = &Job{Command: strings.ReplaceAll(strings.TrimSuffix(command, "'"), `'\''`, "'"), Name: nameOf(strings.Fields(rest))}
 
 	return ok(id + "\n")
+}
+
+const (
+	namePrefix  = "--name="     // the filter of squeue and sacct by job name
+	jobNameFlag = "--job-name=" // the name that sbatch gives the job
+)
+
+// nameOf returns the job name that a squeue, sacct or sbatch line carries, or an empty text for a line with none.
+func nameOf(words []string) string {
+	for _, word := range words {
+		for _, prefix := range []string{namePrefix, jobNameFlag} {
+			if name, found := strings.CutPrefix(word, prefix); found {
+				return name
+			}
+		}
+	}
+
+	return ""
+}
+
+// query answers a squeue or sacct line: a read by job name, or a read of one job id.
+func (f *Cluster) query(words []string) model.CommandResult {
+	if name := nameOf(words); name != "" {
+		return f.byName(words[0], name)
+	}
+
+	if words[0] == "squeue" {
+		return f.squeue(words[3])
+	}
+
+	return f.sacct(words[5])
+}
+
+// byName answers squeue or sacct for a job name. squeue lists the jobs the controller still knows, and sacct lists every job of the name that accounting holds.
+// BadLookup makes the read of that command fail.
+func (f *Cluster) byName(command, name string) model.CommandResult {
+	if f.BadLookup == command {
+		return failure("slurm_load_jobs error")
+	}
+
+	lines := make([]string, 0, len(f.Jobs))
+
+	for id, job := range f.Jobs {
+		if job.Name != name || job.Vanished || (command == "squeue" && job.Forgot) {
+			continue
+		}
+
+		state := "RUNNING"
+		if job.Canceled {
+			state = "CANCELLED by 1000" //nolint:misspell // Slurm's spelling
+		}
+
+		lines = append(lines, id+"|"+state)
+	}
+
+	slices.Sort(lines)
+
+	return ok(strings.Join(lines, "\n") + "\n")
 }
 
 func (f *Cluster) squeue(id string) model.CommandResult {
