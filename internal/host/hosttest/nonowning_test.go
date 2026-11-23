@@ -87,6 +87,11 @@ func TestTestHost_NonOwningRunsTheKeptChecks(t *testing.T) {
 			m.noDisk = true
 
 			return m
+		case hosttest.UnreadableLog:
+			m := newKeptHost()
+			m.noLog = true
+
+			return m
 		case hosttest.Unreachable:
 			return unreachable{newMemHost()}
 		case hosttest.Working:

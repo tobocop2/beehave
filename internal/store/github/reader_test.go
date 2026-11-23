@@ -10,6 +10,7 @@ import (
 	"github.com/tobocop2/beehave/internal/proc/proctest"
 	"github.com/tobocop2/beehave/internal/store"
 	"github.com/tobocop2/beehave/internal/store/github"
+	"github.com/tobocop2/beehave/internal/store/storetest"
 )
 
 var _ store.Reader = (*github.Store)(nil)
@@ -32,6 +33,12 @@ func TestComments_ReadsEveryPageAndDropsTheMarkerLine(t *testing.T) {
 	got, err := readerOver(t, run).Comments(t.Context(), "3")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"first", "second"}, got)
+}
+
+func TestStore_ConformsToTheFailedReadRulesOfAReader(t *testing.T) {
+	t.Parallel()
+
+	storetest.CheckReaderFails(t, readerOver(t, proctest.Always(model.CommandResult{ExitCode: 1, Stderr: "boom"})))
 }
 
 func TestComments_RefusesAFailedReadAndAnIdThatIsNotANumber(t *testing.T) {

@@ -60,6 +60,7 @@ flowchart TD
         gotelemetry["gotelemetry<br/>turns go telemetry off in a home folder"]
         closing["closing<br/>reads the closing keywords of a text"]
         exectest["exectest<br/>writes the programs that tests start"]
+        ifacetest["ifacetest<br/>lists the methods of an interface from its source"]
     end
 
     main --> cli

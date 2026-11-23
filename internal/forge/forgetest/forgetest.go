@@ -304,7 +304,37 @@ func checkDeclared(r Reporter, got map[string]string, declared []string) {
 func CheckForgeFails(r Reporter, target forge.Forge) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(forgeCalls(target))
+}
+
+// FailedCommandMethods names every method that a failed-command check runs: forge.Forge, Syncer, Statuses, AssigneeReads, ReadyReads and Boarder.
+// A method of those interfaces that is not in the list has no failed-command case.
+// Opener is left out: its three methods only write, so no read can turn an error into an empty answer, and the adapter tests prove each write.
+func FailedCommandMethods() []string {
+	var names []string
+
+	for _, calls := range [][]call{forgeCalls(nil), syncerCalls(nil), statusCalls(nil), assigneeCalls(nil), readyCalls(nil), boarderCalls(nil)} {
+		for _, one := range calls {
+			names = append(names, one.name)
+		}
+	}
+
+	return names
+}
+
+// forgeCalls is every method of forge.Forge that takes arguments, with the arguments filled in. The closures need a target only when they run.
+func forgeCalls(target forge.Forge) []call {
+	var all []call
+
+	all = append(all, readCalls(target)...)
+	all = append(all, newCalls(target)...)
+	all = append(all, mergeCalls(target)...)
+
+	return append(all, standingCalls(target)...)
+}
+
+func readCalls(target forge.Forge) []call {
+	return []call{
 		{"Reviews", func(ctx context.Context) error { _, err := target.Reviews(ctx, Seven); return err }},
 		{"PRBody", func(ctx context.Context) error { _, err := target.PRBody(ctx, Seven); return err }},
 		{"PRView", func(ctx context.Context) error { _, err := target.PRView(ctx, Seven, "title"); return err }},
@@ -318,29 +348,24 @@ func CheckForgeFails(r Reporter, target forge.Forge) {
 		{"UnresolvedThreads", func(ctx context.Context) error { _, err := target.UnresolvedThreads(ctx, Seven); return err }},
 		{"StackID", func(ctx context.Context) error { _, err := target.StackID(ctx, Seven); return err }},
 		{"ExistingReview", func(ctx context.Context) error { _, err := target.ExistingReview(ctx, Seven); return err }},
-	})
-	checkNewFail(r, target)
-	checkMergeFail(r, target)
-	checkStandingFail(r, target)
+	}
 }
 
-// checkStandingFail runs the batched read, the title read, the annotation read and the item read on a forge whose commands all fail.
-func checkStandingFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// standingCalls are the batched read, the title read, the annotation read, the item read, the closing references and the state of an issue.
+func standingCalls(target forge.Forge) []call {
+	return []call{
 		{"Item", func(ctx context.Context) error { _, err := target.Item(ctx, Seven); return err }},
 		{"Title", func(ctx context.Context) error { _, err := target.Title(ctx, Seven); return err }},
 		{"OwnPulls", func(ctx context.Context) error { _, err := target.OwnPulls(ctx, SearchUser); return err }},
 		{"CheckNotStarted", func(ctx context.Context) error { _, err := target.CheckNotStarted(ctx, SevenRun); return err }},
-	})
+		{"ClosingRefs", func(ctx context.Context) error { _, err := target.ClosingRefs(ctx, Seven); return err }},
+		{"IssueState", func(ctx context.Context) error { _, err := target.IssueState(ctx, Seven); return err }},
+	}
 }
 
-// checkNewFail runs the overlap, the conversation and the branch methods on a forge whose commands all fail.
-func checkNewFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// newCalls are the overlap, the conversation and the branch methods.
+func newCalls(target forge.Forge) []call {
+	return []call{
 		{"Overlap", func(ctx context.Context) error {
 			_, err := target.Overlap(ctx, model.OverlapRequest{PR: "7"})
 			return err
@@ -355,21 +380,64 @@ func checkNewFail(r Reporter, target forge.Forge) {
 		{"BranchRef", func(ctx context.Context) error { _, _, err := target.BranchRef(ctx, SevenBranch); return err }},
 		{"PostComment", func(ctx context.Context) error { return target.PostComment(ctx, Seven, "hello") }},
 		{"SetDraft", func(ctx context.Context) error { return target.SetDraft(ctx, Seven, true) }},
-	})
+	}
 }
 
-// checkMergeFail runs the merge, the branch and pull request edits and the scope read on a forge whose commands all fail.
-func checkMergeFail(r Reporter, target forge.Forge) {
-	r.Helper()
-
-	check{r: r}.allFail([]call{
+// mergeCalls are the merge, the branch and pull request edits and the scope read.
+func mergeCalls(target forge.Forge) []call {
+	return []call{
 		{"MergePR", func(ctx context.Context) error { return target.MergePR(ctx, Seven, SevenTip) }},
 		{"CreateBranch", func(ctx context.Context) error { return target.CreateBranch(ctx, NewBranch, SevenTip) }},
 		{"SetBase", func(ctx context.Context) error { return target.SetBase(ctx, Seven, NewBranch) }},
 		{"SetBody", func(ctx context.Context) error { return target.SetBody(ctx, Seven, "new body") }},
 		{"TokenScopes", func(ctx context.Context) error { _, err := target.TokenScopes(ctx); return err }},
 		{"Committers", func(ctx context.Context) error { _, err := target.Committers(ctx, Seven); return err }},
-	})
+	}
+}
+
+// CheckAssigneeReadsFail runs the assignee read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckAssigneeReadsFail(r Reporter, target forge.AssigneeReads) {
+	r.Helper()
+
+	check{r: r}.allFail(assigneeCalls(target))
+}
+
+func assigneeCalls(target forge.AssigneeReads) []call {
+	return []call{
+		{"IssueAssignees", func(ctx context.Context) error { _, err := target.IssueAssignees(ctx, "", Seven); return err }},
+	}
+}
+
+// CheckReadyReadsFail runs the ready-mark read of a forge whose commands all fail. It must return an error and never an empty list.
+func CheckReadyReadsFail(r Reporter, target forge.ReadyReads) {
+	r.Helper()
+
+	check{r: r}.allFail(readyCalls(target))
+}
+
+func readyCalls(target forge.ReadyReads) []call {
+	return []call{
+		{"ReadyMarks", func(ctx context.Context) error { _, err := target.ReadyMarks(ctx, Seven); return err }},
+	}
+}
+
+// sevenCard is the card of pull request 7 on board 1, for the board calls of a forge whose commands all fail.
+func sevenCard() model.Card {
+	return model.Card{Board: 1, Number: Seven, Pull: true, Status: "Todo"}
+}
+
+// CheckBoarderFails runs both methods of a Boarder whose commands all fail. Each must return an error and never a guess.
+func CheckBoarderFails(r Reporter, target forge.Boarder) {
+	r.Helper()
+
+	check{r: r}.allFail(boarderCalls(target))
+}
+
+func boarderCalls(target forge.Boarder) []call {
+	return []call{
+		{"PlaceCard", func(ctx context.Context) error { return target.PlaceCard(ctx, sevenCard()) }},
+		{"CardStatus", func(ctx context.Context) error { _, err := target.CardStatus(ctx, sevenCard()); return err }},
+	}
 }
 
 // What the fake behind a Syncer serves: the count of commits that SyncHead has and SyncBase lacks, and the merge commit of the merge.
@@ -399,10 +467,14 @@ func CheckSyncer(r Reporter, target forge.Syncer) {
 func CheckSyncerFails(r Reporter, target forge.Syncer) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(syncerCalls(target))
+}
+
+func syncerCalls(target forge.Syncer) []call {
+	return []call{
 		{"CommitsAhead", func(ctx context.Context) error { _, err := target.CommitsAhead(ctx, SyncBase, SyncHead); return err }},
 		{"MergeBranch", func(ctx context.Context) error { _, err := target.MergeBranch(ctx, SyncBase, SyncHead); return err }},
-	})
+	}
 }
 
 // What the fake behind a Statuses serves: the branch that requires a pull request and the statuses StatusGate and StatusReview, and the commit that a status is posted on.
@@ -431,12 +503,16 @@ func CheckStatuses(r Reporter, target forge.Statuses) {
 func CheckStatusesFails(r Reporter, target forge.Statuses) {
 	r.Helper()
 
-	check{r: r}.allFail([]call{
+	check{r: r}.allFail(statusCalls(target))
+}
+
+func statusCalls(target forge.Statuses) []call {
+	return []call{
 		{"PostStatus", func(ctx context.Context) error {
 			return target.PostStatus(ctx, model.CommitStatus{SHA: StatusCommit, Context: StatusGate, State: model.StatusSuccess})
 		}},
 		{"Protection", func(ctx context.Context) error { _, err := target.Protection(ctx, StatusBranch); return err }},
-	})
+	}
 }
 
 func pick[T, V any](rows []T, field func(T) V) []V {
