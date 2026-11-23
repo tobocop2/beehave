@@ -252,7 +252,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `spawn` | `entry` | unchanged | 11: `examples/desk/eval.star`, `examples/desk/workflow.star` and 9 more |
 | `spawn` | `items` | unchanged | 11: `examples/desk/eval.star`, `examples/desk/workflow.star` and 9 more |
 | `spawn` | `name` | unchanged | 11: `examples/desk/eval.star`, `examples/desk/workflow.star` and 9 more |
-| `spawn` | `on_open` | #934: new, `"replace"` cancels the open run of an item with its children and starts the next attempt; the default `"join"` refuses an open run | 1: `examples/planner/workflow.star` |
+| `spawn` | `on_open` | #934: new, `"join"` (the default) refuses an item that has an open run, because a joined run would have no parent row, and `"replace"` cancels the open run with its children and starts the next attempt; `beehave run` with no option joins the open run | 1: `examples/planner/workflow.star` |
 | `spawn` | `retries` | #594: new, `gather` starts a child that failed again as its next attempt; the result of `gather` has `attempts` | 1: `examples/desk/eval.star` |
 | `stream` | `-` | #853: new, reads the redacted agent stream of a child run after a cursor | 1: `examples/supervisor/workflow.star` |
 | `stream` | `after` | #853: new, the `next` of an earlier call, or empty | 1: `examples/supervisor/workflow.star` |
