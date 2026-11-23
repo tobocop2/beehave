@@ -20,7 +20,7 @@ func otherBuildRun(t *testing.T) (*harness, string) {
 
 	h.opts.Modules = probeModules(oldProbe, seen)
 	file := writeFlow(t, probeFlow)
-	interrupted(t, h, file)
+	interruptedParked(t, h, file)
 	expireLease(h)
 
 	h.opts.Modules = probeModules(newProbeBehindPatch, seen)
