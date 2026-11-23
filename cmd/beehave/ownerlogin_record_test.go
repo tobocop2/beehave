@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/proc/gitexec"
 )
 
@@ -45,6 +47,18 @@ func TestReadLogin_AStateFolderThatIsAFileIsAnErrorOfTheRecord(t *testing.T) {
 	err := (&writers{}).readLogin(t.Context(), blocker)
 
 	require.ErrorContains(t, err, "read the record of the owner login: ")
+}
+
+func TestOwnerLogin_AClientCommandReadsTheRecordOfTheStateFolder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ownerLoginFile), []byte("{"), reportMode))
+	opts := flow.Options{StateDir: dir, Version: "v1", MaxConcurrent: 1, MaxReviewConcurrent: 1, Env: map[string]string{}}
+
+	_, err := flowFactory().Client(t.Context(), config.Config{}, opts)
+
+	require.ErrorContains(t, err, "read the record of the owner login")
 }
 
 func TestRecordLogin_AStateFolderThatCannotHoldTheRecordIsAnError(t *testing.T) {

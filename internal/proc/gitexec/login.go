@@ -39,20 +39,11 @@ func ReadOwnerLogin(ctx context.Context) (OwnerLogin, error) {
 			found.settings = append(found.settings, parseSettings(out.Stdout)...)
 		case out.ExitCode != 1:
 			return OwnerLogin{}, fmt.Errorf("read the credential settings of the git config of the owner (%s): git exited with code %d: %s",
-				scope, out.ExitCode, failure(out))
+				scope, out.ExitCode, strings.TrimSpace(out.Stderr))
 		}
 	}
 
 	return found, nil
-}
-
-// failure returns the reason of a failed call: the cause when git did not start, else what git printed.
-func failure(out model.CommandResult) string {
-	if out.SetupErr != nil {
-		return out.SetupErr.Error()
-	}
-
-	return strings.TrimSpace(out.Stderr)
 }
 
 // parseSettings returns the -c arguments for the entries of git config --null output: each entry is a key, a newline, the value and a NUL.
