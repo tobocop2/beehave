@@ -174,7 +174,7 @@ func (c *Client) planHandle(ctx context.Context, in ItemInput) (dbos.WorkflowHan
 		return nil, err
 	}
 
-	if err := c.moveIfOtherBuild(ctx, plan, in.Item); err != nil {
+	if err := c.moveInStart(ctx, plan, in); err != nil {
 		return nil, err
 	}
 

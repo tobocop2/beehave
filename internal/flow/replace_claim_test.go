@@ -116,7 +116,90 @@ func TestReplace_ASpawnThatReplacesAnAncestorItemIsRefusedAndCancelsNothing(t *t
 
 	require.Error(t, err, "the child ends with the refusal")
 	assert.Contains(t, err.Error(), "ancestor", "the refusal names the problem")
+
+	above, err := engine.parentOf(runID("21", 1))
+	require.NoError(t, err)
+	assert.Equal(t, runID(testItem, 1), above, "the store names the run that spawned the child")
 	assert.NotEqual(t, dbos.WorkflowStatusCancelled, replaceRuns(t, client, testItem)[0].Status.Status, "the run of the parent was not canceled")
+}
+
+func TestReplace_AMoveOfARunOfAnotherBuildInsideAReplaceDoesNotTakeTheProbeLockAgain(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	_ = h.engine(t)
+	client := h.client(t, otherBuild)
+	in := ItemInput{Item: testItem, Project: testProject, OnOpen: workflow.OnOpenReplace}
+	plan := attemptPlan{Join: testRun, Move: true}
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- client.underProbe(func() error { return client.moveInStart(t.Context(), plan, in) })
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err, "the move under the lock of the replace ends")
+	case <-time.After(20 * time.Second):
+		t.Fatal("the move waits for the lock that the replace holds")
+	}
+
+	assert.Equal(t, client.version, notCanceled(t, client).Status.ApplicationVersion, "the run moved to this build")
+}
+
+func TestReplace_AMoveForAStartWithNoOptionTakesTheProbeLockItself(t *testing.T) {
+	t.Parallel()
+
+	h, _ := otherBuildRun(t)
+	_ = h.engine(t)
+	client := h.client(t, otherBuild)
+	plan := attemptPlan{Join: testRun, Move: true}
+
+	require.NoError(t, client.moveInStart(t.Context(), plan, ItemInput{Item: testItem, Project: testProject}))
+	assert.Equal(t, client.version, notCanceled(t, client).Status.ApplicationVersion, "the run moved to this build")
+}
+
+func TestReplace_ARunThatSpawnsItsOwnItemOrAnAncestorItemIsRefused(t *testing.T) {
+	t.Parallel()
+
+	parents := map[string]string{"item-3-r1": "item-2-r1", "item-2-r1": "item-1-r1", "item-1-r1": ""}
+	lookup := func(id string) (string, error) { return parents[id], nil }
+	broken := func(string) (string, error) { return "", errors.New("store down") }
+
+	in := ItemInput{Item: "3", Parent: "item-2-r1"}
+
+	require.ErrorContains(t, refuseAncestor(ItemInput{Item: "3"}, "3", lookup), "spawns itself")
+	require.ErrorContains(t, refuseAncestor(in, "2", lookup), "ancestor", "the run directly above")
+	require.ErrorContains(t, refuseAncestor(in, "1", lookup), "ancestor", "the run two levels above")
+	require.NoError(t, refuseAncestor(in, "9", lookup), "an item that no run above executes")
+	require.NoError(t, refuseAncestor(ItemInput{Item: "3", Parent: "item-8-r1"}, "9", lookup), "a parent that the store does not know ends the walk")
+	require.ErrorContains(t, refuseAncestor(in, "9", broken), "store down", "a store that cannot be read is an error, not a pass")
+}
+
+func TestReplace_AGiveBackThatCannotReadTheRunsOfTheItemReleasesNothing(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	closed, err := OpenClient(t.Context(), h.opts, ReleaseDeps{})
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+
+	a := &attempt{id: runID(testItem, 1), in: ItemInput{Item: testItem, Project: testProject}}
+
+	require.ErrorContains(t, closed.giveOwned(t.Context(), a, "tok"), "list the runs of item 12")
+}
+
+func TestReplace_TheParentOfARunIsReadFromTheStoreAndAnUnknownRunHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+
+	parent, err := engine.parentOf("item-404-r1")
+
+	require.NoError(t, err)
+	assert.Empty(t, parent, "no run, no parent")
 }
 
 func TestReplace_TwoStartsWithNoOptionAfterTheCancelMakeOneNewRun(t *testing.T) {

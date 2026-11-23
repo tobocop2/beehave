@@ -25,10 +25,22 @@ func (c *Client) underReplace(in ItemInput, start func() error) error {
 	})
 }
 
+// moveInStart moves the run of another build for a start. A start with the policy replace holds probe.lock already, and a second take of the lock in the same process waits for ever,
+// so it moves under the lock it holds.
+func (c *Client) moveInStart(ctx context.Context, plan attemptPlan, in ItemInput) error {
+	if in.OnOpen != workflow.OnOpenReplace || !plan.Move {
+		return c.moveIfOtherBuild(ctx, plan, in.Item)
+	}
+
+	return c.moveHeld(ctx, in.Item)
+}
+
 // planReplacing plans one spawned item after the replace that the spawn call asks for.
 func (e *Engine) planReplacing(ctx context.Context, in ItemInput, id string, taken []string, policy workflow.OnOpen) (spawnedRun, error) {
-	if err := e.refuseAncestor(in, id, policy); err != nil {
-		return spawnedRun{}, err
+	if policy == workflow.OnOpenReplace {
+		if err := refuseAncestor(in, id, e.parentOf); err != nil {
+			return spawnedRun{}, err
+		}
 	}
 
 	if err := e.asClient().replaceOpen(id, in.Project, policy); err != nil { //nolint:contextcheck // the cancel and the release bound their own work, as in moveHeld
@@ -38,10 +50,11 @@ func (e *Engine) planReplacing(ctx context.Context, in ItemInput, id string, tak
 	return e.planOne(ctx, in, id, taken)
 }
 
-// refuseAncestor refuses a replace of an item that a run above the spawning run executes: the cancel would stop the run that spawns it.
-func (e *Engine) refuseAncestor(in ItemInput, id string, policy workflow.OnOpen) error {
-	if policy != workflow.OnOpenReplace {
-		return nil
+// refuseAncestor refuses a replace of the item of the spawning run, or of an item that a run above it executes: the cancel would stop the run that spawns it.
+// parentOf returns the id of the run that spawned a run, or an empty text at the top.
+func refuseAncestor(in ItemInput, id string, parentOf func(string) (string, error)) error {
+	if in.Item == id {
+		return fmt.Errorf("item %s spawns itself, and on_open=%q would cancel the run that spawns it. Leave it out of items", id, workflow.OnOpenReplace)
 	}
 
 	for above := in.Parent; above != ""; {
@@ -49,7 +62,7 @@ func (e *Engine) refuseAncestor(in ItemInput, id string, policy workflow.OnOpen)
 			return fmt.Errorf("item %s is an ancestor of item %s, and on_open=%q would cancel the run that spawns it. Leave it out of items", id, in.Item, workflow.OnOpenReplace)
 		}
 
-		next, err := e.parentOf(above)
+		next, err := parentOf(above)
 		if err != nil {
 			return fmt.Errorf("read the run %s above item %s: %w", above, in.Item, err)
 		}

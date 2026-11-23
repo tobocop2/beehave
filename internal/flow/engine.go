@@ -803,7 +803,7 @@ func (e *Engine) planAndStart(in ItemInput) (dbos.WorkflowHandle[ItemResult], er
 
 // startOrJoin does what the plan says: it moves the run of another build to this build and joins it, joins the open run, or starts the next attempt.
 func (e *Engine) startOrJoin(plan attemptPlan, in ItemInput, last run, found bool) (dbos.WorkflowHandle[ItemResult], error) {
-	if err := e.asClient().moveIfOtherBuild(e.ctx, plan, in.Item); err != nil {
+	if err := e.asClient().moveInStart(e.ctx, plan, in); err != nil {
 		return nil, err
 	}
 
