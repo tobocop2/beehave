@@ -10,7 +10,7 @@ import (
 )
 
 // ProofReads are the forge reads that prove a landing. Compare reads the status and both counts of the comparison of a commit with a branch.
-// CommitTree reads the tree id of a commit, and TreeBlobs lists the files of a tree, path to content id. A list cut short is an error.
+// CommitTree reads the tree id of a commit, and TreeBlobs lists the files of a tree, path to mode and content id. A list cut short is an error.
 type ProofReads interface {
 	Compare(ctx context.Context, commit, base string) (model.Comparison, error)
 	CommitTree(ctx context.Context, commit string) (string, error)
