@@ -72,17 +72,26 @@ func (s *session) assign(ctx context.Context) error {
 		return err
 	}
 
-	if err = s.assignOne(ctx, "pr", number); err != nil {
+	if err = s.assignAll(ctx, issues); err != nil {
+		return err
+	}
+
+	s.say(s.assigned(issues))
+
+	return nil
+}
+
+// assignAll adds the acting login to the pull request, then to each issue, and stops at the first failure.
+func (s *session) assignAll(ctx context.Context, issues []int) error {
+	if err := s.assignOne(ctx, "pr", s.request.PR); err != nil {
 		return err
 	}
 
 	for _, issue := range issues {
-		if err = s.assignOne(ctx, "issue", issue); err != nil {
+		if err := s.assignOne(ctx, "issue", issue); err != nil {
 			return err
 		}
 	}
-
-	s.say(s.assigned(issues))
 
 	return nil
 }
