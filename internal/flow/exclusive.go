@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 
@@ -358,25 +357,8 @@ func (e *Engine) hostJob(ctx dbos.Context, in ExclusiveInput) (ExclusiveOutput, 
 // so every cancel of the gate reaches it: WithCancelChildren of DBOS cancels each level before it lists the children of that level, so a job that starts
 // during the cancel is listed and canceled, or refused by the owner check of its start. A queued job never starts, and a running one stops at the next tick. The wait itself never cancels the job: a cancel by id from a wait that stopped could land after a resume
 // reopened the job, and fail the replay of the gate. A stop of the engine leaves the job for the next start.
-// A gate that is placed holds the placement lock from the read of the free slots until its job is queued, so two gates never read the same free slot.
 func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutput) error {
-	unlock := e.lockPlacement(in)
-	defer unlock()
-
-	in, err := e.place(ctx, in)
-	if err != nil {
-		return err
-	}
-
-	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
-	if err != nil {
-		return err
-	}
-
-	handle, err := e.queueJob(ctx, in, queue)
-
-	unlock()
-
+	handle, err := e.placedJob(ctx, in)
 	if err != nil {
 		return err
 	}
@@ -384,16 +366,25 @@ func (e *Engine) onHost(ctx dbos.Context, in ExclusiveInput, out *ExclusiveOutpu
 	return e.awaitJob(ctx, handle, out)
 }
 
-// lockPlacement takes the placement lock for a gate that has hosts to choose from, and returns the function that gives it back. The function is safe to call twice.
-// One engine owns one state folder, so the lock covers every gate that can read the same host slots.
-func (e *Engine) lockPlacement(in ExclusiveInput) func() {
-	if len(in.Hosts) == 0 {
-		return func() {}
+// placedJob places the gate of in when it has hosts to choose from, and queues its host job. The placement lock is held from the read of the free slots
+// until the job is queued. One engine owns one state folder, so the lock covers every gate that can read the same host slots.
+func (e *Engine) placedJob(ctx dbos.Context, in ExclusiveInput) (dbos.WorkflowHandle[ExclusiveOutput], error) {
+	if len(in.Hosts) > 0 {
+		e.placement.Lock()
+		defer e.placement.Unlock()
 	}
 
-	e.placement.Lock()
+	in, err := e.place(ctx, in)
+	if err != nil {
+		return nil, err
+	}
 
-	return sync.OnceFunc(e.placement.Unlock)
+	queue, err := e.slotQueue(model.GateClass, cmp.Or(in.SlotCount, 1))
+	if err != nil {
+		return nil, err
+	}
+
+	return e.queueJob(ctx, in, queue)
 }
 
 // runJob queues the host job of in on queue, under the HostKey of in, and waits for it. The error and the stop of the wait are those of onHost.

@@ -439,6 +439,27 @@ func TestPlaceOnHost_TheRankUsesTheCountOfTheHostAndTheDefaultWhenNoHostIsReady(
 	assert.Equal(t, placement{Host: "A", Count: 2}, chosen, "no ready host: the host and the count of the queued gate")
 }
 
+func TestPlaceOnHost_AHostWhoseCountIsRefusedEndsTheGateWithTheRefusalAndRunsNoJob(t *testing.T) {
+	t.Parallel()
+
+	refused := errors.New("the host block names no gate slots")
+	h, _ := placeHarness(t, []string{"A", "B"})
+	h.slots = func(_, host, _ string) (SlotGrant, error) {
+		if host == "B" {
+			return SlotGrant{}, refused
+		}
+
+		return SlotGrant{Host: host, Count: 1}, nil
+	}
+	gated := newPlaceGate("A")
+	engine := launchHostEngine(t, h, gated)
+
+	ended := receive(t, queueHostGate(engine, "project-one", "1", "A", ""))
+
+	require.ErrorContains(t, ended.err, refused.Error(), "the placement reads the count of every ready host")
+	assert.Zero(t, gated.started.Load(), "no build job started")
+}
+
 func TestPlaceOnHost_ARefusalOfTheCountOrTheListEndsTheRankWithTheError(t *testing.T) {
 	t.Parallel()
 

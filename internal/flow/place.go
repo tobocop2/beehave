@@ -68,33 +68,40 @@ func (e *Engine) rankHosts(ctx context.Context, in ExclusiveInput, list lister) 
 	bestFree, found := 0, false
 
 	for _, host := range in.Hosts {
-		ready, err := e.deps.Hosts.Ready(ctx, in.Project, host)
-		if err != nil {
-			e.logger.WarnContext(ctx, "the build host is skipped for this gate", "project", in.Project, "host", host, "error", err)
-
-			continue
-		}
-
-		if !ready {
-			continue
-		}
-
-		count, err := e.gateSlots(in.Project, host)
+		count, free, ok, err := e.hostFree(ctx, in, host, list)
 		if err != nil {
 			return placement{}, err
 		}
 
-		taken, err := gateJobs(list, count, host)
-		if err != nil {
-			return placement{}, err
-		}
-
-		if free := count - taken; !found || free > bestFree {
+		if ok && (!found || free > bestFree) {
 			best, bestFree, found = placement{Host: host, Count: count}, free, true
 		}
 	}
 
 	return best, nil
+}
+
+// hostFree is the gate slot count of host and the free slots of it, and whether the host is a candidate: it is ready. A host that cannot be read is no candidate.
+func (e *Engine) hostFree(ctx context.Context, in ExclusiveInput, host string, list lister) (count, free int, ok bool, err error) {
+	ready, err := e.deps.Hosts.Ready(ctx, in.Project, host)
+	if err != nil {
+		e.logger.WarnContext(ctx, "the build host is skipped for this gate", "project", in.Project, "host", host, "error", err)
+
+		return 0, 0, false, nil
+	}
+
+	if !ready {
+		return 0, 0, false, nil
+	}
+
+	count, err = e.gateSlots(in.Project, host)
+	if err != nil {
+		return 0, 0, false, err
+	}
+
+	taken, err := gateJobs(list, count, host)
+
+	return count, count - taken, err == nil, err
 }
 
 // gateJobs is the number of build jobs of the class gate that wait or run on host, read from the slot queue of that count.
