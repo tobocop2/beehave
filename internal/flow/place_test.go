@@ -127,6 +127,26 @@ func TestPlaceOnHost_AGateWaitsForThePlacementLockBeforeItReadsTheHostsAndQueues
 	assert.Equal(t, []string{"project-one/A"}, gated.where())
 }
 
+func TestPlaceOnHost_TwoGatesPlacedAtOnceTakeTwoDifferentHosts(t *testing.T) {
+	t.Parallel()
+
+	for round := range 12 {
+		engine, gated, _ := placeEngine(t, []string{"A", "B"})
+
+		first := queueHostGate(engine, fmt.Sprintf("project-one-%d", round), "1", "A", "")
+		second := queueHostGate(engine, fmt.Sprintf("project-two-%d", round), "2", "A", "")
+
+		require.Eventually(t, func() bool { return len(gated.where()) == 2 }, 8*time.Second, 50*time.Millisecond, "round %d: both gates run only when they took different hosts; ran %v", round, gated.where())
+
+		ran := gated.where()
+		assert.NotEqual(t, ran[0][len(ran[0])-1:], ran[1][len(ran[1])-1:], "round %d: both gates took one host: %v", round, ran)
+
+		close(gated.release)
+		require.NoError(t, receive(t, first).err)
+		require.NoError(t, receive(t, second).err)
+	}
+}
+
 func TestPlaceOnHost_AFullHostSendsTheNextGateToTheFreeHost(t *testing.T) {
 	t.Parallel()
 

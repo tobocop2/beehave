@@ -306,3 +306,4 @@ The key `build_host` is the one declaration of the hosts of a project: a name, o
 - `"local"` is the only name of a project that builds here. `host_up(host = "local")` starts nothing there and records `local`, and a cluster name is refused.
 - If the project file no longer declares the recorded cluster, the gate, the command and `host_teardown` refuse it with an error that lists the declared hosts.
 - A host that `host_up` recorded never changes for the run. Only a run that recorded none has its gates placed.
+- The placement lock covers only the gates that are placed. A gate on a host that `host_up` recorded and a `command` job queue into the same host partition without the lock, so a free slot that a placed gate read can be taken before its job queues.
