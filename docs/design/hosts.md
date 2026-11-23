@@ -20,6 +20,12 @@ The config names three providers, and each one runs:
 | `ssh` | A machine of the owner | No |
 | `slurm` | A Slurm cluster of the owner | No |
 
+### The job key
+
+A `Submit` with a key returns the job that the host already holds for that key, and starts no second job. The engine builds the key from the run id and the step id. A `command` call with retries adds the number of the try, so each try has its own key and a retry of a failed job starts a new job.
+
+A step that runs again after a crash counts its tries from 1 again. Slurm keeps ended jobs in accounting, so the re-run finds the job of the try that the crash cut short. The ssh provider releases the unit of a try in `Wait`. A crash during try 2 therefore runs try 1 again, because its unit is gone. The base had the same duplicate on any crash. The follow-up issue tracks it.
+
 ### Shared packages and imports
 
 - The ssh command line and the text of a failed command are in `host/link`.
