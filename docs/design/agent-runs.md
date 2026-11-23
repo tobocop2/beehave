@@ -288,7 +288,7 @@ The setting `allow_paths` of an `agent` step is a list of globs, for a lane that
 At the start, the step records in the recorded `/start` step:
 
 - the commit at its start;
-- a snapshot of the untracked and ignored entries already in the folder. An untracked file carries its size and modification time. An ignored directory is one entry.
+- a snapshot of the untracked and ignored files already in the folder. Each file carries its size and modification time. A folder of a known build cache (the names are in `isBuildCache` in `internal/flow/pathscope.go`) is one entry, so a step may write in it.
 
 A resume keeps the snapshot of the first start.
 
@@ -296,9 +296,9 @@ After the run, the step names each path that the item folder changed since then:
 
 - committed changes;
 - uncommitted changes of tracked files;
-- every new untracked or ignored entry;
-- every untracked or ignored entry that is gone;
-- every untracked file whose size or time changed.
+- every new untracked or ignored file;
+- every untracked or ignored file that is gone;
+- every untracked or ignored file whose size or time changed.
 
 A file that was already there and is unchanged does not fail the step. The diff runs with no rename detection, so a rename lists the old path as well as the new path. Every path is relative to the root of the repository, also when the item folder is a subdirectory.
 
@@ -310,7 +310,9 @@ A step with no `allow_paths` records no extra step, so no module version moves.
 
 Not seen:
 
-- a write inside a directory that was already ignored at the start;
+- a write inside a known build cache folder that was already there at the start;
+- a rewrite of a file that restores its size and its modification time;
+- a write outside the repository, such as a sibling checkout; the sandbox is the layer for that (see the sandbox design);
 - an untracked file inside a submodule;
 - a write outside the tree through a symbolic link inside the globs; git cannot see that write.
 
