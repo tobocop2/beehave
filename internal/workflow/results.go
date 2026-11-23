@@ -19,6 +19,7 @@ const (
 	gateName    = "gate"
 
 	earlierCallsName = "earlier_calls"
+	patchedName      = "patched"
 	writeName        = "write"
 
 	hostTeardownName     = "host_teardown"

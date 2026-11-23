@@ -84,6 +84,11 @@ func TestCheck_ReportsEachBuiltinCallThatBreaksItsSignature(t *testing.T) {
 		{"sleep text that is no duration", `sleep("soon")`, "duration is \"soon\", which is not a duration"},
 		{"sleep number for text", `sleep(5)`, "duration must be a text, not an int."},
 		{"sleep unknown keyword", `sleep("1s", until = "x")`, "sleep takes no argument until"},
+		{"patched missing name", `patched()`, "patched needs the `name` keyword"},
+		{"patched empty name", `patched("")`, "name must not be empty"},
+		{"patched name with a colon", `patched("a:b")`, `name "a:b" holds a character other than a letter, a digit, a dot, a dash or an underscore`},
+		{"patched number for name", `patched(3)`, "name must be a text, not an int."},
+		{"patched unknown keyword", `patched("a", version = 2)`, "patched takes no argument version"},
 	}
 
 	for _, tc := range cases {

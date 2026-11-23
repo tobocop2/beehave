@@ -95,7 +95,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `env` | `-` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
 | `env` | `default` | unchanged | 13: `examples/approvals/policy.star`, `examples/desk/eval.star` and 11 more |
 | `env` | `name` | unchanged | 20: `examples/approvals/audit.star`, `examples/approvals/policy.star` and 18 more |
-| `facts` | `-` | unchanged | 3: `examples/remediation/workflow.star`, `examples/ticket-pipeline/backfill.star` and 1 more |
+| `facts` | `-` | unchanged | 4: `examples/local/workflow.star`, `examples/remediation/workflow.star` and 2 more |
 | `first_of` | `-` | #591: new, waits for the first of a run that ended, a message and a timeout | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
 | `first_of` | `name` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
 | `first_of` | `runs` | #591: new | 4: `examples/planner/workflow.star`, `examples/queue/workflow.star` and 2 more |
@@ -166,6 +166,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `-` | #586: new, lists the changed paths outside an allowed set | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `allow` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
+| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
+| `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `integration` | unchanged | 1: `examples/remediation/workflow.star` |

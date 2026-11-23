@@ -25,7 +25,7 @@ The file can also define `def finish(item):`.
 
 ### Builtins
 
-The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
+The engine predeclares `agent`, `board_card`, `cancel`, `command`, `earlier_calls`, `env`, `facts`, `first_of`, `gate`, `gather`, `host_teardown`, `host_up`, `integration_pull`, `item_comment`, `item_create`, `item_read`, `item_status`, `merge`, `now`, `patched`, `pr_comment`, `pr_history`, `pr_open`, `pr_state`, `pr_take`, `preflight`, `progress`, `publish`, `push`, `queue`, `recv`, `round_cut`, `round_land`, `round_sync`, `sandbox`, `send`, `sleep`, `spawn`, `stream`, `wait`, `write`, `struct` and `json`. `workflow.Builtins` is the one list of these names.
 
 `json` is the `json` module of the Starlark library (`json.decode`, `json.encode`, `json.indent`). It is pure, so it records no step.
 
@@ -161,6 +161,15 @@ At the start of a run, the engine pins the SHA-256 of the workflow file and of e
 - A run of another build is refused, as `beehave resume` refuses it. Give `--on-this-build` and `--on-this-file` together to move the run and put it on the file in one move.
 - A run that is open is cancelled and reopened under `probe.lock`, as `--on-this-build` does it. The claim lease of the run must have ended.
 - A run that a changed file refused names the command in its error.
+
+#### Change a step before the reached step: `patched`
+
+`patched("<name>")` lets an author change a step before the step that an open run reached, so the run replays after `--on-this-file` and does not fail. The call returns true for a run that has not passed the call, and false for a run that has. Put the new steps in the true branch and keep the old steps in the false branch.
+
+- A new run, and an open run that did not reach the call, take the true branch. The run records the marker `DBOS.patch-<name>` before the new steps. The dry run of `beehave check workflow` shows it as a row.
+- A run that passed the call takes the false branch and replays its recorded steps with no failure.
+- A name is letters, digits, dots, dashes and underscores. One run calls each name once, and a second call with the same name is refused by name.
+- Keep the old branch while any run that passed the call can replay. See `durable-loop.md`, "Change a builtin that old runs replay", for when the branch goes. A call that stays costs one recorded step, so remove it only when no open, failed or cancelled run recorded its marker. No builtin wraps `DeprecatePatch`: a call that stays is harmless, and the removal is rare.
 
 #### Pinned scripts
 

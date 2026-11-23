@@ -10,7 +10,13 @@ def main(item):
     # Every agent step runs in the sandbox with no network: the steps read and edit the work folder, and the gate runs the tests.
     plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", edits = False, sandbox = sandbox(), inputs = {"item": item})
     capped(plan, "plan", item)
-    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", sandbox = sandbox(), inputs = {"item": item, "plan": plan.text})
+
+    # The implement step sits behind patched. The true branch is the new code: it reads the facts and gives the implement step the base branch as the input base.
+    # A new run, and an open run that did not reach this call, take it. The false branch is the old code, unchanged: a run that already recorded the implement step replays it.
+    if patched("implement-base"):
+        implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", sandbox = sandbox(), inputs = {"item": item, "plan": plan.text, "base": facts().base_branch})
+    else:
+        implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", sandbox = sandbox(), inputs = {"item": item, "plan": plan.text})
     capped(implement, "implement", item)
 
     # A pass is one gate, one review and, when the head is not approved, one fix. The loop stops at the first approved head.

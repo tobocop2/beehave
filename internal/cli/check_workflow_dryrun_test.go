@@ -298,6 +298,20 @@ func TestCheckWorkflowDryRun_AWorkflowThatRefusesARunnerWithNoSkillLineEndsWithE
 	require.Equal(t, 0, code, stdout.String())
 }
 
+func TestCheckWorkflowDryRun_ACallOfPatchedShowsItsPatchRowAndTakesTheNewBranch(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeConfig(t, dir, "workflow.star", "def main(item):\n    if patched(\"greeting\"):\n        facts()\n    else:\n        now()\n")
+
+	code, stdout, stderr := runDry(t, map[string]string{}, filepath.Join(dir, "workflow.star"))
+
+	require.Equal(t, 0, code, stdout+stderr)
+	assert.Regexp(t, `step \d+ DBOS\.patch-greeting: `, stdout, "the dry run names the patch in a row of its own")
+	assert.Contains(t, stdout, "facts#1", "a new run takes the new branch")
+	assert.NotContains(t, stdout, "now#1")
+}
+
 func TestCheckWorkflowDryRun_AFirstOfOverASpawnedRunReturnsTheRunThatEnded(t *testing.T) {
 	t.Parallel()
 
