@@ -765,6 +765,7 @@ A line of the list also shows these facts when the run has them. Each is a tab-s
 | `waits for a message on topic <topic> until <time>` | The open run is in a `recv` call. The time is the end of the wait, with the time left, as for `answer by`. |
 | `waits for the agent output of run <run> until <time>` | The open run is in a `stream` call that reads that child run. The time is the end of the wait, with the time left. |
 | `gate pass at <head>` or `gate fail at <head>` | The newest gate result and the head it judged. |
+| `scope check off: the project has no forge` | The run could not fix a scope because its project has no forge, so no merge of the run checks for a new closing issue. |
 | The latest label, such as `review 3/24` | The `label` of the latest agent call that has one. The review loop of the library labels its reviews with the count against `rounds * (MAX_INNER + 1)` and its fixes with the count against `rounds * MAX_INNER`. |
 
 Every value is read from the step records, the events and the options of the client. The store has no table for it. The deadline of a `wait` with a `timeout` is the output of the `DBOS.sleep` record that the receive of the wait writes before it waits. Status shows it only while the question is open.
