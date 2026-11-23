@@ -262,11 +262,12 @@ A project selects a host with `build_host` and the `host` block.
 - `lost_after` is a duration above zero with the default `"5m"`. It is the time without an answered read of a job before the wait for the job ends as lost. It is not `lost_job_wait`: that key is the time the engine waits for a proof after the loss. It is allowed for all three providers.
 - `stop_limit` is a duration above zero with the default `"5m"`. It is the time that a job may take to end after a cancel. When the job is not final by then, the cancel ends with an error. It is allowed for all three providers.
 - A value of `lost_after` or `stop_limit` that is zero, negative or not a duration is refused, and the refusal names the key.
-- `slots` is an optional dict from a slot class name to a count, such as `{"mutation": 1, "bench": 2}`. See the next section.
+- `slots` is an optional dict from a slot class name to a count, such as `{"mutation": 1, "bench": 2}`. See the next section. The class name `gate` is refused: use `gate_slots`.
+- `gate_slots` is the number of gates that the host builds at once. It is a whole number from 1 to 1048576, with the default 1. A value outside the range, or one that is not a whole number, is refused, and the refusal names the key. Two projects that declare one host must give the same value.
 
 #### Slot classes
 
-A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one state folder, which has one `dbos.db`, like the `hosts` queue. Two beehave processes with separate state folders each run the count.
+A slot class limits the host jobs of one kind. The engine runs at most the stated count of jobs of one class on one host at once. It knows a class by its name only. The limit holds for one state folder, which has one `dbos.db`, like the gate queue. Two beehave processes with separate state folders each run the count.
 
 - A class name holds letters, digits, dot, underscore and hyphen, and starts with a letter or a digit.
 - A count is a whole number from 1 to 1048576. A count below 1, or a value that is not a whole number, is refused, and the refusal names the class.
@@ -277,7 +278,8 @@ A slot class limits the host jobs of one kind. The engine runs at most the state
 - A job that was queued by a build before the count was recorded has no count in its input. A resume cannot put it back in a queue, and it fails with an error that names the run, the step and the job. Run the item again from its start. Before an upgrade, let the slot queues drain.
 - A call names a class that the `host` block of its project lists. Any other class is refused when the workflow calls it, and the refusal names the class and the host.
 - Projects share a host by name. If two projects declare the same host and give different counts for one class, the config load is refused, and the refusal names the host, the class, both projects and both counts. Equal counts are fine.
-- A call with no `slots` has no limit from the engine. A gate keeps its own rule: one build job for each host.
+- A call with no `slots` has no limit from the engine. A gate uses the reserved class `gate` with the count `gate_slots`, on the queue `slots:gate:<count>`.
+- A gate that was queued before an upgrade waits on the old queue `hosts`. That queue is gone. Let the gates drain before an upgrade, or run the item again from its start.
 
 `cmd/beehave/adapters.go` picks the provider from its host block by `provider`, like the tracker and the forge. `beehave check config` builds the host of each project.
 
