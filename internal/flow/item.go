@@ -262,23 +262,22 @@ func (e *Engine) release(ctx dbos.Context, in ItemInput, owner string) error {
 
 // begin claims the item. A login in the input, from a spawn or the queue, is the login of every agent step that names no runner.
 // A run with no login in its input picks one at its first agent step, and a resumed run replays that pick.
-// The claim waits for the release of an earlier attempt of the item first, as a replace starts the next attempt before the engine released the one it canceled.
 func (e *Engine) begin(ctx dbos.Context, in ItemInput) (login, owner string, took time.Time, err error) {
-	if err = e.awaitRelease(ctx, in.Item, workflowID(ctx)); err != nil {
-		return "", "", time.Time{}, err
-	}
-
 	owner, took, err = e.claim(ctx, in)
 
 	return in.Login, owner, took, err
 }
 
-// claim takes the claim of an item and returns its owner token and the time the take began. A resumed run replays this step with the token of the old claim,
-// so the token that beehave resume saved for the run wins. A replayed step makes no take, so its time is zero.
+// claim takes the claim of an item and returns its owner token and the time the take began. A resumed or forked run replays this step, makes no take and waits for nothing, so its time is zero.
+// The take waits for the release of an earlier attempt of the item first, as a replace starts the next attempt before the engine released the one it canceled.
 func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error) {
 	var took time.Time
 
 	recorded, err := runStep(e, ctx, string(model.StepClaim), func(c context.Context) (string, error) {
+		if err := e.awaitRelease(c, in.Item, workflowID(ctx)); err != nil {
+			return "", err
+		}
+
 		took = e.deps.Clock.now()
 
 		return e.deps.Lifecycle.Claim(c, in.Project, in.Item)
@@ -287,14 +286,21 @@ func (e *Engine) claim(ctx dbos.Context, in ItemInput) (string, time.Time, error
 		return "", time.Time{}, fmt.Errorf("%s of item %s: %w", model.StepClaim, in.Item, err)
 	}
 
+	owner, err := e.ownerOf(ctx, in, recorded)
+
+	return owner, took, err
+}
+
+// ownerOf returns the token of the claim of the run: the token that beehave resume or beehave fork saved for it, or else the recorded one. It then shows the other orchestrators of the project.
+func (e *Engine) ownerOf(ctx dbos.Context, in ItemInput, recorded string) (string, error) {
 	saved, err := savedOwner(e.dir, workflowID(ctx))
 	if err != nil {
-		return "", time.Time{}, err
+		return "", err
 	}
 
 	owner := cmp.Or(saved, recorded)
 
-	return owner, took, e.listOthers(ctx, in, owner)
+	return owner, e.listOthers(ctx, in, owner)
 }
 
 // listOthers reads the other orchestrators that hold items in the project and shows them, so status names them. The read is a recorded step.
