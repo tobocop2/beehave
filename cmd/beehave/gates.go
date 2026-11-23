@@ -13,6 +13,7 @@ import (
 	"github.com/tobocop2/beehave/internal/flow"
 	"github.com/tobocop2/beehave/internal/forge"
 	"github.com/tobocop2/beehave/internal/gate"
+	"github.com/tobocop2/beehave/internal/host"
 	"github.com/tobocop2/beehave/internal/model"
 	"github.com/tobocop2/beehave/internal/proc"
 )
@@ -136,7 +137,7 @@ func (g projectGate) Run(ctx context.Context, project, item, cluster string, job
 		return flow.GateResult{}, err
 	}
 
-	request.Resume, request.ResumeHead, request.Plan = model.JobID(job.ID), job.Head, job.Plan
+	request.Resume, request.ResumeHead, request.Plan, request.JobKey = model.JobID(job.ID), job.Head, job.Plan, host.JobKey(ctx)
 
 	// A plan that holds no pin check was made by no Submit, so this Run reads the pin file and reads the base commit for it. Any other plan holds the commit.
 	if job.Plan.Pins == nil {
@@ -176,7 +177,7 @@ func (g projectGate) Submit(ctx context.Context, project, item, cluster, base, p
 		return flow.GateJob{}, err
 	}
 
-	request.Slot = slot
+	request.Slot, request.JobKey = slot, host.JobKey(ctx)
 
 	job, err := g.gate(project).Submit(ctx, request)
 	if err != nil {
