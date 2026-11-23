@@ -156,6 +156,7 @@ func newAgentFixture(output string, result agent.Result) *agentFixture {
 		trees:   treeAt("/work/tree"),
 		adapter: func(kind model.Agent) agent.Adapter { f.kind = kind; return lineAdapter{} },
 		env:     map[string]string{"PATH": "/bin"},
+		modules: func(context.Context, string, string) (string, string) { return "", "" },
 		run: func(_ context.Context, spec agent.Spec) agent.Result {
 			*f.spec = spec
 			var lines strings.Builder
