@@ -39,7 +39,7 @@ func (g Gate) Key(ctx context.Context, request Request) (Key, error) {
 	}
 
 	project := request.Project
-	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, project.BuildHost, project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
+	key.ID = digest(project.Name, project.Repo, host(project), state.Tree, project.Gate, fmt.Sprintf("%q", project.GateSteps), project.TestReport, hostName(project), project.PinFile, fmt.Sprintf("%q", project.GateProgram), pinned, request.anchor())
 
 	return key, nil
 }
@@ -59,6 +59,16 @@ func (g Gate) pinned(ctx context.Context, request Request) (string, bool) {
 // host is the whole host definition of the project, so that two projects with the same host name but another machine never share a key.
 func host(project model.Project) string {
 	return fmt.Sprintf("%+v", project.Host)
+}
+
+// hostName is the build host that the key holds: the name of the host, or for a project that declares more than one host the whole list.
+// The engine places a gate on any declared host, so a pass on one host stands for the same tree on another.
+func hostName(project model.Project) string {
+	if len(project.BuildHosts) > 1 {
+		return fmt.Sprintf("%q", project.BuildHosts)
+	}
+
+	return project.BuildHost
 }
 
 // tools reads the version that each pinned tool reports on this machine, which is what the pin check of a local gate reads.

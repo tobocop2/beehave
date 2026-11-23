@@ -126,7 +126,7 @@ func TestProjectGate_AWorkflowThatNamesTheLocalHostWorksOnAProjectThatBuildsHere
 	require.NoError(t, err, "BUILD_HOST=local is the host of a project with no cluster")
 }
 
-func TestProjectGate_TheKeyOfAGateNamesTheHostTheRunChose(t *testing.T) {
+func TestProjectGate_TheKeyOfAGateIsTheSameOnEveryHostTheProjectDeclares(t *testing.T) {
 	t.Parallel()
 
 	gate := projectGate{
@@ -144,7 +144,17 @@ func TestProjectGate_TheKeyOfAGateNamesTheHostTheRunChose(t *testing.T) {
 	onB, err := gate.Key(t.Context(), "p", "1", "gpu-b", "", "")
 	require.NoError(t, err)
 
-	assert.NotEqual(t, onDefault.ID, onB.ID, "a pass on one host never stands in for a gate on another")
+	assert.Equal(t, onDefault.ID, onB.ID, "the project declares both hosts, so a pass on one host stands for the same tree on the other")
+
+	other := twoHostProject()
+	project := other["p"]
+	project.BuildHosts = []string{"gpu", "gpu-c"}
+	other["p"] = project
+
+	onOtherList, err := projectGate{projects: other, programs: gate.programs, forge: gate.forge}.Key(t.Context(), "p", "1", "", "", "")
+	require.NoError(t, err)
+
+	assert.NotEqual(t, onDefault.ID, onOtherList.ID, "a project that declares other hosts never shares a key")
 }
 
 func TestPrograms_ACommandOnTheHostRunsOnTheHostThatTheRunChose(t *testing.T) {
