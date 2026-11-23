@@ -19,6 +19,9 @@ import (
 // scopeStep is the recorded step that keeps the scope of a pull request. The first gate of an item fixes the scope. A merge checks it for each member.
 const scopeStep = "scope"
 
+// keptStep is the kind of the recorded step that keeps an owner line: the issues that the owner kept for one member.
+const keptStep = "kept"
+
 // errScopeRefused ends an item whose pull request closes an issue that is new since the first review and has no owner line.
 var errScopeRefused = errors.New("the pull request closes an issue that is new since its first review")
 
@@ -157,6 +160,7 @@ func sortedIssues(numbers []int) []int {
 type scopeCheckRead struct {
 	Fresh []int `json:"fresh"`
 	Then  []int `json:"then"`
+	Kept  []int `json:"kept"`
 }
 
 // firstReview returns the issues of the first review of the item, and false when the item has none.
@@ -179,51 +183,65 @@ func (s *script) freshIssues(ctx context.Context, item string) (scopeCheckRead, 
 		return scopeCheckRead{Fresh: []int{}, Then: []int{}}, err
 	}
 
-	read, err := s.readClosing(ctx, item)
+	read, err := s.readPull(ctx, item)
 	if err != nil {
 		return scopeCheckRead{}, err
 	}
 
-	if !read.Found {
-		return scopeCheckRead{}, fmt.Errorf("read the issues that the pull request of item %s closes: the item has no pull request", item)
+	kept, err := s.keptOf(item)
+	if err != nil {
+		return scopeCheckRead{}, err
 	}
 
 	fresh := slices.DeleteFunc(slices.Clone(read.Issues), func(number int) bool {
-		return slices.Contains(baseline, number) || slices.Contains(s.owned[item], number)
+		return slices.Contains(baseline, number) || slices.Contains(kept, number)
 	})
 
-	return scopeCheckRead{Fresh: fresh, Then: baseline}, nil
+	return scopeCheckRead{Fresh: fresh, Then: baseline, Kept: kept}, nil
+}
+
+// readPull reads the closing issues of the pull request of the item. A pull request that is gone is an error.
+func (s *script) readPull(ctx context.Context, item string) (scopeRead, error) {
+	read, err := s.readClosing(ctx, item)
+	if err == nil && !read.Found {
+		err = fmt.Errorf("read the issues that the pull request of item %s closes: the item has no pull request", item)
+	}
+
+	return read, err
 }
 
 // holdScope runs before the merge of a member. A new issue makes the run ask the owner, and the answer is the owner line: it must name each new issue.
-// It returns the reason to refuse the member, or an empty text when the member may merge. The read is a recorded step of the member.
-func (b *batchBase) holdScope(m batch.Member) (string, error) {
+// It returns the reason to refuse the member, or an empty text when the member may merge, with the issues that the owner kept for the member. The read is a recorded step of the member.
+func (b *batchBase) holdScope(m batch.Member) (refusal string, kept []int, err error) {
 	read, err := b.recordedFresh(m)
 	if err != nil {
-		return "", fmt.Errorf("scope check of item %s: %w", m.Item, err)
+		return "", nil, fmt.Errorf("scope check of item %s: %w", m.Item, err)
 	}
 
 	if len(read.Fresh) == 0 {
-		return "", nil
+		return "", read.Kept, nil
 	}
 
 	answer, err := b.s.waitOwner(b.scopeQuestion(m.Item, read.Fresh, read.Then))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return b.judge(m.Item, read.Fresh, answer), nil
+	refusal, err = b.judge(m.Item, read.Fresh, answer)
+	if refusal != "" || err != nil {
+		return refusal, nil, err
+	}
+
+	return "", sortedIssues(append(slices.Clone(read.Kept), read.Fresh...)), nil
 }
 
-// judge reads the answer of the owner. When it keeps every new issue of the member, judge remembers them and returns no reason. Otherwise it returns the reason to reject the member.
-func (b *batchBase) judge(item string, fresh []int, answer string) string {
+// judge reads the answer of the owner. When it keeps every new issue of the member, judge records them and returns no reason. Otherwise it returns the reason to reject the member.
+func (b *batchBase) judge(item string, fresh []int, answer string) (string, error) {
 	if missing := unnamed(fresh, answer); len(missing) > 0 {
-		return b.scopeRefusal(item, missing)
+		return b.scopeRefusal(item, missing), nil
 	}
 
-	b.keep(item, fresh)
-
-	return ""
+	return "", b.keep(item, fresh)
 }
 
 // unnamed returns the issues that the answer of the owner does not keep. An answer that is not the keep form keeps none.
@@ -257,13 +275,71 @@ func keepList(numbers []int) string {
 	return strings.Join(strings.Fields(issueList(numbers)), ", ")
 }
 
-// keep remembers the issues that the owner kept for a member, so a later merge call of the same member in this run asks no second question.
-func (b *batchBase) keep(item string, issues []int) {
-	if b.s.owned == nil {
-		b.s.owned = map[string][]int{}
+// keep records the issues that the owner kept for a member as a step of the run. A later merge call of the member, in this run or in a new run of the item, asks no second question.
+func (b *batchBase) keep(item string, issues []int) error {
+	_, err := runStep(b.s.e, b.s.ctx, b.stepName(keptStep, item, 1), func(context.Context) (keptRead, error) {
+		return keptRead{Item: item, Issues: issues}, nil
+	}, dbos.WithStepMaxRetries(stepRetries))
+	if err != nil {
+		return fmt.Errorf("record the issues kept for item %s: %w", item, err)
 	}
 
-	b.s.owned[item] = append(b.s.owned[item], issues...)
+	return nil
+}
+
+// keptRead is what a kept step records: the member and the issues that the owner kept for it.
+type keptRead struct {
+	Item   string `json:"item"`
+	Issues []int  `json:"issues"`
+}
+
+// keptOf returns the issues that the owner kept for the member in this run and in the earlier runs of the item, sorted and without a repeat.
+func (s *script) keptOf(member string) ([]int, error) {
+	ids, err := s.earlierRuns(s.in.Item)
+	if err != nil {
+		return nil, err
+	}
+
+	kept := []int{}
+
+	var failed error
+
+	for _, id := range append(ids, workflowID(s.ctx)) {
+		recorded, err := recordedKept(s.e.ctx, id, member)
+		kept, failed = append(kept, recorded...), errors.Join(failed, err)
+	}
+
+	return sortedIssues(kept), failed
+}
+
+// recordedKept returns the issues that the kept steps of a run recorded for the member.
+func recordedKept(ctx dbos.Context, id, member string) ([]int, error) {
+	steps, err := dbos.GetWorkflowSteps(ctx, id, dbos.WithStepsLoadOutput(true))
+	if err != nil {
+		return nil, fmt.Errorf("read the steps of %s: %w", id, err)
+	}
+
+	var kept []int
+
+	for _, step := range steps {
+		if read := keptOutput(step); read.Item == member {
+			kept = append(kept, read.Issues...)
+		}
+	}
+
+	return kept, nil
+}
+
+// keptOutput returns what a kept step recorded, or an empty read for any other step and for a step that failed.
+func keptOutput(step dbos.StepInfo) keptRead {
+	text, isText := step.Output.(string)
+
+	var read keptRead
+	if !isText || !strings.Contains(step.StepName, "."+keptStep+"#") || step.Error != nil || json.Unmarshal([]byte(text), &read) != nil {
+		return keptRead{}
+	}
+
+	return read
 }
 
 // keptIssues returns the issue numbers of an owner line in the form "keep #N[, #N ...]". Any other text, or a number too large for int, gives false.
