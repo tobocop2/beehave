@@ -166,6 +166,8 @@ The Change column says how the pair differs from the contract that the five piec
 | `paths_outside` | `-` | #586: new, lists the changed paths outside an allowed set | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `allow` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
 | `paths_outside` | `paths` | #586: new | 1: `internal/workflow/lib/review_fix.star` |
+| `patched` | `-` | #933: new, true for a run that has not passed the call and false for a run that has, so a change before the reached step of an open run replays | 1: `examples/local/workflow.star` |
+| `patched` | `name` | #933: new | 1: `examples/local/workflow.star` |
 | `pr_comment` | `-` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `forbid_text` | unchanged | 1: `examples/remediation/workflow.star` |
 | `pr_comment` | `integration` | unchanged | 1: `examples/remediation/workflow.star` |

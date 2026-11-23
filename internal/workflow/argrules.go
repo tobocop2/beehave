@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 
 	"go.starlark.net/starlark"
@@ -98,6 +99,29 @@ func AgentSocketRead(name string) error {
 	}
 
 	return fmt.Errorf("env cannot read `%s`. No step gets the SSH agent of the owner. Remove the call", name)
+}
+
+// patchNamePattern is the text of a patch name: the name ends in the step name DBOS.patch-<name>, so it holds no character that a step name uses as a separator.
+var patchNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]*$`)
+
+// CheckPatchName refuses a patch name that is empty or holds a character other than a letter, a digit, a dot, a dash or an underscore.
+func CheckPatchName(name string) error {
+	if err := NotEmpty(nameKeyword, name); err != nil {
+		return err
+	}
+
+	if !patchNamePattern.MatchString(name) {
+		return fmt.Errorf("name %q holds a character other than a letter, a digit, a dot, a dash or an underscore", name)
+	}
+
+	return nil
+}
+
+// patchNameRule is the rule of the name argument of the patched builtin.
+func patchNameRule(v starlark.Value) error {
+	name, _ := starlark.AsString(v) // the unpack check has refused a value that is not text
+
+	return CheckPatchName(name)
 }
 
 // envReadRule is the rule of the name argument of the env builtin.

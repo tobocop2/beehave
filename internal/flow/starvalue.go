@@ -68,6 +68,9 @@ type script struct {
 	// batches holds the names of the merge calls of this run, so that a name is never used twice.
 	batches map[string]bool
 
+	// patches holds the names of the patched calls of this run, so that a name is never used twice.
+	patches map[string]bool
+
 	// undos are the finished writes of this run that name an undo, in the order of the writes. A failed run runs them in reverse.
 	undos []undoStep
 

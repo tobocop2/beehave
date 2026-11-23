@@ -8,9 +8,13 @@ def capped(step, name, item):
 
 def main(item):
     # Every agent step runs in the sandbox with no network: the steps read and edit the work folder, and the gate runs the tests.
-    plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", edits = False, sandbox = sandbox(), inputs = {"item": item})
-    capped(plan, "plan", item)
-    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", sandbox = sandbox(), inputs = {"item": item, "plan": plan.text})
+    # The plan step sits behind patched. A run that already passed this call before the plan step existed goes on without it, and every other run plans first.
+    plan_text = ""
+    if patched("plan-first"):
+        plan = agent(name = "plan", prompt = "prompts/plan.md", model = "sonnet", edits = False, sandbox = sandbox(), inputs = {"item": item})
+        capped(plan, "plan", item)
+        plan_text = plan.text
+    implement = agent(name = "implement", prompt = "prompts/implement.md", model = "sonnet", sandbox = sandbox(), inputs = {"item": item, "plan": plan_text})
     capped(implement, "implement", item)
 
     # A pass is one gate, one review and, when the head is not approved, one fix. The loop stops at the first approved head.
