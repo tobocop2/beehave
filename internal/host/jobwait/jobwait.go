@@ -6,7 +6,9 @@ package jobwait
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path"
@@ -32,6 +34,17 @@ type Job struct {
 	ID     string
 	Nonce  string
 	Folder string
+}
+
+// keyDigestBytes is the number of bytes of the key digest. The digest is twice as many hex digits.
+const keyDigestBytes = 16
+
+// KeyDigest is a name of hex digits that depends on key and on nothing else. A provider names the job of a keyed Submit with it,
+// so the same key finds the same job.
+func KeyDigest(key string) string {
+	sum := sha256.Sum256([]byte(key))
+
+	return hex.EncodeToString(sum[:keyDigestBytes])
 }
 
 // folderMark starts the folder in the text of a job id. The folder is written in URL-safe base64, which holds no tilde.

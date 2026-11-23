@@ -896,7 +896,7 @@ func (p programs) onHost(ctx context.Context, request flow.CommandRequest) (flow
 		return flow.CommandOutput{}, err
 	}
 
-	id, err := h.Submit(ctx, model.JobSpec{Name: "beehave-" + request.Item, Command: shellLine(request.Run), Slot: model.Slot{Class: request.SlotClass, Count: request.SlotCount}})
+	id, err := h.Submit(ctx, model.JobSpec{Name: "beehave-" + request.Item, Command: shellLine(request.Run), Key: host.JobKey(ctx), Slot: model.Slot{Class: request.SlotClass, Count: request.SlotCount}})
 	if err != nil {
 		return flow.CommandOutput{}, fmt.Errorf("submit the command of item %s to the host: %w", request.Item, err)
 	}
