@@ -150,7 +150,7 @@ The Change column says how the pair differs from the contract that the five piec
 | `item_status` | `id` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
 | `item_status` | `name` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
 | `item_status` | `status` | unchanged | 13: `examples/approvals/audit.star`, `examples/approvals/workflow.star` and 11 more |
-| `json` | `-` | unchanged | 13: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 11 more |
+| `json` | `-` | unchanged | 14: `examples/approvals/workflow.star`, `examples/desk/clerk.star` and 12 more |
 | `merge` | `-` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `base` | #585: from `batch_merge` | 2: `examples/remediation/workflow.star`, `examples/swarm/workflow.star` |
 | `merge` | `forbid_text` | #585: from `batch_merge` | 1: `examples/remediation/workflow.star` |
