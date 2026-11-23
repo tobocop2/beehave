@@ -3,6 +3,7 @@
 package workflow
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -62,7 +63,7 @@ func resolveModule(module string) (string, error) {
 // readFile reads a pinned file by its name: from the folder, or from the binary.
 func readFile(dir, name string) ([]byte, error) {
 	if abs, ok := strings.CutPrefix(name, outsidePrefix); ok {
-		return os.ReadFile(abs)
+		return fs.ReadFile(os.DirFS(filepath.Dir(abs)), filepath.Base(abs))
 	}
 
 	if script, ok := strings.CutPrefix(name, scriptPrefix); ok {
@@ -119,28 +120,35 @@ func (g *graph) failure() error {
 // pinScripts returns the hashes of the scripts that the command calls of the workflow run, in the repository and outside it.
 func (g *graph) pinScripts() ([]PinnedFile, error) {
 	inside, outside := g.scripts()
-	names := make([]string, 0, len(inside)+len(outside))
+	pinned := make([]PinnedFile, 0, len(inside)+len(outside))
 
 	for _, name := range inside {
-		names = append(names, scriptPrefix+name)
-	}
-
-	for _, name := range outside {
-		names = append(names, outsidePrefix+name)
-	}
-
-	pinned := make([]PinnedFile, 0, len(names))
-
-	for _, name := range names {
-		data, err := readFile(g.dir, name)
+		data, err := readFile(g.dir, scriptPrefix+name)
 		if err != nil {
-			return nil, fmt.Errorf("read the script %s: %w", strings.TrimPrefix(strings.TrimPrefix(name, scriptPrefix), outsidePrefix), err)
+			return nil, fmt.Errorf("read the script %s: %w", name, err)
 		}
 
-		pinned = append(pinned, PinnedFile{Path: name, SHA256: hashOf(data)})
+		pinned = append(pinned, PinnedFile{Path: scriptPrefix + name, SHA256: hashOf(data)})
 	}
 
-	return pinned, nil
+	return append(pinned, pinOutside(outside)...), nil
+}
+
+// pinOutside returns the hashes of the files outside the repository that start with a shebang line. A compiled program, such as a system tool,
+// is not a script of the workflow and can change with the system. A file that does not read is left to the run, as before.
+func pinOutside(paths []string) []PinnedFile {
+	var pinned []PinnedFile
+
+	for _, abs := range paths {
+		data, err := readFile("", outsidePrefix+abs)
+		if err != nil || !bytes.HasPrefix(data, []byte(shebang)) {
+			continue
+		}
+
+		pinned = append(pinned, PinnedFile{Path: outsidePrefix + abs, SHA256: hashOf(data)})
+	}
+
+	return pinned
 }
 
 // Sources holds the bytes of the files that a run pinned. A run executes these bytes and no others.
@@ -153,13 +161,15 @@ type Sources struct {
 
 // readPinned reads a pinned file and compares its hash with the pin.
 func readPinned(dir string, p PinnedFile) ([]byte, error) {
+	shown := strings.TrimPrefix(p.Path, outsidePrefix)
+
 	data, err := readFile(dir, p.Path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w. Restore the file, or cancel the run and start again", p.Path, err)
+		return nil, fmt.Errorf("read %s: %w. Restore the file, or cancel the run and start again", shown, err)
 	}
 
 	if got := hashOf(data); got != p.SHA256 {
-		return nil, fmt.Errorf("%s changed since the run started: it had hash %s and has hash %s. Restore the file, or cancel the run and start again", p.Path, p.SHA256, got)
+		return nil, fmt.Errorf("%s changed since the run started: it had hash %s and has hash %s. Restore the file, or cancel the run and start again", shown, p.SHA256, got)
 	}
 
 	return data, nil

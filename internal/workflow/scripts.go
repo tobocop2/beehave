@@ -15,6 +15,9 @@ const scriptPrefix = "script//"
 // outsidePrefix starts the name of a pinned script outside the repository. The rest is its absolute path.
 const outsidePrefix = "outside:"
 
+// shebang starts a script. A file outside the repository is pinned only when it starts with it.
+const shebang = "#!"
+
 // repoRoot returns the folder with a .git entry that is the nearest to dir or above it. A workflow folder outside a repository is its own root.
 func repoRoot(dir string) string {
 	for at := dir; ; at = filepath.Dir(at) {

@@ -1,11 +1,12 @@
 package flow
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/tobocop2/beehave/internal/exectest"
 )
 
 // outsideScriptHarness starts a run whose workflow names a script outside the repository, and leaves the run open at the question of the owner.
@@ -14,7 +15,7 @@ func outsideScriptHarness(t *testing.T) (*harness, string, *Client) {
 	t.Helper()
 
 	script := filepath.Join(t.TempDir(), "notify.sh")
-	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho one\n"), 0o700))
+	require.NoError(t, exectest.Write(script, "#!/bin/sh\necho one\n"))
 
 	harness := newHarness(t)
 	harness.flowIs(t, waitFlow+"    command(run = [\""+script+"\"])\n")
@@ -31,11 +32,12 @@ func TestClient_ResumeOnThisBuildRefusesARunWhoseOutsideScriptChangedAndNamesIt(
 	t.Parallel()
 
 	_, script, other := outsideScriptHarness(t)
-	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho two\n"), 0o700))
+	require.NoError(t, exectest.Write(script, "#!/bin/sh\necho two\n"))
 
 	err := other.ResumeOnThisBuild(testItem)
 
 	require.ErrorContains(t, err, script+" changed since the run started")
+	require.NotContains(t, err.Error(), "outside:", "the refusal shows the plain path")
 	require.ErrorContains(t, err, "beehave resume "+testItem+" --on-this-build --on-this-file", "the refusal says how to go on")
 }
 
