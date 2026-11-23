@@ -164,6 +164,7 @@ var rules = map[string]rule{
 	"internal/batch.IssueReads.IssueState":        {NotHeld: inAdapter},
 	"internal/batch.IssueReads.ClosingRefs":       {NotHeld: inAdapter},
 	"internal/cli.Resuming.FailedRuns":            {Proof: "TestResumeFailed_AListThatCannotBeReadIsReportedInTheRealRunAndTheDryRun", Needle: "failedErr"},
+	"internal/cli.Forking.Fork":                   {Proof: "TestForkCommand_AForkThatTheClientCannotStartIsReportedAndNamesNoNewRun", Needle: "forkErr"},
 	"internal/cli.Steering.EngineRuns":            {Proof: "TestRun_AFailureToTellWhetherAnEngineRunsStopsTheCommand", Needle: "runningErr"},
 	"internal/cli.Steering.Engine":                {Proof: "TestStatus_AnEngineThatCannotBeReadFailsTheListInTextAndJSON", Needle: "engineErr"},
 	"internal/cli.Messaging.Send":                 {Proof: "TestSend_ReportsTheRefusalOfTheRunAndPrintsNoID", Needle: "err"},

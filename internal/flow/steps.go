@@ -310,24 +310,31 @@ func errorText(err error) string {
 // stepLines groups the records of a run into lines. The records of one builtin call end with its own record, so the records before it belong to it.
 // A group that has no ending record is the step that the run is in, or the one that failed.
 func stepLines(records []dbos.StepInfo, state RunState, open bool, now time.Time) []StepLine {
-	var (
-		lines   []StepLine
-		pending []dbos.StepInfo
-	)
+	calls, pending := callGroups(records)
+	lines := make([]StepLine, 0, len(calls))
 
+	for _, group := range calls {
+		lines = append(lines, callLine(group, group[len(group)-1].StepName))
+	}
+
+	return append(lines, unfinishedLine(records, pending, state, open, now)...)
+}
+
+// callGroups splits the records of a run into the records of each finished builtin call, in order, and the records of the call that has no ending record yet.
+func callGroups(records []dbos.StepInfo) (calls [][]dbos.StepInfo, pending []dbos.StepInfo) {
 	for _, record := range records {
 		switch {
 		case endsCall(record.StepName):
-			lines = append(lines, callLine(append(pending, record), record.StepName))
+			calls = append(calls, append(pending, record))
 			pending = nil
 		case partOfCall(record.StepName):
 			pending = append(pending, record)
 		default:
-			lines = append(lines, callLine([]dbos.StepInfo{record}, record.StepName))
+			calls = append(calls, []dbos.StepInfo{record})
 		}
 	}
 
-	return append(lines, unfinishedLine(records, pending, state, open, now)...)
+	return calls, pending
 }
 
 // endsCall reports whether the record is the last one of a builtin call: the record of a command or a gate or another builtin, or the read of an agent.

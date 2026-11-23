@@ -178,6 +178,16 @@ func (s *script) durableWith(builtin, label string, zeros map[string]any, fn fun
 
 // durableFields runs a recorded step and returns the Starlark value of each output field, by name.
 func (s *script) durableFields(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error), opts ...dbos.StepOption) (starlark.StringDict, error) {
+	outputs, err := s.durableOutputs(builtin, label, zeros, fn, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return fields(outputs)
+}
+
+// durableOutputs runs a recorded step and returns its outputs, with a zero for each field the record lacks.
+func (s *script) durableOutputs(builtin, label string, zeros map[string]any, fn func(ctx context.Context, name string) (stepResult, error), opts ...dbos.StepOption) (map[string]any, error) {
 	name, err := s.name(builtin, label)
 	if err != nil {
 		return nil, err
@@ -194,7 +204,7 @@ func (s *script) durableFields(builtin, label string, zeros map[string]any, fn f
 		return nil, errStopped
 	}
 
-	return fields(withZeros(done.Outputs, zeros))
+	return withZeros(done.Outputs, zeros), nil
 }
 
 // result makes the struct that a builtin returns from the outputs it recorded.

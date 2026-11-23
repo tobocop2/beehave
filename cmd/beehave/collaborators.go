@@ -121,13 +121,8 @@ func (w worktrees) ensureLocked(ctx context.Context, project config.Project, clo
 // moveToTip moves the kept worktree of a round item to the tip of its base on the remote. A worktree with tracked or untracked changes, or with commits
 // that no remote branch holds, is refused, and the error names it, the commits and how to remove it.
 func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone, dir, base, item string) error {
-	status := w.git(dir).Run(ctx, []string{"status", "--porcelain"})
-	if err := gitExit("status", dir, status); err != nil {
+	if err := w.refuseChanges(ctx, clone, dir, item, "an earlier run left"); err != nil {
 		return err
-	}
-
-	if strings.TrimSpace(status.Stdout) != "" {
-		return keptTree(clone, dir, item, "changes that an earlier run left. Save what you need")
 	}
 
 	if err := w.fetchBase(ctx, project, clone, base, item); err != nil {
@@ -139,6 +134,86 @@ func (w worktrees) moveToTip(ctx context.Context, project config.Project, clone,
 	}
 
 	return w.moveTo(ctx, dir, "origin/"+base)
+}
+
+// Place puts the worktree of the item at the commit head, for a fork. A round item gets a detached worktree at head. Any other item gets branch, cut at head,
+// and the branch of the item stays as it is. A commit that the clone lacks is refused and named. So is a worktree with changes, and a round worktree that
+// holds commits that no remote branch holds and that head does not hold. A project with no repository has nothing to place.
+func (w worktrees) Place(ctx context.Context, project, item, head, branch string) error {
+	if w.plain(project) {
+		return nil
+	}
+
+	found, err := w.project(project)
+	if err != nil {
+		return err
+	}
+
+	return cloneLock{repos: w.repos}.hold(ctx, project, func(clone string) error { return w.placeLocked(ctx, found, clone, item, head, branch) })
+}
+
+// placeLocked is Place while Place holds the lock of the clone.
+func (w worktrees) placeLocked(ctx context.Context, project config.Project, clone, item, head, branch string) error {
+	if err := w.run(ctx, clone, "cat-file", "-e", head+"^{commit}"); err != nil {
+		return fmt.Errorf("the clone of project %s does not hold the commit %s that the fork starts at. Start the item again: beehave run %s: %w", project.Name, head, item, err)
+	}
+
+	dir, err := w.lookup(ctx, project.Name, item)
+	if err != nil {
+		return err
+	}
+
+	if dir == "" {
+		return w.placeNew(ctx, clone, filepath.Join(w.root, model.SafeName(project.Name), model.SafeName(item)), item, head, branch)
+	}
+
+	return w.placeKept(ctx, clone, dir, item, head, branch)
+}
+
+// placeNew adds the worktree of the item at head. A tracker item gets branch, which a try of the same attempt before it can have made.
+func (w worktrees) placeNew(ctx context.Context, clone, dir, item, head, branch string) error {
+	if _, round := model.RoundBase(item); round {
+		_, err := w.add(ctx, clone, dir, item, head)
+
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dir), folderMode); err != nil {
+		return fmt.Errorf("make the folder for the worktree of item %s: %w", item, err)
+	}
+
+	return w.run(ctx, clone, gitWorktree, gitAdd, "-B", branch, dir, head)
+}
+
+// placeKept moves the kept worktree of the item to head. The move never takes work off the worktree: changes stop it, and so do the commits of a round worktree that no remote branch holds.
+func (w worktrees) placeKept(ctx context.Context, clone, dir, item, head, branch string) error {
+	if err := w.refuseChanges(ctx, clone, dir, item, "the run before the fork left"); err != nil {
+		return err
+	}
+
+	if _, round := model.RoundBase(item); !round {
+		return w.run(ctx, dir, "checkout", "--quiet", "-B", branch, head)
+	}
+
+	if err := w.refuseUnpushed(ctx, clone, dir, item, head); err != nil {
+		return err
+	}
+
+	return w.moveTo(ctx, dir, head)
+}
+
+// refuseChanges fails when the worktree has tracked or untracked changes. left names who left them.
+func (w worktrees) refuseChanges(ctx context.Context, clone, dir, item, left string) error {
+	status := w.git(dir).Run(ctx, []string{"status", "--porcelain"})
+	if err := gitExit("status", dir, status); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(status.Stdout) != "" {
+		return keptTree(clone, dir, item, "changes that "+left+". Save what you need")
+	}
+
+	return nil
 }
 
 // moveTo checks the worktree out detached at revision and marks that commit as the one that beehave placed the worktree at.
@@ -157,8 +232,11 @@ func (w worktrees) markPlaced(ctx context.Context, dir string) error {
 
 // refuseUnpushed fails when the worktree holds commits that no remote branch holds, and the error names each commit and how to remove the worktree.
 // The commit that beehave placed the worktree at, and its history, are no work of the item, also after a force-push of the base took them off the remote.
-func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string) error {
-	unpushed := w.git(dir).Run(ctx, []string{"log", "--format=%h %s", "HEAD", "--not", "--remotes", "--glob=" + placedMarks})
+// A commit that a commit in keep holds is not counted: a move back to that commit leaves it in place. With no keep, every commit counts.
+func (w worktrees) refuseUnpushed(ctx context.Context, clone, dir, item string, keep ...string) error {
+	args := append([]string{"log", "--format=%h %s", "HEAD", "--not"}, keep...)
+
+	unpushed := w.git(dir).Run(ctx, append(args, "--remotes", "--glob="+placedMarks))
 	if err := gitExit("log", dir, unpushed); err != nil {
 		return err
 	}

@@ -20,17 +20,30 @@ func (s *script) facts(b *starlark.Builtin, args starlark.Tuple, kwargs []starla
 		return nil, err
 	}
 
-	fields, err := s.durableFields("facts", "", map[string]any{varsField: map[string]any{}}, func(context.Context, string) (stepResult, error) {
+	outputs, err := s.recordedFacts()
+	if err != nil {
+		return nil, err
+	}
+
+	dict, err := fields(outputs)
+	if err == nil {
+		// The settings that the project file wrote stay as written. Every call builds a fresh value, so the freeze is local to the caller.
+		dict[varsField].Freeze()
+	}
+
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, dict), err
+}
+
+// recordedFacts returns the outputs of the facts step. A forked run changes vars from its first read on, a replayed one included, because the record holds the vars of the source run.
+func (s *script) recordedFacts() (map[string]any, error) {
+	outputs, err := s.durableOutputs("facts", "", map[string]any{varsField: map[string]any{}}, func(context.Context, string) (stepResult, error) {
 		return stepResult{Outputs: factsOutputs(s.Project())}, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// The settings that the project file wrote stay as written. Every call builds a fresh value, so the freeze is local to the caller.
-	fields[varsField].Freeze()
-
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, fields), nil
+	return outputs, s.overlayVars(outputs)
 }
 
 // varsField is the field `vars` of the facts: the free settings of the project file.

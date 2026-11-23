@@ -287,7 +287,7 @@ func releaseDeps(cfg config.Config, opts flow.Options, table adapters) flow.Rele
 	trees := newWorktrees(cfg.Projects, opts, table.forge, table.writers)
 	life := newLife(cfg, table, trees)
 
-	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: trees, Repository: repositoryOf(cfg.Projects), Merge: life}
+	return flow.ReleaseDeps{Lifecycle: life, Beats: life, Trees: trees, Place: trees, Repository: repositoryOf(cfg.Projects), Merge: life}
 }
 
 // newLife builds the claim, the renewal and the forge calls of the merge step. The pull request of an item is on the branch named for the item.

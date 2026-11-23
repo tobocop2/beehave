@@ -500,19 +500,20 @@ func (c *Client) takeClaim(item string, last run) (project, owner string, err er
 		return project, "", err
 	}
 
-	owner, err = c.claimFresh(project, item, last.Status.ID)
+	owner, err = c.claimFresh(project, item, last.Status.ID, "beehave resume "+item)
 
 	return project, owner, err
 }
 
 // claimFresh takes the claim under a timeout and saves its token for the run. A token that cannot be saved is given back.
-func (c *Client) claimFresh(project, item, id string) (string, error) {
+// again is the command that the error tells the owner to run once the claim is free.
+func (c *Client) claimFresh(project, item, id, again string) (string, error) {
 	ctx, cancel := c.give.limit(context.Background())
 	defer cancel()
 
 	owner, err := c.give.Lifecycle.Claim(ctx, project, item)
 	if err != nil {
-		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next beehave run frees it. Then run beehave resume %s again", model.StepClaim, item, err, item)
+		return "", fmt.Errorf("%s of item %s: %w. If a canceled run holds the claim, the next beehave run frees it. Then run %s again", model.StepClaim, item, err, again)
 	}
 
 	if err := saveOwner(c.dir, id, owner); err != nil {

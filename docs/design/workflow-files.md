@@ -661,7 +661,7 @@ The retry route for a parent that failed in a `gather` is `beehave resume <paren
 
 1. Finds the step that started the failed child.
 2. Takes a fresh claim for that child, and reopens it on the items queue of its depth. A child at depth 2 or 3 reopens in the same way, from the failed run at its own level.
-3. Forks the parent from that step.
+3. Rewinds the parent to that step.
 
 The resume also reopens each sibling that the raise canceled while it was open, so that no child stays canceled and fails the next `gather`.
 

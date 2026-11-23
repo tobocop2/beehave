@@ -144,6 +144,8 @@ type fakeSteering struct {
 	answerErrs map[string]error
 	// resumeErrs makes the resume of one item fail, whatever s.err holds.
 	resumeErrs map[string]error
+	// forkErr is what Fork returns as its error.
+	forkErr error
 	// failed and failedErr are what FailedRuns returns. filters lists the filter of each call.
 	failed    []flow.FailedRun
 	failedErr error

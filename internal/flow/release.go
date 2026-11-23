@@ -44,6 +44,12 @@ type treeMaker interface {
 	Ensure(ctx context.Context, project, item, start, base string) (string, error)
 }
 
+// placer puts the worktree of an item at the commit head before a fork runs. A round item gets a detached worktree. Any other item gets branch, cut at head,
+// and its own branch stays as it is. A clone that does not hold head, and a worktree with changes or with commits that no remote branch holds, are refused.
+type placer interface {
+	Place(ctx context.Context, project, item, head, branch string) error
+}
+
 // read is one git call that only reads, with the words that name it in a reason to keep the tree.
 type read struct {
 	doing string
@@ -64,6 +70,8 @@ type ReleaseDeps struct {
 	// Beats reads the claim lease of a run, so a move to this build refuses a run whose holder is alive. A nil value reads none.
 	Beats beats
 	Trees trees
+	// Place cuts the worktree of an item at the head of a fork. A nil value cuts none, as in a build with no repository.
+	Place placer
 	Clock clock
 	// Repository says whether a project has a git repository, as Deps.Repository does. A nil value means every project has one.
 	// beehave keeps the plain item folder of a project with no repository: it has no remote branch to show that its work is safe.
