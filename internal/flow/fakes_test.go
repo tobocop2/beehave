@@ -1329,6 +1329,9 @@ type fakeForge struct {
 	// closing is the closing issues that each read of ClosingIssues gives, in order; the last repeats. closingReads counts the reads.
 	closing      [][]int
 	closingReads int
+	// closingOf, for an item that is in it, gives the closing issues of the item at each read of that item, in order; the last repeats. It wins over closing.
+	closingOf    map[string][][]int
+	closingItems map[string]int
 	closingErr   error // fails every read after the first closingOK reads
 	closingOK    int
 	noPullAfter  int
@@ -1421,11 +1424,21 @@ func (f *fakeForge) Pull(_ context.Context, _, item string) (review.Standing, er
 }
 
 // ClosingIssues answers with the next of closing and then repeats the last. A set of nil is the empty set. noPull makes it report no pull request. closingErr fails every read.
-func (f *fakeForge) ClosingIssues(_ context.Context, _, _ string) ([]int, bool, error) {
+func (f *fakeForge) ClosingIssues(_ context.Context, _, item string) ([]int, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.closingReads++
+
+	if own, has := f.closingOf[item]; has {
+		if f.closingItems == nil {
+			f.closingItems = map[string]int{}
+		}
+
+		f.closingItems[item]++
+
+		return own[min(f.closingItems[item], len(own))-1], true, nil
+	}
 
 	if f.closingErr != nil && f.closingReads > f.closingOK {
 		return nil, false, f.closingErr

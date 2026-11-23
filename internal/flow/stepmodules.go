@@ -78,7 +78,8 @@ const agentVersion = 15
 // Version 7 adds the moved field to the result of merge, and the hand-off steps batch:<call>.ready#<item> and batch:<call>.watch#<item>@<round>.
 // Version 8 removed the foreign, pr, head and author fields from the record of the preflight step.
 // Version 9 adds the run and run_item fields to the input of the merge of a member.
-const landVersion = 9
+// Version 10 adds the step batch:<call>.kept#<item> after an owner line that keeps issues, and the kept field to the record of the scope check.
+const landVersion = 10
 
 // trackerVersion is the version of the tracker module. Version 2 retires the kind item_assign, which version 1 recorded. item_create takes an assignee.
 const trackerVersion = 2
