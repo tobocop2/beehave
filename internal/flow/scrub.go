@@ -108,6 +108,16 @@ func stepKey(ctx context.Context) string {
 	return run + ":" + strconv.Itoa(id)
 }
 
+// withJobKey returns ctx with the job key. A step context stays a step context, so the readers of the run in the step body still find it.
+func withJobKey(ctx context.Context, key string) context.Context {
+	step, isStep := ctx.(dbos.Context) // the context of a step is a DBOS context; any other context is outside a run
+	if !isStep {
+		return host.WithJobKey(ctx, key)
+	}
+
+	return dbos.From(step, host.WithJobKey(step, key))
+}
+
 // runStep runs fn as the step name, with its error redacted, and records the failure of a step whose record the store refused.
 func runStep[T any](e *Engine, ctx dbos.Context, name string, fn func(context.Context) (T, error), opts ...dbos.StepOption) (T, error) { //nolint:ireturn // the step returns the caller's own type
 	var (
@@ -116,7 +126,7 @@ func runStep[T any](e *Engine, ctx dbos.Context, name string, fn func(context.Co
 	)
 
 	out, err := dbos.RunAsStep(ctx, func(c context.Context) (T, error) {
-		out, fnErr := fn(host.WithJobKey(c, stepKey(c)))
+		out, fnErr := fn(withJobKey(c, stepKey(c)))
 		ran, own = true, e.scrub(fnErr)
 
 		return out, own
