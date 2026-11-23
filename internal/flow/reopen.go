@@ -340,7 +340,7 @@ func rewindQueue(row dbos.WorkflowStatus) ([]dbos.RewindWorkflowOption, error) {
 }
 
 // gateRewindTarget returns the queue and the partition that a rewound gate, merge or build job goes back to. A gate or a merge goes to the exclusive queue,
-// in the partition of its project. A build job goes to the host queue, in the partition that it recorded in its input.
+// in the partition of its project. A gate job goes to the slot queue of the class gate, in the partition that it recorded in its input.
 // The host job of a command call with a slot class goes to the queue of its class and its count, in the same partition. A job whose input holds no count
 // was queued before the count was recorded: it has no queue to go back to, and the rewind refuses it.
 func gateRewindTarget(row dbos.WorkflowStatus) (queue, partition string, err error) {

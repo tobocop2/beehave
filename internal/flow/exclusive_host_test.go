@@ -544,7 +544,7 @@ func TestExclusiveHost_AReplayRunsOnTheHostTheFirstRunChoseWhenTheProjectNamesAn
 	assert.Equal(t, hostKeyPrefix+"box", job.HostKey)
 }
 
-// waitsOnHost is true when the host queue holds want build jobs that wait for the job that runs.
+// waitsOnHost is true when the gate slot queue holds want build jobs that wait for the job that runs.
 func waitsOnHost(engine *Engine, want int) func() bool {
 	return func() bool {
 		rows, err := dbos.ListWorkflows(engine.ctx, dbos.WithFilterName(hostJobName), dbos.WithFilterStatus(dbos.WorkflowStatusEnqueued))
