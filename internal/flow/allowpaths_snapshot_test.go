@@ -36,7 +36,7 @@ func markOf(t *testing.T, dir string) startMark {
 func TestScope_TheStartMarkNamesTheErrorWhenGitCannotListTheFolder(t *testing.T) {
 	t.Parallel()
 
-	_, err := readState(t.Context(), engineGit(t.TempDir()))
+	_, err := others(t.Context(), engineGit(t.TempDir()))
 	require.ErrorContains(t, err, "find the root of the item folder")
 
 	dir, _ := gitTree(t)
