@@ -546,6 +546,8 @@ Nobody merges their own work, and our pull requests merge only on a verdict that
 
 - With `on_open="replace"`, `spawn` cancels the open run of an item with its children, as `beehave cancel` does, and starts the next attempt. The parent of the canceled run reads its end at once. `spawn` still refuses a failed run, an open run of another project, and an item that a run above the call executes. The default `on_open="join"` refuses an open run, as below. The cancel is part of the recorded plan of the call, so a replay cancels nothing again.
 
+- `spawn` takes no `debounce`: the DBOS debouncer has no priority and no queue for each call, and a spawned child has both. The window is an option of `beehave run --debounce`.
+
 - With `retries`, a whole number from 0 to 10, `gather` starts a child that failed again as the next attempt of its item, with the same input and a new login, until the retries are spent. A child that was canceled by hand is not started again.
 - The retries belong to the spawn call that recorded them, not to the value that it returned. A later `gather` of the same runs waits on the last attempt of each, with the retries it has left, so the retries of a call are spent once over all its `gather` calls.
 

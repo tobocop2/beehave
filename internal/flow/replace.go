@@ -17,7 +17,7 @@ func (c *Client) underReplace(in ItemInput, start func() error) error {
 	}
 
 	return c.underProbe(func() error {
-		if err := c.replaceHeld(in.Item, in.Project); err != nil {
+		if err := c.replaceHeld(in.Item, in.Project, in.Debounce > 0); err != nil {
 			return err
 		}
 
@@ -90,12 +90,13 @@ func (c *Client) replaceOpen(item, project string, policy workflow.OnOpen) error
 		return nil
 	}
 
-	return c.underProbe(func() error { return c.replaceHeld(item, project) })
+	return c.underProbe(func() error { return c.replaceHeld(item, project, false) })
 }
 
 // replaceHeld is replaceOpen while probe.lock is held. It reads the run again: a run that ended since needs no cancel, and a run of another project is refused before any cancel.
 // A failed run is left alone, so planOf refuses it as it does for a start with no option.
-func (c *Client) replaceHeld(item, project string) error {
+// A debounced start (debounced is true) leaves a delayed run alone: the start bounces that run in place of replacing it.
+func (c *Client) replaceHeld(item, project string, debounced bool) error {
 	last, found, err := latestRun(c.store(), item)
 	if err != nil || !found || last.terminal() {
 		return err
@@ -103,6 +104,10 @@ func (c *Client) replaceHeld(item, project string) error {
 
 	if err := startProject(last, item, project); err != nil {
 		return err
+	}
+
+	if debounced && last.delayed() {
+		return nil
 	}
 
 	return c.cancelHeld(item, last)

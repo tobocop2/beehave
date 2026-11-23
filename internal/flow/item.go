@@ -38,6 +38,8 @@ type ItemInput struct {
 	Sandbox model.SandboxMode `json:"sandbox,omitempty"`
 	// OnOpen is what this start does with an open run of the item. It is an instruction of the start, not state of the run, so the store never holds it: a resume and a replay read it empty.
 	OnOpen workflow.OnOpen `json:"-"`
+	// Debounce is the window that holds this start back. A later start of the item in the window takes the place of this one. It is an instruction of the start, so the store never holds it. Zero starts at once.
+	Debounce time.Duration `json:"-"`
 }
 
 // RunOption is a choice for a run that a caller makes when it starts the run.
@@ -45,6 +47,9 @@ type RunOption func(*ItemInput)
 
 // RunOnOpen sets what the start does with an open run of its item: join it, or replace it. An empty policy joins.
 func RunOnOpen(policy workflow.OnOpen) RunOption { return func(in *ItemInput) { in.OnOpen = policy } }
+
+// RunDebounce holds the start back for the window, and lets a later start of the item in the window take its place. Zero starts at once.
+func RunDebounce(window time.Duration) RunOption { return func(in *ItemInput) { in.Debounce = window } }
 
 // RunSandbox records the sandbox mode of the run in its input. The caller resolves the mode from its own config, never from the engine that serves the run.
 func RunSandbox(mode model.SandboxMode) RunOption { return func(in *ItemInput) { in.Sandbox = mode } }

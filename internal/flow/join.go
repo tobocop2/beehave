@@ -36,6 +36,8 @@ type attemptPlan struct {
 // A finished or canceled run, or no run, starts the next attempt.
 func planOf(last run, found bool, in ItemInput, version string, resumed bool) (attemptPlan, error) {
 	switch {
+	case found && in.Debounce > 0 && last.delayed():
+		return bouncePlan(last, in)
 	case found && !last.terminal():
 		return joinPlan(last, in, version)
 	case found && resumed:
@@ -45,6 +47,16 @@ func planOf(last run, found bool, in ItemInput, version string, resumed bool) (a
 	}
 
 	return attemptPlan{Attempt: last.Attempt + 1}, nil
+}
+
+// bouncePlan names the delayed run that a debounced start takes over: the start pushes the delay of that run back and replaces its input, and the run keeps its attempt and its id.
+// A delayed run has not started, so it is never moved to another build. It refuses a run of another project.
+func bouncePlan(delayed run, in ItemInput) (attemptPlan, error) {
+	if err := startProject(delayed, in.Item, in.Project); err != nil {
+		return attemptPlan{}, err
+	}
+
+	return attemptPlan{Attempt: delayed.Attempt}, nil
 }
 
 // joinPlan joins an open run. It refuses a run of another project. A run stored under another version joins after a move, which decides by the module versions.
@@ -224,6 +236,10 @@ func (c *Client) liveVersion() (string, error) {
 func (c *Client) handleOf(plan attemptPlan, in ItemInput) (dbos.WorkflowHandle[ItemResult], error) {
 	if plan.Join != "" {
 		return retrieve[ItemResult](c.store(), plan.Join)
+	}
+
+	if in.Debounce > 0 {
+		return c.debounce(in, plan.Attempt)
 	}
 
 	handle, err := dbos.Enqueue[ItemResult](c.flow, rootsQueueName, itemName, in,
