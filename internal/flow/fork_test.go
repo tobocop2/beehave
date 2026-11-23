@@ -357,6 +357,20 @@ func TestFork_AForkThatFailsGivesTheFreshClaimBack(t *testing.T) {
 	}
 }
 
+func TestFork_AForkThatTheStoreRefusesLeavesNoOverlayKeyOnTheOldRunAndKeepsItsOtherAttributes(t *testing.T) {
+	t.Parallel()
+
+	w := forkSeed(t)
+	require.NoError(t, dbos.SetWorkflowAttributes(w.client.flow, testRun, map[string]any{"owner": "kept"}, dbos.WithMergeAttributes()))
+
+	w.client.flow = (&forkFault{fork: errors.New("no fork")}).over(w.client.flow)
+
+	_, err := w.client.Fork(ForkRequest{Run: testRun, Step: "command:two#2", Vars: map[string]any{"mode": "b"}})
+	require.Error(t, err)
+
+	assert.Equal(t, map[string]any{"owner": "kept"}, w.row(t, testRun).Attributes, "the overlay keys of the failed fork are gone")
+}
+
 func TestFork_AReadThatFailsRefusesTheForkWithTheCauseAtEachPoint(t *testing.T) {
 	t.Parallel()
 
@@ -374,6 +388,9 @@ func TestFork_AReadThatFailsRefusesTheForkWithTheCauseAtEachPoint(t *testing.T) 
 		"the item":                 {&forkFault{failList: 2}, "list the runs of item 12"},
 		"the steps":                {&forkFault{steps: storeFailed}, "the store failed"},
 		"the overlay":              {&forkFault{failList: 3}, "read the vars of run item-12-r1"},
+		"the pushed branches":      {&forkFault{failList: 4}, "read the vars of run item-12-r1"},
+		"the cleanup read":         {&forkFault{fork: storeFailed, failList: 5}, "read the attributes of run item-12-r1"},
+		"the cleanup write":        {&forkFault{fork: storeFailed, setLate: storeFailed}, "remove the vars of run item-12-r2 from run item-12-r1"},
 		"the store of the overlay": {&forkFault{set: storeFailed}, "store the vars of run item-12-r2"},
 		"the fork":                 {&forkFault{fork: storeFailed}, "fork run item-12-r1 as item-12-r2"},
 	} {
@@ -441,9 +458,12 @@ type forkFault struct {
 	list     func([]dbos.WorkflowStatus, error) ([]dbos.WorkflowStatus, error)
 	steps    error
 	set      error
-	fork     error
+	// setLate fails each write of attributes after the first, which is the cleanup of a fork that failed.
+	setLate error
+	fork    error
 
 	lists atomic.Int32
+	sets  atomic.Int32
 }
 
 // over returns the fault on top of the store, and keeps the settings that the test made.
@@ -478,6 +498,10 @@ func (f *forkFault) GetWorkflowSteps(_ dbos.Client, id string, opts ...dbos.GetW
 func (f *forkFault) SetWorkflowAttributes(_ dbos.Client, id string, attributes map[string]any, opts ...dbos.SetWorkflowAttributesOption) error {
 	if f.set != nil {
 		return f.set
+	}
+
+	if f.sets.Add(1) > 1 && f.setLate != nil {
+		return f.setLate
 	}
 
 	return dbos.SetWorkflowAttributes(f.Client, id, attributes, opts...)

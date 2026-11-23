@@ -97,8 +97,10 @@ func openOutputs(r OpenResult) map[string]any {
 // prStateOutputs are the fields of pr_state: the state of the pull request, OPEN, CLOSED or MERGED.
 func prStateOutputs(state string) map[string]any { return map[string]any{stateField: state} }
 
-// pushOutputs are the fields of push: the head that the branch holds after the push.
-func pushOutputs(head string) map[string]any { return map[string]any{headKeyword: head} }
+// pushOutputs are the fields of push: the head that the branch holds after the push, and the branch. A fork reads the branch to keep out of it.
+func pushOutputs(branch, head string) map[string]any {
+	return map[string]any{headKeyword: head, branchKeyword: branch}
+}
 
 // prHistoryOutputs are the fields of pr_history: the pull requests of the item, an empty list and never null for an item with none.
 func prHistoryOutputs(pulls []model.PriorPull) map[string]any {

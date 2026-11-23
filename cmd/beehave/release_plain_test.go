@@ -29,6 +29,17 @@ func TestReleaseDeps_TheWorktreesOfTheClientReadTheAddressThatTheForgeNames(t *t
 	assert.Equal(t, "https://github.com/owner/name.git", remote, "the release reads the branches at the clone address of the forge")
 }
 
+func TestReleaseDeps_TheClientPlacesAForkInTheWorktreesOfTheEngine(t *testing.T) {
+	t.Parallel()
+
+	projects := map[string]config.Project{"p": {Project: model.Project{Name: "p", Repo: "owner/name", Forge: forgegithub.Name}}}
+	deps := releaseDeps(config.Config{Projects: projects}, flow.Options{StateDir: t.TempDir()}, newAdapters(nil, nil, nil))
+
+	_, ok := deps.Place.(worktrees)
+
+	assert.True(t, ok)
+}
+
 func TestReleaseDeps_TheClientKnowsAProjectWithNoRepositoryAndFindsItsFolderWithoutGit(t *testing.T) {
 	t.Parallel()
 
