@@ -163,7 +163,7 @@ echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_s
 echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_skill","content":"Launching skill: the-review-skill"}]}}'
 case $step in
   plan) printf '{"regressions":"0"}\n' > "$(field write)" ;;
-  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":[]}\n' > "$(field write)" ;;
+  review) printf '{"verdict":"approve","mechanism":"","regressions":"0","open":"","findings":"[]"}\n' > "$(field write)" ;;
   sync_review) printf '{"verdict":"approve"}\n' > "$(field write)" ;;
   sweep) printf '{"report":"# Report\\n"}\n' > "$(field write)" ;;
   implement)
