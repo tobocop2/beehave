@@ -345,6 +345,7 @@ linters:
             - "**/internal/roundcut/**"
             - "**/internal/roundintegration/**"
             - "**/internal/takeover/**"
+            - "**/internal/gomod/**"
           deny:
             - pkg: github.com/tobocop2/beehave/internal
               desc: a package imports its own layer and lower layers only (docs/architecture.md)
@@ -359,6 +360,7 @@ linters:
             - github.com/tobocop2/beehave/internal/roundcut
             - github.com/tobocop2/beehave/internal/roundintegration
             - github.com/tobocop2/beehave/internal/takeover
+            - github.com/tobocop2/beehave/internal/gomod
             - github.com/tobocop2/beehave/internal/store
             - github.com/tobocop2/beehave/internal/forge
             - github.com/tobocop2/beehave/internal/proc
@@ -504,6 +506,7 @@ linters:
             - "!**/internal/roundcut/**"
             - "!**/internal/roundintegration/**"
             - "!**/internal/takeover/**"
+            - "!**/internal/gomod/**"
             - "!**/internal/check/**"
             - "!**/internal/ci/**"
             - "!**/internal/batch/**"

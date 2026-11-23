@@ -18,7 +18,7 @@ An `agent` step starts one AI coding CLI through an adapter, feeds it the prompt
 
 The keys `timeout` and `idle_timeout` of the `agent` call take a duration text, such as `"90s"` or `"10m"`. `beehave check workflow` refuses any other text.
 
-- `timeout` limits the whole run.
+- `timeout` limits the whole run. The Go module download before a sandboxed step does not count against it (see [sandbox.md](sandbox.md#the-go-module-cache)).
 - `idle_timeout` limits the time with no output. Each write of the CLI to its standard output or its standard error starts the time again.
 - A key that is left out, an empty text, or a duration of 0 or less sets no limit of that kind. OpenCode is the one exception: with no `timeout`, its total limit is one hour.
 - A run that a limit ends has the outcome `timed-out` or `idle`. The step fails with an error that names the outcome and the item, and the item stops.
