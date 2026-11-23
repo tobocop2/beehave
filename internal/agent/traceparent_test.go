@@ -114,3 +114,12 @@ func TestRunner_ASpecWithNoTraceparentLeavesTheAgentWithNoTraceVariableSandboxed
 		assertNoExporter(t, lines)
 	}
 }
+
+func TestRunner_ALaunchCannotReplaceTheTraceparentOfTheSpec(t *testing.T) { //nolint:paralleltest // t.Setenv changes PATH for the process
+	for name, sandboxed := range map[string]bool{"plain": false, "sandboxed": true} {
+		lines := traceRun(t, sandboxed, stepTrace, map[string]string{"TRACEPARENT": "from-launch"})
+
+		assert.Equal(t, 1, countPrefix(lines, "TRACEPARENT="), name)
+		assert.Contains(t, lines, "TRACEPARENT="+stepTrace, name)
+	}
+}
