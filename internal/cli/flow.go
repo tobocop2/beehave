@@ -1308,7 +1308,7 @@ const resumeLong = "Reopen the cancelled or failed run of an item. The run resta
 	"A canceled run that left its claim gives it back at the next beehave run.\n" +
 	"Run beehave run for the item next: it continues the reopened run and renews the claim.\n" +
 	"A run that another build of beehave started is refused. Add --on-this-build to move it to this build, from its last finished step.\n" +
-	"The move is refused when the workflow file or a file the run pinned changed since the run started. Scripts outside the repository are not pinned.\n" +
+	"The move is refused when the workflow file or a file the run pinned changed since the run started. A script that a command call names by a path is pinned, in the repository or outside it.\n" +
 	"A run replays the workflow file that it pinned when it started, and a changed file refuses the run. Add --on-this-file to run the file as it is now: the run keeps its finished steps and replays them over the new file.\n" +
 	"A change after the step that the run reached goes on at once. A change before it ends the run at the first step that differs, and the error names that step. Nothing that the run wrote is undone. Restore the file and run beehave resume --on-this-file again to finish the run.\n" +
 	"Give --on-this-build and --on-this-file together to move a run of another build onto the file in one move.\n\n" +

@@ -12,6 +12,9 @@ import (
 // scriptPrefix starts the name of a pinned script. The rest is the path from the root of the repository that holds the workflow file.
 const scriptPrefix = "script//"
 
+// outsidePrefix starts the name of a pinned script outside the repository. The rest is its absolute path.
+const outsidePrefix = "outside:"
+
 // repoRoot returns the folder with a .git entry that is the nearest to dir or above it. A workflow folder outside a repository is its own root.
 func repoRoot(dir string) string {
 	for at := dir; ; at = filepath.Dir(at) {
@@ -190,14 +193,6 @@ func isRegular(path string) bool {
 	info, err := os.Stat(path)
 
 	return err == nil && info.Mode().IsRegular()
-}
-
-// OutsideScripts returns the scripts that the command calls of the workflow file and the files it loads name by a path outside the repository.
-// A run does not pin them, so they can change under a run that is open. It runs no code, and it returns nothing for a file that does not read.
-func OutsideScripts(file string) []string {
-	_, outside := scan(file).scripts()
-
-	return outside
 }
 
 // DynamicCommands returns how many command calls of the workflow file and the files it loads have a run list that is not a literal list of texts.

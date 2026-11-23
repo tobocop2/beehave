@@ -117,11 +117,11 @@ func TestPin_RefusesAScriptThatDoesNotRead(t *testing.T) {
 	require.ErrorContains(t, err, "read the script scripts/check.sh")
 }
 
-func TestOutsideScripts_ListsAScriptOutsideTheRepository(t *testing.T) {
+func TestPin_PinsAScriptOutsideTheRepositoryThatACommandNames(t *testing.T) {
 	t.Parallel()
 
 	outside := filepath.Join(t.TempDir(), "deploy.sh")
-	require.NoError(t, os.WriteFile(outside, []byte("echo deploy\n"), 0o600))
+	require.NoError(t, os.WriteFile(outside, []byte("echo one\n"), 0o600))
 
 	file := repository(t, map[string]string{
 		"flow.star": "def main(item):\n    command(run = [\"" + outside + "\"])\n",
@@ -130,6 +130,29 @@ func TestOutsideScripts_ListsAScriptOutsideTheRepository(t *testing.T) {
 	pins, err := workflow.Pin(file)
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"flow.star"}, pinnedPaths(pins), "the host is not pinned")
-	assert.Equal(t, []string{outside}, workflow.OutsideScripts(file))
+	assert.Equal(t, []string{"flow.star", "outside:" + outside}, pinnedPaths(pins))
+
+	_, err = workflow.Open(file, pins)
+	require.NoError(t, err, "an outside script that did not change opens")
+
+	require.NoError(t, os.WriteFile(outside, []byte("echo two\n"), 0o600))
+
+	_, err = workflow.Open(file, pins)
+	require.ErrorContains(t, err, "outside:"+outside+" changed since the run started")
+}
+
+func TestPin_RefusesAnOutsideScriptThatDoesNotRead(t *testing.T) {
+	t.Parallel()
+
+	outside := filepath.Join(t.TempDir(), "deploy.sh")
+	require.NoError(t, os.WriteFile(outside, []byte("echo one\n"), 0o600))
+	require.NoError(t, os.Chmod(outside, 0))
+
+	file := repository(t, map[string]string{
+		"flow.star": "def main(item):\n    command(run = [\"" + outside + "\"])\n",
+	}, "flow.star")
+
+	_, err := workflow.Pin(file)
+
+	require.ErrorContains(t, err, "read the script "+outside)
 }
