@@ -2,6 +2,7 @@ package host_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,6 +75,47 @@ func TestSlotWrap_AStopSignalWhileTheJobWaitsRemovesTheMarkerAndEndsTheJob(t *te
 	require.ErrorAs(t, waiter.Wait(), &exit)
 	assert.Equal(t, 143, exit.ExitCode())
 	assert.NoFileExists(t, marker, "a job that is stopped while it waits leaves no marker")
+}
+
+// The stop trap belongs to the wait only. Once the job holds a slot, the signal takes its default action and ends the job at once, as it does for a job with no slot.
+// A trap that stayed would hold the signal until the command ends, so this command sleeps far longer than the bound of the test.
+func TestSlotWrap_AStopSignalWhileTheCommandRunsEndsTheJobAtOnce(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("flock"); err != nil {
+		t.Skip("flock is not on PATH")
+	}
+
+	dir := t.TempDir()
+	started := filepath.Join(dir, "started")
+	job := shell(t, host.SlotWrap(model.Slot{Class: "bench", Count: 1}, model.ShellQuote(filepath.Join(dir, "slots")), model.ShellQuote(filepath.Join(dir, "m")), "touch "+model.ShellQuote(started)+"; sleep 60"))
+	job.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, job.Start())
+	t.Cleanup(func() {
+		// The sleep outlives the script that the signal ended, so the test stops the whole group. A group with nothing left gives ESRCH, or EPERM on macOS.
+		if err := syscall.Kill(-job.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) && !errors.Is(err, syscall.EPERM) {
+			t.Errorf("stop the job group: %v", err)
+		}
+	})
+
+	require.Eventually(t, func() bool { _, err := os.Stat(started); return err == nil }, 10*time.Second, 20*time.Millisecond, "the command starts")
+	require.NoError(t, job.Process.Signal(syscall.SIGTERM))
+
+	ended := make(chan error, 1)
+	go func() { ended <- job.Wait() }()
+
+	select {
+	case err := <-ended:
+		var exit *exec.ExitError
+
+		require.ErrorAs(t, err, &exit)
+
+		status, isUnix := exit.Sys().(syscall.WaitStatus)
+		require.True(t, isUnix)
+		assert.True(t, status.Signaled() && status.Signal() == syscall.SIGTERM, "the job ends by the signal, not by a trap that waits for the command")
+	case <-time.After(10 * time.Second):
+		t.Fatal("the job ignored the stop signal while its command ran, and would end only when the command ends")
+	}
 }
 
 func TestSlotWrap_TheScriptRunsTheCommandAndKeepsItsExitStatusWhenASlotIsFree(t *testing.T) {
