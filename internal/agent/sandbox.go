@@ -25,10 +25,12 @@ import (
 // Identity is the git identity of the engine at the work folder, which the commits of the shell carry.
 // Edits is true for a run that may edit the files of the work folder with the file tools. The runner sets it from Spec.NoEdits.
 // Temp is the short temporary folder of the run, which the runner makes before the launch and removes after it.
+// ModuleCache is the Go module cache that the engine filled for the project, which the shell reads with no network and never writes, or "" for none.
 type SandboxPlan struct {
 	Edits             bool
 	Temp              string
 	Work              string
+	ModuleCache       string
 	GitDirs           []string
 	Read              []string
 	ReadDirs          []string
