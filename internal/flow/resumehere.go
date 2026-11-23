@@ -20,20 +20,35 @@ import (
 // DBOS stores the version of the application on each run and recovers only the runs of its own version, so the rewind restamps the run (and the phases it reopens) with this version.
 // The move is refused when the workflow file or a file it pins changed since the run started. A run of this build is an ordinary resume.
 func (c *Client) ResumeOnThisBuild(item string) error {
+	_, err := c.resumeHere(item)
+
+	return err
+}
+
+// resumeHere is ResumeOnThisBuild, and it returns the id of the run that it moved.
+func (c *Client) resumeHere(item string) (string, error) {
 	last, err := c.newest(item)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if last.Status.ApplicationVersion == c.version {
-		return c.Resume(item)
+		return c.resumeRun(item)
 	}
 
 	if err := c.requireMovable(context.Background(), item, last); err != nil {
-		return err
+		return "", err
 	}
 
-	// DBOS rewinds only a run that ended, so an open run is canceled first.
+	if err := c.moveHere(item, last); err != nil {
+		return "", err
+	}
+
+	return last.Status.ID, nil
+}
+
+// moveHere moves a run that requireMovable accepted to this build. DBOS rewinds only a run that ended, so an open run is canceled first.
+func (c *Client) moveHere(item string, last run) error {
 	if last.terminal() {
 		return c.reopenHere(item, last)
 	}
@@ -41,9 +56,31 @@ func (c *Client) ResumeOnThisBuild(item string) error {
 	return c.moveOpen(item, last)
 }
 
+// requireUnchanged reads the newest run of the item again, under probe.lock, and refuses the move when another build or another command changed it since requireMovable read it.
+// The run that the move checked and the run that it would move must be the same row in the same state.
+func (c *Client) requireUnchanged(item string, last run) error {
+	now, err := c.newest(item)
+	if err != nil {
+		return err
+	}
+
+	if now.Status.ID != last.Status.ID || now.Status.Status != last.Status.Status || now.Status.ApplicationVersion != last.Status.ApplicationVersion {
+		return fmt.Errorf("%w: %s is now %s on version %s, and the move read it as %s on version %s. Run beehave status to see the run",
+			ErrWrongState, now.Status.ID, stateOf(now.Status.Status), buildVersion(now.Status.ApplicationVersion), stateOf(last.Status.Status), buildVersion(last.Status.ApplicationVersion))
+	}
+
+	return nil
+}
+
 // moveOpen cancels an open run and reopens it on this build, under one hold of probe.lock, so no reader sees the run canceled in between.
 func (c *Client) moveOpen(item string, last run) error {
-	return c.underProbe(func() error { return c.cancelAndReopenHeld(item, last) })
+	return c.underProbe(func() error {
+		if err := c.requireUnchanged(item, last); err != nil {
+			return err
+		}
+
+		return c.cancelAndReopenHeld(item, last)
+	})
 }
 
 // cancelAndReopenHeld is the move of an open run while probe.lock is held. The run and the open runs below it carry the move mark, and move.lock is held, from before the cancel to after the rewind,
@@ -335,6 +372,10 @@ func requirePinned(last run) error {
 // probe.lock keeps a cancel of the tree out while the reopen reads it (see docs/design/durable-loop.md).
 func (c *Client) reopenHere(item string, last run) error {
 	return c.underProbe(func() error {
+		if err := c.requireUnchanged(item, last); err != nil {
+			return err
+		}
+
 		if err := c.reopenHeld(item, last); err != nil {
 			return err
 		}

@@ -155,6 +155,9 @@ type fakeSteering struct {
 	failed    []flow.FailedRun
 	failedErr error
 	filters   []flow.FailedFilter
+	// unreadable is the second list that FailedRuns returns. resumedIDs holds the run that ResumeRun reports for an item that has a newer attempt than its failed run.
+	unreadable []flow.UnreadableRun
+	resumedIDs map[string]string
 	// running is what EngineRuns returns, and runningErr its error.
 	running    bool
 	runningErr error
@@ -306,11 +309,35 @@ func (s *fakeSteering) Resume(item string) error {
 	return cmp.Or(s.resumeErrs[item], s.err)
 }
 
-func (s *fakeSteering) FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, error) {
+func (s *fakeSteering) FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error) {
 	s.calls = append(s.calls, "failed-runs")
 	s.filters = append(s.filters, filter)
 
-	return s.failed, s.failedErr
+	return s.failed, s.unreadable, s.failedErr
+}
+
+// ResumeRun resumes through Resume or ResumeOnThisBuild, and returns the id that resumedIDs holds for the item, or the id of its failed run.
+func (s *fakeSteering) ResumeRun(item string, onThisBuild bool) (string, error) {
+	resume := s.Resume
+	if onThisBuild {
+		resume = s.ResumeOnThisBuild
+	}
+
+	if err := resume(item); err != nil {
+		return "", err
+	}
+
+	if id, ok := s.resumedIDs[item]; ok {
+		return id, nil
+	}
+
+	for _, failed := range s.failed {
+		if failed.Item == item {
+			return failed.ID, nil
+		}
+	}
+
+	return "item-" + item + "-r1", nil
 }
 
 func (s *fakeSteering) Cancel(item string) error {

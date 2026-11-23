@@ -93,8 +93,11 @@ type Resuming interface {
 	Resume(item string) error
 	// ResumeOnThisBuild moves a run that another build started to this build, from its last finished step.
 	ResumeOnThisBuild(item string) error
+	// ResumeRun is Resume, or with onThisBuild ResumeOnThisBuild, and it returns the id of the run that it reopened.
+	ResumeRun(item string, onThisBuild bool) (string, error)
 	// FailedRuns lists the runs that beehave resume can reopen because they failed, and changes nothing.
-	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, error)
+	// It returns apart the failed runs of the range whose input cannot be read.
+	FailedRuns(filter flow.FailedFilter) ([]flow.FailedRun, []flow.UnreadableRun, error)
 }
 
 // Forking starts a new run from a step of a run that ended.
@@ -1342,7 +1345,9 @@ func (f flowCommands) resume(cmd *cobra.Command, flag string, many *manyResume, 
 		return f.withClient(cmd, flag, func(client Steering) error { return resumeItem(client, args[0], many.onThisBuild) })
 	}
 
-	return f.withClient(cmd, flag, func(client Steering) error { return many.resumeMany(cmd.OutOrStdout(), client, many.picked) })
+	return f.withClient(cmd, flag, func(client Steering) error {
+		return many.resumeMany(cmd.OutOrStdout(), cmd.ErrOrStderr(), client, many.picked)
+	})
 }
 
 const forkLong = "Start a new run of an item from a step of a run that ended, with other vars if you want.\n" +
