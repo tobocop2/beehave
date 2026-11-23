@@ -768,6 +768,8 @@ type OpenRun struct {
 	File string
 	// Sandbox is the mode that the run uses, as ItemInput.UsedSandbox says.
 	Sandbox model.SandboxMode
+	// Delayed is true when the run waits in a debounce window and has not started.
+	Delayed bool
 }
 
 // OpenRun returns the open run of the item. live is the live default of a project, which a run recorded before the mode existed uses.
@@ -780,7 +782,7 @@ func (c *Client) OpenRun(item string, live func(project string) bool) (OpenRun, 
 
 	in, err := last.input()
 
-	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(live)}, err
+	return OpenRun{Open: true, File: in.File, Sandbox: in.UsedSandbox(live), Delayed: last.delayed()}, err
 }
 
 // latest returns the newest run of an item, and refuses a run that another version of beehave started.

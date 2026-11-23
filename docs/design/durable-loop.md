@@ -20,13 +20,13 @@ A start can ask to replace the open run in place of joining it: `beehave run <it
 
 A start can hold itself back for a window: `beehave run <item> --debounce 30s` or the `RunDebounce` option of the library. A later start of the item in the window takes the place of the earlier start. One run starts when the window ends, with the input of the last start, and it keeps the ID `item-<n>-r<k>` of the first start. A start after the window makes a new run. The default is no window.
 
-The DBOS `Debouncer` owns the window. The item is the key, and the run is a delayed run on the `roots` queue, so it survives a crash of the engine and a second process can bounce it. A bounce moves the delay and replaces the stored input of the delayed run, and the store never holds the option itself. A hold ends 10 windows after the first start, so a stream of starts cannot keep a run from starting for ever. A debounced start has no priority, because DBOS refuses one. `spawn` has no debounce: `beehave check workflow` says it is an option of `beehave run`.
+The DBOS `Debouncer` owns the window. The item is the key, and the run is a delayed run on the `roots` queue, so it survives a crash of the engine and a second process can bounce it. A bounce moves the delay and replaces the stored input of the delayed run, and the store never holds the option itself. A hold ends 10 windows after the first start, so a stream of starts cannot keep a run from starting for ever. DBOS fixes this cap when it stores the first start, so a later start with a longer window does not move it. If the window ends between the check of the start and the call to DBOS, the call finds the key free and answers with the run that now exists, so the input of that start is dropped and the start joins the run, as a start after the window does. A debounced start has no priority, because DBOS refuses one. `spawn` has no debounce: `beehave check workflow` says it is an option of `beehave run`.
 
 With a window, an open run that has started is joined, as with no window. With `--on-open replace`, the first start cancels the open run at once and enqueues the delayed run. Later starts bounce that delayed run and never cancel it. A start for another project than the delayed run is refused, with or without `replace`. A delayed run has not started, so it never moves to another build: a debounced start from a build with another version is refused, and the delayed run keeps its input and its version. Run `beehave cancel <item>` to end it.
 
 #### Who runs the item workflow
 
-The engine that `beehave run` starts runs the item workflow at once, outside any queue.
+The engine that `beehave run` starts runs the item workflow at once, outside any queue. With a debounce window, the engine enqueues the run on the `roots` queue as a delayed run, and the same engine dequeues it when the window ends.
 
 When an engine already holds the state folder (`beehave serve` or another `beehave run`), `beehave run` joins it:
 

@@ -445,7 +445,7 @@ func (f flowCommands) runItem(stdout, stderr io.Writer, cfg config.Config, opts 
 		return err
 	}
 
-	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, opts.OnOpen, project, item, file)
+	chosen, running, err := f.chooseRunFile(stdout, stderr, client, cfg, opts, project, item, file)
 	if err != nil {
 		return errors.Join(err, client.Close())
 	}
@@ -477,8 +477,8 @@ func (f flowCommands) ownEngine(stdout, stderr io.Writer, cfg config.Config, opt
 
 // chooseRunFile returns the workflow file of the run, and whether an engine holds the state folder.
 // It says the off line when the run uses the sandbox mode off.
-func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, policy workflow.OnOpen, project, item, file string) (string, bool, error) {
-	open, err := f.openRun(stdout, client, cfg, policy, item)
+func (f flowCommands) chooseRunFile(stdout, stderr io.Writer, client Steering, cfg config.Config, opts flow.Options, project, item, file string) (string, bool, error) {
+	open, err := f.openRun(stdout, client, cfg, opts, item)
 	if err != nil {
 		return "", false, err
 	}
@@ -618,14 +618,20 @@ func finish(stdout io.Writer, item string, result flow.ItemResult) error {
 
 // openRun returns the open run of the item. It says which file the run continues with, or that the start replaces the run.
 // beehave run ignores --workflow when it joins an open run. A run recorded before the mode existed uses the live default of its project.
-func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, policy workflow.OnOpen, item string) (flow.OpenRun, error) {
+func (f flowCommands) openRun(stdout io.Writer, client Steering, cfg config.Config, opts flow.Options, item string) (flow.OpenRun, error) {
 	open, err := client.OpenRun(item, cfg.SandboxDefault)
 	if err != nil || open.File == "" {
 		return open, err
 	}
 
 	// A failed write to stdout has no recovery.
-	if policy == workflow.OnOpenReplace {
+	if opts.Debounce > 0 && open.Delayed {
+		_, _ = fmt.Fprintf(stdout, "item %s is held in its debounce window: this start extends the window and replaces the input of the run, which pinned %s\n", item, open.File)
+
+		return open, nil
+	}
+
+	if opts.OnOpen == workflow.OnOpenReplace {
 		_, _ = fmt.Fprintf(stdout, "item %s replaces its open run, which pinned %s\n", item, open.File)
 
 		return open, nil

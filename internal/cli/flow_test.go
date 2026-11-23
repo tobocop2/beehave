@@ -141,8 +141,10 @@ type fakeSteering struct {
 	openMode model.SandboxMode
 	openRun  bool
 	openErr  error
-	calls    []string
-	closeOK  bool
+	// openDelayed makes the open run one that waits in a debounce window.
+	openDelayed bool
+	calls       []string
+	closeOK     bool
 	// answerErrs makes the answer of one item fail, whatever s.err holds.
 	answerErrs map[string]error
 	// resumeErrs makes the resume of one item fail, whatever s.err holds.
@@ -230,7 +232,7 @@ func (s *fakeSteering) OpenRun(_ string, live func(string) bool) (flow.OpenRun, 
 		return flow.OpenRun{}, nil
 	}
 
-	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live)}, nil
+	return flow.OpenRun{Open: true, File: s.pinned, Sandbox: flow.ItemInput{Project: "p", Sandbox: s.openMode}.UsedSandbox(live), Delayed: s.openDelayed}, nil
 }
 
 func (s *fakeSteering) Status() ([]flow.RunInfo, error) { return s.infos, s.err }

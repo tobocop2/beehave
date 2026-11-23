@@ -269,36 +269,71 @@ func TestDebounce_AKeyThatAnotherRunHoldsIsReportedAndStartsNothing(t *testing.T
 func TestDebounce_AStreamOfStartsCannotHoldTheRunBackBeyondTenWindows(t *testing.T) {
 	t.Parallel()
 
-	// The window is long against the pause between two starts, so a slow machine does not let the window pass by itself.
+	// The delay of a delayed run and the cap are DBOS deadlines on the wall clock of the store, so no test clock can move them: the test runs in real time.
+	// The window is long against the time of one pass of the stream, so a slow machine does not let the window pass by itself.
 	const window = 500 * time.Millisecond
 
 	h := newHarness(t)
 	h.engine(t)
 	client := h.client(t, testVersion)
-	files := debounceFiles(t, "stream")
+	files := debounceFiles(t, "stream-a", "stream-b")
 
 	in, err := pinnedInput(testItem, testProject, files[0], modeOff())
 	require.NoError(t, err)
 
 	in.Debounce = window
 	began := time.Now()
+	sent := ""
 
-	// Each pass is a later start in the window. The run must start although the stream goes on.
-	for range 1000 {
-		if runs := replaceRuns(t, client, testItem); len(runs) == 1 && !runs[0].delayed() {
+	// Each pass is a later start in the window, and it goes only after the store shows the previous bounce: the delayed run holds the file of the previous start.
+	// The pass reads the store, so the stream needs no pause. The run must start although the stream goes on.
+	for pass := 0; time.Since(began) < 4*debounceHold*window; pass++ {
+		runs := replaceRuns(t, client, testItem)
+		if len(runs) == 1 && !runs[0].delayed() {
 			break
 		}
 
+		if sent != "" {
+			require.Len(t, runs, 1, replaceStates(runs))
+			require.Equal(t, sent, debounceFileOf(t, runs[0]), "the store shows the previous bounce")
+		}
+
+		sent = files[pass%len(files)]
+		in.File = sent
+
 		_, err := client.debounce(in, 1)
 		require.NoError(t, err)
-
-		time.Sleep(window / 25)
 	}
 
 	runs := replaceRuns(t, client, testItem)
 	require.Len(t, runs, 1, replaceStates(runs))
 	assert.False(t, runs[0].delayed(), "the stream of starts held the run back past the cap")
 	assert.GreaterOrEqual(t, time.Since(began), debounceHold*window, "the run started before the cap: the bounces did not push it back")
+
+	require.NoError(t, client.Cancel(testItem))
+}
+
+func TestDebounce_TheOpenRunOfAHeldStartIsDelayedUntilTheWindowEnds(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	engine := h.engine(t)
+	client := h.client(t, testVersion)
+	files := debounceFiles(t, "held")
+
+	startFile(engine, testItem, testProject, files[0], RunDebounce(debounceWindow))
+
+	soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusDelayed, "item-12-r1", files[0]) }, "the start holds its window")
+
+	open, err := client.OpenRun(testItem, func(string) bool { return false })
+	require.NoError(t, err)
+	assert.True(t, open.Delayed, "the run waits in its window")
+
+	soon(t, func() bool { return debouncedRunIs(t, client, dbos.WorkflowStatusPending, "item-12-r1", files[0]) }, "the run starts when the window ends")
+
+	open, err = client.OpenRun(testItem, func(string) bool { return false })
+	require.NoError(t, err)
+	assert.False(t, open.Delayed, "a run that started is not delayed")
 
 	require.NoError(t, client.Cancel(testItem))
 }

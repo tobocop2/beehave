@@ -24,6 +24,29 @@ func TestRun_DebounceIsNoWindowByDefaultAndTheWindowWhenAsked(t *testing.T) {
 	assert.Equal(t, []time.Duration{30 * time.Second}, rig.runner.debounces)
 }
 
+func TestRun_ADebouncedStartOfADelayedRunSaysTheWindowGrows(t *testing.T) {
+	t.Parallel()
+
+	rig := newRig(t)
+	rig.steering.pinned = "/work/flow.star"
+	rig.steering.openDelayed = true
+
+	code, stdout, stderr := rig.execute(t.Context(), "run", "12", "--debounce", "30s")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "item 12 is held in its debounce window: this start extends the window and replaces the input of the run, which pinned /work/flow.star")
+	assert.NotContains(t, stdout, "continues its open run")
+
+	rig = newRig(t)
+	rig.steering.pinned = "/work/flow.star"
+	rig.steering.openDelayed = true
+
+	code, stdout, stderr = rig.execute(t.Context(), "run", "12")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "continues its open run with its pinned file /work/flow.star", "a start with no window continues the delayed run")
+}
+
 func TestRun_DebounceGoesToTheEngineThatHoldsTheStateFolder(t *testing.T) {
 	t.Parallel()
 
