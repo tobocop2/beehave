@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tobocop2/beehave/internal/agent"
+	"github.com/tobocop2/beehave/internal/config"
+	"github.com/tobocop2/beehave/internal/flow"
 )
 
 var w3cTraceparent = regexp.MustCompile(`^00-[0-9a-f]{32}-[0-9a-f]{16}-01$`)
@@ -79,6 +81,31 @@ func TestAgents_AReplayOfOneStepBuildsTheSameTraceparent(t *testing.T) {
 
 	assert.NotEmpty(t, a)
 	assert.Equal(t, a, b)
+}
+
+func TestNewAgents_TheKeyOfTheConfigReachesTheSpecOfTheRun(t *testing.T) {
+	t.Parallel()
+
+	for name, on := range map[string]bool{"on": true, "off": false} {
+		f := newAgentFixture("session=s1\n", agent.Result{Outcome: agent.OutcomeExited})
+		cfg := config.Config{Runners: f.agents.runners}
+		cfg.Agents.TraceParent = on
+
+		built := newAgents(cfg, flow.Options{Env: map[string]string{"PATH": "/bin"}}, treeAt("/work/tree"), newAdapters(nil, nil, nil), nil)
+		built.run, built.adapter = f.agents.run, f.agents.adapter
+
+		req := request()
+		req.Run, req.Call = "run-1", "agent:fix#1"
+
+		_, err := built.Run(t.Context(), req)
+		require.NoError(t, err, name)
+
+		if on {
+			assert.Equal(t, wantTraceparent("run-1", "agent:fix#1"), f.spec.Traceparent, name)
+		} else {
+			assert.Empty(t, f.spec.Traceparent, name)
+		}
+	}
 }
 
 func TestAgents_TheKeyDoesNotAddATraceVariableToTheEngineEnvironment(t *testing.T) {
