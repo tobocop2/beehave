@@ -188,6 +188,10 @@ Measured traps and ownership rules:
 control, every arm you discarded. The run checks the output before any full review: each row of `## Claims` names your final head commit, and a line says "no background commands left".
 Write it to {{ .output_file }} as JSON, as a text, for example `{"report":"# Report\n...","uncaused":"[]"}`.
 
+**The open findings are a ledger.** The data file {{ .data_file }} holds the key `ledger`: the findings that are open, each with `id`, `path`, `severity`, `text`, `state` and `reason`. Read it with `jq .ledger`.
+**Write the output `resolved` as a text that holds a JSON list of ids**: the ids of the findings that you fixed. Write `[]` when you fixed none. The next review decides: a finding that it still lists is open.
+**Write the output `wontfix` as a text that holds a JSON list of objects** with the text keys `id` and `reason`: each finding that you will not fix, with the reason. The reason is not empty. The owner reads it at the end of the loop. Write `[]` when there is none. For example: `{"report":"# Report\n...","uncaused":"[]","resolved":"[\"f-1\"]","wontfix":"[{\"id\":\"f-2\",\"reason\":\"the cost is higher than the gain\"}]"}`. An id that the ledger does not hold stops the item.
+
 **Write the output `uncaused` as a text that holds a JSON list.** Each gate red that your change did not cause is one entry: a red that the base has too and that no hunk of yours touches. Write `[]` when there is none.
 The run files one item for each id before the merge. An entry has the fields `id` (words in lower case joined by hyphens, the same for the same red), `title`, `body`, `found` (the commit and the exact command), `severity` (`P0` to `P3`) and `operator` (`true` when an operator hits it in normal use).
 The run refuses the whole list when one entry is bad, and it never files the same id twice.

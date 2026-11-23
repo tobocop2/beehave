@@ -23,7 +23,7 @@ def followup(item):
 const foreignPull = 41
 
 // foreignFindings are the two findings that the foreign review recorded as open.
-const foreignFindings = `[{"class":"blocking","text":"the retry never stops"},{"class":"should-fix","text":"the log names the token"}]`
+const foreignFindings = `[{"id":"f-1","severity":"blocking","path":"a.go","text":"the retry never stops"},{"id":"f-2","severity":"should-fix","path":"b.go","text":"the log names the token"}]`
 
 // foreignIssue is the issue that the follow-up files for the pull request 41 of the repository o/r with foreignFindings: project|key|title|body|parent.
 const foreignIssue = testProject + "|foreign:o/r:41|Open review findings of the merged pull request #41|" +
@@ -122,7 +122,7 @@ func TestExampleForeign_TheFollowUpReadsTheRecordedPullRequestAndFilesOneIssue(t
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{foreignPull}, fakes.queue.stateAsked, "the step reads the state of the recorded number, once")
-	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "one issue, keyed by the repository and the number, lists each finding by its class")
+	assert.Equal(t, []string{foreignIssue}, fakes.writer.created, "one issue, keyed by the repository and the number, lists each finding by its severity")
 	assert.Empty(t, rig.h.forge.opened, "the follow-up opens no pull request of its own")
 	assert.Empty(t, fakes.preflight.asked, "the follow-up does not look the pull request up again")
 
@@ -155,7 +155,7 @@ func TestExampleForeign_AFindingWithAnAttributionLineIsRefusedBeforeThePost(t *t
 
 	rig, fakes, file := foreignRig(t, "MERGED")
 
-	_, err := runFollowup(t, rig, file, recordedValue(`[{"class":"nit","text":"Co-Authored-By: Claude"}]`))
+	_, err := runFollowup(t, rig, file, recordedValue(`[{"id":"f-1","severity":"nit","path":"a.go","text":"Co-Authored-By: Claude"}]`))
 
 	require.Error(t, err)
 	assert.Empty(t, fakes.writer.created, "the follow-up posts no attribution line")

@@ -39,7 +39,6 @@ type ledgerScript struct {
 type ledgerRun struct {
 	err        error
 	ledger     []ledgerEntry
-	ledgerNull bool
 	reviews    []AgentRequest
 	fixes      []AgentRequest
 	reviewSaw  [][]ledgerEntry
@@ -166,13 +165,13 @@ func runLedgerLoop(t *testing.T, script ledgerScript, extra string) ledgerRun {
 
 	require.NoError(t, json.Unmarshal(result.Value, &value))
 
-	out.ledgerNull = value.Ledger == "null"
 	require.NoError(t, json.Unmarshal([]byte(value.Ledger), &out.ledger))
 
 	return out
 }
 
-const ledgerExtra = ", ledger = True"
+// ledgerExtra is the extra arguments of the loop that a ledger test passes: none, because the loop always keeps the ledger.
+const ledgerExtra = ""
 
 // raisedOnce scripts a first review that raises one finding and later reviews that call first(n, seen). It then approves.
 func raisedOnce(first string, later func(n int, seen []ledgerEntry) string) ledgerScript {
@@ -453,16 +452,27 @@ func TestReviewFix_ALedgerStopsTheItemOnAWontfixWithNoReason(t *testing.T) {
 	assert.Contains(t, run.err.Error(), "reason")
 }
 
-func TestReviewFix_ALedgerStopsTheItemOnAnArgumentThatIsNotABooleanOrNamesAnOutputOfTheLedger(t *testing.T) {
+func TestReviewFix_AnArgumentNamedLedgerIsRefusedAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	for _, extra := range []string{", ledger = True", ", ledger = False"} {
+		run := runLedgerLoop(t, raisedOnce("[]", nil), extra)
+
+		require.Error(t, run.err, extra)
+		assert.Contains(t, run.err.Error(), "ledger", extra)
+		assert.Contains(t, run.err.Error(), "unexpected keyword argument", extra)
+	}
+}
+
+func TestReviewFix_ALedgerStopsTheItemOnAnOutputListThatNamesAnOutputOfTheLedger(t *testing.T) {
 	t.Parallel()
 
 	script := raisedOnce("[]", nil)
 
 	for extra, word := range map[string]string{
-		", ledger = \"yes\"": "ledger",
-		", ledger = True, review_outputs = [\"findings\"]":        "findings",
-		", ledger = True, fix_outputs = [\"resolved\"]":           "resolved",
-		", ledger = True, fix_outputs = [\"wontfix\", \"other\"]": "wontfix",
+		", review_outputs = [\"findings\"]":        "findings",
+		", fix_outputs = [\"resolved\"]":           "resolved",
+		", fix_outputs = [\"wontfix\", \"other\"]": "wontfix",
 	} {
 		run := runLedgerLoop(t, script, extra)
 
@@ -470,31 +480,6 @@ func TestReviewFix_ALedgerStopsTheItemOnAnArgumentThatIsNotABooleanOrNamesAnOutp
 		assert.Contains(t, run.err.Error(), "REFUSE", extra)
 		assert.Contains(t, run.err.Error(), word, extra)
 	}
-}
-
-func TestReviewFix_AReviewWithNoLedgerKeepsItsOutputsAndItsDataFile(t *testing.T) {
-	t.Parallel()
-
-	run := runLedgerLoop(t, raisedOnce(ledgerList(ledgerFinding("", "a.go", "a")), func(int, []ledgerEntry) string { return "[]" }), "")
-
-	require.NoError(t, run.err)
-	assert.True(t, run.ledgerNull, "the result field ledger is None")
-	require.NotEmpty(t, run.reviews)
-	require.NotEmpty(t, run.fixes)
-
-	for _, request := range append(append([]AgentRequest{}, run.reviews...), run.fixes...) {
-		assert.Empty(t, request.DataFile, "a loop with no data and no ledger writes no data file")
-	}
-
-	assert.Equal(t, []string{"verdict"}, run.reviews[0].Outputs)
-	assert.Equal(t, []string{"commit_subject", "commit_body"}, run.fixes[0].Outputs)
-
-	own := runLedgerLoop(t, raisedOnce(ledgerList(ledgerFinding("", "a.go", "a")), func(int, []ledgerEntry) string { return "[]" }), `, data = {"x": 1}`)
-
-	require.NoError(t, own.err)
-	require.NotEmpty(t, own.reviewData)
-	assert.NotContains(t, own.reviewData[0], "ledger")
-	assert.Contains(t, own.reviewData[0], `"x"`)
 }
 
 func TestReviewFix_ALedgerKeepsTheDataOfTheCallerAndTheOutputsOfThePolicies(t *testing.T) {
@@ -524,26 +509,12 @@ func TestReviewFix_ALedgerKeepsTheDataOfTheCallerAndTheOutputsOfThePolicies(t *t
 	assert.Contains(t, data.reviewData[0], `"ledger"`)
 }
 
-func TestReviewFix_ACallerWithNoLedgerMayNameTheLedgerOutputsAndTheDataKeyLedger(t *testing.T) {
-	t.Parallel()
-
-	run := runLedgerLoop(t, raisedOnce(ledgerList(ledgerFinding("", "a.go", "a")), nil), `, review_outputs = ["findings"], fix_outputs = ["resolved", "wontfix"], data = {"ledger": "mine"}`)
-
-	require.NoError(t, run.err, "with the default the outputs and the data key are the free text of the caller")
-	assert.True(t, run.ledgerNull)
-	require.NotEmpty(t, run.reviews)
-	require.NotEmpty(t, run.fixes)
-	assert.Equal(t, []string{"verdict", "findings"}, run.reviews[len(run.reviews)-1].Outputs, "the full review declares the output that the caller listed")
-	assert.Contains(t, run.reviewData[0], `"mine"`, "the data of the caller reaches the data file as it is")
-}
-
 func TestReviewFix_ALedgerOfACleanImplementerIsEmptyAndItsFirstReviewGetsAnEmptyLedger(t *testing.T) {
 	t.Parallel()
 
 	run := runLedgerLoop(t, raisedOnce("[]", nil), ledgerExtra)
 
 	require.NoError(t, run.err)
-	assert.False(t, run.ledgerNull, "the result field ledger is a list with the ledger on")
 	assert.Empty(t, run.ledger)
 	require.NotEmpty(t, run.reviewData)
 	assert.Contains(t, run.reviewData[0], `"ledger"`, "the first review reads an empty ledger from its data file")

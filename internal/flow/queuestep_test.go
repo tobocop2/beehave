@@ -281,7 +281,7 @@ def main(item):
 ` + seenLine
 }
 
-const openFinding = `[{"class": "blocking", "text": "x"}]`
+const openFinding = `[{"id": "f-1", "severity": "blocking", "path": "a.go", "text": "x"}]`
 
 func TestQueue_AForeignRowWhosePullRequestMergedWithFindingsOpenIsOfferedAgain(t *testing.T) {
 	t.Parallel()

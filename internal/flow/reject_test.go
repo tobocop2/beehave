@@ -81,7 +81,7 @@ func TestExample_ARejectVerdictEndsTheLoopWithNoFixAndHoldsTheItemWithTheReason(
 	t.Parallel()
 
 	rig, file := exampleRigWithFindings(t, func(int) string { return "reject" }, func(int) string {
-		return `[{"class":"blocking","text":"the design is wrong"}]`
+		return `[{"id":"","severity":"blocking","path":"a.go","text":"the design is wrong"}]`
 	})
 	writer := newFakeWriter()
 	rig.h.writer = writer
